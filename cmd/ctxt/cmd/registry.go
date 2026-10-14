@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 	"gopkg.in/yaml.v3"
 )
 
@@ -93,7 +95,10 @@ count). Read-only.`,
 var registrySyncCmd = &cobra.Command{
 	Use:   "sync <name>",
 	Short: "Sync registry metadata",
-	Long: `Sync registry metadata from the remote source.
+	Long: `Sync registry metadata from the remote source: fetch the registry's
+manifest from its url and replace the cached copy, so Last Fetched and
+the ETag advance (see ctxt registry info). A registry with auth.type gets
+the token ctxt registry login stored.
 
 With --dry-run, fetches the remote manifest and shows a diff of would-be
 additions, updates, and removals without writing anything to storage.`,
@@ -187,11 +192,20 @@ var registryLoginCmd = &cobra.Command{
 
 The token is NEVER written to the YAML config file.
 
+The token is bound to the origin (scheme, host, port) of the registry's
+url and is sent only there; login prints that origin. When the registry
+list comes from a project .contexthelp/ctxt.yaml (a cloned repository can
+ship one), login asks before binding; non-interactively it refuses unless
+--origin names that origin.
+
 Interactive (prompts for token):
   ctxt registry login example-paid
 
 Non-interactive (pass token via flag — prefer env-var to avoid shell history):
-  ctxt registry login example-paid --token "$TOKEN"`,
+  ctxt registry login example-paid --token "$TOKEN"
+
+Pin the origin (required non-interactively for a project-config registry):
+  ctxt registry login example-paid --token "$TOKEN" --origin https://registry.example.com`,
 	Args: cobra.ExactArgs(1),
 	RunE: runRegistryLogin,
 }
@@ -241,6 +255,8 @@ func init() {
 	// Flags for login subcommand
 	registryLoginCmd.Flags().String("token", "",
 		"auth token (reads from stdin prompt if omitted)")
+	registryLoginCmd.Flags().String("origin", "",
+		"origin the token is bound to (scheme://host[:port]); must match the registry url. Required to log in non-interactively when the registry comes from a project .contexthelp/ctxt.yaml")
 
 	cliconv.WithSideEffect(registryListCmd, cliconv.SideEffectRead)
 	cliconv.WithExamples(registryListCmd, []cliconv.Example{
@@ -796,9 +812,18 @@ func runRegistryLogin(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("token flag: %w", err)
 	}
+	pinned, err := cmd.Flags().GetString("origin")
+	if err != nil {
+		return fmt.Errorf("origin flag: %w", err)
+	}
+
+	in := bufio.NewReader(loginInput)
+	if err := confirmLoginOrigin(cmd, in, name, origin, pinned); err != nil {
+		return err
+	}
 
 	if token == "" {
-		token, err = readToken(cmd)
+		token, err = readToken(cmd, in)
 		if err != nil {
 			return fmt.Errorf("read token: %w", err)
 		}
@@ -813,7 +838,7 @@ func runRegistryLogin(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("registry login: %w", err)
 	}
 
-	fmt.Fprintf(cmd.OutOrStdout(), "Token stored securely in keychain for registry %q (%s).\n", name, origin)
+	fmt.Fprintf(cmd.OutOrStdout(), "Token stored in keychain for registry %q; token bound to %s\n", name, origin)
 	if reg.Auth.Type == "" {
 		fmt.Fprintf(cmd.ErrOrStderr(),
 			"note: registry %q has no auth.type, so the token is not sent; set registries[].auth.type (bearer | api_key | oauth2)\n",
@@ -824,6 +849,57 @@ func runRegistryLogin(cmd *cobra.Command, args []string) error {
 			"note: registry %q is plain http; the token is sent only over https or to a loopback host\n", name)
 	}
 	return nil
+}
+
+// loginInput is where `registry login` reads the origin confirmation
+// and the prompted token; loginInteractive reports whether it is a
+// terminal. Tests replace both.
+var (
+	loginInput       io.Reader = os.Stdin
+	loginInteractive           = func() bool { return term.IsTerminal(int(os.Stdin.Fd())) }
+)
+
+// confirmLoginOrigin checks the origin `registry login` is about to bind
+// the token to. --origin pins it: it must name the registry url's own
+// origin. Without it, a registry list read from the project layer (a
+// `.contexthelp/ctxt.yaml` in the working tree, which a cloned repository
+// controls) needs a typed yes; non-interactively the login is refused.
+func confirmLoginOrigin(cmd *cobra.Command, in *bufio.Reader, name, origin, pinned string) error {
+	if pinned != "" {
+		want, err := registry.CanonicalOrigin(pinned)
+		if err != nil {
+			return fmt.Errorf("registry login: --origin: %w", err)
+		}
+		if want != origin {
+			return fmt.Errorf("registry login: --origin %s does not match registry %q, whose url is at %s", want, name, origin)
+		}
+		return nil
+	}
+
+	paths, _, _ := root.ConfigArgs()
+	src, found, err := config.RegistriesSource(binName, "", paths)
+	if err != nil {
+		return fmt.Errorf("registry login: %w", err)
+	}
+	if !found || src.Kind != config.LayerProject {
+		return nil
+	}
+	if !loginInteractive() {
+		return fmt.Errorf("registry login: registry %q url comes from the project config %s; "+
+			"to bind a token to %s, pass --origin %s", name, src.Path, origin, origin)
+	}
+	fmt.Fprintf(cmd.ErrOrStderr(),
+		"Registry %q url comes from the project config %s.\nBind the token to %s? [y/N] ", name, src.Path, origin)
+	answer, err := in.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return fmt.Errorf("registry login: read confirmation: %w", err)
+	}
+	switch strings.ToLower(strings.TrimSpace(answer)) {
+	case "y", confirmYes:
+		return nil
+	default:
+		return fmt.Errorf("registry login: not confirmed; no token stored")
+	}
 }
 
 // runRegistryLogout removes the stored auth token for the named registry.
@@ -1061,16 +1137,16 @@ func runRegistrySearch(cmd *cobra.Command, args []string) error {
 // In interactive sessions the token is read line-by-line; input is not echoed
 // because the prompt instructs the user to paste rather than type.
 // For masked input in production use --token flag with an env-var reference.
-func readToken(cmd *cobra.Command) (string, error) {
+func readToken(cmd *cobra.Command, in *bufio.Reader) (string, error) {
 	fmt.Fprint(cmd.OutOrStdout(), "Enter token: ")
-	scanner := bufio.NewScanner(os.Stdin)
-	if scanner.Scan() {
-		return scanner.Text(), nil
-	}
-	if err := scanner.Err(); err != nil {
+	line, err := in.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
 		return "", fmt.Errorf("read token: %w", err)
 	}
-	return "", fmt.Errorf("no token provided on stdin")
+	if line == "" {
+		return "", fmt.Errorf("no token provided on stdin")
+	}
+	return strings.TrimRight(line, "\r\n"), nil
 }
 
 // runRegistryEntitlements lists active entitlement records stored locally.

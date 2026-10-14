@@ -804,13 +804,18 @@ func (s *Service) UninstallStep(ctx context.Context, name string) error {
 	return s.Store.Steps().Unregister(ctx, name)
 }
 
+// FetchRegistry fetches the registry manifest at url and caches it.
 func (s *Service) FetchRegistry(ctx context.Context, url string) error {
 	_, err := s.Discovery.FetchRegistryManifest(ctx, url)
 	return err
 }
 
+// UpdateRegistry is a manual sync: it re-fetches the manifest at url,
+// with the registry's stored token, and replaces the cached copy, so its
+// Last Fetched time and ETag advance. Update reminders come from the
+// background check (CheckRegistryUpdates), not from here.
 func (s *Service) UpdateRegistry(ctx context.Context, url string) error {
-	return s.Discovery.NotifyUpdateAvailable(ctx, url, "")
+	return s.FetchRegistry(ctx, url)
 }
 
 func (s *Service) ListRegistries(ctx context.Context) ([]*storage.RegistryCache, int, error) {

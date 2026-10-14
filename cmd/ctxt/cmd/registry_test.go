@@ -1,9 +1,16 @@
 package cmd
 
 import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
+
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 // --- login / logout tests ---
@@ -74,18 +81,31 @@ func TestRegistryList(t *testing.T) {
 }
 
 func TestRegistryAdd(t *testing.T) {
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		w.Header().Set("ETag", `"v1"`)
+		_ = json.NewEncoder(w).Encode(storage.RegistryManifest{Name: "testregistry", Version: "1.2.0"})
+	}))
+	defer srv.Close()
 	db := setupTestDB(t)
 
-	out, err := db.exec("registry", "add", "testregistry", "https://test.example.com")
+	out, err := db.exec("registry", "add", "testregistry", srv.URL)
 	if err != nil {
-		// Fetch may fail in test environment (network), that's expected
-		if !strings.Contains(err.Error(), "fetch registry") {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		return
+		t.Fatalf("registry add: %v", err)
 	}
 	if !strings.Contains(out, "Adding registry testregistry") {
-		t.Error("output should confirm registry name")
+		t.Errorf("output should confirm registry name, got: %q", out)
+	}
+	if hits.Load() == 0 {
+		t.Fatal("registry add made no request to the registry")
+	}
+	cache, err := db.Driver.Registries().GetCachedManifest(context.Background(), srv.URL)
+	if err != nil {
+		t.Fatalf("cached manifest: %v", err)
+	}
+	if cache.Manifest == nil || cache.Manifest.Version != "1.2.0" || cache.ETag != `"v1"` {
+		t.Errorf("cached manifest = %+v, want version 1.2.0 with ETag \"v1\"", cache)
 	}
 }
 

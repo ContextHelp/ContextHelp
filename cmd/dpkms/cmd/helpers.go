@@ -16,11 +16,14 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
+	"github.com/ideacrafterslabs/ctxt/internal/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
+	"github.com/ideacrafterslabs/ctxt/internal/secrets"
 	"github.com/ideacrafterslabs/ctxt/internal/server/stack"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
+	"hop.top/kit/go/storage/secret"
 )
 
 // newService creates a Service wired to the configured storage backend.
@@ -58,7 +61,13 @@ func newService() (*service.Service, func(), error) {
 		fmt.Fprintf(os.Stderr, "Warning: failed to load detectors: %v\n", err)
 	}
 
-	svc := service.New(driver, queue, pipes, engine, "", nil, *cfg)
+	// Registry tokens come from secrets.backend under registry/<name>,
+	// opened on the first authenticated registry request only.
+	secretsCfg := cfg.Secrets
+	svc := service.NewWithOptions(driver, queue, pipes, engine, "", nil,
+		[]service.Option{service.WithRegistryTokens(registry.SecretTokens(func() (secret.Store, error) {
+			return secrets.New(secretsCfg)
+		}))}, *cfg)
 	cleanup := func() { driver.Close(context.Background()) }
 
 	if err := svc.EnsureDefaultRegistry(ctx); err != nil {

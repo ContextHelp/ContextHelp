@@ -149,6 +149,7 @@ func (c *Credentials) CheckResponse(resp *http.Response) error {
 		RegistryName: reg.cfg.Name,
 		StatusCode:   resp.StatusCode,
 		Configured:   reg.cfg.Auth.Type != "",
+		LoginCommand: c.loginCommand(reg.cfg.Name),
 	}
 	if e.Configured {
 		_, sent, err := c.release(reg, resp.Request.URL)
@@ -165,20 +166,45 @@ type ErrRegistryAuth struct {
 	Configured bool
 	// TokenSent is true when a stored token went with the request.
 	TokenSent bool
+	// LoginCommand stores a token for the registry; empty means
+	// `ctxt registry login <name>`.
+	LoginCommand string
 }
 
 func (e ErrRegistryAuth) Error() string {
+	login := e.LoginCommand
+	if login == "" {
+		login = defaultLoginCommand(e.RegistryName)
+	}
 	switch {
 	case e.TokenSent:
-		return fmt.Sprintf("registry %q rejected the stored token (HTTP %d) — run: ctxt registry login %s",
-			e.RegistryName, e.StatusCode, e.RegistryName)
+		return fmt.Sprintf("registry %q rejected the stored token (HTTP %d) — run: %s",
+			e.RegistryName, e.StatusCode, login)
 	case e.Configured:
-		return fmt.Sprintf("registry %q requires authentication (HTTP %d) and no token is stored — run: ctxt registry login %s",
-			e.RegistryName, e.StatusCode, e.RegistryName)
+		return fmt.Sprintf("registry %q requires authentication (HTTP %d) and no token is stored — run: %s",
+			e.RegistryName, e.StatusCode, login)
 	default:
-		return fmt.Sprintf("registry %q requires authentication (HTTP %d) — set registries[].auth.type for it, then run: ctxt registry login %s",
-			e.RegistryName, e.StatusCode, e.RegistryName)
+		return fmt.Sprintf("registry %q requires authentication (HTTP %d) — set registries[].auth.type for it, then run: %s",
+			e.RegistryName, e.StatusCode, login)
 	}
+}
+
+func defaultLoginCommand(registryName string) string {
+	return "ctxt registry login " + registryName
+}
+
+// loginCommander is a TokenSource whose tokens are stored some other way
+// than `ctxt registry login` (SecretTokens on a dpkms host).
+type loginCommander interface {
+	LoginCommand(registryName string) string
+}
+
+// loginCommand names how to store registryName's token for c's source.
+func (c *Credentials) loginCommand(registryName string) string {
+	if lc, ok := c.tokens.(loginCommander); ok {
+		return lc.LoginCommand(registryName)
+	}
+	return defaultLoginCommand(registryName)
 }
 
 // Unwrap exposes ErrNoToken when the registry needs a token and none is
@@ -246,8 +272,8 @@ func (c *Credentials) release(reg *credRegistry, u *url.URL) (string, bool, erro
 	}
 	origin := requestOrigin(u)
 	if tok.Origin != origin {
-		c.warnOnce(fmt.Sprintf("warning: registry %q: stored token is bound to %s, not sent to %s (run: ctxt registry login %s)",
-			reg.cfg.Name, tok.Origin, origin, reg.cfg.Name))
+		c.warnOnce(fmt.Sprintf("warning: registry %q: stored token is bound to %s, not sent to %s (run: %s)",
+			reg.cfg.Name, tok.Origin, origin, c.loginCommand(reg.cfg.Name)))
 		return "", false, nil
 	}
 	if InsecureOrigin(origin) {

@@ -15,17 +15,12 @@ import (
 // extraPaths, …) merges, lowest precedence first. A cascade slot whose
 // file does not exist is left out, as the loader skips it.
 func LayerFiles(bin, cfgFile string, extraPaths []string) []string {
-	system, user, project, extra := layerSlots(bin, cfgFile, extraPaths)
-	var files []string
-	for _, p := range []string{system, user, project} {
-		if p == "" {
-			continue
-		}
-		if _, err := os.Stat(p); err == nil {
-			files = append(files, p)
-		}
+	layers := layerSources(bin, cfgFile, extraPaths)
+	files := make([]string, len(layers))
+	for i, l := range layers {
+		files[i] = l.Path
 	}
-	return append(files, extra...)
+	return files
 }
 
 // UnknownKeys decodes the config file at path strictly and returns one
