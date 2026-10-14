@@ -66,6 +66,10 @@ func TestUpgradeStatusJSONReturnsEnvelope(t *testing.T) {
 	withFormat(t, "json")
 
 	cmd := upgradeStatusCmd
+	// runUpgradeStatus is called directly, not through Execute, so the
+	// shared command has no context unless set here. Background never
+	// cancels, so a later test inheriting it is harmless.
+	cmd.SetContext(context.Background())
 	require.NoError(t, cmd.Flags().Set("server", srv.URL))
 	t.Cleanup(func() { _ = cmd.Flags().Set("server", "") })
 
@@ -93,6 +97,10 @@ func TestUpgradeStatusIdleHumanReadable(t *testing.T) {
 	withFormat(t, "")
 
 	cmd := upgradeStatusCmd
+	// runUpgradeStatus is called directly, not through Execute, so the
+	// shared command has no context unless set here. Background never
+	// cancels, so a later test inheriting it is harmless.
+	cmd.SetContext(context.Background())
 	require.NoError(t, cmd.Flags().Set("server", srv.URL))
 	t.Cleanup(func() { _ = cmd.Flags().Set("server", "") })
 
@@ -121,6 +129,10 @@ func TestUpgradeStatusInProgressHumanReadable(t *testing.T) {
 	withFormat(t, "")
 
 	cmd := upgradeStatusCmd
+	// runUpgradeStatus is called directly, not through Execute, so the
+	// shared command has no context unless set here. Background never
+	// cancels, so a later test inheriting it is harmless.
+	cmd.SetContext(context.Background())
 	require.NoError(t, cmd.Flags().Set("server", srv.URL))
 	t.Cleanup(func() { _ = cmd.Flags().Set("server", "") })
 
@@ -154,6 +166,10 @@ func TestUpgradeStatusFailedExitsNonZero(t *testing.T) {
 	withFormat(t, "")
 
 	cmd := upgradeStatusCmd
+	// runUpgradeStatus is called directly, not through Execute, so the
+	// shared command has no context unless set here. Background never
+	// cancels, so a later test inheriting it is harmless.
+	cmd.SetContext(context.Background())
 	require.NoError(t, cmd.Flags().Set("server", srv.URL))
 	t.Cleanup(func() { _ = cmd.Flags().Set("server", "") })
 
