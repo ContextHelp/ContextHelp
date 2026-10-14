@@ -2,6 +2,7 @@ package tui_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -11,8 +12,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// buildModel is a helper that creates a Model with a stub adapter and no config.
+// buildModel is a helper that creates a Model with a stub adapter and
+// zero StartOpts.
 func buildModel() tui.Model {
+	return buildModelWith(tui.StartOpts{})
+}
+
+// buildModelWith creates a Model with a stub adapter and the given opts.
+func buildModelWith(opts tui.StartOpts) tui.Model {
 	adapter := &MockAdapter{
 		SearchFn: func(_ context.Context, _ string, _ int) ([]*storage.KnowledgeObject, error) {
 			return nil, nil
@@ -33,7 +40,7 @@ func buildModel() tui.Model {
 			return "", nil
 		},
 	}
-	return tui.New(adapter, nil)
+	return tui.New(adapter, opts)
 }
 
 func TestModelWindowSizeStackedLayout(t *testing.T) {
@@ -71,4 +78,22 @@ func TestModelQuitKeyExitsProgram(t *testing.T) {
 	require.NotNil(t, cmd)
 	msg := cmd()
 	assert.Equal(t, tea.Quit(), msg)
+}
+
+// The status bar shows the profile the caller resolved, verbatim; the
+// model never falls back to a config default of its own.
+func TestModelStatusBarShowsStartProfile(t *testing.T) {
+	for _, tc := range []struct {
+		name, profile, want string
+	}{
+		{name: "named profile", profile: "growth", want: "profile: growth "},
+		{name: "no profile", profile: "", want: "profile:  "},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := buildModelWith(tui.StartOpts{Profile: tc.profile})
+			updated, _ := m.Update(tea.WindowSizeMsg{Width: 200, Height: 30})
+			view := updated.(tui.Model).View().Content
+			assert.True(t, strings.Contains(view, tc.want), "status bar missing %q:\n%s", tc.want, view)
+		})
+	}
 }

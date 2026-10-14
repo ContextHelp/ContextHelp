@@ -534,7 +534,7 @@ func dispatchURI(cmd *cobra.Command, raw string) error {
 	case "search":
 		query := strings.TrimPrefix(u.Path, "/")
 		if handler == "tui" {
-			return dispatchURIViaTUI(tui.StartOpts{InitialQuery: query})
+			return dispatchURIViaTUI(cmd, tui.StartOpts{InitialQuery: query})
 		}
 		return runFind(cmd, []string{query})
 	default:
@@ -543,17 +543,17 @@ func dispatchURI(cmd *cobra.Command, raw string) error {
 			return fmt.Errorf("empty object ID in URI %q", raw)
 		}
 		if handler == "tui" {
-			return dispatchURIViaTUI(tui.StartOpts{InitialObjectID: objectID})
+			return dispatchURIViaTUI(cmd, tui.StartOpts{InitialObjectID: objectID})
 		}
 		return runShow(cmd, []string{objectID})
 	}
 }
 
-func dispatchURIViaTUI(opts tui.StartOpts) error {
+func dispatchURIViaTUI(cmd *cobra.Command, opts tui.StartOpts) error {
 	svc, cleanup, err := newService()
 	if err != nil {
 		return err
 	}
 	defer cleanup()
-	return tui.RunWithOpts(tui.NewRealAdapter(svc), cfg, opts)
+	return tui.Run(tui.NewRealAdapter(svc), tuiStartOpts(cmd, opts))
 }

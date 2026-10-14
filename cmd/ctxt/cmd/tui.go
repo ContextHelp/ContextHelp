@@ -30,8 +30,16 @@ Keyboard shortcuts:
 		}
 		defer cleanup()
 
-		return tui.Run(tui.NewRealAdapter(svc), cfg)
+		return tui.Run(tui.NewRealAdapter(svc), tuiStartOpts(cmd, tui.StartOpts{}))
 	},
+}
+
+// tuiStartOpts returns opts with Profile set to cmd's active profile, so
+// the TUI runs under the same --profile / profile.default resolution as
+// every other command.
+func tuiStartOpts(cmd *cobra.Command, opts tui.StartOpts) tui.StartOpts {
+	opts.Profile = activeProfileName(cmd)
+	return opts
 }
 
 func init() {
