@@ -3,7 +3,7 @@
 The marketplace is the distribution and monetization layer for:
 
 - paid registries (curated context feeds)
-- paid extensions (plugins, pipelines, templates)
+- paid extensions (steps, pipelines, templates)
 
 ## Core objects
 

@@ -20,7 +20,6 @@ Related: [Security Model](../security/security-model.md) |
 | Object cache | `~/.cache/contexthelp/` | No |
 | Audit log | `~/.local/share/contexthelp/audit.log` | No |
 | Vector index | `~/.local/share/contexthelp/vecs/` | No |
-| Plugin data | `~/.local/share/contexthelp/plugins/<name>/` | No |
 
 External egress only occurs when **explicitly configured**:
 
@@ -132,7 +131,6 @@ ctxt delete --mention @project.archived --confirm=yes --confirm-token=<sha>
 | `backlinks` table | Edge removed |
 | `entity_refs` table | Orphan check; stub if no other refs |
 | `audit_log` | Immutable; deletion event appended |
-| Plugin sidecar data | Plugin-managed; call `ctxt plugin purge <name> --object <id>` |
 
 ### Verification
 
@@ -157,7 +155,6 @@ ctxt audit export --event-type object.delete --since 2025-01-01 --format json
 # Stop the dpkms server first, then remove all data files:
 rm ~/.local/share/contexthelp/db.sqlite
 rm -rf ~/.local/share/contexthelp/vecs/
-rm -rf ~/.local/share/contexthelp/plugins/
 # Optionally remove audit log too (default: preserved):
 # rm ~/.local/share/contexthelp/audit.log
 ```
@@ -190,7 +187,7 @@ Reference: AICPA TSC 2017.
 
 Notes:
 
-- **CC6.1 partial**: JWT auth and plugin ACL planned (ADR-023, ADR-027); not yet enforced.
+- **CC6.1 partial**: JWT auth planned (ADR-023); not yet enforced. There is no plugin system (ADR-078).
   Current protection: localhost-only bind + OS file permissions.
 - **CC6.7 partial**: Encryption not active; operators handling PII **must** use OS-level
   disk encryption (FileVault / LUKS / BitLocker) until ADR-019 ships.

@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 func TestRagRetrieve_FiltersByType(t *testing.T) {
@@ -94,22 +93,22 @@ func TestRetrieveCategories_Items_Resources(t *testing.T) {
 type nodeAwareMockObjects struct {
 	*mockObjectStore2
 	nodeAwareResults []*storage.KnowledgeObject
-	capturedFilter   *pluginapi.NodeAwareFilter
+	capturedFilter   *storage.NodeAwareFilter
 }
 
 func (m *nodeAwareMockObjects) VectorSearchNodeAware(
 	_ context.Context,
 	_ storage.VectorQuery,
 	f storage.ObjectFilter,
-	naf pluginapi.NodeAwareFilter,
-) ([]*pluginapi.NodeAwareResult, error) {
+	naf storage.NodeAwareFilter,
+) ([]*storage.NodeAwareResult, error) {
 	m.capturedFilter = &naf
-	var out []*pluginapi.NodeAwareResult
+	var out []*storage.NodeAwareResult
 	for _, o := range m.nodeAwareResults {
 		if f.Type != "" && o.Type != f.Type {
 			continue
 		}
-		out = append(out, &pluginapi.NodeAwareResult{Object: o})
+		out = append(out, &storage.NodeAwareResult{Object: o})
 	}
 	return out, nil
 }
@@ -176,7 +175,7 @@ func TestRagRetrieve_NodeAwareFilterRoutesThroughNodeAwarePath(t *testing.T) {
 	cfg.EnableSufficiencyCheck = false
 	wf := NewWorkflow(cfg, store, nil, fixedSemantic())
 
-	nf := &pluginapi.NodeAwareFilter{NodeTypes: []string{"question"}}
+	nf := &storage.NodeAwareFilter{NodeTypes: []string{"question"}}
 	state := &State{ActiveQuery: "open questions?", NeedsRetrieval: true}
 
 	err := wf.ragRetrieve(context.Background(), state, &state.ItemHits, "item", 10, storage.ObjectFilter{}, nf)
@@ -205,7 +204,7 @@ func TestRetrieve_NodeAwareFilterThreadedThroughWorkflow(t *testing.T) {
 	cfg.EnableSufficiencyCheck = false
 	wf := NewWorkflow(cfg, store, nil, fixedSemantic())
 
-	nf := &pluginapi.NodeAwareFilter{NodeTypes: []string{"section"}}
+	nf := &storage.NodeAwareFilter{NodeTypes: []string{"section"}}
 	result, err := wf.Retrieve(context.Background(), "query", nil, storage.ObjectFilter{}, nf)
 
 	require.NoError(t, err)

@@ -288,7 +288,7 @@ func TestFindWireParity(t *testing.T) {
 
 // wireShape lists every JSON path of typ with its tag options and kind,
 // following structs, pointers, slices and maps declared in this module's
-// wire types. Types shared by both sides (storage objects, plugin
+// wire types. Types shared by both sides (storage objects, their
 // projections, time) are leaves named by their full type.
 func wireShape(typ reflect.Type) []string {
 	var out []string

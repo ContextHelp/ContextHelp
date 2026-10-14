@@ -7,7 +7,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 type OCRExtractor struct {
@@ -77,13 +76,13 @@ func (s *OCRExtractor) Run(ctx context.Context, draft *storage.KnowledgeObject) 
 		return draft, nil
 	}
 	if draft.Graph == nil {
-		draft.Graph = &pluginapi.ObjectGraph{}
+		draft.Graph = &storage.ObjectGraph{}
 	}
-	artifactID := pluginapi.NewNodeID(draft.ID, pluginapi.NodeTypeArtifact, 0)
+	artifactID := storage.NewNodeID(draft.ID, storage.NodeTypeArtifact, 0)
 	if draft.Graph.FindNode(artifactID) == nil {
-		draft.Graph.Nodes = append(draft.Graph.Nodes, pluginapi.GraphNode{
+		draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
 			ID:       artifactID,
-			NodeType: pluginapi.NodeTypeArtifact,
+			NodeType: storage.NodeTypeArtifact,
 			Label:    "source-image",
 			Content:  draft.ContentType,
 			Order:    0,
@@ -91,14 +90,14 @@ func (s *OCRExtractor) Run(ctx context.Context, draft *storage.KnowledgeObject) 
 	}
 	secOrdinal := 0
 	for _, n := range draft.Graph.Nodes {
-		if n.NodeType == pluginapi.NodeTypeSection {
+		if n.NodeType == storage.NodeTypeSection {
 			secOrdinal++
 		}
 	}
-	secID := pluginapi.NewNodeID(draft.ID, pluginapi.NodeTypeSection, secOrdinal)
-	draft.Graph.Nodes = append(draft.Graph.Nodes, pluginapi.GraphNode{
+	secID := storage.NewNodeID(draft.ID, storage.NodeTypeSection, secOrdinal)
+	draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
 		ID:       secID,
-		NodeType: pluginapi.NodeTypeSection,
+		NodeType: storage.NodeTypeSection,
 		Label:    "OCR Text",
 		Content:  result.Text,
 		Order:    0,
@@ -106,11 +105,11 @@ func (s *OCRExtractor) Run(ctx context.Context, draft *storage.KnowledgeObject) 
 			"ocr_confidence": result.Confidence,
 		},
 	})
-	draft.Graph.Edges = append(draft.Graph.Edges, pluginapi.GraphEdge{
+	draft.Graph.Edges = append(draft.Graph.Edges, storage.GraphEdge{
 		ID:       fmt.Sprintf("%s->%s", artifactID, secID),
 		FromID:   artifactID,
 		ToID:     secID,
-		EdgeType: pluginapi.EdgeTypeDerivedFrom,
+		EdgeType: storage.EdgeTypeDerivedFrom,
 	})
 
 	return draft, nil

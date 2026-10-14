@@ -6,7 +6,6 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 func TestOCRExtractorSetsText(t *testing.T) {
@@ -69,13 +68,13 @@ func TestOCRExtractorEmitsGraphNodes(t *testing.T) {
 	if got.Graph == nil {
 		t.Fatal("graph is nil; expected nodes")
 	}
-	artifactID := pluginapi.NewNodeID("obj-ocr-001", pluginapi.NodeTypeArtifact, 0)
+	artifactID := storage.NewNodeID("obj-ocr-001", storage.NodeTypeArtifact, 0)
 	if got.Graph.FindNode(artifactID) == nil {
 		t.Errorf("artifact node %q not found", artifactID)
 	}
-	var sectionNode *pluginapi.GraphNode
+	var sectionNode *storage.GraphNode
 	for i := range got.Graph.Nodes {
-		if got.Graph.Nodes[i].NodeType == pluginapi.NodeTypeSection {
+		if got.Graph.Nodes[i].NodeType == storage.NodeTypeSection {
 			sectionNode = &got.Graph.Nodes[i]
 			break
 		}

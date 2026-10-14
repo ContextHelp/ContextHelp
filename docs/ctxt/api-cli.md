@@ -5,7 +5,7 @@ ContextHelp provides two command-line interfaces that together expose all engine
 - **`ctxt`** — User-facing commands for capture, search, composition, and profiles
 - **`dpkms`** — Infrastructure commands for server operations and maintenance
 
-Both CLIs support ingestion, job queue management, retrieval, registry interactions, entity/mention resolution, focus profiles, local server operations, and **plugin-defined commands** that extend the CLI at runtime.
+Both CLIs support ingestion, job queue management, retrieval, registry interactions, entity/mention resolution, focus profiles, and local server operations. There is no plugin system ([ADR-078](../decisions/ADR-078-no-plugin-system.md)): nothing adds commands at runtime.
 
 Both CLIs are:
 
@@ -14,7 +14,6 @@ Both CLIs are:
 - Scriptable
 - Fully offline-capable
 - Parallel to REST and gRPC APIs
-- **Extensible by plugins without modifying core**
 
 All ingestion operations follow the **Transactional Outbox Model**:
 `ctxt analyze` enqueues a job → the worker (`dpkms serve`) processes pipelines → results are written to storage.
@@ -140,21 +139,10 @@ ctxt analyze <content> <options>
 | `--wait` | Block until job completes |
 | `--output <json|yaml|id>` | Output format |
 
-### Refresh & Auto-Fetch Flags (Plugin-provided)
-
-Plugins such as the Refresh Plugin and RSS Feed Plugin may add:
-
-| Flag | Description |
-|------|-------------|
-| `--refresh <seconds|daily|auto>` | Attach refresh policy to knowledge object |
-| `--fetch-new` | For feed-like sources, auto-fetch new items |
-| `--no-fetch-new` | Disable auto-fetch |
-
 ### Notes
 
 - Returns a **Job ID**.
 - With `--wait`, returns the resulting **Knowledge Object ID**.
-- Plugins may intercept or extend `ctxt analyze` behavior via lifecycle hooks.
 - Content goes only to the one instance ctxt resolves (see [Resolution order](#resolution-order)). Nothing is queued on this machine and no other instance is tried.
 - Exit status: `70` nothing answered at the instance, `5` the instance rejected the token (not retried; a `reader` token lacks `write:objects`), `2` the instance refused the request (a `422` names the unrouted type or pipeline), `6` a server error.
 

@@ -15,7 +15,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // ── Mock LLM ─────────────────────────────────────────────────────────────────
@@ -68,21 +67,21 @@ func TestGraphExtractor_EmitsNodes(t *testing.T) {
 		typeSet[n.NodeType]++
 	}
 
-	assert.GreaterOrEqual(t, typeSet[pluginapi.NodeTypeSummary], 1,
+	assert.GreaterOrEqual(t, typeSet[storage.NodeTypeSummary], 1,
 		"at least one NodeTypeSummary node expected")
-	assert.GreaterOrEqual(t, typeSet[pluginapi.NodeTypeTag], 1,
+	assert.GreaterOrEqual(t, typeSet[storage.NodeTypeTag], 1,
 		"at least one NodeTypeTag node expected")
-	assert.GreaterOrEqual(t, typeSet[pluginapi.NodeTypeDecision], 1,
+	assert.GreaterOrEqual(t, typeSet[storage.NodeTypeDecision], 1,
 		"at least one NodeTypeDecision node expected")
-	assert.GreaterOrEqual(t, typeSet[pluginapi.NodeTypeOpenQuestion], 1,
+	assert.GreaterOrEqual(t, typeSet[storage.NodeTypeOpenQuestion], 1,
 		"at least one NodeTypeOpenQuestion node expected")
-	assert.GreaterOrEqual(t, typeSet[pluginapi.NodeTypeArtifact], 1,
+	assert.GreaterOrEqual(t, typeSet[storage.NodeTypeArtifact], 1,
 		"at least one NodeTypeArtifact node expected")
 
 	// Every node must have an EdgeTypeContains edge from the KO root.
 	edgeTargets := make(map[string]bool)
 	for _, e := range out.Graph.Edges {
-		if e.FromID == "obj-ge-001" && e.EdgeType == pluginapi.EdgeTypeContains {
+		if e.FromID == "obj-ge-001" && e.EdgeType == storage.EdgeTypeContains {
 			edgeTargets[e.ToID] = true
 		}
 	}
@@ -93,7 +92,7 @@ func TestGraphExtractor_EmitsNodes(t *testing.T) {
 
 	// Node IDs must be parseable by ParseNodeID.
 	for _, n := range out.Graph.Nodes {
-		ref, err := pluginapi.ParseNodeID(n.ID)
+		ref, err := storage.ParseNodeID(n.ID)
 		require.NoError(t, err, "ParseNodeID must succeed for node %q", n.ID)
 		assert.Equal(t, "obj-ge-001", ref.ObjectID,
 			"objectID component of node ID must match KO ID")
@@ -119,11 +118,11 @@ func TestGraphExtractor_EmitsNodes_Counts(t *testing.T) {
 	}
 
 	// summary: 1, topics: 3, decisions: 2, open_questions: 2, artifacts: 3 = 11 nodes total.
-	assert.Equal(t, 1, typeCount[pluginapi.NodeTypeSummary], "summary count")
-	assert.Equal(t, 3, typeCount[pluginapi.NodeTypeTag], "tag count (topics)")
-	assert.Equal(t, 2, typeCount[pluginapi.NodeTypeDecision], "decision count")
-	assert.Equal(t, 2, typeCount[pluginapi.NodeTypeOpenQuestion], "open_question count")
-	assert.Equal(t, 3, typeCount[pluginapi.NodeTypeArtifact], "artifact count")
+	assert.Equal(t, 1, typeCount[storage.NodeTypeSummary], "summary count")
+	assert.Equal(t, 3, typeCount[storage.NodeTypeTag], "tag count (topics)")
+	assert.Equal(t, 2, typeCount[storage.NodeTypeDecision], "decision count")
+	assert.Equal(t, 2, typeCount[storage.NodeTypeOpenQuestion], "open_question count")
+	assert.Equal(t, 3, typeCount[storage.NodeTypeArtifact], "artifact count")
 	assert.Equal(t, 11, len(out.Graph.Nodes), "total node count")
 	assert.Equal(t, 11, len(out.Graph.Edges), "one edge per node")
 }
@@ -214,9 +213,9 @@ func TestGraphExtractor_NilLLM_NoOp(t *testing.T) {
 func TestGraphExtractor_NilLLM_ExistingGraph(t *testing.T) {
 	step := steps.NewGraphExtractor() // no LLM
 
-	existingNode := pluginapi.GraphNode{
-		ID:       pluginapi.NewNodeID("obj-ge-006", pluginapi.NodeTypeSummary, 0),
-		NodeType: pluginapi.NodeTypeSummary,
+	existingNode := storage.GraphNode{
+		ID:       storage.NewNodeID("obj-ge-006", storage.NodeTypeSummary, 0),
+		NodeType: storage.NodeTypeSummary,
 		Label:    "pre-existing",
 		Content:  "pre-existing summary",
 	}
@@ -224,8 +223,8 @@ func TestGraphExtractor_NilLLM_ExistingGraph(t *testing.T) {
 		ID:         "obj-ge-006",
 		Type:       "text",
 		RawContent: "some content",
-		Graph: &pluginapi.ObjectGraph{
-			Nodes: []pluginapi.GraphNode{existingNode},
+		Graph: &storage.ObjectGraph{
+			Nodes: []storage.GraphNode{existingNode},
 		},
 	}
 

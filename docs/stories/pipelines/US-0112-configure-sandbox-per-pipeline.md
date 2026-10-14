@@ -5,7 +5,7 @@ status: shipped
 # US-0112: Configure Sandbox per Pipeline
 
 **System Types:** dpkms (self-hosted), dpkms cloud
-**Personas:** [Platform Integrators](../../personas/README.md), [Plugin Developers](../../personas/README.md), [Registry Operators](../../personas/README.md)
+**Personas:** [Platform Integrators](../../personas/README.md), [Step Developers](../../personas/README.md), [Registry Operators](../../personas/README.md)
 
 ---
 
@@ -134,10 +134,10 @@ func (sd *SandboxDocker) Apply(
     if _, err := exec.LookPath("docker"); err != nil {
         return nil, fmt.Errorf("docker required for container isolation: %w", err)
     }
-    
+
     // Pull or use default image
     image := "alpine:3" // or step metadata.ContainerImage
-    
+
     containerConfig := &docker.ContainerConfig{
         Image:        image,
         Cmd:          stepScriptPath,
@@ -160,17 +160,17 @@ func (sd *SandboxDocker) Apply(
         Binds: buildReadOnlyBinds(sandbox.Filesystem.ReadOnly),
     }
     }
-    
+
     resp, err := sd.Docker.ContainerCreate(ctx, step.Name, containerConfig, hostConfig)
     defer sd.Docker.ContainerRemove(ctx, resp.ID, types.ContainerRemoveOptions{})
     if err != nil {
         return nil, fmt.Errorf("create container: %w", err)
     }
-    
+
     if err := sd.Docker.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{}); err != nil {
         return nil, fmt.Errorf("start container: %w", err)
     }
-    
+
     // Wait for completion
     statusCh, errCh := sd.Docker.ContainerWait(ctx, resp.ID, types.ContainerWaitConditionNotRunning)
     select {
@@ -181,26 +181,26 @@ func (sd *SandboxDocker) Apply(
     case err := <-errCh:
         return nil, fmt.Errorf("container wait error: %w", err)
     }
-    
+
     // Read output
     reader, err := sd.Docker.ContainerLogs(ctx, resp.ID, types.ContainerLogsOptions{ShowStdout: true})
     if err != nil {
         return nil, fmt.Errorf("read container logs error: %w", err)
     }
     defer reader.Close()
-    
+
     output, _ := io.ReadAll(reader)
-    
+
     // Parse output
     var result StepResult
     if err := json.Unmarshal(output, &result); err != nil {
         return nil, fmt.Errorf("parse step output: %w", err)
     }
-    
+
     if result.Error != nil {
         return nil, fmt.Errorf("step failed: %s: result.Error)
     }
-    
+
     return result.Object, nil
 }
 }

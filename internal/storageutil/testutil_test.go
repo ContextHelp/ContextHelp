@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -71,7 +70,7 @@ func TestBuildGraphKO(t *testing.T) {
 		ko := BuildGraphKO("ko-2", "note", "summary text")
 		var found bool
 		for _, n := range ko.Graph.Nodes {
-			if n.NodeType == pluginapi.NodeTypeSummary {
+			if n.NodeType == storage.NodeTypeSummary {
 				found = true
 				assert.Equal(t, "summary text", n.Content)
 			}
@@ -83,7 +82,7 @@ func TestBuildGraphKO(t *testing.T) {
 		ko := BuildGraphKO("ko-3", "note", "body text")
 		var found bool
 		for _, n := range ko.Graph.Nodes {
-			if n.NodeType == pluginapi.NodeTypeSection {
+			if n.NodeType == storage.NodeTypeSection {
 				found = true
 				assert.Equal(t, "body text", n.Content)
 			}
@@ -95,7 +94,7 @@ func TestBuildGraphKO(t *testing.T) {
 		ko := BuildGraphKO("ko-4", "note", "content", "alpha", "beta")
 		var tagNodes []string
 		for _, n := range ko.Graph.Nodes {
-			if n.NodeType == pluginapi.NodeTypeTag {
+			if n.NodeType == storage.NodeTypeTag {
 				tagNodes = append(tagNodes, n.Label)
 			}
 		}
@@ -119,7 +118,7 @@ func TestBuildGraphKO(t *testing.T) {
 	t.Run("node IDs are valid", func(t *testing.T) {
 		ko := BuildGraphKO("ko-6", "note", "content", "tag1")
 		for _, n := range ko.Graph.Nodes {
-			ref, err := pluginapi.ParseNodeID(n.ID)
+			ref, err := storage.ParseNodeID(n.ID)
 			require.NoError(t, err, "node ID %q should parse", n.ID)
 			assert.Equal(t, "ko-6", ref.ObjectID)
 			assert.Equal(t, n.NodeType, ref.NodeType)

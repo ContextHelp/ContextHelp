@@ -9,7 +9,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 var stopWords = map[string]bool{
@@ -153,16 +152,16 @@ func (t *Tagger) Run(ctx context.Context, draft *storage.KnowledgeObject) (*stor
 	// Skip if ID is empty (in-pipeline drafts before ID assignment).
 	if draft.ID != "" {
 		if draft.Graph == nil {
-			draft.Graph = &pluginapi.ObjectGraph{}
+			draft.Graph = &storage.ObjectGraph{}
 		}
 		for i, tag := range merged {
-			tagID := pluginapi.NewNodeID(draft.ID, pluginapi.NodeTypeTag, i)
+			tagID := storage.NewNodeID(draft.ID, storage.NodeTypeTag, i)
 			if draft.Graph.FindNode(tagID) != nil {
 				continue
 			}
-			draft.Graph.Nodes = append(draft.Graph.Nodes, pluginapi.GraphNode{
+			draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
 				ID:       tagID,
-				NodeType: pluginapi.NodeTypeTag,
+				NodeType: storage.NodeTypeTag,
 				Label:    tag.Label,
 				Order:    i,
 				Metadata: map[string]any{

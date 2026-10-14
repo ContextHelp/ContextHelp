@@ -2,7 +2,7 @@
 
 Hints are short, user-provided semantic cues that shape how ContextHelp interprets and enriches incoming content. They influence pipelines, weighting, registry activation, and summarization — but they **do not** create tags, do not become taxonomy entries, and do **not** act as entities or mentions. Hints remain transient guidance, separate from the structured semantic layers (tags and mentions).
 
-Hints also do **not** require or trigger plugin behavior automatically, though plugins *may* read hints through sanctioned plugin interfaces as part of optional, user-authorized workflows.
+Hints also do **not** trigger extra behavior automatically, though pipeline steps *may* read hints as part of optional, user-authorized workflows.
 
 ## What Hints Are
 
@@ -12,7 +12,7 @@ Hints serve as lightweight semantic markers:
 - inline annotations prefixed with `#`
 - non-persistent instructions that do not convert into structured classification
 - contextual nudges affecting pipeline behavior, weighting, and framing
-- safe, read-only cues available to plugins that wish to use them for optional logic
+- safe, read-only cues available to steps that wish to use them for optional logic
 
 Examples:
 
@@ -34,7 +34,7 @@ Hints are **not**:
 - registry-defined vocabulary
 - persistent semantic metadata
 - mentions (`@entity`) or canonical concept references
-- plugin-defined semantic entities
+- step-defined semantic entities
 - contributors to the knowledge graph
 
 Hints never mutate the controlled vocabulary and do not participate in graph indexing or entity resolution.
@@ -117,7 +117,7 @@ Properties:
 - never rewritten or normalized
 - used as metadata for retrieval filters
 - treated as inert, non-structural signals
-- available to plugins through standard plugin APIs (read-only)
+- available to pipeline steps (read-only)
 - never integrated into the semantic graph
 
 ## Interaction Between Hints and Tags
@@ -192,7 +192,7 @@ Pipelines **may**:
 - adjust summarization framing
 - modify classification temperature
 
-Plugins may *read* hints as part of optional behavior, but must treat them as non-authoritative suggestions and never reinterpret them as structured semantics.
+Steps may *read* hints as part of optional behavior, but must treat them as non-authoritative suggestions and never reinterpret them as structured semantics.
 
 ## Hints in Agent Profiles
 

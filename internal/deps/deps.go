@@ -1,5 +1,5 @@
 // Package deps provides a registry of installable runtime dependencies.
-// Pipelines, detectors, and plugins register their requirements here so that
+// Pipelines and detectors register their requirements here so that
 // 'dpkms install-deps' can install everything in one shot.
 package deps
 

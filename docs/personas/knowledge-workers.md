@@ -330,5 +330,5 @@ Long-running local daemon (`ctxd`) captures clipboard, files, browser history, f
 
 - **Maintainers:** Knowledge workers request features ("easier tagging", "better search ranking") and report bugs
 - **Agents/LLMs:** Agents consume knowledge written by knowledge workers; workers benefit from agent-curated insights
-- **Integrators:** Knowledge workers benefit from custom pipelines (e.g., "slack-to-context" plugin, "figma-to-context" plugin)
+- **Integrators:** Knowledge workers benefit from custom pipelines (e.g., "slack-to-context", "figma-to-context")
 - **Operations:** Workers report slow searches and enrichment delays; operations optimize infrastructure

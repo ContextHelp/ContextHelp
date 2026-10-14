@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 func TestEntityExtractorLiteralMentions(t *testing.T) {
@@ -108,16 +107,16 @@ func TestEntityExtractorEmitsIntraObjectGraphNodes(t *testing.T) {
 		t.Errorf("nodes: got %d, want 2", len(got.Graph.Nodes))
 	}
 	for i, n := range got.Graph.Nodes {
-		if n.NodeType != pluginapi.NodeTypeEntityMention {
-			t.Errorf("node[%d] type: got %q, want %q", i, n.NodeType, pluginapi.NodeTypeEntityMention)
+		if n.NodeType != storage.NodeTypeEntityMention {
+			t.Errorf("node[%d] type: got %q, want %q", i, n.NodeType, storage.NodeTypeEntityMention)
 		}
 	}
 	if len(got.Graph.Edges) != 2 {
 		t.Errorf("edges: got %d, want 2", len(got.Graph.Edges))
 	}
 	for i, e := range got.Graph.Edges {
-		if e.EdgeType != pluginapi.EdgeTypeReferences {
-			t.Errorf("edge[%d] type: got %q, want %q", i, e.EdgeType, pluginapi.EdgeTypeReferences)
+		if e.EdgeType != storage.EdgeTypeReferences {
+			t.Errorf("edge[%d] type: got %q, want %q", i, e.EdgeType, storage.EdgeTypeReferences)
 		}
 	}
 }

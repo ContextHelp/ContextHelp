@@ -105,7 +105,7 @@ Each agent’s worldview is decentralized and personalized — no shared univers
 Pipelines are decentralized and user-controlled in several ways:
 
 - Users choose which pipelines are installed
-- Pipelines can come from local or plugin sources
+- Pipelines can be built in or custom (`dpkms pipeline create`), with steps installed from step registries
 - Registries can modify pipeline behavior:
   - Tags
   - Controlled vocabularies
@@ -113,7 +113,7 @@ Pipelines are decentralized and user-controlled in several ways:
   - Decision frameworks
 - Users can override or disable registry influence
 - Agents may use different pipelines for the same data
-- Plugin registries may define new pipeline types
+- Step registries may supply new steps
 
 Pipeline execution is fully local unless configured otherwise.
 Registries can supply semantics but never receive user data or pipeline output.
@@ -126,7 +126,7 @@ Storage is decentralized by design:
 
 - Completely local by default
 - Never transmitted to any registry or service
-- Pluggable backends (`json`, `sqlite`, `postgres`, custom plugins)
+- Two backends (`sqlite`, `postgres`)
 - Deterministic job scheduling and ingestion (transactional outbox)
 - Optional team sync or cloud backup
 - Optional remote read-only mount (e.g., team knowledge store)
@@ -265,18 +265,14 @@ The pipeline never uploads user content to registries.
 
 ## Replaceable Components
 
-Every subsystem supports plugin replacement:
+Configuration selects among built-in implementations:
 
-- Storage backend
-- Pipeline types
-- LLM or embedding clients
-- Ranking strategy
-- Registry merging logic
-- Query AST handlers
-- Language/translation services
-- Observability layers
+- Storage backend (`sqlite`, `postgres`)
+- Pipelines (built-in, overridden, or custom)
+- LLM or embedding clients (`providers`)
+- Registries and their merging precedence
 
-Users and third parties extend the environment without modifying the core engine.
+Third parties extend the environment with steps and registries without modifying the core engine; there is no plugin system ([ADR-078](../decisions/ADR-078-no-plugin-system.md)).
 
 ---
 
@@ -296,7 +292,7 @@ The entire system (bookmarks, pipelines, registries, worldviews) is portable.
 
 ### ✔ Ecosystem Interoperability
 
-Registries and plugins remain independent and compatible by specification, not by vendor.
+Registries and steps remain independent and compatible by specification, not by vendor.
 
 ### ✔ Domain-Specific Agents
 

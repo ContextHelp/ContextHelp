@@ -121,7 +121,7 @@ RBAC compiles down to the node's underlying scope/policy enforcement
 ### Policy configuration
 
 Policy controls are enforced at request boundaries (registry access, exports,
-JIT pulls, plugins).
+JIT pulls, step installs).
 
 - `GET /admin/v1/policy`
 - `PUT /admin/v1/policy`

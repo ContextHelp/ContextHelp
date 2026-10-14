@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // mockLLM returns a fixed response string.
@@ -80,11 +79,11 @@ func TestGraphExtractorEmitsNodes(t *testing.T) {
 	}
 
 	want := map[string]int{
-		pluginapi.NodeTypeSummary:      1,
-		pluginapi.NodeTypeTag:          2, // "go", "testing"
-		pluginapi.NodeTypeDecision:     1,
-		pluginapi.NodeTypeOpenQuestion: 1,
-		pluginapi.NodeTypeArtifact:     2, // "go.mod", "Makefile"
+		storage.NodeTypeSummary:      1,
+		storage.NodeTypeTag:          2, // "go", "testing"
+		storage.NodeTypeDecision:     1,
+		storage.NodeTypeOpenQuestion: 1,
+		storage.NodeTypeArtifact:     2, // "go.mod", "Makefile"
 	}
 	for nodeType, wantCount := range want {
 		if got := counts[nodeType]; got != wantCount {
@@ -95,7 +94,7 @@ func TestGraphExtractorEmitsNodes(t *testing.T) {
 	// Each node must have a corresponding EdgeTypeContains edge from root.
 	edgeTargets := make(map[string]bool)
 	for _, e := range got.Graph.Edges {
-		if e.EdgeType != pluginapi.EdgeTypeContains {
+		if e.EdgeType != storage.EdgeTypeContains {
 			t.Errorf("unexpected edge type %q", e.EdgeType)
 		}
 		if e.FromID != ko.ID {
@@ -122,8 +121,8 @@ func TestGraphExtractorSummaryContent(t *testing.T) {
 		t.Fatalf("expected 1 summary node, got %v", got.Graph)
 	}
 	n := got.Graph.Nodes[0]
-	if n.NodeType != pluginapi.NodeTypeSummary {
-		t.Errorf("node type = %q, want %q", n.NodeType, pluginapi.NodeTypeSummary)
+	if n.NodeType != storage.NodeTypeSummary {
+		t.Errorf("node type = %q, want %q", n.NodeType, storage.NodeTypeSummary)
 	}
 	if n.Label != "Very concise summary" {
 		t.Errorf("node label = %q, want %q", n.Label, "Very concise summary")

@@ -26,11 +26,6 @@ config.production.yaml
 config.dev.yaml
 ~/.config/contexthelp/config.yaml
 
-# Plugin configurations (may contain API keys)
-plugins/*/config.yaml
-plugins/*/secrets/
-plugins/*/.env
-
 #############################################################################
 # Authentication & Credentials (CRITICAL)
 #############################################################################
@@ -297,16 +292,6 @@ registries/cache/
 
 # Downloaded registry data
 .registries/
-
-#############################################################################
-# Plugin Development
-#############################################################################
-# Plugin build artifacts
-plugins/*/bin/
-plugins/*/dist/
-
-# Plugin test data
-plugins/*/testdata/secrets/
 
 #############################################################################
 # AI and ML Model Files (Large Files)

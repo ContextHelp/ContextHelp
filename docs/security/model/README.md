@@ -5,7 +5,7 @@ The security model for ctxt and dpkms, split by concern. Each page says what the
 ## Pages
 
 1. **[threat.md](threat.md)** — threats, the mitigations that exist, and the gaps
-2. **[boundaries.md](boundaries.md)** — trust boundaries: local machine, registries, AI providers, plugins and steps, APIs
+2. **[boundaries.md](boundaries.md)** — trust boundaries: local machine, registries, AI providers, installed steps, APIs
 3. **[controls.md](controls.md)** — controls: inbound auth, secrets, policy rules, validation, audit log, deployment
 4. **[compliance.md](compliance.md)** — OWASP Top 10 mapping; GDPR and SOC 2 pointers
 
@@ -25,7 +25,7 @@ Supporting: [../secrets-validation-and-log-sanitization.md](../secrets-validatio
 | Encryption at rest | **None.** Use OS disk encryption. [ADR-019](../../decisions/ADR-019-encryption-and-privacy.md) is design |
 | TLS | **None in dpkms.** Terminate TLS at a reverse proxy |
 | Log sanitization | **None.** Logs are written as-is |
-| Plugin sandbox | **None.** No plugin is loaded at runtime; [ADR-027](../../decisions/ADR-027-plugin-isolation-sandboxing.md) is design |
+| Step sandbox | **None.** No pipeline executes installed external steps yet; [ADR-055](../../decisions/ADR-055-sandbox-isolation-levels.md) is design. There is no plugin system ([ADR-078](../../decisions/ADR-078-no-plugin-system.md)) |
 | Rate limiting | **None.** `server.quotas` caps the entity-serving surface per principal |
 
 ## Quick reference
@@ -43,4 +43,4 @@ See [../../SECURITY.md](../../SECURITY.md).
 
 - [../security-model.md](../security-model.md) — single-page security model
 - [../../dpkms/security.md](../../dpkms/security.md) — dpkms security
-- [ADR-019](../../decisions/ADR-019-encryption-and-privacy.md), [ADR-023](../../decisions/ADR-023-authentication-authorization-model.md), [ADR-027](../../decisions/ADR-027-plugin-isolation-sandboxing.md)
+- [ADR-019](../../decisions/ADR-019-encryption-and-privacy.md), [ADR-023](../../decisions/ADR-023-authentication-authorization-model.md), [ADR-078](../../decisions/ADR-078-no-plugin-system.md)

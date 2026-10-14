@@ -582,9 +582,9 @@ ctxt registry logout <name>
 
 ### Not implemented
 
-OIDC/JWT and mTLS providers, per-user accounts and plugin capability
-restrictions ([ADR-027](decisions/ADR-027-plugin-isolation-sandboxing.md))
-are designed but not implemented. The auth design is in
+OIDC/JWT and mTLS providers and per-user accounts are designed but not
+implemented; auth is to be extended through a trusted proxy or OIDC. There is
+no plugin system ([ADR-078](decisions/ADR-078-no-plugin-system.md)). The auth design is in
 [ADR-023](decisions/ADR-023-authentication-authorization-model.md).
 
 ---
@@ -783,7 +783,7 @@ spec:
   (`fanout.completed`)
 - `ctxt doctor` runs (`doctor.run`)
 
-Successful sign-ins, configuration changes and plugin installs are not
+Successful sign-ins, configuration changes and step installs are not
 recorded.
 
 **Process logs are not sanitized.** ctxt and dpkms log to stderr through

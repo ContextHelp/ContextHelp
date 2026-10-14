@@ -18,7 +18,7 @@ billing), while keeping core node functionality self-hostable.
 - Policy enforcement (permissions/RBAC, entitlements, quotas)
 - Registry protocol (thin sync + just-in-time pulls)
 - Audit + metering event emission
-- Plugins runtime + permission sandboxing
+- Installed-step runtime + permission sandboxing
 
 ## Related docs
 

@@ -1,6 +1,6 @@
 # Event System (CloudEvents)
 
-dPKMS and `ctxt` use a unified event system based on the **CloudEvents v1.0** specification. This enables asynchronous communication, plugin integration, and auditability across the substrate and the brain.
+dPKMS and `ctxt` use a unified event system based on the **CloudEvents v1.0** specification. This enables asynchronous communication, external hooks, and auditability across the substrate and the brain.
 
 ---
 
@@ -115,5 +115,5 @@ Emitted by the service layer.
 ## Future Extensions
 
 - **Distributed Bus:** Implementations for Redis or NATS for multi-node deployments.
-- **Webhook Bridge:** A plugin that forwards internal CloudEvents to external webhooks.
+- **Webhook Bridge:** A subscriber that forwards internal CloudEvents to external webhooks.
 - **Audit Log Store:** A subscriber that persists all security-relevant events to a tamper-evident table.

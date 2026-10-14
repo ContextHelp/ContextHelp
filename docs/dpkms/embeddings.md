@@ -170,24 +170,12 @@ embedding_provider:
 
 ---
 
-### Custom Provider Plugin
+### Custom Providers
 
-**Interface:**
-```go
-type EmbeddingProvider interface {
-    Name() string
-    Embed(ctx context.Context, texts []string) ([][]float32, error)
-    Dimensions() int
-    ModelVersion() string
-}
-```
-
-**Plugin Registration:**
-```go
-func (p *MyProvider) Register(host HostContext) {
-    host.RegisterEmbeddingProvider("my-provider", p)
-}
-```
+Embedding providers are compiled into dpkms and picked by config
+(`providers.embedding`). There is no provider registration API and no plugin
+system ([ADR-078](../decisions/ADR-078-no-plugin-system.md)): a new provider is a
+change to dpkms.
 
 ---
 
@@ -250,7 +238,7 @@ CREATE INDEX idx_embeddings_updated_at ON embeddings(updated_at);
 - Fast approximate nearest neighbor search
 - Scales to millions of vectors
 
-**Dedicated Vector Stores (Plugin):**
+**Dedicated Vector Stores (not supported):**
 - Pinecone, Weaviate, Qdrant, Milvus
 - Purpose-built for vector search
 - Advanced indexing algorithms

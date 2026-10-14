@@ -4,25 +4,25 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 func TestProjectDocument_SectionsFromGraph(t *testing.T) {
-	ko := &pluginapi.KnowledgeObject{
+	ko := &storage.KnowledgeObject{
 		ID:   "obj-1",
 		Type: "note",
-		Graph: &pluginapi.ObjectGraph{
-			Nodes: []pluginapi.GraphNode{
+		Graph: &storage.ObjectGraph{
+			Nodes: []storage.GraphNode{
 				{
-					ID:       pluginapi.NewNodeID("obj-1", pluginapi.NodeTypeSection, 0),
-					NodeType: pluginapi.NodeTypeSection,
+					ID:       storage.NewNodeID("obj-1", storage.NodeTypeSection, 0),
+					NodeType: storage.NodeTypeSection,
 					Label:    "Intro",
 					Content:  "Intro body",
 					Order:    0,
 				},
 				{
-					ID:       pluginapi.NewNodeID("obj-1", pluginapi.NodeTypeSection, 1),
-					NodeType: pluginapi.NodeTypeSection,
+					ID:       storage.NewNodeID("obj-1", storage.NodeTypeSection, 1),
+					NodeType: storage.NodeTypeSection,
 					Label:    "Conclusion",
 					Content:  "Conclusion body",
 					Order:    1,
@@ -44,9 +44,9 @@ func TestProjectDocument_SectionsFromGraph(t *testing.T) {
 }
 
 func TestProjectDocument_FallbackToFlatFields(t *testing.T) {
-	ko := &pluginapi.KnowledgeObject{
+	ko := &storage.KnowledgeObject{
 		ID:       "obj-2",
-		Sections: []pluginapi.Section{{Title: "Old", Content: "old body", Order: 0}},
+		Sections: []storage.Section{{Title: "Old", Content: "old body", Order: 0}},
 	}
 	doc := projection.ProjectDocument(ko)
 	if len(doc.Sections) != 1 {
@@ -58,12 +58,12 @@ func TestProjectDocument_FallbackToFlatFields(t *testing.T) {
 }
 
 func TestProjectIndex_FTSBodyFromGraph(t *testing.T) {
-	ko := &pluginapi.KnowledgeObject{
+	ko := &storage.KnowledgeObject{
 		ID: "obj-3",
-		Graph: &pluginapi.ObjectGraph{
-			Nodes: []pluginapi.GraphNode{
-				{NodeType: pluginapi.NodeTypeSummary, Content: "summary text"},
-				{NodeType: pluginapi.NodeTypeSection, Content: "section text"},
+		Graph: &storage.ObjectGraph{
+			Nodes: []storage.GraphNode{
+				{NodeType: storage.NodeTypeSummary, Content: "summary text"},
+				{NodeType: storage.NodeTypeSection, Content: "section text"},
 			},
 		},
 	}
@@ -81,12 +81,12 @@ func TestProjectIndex_FTSBodyFromGraph(t *testing.T) {
 }
 
 func TestProjectIndex_TagsFromGraph(t *testing.T) {
-	ko := &pluginapi.KnowledgeObject{
+	ko := &storage.KnowledgeObject{
 		ID: "obj-4",
-		Graph: &pluginapi.ObjectGraph{
-			Nodes: []pluginapi.GraphNode{
-				{NodeType: pluginapi.NodeTypeTag, Label: "go", Content: "go"},
-				{NodeType: pluginapi.NodeTypeTag, Label: "storage", Content: "storage"},
+		Graph: &storage.ObjectGraph{
+			Nodes: []storage.GraphNode{
+				{NodeType: storage.NodeTypeTag, Label: "go", Content: "go"},
+				{NodeType: storage.NodeTypeTag, Label: "storage", Content: "storage"},
 			},
 		},
 	}
@@ -97,12 +97,12 @@ func TestProjectIndex_TagsFromGraph(t *testing.T) {
 }
 
 func TestProjectIndex_MentionsFromGraph(t *testing.T) {
-	ko := &pluginapi.KnowledgeObject{
+	ko := &storage.KnowledgeObject{
 		ID: "obj-5",
-		Graph: &pluginapi.ObjectGraph{
-			Nodes: []pluginapi.GraphNode{
-				{NodeType: pluginapi.NodeTypeEntityMention, Content: "@people.alice"},
-				{NodeType: pluginapi.NodeTypeEntityMention, Content: "@project.foo"},
+		Graph: &storage.ObjectGraph{
+			Nodes: []storage.GraphNode{
+				{NodeType: storage.NodeTypeEntityMention, Content: "@people.alice"},
+				{NodeType: storage.NodeTypeEntityMention, Content: "@project.foo"},
 			},
 		},
 	}
@@ -113,10 +113,10 @@ func TestProjectIndex_MentionsFromGraph(t *testing.T) {
 }
 
 func TestProjectIndex_FallbackToFlatFields(t *testing.T) {
-	ko := &pluginapi.KnowledgeObject{
+	ko := &storage.KnowledgeObject{
 		ID:          "obj-6",
 		TextContent: "flat text",
-		Tags:        []pluginapi.Tag{{Label: "flat-tag"}},
+		Tags:        []storage.Tag{{Label: "flat-tag"}},
 	}
 	idx := projection.ProjectIndex(ko)
 	if !contains(idx.FTSBody, "flat text") {
@@ -133,13 +133,13 @@ func TestProjectIndex_FallbackToFlatFields(t *testing.T) {
 // the graph branch and produced an empty FTSBody — the document was invisible
 // to FTS even though TextContent and RawContent held the full body.
 func TestProjectIndex_GraphWithoutSummaryStillIndexesText(t *testing.T) {
-	ko := &pluginapi.KnowledgeObject{
+	ko := &storage.KnowledgeObject{
 		ID:          "obj-7",
 		TextContent: "- AWS SageMaker\n- AWS Lambda\n- VMware Cloud",
-		Graph: &pluginapi.ObjectGraph{
-			Nodes: []pluginapi.GraphNode{
-				{NodeType: pluginapi.NodeTypeTag, Label: "aws", Content: "aws"},
-				{NodeType: pluginapi.NodeTypeEntityMention, Content: "@vendor.aws"},
+		Graph: &storage.ObjectGraph{
+			Nodes: []storage.GraphNode{
+				{NodeType: storage.NodeTypeTag, Label: "aws", Content: "aws"},
+				{NodeType: storage.NodeTypeEntityMention, Content: "@vendor.aws"},
 			},
 		},
 	}

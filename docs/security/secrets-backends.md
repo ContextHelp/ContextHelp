@@ -231,9 +231,9 @@ CTXT_SECRETS_BACKEND=keychain ctxt analyze myfile.md
 
 ---
 
-## For Plugin Authors
+## For Step Authors
 
-Plugins that need API keys should read them through the `secrets.Resolver` rather than calling `os.Getenv` directly. The resolver is available via the providers factory passed to pipeline steps. Direct `os.Getenv` calls bypass backend configuration and will not work when users have configured non-env backends.
+Built-in pipeline steps that need API keys should read them through the `secrets.Resolver` rather than calling `os.Getenv` directly. The resolver is available via the providers factory passed to pipeline steps. Direct `os.Getenv` calls bypass backend configuration and will not work when users have configured non-env backends.
 
 ---
 

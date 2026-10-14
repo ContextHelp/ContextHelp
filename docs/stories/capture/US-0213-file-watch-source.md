@@ -77,7 +77,7 @@ internal/ambient/filewatch/filewatch.go
 
 ### Routing logic (`route.go`)
 
-Extension table maps to existing pipelines (already shipped in `internal/pipeline/builtins/`). New file types added via plugin extension point per [ADR-012](../../decisions/ADR-012-plugins-extend-any-layer.md).
+Extension table maps to existing pipelines (already shipped in `internal/pipeline/builtins/`). New file types are added by extending that table (there is no plugin system, [ADR-078](../../decisions/ADR-078-no-plugin-system.md)).
 
 ### Privacy
 

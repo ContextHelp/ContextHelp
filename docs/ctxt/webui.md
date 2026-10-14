@@ -558,7 +558,6 @@ This document does not mandate specific frameworks or libraries. Implementation 
 - Offline mode with sync queue
 - Real-time collaborative editing
 - Advanced graph visualizations (force-directed, hierarchical)
-- Plugin system for custom views
 - Customizable dashboard widgets
 - Export templates with custom formatting
 - Bulk operations (tag, archive, share multiple items)

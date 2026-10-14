@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 func TestCommentExtractorFindsAnnotations(t *testing.T) {
@@ -69,10 +68,10 @@ func TestCommentExtractorEmitsGraphNodes(t *testing.T) {
 		t.Errorf("nodes: got %d, want 3", len(got.Graph.Nodes))
 	}
 	for i, n := range got.Graph.Nodes {
-		if n.NodeType != pluginapi.NodeTypeTask {
-			t.Errorf("node[%d] type: got %q, want %q", i, n.NodeType, pluginapi.NodeTypeTask)
+		if n.NodeType != storage.NodeTypeTask {
+			t.Errorf("node[%d] type: got %q, want %q", i, n.NodeType, storage.NodeTypeTask)
 		}
-		wantID := pluginapi.NewNodeID("obj-ce1", pluginapi.NodeTypeTask, i)
+		wantID := storage.NewNodeID("obj-ce1", storage.NodeTypeTask, i)
 		if n.ID != wantID {
 			t.Errorf("node[%d] id: got %q, want %q", i, n.ID, wantID)
 		}

@@ -7,7 +7,6 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/ranking"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	uri "hop.top/cite/scheme"
@@ -18,11 +17,11 @@ func makeObjWithGraph(id, sectionContent string) *storage.KnowledgeObject {
 	return &storage.KnowledgeObject{
 		ID:   id,
 		Type: "document",
-		Graph: &pluginapi.ObjectGraph{
-			Nodes: []pluginapi.GraphNode{
+		Graph: &storage.ObjectGraph{
+			Nodes: []storage.GraphNode{
 				{
-					ID:       pluginapi.NewNodeID(id, pluginapi.NodeTypeSection, 0),
-					NodeType: pluginapi.NodeTypeSection,
+					ID:       storage.NewNodeID(id, storage.NodeTypeSection, 0),
+					NodeType: storage.NodeTypeSection,
 					Label:    "Section",
 					Content:  sectionContent,
 					Order:    0,

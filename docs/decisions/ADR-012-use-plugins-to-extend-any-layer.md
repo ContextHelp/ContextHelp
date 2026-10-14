@@ -1,11 +1,11 @@
 # ADR-012 – Plugins Are First-Class and May Extend Any Layer (Revised & Expanded)
 
-> **Status:** Accepted
+> **Status:** Superseded by ADR-078 (2026-10-14)
 > **Date:** 2025-10-05 (Revised 2025-12-09)
 > **Author:** @jadb
 > **Applies to:** dPKMS, ctxt
 > **Supersedes:** None
-> **Superseded by:** None
+> **Superseded by:** [ADR-078](ADR-078-no-plugin-system.md)
 
 ---
 

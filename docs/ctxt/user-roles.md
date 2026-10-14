@@ -18,4 +18,4 @@
 16. **System Integrator**
 17. **Scripter**
 18. **API Consumer**
-19. **Plugin Developer**
+19. **Step Developer**

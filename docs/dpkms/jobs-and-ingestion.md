@@ -1,7 +1,7 @@
 # Jobs and Ingestion
 
-This document defines the ingestion architecture, job lifecycle, execution model, crash-recovery guarantees, worker behavior, and **plugin integration points** for ContextHelp.
-It complements the minimal ADR set—particularly **ADR-003 (Separate Write/Read Paths)**, **ADR-007 (Transactional Outbox Pattern)**, and **ADR-012 (Plugin Extensibility)**—and provides the implementation blueprint for robust, fault-tolerant, and extensible analysis workflows.
+This document defines the ingestion architecture, job lifecycle, execution model, crash-recovery guarantees and worker behavior for ContextHelp.
+It complements the minimal ADR set—particularly **ADR-003 (Separate Write/Read Paths)**, **ADR-007 (Transactional Outbox Pattern)**, and **ADR-078 (No Plugin System)**—and provides the implementation blueprint for robust, fault-tolerant, and extensible analysis workflows.
 
 ---
 
@@ -14,18 +14,17 @@ Instead, all ingestion proceeds through a **durable, observable job system** tha
 - retry safety
 - deterministic pipeline behavior
 - resumability and replay
-- plugin-triggered job creation
 - introspection and debuggability
 - consistent storage writes
 
-Every capture—text, URL, image, audio, video, feed item, plugin-derived task—follows this sequence:
+Every capture—text, URL, image, audio, video, feed item—follows this sequence:
 
-1. **User or Plugin triggers ingestion** (CLI, REST, gRPC, file watcher, plugin event).
+1. **A user or a capture source triggers ingestion** (CLI, REST, gRPC, file watcher, feed).
 2. The engine creates a **Job** with status `pending`, storing all inputs.
 3. The background worker (`ch serve`) picks up pending jobs.
-4. The worker executes the appropriate **pipeline**, including plugin-defined ones.
-5. Pipeline steps (and plugin hooks) produce outputs.
-6. Worker writes a new **Bookmark** entry, or plugin-specific result.
+4. The worker executes the appropriate **pipeline**, built-in or custom.
+5. Pipeline steps produce outputs.
+6. Worker writes a new **Bookmark** entry.
 7. Job transitions to `completed` (or `failed` with retry logic).
 
 This pattern ensures ingestion remains reliable, isolated, extensible, and safe.
@@ -37,7 +36,7 @@ This pattern ensures ingestion remains reliable, isolated, extensible, and safe.
 A job moves through the following states:
 
 - **pending**
-  Newly created, awaiting execution (created by user or plugin).
+  Newly created, awaiting execution.
 
 - **running**
   Worker has locked the job and is executing pipeline steps.
@@ -51,7 +50,7 @@ A job moves through the following states:
 - **retrying** (implicit)
   A transient error occurred; the job was returned to `pending`.
 
-The lifecycle mirrors the transactional outbox pattern and is intentionally simple, enabling both internal and plugin-originated jobs.
+The lifecycle mirrors the transactional outbox pattern and is intentionally simple.
 
 ---
 
@@ -65,10 +64,10 @@ Jobs are persisted in durable local storage—typically SQLite—before any proc
 |-------------------|-------------|-------------|
 | `job_id`          | TEXT (PK)   | Unique ID |
 | `status`          | TEXT        | `pending`, `running`, `completed`, `failed` |
-| `payload`         | JSON        | Raw input: type, hints, plugin data, file reference, content |
-| `pipeline`        | TEXT        | Pipeline name (e.g. `text.short`, `feed.fetch`, plugin-defined) |
+| `payload`         | JSON        | Raw input: type, hints, file reference, content |
+| `pipeline`        | TEXT        | Pipeline name (e.g. `text.short`, `feed.fetch`, custom) |
 | `retry_count`     | INTEGER     | Number of retry attempts |
-| `max_retries`     | INTEGER     | Configured globally, per-pipeline, or by plugin |
+| `max_retries`     | INTEGER     | Configured globally or per-pipeline |
 | `created_at`      | DATETIME    | Job creation timestamp |
 | `updated_at`      | DATETIME    | Last status change |
 | `locked_at`       | DATETIME    | Worker lock timestamp |
@@ -82,13 +81,13 @@ Tracks each step during pipeline execution:
 |--------------|-----------|-------------|
 | `id`         | TEXT (PK) | Step record ID |
 | `job_id`     | TEXT      | Associated job |
-| `step`       | TEXT      | Pipeline or plugin-defined step name |
+| `step`       | TEXT      | Pipeline step name |
 | `status`     | TEXT      | `pending`, `running`, `completed`, `failed` |
 | `log`        | TEXT      | Any debug or warnings |
 | `started_at` | DATETIME  | Start time |
 | `ended_at`   | DATETIME  | End time |
 
-This enables introspection, debugging, and plugin-managed workflows.
+This enables introspection and debugging.
 
 ---
 
@@ -101,10 +100,8 @@ Job creation may come from:
 - CLI (`ch analyze`)
 - REST / gRPC
 - Browser extension
-- Feed auto-fetch (RSS plugin)
-- Price drop monitor (plugin)
-- Refresh plugin running scheduled ingestion
-- Plugin-defined automation events
+- Feed auto-fetch
+- Scheduled refresh
 
 Regardless of source, ingestion **never executes immediately**, ensuring a unified and safe execution model.
 
@@ -115,9 +112,8 @@ The engine atomically stores:
 - input type
 - raw content or URL
 - metadata (hints, tags, mentions)
-- pipeline name or plugin-provided pipeline
+- pipeline name
 - timestamps
-- plugin metadata (if any)
 
 If the process crashes at this moment, the job still exists and will run later.
 
@@ -137,7 +133,7 @@ Job transitions to `running`.
 
 ### Step 4: Execute Pipeline Steps
 
-Pipeline execution is deterministic and aware of plugins:
+Pipeline execution is deterministic:
 
 - inference step
 - fetch step
@@ -146,13 +142,13 @@ Pipeline execution is deterministic and aware of plugins:
 - tagging
 - mention extraction
 - entity resolution
-- plugin-defined steps (e.g., feed.parse, feed.ingest_items, price.scan)
+- installed steps (from a step registry)
 - enrichment steps
 
 Each step may:
 
 - produce output
-- emit plugin events
+- emit events
 - enqueue additional jobs
 - fail and retry
 - write debug logs
@@ -192,7 +188,7 @@ The ingestion system tolerates:
 
 - worker crashes
 - CLI/API call interruptions
-- plugin failures
+- step failures
 - OS termination
 - network/AI provider outages
 
@@ -216,7 +212,6 @@ Jobs have `max_retries`:
 
 - global defaults
 - per-pipeline settings
-- plugin-specified overrides
 
 Retry rules:
 
@@ -242,13 +237,12 @@ Supports:
 ### Multi-Worker Mode
 - Requires shared storage
 - Workers coordinate locking
-- Plugins remain safe, as job model is concurrency-agnostic
 
 ---
 
 ## Job Introspection (Observability)
 
-Tools for observing pipeline (or plugin) behavior:
+Tools for observing pipeline behavior:
 
 ```bash
 ch jobs list
@@ -267,8 +261,6 @@ Retries: 1/3
 Last error: network timeout
 ```
 
-Plugins benefit from the same introspection surface.
-
 ---
 
 ## Interaction With Pipelines
@@ -286,34 +278,7 @@ The worker writes the final output once pipeline execution succeeds.
 This is essential for:
 
 - RSS feed parsing → enqueue feed-item ingestion
-- Refresh plugin → enqueue refresh jobs
-- Price monitor plugin → enqueue re-validation jobs
-- Any plugin that wants asynchronous actions
-
-This capability is part of the **official plugin API**.
-
----
-
-## Interaction With Plugins
-
-The job system provides formal guarantees enabling safe plugin operation:
-
-### Plugins Can:
-- enqueue new jobs
-- define new pipelines
-- define new pipeline steps
-- read job payloads
-- add metadata to job payloads
-- declare retryability
-- produce outputs stored alongside pipeline results
-- register for `post_ingest`, `post_pipeline_step`, `post_refresh` hooks
-
-### Plugins Cannot:
-- modify existing jobs belonging to other plugins
-- mutate core tables directly
-- bypass locking or retry semantics
-
-Plugins operate strictly through stable APIs advertised by core.
+- Refresh → enqueue refresh jobs
 
 ---
 
@@ -324,10 +289,9 @@ Storage must provide:
 - atomic job creation
 - safe job claiming
 - bookmark writes independent of job writes
-- plugin storage isolation (plugins write JSON into their own directories)
 - crash-safe journaling
 
-SQLite is default; Postgres or plugin-defined stores can be plugged in.
+SQLite is default; Postgres is the other supported driver.
 
 ---
 
@@ -335,15 +299,11 @@ SQLite is default; Postgres or plugin-defined stores can be plugged in.
 
 The ingestion system supports delayed and scheduled execution, enabling:
 
-- recurring feed refresh (RSS plugin)
-- price re-checks (Price Monitor plugin)
+- recurring feed refresh
 - nightly cleanup routines
 - periodic registry sync
-- plugin-defined tasks
 
 These operations are expressed as **jobs** and use the exact same lifecycle.
-
-Plugins do not require special treatment—they simply enqueue delayed jobs via the plugin API.
 
 ---
 
@@ -354,10 +314,9 @@ The jobs and ingestion system provides:
 - **Safety** (crash tolerance, durable writes)
 - **Determinism** (idempotent pipelines and replayable jobs)
 - **Deduplication** (content-hash based, with reinforcement tracking on re-ingestion)
-- **Extensibility** (plugins can enqueue jobs and define pipelines)
+- **Extensibility** (custom pipelines and installed steps run on the same job model)
 - **Observability** (job_steps logs, worker inspection)
-- **Isolation** (plugin jobs never interfere with core jobs)
 - **Scalability** (multi-worker support with concurrent race handling)
 - **Correctness** (clear separation of write/read paths)
 
-It is the backbone of ContextHelp's ingestion and the enabling layer for a rich plugin ecosystem, ensuring all ingestion—core or plugin-driven—remains robust, predictable, and safe.
+It is the backbone of ContextHelp's ingestion, keeping every ingestion robust, predictable, and safe.

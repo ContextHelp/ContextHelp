@@ -9,7 +9,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/retrieval"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -22,7 +21,7 @@ type fakeAliasStore struct {
 	listErr    error
 }
 
-func (f *fakeAliasStore) Create(context.Context, *pluginapi.Alias) error { return nil }
+func (f *fakeAliasStore) Create(context.Context, *storage.Alias) error { return nil }
 
 func (f *fakeAliasStore) Resolve(_ context.Context, alias, _ string) (string, error) {
 	if f.resolveErr != nil {
@@ -35,14 +34,14 @@ func (f *fakeAliasStore) Resolve(_ context.Context, alias, _ string) (string, er
 	return id, nil
 }
 
-func (f *fakeAliasStore) List(_ context.Context, filter pluginapi.AliasFilter) ([]*pluginapi.Alias, error) {
+func (f *fakeAliasStore) List(_ context.Context, filter storage.AliasFilter) ([]*storage.Alias, error) {
 	if f.listErr != nil {
 		return nil, f.listErr
 	}
-	var out []*pluginapi.Alias
+	var out []*storage.Alias
 	for alias, id := range f.byAlias {
 		if id == filter.ObjectID {
-			out = append(out, &pluginapi.Alias{Alias: alias, ObjectID: id})
+			out = append(out, &storage.Alias{Alias: alias, ObjectID: id})
 		}
 	}
 	return out, nil

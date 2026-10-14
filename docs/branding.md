@@ -72,11 +72,11 @@ This document explains the naming conventions used throughout ContextHelp and cl
 **Examples:**
 - "dPKMS provides the job queue that ensures crash-safe ingestion."
 - "The `dpkms serve` command runs the background worker."
-- "Plugins that implement storage backends integrate with dPKMS."
+- "Steps installed from a step registry run in the dPKMS pipeline runtime."
 
 **When to use "dPKMS":**
 - Discussing storage, jobs, pipelines infrastructure
-- Writing storage plugins
+- Writing pipeline steps
 - Implementing background workers or daemons
 - Testing infrastructure (not behavior)
 
@@ -172,11 +172,10 @@ ContextHelp (overall project)
 - `/dpkms/` - dPKMS-specific code
 - `/ctxt/` - ctxt-specific code
 
-### Plugin Development
-- Storage plugins → integrate with **dPKMS**
-- Pipeline plugins → integrate with **ctxt**
-- AI provider plugins → integrate with **ctxt**
-- Registry plugins → integrate with both (dPKMS protocol, ctxt usage)
+### Extension Development
+- Pipeline steps → run in **dPKMS**
+- Pipeline recipes → defined by **ctxt**
+- Registries → integrate with both (dPKMS protocol, ctxt usage)
 
 ---
 

@@ -37,7 +37,7 @@
   edges, provenance, and stable IDs for sharing or archiving.
 
 - **Capability**
-  A permission-scoped interface exposed to plugins or higher layers (storage,
+  A permission-scoped interface exposed to steps or higher layers (storage,
   query, jobs, graph, registries, crypto), preventing unsafe access by default.
 
 - **Canonical Entity**
@@ -176,10 +176,9 @@
   logging, retries, and deterministic replay guarantees.
 
 - **Plugin**
-  An in-process Go extension implementing `pkg/pluginapi` interfaces: pipeline
-  steps, post-ingest hooks, alias resolvers, output generators, registry
-  providers. No plugin is loaded at runtime yet — see
-  [plugin-authoring-guide.md](plugin-authoring-guide.md#1-current-state).
+  None: ctxt and dpkms have no plugin system
+  ([ADR-078](decisions/ADR-078-no-plugin-system.md)). Extension is through
+  pipelines, steps installed from step registries, registries and hooks.
 
 - **Portable Storage Contract**
   Guarantees that storage backends preserve stable IDs, graph meaning, and

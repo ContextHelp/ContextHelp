@@ -5,13 +5,13 @@ status: shipped
 # US-0107: Discover Local Steps
 
 **System Types:** dpkms (self-hosted), dpkms cloud
-**Personas:** [Platform Integrators](../../personas/README.md), [Plugin Developers](../../personas/README.md), [Registry Operators](../../personas/README.md)
+**Personas:** [Platform Integrators](../../personas/README.md), [Step Developers](../../personas/README.md), [Registry Operators](../../personas/README.md)
 
 ---
 
 ## User Goal
 
-As a platform integrator, registry operator, or plugin developer, I want to discover available pipeline steps installed on my system so that I can:
+As a platform integrator, registry operator, or step developer, I want to discover available pipeline steps installed on my system so that I can:
 - See what steps are available for pipeline creation
 - Install new steps from registries
 - Uninstall unused or broken steps

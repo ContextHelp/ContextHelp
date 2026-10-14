@@ -166,7 +166,7 @@ Someone calling the dpkms REST, gRPC or MCP API without authorization, or with a
 
 ## 4. Malicious Registry or Step
 
-No plugin is loaded at runtime and no installed external step is executed today, so the live risk is registry data written into the graph.
+There is no plugin system ([ADR-078](../decisions/ADR-078-no-plugin-system.md)) and no installed external step is executed today, so the live risk is registry data written into the graph.
 
 ### Detection Signals
 

@@ -54,9 +54,9 @@ Threats to ctxt and dpkms, what mitigates each one today, and what does not.
 
 ### 5. Untrusted code
 
-**Vectors**: plugins, installed pipeline steps.
+**Vectors**: installed pipeline steps.
 
-**State**: no plugin is loaded at runtime, so plugins cannot run in a deployed dpkms. `dpkms pipeline step install` records steps from a step registry; no pipeline executes installed external steps today. When either lands, it runs in-process or as a plain subprocess: there is no sandbox ([ADR-027](../../decisions/ADR-027-plugin-isolation-sandboxing.md) is design).
+**State**: there is no plugin system ([ADR-078](../../decisions/ADR-078-no-plugin-system.md)). `dpkms pipeline step install` records steps from a step registry; no pipeline executes installed external steps today. When that lands, a step runs as a plain subprocess: there is no sandbox ([ADR-055](../../decisions/ADR-055-sandbox-isolation-levels.md) is design).
 
 ### 6. Data exfiltration
 

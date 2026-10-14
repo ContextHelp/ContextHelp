@@ -14,7 +14,7 @@ mobile/
 
 Decided 2026-05-06 (revising the earlier "separate repos" framing in ADR-069):
 
-- **One source of truth for the wire contract.** `RawEvent`, `RecordOptions`, bus topics, session shape — all defined once in Go (`internal/ambient/ambient.go`, `internal/ambient/meeting/meeting.go`, `pkg/pluginapi/`). A build-time codegen step (Phase 6 work) generates Swift structs + Kotlin data classes from the Go source, eliminating three-way schema drift.
+- **One source of truth for the wire contract.** `RawEvent`, `RecordOptions`, bus topics, session shape — all defined once in Go (`internal/ambient/ambient.go`, `internal/ambient/meeting/meeting.go`, `internal/storage/types.go`). A build-time codegen step (Phase 6 work) generates Swift structs + Kotlin data classes from the Go source, eliminating three-way schema drift.
 - **Atomic cross-language refactors.** Adding a new field to `RawEvent.Metadata` is one PR touching Go + Swift + Kotlin, not three coordinated PRs.
 - **Easier end-to-end tests.** A test can spin up dpkms, post a recording from a mobile simulator, and assert the right KnowledgeObject lands. Across separate repos this would be CI-orchestration ceremony.
 - **Fewer GitHub repos** (releases, CI, security alerts × 1 vs × 3).

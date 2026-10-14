@@ -155,20 +155,13 @@ tags = ["ctxt", "provider", "api-key"]
 
 # [[allowlists]] is the 8.25+ form of the deprecated [allowlist] table.
 [[allowlists]]
-description = "Allowlisted files and patterns"
+description = "Allowlisted patterns"
 
-# Only files that cannot hold a secret. No docs/, \.md$, testdata/,
-# .env.example or config.*.yaml entries: a path allowlist skips every rule
-# for the whole file, so a real key pasted into a doc, a fixture or a
-# sample config went through unseen. Docs and samples write placeholders in
-# shapes the regexes below (or gitleaks' own placeholder checks)
-# recognize; deliberate key-shaped test vectors carry an inline
-# gitleaks:allow.
-paths = [
-  # Checksum file shipped with the autosuggest plugin extraction; gitleaks'
-  # default allowlist covers go.sum by name, not this suffix.
-  '''(?:^|/)go\.sum\.extraction$''',
-]
+# No path allowlist: a path entry skips every rule for the whole file, so
+# a real key pasted into a doc, a fixture or a sample config would go
+# through unseen. Docs and samples write placeholders in shapes the
+# regexes below (or gitleaks' own placeholder checks) recognize;
+# deliberate key-shaped test vectors carry an inline gitleaks:allow.
 
 # Allow specific patterns that are false positives
 regexes = [

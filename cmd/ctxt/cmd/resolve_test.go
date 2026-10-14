@@ -11,7 +11,6 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmstest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"gopkg.in/yaml.v3"
 	"hop.top/kit/go/console/output"
 )
@@ -218,7 +217,7 @@ func TestResolveObjectTagOnlyGraphFallsBackToTextContent(t *testing.T) {
 		TextContent: "THE-REAL-BODY-TEXT",
 		Graph: &storage.ObjectGraph{
 			Nodes: []storage.GraphNode{
-				{ID: "obj_tagonly:tag:0", NodeType: pluginapi.NodeTypeTag, Label: "signup"},
+				{ID: "obj_tagonly:tag:0", NodeType: storage.NodeTypeTag, Label: "signup"},
 			},
 		},
 		CreatedAt: now,

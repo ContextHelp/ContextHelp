@@ -3,34 +3,147 @@ package storage
 import (
 	"time"
 
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
+	uri "hop.top/cite/scheme"
 )
 
-// KnowledgeObject is the central data structure representing an ingested piece of knowledge.
-// The canonical definition lives in pkg/pluginapi; this alias keeps all internal packages working.
-type KnowledgeObject = pluginapi.KnowledgeObject
+// KnowledgeObject is the central data structure representing an ingested piece
+// of knowledge. It is the type passed through pipeline steps.
+type KnowledgeObject struct {
+	ID                 string         `json:"id"`
+	Type               string         `json:"type"`
+	Subtype            string         `json:"subtype,omitempty"`
+	RawContent         string         `json:"raw_content"`
+	TextContent        string         `json:"text_content,omitempty"`
+	ContentType        string         `json:"content_type,omitempty"`
+	Metadata           map[string]any `json:"metadata,omitempty"`
+	Summaries          []string       `json:"summaries,omitempty"`
+	Sections           []Section      `json:"sections,omitempty"`
+	Tags               []Tag          `json:"tags,omitempty"`
+	Mentions           []uri.URI      `json:"mentions,omitempty"`
+	Decisions          []Decision     `json:"decisions,omitempty"`
+	Tasks              []Task         `json:"tasks,omitempty"`
+	Vectors            []ObjectVector `json:"-"` // embedding-step output per model; persisted by EmbeddingStore.Put, never serialized
+	Pipeline           string         `json:"pipeline,omitempty"`
+	Source             string         `json:"source,omitempty"`
+	RegistryInfluences []string       `json:"registry_influences,omitempty"`
+	Plugins            map[string]any `json:"plugins,omitempty"`
+	ContentHash        string         `json:"content_hash,omitempty"`
+	SourceKey          string         `json:"source_key,omitempty"` // external dedup key (Slack ts, tweet ID, etc.)
+	Status             string         `json:"status,omitempty"`
+	InboxNote          string         `json:"inbox_note,omitempty"`
+	ReinforcementCount int            `json:"reinforcement_count,omitempty"`
+	LastReinforcedAt   *time.Time     `json:"last_reinforced_at,omitempty"`
+	RemindAt           *time.Time     `json:"remind_at,omitempty"`
+	RemindedAt         *time.Time     `json:"reminded_at,omitempty"`
+	CreatedAt          time.Time      `json:"created_at"`
+	UpdatedAt          time.Time      `json:"updated_at"`
+	FTSIndexed         bool           `json:"fts_indexed"`
+	ProfileID          string         `json:"profile_id,omitempty"` // owning profile; empty = global
+	AttachmentIDs      []string       `json:"attachment_ids,omitempty"`
+	Graph              *ObjectGraph   `json:"graph,omitempty"`
+	// ChangeSeq is the object's position in its store's change order:
+	// the store stamps it from a counter on every insert and update, so
+	// a later change always has a greater value whatever the object's
+	// timestamps say. Read-only — stores ignore it on write — and local
+	// to one store, so it never travels on the wire.
+	ChangeSeq int64 `json:"-"`
+	// BlobContent is the content the externalize step put in the blob
+	// store, by blob key, kept on the draft until its row is written:
+	// ingest then puts a blob back from it if a concurrent delete of the
+	// same key removed it (blob.Ensure). Never persisted or serialized.
+	BlobContent map[string]string `json:"-"`
+}
 
 // Draft is a KnowledgeObject being progressively enriched (ADR-053).
-type Draft = pluginapi.KnowledgeObject
+type Draft = KnowledgeObject
 
 // Section represents a structural section of a knowledge object.
-type Section = pluginapi.Section
+type Section struct {
+	Title    string         `json:"title"`
+	Content  string         `json:"content"`
+	Order    int            `json:"order"`
+	Metadata map[string]any `json:"metadata,omitempty"`
+}
 
 // Tag represents a label attached to a knowledge object.
-type Tag = pluginapi.Tag
+type Tag struct {
+	Label  string  `json:"label"`
+	Weight float64 `json:"weight,omitempty"`
+	Source string  `json:"source,omitempty"`
+}
 
 // Decision represents an extracted decision from content.
-type Decision = pluginapi.Decision
+type Decision struct {
+	Title  string `json:"title"`
+	Status string `json:"status"`
+	Impact string `json:"impact"`
+}
 
 // Task represents an extracted task from content.
-type Task = pluginapi.Task
+type Task struct {
+	Title  string `json:"title"`
+	Status string `json:"status"`
+}
 
 // Graph-canonical types (ADR-063).
-type ObjectGraph = pluginapi.ObjectGraph
-type GraphNode = pluginapi.GraphNode
-type GraphEdge = pluginapi.GraphEdge
-type DocumentProjection = pluginapi.DocumentProjection
-type IndexProjection = pluginapi.IndexProjection
+
+// GraphNode is a typed node within an object's intra-object graph.
+type GraphNode struct {
+	ID       string         `json:"id"`              // NewNodeID(objectID, nodeType, ordinal)
+	NodeType GraphNodeType  `json:"node_type"`       // NodeType* constant
+	Label    string         `json:"label,omitempty"` // human-readable label
+	Content  string         `json:"content,omitempty"`
+	Order    int            `json:"order"` // ordinal position; zero is valid
+	Metadata map[string]any `json:"metadata,omitempty"`
+}
+
+// GraphEdge is a directed edge between two nodes within the same object graph.
+// Inter-object edges MUST go to the edges table (ADR-049); this is intra-object only.
+type GraphEdge struct {
+	ID       string        `json:"id"`
+	FromID   string        `json:"from_id"`
+	ToID     string        `json:"to_id"`
+	EdgeType GraphEdgeType `json:"edge_type"` // EdgeType* constant
+	Weight   float64       `json:"weight,omitempty"`
+}
+
+// ObjectGraph holds typed nodes and edges for a single KnowledgeObject.
+// Write source of truth for graph-canonical KOs.
+type ObjectGraph struct {
+	Nodes []GraphNode `json:"nodes,omitempty"`
+	Edges []GraphEdge `json:"edges,omitempty"`
+}
+
+// FindNode returns the node with the given ID, or nil.
+func (g *ObjectGraph) FindNode(id string) *GraphNode {
+	if g == nil {
+		return nil
+	}
+	for i := range g.Nodes {
+		if g.Nodes[i].ID == id {
+			return &g.Nodes[i]
+		}
+	}
+	return nil
+}
+
+// DocumentProjection is a derived human-facing view of a KnowledgeObject.
+// Derived by projection.ProjectDocument; not stored directly.
+type DocumentProjection struct {
+	Title    string    `json:"title,omitempty"`
+	Body     string    `json:"body,omitempty"`
+	Sections []Section `json:"sections,omitempty"`
+}
+
+// IndexProjection is a derived search-index view of a KnowledgeObject.
+// Derived by projection.ProjectIndex; not stored directly.
+type IndexProjection struct {
+	FTSBody string `json:"fts_body,omitempty"`
+	// Tags includes weight and source metadata — richer than ADR pseudocode []string.
+	Tags          []Tag    `json:"tags,omitempty"`
+	Mentions      []string `json:"mentions,omitempty"`
+	EmbeddingText string   `json:"embedding_text,omitempty"`
+}
 
 // BlobMeta describes metadata for a stored blob.
 type BlobMeta struct {

@@ -21,7 +21,7 @@ var installDepsCmd = &cobra.Command{
 	// Hidden from default --help via the MANAGEMENT group; surfaces under
 	// --help-all and --help-management. Invoked by 'make deps' in CI.
 	Long: `Install system and Python packages required by built-in pipelines
-and any registered plugins or custom detectors.
+and any registered custom detectors.
 
 Package manager detection order: brew → apt → dnf → pacman
 Python packages are installed via pip3 or pip.`,

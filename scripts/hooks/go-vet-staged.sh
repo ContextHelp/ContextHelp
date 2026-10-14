@@ -12,10 +12,9 @@ set -euo pipefail
 
 # Unique parent directories of the staged files, as ./pkg/path arguments.
 #
-# Directories belonging to a NESTED module are dropped. The repo carries six
-# of them under plugins/ (each with its own go.mod), and vetting one from the
-# root module fails with "main module does not contain package" — a staged
-# file there would block every commit. Same for build-tagged trees the
+# Directories belonging to a NESTED module (a directory with its own go.mod)
+# are dropped: vetting one from the root module fails with "main module does
+# not contain package", so a staged file there would block every commit. Same for build-tagged trees the
 # default tag set cannot load. Walk up to the nearest go.mod and keep only
 # the paths this module actually owns.
 root_mod=$(cd "$(git rev-parse --show-toplevel)" && pwd)

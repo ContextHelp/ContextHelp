@@ -31,7 +31,6 @@ config:
 sequenceDiagram
     participant Worker
     participant Pipeline
-    participant Plugins as Plugin Hooks
     participant AI as AI Service
     participant Registry
     participant EntityResolver as Entity Resolver
@@ -50,9 +49,6 @@ sequenceDiagram
 
     loop For each task in pipeline
         Pipeline->>JobSteps: CREATE step<br/>name=task.name,<br/>status='running'
-
-        Pipeline->>Plugins: Emit BeforePipelineTask(task)
-        Plugins-->>Pipeline: Continue
 
         alt Task requires AI
             Pipeline->>AI: Enrich content<br/>(summarize, classify, extract)
@@ -77,16 +73,10 @@ sequenceDiagram
             Pipeline->>Pipeline: Normalize and weight tags
         end
 
-        Pipeline->>Plugins: Emit AfterPipelineTask(task, result)
-        Plugins-->>Pipeline: Plugin metadata updates
-
         Pipeline->>JobSteps: UPDATE step<br/>status='completed',<br/>log='...'
     end
 
     Pipeline->>Pipeline: Assemble bookmark from<br/>all task outputs
-
-    Pipeline->>Plugins: Emit PostPipelineExecute(bookmark)
-    Plugins-->>Pipeline: Additional plugin data
 
     Pipeline-->>Worker: Final bookmark +<br/>optional follow-up jobs
 

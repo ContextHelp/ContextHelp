@@ -5,7 +5,7 @@ This document consolidates the full set of detailed design documents for the **t
 - **dPKMS** — decentralized knowledge substrate (storage, jobs, security, federation)
 - **`ctxt`** — agentic context brain (capture, enrichment, surfacing, composition)
 
-It provides a comprehensive engineering blueprint including architecture, pipelines, jobs, storage, registries, plugins, query language, ranking, configuration, I18N/L10N, APIs, security, and testing.
+It provides a comprehensive engineering blueprint including architecture, pipelines, jobs, storage, registries, extension surfaces, query language, ranking, configuration, I18N/L10N, APIs, security, and testing.
 
 This design separates **mechanics** (dPKMS) from **meaning** (`ctxt`).
 
@@ -52,7 +52,6 @@ The system consists of two packages:
 - Graph Index (Objects ↔ Entities)
 - Registry Connectors (Federated)
 - Encryption & Auth
-- Plugin API (`pkg/pluginapi`; not loaded at runtime)
 
 **`ctxt` Components:**
 - Capture Layer (CLI, TUI, Browser, Mobile)
@@ -105,14 +104,15 @@ The system consists of two packages:
 7. `ctxt` attaches provenance metadata.
 8. User receives traceable, verifiable brief.
 
-## Plugin Integration Points
+## Extension Points
 
-`pkg/pluginapi` defines in-process Go interfaces: `Plugin`, `PipelineStep`,
-`PostIngestHook`, `AliasResolver`, `OutputGenerator`, `PluginRegistryProvider`.
-Neither binary loads plugins yet, so none of these points is active at runtime;
-see [plugin-authoring-guide.md](plugin-authoring-guide.md#1-current-state).
-Storage backends, encryption, query operators, CLI commands, capture
-interfaces and observers are not plugin points.
+There is no plugin system ([ADR-078](decisions/ADR-078-no-plugin-system.md)).
+ctxt and dpkms are extended through pipeline overrides, custom pipelines,
+steps installed from a step registry (out-of-process execution designed in
+ADR-058, not wired yet), registries, and external hooks (ADR-075, not
+implemented yet). Storage backends, encryption, query
+operators, CLI commands, capture interfaces and observers are not extension
+points.
 
 ---
 
@@ -195,7 +195,6 @@ Each step must implement:
 
 Pipelines are changed through `pipelines.overrides` in the dpkms config and
 through steps installed from a step registry (`dpkms pipeline step install`).
-`Plugin.PipelineSteps()` exists in the plugin API but no plugin is loaded.
 
 ## AI Step Providers and Constrained Generation
 
@@ -509,7 +508,7 @@ Different sources produce incompatible scores; results must be unified.
 `internal/ranking.DefaultReranker` adds outbound-mention and inbound-backlink
 boosts on top of the per-leg RRF scores. There is no AI-backed reranking: no
 LMQL batch scoring, cross-encoder or pairwise LLM comparison, and no
-plugin-provided ranking methods.
+pluggable ranking methods.
 
 ## Deduplication Strategy
 
@@ -577,33 +576,28 @@ Specifies registry protocol & behavior (ADR-008, ADR-009).
 
 ---
 
-# plugins.md
+# extension surfaces
 
 ## Purpose
 
-Defines the plugin model (ADR-012). Current state: in-process Go interfaces in
-`pkg/pluginapi`, a host registry in `internal/plugin`, and no runtime loading.
+States how ctxt and dpkms are extended. Decision: no plugin system
+([ADR-078](decisions/ADR-078-no-plugin-system.md), superseding ADR-012 and
+ADR-027).
 
 ## What exists
 
-- **Interfaces:** `Plugin`, `PipelineStep`, `PostIngestHook`, `AliasResolver`,
-  `OutputGenerator`, `PluginRegistryProvider`.
-- **Manifest:** `manifest.json` / `manifest.yaml` with `apiVersion: v1`, `name`,
-  `version`, optional `type: registry_provider` and `permissions`; validated by
-  `plugin.LoadManifest`, which no host code calls.
-- **Permissions:** a fixed list (`read_objects`, `write_objects`, `call_llm`,
-  `network`, `filesystem`, `clipboard`, …), validated, not enforced.
-- **Packages:** `plugins/` (aliasing, autosuggest, ica, rss-feed, …), exercised
-  by their own tests and by integration tests that register them by hand.
+- **Pipelines:** `pipelines.overrides.<pipeline>` (`providers`, `skip_steps`,
+  `extra_steps`) and custom pipelines (`dpkms pipeline create`).
+- **Steps:** built-in steps, plus steps installed from a step registry
+  (`dpkms pipeline step install`); out-of-process execution (ADR-058) is not
+  wired into pipelines yet.
+- **Registries:** entity, taxonomy and step registries.
+- **Hooks:** pre and post hooks on ctxt and dpkms events (ADR-075, not implemented yet).
 
 ## What does not exist
 
-No `.so` or out-of-process plugins, no `Register(HostContext)` entry point, no
-plugin config dispatch (the `plugins:` key is parsed and read by no code), no
-plugin commands, operators or storage backends, and no AI-provider plugins
-(LMQL, instructor, outlines).
-
-Full reference: [plugin-authoring-guide.md](plugin-authoring-guide.md).
+No in-process plugin API, plugin registry, plugin manifest, `plugins:` config
+key or AI-provider plugins (LMQL, instructor, outlines).
 
 ---
 
@@ -621,7 +615,7 @@ and `hop.top/kit/go/core/config`: `/etc/contexthelp/<bin>.yaml`, then
 `.contexthelp/<bin>.yaml` walking up from the working directory. `CTXT_CONFIG`
 replaces the cascade; `-c/--config <file>` layers extra files and `-c key=value`
 overrides single keys. A fixed list of env vars maps onto keys. There is no
-`type:`-tag dispatch or plugin schema registration. Values are literal: `${VAR}`
+`type:`-tag dispatch or external schema registration. Values are literal: `${VAR}`
 is not expanded. `ctxt config validate` checks the result.
 
 ## Example Config
@@ -728,7 +722,7 @@ i18n:
   skipOnAnalyzeDefault: false
 ```
 
-## Plugin Responsibilities
+## Step Responsibilities
 
 - Language detection
 - Translation API integration
@@ -847,11 +841,11 @@ Defines gRPC API and message contracts.
 
 ## Purpose
 
-Defines security model for plugins, registries, and local data.
+Defines security model for installed steps, registries, and local data.
 
 ## Threat Model
 
-- malicious plugins
+- malicious installed steps
 - untrusted registries
 - unsafe external commands
 - sensitive local data exposure
@@ -919,9 +913,9 @@ Provides meaningful behaviors:
 ## Shared
 
 Cross-cutting concerns:
-- **plugins.md** — Extensibility for both layers
+- **extension surfaces** — Pipelines, steps, registries and hooks for both layers
 - **architecture.md** (semantic identity) — Entities + mentions + graph
-- **configuration.md** (polymorphic config) — Plugin and provider config
+- **configuration.md** (polymorphic config) — Pipeline and provider config
 
 Together these form the **complete engineering blueprint** for the dPKMS + `ctxt` system.
 

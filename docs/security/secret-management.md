@@ -667,59 +667,21 @@ secret-scan:
   allow_failure: true
 ```
 
-## For Plugin Developers
+## For Step Developers
 
-### Handling Secrets in Plugins
-
-Never store hardcoded secrets:
+Installed steps are designed to run out of process and get their
+configuration as JSON on stdin (ADR-058). Never hardcode secrets in a step; read them from the environment the
+step runs in, or from a file with restricted permissions:
 
 ```go
 // BAD - Never do this
-func (p *MyPlugin) Init(config map[string]interface{}) error {
-    p.apiKey = "sk-proj-hardcoded"  // DON'T
-    return nil
-}
+const apiKey = "sk-proj-hardcoded" // DON'T
 
 // GOOD - Get from environment
-func (p *MyPlugin) Init(config map[string]interface{}) error {
-    apiKey := os.Getenv("CH_PLUGIN_MYPLUGIN_API_KEY")
-    if apiKey == "" {
-        return fmt.Errorf("CH_PLUGIN_MYPLUGIN_API_KEY not set")
-    }
-    p.apiKey = apiKey
-    return nil
+apiKey := os.Getenv("MYSTEP_API_KEY")
+if apiKey == "" {
+    return fmt.Errorf("MYSTEP_API_KEY not set")
 }
-
-// GOOD - Get from config file with restricted permissions
-func (p *MyPlugin) Init(config map[string]interface{}) error {
-    configFile := os.Getenv("CH_PLUGIN_MYPLUGIN_CONFIG")
-    cfg, err := ioutil.ReadFile(configFile)
-    if err != nil {
-        return fmt.Errorf("failed to read config: %w", err)
-    }
-    // Parse config...
-    return nil
-}
-```
-
-### Configuration Example
-
-```yaml
-plugins:
-  load:
-    - name: my-plugin
-      config:
-        # Config files do not expand env vars: either leave api_key out
-        # and have the plugin read its own env var, or write the value
-        # here in an uncommitted file
-        api_key: <my-plugin-api-key>
-
-        # GOOD - Reference config files
-        credentials_file: /etc/contexthelp/secrets/my-plugin.yaml
-
-        # GOOD - Safe defaults, secrets from environment
-        endpoint: https://api.example.com
-        timeout: 30s
 ```
 
 ## Monitoring & Audit

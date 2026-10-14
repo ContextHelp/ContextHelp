@@ -151,16 +151,14 @@ This is where `ctxt` starts feeling agentic.
 
 ---
 
-## Skeleton 9: Plugins + Ecosystem
+## Skeleton 9: Extension Ecosystem
 
-**Goal:** Extend without forks.
+**Goal:** Extend without forks. No plugin system ([ADR-078](decisions/ADR-078-no-plugin-system.md)): extension goes through pipelines, steps, registries and hooks.
 
-- [ ] plugin contract (capabilities + permissions)
-- [ ] pipeline extension hooks
-- [ ] query operator plugins
-- [ ] registry provider plugins
-- [ ] output generator plugins
-- [ ] translation and localization plugins
+- [ ] step contract (capabilities + permissions) for installed steps
+- [ ] pipeline extension through overrides and custom pipelines
+- [ ] external pre/post hooks (ADR-075)
+- [ ] translation and localization steps
 
 ---
 

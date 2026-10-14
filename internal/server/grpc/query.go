@@ -13,7 +13,6 @@ import (
 	pb "github.com/ideacrafterslabs/ctxt/internal/server/grpc/pb"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 type queryHandler struct {
@@ -110,9 +109,9 @@ func (h *queryHandler) NodeAwareSearch(
 		limit = 20
 	}
 
-	var apiFilter *pluginapi.NodeAwareFilter
+	var apiFilter *storage.NodeAwareFilter
 	if req.Filter != nil {
-		apiFilter = &pluginapi.NodeAwareFilter{
+		apiFilter = &storage.NodeAwareFilter{
 			NodeTypes:      req.Filter.NodeTypes,
 			EdgeTypes:      req.Filter.EdgeTypes,
 			ReturnNodeHits: req.Filter.ReturnNodeHits,
@@ -145,7 +144,7 @@ func (h *queryHandler) NodeAwareSearch(
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-func koToProto(o *pluginapi.KnowledgeObject) *pb.KnowledgeObject {
+func koToProto(o *storage.KnowledgeObject) *pb.KnowledgeObject {
 	p := &pb.KnowledgeObject{
 		Id:          o.ID,
 		Type:        o.Type,
@@ -163,7 +162,7 @@ func koToProto(o *pluginapi.KnowledgeObject) *pb.KnowledgeObject {
 	return p
 }
 
-func objectGraphToProto(g *pluginapi.ObjectGraph) *pb.ObjectGraph {
+func objectGraphToProto(g *storage.ObjectGraph) *pb.ObjectGraph {
 	if g == nil {
 		return nil
 	}
@@ -192,7 +191,7 @@ func objectGraphToProto(g *pluginapi.ObjectGraph) *pb.ObjectGraph {
 	return pg
 }
 
-func docProjectionToProto(d pluginapi.DocumentProjection) *pb.DocumentProjection {
+func docProjectionToProto(d storage.DocumentProjection) *pb.DocumentProjection {
 	dp := &pb.DocumentProjection{
 		Title: d.Title,
 		Body:  d.Body,
@@ -209,7 +208,7 @@ func docProjectionToProto(d pluginapi.DocumentProjection) *pb.DocumentProjection
 
 // buildNodeHits constructs NodeHit entries for every node in the object graph.
 // Score is 1.0 (presence-based); richer scoring is deferred to T-0180.
-func buildNodeHits(o *pluginapi.KnowledgeObject) []*pb.NodeHit {
+func buildNodeHits(o *storage.KnowledgeObject) []*pb.NodeHit {
 	if o.Graph == nil {
 		return nil
 	}
@@ -217,7 +216,7 @@ func buildNodeHits(o *pluginapi.KnowledgeObject) []*pb.NodeHit {
 	for i, n := range o.Graph.Nodes {
 		hits = append(hits, &pb.NodeHit{
 			ObjectId: o.ID,
-			NodeRef:  pluginapi.NodeURI(o.ID, n.NodeType, i),
+			NodeRef:  storage.NodeURI(o.ID, n.NodeType, i),
 			NodeType: n.NodeType,
 			Snippet:  snippetFromNode(n),
 			Score:    1.0,
@@ -226,7 +225,7 @@ func buildNodeHits(o *pluginapi.KnowledgeObject) []*pb.NodeHit {
 	return hits
 }
 
-func snippetFromNode(n pluginapi.GraphNode) string {
+func snippetFromNode(n storage.GraphNode) string {
 	if n.Content != "" {
 		if len(n.Content) > 200 {
 			return n.Content[:200]

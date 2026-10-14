@@ -23,7 +23,6 @@ Category breakdown:
 - admin: 5
 - operations: 5
 - agents: 5
-- plugins: 4
 - pipelines: 13
 
 ## Documented status in story README

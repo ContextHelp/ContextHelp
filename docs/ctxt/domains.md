@@ -277,7 +277,7 @@ created_at, updated_at
 - Individual knowledge worker
 - Team member
 - Organization admin
-- Plugin developer
+- Step developer
 - Registry maintainer
 
 ---
@@ -363,25 +363,16 @@ created_at, updated_at
 
 ---
 
-## 17. Plugin Integration Domain
-**Location:** `docs/plugins/`, `docs/plugins/plugins.md`, `docs/plugins/plugin-isolation.md`
+## 17. Pipeline Extension Domain
+**Location:** `docs/ctxt/pipelines.md`, `docs/ctxt/pipelines-reference.md`
 
 **Responsibilities:**
-- Plugin discovery and loading
-- Plugin lifecycle management
-- Capability-based security
-- Plugin API contracts
-- Custom pipeline steps
-- Custom UI components
-- Event system and hooks
+- Pipeline overrides (`pipelines.overrides`)
+- Custom pipelines (`dpkms pipeline create`)
+- Steps installed from step registries
+- External hooks (ADR-075, designed)
 
-**Plugin Types:**
-- Capture plugins (new sources)
-- Enrichment plugins (AI steps)
-- Storage plugins (backends)
-- UI plugins (components)
-- Notification plugins
-- Integration plugins
+There is no plugin system ([ADR-078](../decisions/ADR-078-no-plugin-system.md)).
 
 ---
 

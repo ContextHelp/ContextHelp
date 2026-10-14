@@ -9,7 +9,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // Workflow orchestrates progressive retrieval with optional sufficiency checking.
@@ -46,9 +45,9 @@ func (w *Workflow) Retrieve(
 	query string,
 	conversationHistory []string,
 	filter storage.ObjectFilter,
-	nodeFilter ...*pluginapi.NodeAwareFilter,
+	nodeFilter ...*storage.NodeAwareFilter,
 ) (*Result, error) {
-	var nf *pluginapi.NodeAwareFilter
+	var nf *storage.NodeAwareFilter
 	if len(nodeFilter) > 0 {
 		nf = nodeFilter[0]
 	}

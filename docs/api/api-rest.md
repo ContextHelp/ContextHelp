@@ -1,8 +1,8 @@
 # REST API
 
-This document specifies the ContextHelp REST API: available endpoints, request/response formats, query parameters, conventions, and **mention-aware** semantics. The REST API provides a thin, consistent interface over the job system, pipelines, storage, query engine, registries, entity-resolution subsystems, and **plugin-augmented API surfaces**.
+This document specifies the ContextHelp REST API: available endpoints, request/response formats, query parameters, conventions, and **mention-aware** semantics. The REST API provides a thin, consistent interface over the job system, pipelines, storage, query engine, registries, and entity-resolution subsystems.
 
-Plugins may extend the API through documented extension points without modifying core functionality.
+There is no plugin system ([ADR-078](../decisions/ADR-078-no-plugin-system.md)): nothing adds routes or response fields outside the dpkms binary.
 
 ## Principles
 
@@ -12,12 +12,7 @@ Plugins may extend the API through documented extension points without modifying
 - Read path supports multi-source retrieval.
 - Extended RSQL Query Language with **mention operators**.
 - Entities, mentions, hints, and tags are independent semantic layers.
-- I18N/L10N optional and plugin-driven but exposed consistently.
-- Plugins may:
-  - add new knowledge object types
-  - attach plugin metadata to knowledge objects
-  - inject supplemental data into REST responses
-  - define new endpoints under `/plugins/*`
+- I18N/L10N optional but exposed consistently.
 
 ## Base URL
 
@@ -84,7 +79,6 @@ Common error codes:
 - `UNAUTHORIZED` (401)
 - `INSUFFICIENT_SCOPE` (403)
 - `INTERNAL_ERROR`
-- `PLUGIN_ERROR` (plugin-defined error states surfaced via API)
 
 ## Conventions
 
@@ -92,15 +86,10 @@ Common error codes:
 - IDs are opaque strings.
 - Pagination uses `limit` + `offset`.
 - Boolean parameters use `true`/`false`.
-- Plugins may add fields to responses under:
-  - `plugins.<pluginName>.{...}`
-- Plugins may add new routes under:
-  - `/plugins/{pluginName}/...`
 
 ## Reserved Routes
 
 - `/admin/v1/*` is reserved for the **Node Admin API** (used by context.help cloud and other admin clients).
-- `/plugins/*` is reserved for plugin-defined routes.
 
 The Node Admin API is documented separately in `docs/api/node-admin-api.md`.
 
@@ -169,19 +158,6 @@ Core endpoints:
 - `GET /suggest/tags` (optional)
 - `GET /suggest/mentions` (optional)
 
-Plugin endpoints:
-
-- `/plugins/*` namespace is reserved for plugin-defined routes.
-- Plugins may expose read-only or read-write API surfaces.
-
-Plugins may also augment core responses with:
-
-```
-"plugins": {
-  "<pluginName>": { ... }
-}
-```
-
 ---
 
 ## Health
@@ -201,16 +177,9 @@ Plugins may also augment core responses with:
   },
   "jobs": {
     "workerRunning": true
-  },
-  "plugins": {
-    "notifications": {
-      "pending": 2
-    }
   }
 }
 ```
-
-Plugins may inject diagnostic information.
 
 ---
 
@@ -219,7 +188,6 @@ Plugins may inject diagnostic information.
 ### `POST /analyze`
 
 Enqueue a job that runs a full enrichment pipeline.
-Supported for both core and plugin-defined bookmark types.
 
 #### Request
 
@@ -232,12 +200,7 @@ Supported for both core and plugin-defined bookmark types.
   "profile": "founder",
   "pipeline": "auto",
   "language": "en",
-  "skipTranslation": false,
-  "plugins": {
-    "price_monitor": {
-      "threshold_percent": 10
-    }
-  }
+  "skipTranslation": false
 }
 ```
 
@@ -245,8 +208,6 @@ Notes:
 
 - The `mentions` field accepts `@namespace.slug` strings for backward compatibility. The pipeline converts them to `ctxt://entity/namespace/slug` URIs stored as `mention_uris`.
 - Mentions are **not resolved here**; resolution happens in the pipeline.
-- Plugins may hook ingestion via `plugins.<pluginName>` blocks.
-- Plugins may inject additional processing steps via configured hooks.
 
 #### Response
 
@@ -269,7 +230,6 @@ Query Parameters:
 - `type`
 - `limit`
 - `offset`
-- `plugin` (return jobs created by specific plugin)
 
 #### Response
 
@@ -288,12 +248,7 @@ Query Parameters:
         "mentions": ["@ui.best-practice"]
       },
       "mention_uris": ["ctxt://entity/ui/best-practice"],
-      "resultObjectId": "obj_abc",
-      "plugins": {
-        "rss_feed": {
-          "derivedItems": 2
-        }
-      }
+      "resultObjectId": "obj_abc"
     }
   ],
   "limit": 50,
@@ -302,13 +257,11 @@ Query Parameters:
 }
 ```
 
-Plugins may attach job metadata.
-
 ---
 
 ## Knowledge Objects
 
-Knowledge objects include **tags**, **hints**, **mentions**, and **plugin metadata**.
+Knowledge objects include **tags**, **hints** and **mentions**.
 
 #### Object content
 
@@ -538,20 +491,9 @@ An alias that resolves to nothing is a 404 `NOT_FOUND`.
 
 Deletes one alias by its key. Scope: `delete:aliases`, which only `admin` tokens hold: a `writer` gets 403 `INSUFFICIENT_SCOPE`. `?scope=` defaults to `global`; `?scope=profile` needs `?profile=`. Answers 204 with no body. No alias with that key is a 404 `NOT_FOUND`; a scope/profile mismatch is a 400 `INVALID_REQUEST`.
 
-### Plugin Metadata
+### `plugins` field
 
-```
-"plugins": {
-  "rss_feed": {
-    "feedUrl": "...",
-    "guid": "..."
-  },
-  "price_monitor": {
-    "current_price": 1199.00,
-    "threshold_percent": 10
-  }
-}
-```
+`plugins` is a free-form object kept on every knowledge object and returned as stored. It is left from the removed plugin layer: no ctxt or dpkms code sets it.
 
 ---
 
@@ -1027,49 +969,6 @@ Get registry details and capabilities.
 
 ### `GET /suggest/mentions`
 
-Plugins may register additional suggestion providers.
-
----
-
-## Plugin Endpoints
-
-All plugin-defined REST endpoints must live under:
-
-```
-/plugins/{pluginName}/...
-```
-
-Examples:
-
-- `/plugins/rss_feed/items`
-- `/plugins/price_monitor/history/{objectId}`
-- `/plugins/notifications/pending`
-
-Plugin routes must not conflict with core routes.
-
-Each plugin defines:
-
-- its own request schema
-- its own response schema
-- its own access control settings
-
-Example Response:
-
-```json
-{
-  "plugin": "notifications",
-  "pending": [
-    {
-      "id": "uuid",
-      "type": "price_drop",
-      "level": "warning",
-      "payload": { "new": 1199.0 },
-      "timestamp": "2025-01-01T12:33:00Z"
-    }
-  ]
-}
-```
-
 ---
 
 ## Mention-Aware Retrieval Flow
@@ -1082,7 +981,7 @@ flowchart TD
     PL --> SG[Scatter–Gather Retrieval]
     SG --> GR[Graph Resolver (Entities)]
     GR --> RR[Reranker]
-    RR --> OUT[Final Results with Plugin Augmentations]
+    RR --> OUT[Final Results]
 ```
 
 ---
@@ -1095,7 +994,6 @@ Applies uniformly:
 - `origLang` filters knowledge objects by original language.
 - `preferLang` requests transformed summaries/titles in preferred language.
 - `translate=none` disables translation entirely.
-- Plugins may provide additional translation metadata.
 
 ## Focus Profile Behavior
 
@@ -1118,10 +1016,3 @@ The REST API supports:
 - entity resolution and graph navigation
 - focus profiles for contextualized behavior
 - composition endpoints (briefs, plans, summaries)
-- plugin-defined knowledge object types
-- plugin-owned metadata
-- `/plugins/*` namespace for plugin endpoints
-- plugin-augmented responses (alerts, metadata, diagnostics)
-- integration with refresh and auto-fetch systems via plugin-defined fields
-
-This guarantees that plugins remain fully isolated, yet fully capable, without requiring modifications to core REST logic.

@@ -83,9 +83,7 @@ hints of `config validate` and `config doctor`, and the URL quoted in a
 Credentials are the tokens (`server.token`, `server.urls[].token`,
 `server.auth.static.tokens[].token`, `federation.token`,
 `federations[].token`), the S3 keys (`storage.blob.s3.access_key`,
-`secret_key`), the audit and security-alert webhook URLs, and plugin
-`config` values under a key containing `token`, `password`, `secret` or
-`key`. Connection strings and URLs (`storage.path`, endpoints, registry
+`secret_key`), and the audit and security-alert webhook URLs. Connection strings and URLs (`storage.path`, endpoints, registry
 and federation URLs) keep everything but an embedded password or
 secret-named parameter.
 
@@ -183,9 +181,8 @@ literal secret to a config struct field such as `server.token` or
   `federation.token` and `storage.blob.s3` keys. The default text output
   prints a summary that includes `storage.path`, so a PostgreSQL DSN with
   an embedded password shows up there too.
-- **Unwired helpers.** `internal/plugin/redact.go` (`RedactSecrets`,
-  `RedactMap`) and `internal/ambient/redact` (a wrapper over kit's
-  `core/redact`) exist with tests, but no runtime code path calls them.
+- **Unwired helper.** `internal/ambient/redact` (a wrapper over kit's
+  `core/redact`) exists with tests, but no runtime code path calls it.
 
 To check a log or data directory for leaked secrets, scan it:
 

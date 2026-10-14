@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 func TestPrintTable(t *testing.T) {
@@ -76,11 +75,11 @@ func TestKoLabel_GraphNoTitle(t *testing.T) {
 	ko := &storage.KnowledgeObject{
 		ID:        "obj_g1",
 		Summaries: []string{"Graph-canonical object summary"},
-		Graph: &pluginapi.ObjectGraph{
-			Nodes: []pluginapi.GraphNode{
+		Graph: &storage.ObjectGraph{
+			Nodes: []storage.GraphNode{
 				{
-					ID:       pluginapi.NewNodeID("obj_g1", pluginapi.NodeTypeSection, 0),
-					NodeType: pluginapi.NodeTypeSection,
+					ID:       storage.NewNodeID("obj_g1", storage.NodeTypeSection, 0),
+					NodeType: storage.NodeTypeSection,
 					Label:    "Introduction",
 					Content:  "First section content",
 				},

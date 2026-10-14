@@ -1,9 +1,9 @@
 # Contributing to ContextHelp
 
 Thank you for your interest in contributing to **ContextHelp**, a decentralized, local-first knowledge engine.
-This document explains how to contribute code, documentation, registry definitions, plugins, and ideas in a consistent and high-quality manner.
+This document explains how to contribute code, documentation, registry definitions, pipeline steps, extensions, and ideas in a consistent and high-quality manner.
 
-We welcome contributions from everyone — whether you are fixing bugs, proposing new ADRs, writing documentation, or extending the engine with plugins.
+We welcome contributions from everyone — whether you are fixing bugs, proposing new ADRs, writing documentation, or extending the engine with pipelines and steps.
 
 ---
 
@@ -41,7 +41,7 @@ Contributions fall into the following categories:
 - 🐛 **Bug Reports**
 - 🛠️ **Code Contributions**
 - 📚 **Documentation Improvements**
-- 📦 **Plugin Contributions**
+- 📦 **Step, Extension and Skill Contributions**
 - 🗂️ **Registry Definitions / Taxonomy / Tag Specs**
 - 🧪 **Tests / Reliability improvements**
 - 📄 **ADRs (Architectural Decision Records)**
@@ -58,7 +58,7 @@ Use GitHub Issues for:
 - Missing features
 - Performance regressions
 - Questions about architecture
-- Suggestions for plugins or pipeline improvements
+- Suggestions for steps or pipeline improvements
 
 ### Issue Template Includes:
 
@@ -182,35 +182,15 @@ To contribute a pipeline:
 
 ---
 
-# Adding Plugins
+# Adding Steps, Extensions and Skills
 
-Plugins may extend:
+ctxt and dpkms have no plugin system ([ADR-078](docs/decisions/ADR-078-no-plugin-system.md)). Contribute instead:
 
-- CLI commands
-- registry providers
-- storage drivers
-- AI clients
-- query operators
-- pipelines
+- **Built-in pipeline steps**: Go code under `internal/pipeline/steps/`, registered in the pipeline registry (see above).
+- **External steps**: a directory per step with a `SKILL.md`, reading `{"config": ..., "object": ...}` on stdin and writing the object on stdout, published in a step registry and installed with `dpkms pipeline step install`.
+- **Extensions and skills**: `extensions/<slug>/` or `skills/<slug>/`, each with a `catalog.json` that follows [docs/catalog-spec.md](docs/catalog-spec.md).
 
-Plugin directory structure:
-
-```
-plugins/
-  yourplugin/
-    main.go
-    README.md
-    go.mod
-```
-
-Plugins MUST:
-
-- expose `Register(HostContext)`
-- use plugin-scoped configuration
-- declare required permissions
-- follow semantic versioning
-
-Plugins MUST NOT:
+Steps MUST NOT:
 
 - access private user files outside allowed scopes
 - phone home without explicit user consent
@@ -329,7 +309,7 @@ Where applicable:
 Contributors must respect:
 
 - user data privacy
-- permission boundaries for plugins
+- permission boundaries for installed steps
 - local-first security model
 - no unauthorized external calls
 - safe handling of user content
@@ -351,7 +331,7 @@ You can contribute:
 - diagrams
 - architecture clarifications
 - examples
-- plugin tutorials
+- step and pipeline tutorials
 - improvements to API reference
 
 Docs live under `docs/`.
@@ -370,7 +350,6 @@ Release includes:
 - CHANGELOG entry
 - building binaries
 - tagging version
-- packaging plugin examples
 
 ---
 

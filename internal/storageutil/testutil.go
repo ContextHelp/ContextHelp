@@ -12,7 +12,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob/local"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/stretchr/testify/require"
 )
 
@@ -53,33 +52,34 @@ func BuildGraphKO(id, typ, content string, tags ...string) *storage.KnowledgeObj
 	now := time.Now().Truncate(time.Second)
 
 	// Graph nodes: one summary + one section + one tag per label.
-	nodes := []pluginapi.GraphNode{
-		{
-			ID:       pluginapi.NewNodeID(id, pluginapi.NodeTypeSummary, 0),
-			NodeType: pluginapi.NodeTypeSummary,
+	nodes := make([]storage.GraphNode, 0, 2+len(tags))
+	nodes = append(nodes,
+		storage.GraphNode{
+			ID:       storage.NewNodeID(id, storage.NodeTypeSummary, 0),
+			NodeType: storage.NodeTypeSummary,
 			Label:    "Summary",
 			Content:  content,
 			Order:    0,
 		},
-		{
-			ID:       pluginapi.NewNodeID(id, pluginapi.NodeTypeSection, 0),
-			NodeType: pluginapi.NodeTypeSection,
+		storage.GraphNode{
+			ID:       storage.NewNodeID(id, storage.NodeTypeSection, 0),
+			NodeType: storage.NodeTypeSection,
 			Label:    "Body",
 			Content:  content,
 			Order:    0,
 		},
-	}
+	)
 	for i, lbl := range tags {
-		nodes = append(nodes, pluginapi.GraphNode{
-			ID:       pluginapi.NewNodeID(id, pluginapi.NodeTypeTag, i),
-			NodeType: pluginapi.NodeTypeTag,
+		nodes = append(nodes, storage.GraphNode{
+			ID:       storage.NewNodeID(id, storage.NodeTypeTag, i),
+			NodeType: storage.NodeTypeTag,
 			Label:    lbl,
 			Content:  lbl,
 			Order:    i,
 		})
 	}
 
-	graph := &pluginapi.ObjectGraph{Nodes: nodes}
+	graph := &storage.ObjectGraph{Nodes: nodes}
 
 	// Build a minimal KO to pass into projection helpers.
 	ko := &storage.KnowledgeObject{
@@ -106,13 +106,13 @@ func BuildGraphKO(id, typ, content string, tags ...string) *storage.KnowledgeObj
 
 // summariesFromGraph extracts Content from all NodeTypeSummary nodes, ordered
 // by their Order field.
-func summariesFromGraph(g *pluginapi.ObjectGraph) []string {
+func summariesFromGraph(g *storage.ObjectGraph) []string {
 	if g == nil {
 		return nil
 	}
 	var out []string
 	for _, n := range g.Nodes {
-		if n.NodeType == pluginapi.NodeTypeSummary && n.Content != "" {
+		if n.NodeType == storage.NodeTypeSummary && n.Content != "" {
 			out = append(out, n.Content)
 		}
 	}

@@ -261,7 +261,7 @@ Users choose what to trust.
 ## dPKMS Interfaces
 - library API (core contract)
 - optional daemon API (HTTP/gRPC) for local clients
-- plugin API (capabilities + permissions)
+- step contract for installed steps (capabilities + permissions)
 
 ## `ctxt` Interfaces
 - CLI (`ctxt`)
@@ -290,7 +290,7 @@ Users choose what to trust.
 - agent runtimes with private context
 - stable entity schema for domain alignment
 - federated retrieval across knowledge sources
-- plugin-driven integration into tools and codebases
+- step- and hook-driven integration into tools and codebases
 
 ---
 

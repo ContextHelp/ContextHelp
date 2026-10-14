@@ -14,7 +14,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/providers/providertest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // Ollama calls replay the embedding-ollama cassettes, recorded against a
@@ -90,7 +89,7 @@ func quokkaDraft() *storage.KnowledgeObject {
 	}
 }
 
-func vectorFor(t *testing.T, draft *storage.KnowledgeObject, modelID string) *pluginapi.ObjectVector {
+func vectorFor(t *testing.T, draft *storage.KnowledgeObject, modelID string) *storage.ObjectVector {
 	t.Helper()
 	for i := range draft.Vectors {
 		if draft.Vectors[i].ModelID == modelID {
@@ -234,7 +233,7 @@ func TestEmbeddingGenerator_ReplacesPriorVectors(t *testing.T) {
 	resolver, _ := ollamaResolver(t)
 	step := NewEmbeddingGenerator(embeddingtest.Models{snowflake("snowflake-arctic-embed2@default", true)}, resolver)
 	draft := quokkaDraft()
-	draft.Vectors = []pluginapi.ObjectVector{{ModelID: "stale@1", Vector: []float32{1}}}
+	draft.Vectors = []storage.ObjectVector{{ModelID: "stale@1", Vector: []float32{1}}}
 
 	got, err := step.Run(context.Background(), draft)
 	if err != nil {
@@ -297,9 +296,9 @@ func TestEmbeddingGenerator_RawContentOnlyDraftEmbeds(t *testing.T) {
 		"tag-only graph": {
 			ID:         "obj-tags",
 			RawContent: "wombat burrow census at mount buller",
-			Graph: &pluginapi.ObjectGraph{Nodes: []pluginapi.GraphNode{
-				{NodeType: pluginapi.NodeTypeTag, Label: "wombat"},
-				{NodeType: pluginapi.NodeTypeEntityMention, Content: "@place.mount-buller"},
+			Graph: &storage.ObjectGraph{Nodes: []storage.GraphNode{
+				{NodeType: storage.NodeTypeTag, Label: "wombat"},
+				{NodeType: storage.NodeTypeEntityMention, Content: "@place.mount-buller"},
 			}},
 		},
 	} {
@@ -327,9 +326,9 @@ func TestEmbeddingGenerator_EmbedsGraphProjectionText(t *testing.T) {
 	step := NewEmbeddingGenerator(embeddingtest.Models{snowflake("snowflake-arctic-embed2@default", true)}, resolver)
 	draft := &storage.KnowledgeObject{
 		Summaries: []string{"flat summary the graph path ignores"},
-		Graph: &pluginapi.ObjectGraph{Nodes: []pluginapi.GraphNode{{
-			ID:       pluginapi.NewNodeID("t1", pluginapi.NodeTypeSummary, 0),
-			NodeType: pluginapi.NodeTypeSummary,
+		Graph: &storage.ObjectGraph{Nodes: []storage.GraphNode{{
+			ID:       storage.NewNodeID("t1", storage.NodeTypeSummary, 0),
+			NodeType: storage.NodeTypeSummary,
 			Content:  "graph embedding source text",
 		}}},
 	}

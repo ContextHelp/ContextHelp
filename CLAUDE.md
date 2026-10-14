@@ -24,7 +24,7 @@ This file helps AI coding tools work effectively in the core `ctxt` workspace.
 
 ## Standards
 
-- **Manifests:** Every new extension or skill must include a `manifest.json` following `.github/manifest.schema.json`; every new plugin a plugin manifest (`apiVersion: v1`, `docs/plugin-authoring-guide.md` §2).
+- **Catalog entries:** Every new extension or skill must include a `catalog.json` following `.github/catalog.schema.json` (`docs/catalog-spec.md`). There is no plugin system (`docs/decisions/ADR-078-no-plugin-system.md`).
 - **Error Wrapping:** Use `fmt.Errorf("context: %w", err)`.
 - **Logging:** Use structured logging (don't log sensitive info).
 - **PRs:** Reference relevant issues and include tests.

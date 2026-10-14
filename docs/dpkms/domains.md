@@ -65,7 +65,6 @@ Together with **`ctxt`** (the brain layer), they provide **context-as-a-service*
 - `pipeline.run` — Execute enrichment pipeline
 - `github.metadata.fetch` — External metadata retrieval
 - `registry.sync` — Registry synchronization
-- Custom plugin-defined job types
 
 **Queue Backends:**
 - In-memory (volatile, dev/testing)
@@ -196,7 +195,6 @@ Retryable() bool
 - **Reciprocal Rank Fusion (RRF)** — Position-based merging
 - **Weighted Sum Ranking** — Score-based combination
 - **SoftMax Normalization** — Probability distribution
-- **Plugin-provided methods** — Custom ranking logic
 
 **Deduplication:**
 - Exact ID match
@@ -261,7 +259,6 @@ Retryable() bool
 
 **Embedding Providers:**
 - OpenAI (text-embedding-3-large)
-- Custom provider plugins
 - Local embedding models
 
 ---
@@ -295,7 +292,7 @@ There is no `cache:` config key, no cache command, and no cache for query result
 - Self-authenticating bundles
 - Scoped permissions for workspaces
 - Token-based access control
-- Capability-scoped plugin execution
+- Capability-scoped execution of installed steps
 
 ---
 

@@ -1,10 +1,10 @@
 # Pipelines Reference
 
-This document provides a complete specification for all built-in pipelines in ContextHelp, rewritten to incorporate the new **Mentions Layer**, **Entity Registry Integration**, **Mention Extraction & Resolution**, and **plugin-extensible pipeline definitions** across all modalities. Pipelines transform raw inputs into structured bookmarks using deterministic task sequences, registry alignment, mention resolution, plugin-defined logic, and asynchronous job execution under the ingestion system.
+This document provides a complete specification for all built-in pipelines in ContextHelp, rewritten to incorporate the new **Mentions Layer**, **Entity Registry Integration**, and **Mention Extraction & Resolution** across all modalities. Pipelines transform raw inputs into structured bookmarks using deterministic task sequences, registry alignment, mention resolution, and asynchronous job execution under the ingestion system.
 
-Pipelines share the unified `Pipeline` interface and the `PipelineContext`, which includes access to registries, configuration snapshots, semantic metadata layers (tags, hints, mentions), entity-resolution services, and **plugin hooks**.
+Pipelines share the unified `Pipeline` interface and the `PipelineContext`, which includes access to registries, configuration snapshots, semantic metadata layers (tags, hints, mentions), and entity-resolution services.
 
-A pipeline never writes a bookmark directly. It emits structured output only through the job system upon completion. Plugins may extend, wrap, or sequence additional post-processing steps without modifying core pipeline logic.
+A pipeline never writes a bookmark directly. It emits structured output only through the job system upon completion. Extra steps (`pipelines.overrides.<pipeline>.extra_steps`, or steps installed from a step registry) extend a pipeline without modifying core pipeline logic. There is no plugin system ([ADR-078](../decisions/ADR-078-no-plugin-system.md)).
 
 ---
 
@@ -21,14 +21,14 @@ flowchart TD
     M1 --> M2[Mention Resolution<br>via Entity Registry]
     M2 --> T1[Tag Generation]
     T1 --> R1[Registry Alignment<br>(taxonomy, weights, entities)]
-    R1 --> P1[Plugin Hooks<br>(optional post-step work)]
+    R1 --> P1[Extra Steps<br>(optional post-step work)]
     P1 --> BKM[Bookmark Construction]
     BKM --> ST[Local Storage]
 ```
 
 The mention stages (`M1 → M2`) are mandatory for all pipelines unless explicitly disabled.
 
-Plugins may add steps **after any major stage** through the standard pipeline hook system defined in the Plugin API.
+Extra steps run **after the built-in stages** (`pipelines.overrides.<pipeline>.extra_steps`).
 
 ---
 
@@ -41,15 +41,15 @@ Pipelines are grouped by modality:
 - `image.*`
 - `audio.*`
 - `video.*`
-- `feed.*` (plugin-defined but standardized)
-- `custom.*` (fully plugin-owned)
+- `feed.*` (standardized)
+- `custom.*` (operator-defined, `dpkms pipeline create`)
 
 Each pipeline defines:
 
 - ordered tasks
 - mention extraction and mention resolution phases
 - registry alignment logic
-- plugin post-processing hooks
+- extra steps
 - job execution model
 - structured output fields
 - optional background job emissions
@@ -82,7 +82,6 @@ All pipelines incorporate two semantic phases:
 - Mentions create **entity→bookmark** graph edges
 - Mentions populate the bookmark’s `mentions[]` field
 - Mentions are always stored in canonical slug form
-- Plugins may perform **post-resolution mention transformation**, but cannot modify canonical IDs
 
 ```mermaid
 flowchart LR
@@ -126,9 +125,9 @@ Processes short-form content such as notes, fragments, or prompts.
 
 Single-step job unless refinement is configured.
 
-**Plugin Hooks**
+**Extra Steps**
 
-Plugins may extend output (e.g., track note metadata, inject custom semantic passes).
+Extra steps may extend output (e.g., track note metadata, inject custom semantic passes).
 
 ---
 
@@ -163,7 +162,7 @@ Processes long-form documents such as articles, transcripts, and multi-paragraph
 - related-content lookups
 - entity-anchored linking
 
-**Plugin Hooks**
+**Extra Steps**
 
 May append additional analyses (citations, semantic diffs, etc.).
 
@@ -201,7 +200,7 @@ Processes general webpages.
 
 **Refresh Behavior**
 
-May be refreshed by the Refresh Plugin when configured.
+May be re-run by a scheduled refresh job when configured.
 
 ---
 
@@ -291,9 +290,9 @@ Processes repositories from GitHub/GitLab/etc.
 - contributor graph
 - dependency analysis
 
-**Plugin Hooks**
+**Extra Steps**
 
-Plugins may extend repo intelligence (e.g., CVE scanning, version tracking).
+Extra steps may extend repo intelligence (e.g., CVE scanning, version tracking).
 
 ---
 
@@ -430,9 +429,9 @@ Processes local videos.
 
 ---
 
-# 6. Feed Pipelines (Plugin-Defined But Standardized)
+# 6. Feed Pipelines (Standardized)
 
-Plugins may define feed pipelines under the canonical namespace:
+Feed pipelines use the canonical namespace:
 
 - `feed.fetch`
 - `feed.parse`
@@ -484,7 +483,7 @@ Emits ingestion jobs for new feed items.
 - EmitItemJobs
 - AttachRefreshRules
 
-**Plugin Benefit**
+**Benefit**
 
 Allows auto-fetching content through refresh without core changes.
 
@@ -500,7 +499,7 @@ Custom pipelines follow all standard rules:
 - registry alignment
 - deterministic task sequence
 - structured output
-- plugin-managed lifecycle
+- lifecycle managed with `dpkms pipeline create|archive|unarchive|remove`
 
 **Examples**
 
@@ -512,7 +511,7 @@ Custom pipelines follow all standard rules:
 
 # Mention-Aware Pipeline Comparison Matrix
 
-| Pipeline | Mentions | Tags | Decisions | Background Jobs | Registry-Aware | Plugin Hooks | Multi-Step Job |
+| Pipeline | Mentions | Tags | Decisions | Background Jobs | Registry-Aware | Extra Steps | Multi-Step Job |
 |---------|----------|------|-----------|------------------|----------------|--------------|----------------|
 | text.short | ✓ | ✓ | (opt.) | – | ✓ | ✓ | 1-step |
 | text.long | ✓✓ | ✓✓ | ✓ | ✓ | ✓ | ✓ | multi-step |
@@ -538,7 +537,6 @@ Pipeline inference considers:
 
 - modality of input
 - explicit user override
-- plugin-defined pipeline mappings
 - agent restrictions
 - content cues
 
@@ -552,7 +550,7 @@ This updated pipeline reference integrates:
 
 - mentions
 - entity resolution
-- plugin-extensible pipeline definitions
+- extra steps and custom pipelines
 - standardized feed pipelines
 - refresh-driven re-execution
 - safe post-processing hooks
@@ -562,6 +560,6 @@ Every pipeline now:
 - extracts & resolves mentions
 - aligns with registries
 - contributes to the knowledge graph
-- supports plugin orchestration without core modification
+- accepts extra steps without core modification
 
 This document replaces the previous pipelines reference entirely.

@@ -13,7 +13,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	uri "hop.top/cite/scheme"
@@ -867,8 +866,8 @@ func TestSearchObjectsNodeAware_NodeTypeFilter(t *testing.T) {
 	}
 	require.NoError(t, svc.Store.Objects().Create(ctx, flatObj))
 
-	filter := &pluginapi.NodeAwareFilter{
-		NodeTypes: []string{string(pluginapi.NodeTypeSummary)},
+	filter := &storage.NodeAwareFilter{
+		NodeTypes: []string{string(storage.NodeTypeSummary)},
 	}
 	results, total, err := svc.SearchObjectsNodeAware(ctx, "type==note", 10, 0, filter)
 	require.NoError(t, err)

@@ -1,6 +1,6 @@
 # Tags
 
-ContextHelp uses tags as **AI-generated semantic classifications** that describe what a bookmark *is about*. Tags are produced by enrichment pipelines, validated against registries, weighted, and structured hierarchically. They are distinct from **hints** and **mentions**, which serve different semantic purposes. Tags may also be extended by plugins, but only within the boundaries of the tag system—they cannot replace or mimic mentions or hints.
+ContextHelp uses tags as **AI-generated semantic classifications** that describe what a bookmark *is about*. Tags are produced by enrichment pipelines, validated against registries, weighted, and structured hierarchically. They are distinct from **hints** and **mentions**, which serve different semantic purposes. Tags may also be extended by extra or installed pipeline steps, but only within the boundaries of the tag system—they cannot replace or mimic mentions or hints.
 
 Tags represent *emergent meaning*, not identity, not intent, and not explicit user references.
 
@@ -12,7 +12,7 @@ Tags are:
 - structured into hierarchies
 - assigned weights and polarity
 - used for filtering, scoring, and reranking
-- optional: extended by plugins via tag-extraction extensions
+- optional: extended by extra pipeline steps
 
 Tags are *not* user-authored. They reflect what the system infers from content.
 
@@ -63,13 +63,13 @@ Tags may also emerge in:
 - multi-parent category sets
 - weighted embeddings
 
-Plugins may introduce *additional tag extraction mechanisms*, but they still produce tags—never mentions.
+Extra steps may introduce *additional tag extraction mechanisms*, but they still produce tags—never mentions.
 
 ## Definitions and Properties
 
 ### Deterministic Generation
 
-Given identical inputs, registry states, and configuration, pipelines must generate **deterministic** tag sets and weights—this applies equally to plugin-provided tag logic.
+Given identical inputs, registry states, and configuration, pipelines must generate **deterministic** tag sets and weights—this applies equally to tag logic in extra or installed steps.
 
 ### Hierarchical Structure
 
@@ -87,7 +87,7 @@ Registries may define:
 - validity constraints
 - canonical names
 
-Plugins may define additional namespaces, but registry-based namespaces always take precedence.
+Steps may define additional namespaces, but registry-based namespaces always take precedence.
 
 ### Weighting Model
 
@@ -122,7 +122,7 @@ Tag generation tracks which pipeline signals contributed:
 - rule-based heuristics
 - extracted metadata
 - registry hints
-- plugin-defined tag extractors
+- extra-step tag extractors
 
 Influence attribution is exposed via introspection APIs.
 
@@ -142,7 +142,7 @@ If a registry declares a canonical tag, all generated tags must be:
 If no registry governs a tag space, tags may be:
 - locally created
 - refined over time
-- merged or split by plugins
+- merged or split by steps
 
 Registries do **not** override user hints or mentions.
 
@@ -173,7 +173,7 @@ sequenceDiagram
 ### Steps
 
 1. **Extraction**
-   NLP + heuristics propose candidate tags. Plugins may add additional extraction steps.
+   NLP + heuristics propose candidate tags. Extra steps may add more extraction.
 
 2. **Normalization**
    Canonical slug conversion.
@@ -206,20 +206,20 @@ sequenceDiagram
 - Always user-authored
 - Resolve to registry entities
 - Provide stable identity
-- Never inferred from pipeline or plugin behavior
+- Never inferred from pipeline behavior
 
 **Tags**
 - Generated automatically
 - Represent emergent meaning
 - Weighted and validated
 - Used for search + reranking
-- Can be extended by plugins, subject to deterministic rules
+- Can be extended by extra steps, subject to deterministic rules
 
 ### Comparison Table
 
 | Property | Tags | Hints | Mentions |
 |---------|------|--------|----------|
-| Created by | AI pipelines + plugins | user | user |
+| Created by | AI pipelines + steps | user | user |
 | Purpose | classification | steering | identity reference |
 | Has weight | yes | no | no |
 | Validated by registries | yes | no | yes |
@@ -248,7 +248,7 @@ Tags may also interact with:
 - language filters
 - date recency
 - registry precedence
-- plugin-defined tag weighting extensions
+- step-defined tag weighting extensions
 
 ## How Tags Coexist With Mentions
 
@@ -262,7 +262,7 @@ Example:
   - Tags: `commerce.payments`, `integration.api`
 
 A mention **never becomes a tag**, and a tag **never implies a mention**.
-Plugins must respect this boundary.
+Steps must respect this boundary.
 
 Mermaid relationship:
 
@@ -277,9 +277,9 @@ graph LR
     D --> G[Pipeline Influence]
 ```
 
-## Plugin Extension Model
+## Step Extension Model
 
-Plugins may introduce:
+Extra and installed pipeline steps may introduce:
 
 - additional tag extraction steps
 - tag weighting augmentations
@@ -287,14 +287,14 @@ Plugins may introduce:
 - registry-backed evaluation heuristics
 - polarity extensions
 
-However, plugins may **not**:
+However, steps may **not**:
 
 - generate mentions
 - reinterpret mentions as tags
 - convert hints into tags
 - override canonical registry tag definitions
 
-Plugins must preserve determinism and not conflict with entity semantics.
+Steps must preserve determinism and not conflict with entity semantics.
 
 ## API Surface (Conceptual)
 
@@ -313,7 +313,7 @@ Typical JSON representation:
   "tag": "ui.design.layout",
   "weight": 0.82,
   "polarity": "positive",
-  "sources": ["llm", "embedding", "plugin.rule"]
+  "sources": ["llm", "embedding", "step.rule"]
 }
 ```
 
@@ -341,4 +341,4 @@ They must remain distinct.
 
 ## Summary
 
-Tags are **AI-generated semantic labels** that classify content by meaning, validated through registries, weighted for relevance, structured hierarchically, and used heavily in retrieval and reranking. Plugins may extend tag extraction logic, but tags always remain separate from user hints and canonical mentions, forming one of the three pillars of ContextHelp’s semantic model.
+Tags are **AI-generated semantic labels** that classify content by meaning, validated through registries, weighted for relevance, structured hierarchically, and used heavily in retrieval and reranking. Extra steps may extend tag extraction logic, but tags always remain separate from user hints and canonical mentions, forming one of the three pillars of ContextHelp’s semantic model.

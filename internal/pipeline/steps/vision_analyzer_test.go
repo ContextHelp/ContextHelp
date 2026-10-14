@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 func TestVisionAnalyzerAddsSection(t *testing.T) {
@@ -46,11 +45,11 @@ func TestVisionAnalyzerEmitsGraphNodes(t *testing.T) {
 	if got.Graph == nil {
 		t.Fatal("graph is nil; expected nodes")
 	}
-	artifactID := pluginapi.NewNodeID("obj-vision-001", pluginapi.NodeTypeArtifact, 0)
+	artifactID := storage.NewNodeID("obj-vision-001", storage.NodeTypeArtifact, 0)
 	if got.Graph.FindNode(artifactID) == nil {
 		t.Errorf("artifact node %q not found", artifactID)
 	}
-	summaryID := pluginapi.NewNodeID("obj-vision-001", pluginapi.NodeTypeSummary, 0)
+	summaryID := storage.NewNodeID("obj-vision-001", storage.NodeTypeSummary, 0)
 	if got.Graph.FindNode(summaryID) == nil {
 		t.Errorf("summary node %q not found", summaryID)
 	}

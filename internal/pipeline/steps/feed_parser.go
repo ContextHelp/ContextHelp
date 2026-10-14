@@ -9,7 +9,6 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // FeedParser parses RSS 2.0, Atom 1.0, or JSON Feed from draft.RawContent.
@@ -84,7 +83,7 @@ func (s *FeedParser) Run(_ context.Context, draft *storage.KnowledgeObject) (*st
 		return draft, nil
 	}
 	if draft.Graph == nil {
-		draft.Graph = &pluginapi.ObjectGraph{}
+		draft.Graph = &storage.ObjectGraph{}
 	}
 	for i, item := range items {
 		title, _ := item["title"].(string)
@@ -93,10 +92,10 @@ func (s *FeedParser) Run(_ context.Context, draft *storage.KnowledgeObject) (*st
 		guid, _ := item["guid"].(string)
 		published, _ := item["published"].(string)
 
-		secID := pluginapi.NewNodeID(draft.ID, pluginapi.NodeTypeSection, i)
-		draft.Graph.Nodes = append(draft.Graph.Nodes, pluginapi.GraphNode{
+		secID := storage.NewNodeID(draft.ID, storage.NodeTypeSection, i)
+		draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
 			ID:       secID,
-			NodeType: pluginapi.NodeTypeSection,
+			NodeType: storage.NodeTypeSection,
 			Label:    title,
 			Content:  content,
 			Order:    i,

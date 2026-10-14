@@ -86,7 +86,6 @@ ContextHelp stores structured knowledge locally through user-selectable backends
 - JSON files
 - SQLite
 - PostgreSQL
-- Custom storage plugins
 
 Storage privacy guarantees:
 
@@ -117,7 +116,7 @@ Pipeline execution stages:
 
 - Do not persist intermediate data unless explicitly configured.
 - Hold raw content in memory only as long as necessary.
-- Allow optional sandboxing of external or untrusted plugins.
+- Allow optional sandboxing of external or untrusted installed steps.
 
 Users may enable memory-only modes for stricter environments.
 
@@ -170,7 +169,7 @@ ContextHelp follows a **data portability by design** philosophy.
 ContextHelp protects against:
 
 - Unintended external transmission of user data
-- Unauthorized plugin behavior
+- Unauthorized installed-step behavior
 - Accidental registry leaks
 - Weak storage permissions
 
@@ -187,7 +186,7 @@ Users are responsible for:
 Planned privacy improvements:
 
 - Optional end-to-end encrypted registry communication
-- Hardened plugin sandbox model
+- Hardened sandbox model for installed steps
 - Metadata minimization modes
 - Per-agent data access audit logs
 - Recommended best-practice templates for enterprise deployments

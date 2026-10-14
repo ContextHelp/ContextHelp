@@ -42,13 +42,12 @@ func TestDevValidateRegistryDeprecated(t *testing.T) {
 	}
 }
 
-func TestDevInitPluginDeprecated(t *testing.T) {
-	_, err := executeCommand("dev", "init-plugin", "my-plugin")
-	if err == nil {
-		t.Fatal("dev init-plugin should return error (moved to dpkms)")
-	}
-	if !strings.Contains(err.Error(), "moved to dpkms dev init-plugin") {
-		t.Errorf("error should mention dpkms, got: %v", err)
+// There is no plugin system, so no init-plugin forwarder either.
+func TestDevHasNoInitPlugin(t *testing.T) {
+	for _, c := range devCmd.Commands() {
+		if c.Name() == "init-plugin" {
+			t.Fatal("ctxt dev init-plugin must not exist: ctxt has no plugin system")
+		}
 	}
 }
 

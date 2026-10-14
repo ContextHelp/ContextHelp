@@ -7,7 +7,7 @@ Where data crosses a trust boundary in ctxt and dpkms, and what guards each cros
 | Local machine | the user is trusted; other users and processes are not | file permissions you set; config permission check | encryption at rest, log redaction |
 | External registries | untrusted | Ed25519 signatures, trust levels, entity integrity guard | unsigned registries unless `require_signatures` |
 | AI providers | external service | opt-in keys and endpoints; HTTPS endpoints by default | content you send is visible to the provider |
-| Plugins and installed steps | untrusted code | nothing runs them today | no sandbox |
+| Installed steps | untrusted code | nothing runs them today | no sandbox |
 | REST / gRPC / MCP | loopback trusted; remote untrusted | access class, static tokens + scopes, Host/origin guards | TLS, rate limiting |
 
 ## Boundary 1: Local machine
@@ -43,9 +43,9 @@ Where data crosses a trust boundary in ctxt and dpkms, and what guards each cros
 
 Reference: [AI providers environment variables](../../environment-variables/ai-providers.md).
 
-## Boundary 4: Plugins and installed steps
+## Boundary 4: Installed steps
 
-No plugin is loaded at runtime: neither binary creates a plugin registry, and the `plugins:` config key is read by no code ([plugins.md](../../plugins/plugins.md)). `dpkms pipeline step install` records steps from a step registry, but no pipeline runs installed external steps today. There is no sandbox, capability enforcement or resource limit for either; manifest permissions are validated and not enforced. [ADR-027](../../decisions/ADR-027-plugin-isolation-sandboxing.md) and [plugin-isolation.md](../../plugins/plugin-isolation.md) are design.
+There is no plugin system ([ADR-078](../../decisions/ADR-078-no-plugin-system.md)). `dpkms pipeline step install` records steps from a step registry, but no pipeline runs installed external steps today. There is no sandbox, capability enforcement or resource limit for them; [ADR-055](../../decisions/ADR-055-sandbox-isolation-levels.md) and [ADR-058](../../decisions/ADR-058-external-step-execution-protocol.md) are design.
 
 ## Boundary 5: REST, gRPC and MCP
 
