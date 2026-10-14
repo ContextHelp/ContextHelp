@@ -503,51 +503,40 @@ chmod +x .git/hooks/pre-commit
 
 ## Database & Migrations
 
-### Creating Migrations
+The schema lives in migrations embedded in the binaries. There is no
+separate migrate tool, migration directory or Taskfile target: `dpkms` and
+`ctxt` apply every pending migration whenever they open the database
+(`Driver.Init` -> `Migrate`). Migrations are forward-only; there are no
+down steps.
+
+| Backend | Where | Ledger |
+|---------|-------|--------|
+| SQLite (default) | `internal/storage/sqlite/migrations/NNN_name.sql`, each `//go:embed`ed and listed in the `migrations` slice in `internal/storage/sqlite/migrations.go` | `schema_version` table |
+| Postgres | the `pgMigrations` slice in `internal/storage/postgres/migrations.go` | versioned chain |
+
+### Adding a migration
+
+1. Add the next-numbered `internal/storage/sqlite/migrations/NNN_name.sql`.
+2. Embed it in `migrations.go` (`//go:embed migrations/NNN_name.sql`) and
+   append `{Version: NNN, SQL: migrationNNN}` to `migrations`. Use the
+   entry's `fn` instead when SQL alone cannot do it (for example an
+   idempotent `ALTER TABLE` on upgraded databases).
+3. Mirror the change as the next `pgMigrations` entry.
+4. Cover it with a test next to the existing ones
+   (`internal/storage/sqlite/migrations_test.go`,
+   `internal/storage/postgres/migrations_unit_test.go`).
+
+### Starting from an empty database
+
+Point the binary at a throwaway data dir; the database
+(`<data dir>/db.sqlite`) is created and migrated on first open:
 
 ```bash
-# Create new migration
-task db:migrate:create -- add_embeddings_table
-
-# This creates:
-# data/migrations/000001_add_embeddings_table.up.sql
-# data/migrations/000001_add_embeddings_table.down.sql
+CTXT_DATA_DIR="$(mktemp -d)" ./bin/dpkms serve
 ```
 
-### Writing Migrations
-
-**Up migration** (`000001_add_embeddings_table.up.sql`):
-```sql
-CREATE TABLE IF NOT EXISTS embeddings (
-    id TEXT PRIMARY KEY,
-    object_id TEXT NOT NULL,
-    model TEXT NOT NULL,
-    vector BLOB NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (object_id) REFERENCES objects(id) ON DELETE CASCADE
-);
-
-CREATE INDEX idx_embeddings_object_id ON embeddings(object_id);
-```
-
-**Down migration** (`000001_add_embeddings_table.down.sql`):
-```sql
-DROP INDEX IF EXISTS idx_embeddings_object_id;
-DROP TABLE IF EXISTS embeddings;
-```
-
-### Running Migrations
-
-```bash
-# Apply all pending migrations
-task db:migrate:up
-
-# Rollback last migration
-task db:migrate:down
-
-# Reset database (drops all, re-runs migrations)
-task db:reset
-```
+To reset your real database instead, stop dpkms (`dpkms shutdown`), back
+it up (`dpkms backup`), then move the file at `storage.path` aside.
 
 ---
 

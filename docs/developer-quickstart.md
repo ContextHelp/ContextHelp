@@ -345,18 +345,11 @@ Services:
 
 ## Common Tasks
 
-### Create and Run a Migration
+### Add a Database Migration
 
-```bash
-# Create new migration
-task db:migrate:create -- add_new_field
-
-# Run migrations
-task db:migrate:up
-
-# Rollback last migration
-task db:migrate:down
-```
+Migrations are embedded in the binaries and run automatically whenever
+dpkms or ctxt opens the database. To add one, see
+[Database & Migrations](development.md#database--migrations).
 
 ### Lint and Format Code
 
@@ -412,9 +405,11 @@ task build
 
 ### Database Locked
 
+Another dpkms instance usually holds the database:
+
 ```bash
-# Reset database (WARNING: deletes all data)
-task db:reset
+dpkms ps         # list running instances
+dpkms shutdown   # stop the running instance
 ```
 
 ### Port Already in Use
@@ -479,7 +474,6 @@ task security           # Security scan
 
 # Clean
 task clean              # Remove build artifacts
-task db:reset           # Reset database
 
 # Services
 task services:up        # Start Docker services

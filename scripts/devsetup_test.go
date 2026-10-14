@@ -14,9 +14,10 @@ import (
 
 // TestDevSetupWritesAtRepoRoot runs scripts/dev-setup.sh inside a
 // throwaway repo, from an unrelated working directory, and checks that
-// .env and data/ land at the repo root and that hooks are wired through
-// the canonical installer (make install-hooks -> core.hooksPath), both in
-// a plain clone and in a linked worktree where .git is a file.
+// .env lands at the repo root, no shadow schema tree is written, and
+// hooks are wired through the canonical installer (make install-hooks ->
+// core.hooksPath), both in a plain clone and in a linked worktree where
+// .git is a file.
 //
 // Every tool the script could fetch or install is stubbed on PATH; HOME,
 // XDG dirs and git's global/system config point into the temp dir.
@@ -71,7 +72,6 @@ esac`,
 		"golangci-lint": `echo "golangci-lint stub"`,
 		"task":          `echo "task stub"`,
 		"govulncheck":   `exit 0`,
-		"migrate":       `exit 0`,
 		"pre-commit":    `exit 0`,
 		"curl":          `exit 97`,
 		"wget":          `exit 97`,
@@ -159,10 +159,16 @@ func (h *harness) runDevSetup(repo string) {
 
 func (h *harness) assertRootLayout(repo string) {
 	h.t.Helper()
-	for _, p := range []string{".env", "data/migrations", "data/sqlite"} {
-		if _, err := os.Stat(filepath.Join(repo, p)); err != nil {
-			h.t.Errorf("%s missing at repo root: %v", p, err)
-		}
+	if _, err := os.Stat(filepath.Join(repo, ".env")); err != nil {
+		h.t.Errorf(".env missing at repo root: %v", err)
+	}
+	// The binaries embed and apply their own migrations; dev-setup must
+	// not write a second, hand-maintained schema or run a migrate tool.
+	if _, err := os.Lstat(filepath.Join(repo, "data")); err == nil {
+		h.t.Errorf("dev-setup created data/ (shadow schema tree)")
+	}
+	if b, _ := os.ReadFile(h.log); bytes.Contains(b, []byte("migrate")) {
+		h.t.Errorf("dev-setup reached for golang-migrate:\n%s", b)
 	}
 	for _, p := range []string{"scripts/.env", "scripts/data", "scripts/.git", "scripts/cmd"} {
 		if _, err := os.Lstat(filepath.Join(repo, p)); err == nil {
