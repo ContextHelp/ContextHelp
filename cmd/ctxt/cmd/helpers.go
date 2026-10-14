@@ -71,7 +71,7 @@ func newService() (*service.Service, func(), error) {
 	}
 
 	queue := jobs.NewQueue(driver.Jobs())
-	pipes := builtins.ConfiguredRegistryWithOpts(embeddingBuildOpts(driver))
+	pipes := builtins.ConfiguredRegistryWithOpts(registryBuildOpts(driver))
 	engine := search.NewEngine(driver)
 
 	// Wire pipeline preflight validation into the queue.
@@ -145,6 +145,19 @@ func dbPathForInstance(nameOrPort string) (string, error) {
 	e := output.PrerequisiteError(fmt.Sprintf("no running dpkms instance named %q", nameOrPort))
 	e.SuggestedFix = "run `dpkms ps` to list running instances, or start one with `dpkms serve`"
 	return "", e
+}
+
+// registryBuildOpts is the direct-store pipeline registry's wiring, as
+// serve's (stack.New): the embedding write path plus the driver's blob
+// store and storage.blob.threshold, without which externalize_content
+// is pruned.
+func registryBuildOpts(driver storage.StorageDriver) builtins.BuildOpts {
+	opts := embeddingBuildOpts(driver)
+	opts.BlobStore = driver.Blobs()
+	if cfg != nil {
+		opts.BlobThreshold = cfg.Storage.Blob.Threshold
+	}
+	return opts
 }
 
 // embeddingBuildOpts wires the embedding write path into the pipeline
