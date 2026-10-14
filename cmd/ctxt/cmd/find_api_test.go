@@ -31,8 +31,6 @@ const apiFindQuery = "rotating signing keys without downtime"
 func setupFindAPI(t *testing.T, opts ...dpkmstest.Option) *testDB {
 	t.Helper()
 	client, _ := providertest.OllamaClient(t, findCassettes)
-	findEmbeddingHTTPClient = client
-	t.Cleanup(func() { findEmbeddingHTTPClient = nil })
 	db := setupTestDB(t, append([]dpkmstest.Option{dpkmstest.WithEmbeddingHTTPClient(client)}, opts...)...)
 	ctx := context.Background()
 

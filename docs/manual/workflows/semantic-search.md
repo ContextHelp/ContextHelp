@@ -4,6 +4,8 @@
 
 Make `ctxt find` match by meaning, not only by words, using an embedding model you choose. Then point a single run at a different endpoint (a remote Ollama through a tunnel, for example) without touching config.
 
+`ctxt find` runs on the dpkms instance (`POST /api/v1/find`), and dpkms embeds the query with its default model and its own provider settings. The per-run overrides below apply to the `ctxt embeddings` commands and to `ctxt find --graph`, which still searches in-process; for plain `find`, set them where `dpkms serve` runs.
+
 ## Scope
 
 - Choosing the embedding provider (`providers.embedding`)
@@ -141,12 +143,12 @@ The next `ctxt find` searches by meaning as well as by words, and the notice is 
 Every embedding setting is resolved on its own, and the highest layer wins: flag, then `CTXT_EMBEDDING_*` env, then `-c`, then the registered model's own settings, then the config file, then the default. These three runs are equivalent:
 
 ```bash
-ctxt find "onboarding" --embedding-endpoint http://127.0.0.1:11555
-CTXT_EMBEDDING_ENDPOINT=http://127.0.0.1:11555 ctxt find "onboarding"
-ctxt find "onboarding" -c providers.embedding.endpoint=http://127.0.0.1:11555
+ctxt find "onboarding" --graph --embedding-endpoint http://127.0.0.1:11555
+CTXT_EMBEDDING_ENDPOINT=http://127.0.0.1:11555 ctxt find "onboarding" --graph
+ctxt find "onboarding" --graph -c providers.embedding.endpoint=http://127.0.0.1:11555
 ```
 
-The flags exist on `find`, `embeddings provider` and `embeddings register`. The env variables are `CTXT_EMBEDDING_PROVIDER`, `CTXT_EMBEDDING_MODEL`, `CTXT_EMBEDDING_ENDPOINT` and `CTXT_EMBEDDING_API_KEY_ENV`. Full table: [Override it for one run](../../environment-variables/ai-providers.md#override-it-for-one-run).
+The flags exist on `find` (with `--graph` only), `embeddings provider` and `embeddings register`. Plain `find` refuses them with exit 2: its query is embedded on the dpkms host. The env variables are `CTXT_EMBEDDING_PROVIDER`, `CTXT_EMBEDDING_MODEL`, `CTXT_EMBEDDING_ENDPOINT` and `CTXT_EMBEDDING_API_KEY_ENV`. Full table: [Override it for one run](../../environment-variables/ai-providers.md#override-it-for-one-run).
 
 ### Use a remote Ollama through a tunnel
 
@@ -160,7 +162,7 @@ In another terminal:
 
 ```bash
 ctxt embeddings provider ollama-nomic-embed-text@2026-09-26 --embedding-endpoint http://127.0.0.1:11555
-ctxt find "onboarding" --embedding-endpoint http://127.0.0.1:11555
+ctxt find "onboarding" --graph --embedding-endpoint http://127.0.0.1:11555
 ```
 
 ```text
@@ -177,16 +179,16 @@ Embedding provider for ollama-nomic-embed-text@2026-09-26
 ╰─────────────┴────────────────────────┴───────────────────╯
 ```
 
-The remote Ollama needs the same model pulled. For dpkms (new captures and the Step 4 fill), set the env on the server: `CTXT_EMBEDDING_ENDPOINT=http://127.0.0.1:11555 dpkms serve`. Its startup line shows the endpoint and `(env)`.
+The remote Ollama needs the same model pulled. For dpkms (new captures, the Step 4 fill and every plain `ctxt find` query), set the env on the server: `CTXT_EMBEDDING_ENDPOINT=http://127.0.0.1:11555 dpkms serve`. Its startup line shows the endpoint and `(env)`.
 
 ### Why a registered model's backend and model can't be overridden
 
 A registered model's vectors all came from one model. Query vectors from any other model would not be comparable with them, so the results would be noise. The endpoint and `api_key_env` only change how ctxt reaches the model, so those stay overridable. The backend, model and dimension are fixed by the registry entry, and `ctxt embeddings provider <model_id>` labels them "fixed by registry".
 
-An override that would change them makes the command fail, and `find` falls back to full-text with a notice:
+An override that would change them makes the command fail, and `find --graph` falls back to full-text with a notice:
 
 ```bash
-ctxt find "onboarding" --embedding-model snowflake-arctic-embed2
+ctxt find "onboarding" --graph --embedding-model snowflake-arctic-embed2
 ```
 
 ```text

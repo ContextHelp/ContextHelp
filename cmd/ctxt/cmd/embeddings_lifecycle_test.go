@@ -20,6 +20,7 @@ import (
 	"hop.top/kit/go/runtime/bus"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmstest"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/events"
@@ -734,12 +735,10 @@ func dbFile(db *testDB) string {
 // the query path reads the default per query, with no restart and no cache
 // to invalidate. Replays the find-query-path cassettes.
 func TestEmbeddingsSetDefault_NextQueryFollows(t *testing.T) {
-	db := setupTestDB(t)
+	client, calls := providertest.OllamaClient(t, findCassettes)
+	db := setupTestDB(t, dpkmstest.WithEmbeddingHTTPClient(client))
 	ctx := context.Background()
 	d := sqliteDB(t, db)
-	client, calls := providertest.OllamaClient(t, findCassettes)
-	findEmbeddingHTTPClient = client
-	t.Cleanup(func() { findEmbeddingHTTPClient = nil })
 
 	query := "rotating signing keys without downtime"
 	arctic := func(id, endpoint string) registry.Model {

@@ -152,6 +152,14 @@ func init() {
 	// alias for --format, which collides with kit's path semantics and
 	// panics at init time on every invocation.
 
+	// The root takes one operand, a ctxt:// URI. Anything else is an
+	// unknown command, as cobra's default for a root with children.
+	rootCmd.Args = func(cmd *cobra.Command, args []string) error {
+		if len(args) == 0 || (len(args) == 1 && strings.HasPrefix(args[0], "ctxt://")) {
+			return nil
+		}
+		return fmt.Errorf("unknown command %q for %q%s", args[0], cmd.CommandPath(), suggestionsFor(cmd, args[0]))
+	}
 	rootCmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if v, _ := cmd.Flags().GetBool("version"); v {
 			printVersion(cmd)

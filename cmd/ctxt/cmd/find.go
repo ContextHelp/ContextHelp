@@ -5,22 +5,24 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strings"
+	"sort"
 	"sync"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
-	"github.com/ideacrafterslabs/ctxt/internal/repl"
 	"github.com/ideacrafterslabs/ctxt/internal/retrieval"
-	"github.com/ideacrafterslabs/ctxt/internal/search"
+	"github.com/ideacrafterslabs/ctxt/internal/searchgraph"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"hop.top/kit/go/console/output"
 )
 
 var findCmd = &cobra.Command{
@@ -33,6 +35,11 @@ The default mode is "hybrid" (FTS + vector via RRF). Use --fts for FTS-only,
 profile's search strategy and global config defaults.
 
 Resolution order: CLI flags → active profile search_strategy → global search config.
+
+find runs on the dpkms instance --server, --instance or the current
+instance names (POST /api/v1/find). ctxt sends the resolved mode, knobs and
+active profile; the active profile scopes the search to the objects it
+owns. dpkms embeds the query with its default embedding model.
 
 Examples:
   # Hybrid search (default)
@@ -47,7 +54,7 @@ Examples:
   # Override RRF weights
   ctxt find "database indexing" --fts-weight 0.3 --vector-weight 0.7
 
-  # Search with profile context
+  # Search one profile's objects with its search strategy
   ctxt find "signup flow" --profile growth
 
   # Limit results
@@ -88,6 +95,10 @@ Examples:
 	RunE: runFind,
 }
 
+// findEmbeddingFlags configure the local search --graph runs; every
+// other find embeds its query on the dpkms host.
+var findEmbeddingFlags = []string{embeddings.FlagProvider, embeddings.FlagModel, embeddings.FlagEndpoint}
+
 func init() {
 	rootCmd.AddCommand(findCmd)
 	cliconv.WithSideEffect(findCmd, cliconv.SideEffectRead)
@@ -98,7 +109,7 @@ func init() {
 	})
 
 	findCmd.Flags().Int("limit", 10, "maximum results")
-	findCmd.Flags().Bool("semantic", false, "vector-only search via embedding provider")
+	findCmd.Flags().Bool("semantic", false, "vector-only search; dpkms embeds the query with its default model")
 	findCmd.Flags().Bool("hybrid", false, "hybrid FTS+vector search with RRF (default mode from config)")
 	findCmd.Flags().Bool("fts", false, "FTS-only search")
 
@@ -119,9 +130,14 @@ func init() {
 	findCmd.Flags().String("until", "", "filter by dates_mentioned <= (ISO date)")
 	findCmd.Flags().String("source-type", "", "filter by source_type")
 	findCmd.Flags().Bool("facets", false, "show metadata type count breakdown")
+	findCmd.Flags().String("server", "", serverFlagUsage)
 
-	// Per-run embedding provider overrides (vector and hybrid modes).
+	// Embedding provider overrides for --graph's local search.
 	embeddings.AddFlags(findCmd.Flags(), &findEmbedding)
+	for _, name := range findEmbeddingFlags {
+		f := findCmd.Flags().Lookup(name)
+		f.Usage += " (with --graph only)"
+	}
 
 	registerFindGraphFlags(findCmd)
 
@@ -137,10 +153,10 @@ func init() {
 	viper.BindPFlag("find.min_score", findCmd.Flags().Lookup("min-score"))
 }
 
-// findEmbedding holds find's --embedding-* flag values.
+// findEmbedding holds find's --embedding-* flag values (--graph only).
 var findEmbedding embeddings.Overrides
 
-// findEmbeddingHTTPClient, when set, carries find's embedding requests
+// findEmbeddingHTTPClient, when set, carries --graph's embedding requests
 // (tests replay recorded provider traffic through it).
 var findEmbeddingHTTPClient *http.Client
 
@@ -156,6 +172,8 @@ func runFind(cmd *cobra.Command, args []string) error {
 		if graphTo, err = findGraphDelivery(cmd); err != nil {
 			return err
 		}
+	} else if err := rejectFindEmbeddingFlags(cmd); err != nil {
+		return err
 	}
 
 	query, source, err := cli.GetInput(args)
@@ -166,34 +184,79 @@ func runFind(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "Searching clipboard content: %q\n", query)
 	}
 
-	limit := viper.GetInt("find.limit")
-
-	svc, cleanup, err := newService()
-	if err != nil {
-		return err
-	}
-	// release is idempotent so the graph viewer can let go of the
-	// service before it starts serving, which may last minutes.
-	release := sync.OnceFunc(cleanup)
-	defer release()
-
-	// Use the command context so session state (injected by REPL) is visible.
 	ctx := cmd.Context()
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	limit := viper.GetInt("find.limit")
+	profile := viper.GetString("profile.default")
+	searchCfg := resolveFindSearch(profile)
 
-	// Extract session state when running inside a REPL session.
-	var sessionState *repl.SessionState
-	if v := ctx.Value(repl.SessionContextKey{}); v != nil {
-		sessionState, _ = v.(*repl.SessionState)
+	// --graph always runs the traced hybrid search, whatever the mode.
+	if graph {
+		return runFindGraphLocal(ctx, cmd, findGraphQuery{text: query, filter: buildFindFilter(cmd, limit), search: searchCfg}, graphOpts, graphTo)
 	}
 
-	// Resolve search config: global → active profile → CLI flags.
-	searchCfg := cfg.Search
-	activeProfile := viper.GetString("profile.default")
-	if p, ok := cfg.Profile.Profiles[activeProfile]; ok {
-		searchCfg = config.ResolveSearchConfig(searchCfg, p.SearchStrategy)
+	mode := findMode(searchCfg)
+	explain, _ := cmd.Flags().GetBool("explain")
+	facets, _ := cmd.Flags().GetBool("facets")
+	// --explain only applies to hybrid mode, and replaces the facet
+	// breakdown there.
+	explain = explain && mode == service.FindModeHybrid
+	facets = facets && !explain
+
+	client, err := newDpkmsClient(cmd, dpkmsclient.DefaultTimeout)
+	if err != nil {
+		return err
+	}
+	res, err := client.Find(ctx, dpkmsclient.FindRequest{
+		Query:   query,
+		Mode:    mode,
+		Limit:   limit,
+		Profile: profile,
+		Filter:  findFilter(cmd),
+		Search:  findSearchKnobs(searchCfg),
+		Explain: explain,
+		Facets:  facets,
+	})
+	if err != nil {
+		return err
+	}
+	printFindNotice(cmd, res.Diagnostics.Semantic)
+	if res.Objects == nil {
+		res.Objects = []*storage.KnowledgeObject{}
+	}
+	if explain {
+		return renderFindExplain(query, res)
+	}
+	return renderFind(query, res, facets)
+}
+
+// rejectFindEmbeddingFlags refuses the --embedding-* flags outside
+// --graph: dpkms embeds the query with the model registered there, so
+// they would change nothing.
+func rejectFindEmbeddingFlags(cmd *cobra.Command) error {
+	for _, name := range findEmbeddingFlags {
+		if cmd.Flags().Changed(name) {
+			e := output.UsageError(fmt.Sprintf(
+				"--%s only applies to --%s: find embeds the query on the dpkms host with its default embedding model",
+				name, flagGraph))
+			e.SuggestedFix = "drop --" + name
+			return e
+		}
+	}
+	return nil
+}
+
+// resolveFindSearch resolves the search strategy: global config, then the
+// active profile's search_strategy, then find's own flags.
+func resolveFindSearch(profile string) config.SearchConfig {
+	searchCfg := config.DefaultSearchConfig()
+	if cfg != nil {
+		searchCfg = cfg.Search
+		if p, ok := cfg.Profile.Profiles[profile]; ok {
+			searchCfg = config.ResolveSearchConfig(searchCfg, p.SearchStrategy)
+		}
 	}
 	if k := viper.GetInt("find.rrf_k"); k > 0 {
 		searchCfg.RRF.K = k
@@ -213,198 +276,189 @@ func runFind(cmd *cobra.Command, args []string) error {
 	if s := viper.GetFloat64("find.min_score"); s >= 0 {
 		searchCfg.MinScore = s
 	}
+	return searchCfg
+}
 
-	// Determine mode: explicit flags override config.
-	mode := searchCfg.DefaultMode
-	if viper.GetBool("find.fts") {
-		mode = "fts"
+// findMode is the resolved search mode: a mode flag, else the resolved
+// default, else hybrid.
+func findMode(searchCfg config.SearchConfig) string {
+	switch {
+	case viper.GetBool("find.hybrid"):
+		return service.FindModeHybrid
+	case viper.GetBool("find.semantic"):
+		return service.FindModeVector
+	case viper.GetBool("find.fts"):
+		return service.FindModeFTS
+	case searchCfg.DefaultMode != "":
+		return searchCfg.DefaultMode
 	}
-	if viper.GetBool("find.semantic") {
-		mode = "vector"
-	}
-	if viper.GetBool("find.hybrid") {
-		mode = "hybrid"
-	}
+	return service.FindModeHybrid
+}
 
-	explain, _ := cmd.Flags().GetBool("explain")
-	facets, _ := cmd.Flags().GetBool("facets")
-
-	// vector and hybrid (incl. --explain and --graph, which always runs
-	// hybrid) search the default embedding model's index; the default is
-	// read per query, never cached.
-	var sem retrieval.SemanticSource
-	if mode != "fts" || graph {
-		sem, err = findSemanticSource(svc.Store, sessionState)
-		if err != nil {
-			return fmt.Errorf("find: %w", err)
-		}
-	}
-
-	// Build metadata facet filter from CLI flags.
-	filter := buildFindFilter(cmd, limit)
-
-	// --graph always runs the traced hybrid search, whatever the mode.
-	if graph {
-		return runFindGraph(ctx, cmd, svc, release, findGraphQuery{query, filter, searchCfg, sem}, graphOpts, graphTo)
-	}
-
-	// --explain only applies to hybrid mode; it prints per-signal score breakdowns.
-	if explain && mode == "hybrid" {
-		return runFindExplain(ctx, cmd, svc, sem, query, filter, mode, searchCfg)
-	}
-
-	var results []*storage.KnowledgeObject
-	// fts mode leaves diagnostics at zero values (CandidateCount = 0, no
-	// semantic report) so JSON output stays uniform.
-	var diagnostics service.SearchDiagnostics
-
-	switch mode {
-	case "vector":
-		results, diagnostics, err = svc.SemanticSearchFiltered(ctx, query, filter, sem, searchCfg)
-	case "fts":
-		results, err = svc.FindByTextFiltered(ctx, query, filter)
-	default: // "hybrid"
-		results, diagnostics, err = svc.HybridSearchFilteredWithDiagnostics(ctx, query, filter, sem, searchCfg)
-	}
-
-	if err != nil {
-		return fmt.Errorf("find (%s): %w", mode, err)
-	}
-	printSemanticNotice(cmd, diagnostics)
-
-	// --facets: show metadata type count breakdown before results.
-	if facets {
-		counts, fErr := svc.FacetCounts(ctx, filter)
-		if fErr == nil {
-			if isJSONOutput() {
-				return outputJSON(os.Stdout, map[string]any{
-					"objects":     results,
-					"total":       len(results),
-					"query":       query,
-					"mode":        mode,
-					"facets":      counts,
-					"diagnostics": diagnostics,
-				})
-			}
-			fmt.Printf("Facets (metadata type):\n")
-			for t, c := range counts {
-				fmt.Printf("  %-20s %d\n", t, c)
-			}
-			fmt.Println()
-		}
-	}
-
-	if isJSONOutput() {
-		return outputJSON(os.Stdout, map[string]any{
-			"objects":     results,
-			"total":       len(results),
-			"query":       query,
-			"mode":        mode,
-			"diagnostics": diagnostics,
-		})
-	}
-
-	fmt.Printf("Search [%s]: %q (%d results)\n\n", mode, query, len(results))
-
-	if len(results) == 0 {
-		// T-0574: distinguish "nothing matched any token" from "matches existed
-		// but the reranker dropped them all under MinScore". The first surfaces
-		// suggestions; the second surfaces threshold context.
-		if diagnostics.CandidateCount > 0 && diagnostics.BelowThresholdCount > 0 {
-			fmt.Printf("No results above threshold (%.2f).\n", diagnostics.Threshold)
-			fmt.Printf("Matched %d candidate%s, all below threshold. Top below-threshold score: %.2f.\n",
-				diagnostics.CandidateCount,
-				pluralS(diagnostics.CandidateCount),
-				diagnostics.TopBelowThresholdScore)
-			fmt.Println("Run with --explain to see which docs were dropped.")
+// findSearchKnobs is the resolved strategy as the request's search block.
+// Every knob travels, so dpkms applies what ctxt resolved (ADR-077 §6);
+// a count left at zero means unset and takes dpkms's default.
+func findSearchKnobs(sc config.SearchConfig) dpkmsclient.FindSearch {
+	positive := func(n int) *int {
+		if n <= 0 {
 			return nil
 		}
-		printFindSuggestions(cmd, ctx, svc, query)
+		return &n
+	}
+	f := func(v float64) *float64 { return &v }
+	return dpkmsclient.FindSearch{
+		RRFK:                   positive(sc.RRF.K),
+		FTSWeight:              f(sc.RRF.FTSWeight),
+		VectorWeight:           f(sc.RRF.VectorWeight),
+		FTSPool:                positive(sc.CandidatePool.FTS),
+		VectorPool:             positive(sc.CandidatePool.Vector),
+		MinScore:               f(sc.MinScore),
+		FallbackToFTS:          &sc.FallbackToFTS,
+		MentionBoostPerMention: f(sc.Reranker.MentionBoostPerMention),
+		MaxMentionBoost:        f(sc.Reranker.MaxMentionBoost),
+		DirectBacklinkBoost:    f(sc.Reranker.DirectBacklinkBoost),
+		HopBacklinkBoost:       f(sc.Reranker.HopBacklinkBoost),
+	}
+}
+
+// findFilter is the request's metadata facet filter from find's flags.
+// dpkms validates the dates.
+func findFilter(cmd *cobra.Command) dpkmsclient.FindFilter {
+	var f dpkmsclient.FindFilter
+	f.MetaType, _ = cmd.Flags().GetString("meta-type")
+	f.Topic, _ = cmd.Flags().GetString("topic")
+	f.Person, _ = cmd.Flags().GetString("person")
+	f.SourceType, _ = cmd.Flags().GetString("source-type")
+	f.Since, _ = cmd.Flags().GetString("since")
+	f.Until, _ = cmd.Flags().GetString("until")
+	return f
+}
+
+// renderFind prints a find response: the objects, and the facet
+// breakdown when asked for.
+func renderFind(query string, res *dpkmsclient.FindResponse, facets bool) error {
+	d := res.Diagnostics
+	if isJSONOutput() {
+		doc := map[string]any{
+			"objects":     res.Objects,
+			"total":       len(res.Objects),
+			"query":       query,
+			"mode":        res.Mode,
+			"diagnostics": d,
+		}
+		if facets {
+			counts := res.Facets
+			if counts == nil {
+				counts = map[string]int{}
+			}
+			doc["facets"] = counts
+		}
+		return outputJSON(os.Stdout, doc)
+	}
+
+	if facets {
+		types := make([]string, 0, len(res.Facets))
+		for t := range res.Facets {
+			types = append(types, t)
+		}
+		sort.Strings(types)
+		fmt.Printf("Facets (metadata type):\n")
+		for _, t := range types {
+			fmt.Printf("  %-20s %d\n", t, res.Facets[t])
+		}
+		fmt.Println()
+	}
+
+	fmt.Printf("Search [%s]: %q (%d results)\n\n", res.Mode, query, len(res.Objects))
+	if len(res.Objects) == 0 {
+		printBelowThreshold(d)
+		if d.CandidateCount > 0 && d.BelowThresholdCount > 0 {
+			fmt.Println("Run with --explain to see which docs were dropped.")
+		}
 		return nil
 	}
 
 	headers := []string{"ID", "Type", "Created"}
-	var rows [][]string
-	for _, obj := range results {
-		rows = append(rows, []string{
-			obj.ID,
-			obj.Type,
-			obj.CreatedAt.Format("2006-01-02 15:04"),
-		})
+	rows := make([][]string, 0, len(res.Objects))
+	for _, obj := range res.Objects {
+		rows = append(rows, []string{obj.ID, obj.Type, obj.CreatedAt.Format("2006-01-02 15:04")})
 	}
 	printTable(os.Stdout, headers, rows)
-
-	// T-0581: surface staleness so operators see when their hits include
-	// objects pending pipeline upgrade. Soft signal — search still
-	// returned the (possibly stale) results above.
-	if diagnostics.StalenessWarning != nil && diagnostics.StalenessWarning.Count > 0 {
-		fmt.Printf("\nNote: %s\n", diagnostics.StalenessWarning.Reason)
-	}
+	printStaleness(d)
 	return nil
 }
 
-// runFindExplain executes a hybrid search and prints per-result score breakdowns.
-// filter is the facet filter the non-explain path uses, so both paths return
-// the same result set.
-func runFindExplain(ctx context.Context, cmd *cobra.Command, svc *service.Service, sem retrieval.SemanticSource, query string, filter storage.ObjectFilter, mode string, searchCfg config.SearchConfig) error {
-	envelope, err := svc.HybridSearchExplainFilteredWithDiagnostics(ctx, query, filter, sem, searchCfg)
-	if err != nil {
-		return fmt.Errorf("find explain (%s): %w", mode, err)
+// findExplainResult is one --explain result: the object and why it
+// ranked where it did.
+type findExplainResult struct {
+	Object       *storage.KnowledgeObject       `json:"object"`
+	Breakdown    dpkmsclient.FindScoreBreakdown `json:"score_breakdown"`
+	DocumentView pluginapi.DocumentProjection   `json:"document_view"`
+}
+
+// renderFindExplain prints a hybrid find response with its per-result
+// score breakdowns.
+func renderFindExplain(query string, res *dpkmsclient.FindResponse) error {
+	if len(res.Explain) != len(res.Objects) {
+		return fmt.Errorf("find explain: dpkms answered %d objects and %d score breakdowns", len(res.Objects), len(res.Explain))
 	}
-	explainResults := envelope.Results
-	diagnostics := envelope.Diagnostics
-	printSemanticNotice(cmd, diagnostics)
+	results := make([]findExplainResult, len(res.Objects))
+	for i, obj := range res.Objects {
+		x := res.Explain[i]
+		if x.ID != obj.ID {
+			return fmt.Errorf("find explain: breakdown %d is for %s, not %s", i, x.ID, obj.ID)
+		}
+		results[i] = findExplainResult{Object: obj, Breakdown: x.Breakdown, DocumentView: x.DocumentView}
+	}
+	d := res.Diagnostics
 
 	if isJSONOutput() {
 		return outputJSON(os.Stdout, map[string]any{
-			"results":     explainResults,
-			"total":       len(explainResults),
+			"results":     results,
+			"total":       len(results),
 			"query":       query,
-			"mode":        mode,
-			"diagnostics": diagnostics,
+			"mode":        res.Mode,
+			"diagnostics": d,
 		})
 	}
 
-	fmt.Printf("Search [%s] --explain: %q (%d results)\n\n", mode, query, len(explainResults))
-
-	if len(explainResults) == 0 {
-		// T-0574: surface threshold context when candidates surfaced but were
-		// all dropped below MinScore.
-		if diagnostics.CandidateCount > 0 && diagnostics.BelowThresholdCount > 0 {
-			fmt.Printf("No results above threshold (%.2f).\n", diagnostics.Threshold)
-			fmt.Printf("Matched %d candidate%s, all below threshold. Top below-threshold score: %.2f.\n",
-				diagnostics.CandidateCount,
-				pluralS(diagnostics.CandidateCount),
-				diagnostics.TopBelowThresholdScore)
-		}
+	fmt.Printf("Search [%s] --explain: %q (%d results)\n\n", res.Mode, query, len(results))
+	if len(results) == 0 {
+		printBelowThreshold(d)
 		return nil
 	}
-
-	for i, r := range explainResults {
-		obj := r.Object
+	for i, r := range results {
 		b := r.Breakdown
-		label := koLabel(obj)
-		fmt.Printf("%d. %s\n", i+1, label)
+		fmt.Printf("%d. %s\n", i+1, koLabel(r.Object))
 		fmt.Printf("   total=%.4f  fts=%.4f  vector=%.4f  mention=%.4f  graph=%.4f\n",
 			b.Total, b.FTS, b.Vector, b.MentionBoost, b.GraphRelevance)
 		fmt.Println()
 	}
-
-	if diagnostics.BelowThresholdCount > 0 {
-		// T-0574: we surface the count + top dropped score here. Listing each
-		// dropped candidate's per-leg breakdown is a follow-up (would need
-		// HybridSearchExplainFilteredWithDiagnostics to also return the
-		// dropped ranking.Result slice; out of scope for this task).
+	if d.BelowThresholdCount > 0 {
 		fmt.Printf("(%d additional candidate%s dropped below threshold %.2f; top below-threshold score: %.2f)\n",
-			diagnostics.BelowThresholdCount,
-			pluralS(diagnostics.BelowThresholdCount),
-			diagnostics.Threshold,
-			diagnostics.TopBelowThresholdScore)
+			d.BelowThresholdCount, pluralS(d.BelowThresholdCount), d.Threshold, d.TopBelowThresholdScore)
 	}
-	if diagnostics.StalenessWarning != nil && diagnostics.StalenessWarning.Count > 0 {
-		fmt.Printf("\nNote: %s\n", diagnostics.StalenessWarning.Reason)
-	}
+	printStaleness(d)
 	return nil
+}
+
+// printBelowThreshold explains an empty result whose candidates all
+// scored under the threshold.
+func printBelowThreshold(d dpkmsclient.FindDiagnostics) {
+	if d.CandidateCount == 0 || d.BelowThresholdCount == 0 {
+		return
+	}
+	fmt.Printf("No results above threshold (%.2f).\n", d.Threshold)
+	fmt.Printf("Matched %d candidate%s, all below threshold. Top below-threshold score: %.2f.\n",
+		d.CandidateCount, pluralS(d.CandidateCount), d.TopBelowThresholdScore)
+}
+
+// printStaleness notes results that are pending a pipeline upgrade. The
+// results above it still stand.
+func printStaleness(d dpkmsclient.FindDiagnostics) {
+	if w := d.StalenessWarning; w != nil && w.Count > 0 {
+		fmt.Printf("\nNote: %s\n", w.Reason)
+	}
 }
 
 // pluralS returns "s" for n != 1, otherwise "". Helper for grammatical
@@ -416,12 +470,38 @@ func pluralS(n int) string {
 	return "s"
 }
 
-// findSemanticSource builds the semantic leg for one find run: the model
-// registry on the command's store, the embedding resolver with find's
-// --embedding-* flags (transport-only for a registered model), and, inside a
-// REPL session, blending with the session's earlier query vectors of the
-// same model.
-func findSemanticSource(store storage.StorageDriver, state *repl.SessionState) (retrieval.SemanticSource, error) {
+// printFindNotice tells the operator, on stderr, when the semantic leg
+// did not run and the results are full-text only. JSON output carries the
+// same report under diagnostics.semantic.
+func printFindNotice(cmd *cobra.Command, sem *dpkmsclient.FindSemanticReport) {
+	if sem == nil || sem.OK() {
+		return
+	}
+	fmt.Fprintf(cmd.ErrOrStderr(), "notice: %s\n", sem.Notice)
+}
+
+// runFindGraphLocal runs find --graph in process against the local
+// store, with the default embedding model's provider resolved here and
+// find's --embedding-* flags applied.
+func runFindGraphLocal(ctx context.Context, cmd *cobra.Command, q findGraphQuery, opts searchgraph.Options, d graphDelivery) error {
+	svc, cleanup, err := newService()
+	if err != nil {
+		return err
+	}
+	// release is idempotent so the graph viewer can let go of the
+	// service before it starts serving, which may last minutes.
+	release := sync.OnceFunc(cleanup)
+	defer release()
+	if q.sem, err = findSemanticSource(svc.Store); err != nil {
+		return fmt.Errorf("find: %w", err)
+	}
+	return runFindGraph(ctx, cmd, svc, release, q, opts, d)
+}
+
+// findSemanticSource builds --graph's semantic leg: the model registry on
+// the command's store and the embedding resolver with find's
+// --embedding-* flags (transport-only for a registered model).
+func findSemanticSource(store storage.StorageDriver) (retrieval.SemanticSource, error) {
 	models, err := registry.ForDriver(store)
 	if err != nil {
 		return retrieval.SemanticSource{}, err
@@ -430,23 +510,10 @@ func findSemanticSource(store storage.StorageDriver, state *repl.SessionState) (
 	r.Registry = models
 	r.Flags = findEmbedding
 	r.HTTPClient = findEmbeddingHTTPClient
-	src := retrieval.SemanticSource{Models: models, Resolver: embeddings.NewProviderResolver(r)}
-	if state != nil {
-		src.Blend = func(modelID string, vec []float32) []float32 {
-			sessionVec := state.SessionContextVector(modelID)
-			state.PushQueryVector(modelID, vec)
-			if sessionVec == nil {
-				return vec
-			}
-			return search.BlendVectors(vec, sessionVec, 0.85)
-		}
-	}
-	return src, nil
+	return retrieval.SemanticSource{Models: models, Resolver: embeddings.NewProviderResolver(r)}, nil
 }
 
-// printSemanticNotice tells the operator, on stderr, when the semantic leg
-// did not run and the results are full-text only. JSON output carries the
-// same report under diagnostics.semantic.
+// printSemanticNotice is printFindNotice for --graph's in-process search.
 func printSemanticNotice(cmd *cobra.Command, d service.SearchDiagnostics) {
 	if d.Semantic == nil || d.Semantic.OK() {
 		return
@@ -454,45 +521,8 @@ func printSemanticNotice(cmd *cobra.Command, d service.SearchDiagnostics) {
 	fmt.Fprintf(cmd.ErrOrStderr(), "notice: %s\n", d.Semantic.Notice)
 }
 
-// printFindSuggestions runs a prefix FTS query and prints "Did you mean?" hints.
-// Uses the first word of the original query as the prefix stem.
-func printFindSuggestions(cmd *cobra.Command, ctx context.Context, svc interface {
-	FindByText(context.Context, string, int) ([]*storage.KnowledgeObject, error)
-}, query string) {
-	// Build prefix query from first word.
-	firstWord := query
-	if idx := strings.IndexByte(query, ' '); idx > 0 {
-		firstWord = query[:idx]
-	}
-	if firstWord == "" {
-		return
-	}
-	prefixQuery := firstWord + " *"
-	suggestions, err := svc.FindByText(ctx, prefixQuery, 3)
-	if err != nil || len(suggestions) == 0 {
-		return
-	}
-
-	// Collect unique labels to surface as hints (max 3).
-	var hints []string
-	seen := make(map[string]bool)
-	for _, obj := range suggestions {
-		label := koLabel(obj)
-		if !seen[label] {
-			hints = append(hints, label)
-			seen[label] = true
-		}
-	}
-	if len(hints) == 0 {
-		return
-	}
-	fmt.Fprintf(cmd.OutOrStdout(), "Did you mean:\n")
-	for _, h := range hints {
-		fmt.Fprintf(cmd.OutOrStdout(), "  • %s\n", h)
-	}
-}
-
-// buildFindFilter constructs an ObjectFilter from find-command metadata facet flags.
+// buildFindFilter constructs --graph's ObjectFilter from find's metadata
+// facet flags.
 func buildFindFilter(cmd *cobra.Command, limit int) storage.ObjectFilter {
 	f := storage.ObjectFilter{Limit: limit}
 

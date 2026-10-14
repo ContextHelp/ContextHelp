@@ -145,6 +145,10 @@ Semantic and hybrid search (`ctxt find`), ingest, and re-embedding
 it once in config, and override it for a single run without editing
 config.
 
+`ctxt find` sends its query to dpkms, which embeds it with the settings
+where `dpkms serve` runs (its `dpkms.yaml` and environment). ctxt's own
+settings reach only the `ctxt embeddings` commands and `ctxt find --graph`.
+
 This section is the settings reference. To turn semantic search on, see
 [Turn on semantic search](../manual/workflows/semantic-search.md); to
 switch or retire models, see
@@ -176,7 +180,7 @@ Each setting is resolved on its own, highest first:
 
 | Layer | Example |
 |-------|---------|
-| Flag (on `find`, `embeddings provider`, `embeddings register`) | `--embedding-provider`, `--embedding-model`, `--embedding-endpoint` |
+| Flag (on `find --graph`, `embeddings provider`, `embeddings register`) | `--embedding-provider`, `--embedding-model`, `--embedding-endpoint` |
 | Environment | `CTXT_EMBEDDING_PROVIDER`, `CTXT_EMBEDDING_MODEL`, `CTXT_EMBEDDING_ENDPOINT`, `CTXT_EMBEDDING_API_KEY_ENV` |
 | `-c` override | `-c providers.embedding.model=snowflake-arctic-embed2` |
 | Registered model | the model's endpoint and `api_key_env`, when a command targets a `model_id` |
@@ -188,9 +192,9 @@ still uses the model from env or config. The environment outranks `-c`
 for these settings.
 
 ```bash
-ctxt find "onboarding" --embedding-model snowflake-arctic-embed2
-CTXT_EMBEDDING_MODEL=snowflake-arctic-embed2 ctxt find "onboarding"
-ctxt find "onboarding" -c providers.embedding.model=snowflake-arctic-embed2
+ctxt embeddings provider --embedding-model snowflake-arctic-embed2
+CTXT_EMBEDDING_MODEL=snowflake-arctic-embed2 ctxt embeddings provider
+ctxt embeddings provider -c providers.embedding.model=snowflake-arctic-embed2
 ```
 
 ### Use a remote Ollama for one run
@@ -199,8 +203,8 @@ Forward a local port to the remote machine's Ollama (port 11434), for
 example with an SSH tunnel on local port 11555, then point the run at it:
 
 ```bash
-ctxt find "onboarding" --embedding-endpoint http://127.0.0.1:11555
-CTXT_EMBEDDING_ENDPOINT=http://127.0.0.1:11555 dpkms serve   # ingest + embeddings migrate
+ctxt find "onboarding" --graph --embedding-endpoint http://127.0.0.1:11555
+CTXT_EMBEDDING_ENDPOINT=http://127.0.0.1:11555 dpkms serve   # ingest, embeddings migrate, find queries
 ```
 
 The remote Ollama must have the model pulled.
@@ -247,8 +251,8 @@ registry entry and shown as "fixed by registry" (and listed under `fixed`
 in JSON): its stored vectors came from that model. Flags, env and `-c` can still change its endpoint and
 `api_key_env`, for example to reach it through a tunnel, but a value that
 would change its backend, model or dimension fails the command
-(`ctxt find` answers from full-text search with a `provider_error` notice
-instead).
+(`ctxt find --graph` answers from full-text search with a `provider_error`
+notice instead).
 
 `dpkms serve` prints the resolved provider at startup.
 
