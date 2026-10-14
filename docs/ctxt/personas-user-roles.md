@@ -104,8 +104,8 @@ Here are the detailed personas for roles 2 through 19.
 *   **Motivation:** Her mobile UI is small; she needs specific data shapes (e.g., just the summary, not the full text) and specific languages.
 *   **Key Objective:** Send parameters via the API to negotiate the exact content language and formatting required for the mobile view.
 
-### 19. Plugin Developer
+### 19. Step Developer
 *   **Name:** **Paige**
 *   **Context:** Open-source contributor wanting to add French language support.
-*   **Motivation:** The core team isn't prioritizing I18N, so she wants to build it herself as an extension.
-*   **Key Objective:** Extend the bookmark schema to store `translations` map data without forking or breaking the core ContextHelp engine code.
+*   **Motivation:** The core team isn't prioritizing I18N, so she wants to build it herself as a translation step published to a step registry.
+*   **Key Objective:** Store `translations` map data on objects through a pipeline step, without forking or breaking the core ContextHelp engine code.

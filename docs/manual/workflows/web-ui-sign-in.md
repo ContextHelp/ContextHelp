@@ -57,7 +57,7 @@ The session acts as your token's principal, so entitlements and quotas apply as 
 
 | Allowed, if your token's role has it | Refused (`403 INSUFFICIENT_SCOPE`) |
 |---|---|
-| Reading and searching objects, entities, jobs, inbox, feeds, aliases, suggestions, saved searches, search history, reminders, import runs, and the step registry list (every role) | Pipelines, steps, registry changes, watches, the audit log, federation, the MCP mount |
+| Reading and searching objects, entities, jobs, inbox, feeds, aliases, saved searches, search history, reminders, import runs, and the step registry list (every role) | Pipelines, steps, registry changes, watches, the audit log, federation, the MCP mount |
 | Retrying a job (`writer`, `admin`); deleting an object (`admin`) | Every other write (capture, analyze, inbox triage, feed and alias changes, …) |
 | The live event stream (every role); signing out (every session) | Minting new sign-in links |
 

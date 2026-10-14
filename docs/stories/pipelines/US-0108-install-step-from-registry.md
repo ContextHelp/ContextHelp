@@ -5,7 +5,7 @@ status: shipped
 # US-0108: Install Step from Registry
 
 **System Types:** dpkms (self-hosted), dpkms cloud
-**Personas:** [Platform Integrators](../../personas/README.md), [Plugin Developers](../../personas/README.md), [Registry Operators](../../personas/README.md)
+**Personas:** [Platform Integrators](../../personas/README.md), [Step Developers](../../personas/README.md), [Registry Operators](../../personas/README.md)
 
 ---
 

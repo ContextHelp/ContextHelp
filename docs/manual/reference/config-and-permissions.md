@@ -94,7 +94,7 @@ A token needs at least one known role; an unknown or missing role fails `ctxt co
 
 | Scope | Bundles | Routes (under `/api/v1`) and gRPC methods |
 |---|---|---|
-| `read:objects` | reader, writer, admin | `GET` objects (list, facets, show, related, edges), search, the search graph, entities (list, search, resolve, show, backlinks), aliases, saved searches, search history, suggestions; `POST /find`; `GET /events`; gRPC `QueryService/*`, `EntityService/*` |
+| `read:objects` | reader, writer, admin | `GET` objects (list, facets, show, related, edges), search, the search graph, entities (list, search, resolve, show, backlinks), aliases, saved searches, search history; `POST /find`; `GET /events`; gRPC `QueryService/*`, `EntityService/*` |
 | `read:mcp` | reader, writer, admin | the MCP mount (`/mcp`) |
 | `read:inbox` | reader, writer, admin | `GET /inbox`, `inbox/queue` |
 | `read:feeds` | reader, writer, admin | `GET /feeds` |
@@ -116,7 +116,7 @@ A token needs at least one known role; an unknown or missing role fails `ctxt co
 | `process:inbox` | admin | `POST /inbox/{id}/triage`, `inbox/{id}/discard`, `inbox/clear` |
 | `sync:registries` | admin | `POST /steps/registries/fetch`, `steps/registries/{url}/update`, `entities/registry-sync` |
 | `admin:pipelines` | admin | `POST /pipelines`, `pipelines/{name}/archive`, `pipelines/{name}/unarchive`; `DELETE /pipelines/{name}` |
-| `admin:plugins` | admin | `POST /steps/install`; `DELETE /steps/{name}` |
+| `admin:plugins` | admin | `POST /steps/install`; `DELETE /steps/{name}` (installs and uninstalls pipeline steps; the name predates [ADR-078](https://github.com/ContextHelp/ContextHelp/blob/next/docs/decisions/ADR-078-no-plugin-system.md): there are no plugins) |
 | `admin:watches` | admin | `POST /watches`, `watches/{id}/pause`, `watches/{id}/resume`; `PATCH` and `DELETE /watches/{id}` |
 | `admin:audit` | admin | `GET /audit-log` |
 | `read:ui` | reader, writer, admin; never a browser session | `POST /ui/login-codes` (`ctxt ui open`) |
@@ -266,8 +266,7 @@ dpkms pipeline step registry autoupdate <registry-url> --disable
 
 ## Permission and isolation policy references
 
-- Plugin isolation: [`docs/plugins/plugin-isolation.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/plugins/plugin-isolation.md)
-- Plugin API: [`docs/plugins/plugins-api.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/plugins/plugins-api.md)
+- No plugin system: [`docs/decisions/ADR-078-no-plugin-system.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/decisions/ADR-078-no-plugin-system.md)
 
 ## Operational safeguards
 
@@ -279,4 +278,4 @@ dpkms pipeline step registry autoupdate <registry-url> --disable
 ## Story alignment
 
 - Config/admin: `US-0027`, `US-0030`, `US-0031`
-- Plugin/pipeline permissions: `US-0029`, `US-0042` to `US-0045`, `US-0112`
+- Step/pipeline permissions: `US-0029`, `US-0112`

@@ -73,10 +73,11 @@ Full export/import support for Markdown + JSON + SQLite bundles, preserving
 entities, edges, provenance, IDs, and attachments, enabling complete migration
 without data loss or broken links.
 
-## Plugin Architecture (Formal Contract + Permissions)
-A formal plugin contract for extending pipelines, registries, storage backends,
-query operators, encryption providers, authentication methods, export formats,
-and job behaviors — enforced through strict permission scopes.
+## Extension Surfaces (No Plugin System)
+Pipelines, steps (built-in, or installed from step registries),
+registries and, once implemented, external hooks extend dPKMS, behind ADR-023 permission scopes.
+There is no in-process plugin contract
+([ADR-078](../decisions/ADR-078-no-plugin-system.md)).
 
 ## Performance Guarantees (Fast at Scale)
 Indexing strategy for FTS + vectors + graph adjacency, background compaction,

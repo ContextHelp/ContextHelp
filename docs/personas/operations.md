@@ -253,9 +253,9 @@ dpkms reboot --port 8081         # SIGHUP: drain and exit; a supervisor relaunch
 - Clients pick an instance with `--instance`, `CTXT_INSTANCE` or
   `ctxt instance use`.
 
-#### Plugins and Steps
+#### Steps
 
-There is no plugin install/load command; Go plugins are compiled in. External
+There is no plugin system ([ADR-078](../decisions/ADR-078-no-plugin-system.md)). External
 pipeline steps are managed with `dpkms pipeline step list|install|uninstall` and
 `dpkms pipeline step registry ...`.
 
@@ -311,7 +311,7 @@ Operations teams interact with the system through these key stories:
 
 ### Configuration & Setup
 - [US-0027](../stories/admin/US-0027-configure-ai-provider.md) — Configure AI Provider (hot-reload, cost tracking, health checks)
-- [US-0029](../stories/admin/US-0029-install-and-enable-plugin.md) — Install and Enable Plugin (permission management)
+- [US-0029](../stories/admin/US-0029-install-steps-from-registry.md) — Install Pipeline Steps From A Registry
 - [US-0031](../stories/admin/US-0031-configure-encryption-and-secrets.md) — Configure Encryption and Secrets (key management, HSM)
 
 ### Monitoring & Watch

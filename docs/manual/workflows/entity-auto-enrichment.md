@@ -21,7 +21,7 @@ applies to any canonical entity.
 
 ## Runtime note
 
-The durable building blocks are generic enrichment, custom pipelines, plugins,
+The durable building blocks are generic enrichment, custom pipelines, steps,
 registries, entity mentions, watches, and approval-gated diffs. Dedicated
 `ctxt osint ...` commands are the story-level target for OSINT profile
 workflows. If those commands are not available, use the pipeline path shown
@@ -72,8 +72,8 @@ Treat every field as source-backed.
 |---|---|---|
 | Official website | website, contact pages, terms, privacy, HQ hints | `kit/ibr` + URL pipeline |
 | Business registry | legal name, registry ID, status, jurisdiction, registered address | HQ-selected registry scraped with `kit/ibr` |
-| Professional graph | employee range, aliases, leadership, social URLs | authenticated fetch/API-backed plugin via `kit/ibr` |
-| Internal systems | CRM owner, support owner, contractual resources | custom plugin/local registry |
+| Professional graph | employee range, aliases, leadership, social URLs | authenticated fetch/API-backed step via `kit/ibr` |
+| Internal systems | CRM owner, support owner, contractual resources | custom step/local registry |
 | Known contacts graph | execs, employees, consultants, founders, investors, tool owners | graph/contact relevance pass with `kit/eva` |
 
 For each source, record URL or endpoint, fetch method, credentials, rate limit,
@@ -524,7 +524,6 @@ ctxt osint diff @organization.acme --since 7d
 
 - [`./enrichment-processing.md`](./enrichment-processing.md)
 - [`../admin-extensibility/pipeline-management.md`](../admin-extensibility/pipeline-management.md)
-- [`../admin-extensibility/plugin-development.md`](../admin-extensibility/plugin-development.md)
 - [`../reference/jurisdiction-registry-recipes.md`](../reference/jurisdiction-registry-recipes.md)
 - [`docs/dpkms/schema-entity.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/dpkms/schema-entity.md)
 - [`docs/dpkms/registries.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/dpkms/registries.md)

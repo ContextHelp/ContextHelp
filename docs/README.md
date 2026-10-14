@@ -48,7 +48,7 @@ docs/
 │   ├── README.md                  # Manual index
 │   ├── personas/                  # Persona quickstarts
 │   ├── workflows/                 # Task-oriented workflows
-│   ├── admin-extensibility/       # Admin, pipelines, plugins
+│   ├── admin-extensibility/       # Admin, pipelines, step registries
 │   ├── operations/                # Operations runbook
 │   ├── reference/                 # API, query, config references
 │   ├── troubleshooting/           # FAQ and issue playbooks
@@ -135,16 +135,6 @@ docs/
 │   ├── l10n-i18n.md              # Localization
 │   └── testing.md                # Testing strategy
 │
-├── plugins/                       # Plugin system (cross-cutting)
-│   ├── README.md                  # Plugin overview
-│   ├── plugins.md                 # Plugin architecture
-│   ├── plugins-api.md             # Plugin API contract
-│   ├── plugin-isolation.md        # Plugin isolation
-│   ├── plugins-notifications.md   # Notification plugin
-│   ├── plugins-refresh.md         # Refresh plugin
-│   ├── plugins-github-pr-review-watcher.md  # PR review plugin
-│   └── examples/                  # Plugin examples
-│
 ├── api/                           # External APIs
 │   ├── README.md                  # API overview
 │   ├── api-rest.md                # REST API reference
@@ -178,7 +168,7 @@ docs/
 │   ├── admin-access.md            # Org + node access management
 │   └── billing-and-credits.md     # Subscriptions + credits model
 │
-├── marketplace/                   # Registry + plugin marketplace
+├── marketplace/                   # Registry + step marketplace
 │   └── README.md                  # Marketplace overview
 │
 ├── policy/                        # Entitlements, metering, receipts
@@ -207,7 +197,6 @@ docs/
 │   ├── enrichment/               # Enrichment stories
 │   ├── ingestion/                # Ingestion stories
 │   ├── operations/                # Operations stories
-│   ├── plugins/                   # Plugin stories
 │   └── search/                    # Search stories
 │
 ├── blog/                          # Blog posts
@@ -262,7 +251,7 @@ Building with or extending the system:
 - [architecture.md](architecture.md) - System architecture
 - [dpkms/README.md](dpkms/README.md) - Substrate layer
 - [ctxt/README.md](ctxt/README.md) - Brain layer
-- [plugins/plugins-api.md](plugins/plugins-api.md) - Plugin development
+- [ctxt/pipelines.md](ctxt/pipelines.md#extending-pipelines) - Extending pipelines
 - [api/api-rest.md](api/api-rest.md) - REST API
 - [api/api-grpc.md](api/api-grpc.md) - gRPC API
 
@@ -321,7 +310,6 @@ Integrating with external systems:
 - [integrations/](integrations/) - Integration examples
 - [api/api-rest.md](api/api-rest.md) - REST endpoints
 - [api/api-grpc.md](api/api-grpc.md) - gRPC services
-- [plugins/plugins.md](plugins/plugins.md) - Plugin architecture
 
 ### For Security & DevOps Teams
 Managing secrets, compliance, and secure deployments:
@@ -402,9 +390,8 @@ Managing secrets, compliance, and secure deployments:
 - [dpkms/privacy.md](dpkms/privacy.md) - Privacy guarantees
 
 ### Extensibility
-- [plugins/plugins.md](plugins/plugins.md) - Plugin architecture
-- [plugins/plugins-api.md](plugins/plugins-api.md) - Plugin API
-- [plugins/examples/](plugins/examples/) - Plugin examples
+- [architecture.md](architecture.md#extensibility-model) - Extension surfaces: pipelines, steps, registries
+- [decisions/ADR-078-no-plugin-system.md](decisions/ADR-078-no-plugin-system.md) - No plugin system
 
 ### Configuration & Profiles
 - [configuration-structure.md](configuration-structure.md) - Configuration file structure
@@ -482,7 +469,7 @@ See [dpkms/registries.md](dpkms/registries.md), [dpkms/mentions.md](dpkms/mentio
 - **Simple notes, no semantic complexity** → journals, to-dos, basic bookmarks don't need entity resolution
 - **Want zero-configuration** → Pocket/Raindrop start in 30s; ContextHelp requires setup
 - **Occasional AI usage** → graph value compounds over time; light AI use doesn't justify the overhead
-- **Primary interface is mobile** → CLI-first; mobile is a plugin, not a first-class surface
+- **Primary interface is mobile** → CLI-first; mobile is a companion app, not a first-class surface
 
 ---
 
@@ -517,7 +504,7 @@ A: See [dpkms-or-ctxt.md](dpkms-or-ctxt.md)
 A: See [developer-quickstart.md](developer-quickstart.md) and [cli-quickstart.md](cli-quickstart.md)
 
 **Q: How do I extend the system?**
-A: See [plugins/plugins-api.md](plugins/plugins-api.md)
+A: Through pipelines, steps and registries; see [architecture.md](architecture.md#extensibility-model). There is no plugin system.
 
 **Q: What's the query language?**
 A: See [dpkms/query-language-spec.md](dpkms/query-language-spec.md)

@@ -26,7 +26,7 @@ Registries supply:
 - **entity definitions** (canonical concepts)
 - aliases and translations
 - patterns, examples, embeddings
-- metadata and plugin modules
+- metadata and step listings
 
 Registries may be:
 
@@ -163,7 +163,6 @@ Mentions (`@ui.best-practice`) reference **Entities**, which are canonical, stab
 
 - registries
 - local user-defined entity files
-- plugins
 
 ### Entity Retrieval Path
 

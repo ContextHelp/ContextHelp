@@ -30,7 +30,7 @@ Related:
 
 - **Logs are not sanitized.** `slog` output, including `-V` / `--verbose`, is written as-is; no config key or env var redacts it. Check logs before sharing them.
 - **`ctxt config show --format json|yaml`** prints the effective config unredacted, tokens included.
-- **No plugin sandbox.** No plugin is loaded at runtime; manifest permissions are validated, not enforced. [Plugin Isolation](../plugins/plugin-isolation.md) and [ADR-027](../decisions/ADR-027-plugin-isolation-sandboxing.md) are design.
+- **No sandbox for installed steps.** There is no plugin system ([ADR-078](../decisions/ADR-078-no-plugin-system.md)), and no pipeline executes installed external steps yet; when one does, nothing sandboxes it ([ADR-055](../decisions/ADR-055-sandbox-isolation-levels.md) is design).
 
 Details: [What output shows secrets](./secrets-validation-and-log-sanitization.md#what-output-shows-secrets).
 
@@ -44,7 +44,7 @@ Details: [What output shows secrets](./secrets-validation-and-log-sanitization.m
 
 - [ADR-019: Encryption and Privacy](../decisions/ADR-019-encryption-and-privacy.md)
 - [ADR-023: Authentication and Authorization Model](../decisions/ADR-023-authentication-authorization-model.md)
-- [ADR-027: Plugin Isolation and Sandboxing](../decisions/ADR-027-plugin-isolation-sandboxing.md) (not implemented)
+- [ADR-078: No Plugin System](../decisions/ADR-078-no-plugin-system.md)
 
 ## Reporting a vulnerability
 

@@ -12,7 +12,7 @@ Comprehensive guide for developing **dPKMS + `ctxt`**.
 - [Testing Strategy](#testing-strategy)
 - [Code Quality](#code-quality)
 - [Database & Migrations](#database--migrations)
-- [Plugin Development](#plugin-development)
+- [Adding a Pipeline Step](#adding-a-pipeline-step)
 - [Debugging](#debugging)
 - [Performance Optimization](#performance-optimization)
 - [Release Process](#release-process)
@@ -540,40 +540,29 @@ it up (`dpkms backup`), then move the file at `storage.path` aside.
 
 ---
 
-## Plugin Development
+## Adding a Pipeline Step
 
-See [docs/plugins/plugins-api.md](plugins/plugins-api.md) for complete plugin development guide.
+There is no plugin system ([ADR-078](decisions/ADR-078-no-plugin-system.md)).
+A built-in step implements `pipeline.PipelineStep` (`internal/pipeline/pipeline.go`):
 
-### Quick Start
-
-1. **Define plugin interface:**
 ```go
-type PipelinePlugin interface {
+type PipelineStep interface {
     Name() string
-    Execute(ctx context.Context, input any) (any, error)
+    Contract() StepContract
+    Run(ctx context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error)
 }
 ```
 
-2. **Implement plugin:**
-```go
-type MyPlugin struct{}
+1. Add the step under `internal/pipeline/steps/`, embedding
+   `pipeline.NewBaseContract(pipeline.StepContract{Requires: ..., Produces: ...})`.
+2. Add its constructor to the step tables in
+   `internal/pipeline/builtins/builtins.go` so pipeline definitions can name it.
+3. Reference it from a pipeline definition, or from
+   `pipelines.overrides.<pipeline>.extra_steps`.
 
-func (p *MyPlugin) Name() string {
-    return "my-plugin"
-}
-
-func (p *MyPlugin) Execute(ctx context.Context, input any) (any, error) {
-    // Plugin logic
-    return result, nil
-}
-```
-
-3. **Register plugin:**
-```go
-func init() {
-    plugins.Register(&MyPlugin{})
-}
-```
+A step that ships outside ctxt is an external step: a directory with a
+`SKILL.md` that reads `{"config": ..., "object": ...}` on stdin and writes the
+object on stdout, installed with `dpkms pipeline step install`.
 
 ---
 

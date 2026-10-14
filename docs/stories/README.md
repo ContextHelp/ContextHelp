@@ -161,7 +161,7 @@ Each story can be implemented on one or more of these deployment models:
 |----|-------|-------------|----------|
 | **US-0027** | [configure-ai-provider](./admin/US-0027-configure-ai-provider.md) | dpkms (self-hosted), dpkms cloud | Maintainers, Operations |
 | **US-0028** | [register-custom-pipeline](./admin/US-0028-register-custom-pipeline.md) | dpkms (self-hosted), dpkms cloud | Platform Integrators, Maintainers |
-| **US-0029** | [install-and-enable-plugin](./admin/US-0029-install-and-enable-plugin.md) | dpkms (self-hosted), dpkms cloud | Platform Integrators, Operations |
+| **US-0029** | [install-steps-from-registry](./admin/US-0029-install-steps-from-registry.md) | dpkms (self-hosted), dpkms cloud | Platform Integrators, Operations |
 | **US-0030** | [set-up-focus-profiles](./admin/US-0030-set-up-focus-profiles.md) | ctxt | Knowledge Workers, Maintainers |
 | **US-0031** | [configure-encryption-and-secrets](./admin/US-0031-configure-encryption-and-secrets.md) | dpkms (self-hosted), dpkms cloud | Operations, Maintainers |
 
@@ -177,7 +177,7 @@ Each story can be implemented on one or more of these deployment models:
 | **US-0104** | [delete-custom-pipeline](./pipelines/US-0104-delete-custom-pipeline.md) | dpkms (self-hosted), dpkms cloud | Platform Integrators, Maintainers |
 | **US-0105** | [archive-pipeline](./pipelines/US-0105-archive-pipeline.md) | dpkms (self-hosted), dpkms cloud | Platform Integrators, Maintainers |
 | **US-0106** | [enqueue-content-via-dpkms.md](./pipelines/US-0106-enqueue-content-via-dpkms.md) | dpkms (self-hosted), dpkms cloud | Knowledge Workers, Platform Integrators |
-| **US-0107** | [discover-local-steps](./pipelines/US-0107-discover-local-steps.md) | dpkms (self-hosted), dpkms cloud | Maintainers, Plugin Developers |
+| **US-0107** | [discover-local-steps](./pipelines/US-0107-discover-local-steps.md) | dpkms (self-hosted), dpkms cloud | Maintainers, Platform Integrators |
 | **US-0108** | [install-step-from-registry](./pipelines/US-0108-install-step-from-registry.md) | dpkms (self-hosted), dpkms cloud | Platform Integrators, Maintainers |
 | **US-0109** | [fetch-registry-manifest](./pipelines/US-0109-fetch-registry-manifest.md) | dpkms (self-hosted), dpkms cloud | Platform Integrators, Maintainers, Registry Operators |
 | **US-0110** | [check-registry-updates](./pipelines/US-0110-check-registry-updates.md) | dpkms (self-hosted), dpkms cloud | Platform Integrators, Maintainers |
@@ -207,15 +207,6 @@ Each story can be implemented on one or more of these deployment models:
 | **US-0039** | [agent-ingests-content-and-waits](./agents/US-0039-agent-ingests-content-and-waits.md) | dpkms (self-hosted), dpkms cloud | Agents/LLMs |
 | **US-0040** | [agent-composes-brief-programmatically](./agents/US-0040-agent-composes-brief-programmatically.md) | dpkms (self-hosted), dpkms cloud | Agents/LLMs |
 | **US-0041** | [agent-uses-constrained-enrichment](./agents/US-0041-agent-uses-constrained-enrichment.md) | dpkms (self-hosted) | Agents/LLMs, Platform Integrators |
-
-### Plugin & Extension (US-0042 to US-0045)
-
-| ID | Story | System Types | Personas |
-|----|-------|-------------|----------|
-| **US-0042** | [implement-custom-enrichment-plugin](./plugins/US-0042-implement-custom-enrichment-plugin.md) | dpkms (self-hosted), dpkms cloud | Platform Integrators, Maintainers |
-| **US-0043** | [implement-custom-ai-provider-plugin](./plugins/US-0043-implement-custom-ai-provider-plugin.md) | dpkms (self-hosted), dpkms cloud | Platform Integrators, Maintainers |
-| **US-0044** | [implement-registry-adapter-plugin](./plugins/US-0044-implement-registry-adapter-plugin.md) | dpkms (self-hosted), dpkms cloud | Platform Integrators |
-| **US-0045** | [implement-custom-ranking-algorithm](./plugins/US-0045-implement-custom-ranking-algorithm.md) | dpkms (self-hosted), dpkms cloud | Platform Integrators |
 
 ### Federation (US-0318 to US-0323)
 
@@ -285,7 +276,7 @@ Links to related stories
 - **US-0027 to US-0031** — Admin & Configuration
 - **US-0032 to US-0036** — Operations
 - **US-0037 to US-0041** — Agent Integration
-- **US-0042 to US-0045** — Plugins & Extensions
+- **US-0042 to US-0045** — retired (plugin stories; ctxt has no plugin system, see [ADR-078](../decisions/ADR-078-no-plugin-system.md))
 - **US-0046 to US-0060** — Advanced Features (enrichment, search, composition)
 - **US-0061+** — Multimodal Search (grouped under Search & Retrieval)
 - **US-0101 to US-0113** — Pipeline Management
@@ -388,9 +379,6 @@ Knowledge Compiler (US-0400-0409):
 **Importer Stories - Fully Documented (18):**
 - US-0300 to US-0317
 
-**Fully Documented - Plugins Category (4):**
-- US-0042, US-0043, US-0044, US-0045
-
 **Fully Documented - Multimodal (1):**
 - US-0061
 
@@ -403,4 +391,4 @@ Knowledge Compiler (US-0400-0409):
 **Knowledge Compiler - Fully Documented (10):**
 - US-0400, US-0401, US-0402, US-0403, US-0404, US-0405, US-0406, US-0407, US-0408, US-0409
 
-**Total: 120 stories across 14 categories**
+**Total: 116 stories across 13 categories**

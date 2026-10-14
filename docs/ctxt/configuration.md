@@ -56,7 +56,7 @@ CTXT_CONFIG=~/.config/contexthelp/dpkms.yaml ctxt config validate
 few settings people change first. A test decodes every `config/*.yaml`
 strictly and validates it, so the templates hold only real keys.
 
-Declared but not read by any command: `plugins`, `retrieval`,
+Declared but not read by any command: `retrieval`,
 `conventions`, `inbox`, `audit`, and `i18n` (printed by `ctxt config show`,
 used nowhere else). Setting them has no effect.
 

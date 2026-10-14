@@ -399,7 +399,8 @@ contracts/    eva JSON-shape contracts
 test/         integration, smoke, e2e, and parity suites
 web/ui/       React front end
 docs/         documentation, ADRs, analyses
-plugins/      plugin implementations
+extensions/   integrations outside ctxt (Raycast), each with a catalog.json
+skills/       agent skills, each with a catalog.json
 ```
 
 `test/parity` is worth knowing about: it holds static-analysis tests that catch

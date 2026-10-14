@@ -81,9 +81,6 @@ types with their own schemas via the same mechanism.
   the type) continue to work; default schema = open / permissive
 - [ ] JSON output (`ctxt list --json`, `ctxt entity show --json`)
   includes `entity_type` + `payload_schema_version` fields
-- [ ] Plugins can register a custom validation hook that runs
-  alongside built-in JSON Schema validation (e.g. cross-field rules,
-  external lookups)
 - [ ] `ctxt entity types` lists registered entity types + schema
   versions
 
@@ -174,7 +171,6 @@ Path: `tests/e2e/typed_entity/`
 - `registry_test.go::TestEntity_SchemaFromRegistry`
 - `registry_test.go::TestEntity_SchemaVersioning`
 - `compat_test.go::TestEntity_UntypedMentionsStillWork`
-- `plugin_test.go::TestEntity_CustomValidationHook`
 
 ---
 
@@ -205,9 +201,7 @@ Path: `tests/e2e/typed_entity/`
   for schema register / payload validation events
 - [US-0406](US-0406-associative-object-links.md) — typed payloads
   enrich the link graph (e.g. `event` extends `venue`)
-- [US-0044](../plugins/US-0044-implement-registry-adapter-plugin.md)
-  — registry adapter (delivers schemas alongside entity defs)
-- [US-0109](../plugins/US-0109-fetch-registry-manifest.md) — registry
+- [US-0109](../pipelines/US-0109-fetch-registry-manifest.md) — registry
   manifest fetch (extend to carry entity type schemas)
 
 ---

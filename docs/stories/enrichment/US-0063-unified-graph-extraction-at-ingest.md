@@ -89,23 +89,23 @@ func (s *GraphExtractorStep) Execute(ctx ExecutionContext,
 }
 ```
 
-### Node/Edge Types (from pluginapi constants)
+### Node/Edge Types (from internal/storage constants)
 
 ```go
 // Node types
-pluginapi.NodeTypeSection       = "section"
-pluginapi.NodeTypeTag           = "tag"
-pluginapi.NodeTypeEntityMention = "entity_mention"
-pluginapi.NodeTypeDecision      = "decision"
-pluginapi.NodeTypeTask          = "task"
-pluginapi.NodeTypeSummary       = "summary"
-pluginapi.NodeTypeCodeBlock     = "code_block"
+storage.NodeTypeSection       = "section"
+storage.NodeTypeTag           = "tag"
+storage.NodeTypeEntityMention = "entity_mention"
+storage.NodeTypeDecision      = "decision"
+storage.NodeTypeTask          = "task"
+storage.NodeTypeSummary       = "summary"
+storage.NodeTypeCodeBlock     = "code_block"
 
 // Edge types
-pluginapi.EdgeTypeContains    = "contains"
-pluginapi.EdgeTypeReferences  = "references"
-pluginapi.EdgeTypeResolvesTo  = "resolves_to"
-pluginapi.EdgeTypeDerivedFrom = "derives_from"
+storage.EdgeTypeContains    = "contains"
+storage.EdgeTypeReferences  = "references"
+storage.EdgeTypeResolvesTo  = "resolves_to"
+storage.EdgeTypeDerivedFrom = "derives_from"
 ```
 
 ### Extraction Prompt (pseudocode)

@@ -302,7 +302,7 @@ Tests for:
 - Permission checks before operations
 - Capability verification
 - Auth token validation
-- Plugin sandbox enforcement
+- Installed-step sandbox enforcement
 
 ### Cryptographic Correctness
 

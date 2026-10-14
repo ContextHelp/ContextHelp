@@ -40,7 +40,7 @@ directory watchers, `internal/watcher/`) and `ctxt capture tabs|history|schedule
 - **No configuration.** No `ambient:` config block; no code reads
   `policy/ambient.yaml`. `--ambient`, `--input`, `--skip` and `--window` on
   `ctxt capture` error out.
-- **No sessions in storage.** No `Session` type in `pkg/pluginapi`, no
+- **No sessions in storage.** No `Session` type in `internal/storage`, no
   `objects.session_id` column, no compose-by-session.
 - **No meeting recording.** No ScreenCaptureKit, WASAPI or PipeWire recorder;
   no mobile companion apps.

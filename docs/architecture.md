@@ -14,7 +14,7 @@ from
 
 With the introduction of **Mentions**, the system supports canonical references to stable entities, enabling semantic graphs, backlinks, and richer cross-document reasoning.
 
-A **plugin API** (`pkg/pluginapi`) defines in-process extension interfaces — pipeline steps, post-ingest hooks, alias resolvers, output generators, registry providers. The binaries do not load plugins yet; see [plugin-authoring-guide.md](plugin-authoring-guide.md#1-current-state).
+There is no plugin system ([ADR-078](decisions/ADR-078-no-plugin-system.md)). ctxt and dpkms are extended through pipelines, steps and registries (hooks are designed); see [Extensibility Model](#extensibility-model).
 
 ---
 
@@ -34,7 +34,6 @@ The system consists of two primary packages, each with distinct subsystems:
 - Registry System (Decentralized, Multi-Source, Federated)
 - Encryption & Key Management
 - Authentication & Authorization
-- Plugin API (`pkg/pluginapi`; not loaded at runtime yet)
 - Export/Import Contract (Portable Bundles)
 
 ### `ctxt` (The Agentic Brain)
@@ -194,20 +193,11 @@ Insight must create movement. Every capture becomes a decision, next step, draft
 #### Deterministic Behavior
 Given identical inputs, configurations, and registry states, the system must produce identical knowledge objects, tags, mentions, and entity resolutions.
 
-#### Plugin-Centric Customization
-Goal: plugins extend functional layers without modifying core code. The
-interfaces exist in `pkg/pluginapi`, but no plugin is loaded at runtime yet
-(see [Plugin Layer](#plugin-layer-extensibility-model)). Intended scope:
-
-- New knowledge object types
-- New pipelines and pipeline steps
-- New search operators and query capabilities
-- New job types and reactive behaviors
-- Custom routing, notifications, and enrichment logic
-- Storage backends and encryption providers
-- Registry connectors and federation strategies
-
-Plugins **must use documented plugin interfaces** and never touch core internals.
+#### Extension Without Core Changes
+Operators extend ctxt and dpkms through documented surfaces, never core
+internals: pipeline overrides, custom pipelines, steps installed from
+registries, registries, and external hooks (see
+[Extensibility Model](#extensibility-model)). There is no plugin system.
 
 ---
 
@@ -349,37 +339,6 @@ dPKMS is the execution and data layer. It is designed to be **agent-ready**, not
 
 ---
 
-# Plugin Layer (Extensibility Model)
-
-**Current state:** `pkg/pluginapi` defines the interfaces and
-`internal/plugin.Registry` holds plugin instances, but neither binary creates a
-registry, so no plugin is registered, initialised or called at runtime. The
-top-level `plugins:` config key is parsed and read by no code. There is no
-plugin directory, no `ctxt plugin` command and no out-of-process plugin model.
-Full detail: [plugin-authoring-guide.md](plugin-authoring-guide.md).
-
-Extension points a plugin implements:
-
-| Interface | Purpose |
-|---|---|
-| `Plugin` | `Name`, `Version`, `Init(cfg, deps)`, `PipelineSteps`, `Close` |
-| `PipelineStep` | extra pipeline step with a `Requires` / `Produces` contract |
-| `PostIngestHook` | called after an object is stored |
-| `AliasResolver` | maps human-readable aliases to object IDs (the alias REST handlers call it when a registry is set) |
-| `OutputGenerator` | renders an output format |
-| `PluginRegistryProvider` | supplies taxonomy and entities to registry sync |
-
-A plugin's per-object data lives in the `plugins` field of the knowledge
-object (`object.plugins.<pluginName>`), stored as a JSON column. Plugin
-packages live under `plugins/` and run only in their own tests and in
-integration tests that register them by hand.
-
-To change pipelines in a running dpkms today, use built-in steps and
-`pipelines.overrides`, or install steps from a step registry with
-`dpkms pipeline step install`.
-
----
-
 # Input Layer (`ctxt`)
 
 The Input Layer in `ctxt` provides universal capture across all interfaces.
@@ -401,12 +360,6 @@ The Input Layer in `ctxt` provides universal capture across all interfaces.
 - Offline-first queuing (local outbox)
 - Passing to dPKMS job system for enrichment
 
-**Plugins may extend:**
-- Input detection heuristics
-- Subtype classification rules
-- Custom capture interfaces
-- Pre-processing transforms
-
 ---
 
 # Inference Layer (`ctxt`)
@@ -419,13 +372,6 @@ The Inference Layer in `ctxt` determines how to process captured content.
 - Pipeline recipe to use
 - Language(s) present
 - Focus profile context
-
-**Plugins may extend:**
-- Type detection rules
-- Subtype classifiers
-- Pipeline routing logic
-- Language inference models
-- Profile-specific overrides
 
 ```mermaid
 flowchart LR
@@ -446,7 +392,6 @@ A durable, append-only job queue in dPKMS ensures that all ingestion and process
 - Refresh (re-enrichment of stale objects)
 - Sync (registry synchronization)
 - Export/Import (bundle operations)
-- Plugin-scheduled jobs
 
 **Job Schema:**
 ```
@@ -483,12 +428,6 @@ job_steps:
 - Failed jobs kept for inspection and manual retry
 - Atomic state transitions
 - Idempotent step execution
-
-**Plugins may:**
-- Create new job types
-- Schedule periodic jobs
-- Listen to job lifecycle events
-- Access job traces and logs
 
 ---
 
@@ -547,12 +486,10 @@ Provides **opinionated pipelines** for content processing:
 - Summary and section generation
 - Knowledge object construction
 
-**Plugins can:**
-- Add new pipeline recipes
-- Inject steps into existing pipelines
-- Override default pipelines
-- Define conditional branching logic
-- Add custom enrichment steps
+**Extended through:**
+- Custom pipelines (`dpkms pipeline create`)
+- Extra or skipped steps per pipeline (`pipelines.overrides`)
+- Steps installed from a step registry (`dpkms pipeline step install`)
 
 ---
 
@@ -568,8 +505,6 @@ Responsibilities:
 - Record mention → entity relationships
 - Update backlink index
 
-Plugins may define additional mention extractors or entity fields.
-
 ---
 
 # Entity Resolver
@@ -583,14 +518,6 @@ Maps mentions to canonical entities via:
 
 Unresolved mentions become local placeholders.
 
-Plugins may register:
-
-- custom entity resolvers
-- custom alias logic
-- local entity definitions
-
-But cannot modify core resolver behavior.
-
 ---
 
 # Registry System (Decentralized Knowledge Nodes)
@@ -602,12 +529,6 @@ Registries may serve:
 - entities
 - aliases
 - translations
-
-Plugins may:
-
-- define custom registry providers
-- interpret registry-provided semantics
-- create plugin-level registries
 
 ---
 
@@ -686,8 +607,8 @@ edges:
 - Vector indexes on embeddings (optional)
 - Graph adjacency indexes on edges
 
-**Plugin data:** the `plugins` JSON column on each object
-(`object.plugins.<pluginName>`). The host provides no plugin directory.
+**`plugins` column:** a free-form JSON map on each object, left from the
+removed plugin layer; storage round-trips it and no code sets it.
 
 **Migrations:**
 - SQL migrations in `migrations/` directory
@@ -750,12 +671,6 @@ related:abc-123-uuid
 - URL normalization and canonicalization
 - Semantic fingerprint (embedding cosine similarity)
 
-**Plugins may register:**
-- Custom query operators
-- Search result transformers
-- Scoring modifiers
-- Reranking algorithms
-
 ## `ctxt` Search UX
 
 Provides **forgiving, accessible search interfaces**:
@@ -809,7 +724,6 @@ ctxt find "signup flow" --tag ux --mention:@stripe.api
 - Query engine API
 - Graph traversal API
 - Registry connector API
-- Plugin registration API
 
 **Daemon API (Optional):**
 - HTTP/gRPC server mode for local clients
@@ -918,9 +832,8 @@ service ContextService {
 }
 ```
 
-**Plugin Extensions:** none. Plugins add no CLI commands, REST routes or gRPC
-services. The alias REST handlers consult an `AliasResolver` plugin when a
-plugin registry is set, which only happens in tests.
+**Extensions:** none. There is no plugin system, so nothing adds CLI
+commands, REST routes or gRPC services outside the binaries.
 
 ---
 
@@ -1016,7 +929,7 @@ profile:
 - Focus on relevant extractions
 
 **Permissions:**
-Plugins and agents must declare:
+Agents must declare:
 - Required profile access
 - Data visibility scope
 - Allowed operations
@@ -1042,8 +955,6 @@ flowchart TD
     J --> K[dPKMS: Knowledge Object Construction]
     K --> L[dPKMS: Storage + Graph Index Update]
     L --> M[dPKMS: Job Marked Completed]
-    G --> N[dPKMS: Plugin Hooks]
-    N --> G
 ```
 
 ## Read Path (Retrieval)
@@ -1088,103 +999,20 @@ flowchart TD
 
 # Extensibility Model
 
-## dPKMS Extensibility
+There is no plugin system: ctxt and dpkms load no third-party code in process
+([ADR-078](decisions/ADR-078-no-plugin-system.md)). They are extended through:
 
-Plugins may add:
+| Surface | How |
+|---|---|
+| Pipeline overrides | `pipelines.overrides.<pipeline>`: `providers`, `skip_steps`, `extra_steps` |
+| Custom pipelines | `dpkms pipeline create <file>`, `POST /api/v1/pipelines` |
+| Installed steps | `dpkms pipeline step install <name> --registry <url>`; designed to run out of process ([ADR-058](decisions/ADR-058-external-step-execution-protocol.md)), not executed by pipelines yet |
+| Registries | entity, taxonomy and step registries (`registries:`, `dpkms pipeline step registry`) |
+| Hooks | pre and post hooks on ctxt and dpkms events ([ADR-075](decisions/ADR-075-external-hook-surface.md)), accepted, not implemented yet |
+| Auth | a trusted proxy or OIDC in front of dpkms, to be designed under ADR-023 |
 
-**Storage Layer:**
-- Custom storage backends
-- Encryption providers
-- Key management strategies
-- Migration handlers
-
-**Query Layer:**
-- Custom query operators
-- Search result transformers
-- Reranking algorithms
-- Scoring modifiers
-
-**Graph Layer:**
-- Entity resolvers
-- Graph traversal algorithms
-- Relationship inference rules
-
-**Registry Layer:**
-- Registry connectors
-- Sync strategies
-- Trust policies
-- Conflict resolution rules
-
-**Job System:**
-- New job types
-- Job scheduling rules
-- Retry strategies
-- Monitoring hooks
-
-**Pipeline Runtime:**
-- Capability providers
-- Caching strategies
-- Logging formatters
-
-## `ctxt` Extensibility
-
-Plugins may add:
-
-**Capture Layer:**
-- Custom input interfaces
-- Pre-processing transforms
-- Type detection rules
-
-**Enrichment Layer:**
-- New pipeline recipes
-- Pipeline steps
-- Mention extractors
-- Entity extraction logic
-- Tag classifiers
-- Decision/task extractors
-
-**Surfacing Layer:**
-- Resurfacing rules
-- Notification handlers
-- Refresh policies
-- Staleness detectors
-
-**Composition Layer:**
-- Templates and generators
-- Output formatters
-- Style guides
-- Language models
-
-**Profile Layer:**
-- Custom profile types
-- Ranking adjustments
-- Filter rules
-
-**UI Layer:**
-- CLI commands
-- Output wrappers
-- Interactive modes
-
-## What Plugins CANNOT Modify
-
-**dPKMS Core:**
-- Core database schema
-- Job state machine
-- Pipeline execution guarantees
-- Storage contracts
-- Graph semantics
-
-**`ctxt` Core:**
-- Profile scoping logic
-- Capture frictionlessness
-- Atomic note principles
-- Composition traceability
-
-**Shared:**
-- Entity resolution core logic
-- Registry protocol semantics
-- Authentication mechanisms
-- Encryption primitives
+None of them changes the database schema, the job state machine, pipeline
+execution guarantees, entity resolution or the registry protocol.
 
 ---
 
@@ -1209,7 +1037,6 @@ Plugins may add:
 - Capability-based permissions
 - Profile-scoped access control
 - Registry subscription controls
-- Plugin permission declarations
 
 **Data Integrity:**
 - Optional cryptographic signatures
@@ -1239,9 +1066,9 @@ Plugins may add:
 - Reversible writes
 - User confirmation for destructive ops
 
-**Plugin Sandboxing:** none. Plugins are in-process Go code; manifest
-`permissions` are validated but no host code enforces them, and no plugin is
-loaded at runtime yet.
+**Third-party code:** none runs in process. Installed steps are designed to
+run out of process under the ADR-058 protocol (no pipeline executes them yet);
+hooks (ADR-075) will run in other applications.
 
 **Input Validation:**
 - Sanitization of HTML/Markdown
@@ -1260,7 +1087,7 @@ loaded at runtime yet.
 ## Threat Model
 
 **Threats Addressed:**
-- Malicious plugins
+- Malicious installed steps
 - Untrusted registries
 - Network interception
 - Local data theft
@@ -1270,7 +1097,6 @@ loaded at runtime yet.
 
 **User Responsibilities:**
 - Choose trusted registries
-- Approve plugin permissions
 - Secure encryption passphrases
 - Review agent proposals before applying
 - Keep software updated
@@ -1291,7 +1117,7 @@ Provides the **mechanical guarantees**:
 - Encryption, authentication, authorization
 - Self-authenticating knowledge with optional signatures
 - Portable exports with zero lock-in
-- Plugin extensibility without core modification
+- Extension through pipelines, steps and registries without core modification
 - Performance at scale
 
 **dPKMS runs work correctly.**
@@ -1317,7 +1143,7 @@ They provide:
 - **Context-as-a-Service** for humans and agents
 - **Semantic identity** through entities and mentions
 - **Knowledge graphs** that enable navigation and reasoning
-- **Decentralized ecosystems** of registries and plugins
+- **Decentralized ecosystems** of registries
 - **Privacy and sovereignty** with optional federation
 - **Verifiable provenance** with reversible history
 
@@ -1361,8 +1187,8 @@ Data: `~/.config/contexthelp/` (config) +
 
 ## Ingestion adapters (recent)
 
-The plugin layer has gained concrete ingestion adapters that
-deserve dedicated coverage:
+The ingestion layer has gained concrete adapters that deserve
+dedicated coverage:
 
 | Adapter | Source | Status |
 |---|---|---|
@@ -1468,8 +1294,7 @@ selection in ctxt. Profile schema co-evolves per role.
 
 ### kai's mention-registry
 
-Custom entity resolvers + registry subscriptions integrate
-via the plugin API. Specifically:
+Registry subscriptions and entity resolution cover:
 - Per-profile entity resolution
 - Federated registry sync
 - Just-in-time entity loading
@@ -1487,11 +1312,11 @@ via the plugin API. Specifically:
 
 ## Open questions
 
-1. **Mention-registry ownership.** Built-in registry or pure plugin? Where does canonical entity resolution live?
+1. **Mention-registry ownership.** Built-in registry or an external registry? Where does canonical entity resolution live?
 2. **usp session boundary.** When does a session "end" for ctxt? How are capture batches mapped to sessions?
 3. **Multi-workspace via wsm.** Workspace isolation in shared instance: roadmap or shipped?
 4. **Vector index policy.** ADR-022 marks vector search optional; is the embeddings step now mandatory in all pipelines?
 5. **Profile persistence semantics.** Does `ctxt profile use <name>` persist across REPL restarts, or session-only?
 6. **Composition traceability.** How are provenance links encoded in persistent composed pages — edges or metadata?
 7. **Cross-registry entity conflicts.** ADR-029 covers conflicts; how are they resolved when subscribing to multiple registries with overlapping entities?
-8. **Node-level access control.** Can plugins or profiles scope access to individual nodes within an ObjectGraph, or only to whole objects?
+8. **Node-level access control.** Can profiles scope access to individual nodes within an ObjectGraph, or only to whole objects?

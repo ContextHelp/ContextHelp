@@ -72,7 +72,7 @@ Search results from all sources are merged via a dedicated reranker
 (e.g., Reciprocal Rank Fusion, weighted scoring).
 Ensures consistent, meaningful ranking across heterogeneous sources.
 
-### **ADR-012 – Plugins Extend Any Layer**
+### **ADR-012 – Plugins Extend Any Layer (Superseded by ADR-078)**
 Plugins are first-class citizens and may extend:
 - pipelines
 - registries
@@ -227,7 +227,7 @@ dPKMS and ctxt implement comprehensive multimodal content processing with conten
 - Attachment preservation in export/import
 - Offline-first processing with graceful degradation
 
-### **ADR-027 – Plugin Isolation and Sandboxing**
+### **ADR-027 – Plugin Isolation and Sandboxing (Superseded by ADR-078)**
 ContextHelp implements mandatory capability-based plugin isolation with explicit permission declarations, runtime enforcement, user approval workflows, resource quotas, and comprehensive audit logging.
 
 **Features:**
@@ -509,6 +509,12 @@ ctxt never opens the dpkms store. Every command reaches dpkms through its REST A
 - **Authorization.** Every HTTP route and gRPC method declares an ADR-023 scope. The static provider's `admin`, `writer` (capture devices) and `reader` roles are fixed scope bundles. Private instances grant everything. Admin principals bypass the inbound entitlement and metering gate.
 - **Placement.** Every operator command stays in ctxt. The embedding lifecycle, registries, lint and upgrade runs sit behind admin-scoped endpoints; `upgrade run` accepts a pipeline filter only, with no raw SQL. Brain settings (profiles, search knobs) are resolved by ctxt and sent with each request.
 - **Local capture stays local.** Watchers, clipboard, browser and adapter sources enqueue over HTTP. Directory-watch dedup state and the browser-history position are kept client-side, per instance. Amends ADR-075 §2: the CLI is no longer a hook host.
+
+### **ADR-078 – No Plugin System (Accepted)**
+ctxt and dpkms load no plugins, now or later; there is no plugin API, registry, manifest or `plugins:` config key. Supersedes ADR-012 and ADR-027.
+- **Extension surfaces.** Pipelines (`pipelines.overrides`, `dpkms pipeline create`), steps (built-in, or installed from a step registry; out-of-process execution per ADR-058 is not wired yet), registries, and ADR-075 hooks (not implemented yet).
+- **Auth.** Extended through a trusted proxy or OIDC, to be designed as an ADR-023 extension.
+- **Model.** The knowledge-object types live in `internal/storage`; the step contract in `internal/pipeline`.
 
 ---
 

@@ -52,6 +52,6 @@ controls that integrate with dPKMS permissions without exposing data by default.
 Language-aware enrichment and generation that supports mixed Arabic/English/French
 inputs, profile-specific language preferences, and multilingual writing styles.
 
-## Plugin-Driven UX Extensions
-Extensible commands, templates, profiles, surfacing rules, and composition modes
-built on top of the dPKMS plugin system and capability contracts.
+## Configurable UX Extensions
+Templates, profiles, surfacing rules, and composition modes configured on top of
+dPKMS pipelines, steps and registries. There is no plugin system.

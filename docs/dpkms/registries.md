@@ -1,12 +1,12 @@
 # Registries
 
 Registries are a core architectural pillar in ContextHelp.
-They allow users, teams, communities, and commercial providers to publish **structured semantic knowledge**—including taxonomies, entities, bookmarks, weights, translations, signals, and plugin-defined metadata—through a stable, decentralized interface.
+They allow users, teams, communities, and commercial providers to publish **structured semantic knowledge**—including taxonomies, entities, bookmarks, weights, translations, and signals—through a stable, decentralized interface.
 
 Registries operate independently of the engine.
 They do **not** need to run ContextHelp; they only need to expose data that conforms to the **Registry Protocol Specification**.
 
-Registries are decentralized, composable, pluggable, and now support **Entities & Mentions** as a first-class semantic layer and **plugin-visible semantic extensions** without requiring changes to core.
+Registries are decentralized, composable, pluggable, and now support **Entities & Mentions** as a first-class semantic layer without requiring changes to core.
 
 ---
 
@@ -26,9 +26,6 @@ Optional layers include:
 
 - translations
 - aliasing rules
-- plugin-defined semantic extensions
-
-Plugins may consume these layers but do not modify registry behavior or schema.
 
 ---
 
@@ -58,10 +55,8 @@ Entities include:
 - aliases
 - translations
 - metadata
-- plugin-defined extensions (optional)
 
 Entities form a semantic graph via backlinks and relationships.
-Plugins may read these entities for their own tasks but cannot modify them.
 
 ### Bookmark Registries
 
@@ -97,7 +92,6 @@ Provide translations for:
 - tag labels
 - entity titles & descriptions
 - bookmark metadata
-- plugin-defined extensions (optional)
 
 They integrate with the I18N/L10N layer.
 
@@ -113,11 +107,9 @@ flowchart LR
     D --> E1[Pipeline Execution]
     D --> E2[Search & Retrieval]
     D --> E3[Agents & Worldviews]
-    D --> E4[Plugins Consuming Registry Data]
 ```
 
 Registries are pluggable and interchangeable.
-Plugins can consume exposed registry data safely without modifying core or registry definitions.
 
 ---
 
@@ -128,7 +120,7 @@ Plugins can consume exposed registry data safely without modifying core or regis
 - **Composable** — Multiple registries can coexist harmoniously.
 - **Versioned** — Content and schema are explicitly versioned.
 - **Deterministic** — Merging and lookup produce deterministic results.
-- **Extensible** — Plugins can consume registry layers without core changes.
+- **Extensible** — Pipelines and steps consume registry layers without core changes.
 - **Optional** — ContextHelp runs without any external registry.
 - **Protocol-driven** — Guarantees compatibility across providers.
 
@@ -174,7 +166,7 @@ Registries expose an **entities** section:
 - Provide stable identity for **mentions** (`@ui.best-practice`)
 - Allow pipelines to resolve references to canonical concepts
 - Bootstrap semantic graphs for retrieval & reasoning
-- Enable plugin-driven workflows (validation, metadata lookups)
+- Enable step-driven workflows (validation, metadata lookups)
 
 ### Behavior
 
@@ -202,7 +194,6 @@ During ingestion, pipelines may:
 - apply tag or entity weights
 - align content with registry semantics
 - support translations
-- allow plugins to interpret registry data (e.g., price patterns, feed metadata)
 
 Two new components handle mention/entity semantics:
 
@@ -222,7 +213,6 @@ Retrieval now spans:
 - remote bookmark registries
 - entity-based graph lookup
 - taxonomy-aware expansions
-- plugin-enhanced filters (RSS filters, price-tracking filters, etc.)
 
 Reranking incorporates:
 
@@ -230,7 +220,6 @@ Reranking incorporates:
 - entity relationships
 - registry priorities
 - agent preferences
-- plugin-supplied scoring (optional, isolated in plugin space)
 
 ### Agents
 
@@ -252,8 +241,6 @@ agents:
 ```
 
 Agents operate within a **scoped worldview** defined by local and registry sources.
-
-Plugins may read agent registry configurations but cannot override them.
 
 ---
 
@@ -306,8 +293,6 @@ Registries declare:
 Engine updates only when content changes.
 Local cache enables full offline capability.
 
-Plugins read cached registry data through stable APIs—never directly.
-
 ---
 
 ## Merging Multiple Registries
@@ -349,7 +334,6 @@ If conflicts remain unresolved:
 - entity translations
 - tag translations
 - bookmark summary translations
-- plugin-defined extensions (read-only)
 
 ---
 
@@ -375,7 +359,6 @@ If a registry fails:
 - ingestion continues gracefully
 - retrieval does not break
 - merges degrade safely
-- plugins depending on registry data fallback to defaults
 
 ---
 
@@ -390,32 +373,6 @@ Future enhancements include:
 
 ---
 
-## Plugin Consumption of Registry Data (New)
-
-Plugins may **read** registry data using the stable plugin API:
-
-- taxonomies
-- entities
-- translations
-- bookmark metadata
-- weights
-
-Plugins **cannot**:
-
-- modify registry data
-- override registry structure
-- alter merge order
-
-Example plugin uses:
-
-- RSS Plugin: entity enrichment for authors/tags
-- Price Monitor: vendor-specific patterns stored in a registry
-- Notification Plugin: translation of alert messages
-
-This allows rich ecosystem growth without modifying core or registry definitions.
-
----
-
 ## Summary
 
 Registries now provide ContextHelp with:
@@ -425,8 +382,6 @@ Registries now provide ContextHelp with:
 - curated bookmarks
 - weight models and translations
 - mergeable, decentralized semantic sources
-- plugin-consumable semantic extensions
 - agent-scoped worldview configuration
 
-The registry system is fully compatible with the new plugin architecture.
-Plugins can read and leverage registry semantics without ever modifying core, ensuring a stable and extensible foundation for the evolving ContextHelp ecosystem.
+Registries are one of ContextHelp's extension surfaces, alongside pipelines and steps; there is no plugin system ([ADR-078](../decisions/ADR-078-no-plugin-system.md)).

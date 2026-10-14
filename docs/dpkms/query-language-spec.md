@@ -130,7 +130,7 @@ Reserved fields:
 - `modified`
 - `source`
 
-Plugins may introduce custom fields.
+Steps may write custom metadata fields.
 
 ### String Matching
 
@@ -224,7 +224,7 @@ Stable system-defined fields:
 - `created`
 - `modified`
 
-Plugins may add new fields such as:
+Steps may add new fields such as:
 
 - `sentiment`
 - `rating`

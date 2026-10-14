@@ -7,7 +7,7 @@ This chapter is for core maintainers responsible for contract stability, release
 
 ## Goal
 
-Evolve features without breaking plugin/runtime contracts, and keep documentation aligned with executable behavior.
+Evolve features without breaking API/runtime contracts, and keep documentation aligned with executable behavior.
 
 ## Prerequisites
 
@@ -70,7 +70,6 @@ Confirm config/permission references are in sync:
 
 ```bash
 sed -n '1,220p' docs/manual/reference/config-and-permissions.md
-sed -n '1,220p' docs/plugins/plugin-isolation.md
 ```
 
 ### 4. Validate operations-readiness docs
@@ -119,15 +118,14 @@ Before release:
 
 ### Cross-layer ownership ambiguity
 
-- Assign clear owners for runtime, docs, and plugin interfaces per release.
+- Assign clear owners for runtime, docs, and API/step contracts per release.
 
 ## Story Alignment
 
-- Maintainer-focused stories: `US-0008`, `US-0015`, `US-0027` to `US-0035`, `US-0042`, `US-0043`, `US-0101` to `US-0112`, `US-0300` to `US-0317`
+- Maintainer-focused stories: `US-0008`, `US-0015`, `US-0027` to `US-0035`, `US-0101` to `US-0112`, `US-0300` to `US-0317`
 
 ## Related Manual Sections
 
 - [`../admin-extensibility/admin-configuration.md`](../admin-extensibility/admin-configuration.md)
-- [`../admin-extensibility/plugin-development.md`](../admin-extensibility/plugin-development.md)
 - [`../appendix/feature-maturity.md`](../appendix/feature-maturity.md)
 - [`../appendix/story-to-chapter-index.md`](../appendix/story-to-chapter-index.md)

@@ -92,4 +92,3 @@ Semantic mode is best for discovery and ideation.
 
 - Core search: `US-0016`, `US-0017`, `US-0018`, `US-0021`
 - Advanced search: `US-0051`, `US-0052`, `US-0053`, `US-0054`, `US-0055`, `US-0061`
-- Ranking extensibility: `US-0045`

@@ -173,7 +173,7 @@ Content-Type: application/json
 
 ## Related Stories
 
-- [US-0029](US-0029-install-and-enable-plugin.md) — step install needed before custom pipeline
+- [US-0029](US-0029-install-steps-from-registry.md) — step install needed before custom pipeline
 - [US-0037](../agents/US-0037-agent-discovers-query-schema.md) — agents enqueue via pipelines
 - [US-0001](../ingestion/US-0001-text-capture-minimal-friction.md) — enqueue path shared with ctxt
 

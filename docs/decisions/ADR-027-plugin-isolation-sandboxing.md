@@ -1,11 +1,11 @@
 # ADR-027 – Plugin Isolation and Sandboxing
 
-> **Status:** Accepted
+> **Status:** Superseded by ADR-078 (2026-10-14)
 > **Date:** 2026-01-26
 > **Author:** @jadb
 > **Applies to:** dPKMS, ctxt
 > **Supersedes:** None
-> **Superseded by:** N/A
+> **Superseded by:** [ADR-078](ADR-078-no-plugin-system.md)
 
 ---
 

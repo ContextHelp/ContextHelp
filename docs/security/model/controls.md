@@ -78,7 +78,7 @@ Destructive CLI commands (`ctxt delete`, `ctxt inbox discard|clear`, ...) also r
 
 ## Untrusted code
 
-No plugin is loaded and no installed external step is executed at runtime, so there is no sandbox to configure. See [boundaries.md](boundaries.md#boundary-4-plugins-and-installed-steps).
+There is no plugin system, and no installed external step is executed at runtime, so there is no sandbox to configure. See [boundaries.md](boundaries.md#boundary-4-installed-steps).
 
 ## Deployment
 

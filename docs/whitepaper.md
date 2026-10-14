@@ -19,7 +19,7 @@ ContextHelp addresses this with a two-package architecture:
 
 The system separates mechanical guarantees from behavioral intelligence. dPKMS runs work correctly. `ctxt` decides what work is valuable. Together they provide a local-first, sovereign context engine that can ingest multimodal sources, convert them into structured knowledge objects, resolve canonical entities, preserve receipts, and expose private context to humans and agents through explicit, auditable interfaces.
 
-This paper describes the architecture of ContextHelp, including its structured object model, transactional pipeline runtime, mention and registry system, graph-aware retrieval, ambient capture model, plugin surface, and deployment options. The central claim is that useful personal AI requires more than retrieval over documents: it requires a durable substrate for identity, provenance, permissions, and change.
+This paper describes the architecture of ContextHelp, including its structured object model, transactional pipeline runtime, mention and registry system, graph-aware retrieval, ambient capture model, extension surfaces, and deployment options. The central claim is that useful personal AI requires more than retrieval over documents: it requires a durable substrate for identity, provenance, permissions, and change.
 
 ## Keywords
 
@@ -103,7 +103,7 @@ dPKMS provides the mechanical foundation:
 - authentication and authorization
 - encryption and key management
 - export/import bundles
-- plugin interfaces
+- pipeline and step interfaces
 - REST, gRPC, and local read surfaces
 
 dPKMS is deliberately conservative. It should not decide which summary is best, whether a meeting matters, or which insight deserves resurfacing. Its job is to store, execute, index, verify, and expose knowledge safely.
@@ -166,7 +166,7 @@ ContextHelp uses mentions and entities to anchor meaning:
 - An entity is a canonical concept with stable ID, labels, aliases, namespaces, descriptions, and relationships.
 - A registry is a source of entity definitions, taxonomies, weights, workflows, or shared packs.
 
-The registry system works like DNS for concepts. A namespace such as `@stripe.api.checkout` can resolve to a canonical entity with aliases, localized labels, relationships, and trust metadata. Registries can be local, private, paid, public, or plugin-backed. Users decide which registries to trust and how much influence they have over local resolution.
+The registry system works like DNS for concepts. A namespace such as `@stripe.api.checkout` can resolve to a canonical entity with aliases, localized labels, relationships, and trust metadata. Registries can be local, private, paid, or public. Users decide which registries to trust and how much influence they have over local resolution.
 
 This gives ContextHelp three properties that plain RAG lacks:
 
@@ -255,27 +255,20 @@ dPKMS is responsible for:
 - secret storage
 - signed registries, bundles, and revisions where enabled
 
-Plugins and pipeline steps operate under declared capabilities. A step that reads a local file, calls a remote API, writes an object, or publishes to a registry should be explicit about that authority.
+Pipeline steps operate under declared capabilities. A step that reads a local file, calls a remote API, writes an object, or publishes to a registry should be explicit about that authority.
 
 Trust is also semantic. Registry influence should be inspectable. If an entity label, alias, ranking weight, or taxonomy relation came from a subscribed registry, the user should be able to identify that source and override it locally.
 
-## 12. Plugin Architecture
+## 12. Extension Surfaces
 
-ContextHelp is intended to outlive its initial assumptions. The plugin model allows extension across:
+ContextHelp is intended to outlive its initial assumptions without loading third-party code into the daemon. There is no plugin system ([ADR-078](decisions/ADR-078-no-plugin-system.md)). Extension happens through:
 
-- ingestion sources
-- pipeline steps
-- registry providers
-- storage backends
-- ranking strategies
-- query operators
-- export formats
-- notification targets
-- AI providers
+- pipeline overrides and custom pipelines
+- steps installed from step registries, designed to run out of process (ADR-058)
+- entity, taxonomy and step registries
+- pre and post hooks that other applications subscribe to (designed, ADR-075)
 
-The plugin contract emphasizes manifest-declared capabilities, isolated execution, stable interfaces, and testable behavior. Core dPKMS should not need to change every time a new source, provider, or enrichment strategy appears.
-
-Plugins also support local and domain-specific intelligence. A security researcher, design team, law office, or open-source maintainer may all need different extraction and ranking behavior while sharing the same substrate guarantees.
+Core dPKMS should not need to change every time a new source, provider, or enrichment strategy appears: a new strategy is a step, a new vocabulary is a registry, and a new reaction is a hook. A security researcher, design team, law office, or open-source maintainer may all need different extraction and ranking behavior while sharing the same substrate guarantees.
 
 ## 13. Interfaces
 
@@ -307,7 +300,7 @@ The substrate uses:
 - deterministic test fixtures
 - integration tests for importers, pipelines, query behavior, and API surfaces
 
-Quality is measured by recoverability as much as speed. A failed OCR step should be visible. A stale index should be detectable. A backup should restore usable graph identity. A plugin should not silently exceed its declared authority.
+Quality is measured by recoverability as much as speed. A failed OCR step should be visible. A stale index should be detectable. A backup should restore usable graph identity. An installed step should not silently exceed its declared authority.
 
 ## 15. Deployment Models
 
@@ -342,7 +335,7 @@ ContextHelp deliberately accepts several hard constraints:
 - Entity resolution will sometimes be ambiguous and must expose uncertainty.
 - Vector retrieval can surface plausible but wrong neighbors.
 - Federation introduces conflict, staleness, and trust policy complexity.
-- Plugin ecosystems require strong review, isolation, and compatibility discipline.
+- Step registries require strong review, isolation, and compatibility discipline.
 - Agent-facing interfaces need tight permission boundaries and understandable audit trails.
 
 These are not peripheral issues. They are the core engineering surface of a trustworthy context engine.
@@ -357,7 +350,7 @@ The near-term roadmap focuses on making the substrate dependable and the brain u
 - expand importer coverage for files, feeds, browsers, collaboration tools, and archives
 - improve explainable hybrid search
 - mature local MCP read surfaces
-- strengthen plugin manifest validation and capability enforcement
+- strengthen sandboxing and capability enforcement for installed steps
 - refine ambient capture privacy controls
 - publish portable export/import conformance fixtures
 
@@ -370,4 +363,3 @@ Personal AI will not become trustworthy by adding larger context windows alone. 
 ContextHelp provides that substrate through dPKMS and makes it useful through `ctxt`. The architecture separates correctness from judgment, storage from behavior, and private ownership from optional federation. This separation lets the system remain local-first and verifiable while still supporting rich capture, semantic retrieval, and agentic workflows.
 
 The result is a knowledge system intended for humans and agents that need to work inside a user's actual context, not around it.
-

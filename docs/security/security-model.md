@@ -8,8 +8,8 @@ ContextHelp implements a **local-first, defense-in-depth security model** that p
 
 ### Core Security Guarantees
 
-> **Pre-alpha:** encryption at rest (ADR-019) and plugin sandboxing (ADR-027)
-> are designed but not active at runtime. API authentication is active:
+> **Pre-alpha:** encryption at rest (ADR-019) is designed but not active at
+> runtime. There is no plugin system ([ADR-078](../decisions/ADR-078-no-plugin-system.md)). API authentication is active:
 > static tokens with roles and scopes on protected and public instances.
 
 - **Local-First**: Minimal external communication by default ✅
@@ -17,7 +17,7 @@ ContextHelp implements a **local-first, defense-in-depth security model** that p
 - **Loopback by Default**: a `private` instance (the default) binds `127.0.0.1` only ✅
 - **Authenticated Remote Access**: `protected` / `public` instances require static tokens with roles ✅
 - **Encrypted Storage**: ⚠️ Planned — optional AES-256-GCM at rest (ADR-019)
-- **Process Isolation**: ⚠️ Planned — plugin/pipeline sandboxing (ADR-027)
+- **Process Isolation**: ⚠️ Planned — sandboxing for installed steps (ADR-055)
 - **Secrets Protection**: plaintext-secret scan of config (`ctxt config validate`); logs are **not** sanitized
 - **Explicit Configuration**: Remote features require opt-in configuration ✅
 
@@ -48,7 +48,6 @@ ContextHelp protects the following critical assets:
 
 4. **System Integrity**
    - Core application code
-   - Plugin manifests
    - Database schemas
    - Configuration files
 
@@ -107,23 +106,23 @@ ContextHelp protects the following critical assets:
 - Configuration file integrity checks
 - Schema versioning for compatibility
 
-#### 4. Plugin/Pipeline Exploitation
+#### 4. Installed Step Exploitation
 
-**Threat**: Malicious or compromised plugins execute unauthorized code
+**Threat**: A malicious or compromised step installed from a step registry executes unauthorized code
 
 **Attack Vectors**:
-- Plugins access system resources
-- Plugins exfiltrate data
-- Plugins execute arbitrary commands
-- Plugins modify protected data
+- Steps access system resources
+- Steps exfiltrate data
+- Steps execute arbitrary commands
+- Steps modify protected data
 
 **Mitigations**:
-- Plugin sandboxing (capability-based)
+- Steps are designed to run out of process (ADR-058), never inside dpkms; no pipeline executes installed steps yet
+- Step install and uninstall need the `admin:plugins` scope (admin role)
+- Sandbox isolation levels per pipeline (ADR-055)
 - Restricted file system access
 - No direct network access without permission
-- No access to other plugin data
 - Memory limits and execution timeouts
-- Permission manifest validation
 
 #### 5. Data Exfiltration
 
@@ -131,7 +130,7 @@ ContextHelp protects the following critical assets:
 
 **Attack Vectors**:
 - Misconfigured external registries
-- Malicious plugins
+- Malicious installed steps
 - Compromised AI provider integrations
 - Unencrypted network traffic
 
@@ -140,24 +139,22 @@ ContextHelp protects the following critical assets:
 - No default external communication
 - TLS for all external connections
 - Registry permission scoping
-- Plugin data access restrictions
 - Audit logging of data access
 
 #### 6. Supply Chain Attacks
 
-**Threat**: Compromised dependencies, plugins, or registries
+**Threat**: Compromised dependencies, steps, or registries
 
 **Attack Vectors**:
-- Malicious plugin packages
+- Malicious steps published to a step registry
 - Compromised registry data
 - Vulnerable dependencies
-- Typosquatting on plugin names
+- Typosquatting on step names
 
 **Mitigations**:
-- Plugin manifest validation
 - Registry signature verification (future)
 - Dependency scanning
-- Plugin permission review before installation
+- Step review before installation
 - Allowlist/blocklist support
 - Version pinning recommendations
 
@@ -174,7 +171,7 @@ ContextHelp protects the following critical assets:
 **Mitigations**:
 - Input size limits
 - Execution timeouts
-- Memory limits per pipeline/plugin
+- Memory limits per pipeline/step
 - Rate limiting on registry access
 - Job queue backpressure
 - Resource monitoring and alerts
@@ -250,23 +247,21 @@ ContextHelp protects the following critical assets:
 - Rate limiting
 - Fallback to local models
 
-### Boundary 4: Plugins
+### Boundary 4: Installed Steps
 
 **Trust Level**: Low (Untrusted code)
 
 **Components**:
-- Plugin code
-- Plugin configuration
-- Plugin data access
-- Plugin network access
+- Step code installed from a step registry
+- Step configuration
+- Step data and network access
 
 **Protection**:
-- Capability-based permissions
-- Sandbox execution environment
+- Out-of-process execution (ADR-058, designed)
+- Sandbox isolation levels (ADR-055)
 - Memory and CPU limits
 - File system restrictions
 - Network access whitelisting
-- Data access scoping
 
 ### Boundary 5: REST/gRPC APIs
 
@@ -365,19 +360,14 @@ Reference: [Inbound auth, roles and scopes](../manual/reference/config-and-permi
 **External Data**:
 - Registry response schema validation
 - AI provider response validation
-- Plugin manifest validation
 - Certificate validation
 
 ### Process Isolation
 
-**Plugin Isolation**:
-- Separate process or WASM runtime
-- Capability-based permission model
-- Memory limits (default: 256MB)
-- CPU time limits (default: 5 minutes)
-- Disk I/O restrictions
-- Network access restrictions
-- File system restrictions to plugin directory
+**Installed Step Isolation**:
+- Separate process or container (ADR-058, ADR-055; designed)
+- Memory and CPU time limits
+- Disk I/O and network access restrictions
 
 **Pipeline Isolation**:
 - Separate execution context
@@ -394,7 +384,7 @@ Reference: [Inbound auth, roles and scopes](../manual/reference/config-and-permi
   `security.acl_denial`) and quota exhaustion (`security.quota_exhausted`)
 - Duplicate detection (`dedup.*`) and fan-out enrichment (`fanout.completed`)
 - `ctxt doctor` runs (`doctor.run`)
-- Not recorded: successful sign-ins, configuration changes, plugin installs
+- Not recorded: successful sign-ins, configuration changes, step installs
 
 **Log Protection**:
 - The audit log lives in the dpkms database; read it with `ctxt audit list`
@@ -527,7 +517,7 @@ Monitor for:
 - Unusual registry access patterns
 - Failed authentication attempts
 - `security.*` entries in the audit log (`ctxt audit list --event-type security.auth_failure`)
-- Plugin crashes or resource overuse
+- Step crashes or resource overuse
 - Unauthorized file access
 
 ### Response Procedures
@@ -543,7 +533,7 @@ See [Secret Management - Incident Response](./secret-management.md#incident-resp
 
 Planned security improvements:
 
-- **WASM Sandboxing**: Replace Go plugin sandbox with WebAssembly
+- **WASM Sandboxing**: WebAssembly runtime for installed steps
 - **Registry Signatures**: Cryptographic verification of registry data
 - **Distributed Trust**: Multi-signature support for critical operations
 - **Hardware Keys**: Hardware security module support
@@ -563,9 +553,9 @@ For security issues:
 ### Internal Documentation
 - [ADR-019: Encryption and Privacy](../decisions/ADR-019-encryption-and-privacy.md)
 - [ADR-023: Authentication and Authorization](../decisions/ADR-023-authentication-authorization-model.md)
-- [ADR-027: Plugin Isolation and Sandboxing](../decisions/ADR-027-plugin-isolation-sandboxing.md)
+- [ADR-055: Sandbox Isolation Levels](../decisions/ADR-055-sandbox-isolation-levels.md)
+- [ADR-078: No Plugin System](../decisions/ADR-078-no-plugin-system.md)
 - [dPKMS Security](../dpkms/security.md)
-- [Plugin Isolation](../plugins/plugin-isolation.md)
 
 ### External Standards
 - [NIST Cybersecurity Framework](https://www.nist.gov/cyberframework)
@@ -581,7 +571,7 @@ ContextHelp's security model provides:
 - **Local-first privacy** with explicit opt-in for external features
 - **Zero trust** for all external sources
 - **Automatic secret protection** through detection and sanitization
-- **Process isolation** for plugins and pipelines
+- **Process isolation** for installed steps and pipelines
 - **Comprehensive audit logging** for compliance
 - **Clear threat modeling** and documented mitigations
 

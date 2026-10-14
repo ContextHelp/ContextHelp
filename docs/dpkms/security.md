@@ -9,7 +9,7 @@ ContextHelp must protect users from:
 
 - Unauthorized access to local knowledge
 - Malicious or misconfigured registries
-- Compromised plugins or pipelines
+- Compromised installed steps or pipelines
 - Supply-chain attacks via registry data or integrations
 - Unsafe remote execution or data exfiltration
 - Denial-of-service conditions within the engine
@@ -19,7 +19,7 @@ The engine assumes:
 
 - The local machine is not fully trusted
 - Registries and external providers may be untrusted
-- Plugins may come from unverified third parties
+- Steps installed from a step registry may come from unverified third parties
 - Pipelines may consume unstructured or adversarial inputs
 - Agents operate within a bounded context defined by configuration
 
@@ -38,7 +38,7 @@ Pipeline execution must respect clear isolation:
 
 - Pipelines cannot write outside their assigned working directory.
 - External calls (LLM providers, metadata fetchers) must be opt-in and explicitly configured.
-- Plugins run in a restricted context with:
+- Installed steps (designed to run out of process, ADR-058; not executed yet) must run in a restricted context with:
   - No access to OS-level exec without permission
   - Limited filesystem access
   - Strict sanitization of inputs and outputs
@@ -123,16 +123,16 @@ Bookmark entries must never include:
 - Unsanitized remote registry content
 - Unbounded raw binary data without size checks
 
-## Plugin & Pipeline Security
+## Step & Pipeline Security
 
-Plugins and pipelines must adhere to:
+Steps and pipelines must adhere to:
 
 - Permission-based capability exposure
 - Strict type validation for inputs and outputs
 - No direct external network access unless granted explicitly
 - Timeouts, memory limits, and cancellation controls
 
-A misbehaving plugin must not:
+A misbehaving step must not:
 
 - Crash the engine
 - Access unrelated data
@@ -171,7 +171,7 @@ To protect the local engine:
 ContextHelp must ship with:
 
 - No external registries enabled by default
-- No plugin auto-installation
+- No step auto-installation
 - Localhost-only API binding
 - Minimal privileges for all components
 - Clear warnings when enabling remote features
@@ -180,7 +180,7 @@ ContextHelp must ship with:
 
 Potential improvements to be considered:
 
-- Sandboxed WASM plugin runtime
+- Sandboxed WASM runtime for installed steps
 - Optional encrypted bookmark database
 - Signed registry metadata with trust scores
 - Distributed trust networks for registry provenance
@@ -193,7 +193,7 @@ Security in ContextHelp is centered on:
 
 - Local-first privacy
 - Treating registries as untrusted providers
-- Strong isolation around pipelines and plugins
+- Strong isolation around pipelines and installed steps
 - Explicit configuration for anything remote
 - Schema validation at every boundary
 - Principle of least privilege across components

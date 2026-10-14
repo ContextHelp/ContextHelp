@@ -499,7 +499,7 @@ mkdir -p ~/.local/share/contexthelp
 2. Read the [design documentation](./design.md)
 3. Learn about focus profiles in [ctxt configuration](./ctxt/configuration.md)
 4. Understand [pipeline configuration](./ctxt/pipelines.md)
-5. Check out the [plugin system](./plugins/plugins.md)
+5. Extend processing with [custom pipelines and steps](./ctxt/pipelines.md#extending-pipelines)
 
 ## Getting Help
 

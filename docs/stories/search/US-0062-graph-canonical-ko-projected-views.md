@@ -197,7 +197,7 @@ ctxt find --node-type task "authentication tasks"
 ctxt node get "ctxt:node/obj-abc123/decision/0"
 ```
 
-### Go Types (pluginapi, pseudocode)
+### Go Types (internal/storage, pseudocode)
 
 ```go
 // NodeHit — a search result pointing to a specific node within an object.

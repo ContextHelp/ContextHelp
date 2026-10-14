@@ -86,12 +86,6 @@ registries:
   - name: uxpatterns
     url: https://uxpatterns.example.com
 
-plugins:
-  - type: plugin
-    plugin: ./plugins/screensuggester.so
-    config:
-      enabled: true
-
 i18n:
   enabled: false
   preferred_languages:

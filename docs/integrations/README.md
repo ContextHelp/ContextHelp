@@ -12,7 +12,7 @@ Bulk importers (`ctxt import chrome|pinboard|notion|slack|...`) are built in; `c
 
 ## AI providers
 
-Providers are compiled into dpkms and picked by config (`providers.<role>.backend`), not plugins:
+Providers are compiled into dpkms and picked by config (`providers.<role>.backend`); there is no plugin system:
 
 | Role | Backends |
 |------|----------|
@@ -32,6 +32,6 @@ Configuration and keys: [../environment-variables/ai-providers.md](../environmen
 
 ## See Also
 
-- [../plugins/](../plugins/) - Plugin API (not loaded at runtime yet)
+- [../decisions/ADR-078-no-plugin-system.md](../decisions/ADR-078-no-plugin-system.md) - No plugin system
 - [../ctxt/pipelines.md](../ctxt/pipelines.md) - Enrichment pipelines using AI providers
 - [../dpkms/registries.md](../dpkms/registries.md) - External registry integration

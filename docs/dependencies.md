@@ -90,7 +90,6 @@ No `.env` loader (`godotenv`) and no `cleanenv` or `koanf` dependency.
 **Why:**
 - Simpler API than golang-migrate
 - Embedded migrations (better for compiled binaries)
-- Excellent for plugin-extensible schemas
 - Supports both SQL and Go migrations
 - 2 days integration (define migration format, test up/down)
 
@@ -110,7 +109,6 @@ No `.env` loader (`godotenv`) and no `cleanenv` or `koanf` dependency.
 3. **Why goose wins:**
    - Simpler for our use case
    - Better embedded migration support
-   - Plugin system will benefit from goose's flexibility
 
 #### UUID Generation
 
@@ -178,7 +176,7 @@ No `.env` loader (`godotenv`) and no `cleanenv` or `koanf` dependency.
 - NATS: Overkill for single-process
 - BoltDB: Redundant with SQLite
 
-**Future:** Plugin interface for distributed queues (Redis, NATS)
+**Future:** Backend interface for distributed queues (Redis, NATS)
 
 #### Logging
 
@@ -542,7 +540,7 @@ resp, err := client.R().
 3. **Lightweight:** Manual SQL JOIN queries
    - (already selected)
 
-**Future:** Plugin interface for graph backends (Neo4j connector, etc.)
+**Future:** Backend interface for graph backends (Neo4j connector, etc.)
 
 ### ctxt
 
@@ -648,7 +646,7 @@ c.OnHTML("a[href]", func(e *colly.HTMLElement) {
 
 2. **Complementary:** Cloud OCR APIs (Google Vision, AWS Textract)
    - Network dependency (violates local-first)
-   - Fallback option for plugin
+   - Fallback option behind a provider backend
 
 3. **Lightweight:** `github.com/GeertJohan/go.tesseract` (~36 stars)
    - Unmaintained
@@ -761,7 +759,7 @@ results := collection.Query(ctx, queryEmbedding, 10)
    - Pinecone cloud SDK
    - Network dependency (violates local-first)
    - 3 days (API integration)
-   - Plugin option for cloud deployments
+   - Backend option for cloud deployments
 
 3. **Pure Go HNSW:** `github.com/chewxy/hnsw` (~480 stars)
    - Lower-level HNSW library
@@ -772,40 +770,16 @@ results := collection.Query(ctx, queryEmbedding, 10)
 - Zero CGo = simpler builds (aligns with modernc.org/sqlite choice)
 - Batteries-included (persistence, collections, metadata)
 - Easy to start, easy to deploy
-- Plugin interface allows swapping to sqlite-vec later if needed
+- Backend interface allows swapping to sqlite-vec later if needed
 
-**Plugin Interface:** Still provide abstraction for alternative backends
+**Backend Interface:** Still provide abstraction for alternative backends
 
 #### Plugin System
 
-**Selected:** Go plugin system OR compiled-in plugins
-
-**Why:**
-- Go plugins (`plugin` package) are platform-limited
-- Recommend compiled-in plugins with interface registration
-- 5-7 days (plugin interface, discovery, lifecycle)
-
-**Alternatives:**
-
-1. **Go stdlib plugins:** `plugin` package
-   - Linux/macOS only
-   - CGo required
-   - Fragile across Go versions
-   - 3-4 days (if it works)
-
-2. **Hashicorp go-plugin:** `github.com/hashicorp/go-plugin` (~5k stars)
-   - RPC-based plugins (subprocesses)
-   - Cross-platform
-   - More complex
-   - 7-10 days
-
-3. **Compiled-in + Registry:** (recommended)
-   - Plugins are Go packages
-   - Register via init() functions
-   - Rebuild to add plugins
-   - 5-7 days (interface design, registry, examples)
-
-**Recommendation:** Start with compiled-in, consider hashicorp/go-plugin for v2.
+**Selected:** none. ctxt and dpkms have no plugin system
+([ADR-078](decisions/ADR-078-no-plugin-system.md)); extension is through
+pipelines, steps (built-in, or installed from step registries), registries,
+and (designed) hooks. Neither the Go `plugin` package nor `hashicorp/go-plugin` is used.
 
 ### ctxt
 
@@ -978,7 +952,7 @@ pipelineErrors := prometheus.NewCounter(...)
    - OpenAI-compatible API for local models
    - 2-3 days (same as Ollama)
 
-**Recommendation:** Support both Ollama and llama.cpp via plugin interface.
+**Recommendation:** Support both Ollama and llama.cpp as provider backends.
 
 ---
 
