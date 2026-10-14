@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 
@@ -69,6 +70,28 @@ func (s *ObjectStore) Reproject(ctx context.Context, id string) (bool, error) {
 		return false, nil // gone, or already current
 	}
 
+	if err := reindexRowTx(ctx, tx, id); err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return false, nil
+		}
+		return false, fmt.Errorf("reproject %s: %w", id, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("reproject %s: commit: %w", id, err)
+	}
+	return true, nil
+}
+
+// reindexRowTx re-derives object id's FTS body from its stored fields
+// (projection.ProjectIndex), rewrites the body and its objects_fts entry
+// when they differ, and stamps the current projection version. It is
+// what Update does to the index, for a row a narrower write (Reinforce)
+// or a projection change left stale. A missing row wraps
+// storage.ErrNotFound.
+//
+// The stored body must still be the one objects_fts indexed: the entry
+// is dropped by re-reading it (see deleteObjectFTSTx).
+func reindexRowTx(ctx context.Context, tx *sql.Tx, id string) error {
 	obj, err := scanObject(tx.QueryRowContext(ctx, `SELECT
 		id, type, subtype, raw_content, content_type, text_content,
 		metadata, summaries, sections, tags, mentions,
@@ -79,14 +102,14 @@ func (s *ObjectStore) Reproject(ctx context.Context, id string) (bool, error) {
 	FROM objects WHERE id = ?`, id))
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			return false, nil
+			return err
 		}
-		return false, fmt.Errorf("reproject %s: load: %w", id, err)
+		return fmt.Errorf("load: %w", err)
 	}
 	var stored string
 	if err := tx.QueryRowContext(ctx,
 		`SELECT projected_fts_body FROM objects WHERE id = ?`, id).Scan(&stored); err != nil {
-		return false, fmt.Errorf("reproject %s: load body: %w", id, err)
+		return fmt.Errorf("load body: %w", err)
 	}
 
 	body := projection.ProjectIndex(obj).FTSBody
@@ -94,24 +117,26 @@ func (s *ObjectStore) Reproject(ctx context.Context, id string) (bool, error) {
 		// Same order as Update: drop the entry while the row still holds
 		// the old body, rewrite, then index the new body.
 		if err := deleteObjectFTSTx(ctx, tx, id); err != nil {
-			return false, fmt.Errorf("reproject %s: drop fts entry: %w", id, err)
+			return fmt.Errorf("drop fts entry: %w", err)
 		}
 		if _, err := tx.ExecContext(ctx,
 			`UPDATE objects SET projected_fts_body = ?,
 			        fts_indexed = CASE WHEN ? != '' THEN 1 ELSE fts_indexed END
 			  WHERE id = ?`, body, body, id); err != nil {
-			return false, fmt.Errorf("reproject %s: write body: %w", id, err)
+			return fmt.Errorf("write body: %w", err)
 		}
 		if body != "" {
 			if _, err := tx.ExecContext(ctx,
 				`INSERT INTO objects_fts(rowid, id, projected_fts_body) VALUES ((SELECT rowid FROM objects WHERE id = ?), ?, ?)`,
 				id, id, body); err != nil {
-				return false, fmt.Errorf("reproject %s: index body: %w", id, err)
+				return fmt.Errorf("index body: %w", err)
 			}
 		}
 	}
-	if err := tx.Commit(); err != nil {
-		return false, fmt.Errorf("reproject %s: commit: %w", id, err)
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE objects SET projection_version = ? WHERE id = ?`,
+		indexsig.ProjectionVersion, id); err != nil {
+		return fmt.Errorf("stamp: %w", err)
 	}
-	return true, nil
+	return nil
 }

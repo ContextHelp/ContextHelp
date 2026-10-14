@@ -390,11 +390,9 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 	mergedMentionStrs := mergeStrings(mentionsToStrings(obj.Mentions), mentionsToStrings(mergeData.Mentions))
 	mergedMentionsJSON, _ := json.Marshal(mergedMentionStrs)
 
-	// fts_indexed is left untouched: Reinforce never rewrites
-	// projected_fts_body (the generated tsvector stays valid), and no
-	// downstream re-indexer exists to flip the flag back. Clearing it here
-	// misreported reinforced (deduplicated) objects as unindexed even
-	// though FTS still matched.
+	// fts_indexed is not cleared here: the rows are re-indexed below,
+	// which sets it when the new body is non-empty. Clearing it
+	// misreported reinforced (deduplicated) objects as unindexed.
 	//
 	// New content rewrites text_content with the same default Create
 	// applies (projection.BodyText), keeping it in step with raw_content.
@@ -425,11 +423,50 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 	if err != nil {
 		return "", fmt.Errorf("reinforce: update: %w", err)
 	}
+	// The text, tags and mentions just written feed the FTS body:
+	// re-index every row the update touched (content_hash is not
+	// unique here) as Update does, or search keeps matching what they
+	// held before.
+	if err := reindexByHashTx(ctx, tx, hash); err != nil {
+		return "", fmt.Errorf("reinforce: reindex: %w", err)
+	}
 
 	if err := tx.Commit(); err != nil {
 		return "", fmt.Errorf("reinforce: commit: %w", err)
 	}
 	return obj.ID, nil
+}
+
+// reindexByHashTx re-derives the FTS body of every object with content
+// hash from its stored fields (projection.ProjectIndex) and stamps the
+// current projection version: what Update stores, for rows a narrower
+// write (Reinforce) changed. The generated tsvector follows the body.
+func reindexByHashTx(ctx context.Context, tx *sql.Tx, hash string) error {
+	var objs []*storage.KnowledgeObject
+	err := scanTxRows(ctx, tx, func(rows *sql.Rows) error {
+		for rows.Next() {
+			obj, err := scanObjectRows(rows)
+			if err != nil {
+				return err
+			}
+			objs = append(objs, obj)
+		}
+		return nil
+	}, objectSelectCols+` FROM objects WHERE content_hash = $1`, hash)
+	if err != nil {
+		return fmt.Errorf("load: %w", err)
+	}
+	for _, obj := range objs {
+		body := projection.ProjectIndex(obj).FTSBody
+		if _, err := tx.ExecContext(ctx, `UPDATE objects
+			SET projected_fts_body = $1,
+			    fts_indexed = CASE WHEN $1 <> '' THEN TRUE ELSE fts_indexed END,
+			    projection_version = $2
+			WHERE id = $3`, body, indexsig.ProjectionVersion, obj.ID); err != nil {
+			return fmt.Errorf("write body %s: %w", obj.ID, err)
+		}
+	}
+	return nil
 }
 
 func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, limit, offset int) ([]*storage.KnowledgeObject, int, error) {
