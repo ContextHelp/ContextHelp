@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/dblock"
+	"github.com/ideacrafterslabs/ctxt/internal/server/stack"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
@@ -58,4 +61,20 @@ func acquireServeLock(c *config.Config, instance string) (*dblock.Lock, error) {
 		return nil, fmt.Errorf("lock database %s: %w", path, err)
 	}
 	return l, nil
+}
+
+// closeServeStack shuts the request stack down within drain, which
+// writes the security audit rows still queued (and cancels alert sends
+// still running when drain runs out), and only then closes the store
+// those rows are written to. Failures are warnings on warn: serve is
+// exiting either way.
+func closeServeStack(warn io.Writer, st *stack.Stack, store interface{ Close(context.Context) error }, drain time.Duration) {
+	ctx, cancel := context.WithTimeout(context.Background(), drain)
+	defer cancel()
+	if err := st.Shutdown(ctx); err != nil {
+		_, _ = fmt.Fprintf(warn, "warning: stack shutdown: %v\n", err)
+	}
+	if err := store.Close(context.Background()); err != nil {
+		_, _ = fmt.Fprintf(warn, "warning: close storage: %v\n", err)
+	}
 }

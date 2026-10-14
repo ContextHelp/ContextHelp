@@ -9,22 +9,33 @@
 // queued rows; the queue is bounded and drops (counted, rate-limited
 // warning) when full, so recording never blocks the request path. Close
 // stops intake and drains the queue; call it before closing the store.
-// Optional handlers: webhook POST (JSON) and SMTP email.
+// Optional handlers: webhook POST (JSON) and SMTP email. Every handler
+// runs with a context bounded by Config.DeliveryTimeout and cancelled
+// when Close's deadline passes. Outbound sends go through kit's network
+// policy: a context carrying kit's offline mark is refused.
 package security
 
 import (
-	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/smtp"
+	"net/url"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
+	"hop.top/kit/go/core/netpolicy"
+	kitbus "hop.top/kit/go/runtime/bus"
+	webhooksink "hop.top/kit/go/runtime/notify/sinks/webhook"
+
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -57,8 +68,10 @@ type Alert struct {
 	OccuredAt time.Time         `json:"occurred_at"`
 }
 
-// AlertHandler processes a security alert.
-// Implementations MUST be non-blocking (complete quickly or offload to goroutine).
+// AlertHandler processes a security alert. Each call runs on its own
+// goroutine with a context that ends after Config.DeliveryTimeout, or
+// when Close's deadline passes; implementations must return once it
+// ends.
 type AlertHandler func(ctx context.Context, a Alert)
 
 // Config holds tunable parameters for the emitter.
@@ -78,10 +91,14 @@ type Config struct {
 	// AuditQueueSize bounds the audit rows waiting for the writer.
 	// When full, further rows are dropped and counted. Default: 1024.
 	AuditQueueSize int
+	// DeliveryTimeout bounds each alert handler call (one webhook POST,
+	// one SMTP session). Default: 10s.
+	DeliveryTimeout time.Duration
 }
 
 const (
-	defaultAuditQueueSize = 1024
+	defaultAuditQueueSize  = 1024
+	defaultDeliveryTimeout = 10 * time.Second
 	// dropWarnInterval rate-limits the "audit queue full" warning.
 	dropWarnInterval = 10 * time.Second
 )
@@ -101,6 +118,7 @@ func DefaultConfig() Config {
 		ACLDenialThreshold:   10,
 		WindowDuration:       60 * time.Second,
 		AuditQueueSize:       defaultAuditQueueSize,
+		DeliveryTimeout:      defaultDeliveryTimeout,
 	}
 }
 
@@ -166,6 +184,12 @@ type Emitter struct {
 	closed   bool
 	queue    chan auditJob  // nil when audit is nil
 	inflight sync.WaitGroup // optional handler goroutines
+	// sends is the handlers' lifetime: Close cancels it once its
+	// deadline passes (or the handlers are done), which ends every send
+	// still in flight.
+	sends     context.Context
+	stopSends context.CancelFunc
+	timeout   time.Duration // per handler call
 	// workerDone closes when the audit writer exits.
 	workerDone chan struct{}
 	// abort ends the drain early: the in-flight write's context is
@@ -197,6 +221,11 @@ func New(cfg Config, audit storage.AuditStore) *Emitter {
 		workerDone: make(chan struct{}),
 	}
 	e.abort, e.abortFunc = context.WithCancel(context.Background()) // #nosec G118 -- abortFunc is stored and invoked by Close
+	e.sends, e.stopSends = context.WithCancel(context.Background()) // #nosec G118 -- stopSends is stored and invoked by Close
+	e.timeout = cfg.DeliveryTimeout
+	if e.timeout <= 0 {
+		e.timeout = defaultDeliveryTimeout
+	}
 	if audit != nil {
 		size := cfg.AuditQueueSize
 		if size <= 0 {
@@ -208,10 +237,10 @@ func New(cfg Config, audit storage.AuditStore) *Emitter {
 		close(e.workerDone)
 	}
 	if cfg.WebhookURL != "" {
-		e.handlers = append(e.handlers, webhookHandler(cfg.WebhookURL))
+		e.handlers = append(e.handlers, webhookHandler(cfg.WebhookURL, newWebhookClient(http.DefaultTransport)))
 	}
 	if cfg.SMTP.Host != "" && cfg.SMTP.To != "" {
-		e.handlers = append(e.handlers, smtpHandler(cfg.SMTP))
+		e.handlers = append(e.handlers, smtpHandler(cfg.SMTP, nil))
 	}
 	return e
 }
@@ -233,7 +262,8 @@ func (e *Emitter) Dropped() uint64 {
 // handlers to finish. If ctx ends first, the in-flight write's context
 // is cancelled, the remaining rows are discarded (and counted as
 // dropped), and Close returns ctx's error once the writer has exited:
-// no audit write happens after Close returns. Idempotent; later calls
+// no audit write happens after Close returns. Handler sends still in
+// flight at that point are cancelled too. Idempotent; later calls
 // return the first call's result.
 func (e *Emitter) Close(ctx context.Context) error {
 	e.closeOnce.Do(func() {
@@ -249,6 +279,8 @@ func (e *Emitter) Close(ctx context.Context) error {
 			e.inflight.Wait()
 			close(handlersDone)
 		}()
+		// Every return path ends the sends still in flight.
+		defer e.stopSends()
 
 		select {
 		case <-e.workerDone:
@@ -374,6 +406,8 @@ func (e *Emitter) dispatch(ctx context.Context, a Alert) {
 		"message", a.Message,
 		"count", a.Count,
 	)
+	// The detached context keeps the caller's values (kit's offline
+	// mark among them) and drops its cancellation.
 	detached := context.WithoutCancel(ctx)
 
 	e.intake.RLock()
@@ -392,7 +426,11 @@ func (e *Emitter) dispatch(ctx context.Context, a Alert) {
 		e.inflight.Add(1)
 		go func(handler AlertHandler) {
 			defer e.inflight.Done()
-			handler(detached, a)
+			sendCtx, cancel := context.WithTimeout(detached, e.timeout)
+			defer cancel()
+			stop := context.AfterFunc(e.sends, cancel)
+			defer stop()
+			handler(sendCtx, a)
 		}(h)
 	}
 }
@@ -455,36 +493,63 @@ func (e *Emitter) writeAuditRow(ctx context.Context, a Alert) {
 	}
 }
 
-// webhookHandler returns an AlertHandler that POSTs alert JSON to url.
-func webhookHandler(url string) AlertHandler {
+// newWebhookClient returns the client webhook alerts are posted with.
+// base (nil means http.DefaultTransport) is wrapped in kit's offline
+// guard explicitly, so --offline holds whether or not netpolicy.Install
+// ran. Redirects are not followed: the alert goes to the configured URL
+// or nowhere, and a 3xx is reported like any other non-2xx answer. The
+// per-call deadline comes from the handler context.
+func newWebhookClient(base http.RoundTripper) *http.Client {
+	return &http.Client{
+		Transport: netpolicy.Guard(base),
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+}
+
+// alertTemplate renders the Alert carried as a bus event's payload as
+// the webhook body, keeping the wire format the plain Alert JSON.
+type alertTemplate struct{}
+
+func (alertTemplate) Render(e kitbus.Event) ([]byte, string, error) {
+	body, err := json.Marshal(e.Payload)
+	if err != nil {
+		return nil, "", fmt.Errorf("security: marshal alert: %w", err)
+	}
+	return body, "application/json", nil
+}
+
+// webhookHandler returns an AlertHandler that POSTs alert JSON to
+// target through kit's webhook sink.
+func webhookHandler(target string, client *http.Client) AlertHandler {
+	sink := webhooksink.New(target,
+		webhooksink.WithHTTPClient(client),
+		webhooksink.WithTemplate(alertTemplate{}),
+	)
+	// The URL is a secret (it often embeds a token): log its origin only.
+	shown := "webhook"
+	if u, err := url.Parse(target); err == nil && u.Host != "" {
+		shown = u.Scheme + "://" + u.Host
+	}
 	return func(ctx context.Context, a Alert) {
-		body, err := json.Marshal(a)
-		if err != nil {
-			slog.Warn("security: webhook marshal error", "err", err)
+		err := sink.Drain(ctx, kitbus.Event{Topic: kitbus.Topic(a.Kind), Source: "security", Timestamp: a.OccuredAt, Payload: a})
+		if err == nil {
 			return
 		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
-		if err != nil {
-			slog.Warn("security: webhook request error", "err", err)
-			return
+		var ue *url.Error
+		if errors.As(err, &ue) {
+			ue.URL = shown
 		}
-		req.Header.Set("Content-Type", "application/json")
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			slog.Warn("security: webhook delivery error", "err", err)
-			return
-		}
-		_ = resp.Body.Close()
-		if resp.StatusCode >= 400 {
-			slog.Warn("security: webhook non-2xx response", "status", resp.StatusCode)
-		}
+		slog.Warn("security: webhook delivery error", "endpoint", shown, "err", err)
 	}
 }
 
 // smtpHandler returns an AlertHandler that sends an email via SMTP.
-func smtpHandler(cfg SMTPConfig) AlertHandler {
+// dial (nil means a plain net.Dialer) is wrapped in kit's offline guard.
+func smtpHandler(cfg SMTPConfig, dial netpolicy.DialFunc) AlertHandler {
+	dial = netpolicy.GuardDial(dial)
 	return func(ctx context.Context, a Alert) {
-		addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 		subject := fmt.Sprintf("[Security Alert] %s: %s", a.Kind, a.Level)
 		body := fmt.Sprintf("Subject: %s\r\nFrom: %s\r\nTo: %s\r\n\r\n%s\r\n\r\nPrincipal: %s\nCount: %d\nTime: %s\n",
 			subject, cfg.From, cfg.To,
@@ -493,9 +558,60 @@ func smtpHandler(cfg SMTPConfig) AlertHandler {
 			a.Count,
 			a.OccuredAt.Format(time.RFC3339),
 		)
-		err := smtp.SendMail(addr, nil, cfg.From, []string{cfg.To}, []byte(body))
-		if err != nil {
+		if err := sendMail(ctx, dial, cfg, []byte(body)); err != nil {
 			slog.Warn("security: smtp delivery error", "err", err)
 		}
 	}
+}
+
+// sendMail is smtp.SendMail bounded by ctx: net/smtp has no context
+// support (and kit's SMTP mailer honours ctx only while dialing), so
+// ctx's deadline is set on the connection and its cancellation closes
+// it, ending a conversation the server stalls at any step. STARTTLS is
+// used when the server offers it, as smtp.SendMail does.
+func sendMail(ctx context.Context, dial netpolicy.DialFunc, cfg SMTPConfig, msg []byte) (err error) {
+	conn, err := dial(ctx, "tcp", net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port)))
+	if err != nil {
+		return err
+	}
+	if dl, ok := ctx.Deadline(); ok {
+		_ = conn.SetDeadline(dl)
+	}
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer func() {
+		stop()
+		if err != nil && ctx.Err() != nil {
+			err = fmt.Errorf("%w: %w", ctx.Err(), err)
+		}
+	}()
+
+	c, err := smtp.NewClient(conn, cfg.Host)
+	if err != nil {
+		_ = conn.Close()
+		return err
+	}
+	defer func() { _ = c.Close() }()
+	if ok, _ := c.Extension("STARTTLS"); ok {
+		if err := c.StartTLS(&tls.Config{ServerName: cfg.Host, MinVersion: tls.VersionTLS12}); err != nil {
+			return err
+		}
+	}
+	if err := c.Mail(cfg.From); err != nil {
+		return err
+	}
+	if err := c.Rcpt(cfg.To); err != nil {
+		return err
+	}
+	w, err := c.Data()
+	if err != nil {
+		return err
+	}
+	if _, err := w.Write(msg); err != nil {
+		_ = w.Close()
+		return err
+	}
+	if err := w.Close(); err != nil {
+		return err
+	}
+	return c.Quit()
 }

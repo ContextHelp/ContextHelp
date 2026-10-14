@@ -67,7 +67,7 @@ Destructive CLI commands (`ctxt delete`, `ctxt inbox discard|clear`, ...) also r
 
 - The audit log is an append-only table in the dpkms database. It records security alerts (`security.auth_failure` and `security.acl_denial` once a principal reaches the threshold below; every `security.quota_exhausted`), duplicate detection, fan-out enrichment and `ctxt doctor` runs. Object creates, edits and deletes are not recorded.
 - Read it with `ctxt audit list` / `ctxt audit export` (`admin:audit` scope over HTTP).
-- `security.alerts`: reaching `auth_failure_threshold` (3) auth failures or `acl_denial_threshold` (10) ACL denials per principal in 60s writes the alert entry above and, if set, posts to `webhook_url` or sends mail via `smtp`.
+- `security.alerts`: reaching `auth_failure_threshold` (3) auth failures or `acl_denial_threshold` (10) ACL denials per principal in 60s writes the alert entry above and, if set, posts to `webhook_url` or sends mail via `smtp`. Each POST or SMTP session ends after `delivery_timeout` (10s), or when serve's shutdown drain (`jobs.drain_timeout`) runs out; `webhook_url` redirects are not followed (a 3xx is logged as a failed delivery).
 - The `audit:` config block (`audit_log`, `syslog`, `webhook`) is read by no code; nothing forwards the audit log.
 
 ## Encryption
