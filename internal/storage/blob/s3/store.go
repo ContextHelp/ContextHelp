@@ -1,3 +1,4 @@
+// Package s3 implements storage.BlobStore on an S3-compatible backend.
 package s3
 
 import (
@@ -8,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"strings"
 	"time"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -186,14 +188,19 @@ func (s *Store) Exists(ctx context.Context, key string) (bool, error) {
 	return true, nil
 }
 
+// List returns the blobs whose key starts with prefix, every blob for
+// an empty one. Keys are stored sharded (keyPath), so a prefix of four
+// or more characters lists its shard alone; a shorter one lists the
+// whole store and filters on the key. Like the local store, it matches
+// the key itself, never the shard directories it sits under.
 func (s *Store) List(ctx context.Context, prefix string) ([]storage.BlobInfo, error) {
-	listPrefix := s.prefix
-	if prefix != "" {
-		if listPrefix != "" {
-			listPrefix = path.Join(listPrefix, prefix)
-		} else {
-			listPrefix = prefix
-		}
+	root := ""
+	if s.prefix != "" {
+		root = strings.TrimSuffix(s.prefix, "/") + "/"
+	}
+	listPrefix := root
+	if len(prefix) >= 4 {
+		listPrefix = s.keyPath(prefix)
 	}
 
 	// A page holds at most 1000 keys: follow the continuation token to
@@ -210,8 +217,7 @@ func (s *Store) List(ctx context.Context, prefix string) ([]storage.BlobInfo, er
 		}
 		for _, obj := range result.Contents {
 			key := path.Base(*obj.Key)
-			// Skip meta files.
-			if len(key) > 10 && key[len(key)-10:] == ".meta.json" {
+			if strings.HasSuffix(key, ".meta.json") || !strings.HasPrefix(key, prefix) {
 				continue
 			}
 			size := int64(0)

@@ -3,12 +3,15 @@ package s3
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob/blobtest"
 )
 
 func TestNewMissingBucket(t *testing.T) {
@@ -145,5 +148,53 @@ func TestListFollowsContinuation(t *testing.T) {
 	}
 	if len(keys) != 2 || keys[0] != "abcdfirst" || keys[1] != "ef01second" {
 		t.Errorf("List keys = %v, want [abcdfirst ef01second] (calls: %d)", keys, calls)
+	}
+}
+
+// TestListConformance runs the backend-shared List(prefix) contract
+// against the in-process fake, with and without a store prefix.
+func TestListConformance(t *testing.T) {
+	t.Run("no store prefix", func(t *testing.T) {
+		_, s := newFakeS3(t, "test-bucket", "")
+		blobtest.ListConformance(t, s)
+	})
+	t.Run("store prefix", func(t *testing.T) {
+		f, s := newFakeS3(t, "test-bucket", "data")
+		// Another prefix sharing the store prefix's first characters
+		// holds none of this store's blobs.
+		f.put("data2/ab/cd/abcdother", []byte("not ours"))
+		f.put("data2/ab9", []byte("not ours"))
+		blobtest.ListConformance(t, s)
+	})
+}
+
+// TestFakeRoundTrip checks the fake against the store's own calls, so
+// a List failure is List's and not the fake's.
+func TestFakeRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	f, s := newFakeS3(t, "test-bucket", "")
+	if err := s.Put(ctx, "abcdef01", strings.NewReader("payload"), storage.BlobMeta{ContentType: "text/plain"}); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	if _, ok := f.objects["ab/cd/abcdef01"]; !ok {
+		t.Fatalf("Put stored %v, want ab/cd/abcdef01 and its meta", f.objects)
+	}
+	rc, meta, err := s.Get(ctx, "abcdef01")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	got, _ := io.ReadAll(rc)
+	rc.Close()
+	if string(got) != "payload" || meta.ContentType != "text/plain" {
+		t.Errorf("Get = %q, %+v", got, meta)
+	}
+	if ok, err := s.Exists(ctx, "abcdef01"); err != nil || !ok {
+		t.Errorf("Exists = %v, %v", ok, err)
+	}
+	if err := s.Delete(ctx, "abcdef01"); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if ok, err := s.Exists(ctx, "abcdef01"); err != nil || ok {
+		t.Errorf("Exists after Delete = %v, %v", ok, err)
 	}
 }

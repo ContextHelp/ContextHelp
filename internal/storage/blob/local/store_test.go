@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob/blobtest"
 )
 
 func newTestStore(t *testing.T) *Store {
@@ -167,3 +168,8 @@ func TestKeySharding(t *testing.T) {
 }
 
 var _ storage.BlobStore = (*Store)(nil)
+
+// TestListConformance runs the backend-shared List(prefix) contract.
+func TestListConformance(t *testing.T) {
+	blobtest.ListConformance(t, newTestStore(t))
+}
