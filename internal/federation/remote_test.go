@@ -98,7 +98,7 @@ func TestRemotePusher_NoToken_NoAuthHeader(t *testing.T) {
 
 // TestRemotePusher_AdvancesWatermarkAfterCommit: a successful HTTP push
 // (200) moves the per-federation watermark on the source-side
-// WatermarkStore to the pushed object's change position, so the next
+// WatermarkStore to the pushed object's ChangeSeq, so the next
 // tick does not re-send it.
 func TestRemotePusher_AdvancesWatermarkAfterCommit(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -111,6 +111,7 @@ func TestRemotePusher_AdvancesWatermarkAfterCommit(t *testing.T) {
 	p := NewRemotePusherWithWatermarks("rwm-fed", srv.URL, "", src.Watermarks(), src.Blobs())
 
 	obj := makeObject("rwm-1", "rwm-h1")
+	obj.ChangeSeq = 7
 	if err := p.Push(context.Background(), []storage.KnowledgeObject{obj}, nil, nil); err != nil {
 		t.Fatalf("push: %v", err)
 	}
@@ -119,8 +120,8 @@ func TestRemotePusher_AdvancesWatermarkAfterCommit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetWatermark: %v", err)
 	}
-	if got.ID != obj.ID || !got.UpdatedAt.Equal(obj.UpdatedAt) {
-		t.Errorf("watermark = %+v, want the object's position", got)
+	if got != obj.ChangeSeq {
+		t.Errorf("watermark = %d, want the object's ChangeSeq %d", got, obj.ChangeSeq)
 	}
 }
 
@@ -147,7 +148,7 @@ func TestRemotePusher_DoesNotAdvanceWatermarkOnFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetWatermark: %v", err)
 	}
-	if got != (storage.ChangeCursor{}) {
-		t.Errorf("failed push advanced watermark: got %+v, want zero", got)
+	if got != 0 {
+		t.Errorf("failed push advanced watermark: got %d, want 0", got)
 	}
 }

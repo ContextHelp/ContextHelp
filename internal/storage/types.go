@@ -112,27 +112,11 @@ type ObjectFilter struct {
 	MetadataUntil  *time.Time // dates_mentioned upper bound
 	SourceType     string     // metadata.source_type
 
-	// ChangedAfter, when non-nil, keeps objects whose change position
-	// (updated_at, then id) is after it, and returns them in change
-	// order, ascending, in place of Sort and Dir. With Limit it pages
-	// through changes: the next page starts after the last object's
-	// ChangeCursorOf.
-	ChangedAfter *ChangeCursor
-	// ChangedUntil, when non-nil, drops objects updated after it.
-	ChangedUntil *time.Time
-}
-
-// ChangeCursor is a position in the order objects change in: by
-// updated_at as an instant, then by id, byte-wise. The zero value
-// precedes every object.
-type ChangeCursor struct {
-	UpdatedAt time.Time `json:"updated_at"`
-	ID        string    `json:"id"`
-}
-
-// ChangeCursorOf is the change position of obj.
-func ChangeCursorOf(obj *KnowledgeObject) ChangeCursor {
-	return ChangeCursor{UpdatedAt: obj.UpdatedAt, ID: obj.ID}
+	// ChangedAfter, when non-nil, keeps objects whose ChangeSeq is
+	// greater than it and returns them in ChangeSeq order, ascending, in
+	// place of Sort and Dir. With Limit it pages through changes: the
+	// next page starts after the last object's ChangeSeq.
+	ChangedAfter *int64
 }
 
 // EntityFilter specifies criteria for listing entities.

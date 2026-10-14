@@ -98,10 +98,10 @@ func TestFederation_ConcurrentPush_Idempotent(t *testing.T) {
 
 	wmA := getWM("fed-a")
 	wmB := getWM("fed-b")
-	if wmA.ID == "" {
+	if wmA == 0 {
 		t.Error("watermark fed-a not advanced after concurrent push")
 	}
-	if wmB.ID == "" {
+	if wmB == 0 {
 		t.Error("watermark fed-b not advanced after concurrent push")
 	}
 
@@ -111,7 +111,7 @@ func TestFederation_ConcurrentPush_Idempotent(t *testing.T) {
 	if perr := pushFromSrc(srcA, "fed-a"); perr != nil {
 		t.Fatalf("third push fed-a: %v", perr)
 	}
-	if wmBAfter := getWM("fed-b"); wmBAfter.ID != prevB.ID || !wmBAfter.UpdatedAt.Equal(prevB.UpdatedAt) {
+	if wmBAfter := getWM("fed-b"); wmBAfter != prevB {
 		t.Errorf("fed-b watermark moved on fed-a push: before=%v after=%v",
 			prevB, wmBAfter)
 	}
@@ -125,7 +125,7 @@ func TestFederation_ConcurrentPush_Idempotent(t *testing.T) {
 // openWatermarkReader opens a fresh SQLite driver against tgtPath and
 // returns a closure that reads watermarks by federation name. Cleanup is
 // registered via t.Cleanup so the caller doesn't manage the driver.
-func openWatermarkReader(t *testing.T, tgtPath string) func(name string) storage.ChangeCursor {
+func openWatermarkReader(t *testing.T, tgtPath string) func(name string) int64 {
 	t.Helper()
 	drv, err := storageutil.NewDriver("sqlite", tgtPath, storageutil.NewTestBlobStore(t))
 	if err != nil {
@@ -136,7 +136,7 @@ func openWatermarkReader(t *testing.T, tgtPath string) func(name string) storage
 			t.Logf("close wm reader: %v", cerr)
 		}
 	})
-	return func(name string) storage.ChangeCursor {
+	return func(name string) int64 {
 		t.Helper()
 		got, gerr := drv.Watermarks().GetWatermark(context.Background(), name)
 		if gerr != nil {

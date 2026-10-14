@@ -16,8 +16,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
-// syncBase is when seeded source objects changed: well before any
-// until a test passes.
+// syncBase is when seeded source objects changed.
 var syncBase = time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 
 // seedSource stores one object per id in a fresh source DB, the i-th
@@ -36,7 +35,7 @@ func seedSource(t *testing.T, ids ...string) storage.StorageDriver {
 	return src
 }
 
-// touch bumps id's updated_at to at, as an edit does.
+// touch edits id, stamping updated_at = at.
 func touch(t *testing.T, src storage.StorageDriver, id string, at time.Time) {
 	t.Helper()
 	ctx := context.Background()
@@ -118,15 +117,32 @@ func (rv *receiver) sent() []string {
 	return all
 }
 
-var syncUntil = syncBase.Add(time.Hour)
+// seqOf is id's ChangeSeq in src.
+func seqOf(t *testing.T, src storage.StorageDriver, id string) int64 {
+	t.Helper()
+	o, err := src.Objects().Get(context.Background(), id)
+	if err != nil {
+		t.Fatalf("get %s: %v", id, err)
+	}
+	return o.ChangeSeq
+}
 
 func mustSync(t *testing.T, src storage.StorageDriver, p Pusher, batchSize int) int {
 	t.Helper()
-	n, err := Sync(context.Background(), src, p, syncUntil, batchSize)
+	n, err := Sync(context.Background(), src, p, batchSize)
 	if err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
 	return n
+}
+
+func mustWatermark(t *testing.T, p Pusher) int64 {
+	t.Helper()
+	wm, err := p.Watermark(context.Background())
+	if err != nil {
+		t.Fatalf("Watermark: %v", err)
+	}
+	return wm
 }
 
 // A tick with nothing changed since the last one pushes nothing: no
@@ -186,12 +202,12 @@ func TestSync_FailedPushKeepsWatermarkAndRetries(t *testing.T) {
 	rv := &receiver{fail: func(n int) bool { return n == 1 }}
 	p := NewRemotePusherWithWatermarks("sync-fail", rv.serve(t).URL, "", src.Watermarks(), src.Blobs())
 
-	n, err := Sync(context.Background(), src, p, syncUntil, 0)
+	n, err := Sync(context.Background(), src, p, 0)
 	if err == nil || n != 0 {
 		t.Fatalf("Sync against a refusing target = %d, %v; want 0 and an error", n, err)
 	}
-	if wm, _ := p.Watermark(context.Background()); wm != (storage.ChangeCursor{}) {
-		t.Fatalf("watermark moved on a refused batch: %+v", wm)
+	if wm, _ := p.Watermark(context.Background()); wm != 0 {
+		t.Fatalf("watermark moved on a refused batch: %d", wm)
 	}
 
 	if n := mustSync(t, src, p, 0); n != 2 {
@@ -200,8 +216,8 @@ func TestSync_FailedPushKeepsWatermarkAndRetries(t *testing.T) {
 	if want := [][]string{ids, ids}; len(rv.requests) != 2 || !slices.Equal(rv.requests[1], ids) {
 		t.Errorf("requests = %v, want %v", rv.requests, want)
 	}
-	if wm, _ := p.Watermark(context.Background()); wm.ID != "f-2" {
-		t.Errorf("watermark after the retry = %+v, want f-2", wm)
+	if wm, want := mustWatermark(t, p), seqOf(t, src, "f-2"); wm != want {
+		t.Errorf("watermark after the retry = %d, want f-2's %d", wm, want)
 	}
 }
 
@@ -270,8 +286,8 @@ func TestSync_SplitsLargeInlinePayloadAcrossRequests(t *testing.T) {
 		if got := rv.sent(); !slices.Equal(got, ids) {
 			t.Errorf("objects sent = %v, want each of %v once, in order", got, ids)
 		}
-		if wm, _ := p.Watermark(context.Background()); wm.ID != "l-5" {
-			t.Errorf("watermark = %+v, want l-5", wm)
+		if wm, want := mustWatermark(t, p), seqOf(t, src, "l-5"); wm != want {
+			t.Errorf("watermark = %d, want l-5's %d", wm, want)
 		}
 	})
 	t.Run("refused request resumes after the last acknowledged", func(t *testing.T) {
@@ -279,13 +295,12 @@ func TestSync_SplitsLargeInlinePayloadAcrossRequests(t *testing.T) {
 		rv := &receiver{fail: func(n int) bool { return n == 2 }}
 		p := NewRemotePusherWithWatermarks("sync-large-fail", rv.serve(t).URL, "", src.Watermarks(), src.Blobs())
 		p.maxRequestBytes = capBytes
-		if _, err := Sync(context.Background(), src, p, syncUntil, 0); err == nil {
+		if _, err := Sync(context.Background(), src, p, 0); err == nil {
 			t.Fatal("Sync with a refused request: want error")
 		}
 		acked := rv.requests[0]
-		wm, _ := p.Watermark(context.Background())
-		if wm.ID != acked[len(acked)-1] {
-			t.Fatalf("watermark = %+v, want the first request's last object %s", wm, acked[len(acked)-1])
+		if wm, want := mustWatermark(t, p), seqOf(t, src, acked[len(acked)-1]); wm != want {
+			t.Fatalf("watermark = %d, want the first request's last object %s's %d", wm, acked[len(acked)-1], want)
 		}
 
 		before := len(rv.requests)

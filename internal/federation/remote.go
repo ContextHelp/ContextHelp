@@ -91,9 +91,9 @@ func (p *RemotePusher) Name() string { return p.name }
 
 // Watermark returns the watermark kept in the source's store; zero
 // without one.
-func (p *RemotePusher) Watermark(ctx context.Context) (storage.ChangeCursor, error) {
+func (p *RemotePusher) Watermark(ctx context.Context) (int64, error) {
 	if p.watermarks == nil {
-		return storage.ChangeCursor{}, nil
+		return 0, nil
 	}
 	return p.watermarks.GetWatermark(ctx, p.name)
 }
@@ -137,7 +137,7 @@ func (p *RemotePusher) Push(
 	edgesOf, loose := assignEdges(objects, edges)
 	body := pushBody{Edges: loose, Entities: entities}
 	size := 0
-	var last storage.ChangeCursor
+	var last int64
 
 	flush := func() error {
 		if err := p.send(ctx, body); err != nil {
@@ -170,7 +170,7 @@ func (p *RemotePusher) Push(
 		body.Objects = append(body.Objects, enc)
 		body.Edges = append(body.Edges, edgesOf[i]...)
 		size += len(enc)
-		last = storage.ChangeCursorOf(&objects[i])
+		last = objects[i].ChangeSeq
 	}
 	return flush()
 }

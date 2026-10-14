@@ -100,12 +100,11 @@ func captureBookmark(t *testing.T, inst *instance, id, contentHash, content stri
 }
 
 // pushOnce drives one synchronous federation sync from src to tgt: what
-// the async worker does on each tick (federation.Sync), with every change
-// up to now settled.
+// the async worker does on each tick (federation.Sync).
 func pushOnce(t *testing.T, ix instances) error {
 	t.Helper()
 	pusher := federation.NewLocalPusher(ix.fedName, ix.tgt.path, nil, ix.src.drv.Blobs())
-	_, err := federation.Sync(context.Background(), ix.src.drv, pusher, time.Now(), 0)
+	_, err := federation.Sync(context.Background(), ix.src.drv, pusher, 0)
 	return err
 }
 
@@ -131,34 +130,33 @@ func waitForFederation(t *testing.T, tgt *instance, objectID string, timeout tim
 	)
 }
 
-// readWatermark reads federation_watermarks.last_synced_at via raw SQL.
-// US-0319 specifies this table but ctxt has NO Go API for it (no Watermark
-// store on storage.StorageDriver). Tests use this helper to inspect it
-// directly. Returns ("", nil) if no row exists for the federation name.
-func readWatermark(t *testing.T, dbPath, fedName string) (string, error) {
+// readWatermark reads federation_watermarks.last_change_seq via raw
+// SQL, independent of the WatermarkStore under test. Returns (0, nil)
+// if no row exists for the federation name.
+func readWatermark(t *testing.T, dbPath, fedName string) (int64, error) {
 	t.Helper()
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
-		return "", fmt.Errorf("open %s: %w", dbPath, err)
+		return 0, fmt.Errorf("open %s: %w", dbPath, err)
 	}
 	defer func() {
 		if cerr := db.Close(); cerr != nil {
 			t.Logf("readWatermark close %s: %v", dbPath, cerr)
 		}
 	}()
-	var lastSyncedAt string
+	var seq int64
 	err = db.QueryRowContext(
 		context.Background(),
-		`SELECT last_synced_at FROM federation_watermarks WHERE federation_name = ?`,
+		`SELECT last_change_seq FROM federation_watermarks WHERE federation_name = ?`,
 		fedName,
-	).Scan(&lastSyncedAt)
+	).Scan(&seq)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", nil
+		return 0, nil
 	}
 	if err != nil {
-		return "", fmt.Errorf("query watermark: %w", err)
+		return 0, fmt.Errorf("query watermark: %w", err)
 	}
-	return lastSyncedAt, nil
+	return seq, nil
 }
 
 // countTargetObjects returns how many rows exist in the target's objects

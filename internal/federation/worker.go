@@ -180,10 +180,10 @@ func (w *Worker) run(ctx context.Context) {
 	}
 }
 
-// tick pushes the objects changed since the target's watermark, up to
-// settleLag ago, in batches; see Sync.
+// tick pushes the objects changed since the target's watermark, in
+// batches; see Sync.
 func (w *Worker) tick(ctx context.Context) error {
-	n, err := Sync(ctx, w.src, w.pusher, time.Now().Add(-settleLag), w.batchSize)
+	n, err := Sync(ctx, w.src, w.pusher, w.batchSize)
 	if n > 0 {
 		slog.Debug("federation: pushed changes", "name", w.target.Name, "objects", n)
 	}

@@ -105,7 +105,7 @@ func (s *ObjectStore) Get(ctx context.Context, id string) (*storage.KnowledgeObj
 		decisions, tasks, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
-		remind_at, reminded_at, profile_id, graph_json, source_key
+		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq
 	FROM objects WHERE id = ?`, id)
 	obj, err := scanObject(row)
 	if err != nil {
@@ -144,7 +144,7 @@ func (s *ObjectStore) GetByContentHash(ctx context.Context, hash string) (*stora
 		decisions, tasks, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
-		remind_at, reminded_at, profile_id, graph_json, source_key
+		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq
 	FROM objects WHERE content_hash = ? LIMIT 1`, hash)
 	obj, err := scanObject(row)
 	if errors.Is(err, errObjectNotFound) {
@@ -163,7 +163,7 @@ func (s *ObjectStore) GetBySourceKey(ctx context.Context, key string) (*storage.
 		decisions, tasks, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
-		remind_at, reminded_at, profile_id, graph_json, source_key
+		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq
 	FROM objects WHERE source_key = ? LIMIT 1`, key)
 	obj, err := scanObject(row)
 	if errors.Is(err, errObjectNotFound) {
@@ -230,18 +230,9 @@ func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]
 		args = append(args, filter.Before.Format(time.RFC3339))
 	}
 
-	// Change order compares updated_at as an instant, like After and
-	// Before: datetime() normalizes the stored offset to UTC. The
-	// expression matches idx_objects_change_order (migration 042).
-	if c := filter.ChangedAfter; c != nil {
-		at := c.UpdatedAt.UTC().Format(time.RFC3339)
-		conditions = append(conditions,
-			"(datetime(updated_at) > datetime(?) OR (datetime(updated_at) = datetime(?) AND id > ?))")
-		args = append(args, at, at, c.ID)
-	}
-	if filter.ChangedUntil != nil {
-		conditions = append(conditions, "datetime(updated_at) <= datetime(?)")
-		args = append(args, filter.ChangedUntil.UTC().Format(time.RFC3339))
+	if filter.ChangedAfter != nil {
+		conditions = append(conditions, "change_seq > ?")
+		args = append(args, *filter.ChangedAfter)
 	}
 
 	// Metadata facet filters (US-0407).
@@ -263,7 +254,7 @@ func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]
 	}
 
 	// Sort.
-	order := "datetime(updated_at) ASC, id ASC" // change order
+	order := "change_seq ASC" // change order
 	if filter.ChangedAfter == nil {
 		sortCol := "created_at"
 		if filter.Sort == "updated_at" {
@@ -282,7 +273,7 @@ func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]
 		decisions, tasks, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
-		remind_at, reminded_at, profile_id, graph_json, source_key
+		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq
 	FROM objects %s ORDER BY %s`, where, order)
 
 	if filter.Limit > 0 {
@@ -598,7 +589,7 @@ func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, l
 		decisions, tasks, pipeline, source,
 		registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
-		remind_at, reminded_at, profile_id, graph_json, source_key
+		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq
 	FROM objects`
 	// where is a compiled RSQL predicate (internal/search): literals are
 	// already bound as ? placeholders in args, only operators and column
@@ -660,7 +651,7 @@ func scanObject(row *sql.Row) (*storage.KnowledgeObject, error) {
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&createdAt, &updatedAt, &ftsIndexed, &obj.Status, &obj.InboxNote,
-		&remindAt, &remindedAt, &obj.ProfileID, &graphJSON, &sourceKey,
+		&remindAt, &remindedAt, &obj.ProfileID, &graphJSON, &sourceKey, &obj.ChangeSeq,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -707,7 +698,7 @@ func scanObjectFromRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &pluginsJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&createdAt, &updatedAt, &ftsIndexed, &obj.Status, &obj.InboxNote,
-		&remindAt, &remindedAt, &obj.ProfileID, &graphJSON, &sourceKey,
+		&remindAt, &remindedAt, &obj.ProfileID, &graphJSON, &sourceKey, &obj.ChangeSeq,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("scan object row: %w", err)

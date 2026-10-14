@@ -3,7 +3,6 @@ package federation
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
@@ -11,20 +10,19 @@ import (
 // DefaultBatchSize caps the objects one Push carries.
 const DefaultBatchSize = 100
 
-// settleLag holds the most recent changes back from a worker tick.
-// updated_at is stamped before the write commits and stored to the
-// second, so a write still committing, or landing later in the second a
-// tick ran in, can sort before the watermark that tick left and would
-// never be pushed. Changes older than settleLag have landed.
-const settleLag = 2 * time.Second
-
-// Sync pushes to p every object of src changed after p's watermark and
-// no later than until, in change order, at most batchSize objects per
-// Push (DefaultBatchSize when batchSize <= 0), each with the edges from
-// it and the entities those edges mention. It stops at the first failed
+// Sync pushes to p every object of src whose ChangeSeq is after p's
+// watermark, in ChangeSeq order, at most batchSize objects per Push
+// (DefaultBatchSize when batchSize <= 0), each with the edges from it
+// and the entities those edges mention. It stops at the first failed
 // Push; batches before it stay acknowledged. Returns the number of
 // objects pushed.
-func Sync(ctx context.Context, src storage.StorageDriver, p Pusher, until time.Time, batchSize int) (int, error) {
+//
+// The store stamps ChangeSeq on every write and commits the values in
+// increasing order, so everything up to the last object listed has
+// landed: no change can later appear behind the watermark, whatever
+// updated_at it carries (an import, a row a receiver forwards on, a
+// restore).
+func Sync(ctx context.Context, src storage.StorageDriver, p Pusher, batchSize int) (int, error) {
 	if batchSize <= 0 {
 		batchSize = DefaultBatchSize
 	}
@@ -37,7 +35,6 @@ func Sync(ctx context.Context, src storage.StorageDriver, p Pusher, until time.T
 		page, _, err := src.Objects().List(ctx, storage.ObjectFilter{
 			Status:       "all",
 			ChangedAfter: &pos,
-			ChangedUntil: &until,
 			Limit:        batchSize,
 		})
 		if err != nil {
@@ -50,7 +47,7 @@ func Sync(ctx context.Context, src storage.StorageDriver, p Pusher, until time.T
 			return pushed, err
 		}
 		pushed += len(page)
-		pos = storage.ChangeCursorOf(page[len(page)-1])
+		pos = page[len(page)-1].ChangeSeq
 		if len(page) < batchSize {
 			return pushed, nil
 		}

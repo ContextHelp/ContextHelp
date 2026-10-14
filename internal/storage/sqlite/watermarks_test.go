@@ -2,15 +2,12 @@ package sqlite
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/storagetest"
 )
 
@@ -34,8 +31,7 @@ func TestWatermarkStore_ConcurrentSet(t *testing.T) {
 	for i := 0; i < N; i++ {
 		go func(i int) {
 			defer wg.Done()
-			pos := storage.ChangeCursor{UpdatedAt: time.Unix(int64(i+1), 0).UTC(), ID: fmt.Sprint(i)}
-			if err := d.Watermarks().SetWatermark(ctx, "fed-concurrent", pos); err != nil {
+			if err := d.Watermarks().SetWatermark(ctx, "fed-concurrent", int64(i+1)); err != nil {
 				errCh <- err
 			}
 		}(i)
@@ -49,5 +45,5 @@ func TestWatermarkStore_ConcurrentSet(t *testing.T) {
 	// One of the values must be the final state; ensure something was stored.
 	got, err := d.Watermarks().GetWatermark(ctx, "fed-concurrent")
 	require.NoError(t, err)
-	assert.NotEmpty(t, got.ID, "after concurrent writes, a watermark must be stored")
+	assert.NotZero(t, got, "after concurrent writes, a watermark must be stored")
 }

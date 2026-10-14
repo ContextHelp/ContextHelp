@@ -13,19 +13,18 @@ import (
 // those mention edges point at, so the receiver can persist them and avoid
 // dangling references. T-0175 added entities to satisfy US-0319 AC #6.
 //
-// Each target keeps a watermark: the change position (storage.ChangeCursor)
-// of the last object it acknowledged. Sync pushes only objects changed
-// after it.
+// Each target keeps a watermark: the ChangeSeq of the last object it
+// acknowledged. Sync pushes only objects with a greater ChangeSeq.
 type Pusher interface {
 	// Name returns the federation entry name from config.
 	Name() string
-	// Watermark returns the target's watermark; the zero position when
-	// it has acknowledged nothing.
-	Watermark(ctx context.Context) (storage.ChangeCursor, error)
+	// Watermark returns the target's watermark; 0 when it has
+	// acknowledged nothing.
+	Watermark(ctx context.Context) (int64, error)
 	// Push upserts objects, edges, and entities into the target. Idempotent
 	// via content-hash dedup on objects and slug-based upsert on entities.
-	// objects are in change order: once the target has acknowledged
-	// them, the watermark moves to the last one. On error it stays at the
+	// objects are in ChangeSeq order: once the target has acknowledged
+	// them, the watermark moves to the last one's ChangeSeq. On error it stays at the
 	// last object acknowledged before the failure.
 	Push(ctx context.Context,
 		objects []storage.KnowledgeObject,

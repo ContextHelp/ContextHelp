@@ -89,18 +89,18 @@ func (p *LocalPusher) openTarget(ctx context.Context) (storage.StorageDriver, st
 }
 
 // Watermark returns the watermark the target database keeps for this
-// federation; the zero position when the database does not exist yet.
-func (p *LocalPusher) Watermark(ctx context.Context) (storage.ChangeCursor, error) {
+// federation; 0 when the database does not exist yet.
+func (p *LocalPusher) Watermark(ctx context.Context) (int64, error) {
 	targetPath, err := canonicalPath(p.targetPath)
 	if err != nil {
-		return storage.ChangeCursor{}, fmt.Errorf("federation local watermark: resolve target %q: %w", p.targetPath, err)
+		return 0, fmt.Errorf("federation local watermark: resolve target %q: %w", p.targetPath, err)
 	}
 	if _, err := os.Stat(targetPath); errors.Is(err, fs.ErrNotExist) {
-		return storage.ChangeCursor{}, nil
+		return 0, nil
 	}
 	drv, _, err := p.openTarget(ctx)
 	if err != nil {
-		return storage.ChangeCursor{}, fmt.Errorf("federation local watermark: %w", err)
+		return 0, fmt.Errorf("federation local watermark: %w", err)
 	}
 	defer func() { _ = drv.Close(ctx) }()
 	return drv.Watermarks().GetWatermark(ctx, p.name)
@@ -113,7 +113,7 @@ func (p *LocalPusher) Watermark(ctx context.Context) (storage.ChangeCursor, erro
 // clobbered by a thin federation row — see ADR-049 + EntityStore.UpsertThin.
 //
 // On a successful non-empty batch, the federation_watermarks row at the
-// target moves to the change position of the last object (US-0319 AC #3).
+// target moves to the ChangeSeq of the last object (US-0319 AC #3).
 // Empty batches are a no-op: no writes, no watermark advance (US-0319 AC #7).
 //
 // The watermark is written as the last step after all objects + edges +
@@ -214,7 +214,7 @@ func (p *LocalPusher) Push(
 
 	// Advance watermark only after the batch has fully committed. If any
 	// upsert above failed we returned early — watermark stays at last value.
-	last := storage.ChangeCursorOf(&objects[len(objects)-1])
+	last := objects[len(objects)-1].ChangeSeq
 	if err := drv.Watermarks().SetWatermark(ctx, p.name, last); err != nil {
 		return fmt.Errorf("federation local push: advance watermark for %q: %w", p.name, err)
 	}

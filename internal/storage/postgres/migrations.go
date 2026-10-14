@@ -188,6 +188,53 @@ var pgMigrations = []pgMigration{
 		`ALTER TABLE federation_watermarks ADD COLUMN IF NOT EXISTS last_object_id TEXT NOT NULL DEFAULT ''`,
 		`CREATE INDEX IF NOT EXISTS idx_objects_change_order ON objects (updated_at, (id COLLATE "C"))`,
 	}},
+	// objects.change_seq, mirroring SQLite migration 043: a change
+	// position stamped from a counter on every insert and update,
+	// backfilled in (updated_at, id) order. Watermarks become the last
+	// acknowledged change_seq; no position converts, so targets start
+	// from 0 (receivers dedup the re-sent objects).
+	{Version: 22, Name: "objects.change_seq", Statements: objectChangeSeqStatements},
+}
+
+// objectChangeSeqStatements install objects.change_seq (migration 22).
+// The trigger takes the next value from the single object_change_counter
+// row, whose row lock the writing transaction then holds until it
+// commits: concurrent object writes serialize on it, so change_seq
+// values commit in increasing order and a reader never sees a value
+// while a smaller one is still uncommitted. A SEQUENCE would not hold
+// that — its values commit out of order, and a watermark could pass a
+// change still in flight. Every statement is re-runnable: the backfill
+// numbers only unstamped rows, after the largest value already there.
+var objectChangeSeqStatements = []string{
+	`ALTER TABLE objects ADD COLUMN IF NOT EXISTS change_seq BIGINT NOT NULL DEFAULT 0`,
+	`DROP TRIGGER IF EXISTS objects_change_seq ON objects`,
+	`UPDATE objects o SET change_seq = r.base + r.rn
+	   FROM (SELECT id,
+	                row_number() OVER (ORDER BY updated_at, id COLLATE "C") AS rn,
+	                (SELECT COALESCE(MAX(change_seq), 0) FROM objects) AS base
+	           FROM objects WHERE change_seq = 0) r
+	  WHERE o.id = r.id`,
+	`CREATE TABLE IF NOT EXISTS object_change_counter (
+		id  SMALLINT PRIMARY KEY CHECK (id = 1),
+		seq BIGINT NOT NULL
+	)`,
+	`INSERT INTO object_change_counter (id, seq)
+	 SELECT 1, COALESCE(MAX(change_seq), 0) FROM objects
+	 ON CONFLICT (id) DO UPDATE SET seq = GREATEST(object_change_counter.seq, EXCLUDED.seq)`,
+	`CREATE OR REPLACE FUNCTION objects_stamp_change_seq() RETURNS trigger
+	 LANGUAGE plpgsql AS $$
+	 BEGIN
+		UPDATE object_change_counter SET seq = seq + 1 WHERE id = 1 RETURNING seq INTO NEW.change_seq;
+		RETURN NEW;
+	 END
+	 $$`,
+	`CREATE TRIGGER objects_change_seq BEFORE INSERT OR UPDATE ON objects
+	 FOR EACH ROW EXECUTE FUNCTION objects_stamp_change_seq()`,
+	`CREATE INDEX IF NOT EXISTS idx_objects_change_seq ON objects (change_seq)`,
+	`DROP INDEX IF EXISTS idx_objects_change_order`,
+	`ALTER TABLE federation_watermarks ADD COLUMN IF NOT EXISTS last_change_seq BIGINT NOT NULL DEFAULT 0`,
+	`ALTER TABLE federation_watermarks DROP COLUMN IF EXISTS last_object_id`,
+	`ALTER TABLE federation_watermarks DROP COLUMN IF EXISTS last_synced_at`,
 }
 
 // migrateProjectionVersion adds objects.projection_version, the projection

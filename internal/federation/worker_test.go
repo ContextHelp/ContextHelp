@@ -22,14 +22,14 @@ type fakePusher struct {
 	name      string
 	calls     int32
 	pushed    []storage.KnowledgeObject
-	watermark storage.ChangeCursor
+	watermark int64
 	failNext  atomic.Int32 // when >0, Push returns err and decrements
 	err       error
 }
 
 func (p *fakePusher) Name() string { return p.name }
 
-func (p *fakePusher) Watermark(context.Context) (storage.ChangeCursor, error) {
+func (p *fakePusher) Watermark(context.Context) (int64, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.watermark, nil
@@ -45,7 +45,7 @@ func (p *fakePusher) Push(_ context.Context, objects []storage.KnowledgeObject, 
 	defer p.mu.Unlock()
 	p.pushed = append(p.pushed, objects...)
 	if len(objects) > 0 {
-		p.watermark = storage.ChangeCursorOf(&objects[len(objects)-1])
+		p.watermark = objects[len(objects)-1].ChangeSeq
 	}
 	return nil
 }
@@ -59,8 +59,7 @@ func (p *fakePusher) PushedCount() int {
 }
 
 // newSourceDB creates a SQLite DB holding one object per id so Push has
-// something to send. The objects changed a minute ago, past the worker's
-// settle lag.
+// something to send.
 func newSourceDB(t *testing.T, ids ...string) (storage.StorageDriver, string) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "src.db")
@@ -152,21 +151,22 @@ func TestFederationWorker_LaterTicksPushOnlyChanges(t *testing.T) {
 	}
 }
 
-// A change younger than the settle lag waits for a later tick.
-func TestFederationWorker_HoldsBackUnsettledChanges(t *testing.T) {
+// A change committed just before a tick goes out with it: change_seq
+// values commit in order, so no settle lag holds recent writes back.
+func TestFederationWorker_PushesChangeFromJustNow(t *testing.T) {
 	src, _ := newSourceDB(t)
 	now := time.Now().UTC()
 	fresh := storage.KnowledgeObject{ID: "fresh", Type: "note", RawContent: "fresh", CreatedAt: now, UpdatedAt: now}
 	if err := src.Objects().Create(context.Background(), &fresh); err != nil {
 		t.Fatal(err)
 	}
-	pusher := &fakePusher{name: "fed-settle"}
-	w := &Worker{target: FederationTarget{Name: "fed-settle"}, src: src, pusher: pusher}
+	pusher := &fakePusher{name: "fed-now"}
+	w := &Worker{target: FederationTarget{Name: "fed-now"}, src: src, pusher: pusher}
 	if err := w.tick(context.Background()); err != nil {
 		t.Fatalf("tick: %v", err)
 	}
-	if c := pusher.Calls(); c != 0 {
-		t.Errorf("a change from just now was pushed (%d calls)", c)
+	if n := pusher.PushedCount(); n != 1 {
+		t.Errorf("a change from just now: pushed %d objects, want 1", n)
 	}
 }
 

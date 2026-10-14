@@ -223,6 +223,12 @@ var migrations = []migration{
 	// id of the last object a target acknowledged — and objects get an
 	// index in that change order, so a push lists only what changed.
 	{Version: 42, fn: migrate042FederationChangeCursor},
+	// Migration 043: objects.change_seq, a change position the store
+	// stamps from a counter on every insert and update, backfilled in
+	// (updated_at, id) order; federation watermarks become the last
+	// acknowledged change_seq. updated_at is caller-set (imports and
+	// federated rows keep their origin's), so it cannot order changes.
+	{Version: 43, fn: migrate043ObjectChangeSeq},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
@@ -825,7 +831,6 @@ func migrate038DropSingleVectorPath(ctx context.Context, d *Driver) error {
 	return nil
 }
 
-// tableHasColumn reports whether pragma_table_info(table) lists column.
 // migrate042FederationChangeCursor adds federation_watermarks.last_object_id
 // and the objects change-order index. The index expression matches the
 // change-order predicate in ObjectStore.List verbatim, so the planner
@@ -847,6 +852,104 @@ func migrate042FederationChangeCursor(ctx context.Context, d *Driver) error {
 	return err
 }
 
+// objectChangeSeqTriggers stamp objects.change_seq from
+// object_change_counter on every insert and every update. They run in
+// the writing statement's transaction, under SQLite's single write lock,
+// so change_seq values commit in increasing order: a reader never sees
+// a value while a smaller one is still uncommitted. The update trigger's
+// WHEN skips the stamping UPDATE itself, which alone changes change_seq.
+var objectChangeSeqTriggers = []string{
+	`CREATE TRIGGER objects_change_seq_insert AFTER INSERT ON objects
+	BEGIN
+		UPDATE object_change_counter SET seq = seq + 1 WHERE id = 1;
+		UPDATE objects SET change_seq = (SELECT seq FROM object_change_counter WHERE id = 1)
+		 WHERE id = NEW.id;
+	END`,
+	`CREATE TRIGGER objects_change_seq_update AFTER UPDATE ON objects
+	WHEN NEW.change_seq = OLD.change_seq
+	BEGIN
+		UPDATE object_change_counter SET seq = seq + 1 WHERE id = 1;
+		UPDATE objects SET change_seq = (SELECT seq FROM object_change_counter WHERE id = 1)
+		 WHERE id = NEW.id;
+	END`,
+}
+
+// migrate043ObjectChangeSeq adds objects.change_seq, backfills it in
+// (updated_at, id) order after any value already stamped, seeds the
+// counter past the largest, and installs the stamping triggers. The
+// watermark table trades its (last_synced_at, last_object_id) position
+// for last_change_seq; no position converts, so every target starts
+// from 0 and gets every object once more (receivers dedup). Re-runnable.
+func migrate043ObjectChangeSeq(ctx context.Context, d *Driver) error {
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	addColumn := func(table, column, ddl string) error {
+		has, err := txTableHasColumn(ctx, tx, table, column)
+		if err != nil || has {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `ALTER TABLE `+table+` ADD COLUMN `+column+` `+ddl)
+		return err
+	}
+	dropColumn := func(table, column string) error {
+		has, err := txTableHasColumn(ctx, tx, table, column)
+		if err != nil || !has {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `ALTER TABLE `+table+` DROP COLUMN `+column)
+		return err
+	}
+
+	if err := addColumn("objects", "change_seq", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	stmts := append([]string{
+		`DROP TRIGGER IF EXISTS objects_change_seq_insert`,
+		`DROP TRIGGER IF EXISTS objects_change_seq_update`,
+		`WITH base AS (SELECT COALESCE(MAX(change_seq), 0) AS n FROM objects),
+		      r AS (SELECT id, ROW_NUMBER() OVER (ORDER BY datetime(updated_at), id) AS rn
+		              FROM objects WHERE change_seq = 0)
+		 UPDATE objects SET change_seq = (SELECT n FROM base) + r.rn FROM r WHERE r.id = objects.id`,
+		`CREATE TABLE IF NOT EXISTS object_change_counter (
+			id  INTEGER PRIMARY KEY CHECK (id = 1),
+			seq INTEGER NOT NULL
+		)`,
+		`INSERT INTO object_change_counter (id, seq)
+		 SELECT 1, COALESCE(MAX(change_seq), 0) FROM objects WHERE true
+		 ON CONFLICT(id) DO UPDATE SET seq = max(seq, excluded.seq)`,
+		`CREATE INDEX IF NOT EXISTS idx_objects_change_seq ON objects(change_seq)`,
+		`DROP INDEX IF EXISTS idx_objects_change_order`,
+	}, objectChangeSeqTriggers...)
+	for _, q := range stmts {
+		if _, err := tx.ExecContext(ctx, q); err != nil {
+			return err
+		}
+	}
+
+	if err := addColumn("federation_watermarks", "last_change_seq", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	for _, c := range []string{"last_object_id", "last_synced_at"} {
+		if err := dropColumn("federation_watermarks", c); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// txTableHasColumn is tableHasColumn inside tx.
+func txTableHasColumn(ctx context.Context, tx *sql.Tx, table, column string) (bool, error) {
+	var n int
+	err := tx.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?`, table, column).Scan(&n)
+	return n > 0, err
+}
+
+// tableHasColumn reports whether pragma_table_info(table) lists column.
 func tableHasColumn(ctx context.Context, d *Driver, table, column string) (bool, error) {
 	var n int
 	err := d.db.QueryRowContext(ctx,
