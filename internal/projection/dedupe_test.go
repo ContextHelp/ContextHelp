@@ -112,7 +112,9 @@ func TestEmbeddingText_DefaultedBodyEqualToSummaryNotRepeated(t *testing.T) {
 // existing index its bodies are stale. When this test fails, the projection
 // changed: bump indexsig.ProjectionVersion and add its digest here.
 var projectionGolden = map[string]string{
-	"v3": "e54352516ce44f81ead09346edfe05c4b0d468353fdbf2642f565a9399aecdc8",
+	// v4 projects as v3 did; it re-runs the re-projection for the
+	// ref-text repair (see indexsig.ProjectionVersion).
+	"v4": "e54352516ce44f81ead09346edfe05c4b0d468353fdbf2642f565a9399aecdc8",
 }
 
 var projectionCorpus = []*pluginapi.KnowledgeObject{

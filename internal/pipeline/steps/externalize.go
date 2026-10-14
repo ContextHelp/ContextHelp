@@ -15,7 +15,7 @@ import (
 // MetaTextTruncated flags an externalized object whose text_content is
 // a prefix of its content rather than all of it (see Externalizer.Run).
 // A reader that resolves the content gets the whole text back from it.
-const MetaTextTruncated = "text_content_truncated"
+const MetaTextTruncated = blobref.MetaTextTruncated
 
 // Externalizer moves content above a size threshold to a blob store.
 type Externalizer struct {

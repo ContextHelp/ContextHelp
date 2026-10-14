@@ -9,6 +9,11 @@ import "strings"
 // Prefix starts every blob ref; the blob key follows it.
 const Prefix = "blob://"
 
+// MetaTextTruncated flags an externalized object whose text_content is
+// a prefix of its content rather than all of it. A reader that resolves
+// the content gets the whole text back from it.
+const MetaTextTruncated = "text_content_truncated"
+
 // Is reports whether s is a blob ref.
 func Is(s string) bool {
 	return strings.HasPrefix(s, Prefix) && len(s) > len(Prefix)

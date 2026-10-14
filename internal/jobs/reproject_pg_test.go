@@ -41,3 +41,8 @@ func TestReproject_IngestDuringRun_Postgres(t *testing.T) {
 	drv, pdb := postgresReprojectDriver(t)
 	runReprojectIngestDuringRun(t, drv, pdb)
 }
+
+func TestReproject_RepairsRefText_Postgres(t *testing.T) {
+	drv, pdb := postgresReprojectDriver(t)
+	runReprojectRepairsRefText(t, drv, pdb)
+}
