@@ -244,3 +244,75 @@ func TestValidateAuthRoles(t *testing.T) {
 		})
 	}
 }
+
+// fieldsOf returns the Field of every error, in order.
+func fieldsOf(errs []ValidationError) []string {
+	out := make([]string, len(errs))
+	for i, e := range errs {
+		out[i] = e.Field
+	}
+	return out
+}
+
+// Validate is the one config validator: it reports every problem, from
+// every section, in one pass rather than stopping at the first.
+func TestValidateReportsEveryError(t *testing.T) {
+	cfg := &Config{}
+	cfg.Server.Port = 80
+	cfg.Duplicates.Policy = "delete"
+	cfg.Storage.Blob.Backend = "stub"
+	cfg.Embeddings.MinCoverage = 2
+	cfg.Federations = []FederationEntry{
+		{Name: "a", SyncMode: "push"},
+		{Name: "b", SyncMode: "async"},
+	}
+
+	fields := fieldsOf(Validate(cfg))
+	for _, want := range []string{
+		"server.port",
+		"duplicates.policy",
+		"storage.blob.backend",
+		"embeddings.min_coverage",
+		"federations[0].sync_mode",
+		"federations[1].interval",
+	} {
+		assert.Contains(t, fields, want)
+	}
+}
+
+// A loaded default config is valid: `config validate` on a fresh
+// install exits 0.
+func TestValidateDefaultsClean(t *testing.T) {
+	cfg, err := Load("ctxt", "")
+	require.NoError(t, err)
+	assert.Empty(t, Validate(cfg))
+}
+
+func TestValidateBlob(t *testing.T) {
+	cases := []struct {
+		name      string
+		blob      BlobConfig
+		wantField string // "" = expect no errors
+	}{
+		{name: "default backend", blob: BlobConfig{}},
+		{name: "local", blob: BlobConfig{Backend: "local", Local: BlobLocalConfig{Path: "/data/blobs"}}},
+		{name: "s3 with bucket", blob: BlobConfig{Backend: "s3", S3: BlobS3Config{Bucket: "b"}}},
+		{name: "garage with endpoint and bucket", blob: BlobConfig{Backend: "garage", S3: BlobS3Config{Bucket: "b", Endpoint: "http://localhost:3900"}}},
+		{name: "unknown backend", blob: BlobConfig{Backend: "stub"}, wantField: "storage.blob.backend"},
+		{name: "s3 without bucket", blob: BlobConfig{Backend: "s3"}, wantField: "storage.blob.s3.bucket"},
+		{name: "garage without endpoint", blob: BlobConfig{Backend: "garage", S3: BlobS3Config{Bucket: "b"}}, wantField: "storage.blob.s3.endpoint"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &Config{}
+			cfg.Storage.Blob = tc.blob
+			errs := Validate(cfg)
+			if tc.wantField == "" {
+				assert.Empty(t, errs)
+				return
+			}
+			require.Len(t, errs, 1)
+			assert.Equal(t, tc.wantField, errs[0].Field)
+		})
+	}
+}

@@ -362,11 +362,11 @@ func TestDuplicatesValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.cfg.Validate()
+			errs := Validate(&tt.cfg)
 			if tt.wantErr {
-				require.Error(t, err)
+				require.NotEmpty(t, errs)
 			} else {
-				require.NoError(t, err)
+				require.Empty(t, errs)
 			}
 		})
 	}
@@ -540,14 +540,14 @@ func TestFederationsValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.cfg.Validate()
+			errs := Validate(&tt.cfg)
 			if tt.wantErr {
-				require.Error(t, err)
+				require.NotEmpty(t, errs)
 				if tt.errFrag != "" {
-					assert.Contains(t, err.Error(), tt.errFrag)
+					assert.Contains(t, errs[0].Error(), tt.errFrag)
 				}
 			} else {
-				require.NoError(t, err)
+				require.Empty(t, errs)
 			}
 		})
 	}
