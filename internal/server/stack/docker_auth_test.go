@@ -1,7 +1,12 @@
 package stack
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"testing"
 
 	kitbus "hop.top/kit/go/runtime/bus"
@@ -40,10 +45,50 @@ func TestDockerConfig_AloneRefusesToServe(t *testing.T) {
 	}
 }
 
-// With the example auth secret layered on top and a bus token in env, the
+// The example auth secret ships a placeholder token: anyone who reads
+// the repo knows it. Copied unedited, it must stop serve at startup and
+// tell the operator to generate a real token.
+func TestDockerConfig_ExampleAuthSecretRefusesToServe(t *testing.T) {
+	cfg, err := loadDockerConfig(t, dockerBaseConfig, dockerAuthExample)
+	if err != nil {
+		t.Fatalf("load docker config + example auth secret: %v", err)
+	}
+	_, _, err = ResolveInboundAuth(cfg, false)
+	if err == nil {
+		t.Fatal("example auth secret with its REPLACE_ME token passed serve's auth check")
+	}
+	for _, want := range []string{"[0]", "REPLACE_ME", "openssl rand -hex 32"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not mention %q", err, want)
+		}
+	}
+}
+
+// With every placeholder in the example replaced by a generated token,
+// as its header tells the operator, and a bus token in env, the
 // container config passes every check serve runs before binding a port.
 func TestDockerConfig_WithAuthSecretPassesServeStartup(t *testing.T) {
-	cfg, err := loadDockerConfig(t, dockerBaseConfig, dockerAuthExample)
+	example, err := os.ReadFile(dockerAuthExample)
+	if err != nil {
+		t.Fatal(err)
+	}
+	placeholder := regexp.MustCompile(`REPLACE_ME\w*`)
+	if !placeholder.Match(example) {
+		t.Fatalf("%s has no REPLACE_ME placeholder to fill", dockerAuthExample)
+	}
+	filled := placeholder.ReplaceAllFunc(example, func([]byte) []byte {
+		buf := make([]byte, 32) // openssl rand -hex 32
+		if _, err := rand.Read(buf); err != nil {
+			t.Fatal(err)
+		}
+		return []byte(hex.EncodeToString(buf))
+	})
+	secret := filepath.Join(t.TempDir(), "dpkms-auth.yaml")
+	if err := os.WriteFile(secret, filled, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := loadDockerConfig(t, dockerBaseConfig, secret)
 	if err != nil {
 		t.Fatalf("load docker config + auth secret: %v", err)
 	}

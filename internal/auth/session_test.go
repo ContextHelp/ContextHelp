@@ -28,8 +28,8 @@ func staticTokens(t *testing.T, toks ...auth.StaticToken) *auth.StaticProvider {
 }
 
 var (
-	opsToken   = auth.StaticToken{Token: "tok-ops", Principal: "ops", Roles: []string{"admin", "reader"}}
-	otherToken = auth.StaticToken{Token: "tok-other", Principal: "other", Roles: []string{"reader"}}
+	opsToken   = auth.StaticToken{Token: "tok-ops-fixture-0123456789abcdef0123456789", Principal: "ops", Roles: []string{"admin", "reader"}}
+	otherToken = auth.StaticToken{Token: "tok-other-fixture-0123456789abcdef0123456789", Principal: "other", Roles: []string{"reader"}}
 )
 
 type sessionFixture struct {

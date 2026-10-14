@@ -46,6 +46,7 @@ func Validate(c *Config) []ValidationError {
 
 	errs = append(errs, validateAccess(c)...)
 	errs = append(errs, validateAuthRoles(c)...)
+	errs = append(errs, validateAuthTokens(c)...)
 	errs = append(errs, validateQuotas(c)...)
 
 	if c.Jobs.PollInterval != 0 && c.Jobs.PollInterval < 50*time.Millisecond {
@@ -141,6 +142,47 @@ func validateAuthRoles(c *Config) []ValidationError {
 					Message: fmt.Sprintf("unknown role %q; must be one of %s", r, strings.Join(AuthRoles, ", ")),
 				})
 			}
+		}
+	}
+	return errs
+}
+
+// MinStaticTokenLen is the shortest server.auth.static.tokens entry
+// accepted: 32 characters, half of what `openssl rand -hex 32` prints.
+const MinStaticTokenLen = 32
+
+// staticTokenPlaceholder marks the tokens docker/dpkms-auth.example.yaml
+// ships. They are public, so one left in place is no secret at all.
+const staticTokenPlaceholder = "REPLACE_ME"
+
+// CheckStaticToken reports why tok cannot guard a non-private instance:
+// it still holds the example placeholder, or it is short enough to
+// guess. Empty tokens are left to the caller's own required-field check.
+// dpkms serve applies it through the static auth provider; Validate
+// reports it per entry.
+func CheckStaticToken(tok string) error {
+	const generate = "generate one with: openssl rand -hex 32"
+	if strings.Contains(strings.ToUpper(tok), staticTokenPlaceholder) {
+		return fmt.Errorf("token is the example placeholder (contains %s), which anyone can read; %s", staticTokenPlaceholder, generate)
+	}
+	if n := len(tok); n < MinStaticTokenLen {
+		return fmt.Errorf("token is %d characters, must be at least %d; %s", n, MinStaticTokenLen, generate)
+	}
+	return nil
+}
+
+// validateAuthTokens applies CheckStaticToken to every static token.
+func validateAuthTokens(c *Config) []ValidationError {
+	var errs []ValidationError
+	for i, t := range c.Server.Auth.Static.Tokens {
+		if t.Token == "" {
+			continue
+		}
+		if err := CheckStaticToken(t.Token); err != nil {
+			errs = append(errs, ValidationError{
+				Field:   fmt.Sprintf("server.auth.static.tokens[%d].token", i),
+				Message: err.Error(),
+			})
 		}
 	}
 	return errs

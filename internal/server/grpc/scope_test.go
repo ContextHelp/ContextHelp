@@ -122,7 +122,7 @@ func TestMethodCoverageScopelessPrincipalDeniedEverywhere(t *testing.T) {
 
 func TestUnknownMethodIsRefused(t *testing.T) {
 	ic := authUnaryInterceptor(newTestProvider(t), nil)
-	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer tok-valid"))
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer tok-valid-fixture-0123456789abcdef0123456789"))
 	_, err := ic(ctx, nil, unaryInfo("/dpkms.v1.Unlisted/Method"),
 		func(context.Context, any) (any, error) { return "ok", nil })
 	if status.Code(err) != codes.PermissionDenied {

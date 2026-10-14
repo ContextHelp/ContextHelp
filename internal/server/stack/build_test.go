@@ -85,7 +85,7 @@ func TestBuildProtectedGuardsRouteTable(t *testing.T) {
 	if got := status(t, st, "wrong"); got != http.StatusUnauthorized {
 		t.Errorf("wrong token: status %d, want 401", got)
 	}
-	if got := status(t, st, "tok-1"); got != http.StatusOK {
+	if got := status(t, st, "tok-1-fixture-0123456789abcdef0123456789"); got != http.StatusOK {
 		t.Errorf("valid token: status %d, want 200", got)
 	}
 }

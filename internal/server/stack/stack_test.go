@@ -10,7 +10,7 @@ func staticAuthCfg() config.AuthConfig {
 	return config.AuthConfig{
 		Provider: "static",
 		Static: config.StaticAuthConfig{
-			Tokens: []config.StaticTokenConfig{{Token: "tok-1", Principal: "ops", Roles: []string{"admin"}}},
+			Tokens: []config.StaticTokenConfig{{Token: "tok-1-fixture-0123456789abcdef0123456789", Principal: "ops", Roles: []string{"admin"}}},
 		},
 	}
 }

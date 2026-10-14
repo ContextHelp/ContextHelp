@@ -31,6 +31,8 @@ The image's config sets `server.access: public`, and a public instance refuses t
     cp docker/dpkms-auth.example.yaml docker/dpkms-auth.yaml
     $EDITOR docker/dpkms-auth.yaml   # replace each REPLACE_ME with a token
 
+serve refuses to start on the copied example as is: a `REPLACE_ME` token, or any token under 32 characters, stops it at startup.
+
 **4. Pull image**
 
     docker compose --env-file docker/.env.prod --profile prod pull
@@ -77,6 +79,8 @@ server:
 ```
 
 Each token needs at least one role: `admin`, `writer` or `reader`. Write the token itself: config files do not expand `${VAR}`.
+
+serve refuses to start while any token still contains `REPLACE_ME` (the example's placeholder, public in this repo) or is shorter than 32 characters. The error names the entry, for example `auth: static token [0]: token is the example placeholder (contains REPLACE_ME)`; replace that token with `openssl rand -hex 32` output and start again.
 
 Compose mounts the file as the `dpkms-auth` secret at `/run/secrets/dpkms-auth.yaml`. The image's command loads it as a second `--config` after `/app/config.yaml`:
 

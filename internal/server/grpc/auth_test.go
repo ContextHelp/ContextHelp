@@ -19,7 +19,7 @@ import (
 func newTestProvider(t *testing.T) authn.Provider {
 	t.Helper()
 	p, err := authn.NewStatic([]authn.StaticToken{
-		{Token: "tok-valid", Principal: "ops", Roles: []string{"admin"}},
+		{Token: "tok-valid-fixture-0123456789abcdef0123456789", Principal: "ops", Roles: []string{"admin"}},
 	})
 	if err != nil {
 		t.Fatalf("NewStatic: %v", err)
@@ -54,7 +54,7 @@ func TestAuthUnaryInvalidToken(t *testing.T) {
 func TestAuthUnaryValidTokenSetsPrincipal(t *testing.T) {
 	ic := authUnaryInterceptor(newTestProvider(t), nil)
 	ctx := metadata.NewIncomingContext(context.Background(),
-		metadata.Pairs("authorization", "Bearer tok-valid"))
+		metadata.Pairs("authorization", "Bearer tok-valid-fixture-0123456789abcdef0123456789"))
 	var seen *authn.Principal
 	resp, err := ic(ctx, nil, unaryInfo("/dpkms.v1.QueryService/Search"),
 		func(hctx context.Context, _ any) (any, error) {
@@ -75,7 +75,7 @@ func TestAuthUnaryValidTokenSetsPrincipal(t *testing.T) {
 func TestAuthUnaryAPIKeyMetadata(t *testing.T) {
 	ic := authUnaryInterceptor(newTestProvider(t), nil)
 	ctx := metadata.NewIncomingContext(context.Background(),
-		metadata.Pairs("x-api-key", "tok-valid"))
+		metadata.Pairs("x-api-key", "tok-valid-fixture-0123456789abcdef0123456789"))
 	_, err := ic(ctx, nil, unaryInfo("/dpkms.v1.QueryService/Search"),
 		func(context.Context, any) (any, error) { return "ok", nil })
 	if err != nil {
@@ -113,7 +113,7 @@ func TestAuthStreamMissingCredential(t *testing.T) {
 func TestAuthStreamValidTokenSetsPrincipal(t *testing.T) {
 	ic := authStreamInterceptor(newTestProvider(t), nil)
 	ctx := metadata.NewIncomingContext(context.Background(),
-		metadata.Pairs("authorization", "Bearer tok-valid"))
+		metadata.Pairs("authorization", "Bearer tok-valid-fixture-0123456789abcdef0123456789"))
 	var seen *authn.Principal
 	err := ic(nil, &fakeServerStream{ctx: ctx},
 		&grpc.StreamServerInfo{FullMethod: "/dpkms.v1.JobService/WatchJob"},
@@ -160,7 +160,7 @@ func TestAuthUnaryFailureRecordsSecurityEvent(t *testing.T) {
 func TestAuthUnaryValidTokenAttachesPolicyPrincipal(t *testing.T) {
 	ic := authUnaryInterceptor(newTestProvider(t), nil)
 	ctx := metadata.NewIncomingContext(context.Background(),
-		metadata.Pairs("authorization", "Bearer tok-valid"))
+		metadata.Pairs("authorization", "Bearer tok-valid-fixture-0123456789abcdef0123456789"))
 	var role string
 	_, err := ic(ctx, nil, unaryInfo("/dpkms.v1.QueryService/Search"),
 		func(hctx context.Context, _ any) (any, error) {

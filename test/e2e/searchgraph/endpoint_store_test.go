@@ -103,9 +103,9 @@ var endpointLinks = []fixtureLink{
 // leaves it unrestricted.
 const (
 	gatedPrincipal  = "e2e-graph-gated"
-	gatedToken      = "e2e-graph-gated-token-7c1d0a"
+	gatedToken      = "e2e-graph-gated-token-7c1d0a4f9e2b"
 	openPrincipal   = "e2e-graph-open"
-	openToken       = "e2e-graph-open-token-2b9e41"
+	openToken       = "e2e-graph-open-token-2b9e41c7d05a"
 	hiddenNamespace = "vault"
 	hiddenEntity    = "vault/codename"
 )

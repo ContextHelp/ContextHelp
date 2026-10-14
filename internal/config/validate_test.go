@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -95,11 +96,14 @@ func TestValidate(t *testing.T) {
 	}
 }
 
+// testStaticToken is a fake token long enough to pass CheckStaticToken.
+const testStaticToken = "test-static-token-0123456789abcdef"
+
 func staticAuth() AuthConfig {
 	return AuthConfig{
 		Provider: "static",
 		Static: StaticAuthConfig{
-			Tokens: []StaticTokenConfig{{Token: "tok-1", Principal: "ops", Roles: []string{"admin"}}},
+			Tokens: []StaticTokenConfig{{Token: testStaticToken, Principal: "ops", Roles: []string{"admin"}}},
 		},
 	}
 }
@@ -231,7 +235,7 @@ func TestValidateAuthRoles(t *testing.T) {
 			cfg := &Config{}
 			cfg.Server.Auth = AuthConfig{
 				Provider: "static",
-				Static:   StaticAuthConfig{Tokens: []StaticTokenConfig{{Token: "t", Principal: "p", Roles: tc.roles}}},
+				Static:   StaticAuthConfig{Tokens: []StaticTokenConfig{{Token: testStaticToken, Principal: "p", Roles: tc.roles}}},
 			}
 			errs := Validate(cfg)
 			if tc.wantMsg == "" {
@@ -243,4 +247,47 @@ func TestValidateAuthRoles(t *testing.T) {
 			assert.Contains(t, errs[0].Message, tc.wantMsg)
 		})
 	}
+}
+
+// A static token guards a non-private instance: the example placeholder
+// and short, guessable strings must never pass as one.
+func TestCheckStaticToken(t *testing.T) {
+	strong := "3f9c1a7be2d84605a1c7f0e9b8d2c4a63f9c1a7be2d84605a1c7f0e9b8d2c4a6"
+	cases := []struct {
+		name    string
+		token   string
+		wantMsg string // "" = accepted
+	}{
+		{name: "64 hex", token: strong},
+		{name: "exactly minimum length", token: strings.Repeat("a", MinStaticTokenLen)},
+		{name: "example placeholder", token: "REPLACE_ME_admin_token", wantMsg: "REPLACE_ME"},
+		{name: "placeholder any case, long", token: "replace_me_" + strong, wantMsg: "REPLACE_ME"},
+		{name: "placeholder mid-token", token: strong + "Replace_Me", wantMsg: "REPLACE_ME"},
+		{name: "one short of minimum", token: strings.Repeat("a", MinStaticTokenLen-1), wantMsg: "at least 32"},
+		{name: "short", token: "tok-1", wantMsg: "at least 32"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := CheckStaticToken(tc.token)
+			if tc.wantMsg == "" {
+				assert.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.wantMsg)
+			assert.Contains(t, err.Error(), "openssl rand -hex 32", "error tells the operator how to generate one")
+		})
+	}
+}
+
+// Validate reports a weak static token against its entry.
+func TestValidateAuthTokens(t *testing.T) {
+	cfg := &Config{}
+	cfg.Server.Auth = staticAuth()
+	cfg.Server.Auth.Static.Tokens = append(cfg.Server.Auth.Static.Tokens,
+		StaticTokenConfig{Token: "REPLACE_ME_admin_token", Principal: "admin", Roles: []string{"admin"}})
+	errs := Validate(cfg)
+	require.Len(t, errs, 1)
+	assert.Equal(t, "server.auth.static.tokens[1].token", errs[0].Field)
+	assert.Contains(t, errs[0].Message, "REPLACE_ME")
 }

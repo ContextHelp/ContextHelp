@@ -20,7 +20,7 @@ func TestGRPCAnalyzeScopes(t *testing.T) {
 	client := pb.NewAnalyzeServiceClient(h.conn)
 	req := &pb.AnalyzeRequest{Content: "scope test", Type: "text", Source: "test"}
 
-	_, err := client.Analyze(tokenCtx("tok-valid"), req, grpc.WaitForReady(true))
+	_, err := client.Analyze(tokenCtx("tok-valid-fixture-0123456789abcdef0123456789"), req, grpc.WaitForReady(true))
 	if status.Code(err) != codes.PermissionDenied {
 		t.Fatalf("reader Analyze: code = %v, want PermissionDenied (err: %v)", status.Code(err), err)
 	}
@@ -28,7 +28,7 @@ func TestGRPCAnalyzeScopes(t *testing.T) {
 		t.Errorf("reader Analyze error %q does not name write:objects", err)
 	}
 
-	for _, token := range []string{"tok-writer", "tok-admin"} {
+	for _, token := range []string{"tok-writer-fixture-0123456789abcdef0123456789", "tok-admin-fixture-0123456789abcdef0123456789"} {
 		if _, err := client.Analyze(tokenCtx(token), req, grpc.WaitForReady(true)); err != nil {
 			t.Errorf("%s Analyze: %v", token, err)
 		}
@@ -46,7 +46,7 @@ func TestGRPCAdminBypassesEntityGate(t *testing.T) {
 	h := startGatedGRPC(t)
 	h.gate.SetQuota("owner", storage.MeteringEventEntityResolve, storage.QuotaConfig{Limit: 1})
 	client := pb.NewEntityServiceClient(h.conn)
-	admin := tokenCtx("tok-admin")
+	admin := tokenCtx("tok-admin-fixture-0123456789abcdef0123456789")
 
 	for i := 0; i < 2; i++ {
 		if _, err := client.GetEntity(admin, &pb.GetEntityRequest{Slug: "med.claims"}, grpc.WaitForReady(true)); err != nil {

@@ -251,7 +251,7 @@ func TestHealthzRedactedForAnonymousOnPublic(t *testing.T) {
 	// Authenticated: full envelope.
 	req, err := http.NewRequest(http.MethodGet, srv.URL+"/healthz", nil)
 	require.NoError(t, err)
-	req.Header.Set("Authorization", "Bearer tok-valid")
+	req.Header.Set("Authorization", "Bearer tok-valid-fixture-0123456789abcdef0123456789")
 	authResp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer authResp.Body.Close()

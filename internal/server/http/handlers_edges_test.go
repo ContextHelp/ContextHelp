@@ -34,9 +34,9 @@ func edgeServer(t *testing.T) (*httptest.Server, storage.StorageDriver) {
 	}
 	svc := service.New(driver, jobs.NewQueue(driver.Jobs()), builtins.Registry(), search.NewEngine(driver), "", nil)
 	provider, err := authn.NewStatic([]authn.StaticToken{
-		{Token: "tok-admin", Principal: "owner", Roles: []string{authn.RoleAdmin}},
-		{Token: "tok-writer", Principal: "phone", Roles: []string{authn.RoleWriter}},
-		{Token: "tok-reader", Principal: "tablet", Roles: []string{authn.RoleReader}},
+		{Token: "tok-admin-fixture-0123456789abcdef0123456789", Principal: "owner", Roles: []string{authn.RoleAdmin}},
+		{Token: "tok-writer-fixture-0123456789abcdef0123456789", Principal: "phone", Roles: []string{authn.RoleWriter}},
+		{Token: "tok-reader-fixture-0123456789abcdef0123456789", Principal: "tablet", Roles: []string{authn.RoleReader}},
 	})
 	require.NoError(t, err)
 	ts := httptest.NewServer(NewRouterWithConfig(svc, RouterConfig{Auth: provider}))
@@ -67,7 +67,7 @@ type edgeHops struct {
 func TestEdgesRoundTrip(t *testing.T) {
 	ts, driver := edgeServer(t)
 
-	resp, body := roleDo(t, http.MethodPost, ts.URL+"/api/v1/edges", "tok-writer",
+	resp, body := roleDo(t, http.MethodPost, ts.URL+"/api/v1/edges", "tok-writer-fixture-0123456789abcdef0123456789",
 		map[string]string{"source": "a", "target": "b", "type": "extends", "context": "why"})
 	require.Equal(t, http.StatusCreated, resp.StatusCode, string(body))
 	var created struct {
@@ -80,13 +80,13 @@ func TestEdgesRoundTrip(t *testing.T) {
 	assert.Equal(t, "why", created.Data[1].Metadata["context"])
 	assert.Equal(t, []string{"a extends b", "b extended-by a"}, storedLinks(t, driver))
 
-	resp, body = roleDo(t, http.MethodPost, ts.URL+"/api/v1/edges", "tok-writer",
+	resp, body = roleDo(t, http.MethodPost, ts.URL+"/api/v1/edges", "tok-writer-fixture-0123456789abcdef0123456789",
 		map[string]string{"source": "b", "target": "c", "type": "supports"})
 	require.Equal(t, http.StatusCreated, resp.StatusCode, string(body))
 
 	list := func(query string) []string {
 		t.Helper()
-		resp, body := roleDo(t, http.MethodGet, ts.URL+"/api/v1/objects/b/edges"+query, "tok-reader", nil)
+		resp, body := roleDo(t, http.MethodGet, ts.URL+"/api/v1/objects/b/edges"+query, "tok-reader-fixture-0123456789abcdef0123456789", nil)
 		require.Equal(t, http.StatusOK, resp.StatusCode, string(body))
 		assert.Contains(t, string(body), `"data":[`, "an empty listing is [], not null")
 		var got edgeHops
@@ -102,12 +102,12 @@ func TestEdgesRoundTrip(t *testing.T) {
 	assert.Equal(t, []string{"out supports c"}, list("?type=supports"))
 	assert.Equal(t, []string{"out extended-by a", "out supports c"}, list("?depth=3"))
 
-	resp, body = roleDo(t, http.MethodDelete, ts.URL+"/api/v1/edges?source=b&target=a&type=extended-by", "tok-admin", nil)
+	resp, body = roleDo(t, http.MethodDelete, ts.URL+"/api/v1/edges?source=b&target=a&type=extended-by", "tok-admin-fixture-0123456789abcdef0123456789", nil)
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(body))
 	assert.JSONEq(t, `{"deleted":2}`, string(body))
 	assert.Equal(t, []string{"b supports c", "c supported-by b"}, storedLinks(t, driver))
 
-	resp, body = roleDo(t, http.MethodDelete, ts.URL+"/api/v1/edges?source=c&target=b", "tok-admin", nil)
+	resp, body = roleDo(t, http.MethodDelete, ts.URL+"/api/v1/edges?source=c&target=b", "tok-admin-fixture-0123456789abcdef0123456789", nil)
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(body))
 	assert.JSONEq(t, `{"deleted":2}`, string(body))
 	assert.Empty(t, storedLinks(t, driver))
@@ -122,14 +122,14 @@ func TestEdgesRoles(t *testing.T) {
 	del := ts.URL + "/api/v1/edges?source=a&target=b"
 	get := ts.URL + "/api/v1/objects/a/edges"
 
-	resp, body := roleDo(t, http.MethodPost, ts.URL+"/api/v1/edges", "tok-reader", link)
+	resp, body := roleDo(t, http.MethodPost, ts.URL+"/api/v1/edges", "tok-reader-fixture-0123456789abcdef0123456789", link)
 	assertScopeDenied(t, resp, body, authn.ScopeWriteObjects)
-	resp, body = roleDo(t, http.MethodPost, ts.URL+"/api/v1/edges", "tok-writer", link)
+	resp, body = roleDo(t, http.MethodPost, ts.URL+"/api/v1/edges", "tok-writer-fixture-0123456789abcdef0123456789", link)
 	require.Equal(t, http.StatusCreated, resp.StatusCode, string(body))
 
-	resp, body = roleDo(t, http.MethodDelete, del, "tok-writer", nil)
+	resp, body = roleDo(t, http.MethodDelete, del, "tok-writer-fixture-0123456789abcdef0123456789", nil)
 	assertScopeDenied(t, resp, body, authn.ScopeDeleteEdges)
-	resp, body = roleDo(t, http.MethodDelete, del, "tok-reader", nil)
+	resp, body = roleDo(t, http.MethodDelete, del, "tok-reader-fixture-0123456789abcdef0123456789", nil)
 	assertScopeDenied(t, resp, body, authn.ScopeDeleteEdges)
 	assert.Len(t, storedLinks(t, driver), 2, "a refused delete removed edges")
 
@@ -140,9 +140,9 @@ func TestEdgesRoles(t *testing.T) {
 		assert.Equal(t, http.StatusUnauthorized, resp.StatusCode, "%s %s without a token", r.method, r.url)
 	}
 
-	resp, body = roleDo(t, http.MethodGet, get, "tok-reader", nil)
+	resp, body = roleDo(t, http.MethodGet, get, "tok-reader-fixture-0123456789abcdef0123456789", nil)
 	assert.Equal(t, http.StatusOK, resp.StatusCode, string(body))
-	resp, body = roleDo(t, http.MethodDelete, del, "tok-admin", nil)
+	resp, body = roleDo(t, http.MethodDelete, del, "tok-admin-fixture-0123456789abcdef0123456789", nil)
 	assert.Equal(t, http.StatusOK, resp.StatusCode, string(body))
 	assert.Empty(t, storedLinks(t, driver))
 }
@@ -173,7 +173,7 @@ func TestEdgesErrors(t *testing.T) {
 		{"delete unknown type", http.MethodDelete, "/api/v1/edges?source=a&target=b&type=imaginary", nil, 400, CodeInvalidParam},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			resp, body := roleDo(t, tc.method, ts.URL+tc.path, "tok-admin", tc.body)
+			resp, body := roleDo(t, tc.method, ts.URL+tc.path, "tok-admin-fixture-0123456789abcdef0123456789", tc.body)
 			assert.Equal(t, tc.status, resp.StatusCode, string(body))
 			assert.Equal(t, tc.code, errorCode(t, body))
 		})
