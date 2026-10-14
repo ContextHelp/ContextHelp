@@ -393,13 +393,29 @@ func humanizeSlug(slug string) string {
 }
 
 // GetObject retrieves a knowledge object by ID.
+// Externalized content comes back whole (see resolveContent).
 func (s *Service) GetObject(ctx context.Context, id string) (*storage.KnowledgeObject, error) {
-	return s.Store.Objects().Get(ctx, id)
+	obj, err := s.Store.Objects().Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.resolveContent(ctx, obj); err != nil {
+		return nil, err
+	}
+	return obj, nil
 }
 
-// ListObjects lists knowledge objects matching the filter.
+// ListObjects lists knowledge objects matching the filter. Externalized
+// content comes back as a preview (see previewContent).
 func (s *Service) ListObjects(ctx context.Context, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, int, error) {
-	return s.Store.Objects().List(ctx, filter)
+	objs, total, err := s.Store.Objects().List(ctx, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+	if err := s.previewContent(ctx, objs); err != nil {
+		return nil, 0, err
+	}
+	return objs, total, nil
 }
 
 // FacetCounts returns metadata type counts for objects matching the filter.
@@ -429,8 +445,14 @@ func (s *Service) FacetCounts(ctx context.Context, filter storage.ObjectFilter) 
 }
 
 // UpdateObject updates a knowledge object.
+// Content above storage.blob.threshold is stored externalized, and a
+// list preview is stored as the ref it was read from (see storable).
 func (s *Service) UpdateObject(ctx context.Context, obj *storage.KnowledgeObject) error {
-	if err := s.Store.Objects().Update(ctx, obj); err != nil {
+	row, err := s.storable(ctx, obj)
+	if err != nil {
+		return err
+	}
+	if err := s.Store.Objects().Update(ctx, row); err != nil {
 		return err
 	}
 	if ev, err := events.NewEvent("service.objects", string(events.TopicObjectUpdated), events.ObjectUpdatedPayload{
@@ -459,7 +481,14 @@ func (s *Service) DeleteObject(ctx context.Context, id string) error {
 // SearchObjects executes an RSQL query and returns matching objects.
 // profileID, when non-empty, restricts results to the named profile's objects.
 func (s *Service) SearchObjects(ctx context.Context, query string, limit, offset int, profileID ...string) ([]*storage.KnowledgeObject, int, error) {
-	return s.Search.Search(ctx, query, limit, offset, profileID...)
+	objs, total, err := s.Search.Search(ctx, query, limit, offset, profileID...)
+	if err != nil {
+		return nil, 0, err
+	}
+	if err := s.previewContent(ctx, objs); err != nil {
+		return nil, 0, err
+	}
+	return objs, total, nil
 }
 
 // GetJob retrieves a job by ID.
@@ -513,6 +542,9 @@ func (s *Service) RelatedObjects(ctx context.Context, objectID string, depth, li
 		}
 		objs = append(objs, obj)
 	}
+	if err := s.previewContent(ctx, objs); err != nil {
+		return nil, err
+	}
 	return objs, nil
 }
 
@@ -537,6 +569,9 @@ func (s *Service) EntityBacklinks(ctx context.Context, slug string) ([]*storage.
 			}
 			objs = append(objs, obj)
 		}
+	}
+	if err := s.previewContent(ctx, objs); err != nil {
+		return nil, err
 	}
 	return objs, nil
 }
@@ -902,7 +937,14 @@ func (s *Service) FindByText(ctx context.Context, query string, limit int) ([]*s
 // each driver applies its own dialect's FTS quoting at the boundary
 // (search.SanitizeFTSQueryFor), so no dialect's rules are baked in here.
 func (s *Service) FindByTextFiltered(ctx context.Context, query string, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
-	return s.Store.Objects().FTSSearch(ctx, query, filter)
+	objs, err := s.Store.Objects().FTSSearch(ctx, query, filter)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.previewContent(ctx, objs); err != nil {
+		return nil, err
+	}
+	return objs, nil
 }
 
 // CancelJob cancels a pending or running job.
@@ -1112,6 +1154,9 @@ func (s *Service) SearchObjectsNodeAware(ctx context.Context, query string, limi
 	}
 
 	if !nodeFilter {
+		if err := s.previewContent(ctx, all); err != nil {
+			return nil, 0, err
+		}
 		return all, len(all), nil
 	}
 
@@ -1165,7 +1210,11 @@ func (s *Service) SearchObjectsNodeAware(ctx context.Context, query string, limi
 	if end > total {
 		end = total
 	}
-	return filtered[offset:end], total, nil
+	page := filtered[offset:end]
+	if err := s.previewContent(ctx, page); err != nil {
+		return nil, 0, err
+	}
+	return page, total, nil
 }
 
 // --- Feed methods ---
@@ -1580,6 +1629,9 @@ func (s *Service) SemanticSearchFiltered(ctx context.Context, query string, filt
 	diagnostics := SearchDiagnostics{Semantic: &rep}
 	if rep.OK() {
 		diagnostics.CandidateCount = len(objs)
+		if err := s.previewContent(ctx, objs); err != nil {
+			return nil, diagnostics, err
+		}
 		return objs, diagnostics, nil
 	}
 	if !cfg.FallbackToFTS {
@@ -1590,6 +1642,9 @@ func (s *Service) SemanticSearchFiltered(ctx context.Context, query string, filt
 		return nil, diagnostics, fmt.Errorf("semantic search fts fallback: %w", err)
 	}
 	diagnostics.CandidateCount = len(objs)
+	if err := s.previewContent(ctx, objs); err != nil {
+		return nil, diagnostics, err
+	}
 	return objs, diagnostics, nil
 }
 
@@ -1792,6 +1847,14 @@ func (s *Service) hybridSearch(ctx context.Context, query string, filter storage
 	limit := filter.Limit
 	if limit <= 0 || limit > len(ranked) {
 		limit = len(ranked)
+	}
+	kept := make([]*storage.KnowledgeObject, limit)
+	for i := range kept {
+		kept[i] = ranked[i].Object
+	}
+	// Before the document view, which is built from the content.
+	if err := s.previewContent(ctx, kept); err != nil {
+		return nil, err
 	}
 	out := make([]HybridResult, limit)
 	for i := 0; i < limit; i++ {
