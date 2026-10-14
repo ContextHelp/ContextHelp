@@ -1,150 +1,106 @@
 # Plugin Authoring Guide
 
-**Author:** $USER
-**System:** ctxt / dPKMS
 **API ref:** `pkg/pluginapi/` — `github.com/ideacrafterslabs/ctxt/pkg/pluginapi`
+**Host side:** `internal/plugin/`
 **ADR:** [ADR-012](decisions/ADR-012-use-plugins-to-extend-any-layer.md)
 
 ---
 
 ## Contents
 
-1. [What plugins are](#1-what-plugins-are)
+1. [Current state](#1-current-state)
 2. [Plugin manifest](#2-plugin-manifest)
 3. [Extension points](#3-extension-points)
 4. [Implementing a plugin in Go](#4-implementing-a-plugin-in-go)
-5. [Config declaration](#5-config-declaration)
-6. [Registering a plugin](#6-registering-a-plugin)
-7. [Capabilities and permissions](#7-capabilities-and-permissions)
-8. [Example: URL-fetch adapter plugin](#8-example-url-fetch-adapter-plugin)
-9. [Testing your plugin](#9-testing-your-plugin)
+5. [Host registry](#5-host-registry)
+6. [Capabilities and permissions](#6-capabilities-and-permissions)
+7. [Scaffolding](#7-scaffolding)
+8. [Testing your plugin](#8-testing-your-plugin)
 
 ---
 
-## 1. What plugins are
+## 1. Current state
 
-Plugins extend ctxt/dPKMS without modifying core. They operate through **documented
-extension points** only. Core guarantees backward-compatible plugin API across minor
-versions (see §7 for constraints).
+`pkg/pluginapi` defines Go interfaces that in-process plugins implement, and
+`internal/plugin.Registry` holds and initialises plugin instances. The following
+does **not** exist today:
 
-Two deployment models exist:
+- **No plugin loading in the binaries.** `ctxt` and `dpkms` never create a
+  plugin registry (`Service.PluginRegistry` is only set in tests), so no plugin
+  is registered, initialised, or called at runtime.
+- **No config.** The top-level `plugins:` config key is parsed into
+  `[]PluginConfig{type, plugin, config}` (`internal/config/config.go`), but no
+  code reads it.
+- **No out-of-process plugins**, no plugin directory under the config dir, no
+  `ctxt plugin` / `dpkms plugin` command.
 
-| Model | Binary | Load mechanism |
-|---|---|---|
-| In-process | Same binary as server | `pluginReg.Register(p)` at startup |
-| Out-of-process | Separate binary | RPC/socket (planned; ADR-012 §2) |
+Plugins exist as Go packages under `plugins/` and are exercised by their unit
+tests and by `test/integration/us00{29,42,43,45}_*_test.go`, which register
+plugins on a test service by hand.
 
-Current production model: **in-process**. Plugin authors ship a Go package; the host
-binary wires it in at startup.
-
-Plugin data namespace on `KnowledgeObject`:
-
-```
-obj.Plugins["<plugin-name"]  →  map[string]any
-```
-
-Core preserves this namespace; merges never overwrite it.
+To extend pipelines in a running dpkms today, use built-in steps and pipeline
+config (`pipelines.overrides`), or install steps from a step registry with
+`dpkms pipeline step install <name> --registry <url>`.
 
 ---
 
 ## 2. Plugin manifest
 
-Every plugin directory under `~/.config/contexthelp/plugins/<name>/` carries a
-`plugin.json` manifest. For in-process plugins the manifest is informational;
-for future out-of-process loading it governs dispatch.
+`pluginapi.PluginManifest` (`pkg/pluginapi/manifest.go`) is read from
+`manifest.json` or `manifest.yaml` in a plugin directory by
+`plugin.LoadManifest(dir)`. No host code calls `LoadManifest` yet.
 
+```yaml
+apiVersion: v1
+name: local-registry
+version: 1.0.0
+description: Local filesystem registry
+type: registry_provider
+permissions:
+  - filesystem
+  - registry.read
 ```
-{
-  "name":               "url-fetch",
-  "version":            "1.0.0",
-  "description":        "Fetches and enriches URL content",
-  "entrypoint":         "code.so",
-  "hooks":              ["post_ingest"],
-  "pipelines":          ["url.fetch"],
-  "object_types":       ["url.enriched"],
-  "requires_plugin_api": ">=1.0,<2.0",
-  "permissions": {
-    "network":    true,
-    "filesystem": false
-  }
-}
-```
-
-Fields:
 
 | Field | Required | Notes |
 |---|---|---|
-| `name` | yes | matches `Plugin.Name()` and config key |
-| `version` | yes | semver |
-| `hooks` | no | lifecycle hooks the plugin uses |
-| `pipelines` | no | pipeline names the plugin registers |
-| `object_types` | no | new KO types the plugin declares |
-| `permissions` | yes | least-privilege; declare only what you need |
-| `requires_plugin_api` | yes | semver range against `pluginapi` package version |
+| `apiVersion` | yes | must be `v1` |
+| `name` | yes | should match `Plugin.Name()` |
+| `version` | yes | semver string |
+| `slug` | no | identifier |
+| `description` | no | |
+| `type` | no | only `registry_provider` is recognised |
+| `permissions` | no | list; unknown values fail validation (see §6) |
+
+Examples: `plugins/local-registry-plugin/manifest.yaml`,
+`plugins/rss-feed/manifest.yaml`. Note `plugins/dir-watcher/manifest.json` uses a
+different, older shape and does not pass `Validate()`.
 
 ---
 
 ## 3. Extension points
 
-### 3.1 Pipeline step (`pluginapi.PipelineStep`)
+All interfaces are in `pkg/pluginapi/pluginapi.go` unless noted.
 
-Transforms a `KnowledgeObject` during pipeline execution. Runs synchronously in the
-worker goroutine.
+| Interface | Methods (besides `Plugin`) | Host accessor |
+|---|---|---|
+| `Plugin` | `Name`, `Version`, `Init`, `PipelineSteps`, `Close` | `Register`, `InitAll`, `CloseAll` |
+| `PipelineStep` | `Name`, `Contract`, `Run` | `ExtraSteps()` |
+| `PostIngestHook` | `PostIngest(ctx, obj)` | `PostIngestHooks()` |
+| `AliasResolver` | `ResolveID(ctx, idOrAlias, profile)` | `AliasResolvers()`, `ResolveID()` |
+| `OutputGenerator` | `GeneratorName`, `Accepts`, `Generate` | `OutputGenerators()`, `FindOutputGenerator()` |
+| `PluginRegistryProvider` (`registry_provider.go`) | `Metadata`, `FetchTaxonomy`, `FetchEntities`, `ResolveEntity` | `RegistryProviders()` |
 
-```
-interface PipelineStep {
-    Name()     string
-    Contract() StepContract   // declares Requires / Produces / Capabilities
-    Run(ctx, draft *KO) (*KO, error)
-}
-```
+The host accessors exist on `internal/plugin.Registry`; apart from the alias
+REST handlers (`internal/server/http/handlers_aliases.go`), no core code calls
+them.
 
-`StepContract.Capabilities` values: `"llm"`, `"ocr"`, `"vision"`, `"embedding"`,
-`"transcription"`. Scheduler uses these to route to capable workers.
+`Deps` passed to `Init` carries `Bus` (CloudEvents v1.0 `Event`, with `Publish`,
+`Subscribe`, `Close`) and `Store` (a `StorageDriver` exposing only `Aliases()`).
+Either may be nil; handle that.
 
-### 3.2 Post-ingest hook (`pluginapi.PostIngestHook`)
-
-Runs after the KO is stored. Useful for side effects: scoring, notifications,
-downstream API calls. Must not assume the object is still mutable in storage —
-persistence happened already.
-
-```
-interface PostIngestHook extends Plugin {
-    PostIngest(ctx, obj *KO) error
-}
-```
-
-### 3.3 Alias resolver (`pluginapi.AliasResolver`)
-
-Resolves human-readable names to object IDs. Registry iterates resolvers in
-registration order; first non-identity result wins.
-
-```
-interface AliasResolver extends Plugin {
-    ResolveID(ctx, idOrAlias, profile string) (string, error)
-}
-```
-
-Return `(idOrAlias, nil)` when the input is not an alias you own — never error on
-unknown aliases.
-
-### 3.4 Event bus subscriber (`pluginapi.Bus`)
-
-Injected via `Deps.Bus`. Plugins publish and subscribe to CloudEvents v1.0.
-
-```
-bus.Subscribe("ranking.scored", func(ctx, e Event) error { ... })
-bus.Publish(ctx, Event{Type: "url.enriched", ...})
-```
-
-Event type format: `<domain>.<verb>` (e.g., `pipeline.step_completed`).
-
-### 3.5 Future extension points (planned, ADR-012)
-
-- `PluginCommand` — custom CLI subcommands
-- `PluginSemanticAugmentor` — propose mentions / aliases / metadata enrichments
-- `PluginSearchOperator` — define custom RSQL operators
-- `PluginRESTEndpoint` — custom routes under `/plugins/<name>/`
+Alias resolvers must return `(idOrAlias, nil)` for input they do not recognise.
+`Registry.ResolveID` tries resolvers in registration order and takes the first
+result that differs from the input.
 
 ---
 
@@ -152,506 +108,221 @@ Event type format: `<domain>.<verb>` (e.g., `pipeline.step_completed`).
 
 ### 4.1 Module setup
 
-Your plugin lives in its own Go module. Import only `pkg/pluginapi`:
+A plugin can live in its own Go module and import only `pkg/pluginapi`
+(`internal/` is not importable from outside the module). There is no tagged
+ctxt release, so point at a local checkout:
 
 ```
-module github.com/you/ctxt-plugin-url-fetch
+module github.com/you/ctxt-plugin-example
 
-go 1.22
+go 1.26.1
 
-require github.com/ideacrafterslabs/ctxt v0.x.y
-```
+require github.com/ideacrafterslabs/ctxt v0.0.0
 
-For local development:
-
-```
 replace github.com/ideacrafterslabs/ctxt => /path/to/ctxt
 ```
 
-Only import `github.com/ideacrafterslabs/ctxt/pkg/pluginapi`. Do not import
-`internal/` — Go enforces this at compile time.
+`plugins/aliasing/go.mod` follows this pattern.
 
 ### 4.2 Core interface
 
-Every plugin must implement `pluginapi.Plugin`:
-
-```
+```go
 type Plugin interface {
-    Name()          string
-    Version()       string
-    Init(ctx, cfg map[string]interface{}, deps Deps) error
+    Name() string
+    Version() string
+    Init(ctx context.Context, cfg map[string]interface{}, deps Deps) error
     PipelineSteps() []PipelineStep
-    Close(ctx) error
+    Close(ctx context.Context) error
 }
 ```
 
-`Deps` carries shared resources:
+`Init` receives a raw config map. `Registry.InitAll(ctx, cfgs, deps)` passes
+`cfgs[p.Name()]`, or an empty map. Read keys defensively:
 
-```
-type Deps struct {
-    Bus   Bus            // CloudEvents bus
-    Store StorageDriver  // narrow storage view (aliases only today)
-}
-```
-
-### 4.3 Config parsing
-
-`Init` receives the raw config map from `plugins[n].config` in `config.yaml`.
-Read defensively — keys may be missing:
-
-```
+```go
 func (p *Plugin) Init(_ context.Context, cfg map[string]interface{}, deps pluginapi.Deps) error {
     if v, ok := cfg["endpoint"].(string); ok {
         p.endpoint = v
     }
     if p.endpoint == "" {
-        return fmt.Errorf("url-fetch: endpoint required")
+        return fmt.Errorf("example: endpoint required")
     }
     p.bus = deps.Bus
     return nil
 }
 ```
 
-### 4.4 Writing a pipeline step
+### 4.3 Writing a pipeline step
 
-```
+```go
 type FetchStep struct{ client *http.Client }
 
-func (s *FetchStep) Name() string { return "url_fetch" }
+func (s *FetchStep) Name() string { return "example_fetch" }
 
 func (s *FetchStep) Contract() pluginapi.StepContract {
     return pluginapi.StepContract{
-        Requires:     []string{"RawContent"},           // URL in RawContent
-        Produces:     []string{"TextContent", "Metadata"},
-        Capabilities: []string{},                       // no special backend needed
+        Requires: []string{"RawContent"},
+        Produces: []string{"TextContent", "Metadata"},
     }
 }
 
-func (s *FetchStep) Run(ctx context.Context, draft *pluginapi.KnowledgeObject) (
-    *pluginapi.KnowledgeObject, error,
-) {
-    // fetch URL, populate draft.TextContent, draft.Metadata
+func (s *FetchStep) Run(ctx context.Context, draft *pluginapi.KnowledgeObject) (*pluginapi.KnowledgeObject, error) {
+    // read draft.RawContent, set draft.TextContent and draft.Metadata
     return draft, nil
 }
 ```
 
-`Requires` / `Produces` are field names on `KnowledgeObject`. Scheduler uses them
-for dependency ordering. Declare every field you read and every field you write.
+`Requires` / `Produces` name `KnowledgeObject` fields (dot notation such as
+`Metadata.ocr_confidence` is allowed). `pipeline.ValidateComposability` checks
+that each step's requirements are produced by earlier steps.
 
-`KnowledgeObject` writable fields available to plugins:
+Main `KnowledgeObject` fields a step writes:
 
 | Field | Type | Notes |
 |---|---|---|
-| `Graph` | `*ObjectGraph` | **preferred write target** (ADR-063) |
+| `Graph` | `*ObjectGraph` | preferred target for structured content (ADR-063) |
 | `TextContent` | `string` | normalised text |
-| `Metadata` | `map[string]any` | arbitrary enrichment |
-| `Summaries` | `[]string` | legacy; prefer Graph nodes |
-| `Sections` | `[]Section` | legacy; prefer Graph nodes |
-| `Tags` | `[]Tag` | legacy; prefer Graph nodes |
-| `Mentions` | `[]uri.URI` | legacy; prefer Graph nodes |
-| `Decisions` | `[]Decision` | legacy; prefer Graph nodes |
-| `Tasks` | `[]Task` | legacy; prefer Graph nodes |
-| `Embeddings` | `[]float32` | vector embedding |
-| `Plugins` | `map[string]any` | plugin-owned namespace |
+| `Metadata` | `map[string]any` | enrichment |
+| `Summaries`, `Sections`, `Tags`, `Mentions`, `Decisions`, `Tasks` | slices | flat fields |
+| `Vectors` | `[]ObjectVector` | per-model embedding chunks; not serialised to JSON |
+| `Plugins` | `map[string]any` | per-plugin namespace, persisted with the object |
 
-New pipeline steps MUST write structured content (sections, tags, decisions,
-tasks, mentions) to `Graph.Nodes` using typed `GraphNode` values. Flat-field writes
-are treated as legacy until backfill completes. See ADR-063.
+Leave `ID`, `CreatedAt`, `ContentHash` and `Status` to core.
 
-Node ID construction: `pluginapi.NewNodeID(objectID, nodeType, ordinal)`
-Node URI: `pluginapi.NodeURI(objectID, nodeType, ordinal)` → `ctxt:node/<id>`
+### 4.4 Graph nodes (ADR-063)
 
-Never write to `ID`, `CreatedAt`, `ContentHash`, or `Status` — those are
-core-managed fields.
-
-### 4.4.1 Graph-canonical write pattern (ADR-063)
-
-Enrichment steps that extract structured content append typed `GraphNode` values to
-`draft.Graph.Nodes`. Example — tagging step:
-
-```
-// pseudocode; see pkg/pluginapi for exact types
-func (s *TagStep) Run(ctx, draft *pluginapi.KnowledgeObject) (*pluginapi.KnowledgeObject, error) {
-    if draft.Graph == nil {
-        draft.Graph = &pluginapi.ObjectGraph{}
-    }
-    tags := extractTags(draft.TextContent) // your logic
-    for i, label := range tags {
-        draft.Graph.Nodes = append(draft.Graph.Nodes, pluginapi.GraphNode{
-            ID:       pluginapi.NewNodeID(draft.ID, pluginapi.NodeTypeTag, i),
-            NodeType: pluginapi.NodeTypeTag,
-            Label:    label,
-            Order:    i,
-        })
-    }
-    return draft, nil
+```go
+if draft.Graph == nil {
+    draft.Graph = &pluginapi.ObjectGraph{}
+}
+for i, label := range tags {
+    draft.Graph.Nodes = append(draft.Graph.Nodes, pluginapi.GraphNode{
+        ID:       pluginapi.NewNodeID(draft.ID, pluginapi.NodeTypeTag, i),
+        NodeType: pluginapi.NodeTypeTag,
+        Label:    label,
+        Order:    i,
+    })
 }
 ```
 
-Node type constants (`pluginapi.NodeType*`):
+Node types (`pkg/pluginapi/node_identity.go`): `section`, `tag`,
+`entity_mention`, `decision`, `task`, `summary`, `code_block`, `open_question`,
+`artifact`. Edge types: `contains`, `references`, `resolves_to`,
+`derives_from` (intra-object only; inter-object edges use the edges table,
+ADR-049). `pluginapi.NodeURI` builds a node URI. `pkg/projection` derives
+`DocumentProjection` and `IndexProjection` from an object.
 
-| Constant | Value |
-|---|---|
-| `NodeTypeSection` | `"section"` |
-| `NodeTypeTag` | `"tag"` |
-| `NodeTypeEntityMention` | `"entity_mention"` |
-| `NodeTypeDecision` | `"decision"` |
-| `NodeTypeTask` | `"task"` |
-| `NodeTypeSummary` | `"summary"` |
-| `NodeTypeCodeBlock` | `"code_block"` |
+### 4.5 Post-ingest hook
 
-Edge type constants (`pluginapi.EdgeType*`): `contains`, `references`, `resolves_to`,
-`derives_from`. Intra-object only; inter-object edges go to the `edges` table (ADR-049).
-
-The storage layer derives `DocumentProjection` (display) and `IndexProjection`
-(FTS/vector input) from `Graph` on read. Plugins never construct projections directly.
-
-### 4.5 Writing a post-ingest hook
-
-```
-type URLFetchPlugin struct{ bus pluginapi.Bus }
-
-func (p *URLFetchPlugin) PostIngest(ctx context.Context, obj *pluginapi.KnowledgeObject) error {
-    if obj.Type != "url" {
-        return nil
-    }
-    score := computeScore(obj)
+```go
+func (p *Plugin) PostIngest(ctx context.Context, obj *pluginapi.KnowledgeObject) error {
     if obj.Plugins == nil {
         obj.Plugins = map[string]any{}
     }
-    obj.Plugins["url-fetch"] = map[string]any{"score": score}
-    if p.bus != nil {
-        _ = p.bus.Publish(ctx, pluginapi.Event{
-            Type:   "url.scored",
-            Source: "plugin:url-fetch",
-        })
-    }
+    obj.Plugins[p.Name()] = map[string]any{"score": computeScore(obj)}
     return nil
 }
 ```
 
-`PostIngest` mutations to `obj` are **not** auto-persisted. The caller decides
-whether to re-save; check the wiring in `internal/service/` for current behaviour.
+Whether mutations are saved is up to the caller; no core caller exists yet.
 
-### 4.6 Writing an alias resolver
+### 4.6 Reference implementations
 
-See `plugins/aliasing/plugin.go` for the reference implementation. Key rule:
-
-```
-func (p *Plugin) ResolveID(ctx context.Context, idOrAlias, profile string) (string, error) {
-    id, err := p.store.Resolve(ctx, idOrAlias, profile)
-    if err != nil {
-        return idOrAlias, nil  // pass-through; do not propagate "not found" as error
-    }
-    return id, nil
-}
-```
-
----
-
-## 5. Config declaration
-
-In `~/.config/contexthelp/config.yaml`, plugins are declared under `plugins:` as an
-ordered list. The `plugin` field must match `Plugin.Name()` exactly.
-
-```yaml
-plugins:
-  - plugin: url-fetch
-    config:
-      endpoint: https://fetch.internal/v1
-      timeout_seconds: 10
-
-  - plugin: autosuggest
-    config:
-      mode: generate
-      max_tags: 5
-      enabled: true
-```
-
-Config isolation: each plugin receives only its own `config` block. Other plugins'
-config is never visible.
-
-Config files do not expand environment variables: a value is used as written. Read secrets in the plugin from its own environment variable, or have the operator write the value into an uncommitted config file:
-
-```yaml
-config:
-  api_key: <my-plugin-api-key>
-```
-
----
-
-## 6. Registering a plugin
-
-Plugins are registered at server startup in `cmd/dpkms/cmd/serve.go` (or equivalent
-wire-up entry point). Use the pattern established by built-in plugins:
-
-```
-pluginReg := plugin.NewRegistry()
-pluginReg.Register(urlfetch.New())
-pluginReg.Register(aliasing.New())
-
-err := pluginReg.InitAll(ctx, cfg.PluginConfigs(), deps)
-
-// Contribute pipeline steps from all plugins
-pipes.RegisterExtraSteps(pluginReg.ExtraSteps())
-
-// Wire post-ingest hooks into the job worker
-worker.SetPostIngestHooks(pluginReg.PostIngestHooks())
-
-// Wire alias resolvers into the service layer
-svc.SetAliasResolvers(pluginReg.AliasResolvers())
-```
-
-Duplicate plugin names panic at `Register` — enforced by `Registry.Register`.
-
-On shutdown:
-
-```
-defer pluginReg.CloseAll(ctx)
-```
-
----
-
-## 7. Capabilities and permissions
-
-### Declared capabilities
-
-`StepContract.Capabilities` signals subsystem requirements to the scheduler:
-
-| Capability | Meaning |
+| Package | Implements |
 |---|---|
-| `llm` | requires LLM provider |
-| `embedding` | requires embedding provider |
-| `ocr` | requires OCR provider |
-| `vision` | requires vision model |
-| `transcription` | requires audio transcription |
+| `plugins/aliasing/` | `AliasResolver` (see [plugins-aliasing.md](plugins/plugins-aliasing.md)) |
+| `plugins/autosuggest/` | pipeline step |
+| `plugins/ica/` | pipeline steps (see [plugins-ica.md](plugins/plugins-ica.md)) |
+| `plugins/markdown-export/` | `OutputGenerator` (`obsidian-md`) |
+| `plugins/local-registry-plugin/` | `PluginRegistryProvider` |
 
-Steps without capabilities run on any worker.
+---
+
+## 5. Host registry
+
+`internal/plugin.Registry` (`internal/plugin/registry.go`):
+
+```go
+reg := plugin.NewRegistry()
+reg.Register(p)                      // panics on duplicate Name()
+reg.RegisterWithManifest(p, m)       // also stores the manifest
+err := reg.InitAll(ctx, map[string]map[string]interface{}{
+    p.Name(): {"endpoint": "https://example.test"},
+}, deps)
+steps := reg.ExtraSteps()
+defer reg.CloseAll(ctx)
+```
+
+This is the API the integration tests use. No binary calls it, and nothing maps
+the `plugins:` config key onto the `InitAll` config map.
+
+---
+
+## 6. Capabilities and permissions
+
+### Step capabilities
+
+`StepContract.Capabilities` lists runtime requirements. When a built-in pipeline
+is built, steps whose capabilities are unavailable are pruned (or rejected in
+strict mode). Capability names the core sets
+(`internal/pipeline/builtins/capabilities.go`): `io` (always), `llm`, `ocr`,
+`vision`, `transcription`, `diarization` (provider-dependent), `blob-externalize`
+(blob store configured), `browser` (browser client configured). Any other name is
+never satisfied.
 
 ### Manifest permissions
 
-Declare in `plugin.json`:
+Valid values (`pkg/pluginapi/manifest.go`): `read_objects`, `write_objects`,
+`call_llm`, `network`, `filesystem`, `clipboard`, `refresh`, `notifications`,
+`entity.write`, `entity.alias`, `registry.read`. `entity.write` and
+`entity.alias` are listed as privileged.
 
-| Permission | Grants |
-|---|---|
-| `network: true` | outbound HTTP/TCP from the step |
-| `filesystem: true` | read/write inside plugin sandbox only |
-
-Plugins that require `network` but do not declare it will have requests blocked
-by core in future enforcement layers.
-
-### What plugins must not do
-
-- Write to core DB schema tables directly
-- Override canonical entity IDs or registry definitions
-- Write to `KnowledgeObject` fields outside the list in §4.4
-- Read or write another plugin's `Plugins["<other-name>"]` namespace
-- Modify `obj.ID`, `obj.Status`, `obj.ContentHash`, `obj.CreatedAt`
-- Register a `Name()` that collides with an existing plugin (panics)
+`internal/plugin.CapabilityEnforcer` checks permissions for a few operations
+(`FetchURL`, `ReadFile`, `WriteFile`, `TriggerRefresh`, `CreateNotification`, ...)
+and `CheckPermissionChange` reports added permissions between two manifests.
+Both live in `internal/`, so external plugins cannot call them, and no host code
+uses them yet.
 
 ---
 
-## 8. Example: URL-fetch adapter plugin
+## 7. Scaffolding
 
-Scenario: fetch a URL's HTML body, extract title and description, attach as metadata.
-
-### Directory layout
-
-```
-ctxt-plugin-url-fetch/
-  go.mod
-  plugin.go       # Plugin struct + lifecycle
-  step.go         # FetchStep pipeline step
-  config.go       # config parsing
-  plugin.json     # manifest
+```bash
+dpkms dev init-plugin my-plugin            # creates plugins/my-plugin/
+dpkms dev init-plugin my-plugin --dir ./x  # creates ./x/my-plugin/
 ```
 
-### `plugin.go` (pseudocode — adapt to exact signatures in `pkg/pluginapi`)
-
-```
-package urlfetch
-
-import (
-    "context"
-    "net/http"
-    "time"
-
-    "github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
-)
-
-type Plugin struct {
-    endpoint string
-    timeout  time.Duration
-    client   *http.Client
-}
-
-func New() *Plugin { return &Plugin{} }
-
-func (p *Plugin) Name() string    { return "url-fetch" }
-func (p *Plugin) Version() string { return "1.0.0" }
-
-func (p *Plugin) Init(_ context.Context, cfg map[string]interface{}, _ pluginapi.Deps) error {
-    p.endpoint, _ = cfg["endpoint"].(string)
-    secs, _ := cfg["timeout_seconds"].(int)
-    if secs == 0 { secs = 10 }
-    p.timeout  = time.Duration(secs) * time.Second
-    p.client   = &http.Client{Timeout: p.timeout}
-    return nil
-}
-
-func (p *Plugin) PipelineSteps() []pluginapi.PipelineStep {
-    return []pluginapi.PipelineStep{&FetchStep{client: p.client}}
-}
-
-func (p *Plugin) Close(_ context.Context) error { return nil }
-```
-
-### `step.go` (pseudocode)
-
-```
-package urlfetch
-
-import (
-    "context"
-    "net/http"
-
-    "github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
-)
-
-type FetchStep struct{ client *http.Client }
-
-func (s *FetchStep) Name() string { return "url_fetch" }
-
-func (s *FetchStep) Contract() pluginapi.StepContract {
-    return pluginapi.StepContract{
-        Requires:     []string{"RawContent"},
-        Produces:     []string{"TextContent", "Metadata"},
-        Capabilities: []string{},
-    }
-}
-
-func (s *FetchStep) Run(ctx context.Context, draft *pluginapi.KnowledgeObject) (
-    *pluginapi.KnowledgeObject, error,
-) {
-    url := draft.RawContent
-    req, _  := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-    resp, err := s.client.Do(req)
-    if err != nil {
-        return nil, fmt.Errorf("url-fetch: %w", err)
-    }
-    defer resp.Body.Close()
-
-    title, desc := extractMeta(resp.Body)  // your HTML parse logic
-    draft.TextContent = title + " " + desc
-    if draft.Metadata == nil {
-        draft.Metadata = map[string]any{}
-    }
-    draft.Metadata["url_title"]       = title
-    draft.Metadata["url_description"] = desc
-    return draft, nil
-}
-```
-
-### `plugin.json`
-
-```
-{
-  "name":               "url-fetch",
-  "version":            "1.0.0",
-  "description":        "Fetches HTML and extracts title/description",
-  "entrypoint":         "code.so",
-  "hooks":              [],
-  "pipelines":          [],
-  "object_types":       [],
-  "requires_plugin_api": ">=1.0,<2.0",
-  "permissions": {
-    "network":    true,
-    "filesystem": false
-  }
-}
-```
-
-### `config.yaml` snippet
-
-```yaml
-plugins:
-  - plugin: url-fetch
-    config:
-      timeout_seconds: 15
-```
-
-### Wire-up (in `serve.go`)
-
-```
-pluginReg.Register(urlfetch.New())
-```
+It writes `manifest.yaml`, `plugin.go` (a `pluginapi.Plugin` stub) and
+`README.md`. The generated manifest has no `apiVersion`, so add `apiVersion: v1`
+before it will pass `Validate()`. The `plugins:` snippet in the generated README
+does not match the config schema and has no effect.
 
 ---
 
-## 9. Testing your plugin
+## 8. Testing your plugin
 
-### Unit tests
+- Unit-test `Init`, each step's `Run` and `Close` directly. Pass
+  `pluginapi.Deps{}` when the plugin needs no bus or store, and check that nil
+  deps do not panic.
+- Check that `Name()` matches the manifest `name`, and that `Contract()` lists
+  every field the step reads and writes.
+- Test `PostIngest` and `ResolveID` on constructed objects; for resolvers, check
+  that unknown input passes through with no error.
+- For an end-to-end run against a real service, follow
+  `test/integration/us0042_enrichment_plugin_test.go`: register the plugin on
+  `svc.PluginRegistry`, call `InitAll`, then upsert a pipeline that uses its step.
 
-Test `Init`, `Run`, and `Close` independently. Use `pluginapi.Deps{}` with nil fields
-for plugins that don't need bus or store:
-
+```bash
+go test ./plugins/ica/... ./plugins/aliasing/...
 ```
-func TestFetchStep_Run(t *testing.T) {
-    srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        fmt.Fprint(w, "<html><title>Test</title></html>")
-    }))
-    defer srv.Close()
-
-    step := &FetchStep{client: srv.Client()}
-    draft := &pluginapi.KnowledgeObject{RawContent: srv.URL}
-    got, err := step.Run(context.Background(), draft)
-
-    assert.NoError(t, err)
-    assert.Equal(t, "Test", got.Metadata["url_title"])
-}
-```
-
-### Contract assertions
-
-Verify `Name()` is non-empty and matches your manifest and config key. Verify
-`Contract().Requires` and `Contract().Produces` are non-nil slices (empty ok).
-
-### Init edge cases
-
-- missing required config key → `Init` returns descriptive error
-- nil `deps.Bus` / nil `deps.Store` → no panic; degrade gracefully
-- duplicate `Name()` registration → verify panic message contains the name
-
-### Integration smoke test
-
-1. Build host binary with plugin registered
-2. Start server; check logs for `plugin initialised name=url-fetch version=1.0.0`
-3. Enqueue a URL object: `POST /api/v1/pipelines/enqueue {"content":"https://...", "type":"url"}`
-4. Wait for job completion; `GET /api/v1/objects/<id>` → `metadata.url_title` present
-5. `SIGTERM` → `Close()` called; server exits 0
-
-### Testing post-ingest hooks
-
-Call `PostIngest` directly on a constructed `KnowledgeObject`. Verify `obj.Plugins`
-contains your namespace key with expected values.
-
-### Testing alias resolvers
-
-Use `pluginapi.AliasStore` with an in-memory implementation. Verify `ResolveID`
-returns pass-through for unknown aliases (no error).
 
 ---
 
 ## See also
 
-- `pkg/pluginapi/pluginapi.go` — canonical type definitions (read this first)
-- `internal/plugin/plugin.go` — host-side interface aliases
-- `internal/plugin/registry.go` — registry lifecycle
-- `plugins/aliasing/` — reference implementation (alias resolver)
-- `plugins/autosuggest/` — reference implementation (pipeline step + post-ingest)
+- `pkg/pluginapi/pluginapi.go` — type definitions (read first)
+- `pkg/pluginapi/README.md` — short API overview
+- `internal/plugin/registry.go` — host registry
 - [ADR-012](decisions/ADR-012-use-plugins-to-extend-any-layer.md) — design rationale
-- [US-0042](stories/plugins/US-0042-implement-custom-enrichment-plugin.md) — enrichment
-- [US-0043](stories/plugins/US-0043-implement-custom-ai-provider-plugin.md) — AI provider
-- [US-0044](stories/plugins/US-0044-implement-registry-adapter-plugin.md) — registry adapter
-- [US-0045](stories/plugins/US-0045-implement-custom-ranking-algorithm.md) — custom ranking
-- [plugins-api.md](plugins/plugins-api.md) — broader API spec (pre-formalization)
+- [US-0042](stories/plugins/US-0042-implement-custom-enrichment-plugin.md), [US-0043](stories/plugins/US-0043-implement-custom-ai-provider-plugin.md), [US-0044](stories/plugins/US-0044-implement-registry-adapter-plugin.md), [US-0045](stories/plugins/US-0045-implement-custom-ranking-algorithm.md) — plugin stories
+- [plugins-api.md](plugins/plugins-api.md) — earlier API spec
