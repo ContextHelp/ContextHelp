@@ -159,6 +159,25 @@ func TestConfigValidateWarnsUnknownKeys(t *testing.T) {
 	}
 }
 
+// Config never expands ${VAR}: config validate rejects such a value
+// instead of skipping it as an env-var reference.
+func TestConfigValidateRejectsEnvRef(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	content := "storage:\n  blob:\n    s3:\n      secret_key: \"${S3_SECRET_KEY}\"\n"
+	if err := os.WriteFile(cfgPath, []byte(content), 0600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	out, err := executeCommand("--config", cfgPath, "config", "validate")
+	if err == nil {
+		t.Fatalf("expected non-zero exit for an unexpanded ${VAR}; output: %s", out)
+	}
+	want := "storage.blob.s3.secret_key: config does not expand ${VAR}"
+	if !strings.Contains(out, want) {
+		t.Errorf("expected %q in output; got: %s", want, out)
+	}
+}
+
 func TestConfigHelp(t *testing.T) {
 	out, err := executeCommand("config", "--help")
 	if err != nil {

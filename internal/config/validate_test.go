@@ -316,3 +316,40 @@ func TestValidateBlob(t *testing.T) {
 		})
 	}
 }
+
+// Load does not expand ${VAR}: such a value is used literally (a token
+// of "${TOKEN}"), so Validate rejects it wherever it appears.
+func TestValidateRejectsUnexpandedEnvRefs(t *testing.T) {
+	cfg := &Config{}
+	cfg.Storage.Blob.S3.SecretKey = "${S3_SECRET_KEY}"
+	cfg.Storage.Path = "postgres://u:${PGPASSWORD}@db/ctxt"
+	cfg.Storage.Blob.S3.AccessKey = "$S3_ACCESS_KEY"
+	cfg.Server.Auth = AuthConfig{
+		Provider: "static",
+		Static:   StaticAuthConfig{Tokens: []StaticTokenConfig{{Token: "${DEVICE_TOKEN}", Principal: "p", Roles: []string{"reader"}}}},
+	}
+
+	got := map[string]string{}
+	for _, e := range Validate(cfg) {
+		got[e.Field] = e.Message
+	}
+	for _, field := range []string{
+		"storage.blob.s3.secret_key",
+		"storage.path",
+		"storage.blob.s3.access_key",
+		"server.auth.static.tokens[0].token",
+	} {
+		assert.Equal(t, envRefMessage, got[field], field)
+	}
+	assert.Equal(t, "config does not expand ${VAR}; set the value literally, use the bound env var, or a second --config secrets file", envRefMessage)
+}
+
+// Only shell-style references are rejected: a literal dollar sign, a
+// GitHub Actions expression and a regex anchor are ordinary values.
+func TestValidateAllowsLiteralDollars(t *testing.T) {
+	for _, v := range []string{"pa$$word-1234", "${{ secrets.TOKEN }}", "^https://example\\.com/$", "$2a$10$abcdefghijkl"} {
+		cfg := &Config{}
+		cfg.Storage.Blob.S3.SecretKey = v
+		assert.Empty(t, Validate(cfg), v)
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"reflect"
 	"regexp"
 	"slices"
 	"strconv"
@@ -55,6 +56,7 @@ func Validate(c *Config) []ValidationError {
 	errs = append(errs, validateQuotas(c)...)
 	errs = append(errs, validateDuplicates(c.Duplicates)...)
 	errs = append(errs, validateFederations(c.Federations)...)
+	errs = append(errs, validateEnvRefs(c)...)
 	if err := c.Embeddings.Validate(); err != nil {
 		var ve ValidationError
 		if errors.As(err, &ve) {
@@ -218,6 +220,22 @@ func (c *Config) ValidateAccess() error {
 		msgs[i] = e.Error()
 	}
 	return fmt.Errorf("config: %s", strings.Join(msgs, "; "))
+}
+
+// envRefMessage is the error for a config value written as ${VAR}.
+const envRefMessage = "config does not expand ${VAR}; set the value literally, use the bound env var, or a second --config secrets file"
+
+// validateEnvRefs rejects every string value written as an env-var
+// reference. Neither this loader nor kit's expands one, so "${TOKEN}"
+// would be used as the literal token.
+func validateEnvRefs(c *Config) []ValidationError {
+	var errs []ValidationError
+	walkStrings(reflect.ValueOf(c), "", func(path, val string) {
+		if isEnvRef(val) {
+			errs = append(errs, ValidationError{Field: path, Message: envRefMessage})
+		}
+	})
+	return errs
 }
 
 // blobBackends are the storage.blob.backend values the blob factory

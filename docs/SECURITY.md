@@ -133,7 +133,7 @@ dpkms serve --config dpkms.yaml --config dpkms-secrets.yaml
 - Never put plaintext secrets in a committed config file
 - Prefer an env var where the code reads one (`OPENAI_API_KEY`, `CTXT_BLOB_S3_SECRET_KEY`, `PGPASSWORD`)
 - Add the secrets file to `.gitignore`
-- `ctxt config validate` flags plaintext secrets it finds
+- `ctxt config validate` flags plaintext secrets it finds and rejects `${VAR}` values, which config never expands
 
 #### 3. .env Files (Recommended for Local Development)
 

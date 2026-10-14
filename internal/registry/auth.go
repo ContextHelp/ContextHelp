@@ -1,7 +1,6 @@
 // Package registry manages per-registry auth tokens stored in the OS keychain.
 // Tokens are NEVER written to the YAML config file; the keychain is the sole
-// canonical store. The YAML auth block carries only type metadata and optional
-// env-var hints (${VAR}) for CI/headless environments.
+// canonical store. The YAML auth block carries only type metadata.
 package registry
 
 import (
