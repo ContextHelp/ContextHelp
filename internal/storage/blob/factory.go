@@ -11,27 +11,25 @@ import (
 
 // New creates the BlobStore that storage.blob configures. It is the one
 // constructor for the blob store a storage driver writes through.
+//
+// The backend and its required fields are checked by
+// config.BlobConfig.Validate, the same check `ctxt config validate`
+// reports, so startup and validate agree on what is valid.
 func New(cfg config.BlobConfig) (storage.BlobStore, error) {
-	backend := cfg.Backend
-	if backend == "" {
-		backend = "local"
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("blob: %w", err)
 	}
 
-	switch backend {
-	case "local":
+	switch cfg.Backend {
+	case "s3":
+		return s3store.New(cfg.S3)
+	case "garage":
+		return s3store.New(garageDefaults(cfg.S3))
+	default: // "" or "local"
 		if cfg.Local.Path == "" {
 			return nil, fmt.Errorf("blob: local backend requires storage.blob.local.path")
 		}
 		return local.New(cfg.Local.Path)
-	case "s3":
-		return s3store.New(cfg.S3)
-	case "garage":
-		if cfg.S3.Endpoint == "" {
-			return nil, fmt.Errorf("blob: garage backend requires s3.endpoint (e.g. http://localhost:3900)")
-		}
-		return s3store.New(garageDefaults(cfg.S3))
-	default:
-		return nil, fmt.Errorf("blob: unknown backend %q (valid: local, s3, garage)", backend)
 	}
 }
 

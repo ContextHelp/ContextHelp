@@ -4,17 +4,12 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// envRef is a shell-style ${VAR} or ${VAR:-default} reference. GitHub
-// Actions ${{ ... }} and CloudFormation ${AWS::Region} do not match.
-var envRef = regexp.MustCompile(`\$\{[A-Za-z_][A-Za-z0-9_]*(:?[-?+=][^}]*)?\}`)
 
 // Historical and planning records keep the text they were written with.
 var configDocsSkipped = []string{
@@ -37,7 +32,7 @@ func TestConfigExamples_ShowNoEnvExpansion(t *testing.T) {
 		data, err := os.ReadFile(f)
 		require.NoError(t, err)
 		for i, line := range strings.Split(string(data), "\n") {
-			assert.NotRegexp(t, envRef, line, "%s:%d: config does not expand env vars", f, i+1)
+			assert.NotRegexp(t, shellEnvRef, line, "%s:%d: config does not expand env vars", f, i+1)
 		}
 	}
 
@@ -67,7 +62,7 @@ func TestConfigExamples_ShowNoEnvExpansion(t *testing.T) {
 				continue
 			}
 			for i, line := range strings.Split(b.text, "\n") {
-				assert.NotRegexp(t, envRef, line, "%s:%d: config does not expand env vars", rel, b.line+i)
+				assert.NotRegexp(t, shellEnvRef, line, "%s:%d: config does not expand env vars", rel, b.line+i)
 			}
 		}
 		return nil

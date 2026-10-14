@@ -113,7 +113,7 @@ func lintSecrets(cfg *Config) []LintFinding {
 		findings = append(findings, LintFinding{
 			Severity: SeverityWarn,
 			Field:    w.Field,
-			Message:  fmt.Sprintf("looks like a plaintext secret (%s) — %s; use ${ENV_VAR} instead", w.Hint, w.Reason),
+			Message:  fmt.Sprintf("looks like a plaintext secret (%s) — %s; use the bound env var or move it to a second --config secrets file", w.Hint, w.Reason),
 		})
 	}
 	return findings

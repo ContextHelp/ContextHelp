@@ -108,10 +108,11 @@ name: `api_key_env: OPENAI_API_KEY`.
 ## Configuration Validation
 
 ```bash
-# Loads the config and scans it for plaintext secrets (exit 1 on findings)
+# Validates the effective config, lists every error, warns on unknown
+# keys, and scans for plaintext secrets (exit 1 on errors or secrets)
 ctxt config validate
 
-# Load errors only
+# Validation errors and unknown-key warnings only
 ctxt config validate --check-secrets=false
 
 # Schema, secrets, permissions and deprecated keys

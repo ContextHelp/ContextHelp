@@ -49,8 +49,14 @@ var configValidateCmd = &cobra.Command{
 	Short: "Validate configuration and optionally scan for plaintext secrets",
 	Long: `Validate configuration and optionally scan for plaintext secrets.
 
-Checks that the configuration file is well-formed, then scans string fields for
-values that look like plaintext API keys or passwords.
+Validates the effective configuration (every file layer, env var and -c
+override applied) and lists every error: ports, server access and auth,
+storage and blob settings, quotas, duplicates, federations, embeddings,
+secrets backend. Then scans string fields for values that look like
+plaintext API keys or passwords.
+
+Keys the configuration does not declare are reported as warnings: they
+are ignored, so the setting they were meant for keeps its default.
 
 Exit code 1 when validation errors or secret warnings are found.`,
 	RunE: runConfigValidate,
@@ -312,33 +318,58 @@ func findChildCommand(parent *cobra.Command, name string) *cobra.Command {
 }
 
 func runConfigValidate(cmd *cobra.Command, args []string) error {
-	fmt.Println("Validating configuration...")
+	out := cmd.OutOrStdout()
+	fmt.Fprintln(out, "Validating configuration...")
 
-	// Re-load to get a fresh validation result (cfg may have been loaded early).
-	if _, err := config.Load(binName, cfgFile); err != nil {
-		fmt.Printf("  ✗ Configuration is invalid: %v\n", err)
-		return err
+	// cfg is the config initConfig loaded with every file layer, env var
+	// and -c override applied; a config that fails to load never gets
+	// here. Validate checks that effective result.
+	errs := config.Validate(cfg)
+	if len(errs) == 0 {
+		fmt.Fprintln(out, "  ✓ Configuration is valid")
+	} else {
+		fmt.Fprintf(out, "  ✗ %d validation error(s):\n", len(errs))
+		for _, e := range errs {
+			fmt.Fprintf(out, "      %s\n", e)
+		}
 	}
 
-	fmt.Println("  ✓ Configuration is valid")
-
-	checkSecrets, _ := cmd.Flags().GetBool("check-secrets")
-	if !checkSecrets {
-		return nil
+	// Unknown keys are warnings: Load ignores them, so the config works,
+	// but the setting the key was meant for keeps its default.
+	paths, _, _ := root.ConfigArgs()
+	for _, f := range config.LayerFiles(binName, "", paths) {
+		unknown, err := config.UnknownKeys(f)
+		if err != nil {
+			fmt.Fprintf(out, "  ! %s: %v\n", f, err)
+			continue
+		}
+		for _, u := range unknown {
+			fmt.Fprintf(out, "  ! unknown key in %s: %s\n", f, u)
+		}
 	}
 
-	// Scan cfg, the config initConfig loaded with every -c layer applied.
-	warnings := config.ScanSecrets(cfg)
-	if len(warnings) == 0 {
-		fmt.Println("  ✓ No plaintext secrets detected")
-		return nil
+	var secrets []config.SecretWarning
+	if checkSecrets, _ := cmd.Flags().GetBool("check-secrets"); checkSecrets {
+		secrets = config.ScanSecrets(cfg)
+		if len(secrets) == 0 {
+			fmt.Fprintln(out, "  ✓ No plaintext secrets detected")
+		} else {
+			fmt.Fprintf(out, "  ✗ %d plaintext secret(s) detected:\n", len(secrets))
+			for _, w := range secrets {
+				fmt.Fprintf(out, "      field: %s  value: %s  reason: %s\n", w.Field, w.Hint, w.Reason)
+			}
+		}
 	}
 
-	fmt.Printf("  ✗ %d plaintext secret(s) detected:\n", len(warnings))
-	for _, w := range warnings {
-		fmt.Printf("      field: %s  value: %s  reason: %s\n", w.Field, w.Hint, w.Reason)
+	switch {
+	case len(errs) > 0 && len(secrets) > 0:
+		return fmt.Errorf("configuration is invalid: %d validation error(s), %d plaintext secret(s)", len(errs), len(secrets))
+	case len(errs) > 0:
+		return fmt.Errorf("configuration is invalid: %d validation error(s)", len(errs))
+	case len(secrets) > 0:
+		return fmt.Errorf("plaintext secrets found in configuration")
 	}
-	return fmt.Errorf("plaintext secrets found in configuration")
+	return nil
 }
 
 func runConfigEdit(cmd *cobra.Command, args []string) error {

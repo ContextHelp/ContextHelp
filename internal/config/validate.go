@@ -1,9 +1,11 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
+	"reflect"
 	"regexp"
 	"slices"
 	"strconv"
@@ -21,7 +23,11 @@ func (e ValidationError) Error() string {
 	return fmt.Sprintf("%s: %s", e.Field, e.Message)
 }
 
-// Validate returns a slice of field-level errors for the given Config.
+// Validate is the full config validator: it checks every section and
+// returns one field-level error per problem, never stopping at the
+// first. `ctxt config validate` and `ctxt config doctor` both report
+// its result. Checks that must hold for any command to run (endpoint
+// URLs, UI session bounds, allowed hosts) run at load time instead.
 func Validate(c *Config) []ValidationError {
 	var errs []ValidationError
 
@@ -44,9 +50,19 @@ func Validate(c *Config) []ValidationError {
 		errs = append(errs, ValidationError{Field: "server.cookie_bridge_port", Message: fmt.Sprintf("must be 1024–65535, got %d", c.Server.CookieBridgePort)})
 	}
 
+	errs = append(errs, validateBlob(c.Storage.Blob)...)
 	errs = append(errs, validateAccess(c)...)
 	errs = append(errs, validateAuthRoles(c)...)
 	errs = append(errs, validateQuotas(c)...)
+	errs = append(errs, validateDuplicates(c.Duplicates)...)
+	errs = append(errs, validateFederations(c.Federations)...)
+	errs = append(errs, validateEnvRefs(c)...)
+	if err := c.Embeddings.Validate(); err != nil {
+		var ve ValidationError
+		if errors.As(err, &ve) {
+			errs = append(errs, ve)
+		}
+	}
 
 	if c.Jobs.PollInterval != 0 && c.Jobs.PollInterval < 50*time.Millisecond {
 		errs = append(errs, ValidationError{Field: "jobs.poll_interval", Message: fmt.Sprintf("must be ≥50ms, got %s", c.Jobs.PollInterval)})
@@ -206,47 +222,95 @@ func (c *Config) ValidateAccess() error {
 	return fmt.Errorf("config: %s", strings.Join(msgs, "; "))
 }
 
-// Validate checks that the Config is internally consistent.
-// Called after Load() when strict validation is desired.
-func (c *Config) Validate() error {
-	if err := c.validateDuplicates(); err != nil {
-		return err
+// envRefMessage is the error for a config value written as ${VAR}.
+const envRefMessage = "config does not expand ${VAR}; set the value literally, use the bound env var, or a second --config secrets file"
+
+// validateEnvRefs rejects every string value written as an env-var
+// reference. Neither this loader nor kit's expands one, so "${TOKEN}"
+// would be used as the literal token.
+func validateEnvRefs(c *Config) []ValidationError {
+	var errs []ValidationError
+	walkStrings(reflect.ValueOf(c), "", func(path, val string) {
+		if isEnvRef(val) {
+			errs = append(errs, ValidationError{Field: path, Message: envRefMessage})
+		}
+	})
+	return errs
+}
+
+// blobBackends are the storage.blob.backend values the blob factory
+// builds; empty selects local.
+var blobBackends = []string{"local", "s3", "garage"}
+
+// Validate checks storage.blob: a known backend, and the S3 fields the
+// s3 and garage backends cannot start without. The blob factory calls
+// it before building the store, so `config validate` and startup agree.
+func (b BlobConfig) Validate() error {
+	errs := validateBlob(b)
+	if len(errs) == 0 {
+		return nil
 	}
-	if err := c.validateFederations(); err != nil {
-		return err
+	joined := make([]error, len(errs))
+	for i, e := range errs {
+		joined[i] = e
 	}
-	return nil
+	return errors.Join(joined...)
+}
+
+func validateBlob(b BlobConfig) []ValidationError {
+	backend := b.Backend
+	if backend == "" {
+		backend = "local"
+	}
+	if !slices.Contains(blobBackends, backend) {
+		return []ValidationError{{
+			Field:   "storage.blob.backend",
+			Message: fmt.Sprintf("unknown backend %q; must be one of %s", b.Backend, strings.Join(blobBackends, ", ")),
+		}}
+	}
+	var errs []ValidationError
+	if backend == "s3" || backend == "garage" {
+		if b.S3.Bucket == "" {
+			errs = append(errs, ValidationError{Field: "storage.blob.s3.bucket", Message: fmt.Sprintf("required for the %s backend", backend)})
+		}
+	}
+	if backend == "garage" && b.S3.Endpoint == "" {
+		errs = append(errs, ValidationError{Field: "storage.blob.s3.endpoint", Message: "required for the garage backend (e.g. http://localhost:3900)"})
+	}
+	return errs
 }
 
 // validateFederations checks federation entries for valid sync modes, required
 // intervals, and duplicate names (which would cause ambiguous routing).
 // Full topology-level cycle detection (A→B→A across remote configs) is deferred
 // to Phase 2 when remote config discovery is available.
-func (c *Config) validateFederations() error {
-	seen := make(map[string]struct{}, len(c.Federations))
-	for i, f := range c.Federations {
+func validateFederations(feds []FederationEntry) []ValidationError {
+	var errs []ValidationError
+	seen := make(map[string]struct{}, len(feds))
+	for i, f := range feds {
+		field := fmt.Sprintf("federations[%d]", i)
 		if f.Name == "" {
-			return fmt.Errorf("config: federations[%d].name must not be empty", i)
+			errs = append(errs, ValidationError{Field: field + ".name", Message: "name must not be empty"})
+		} else if _, dup := seen[f.Name]; dup {
+			errs = append(errs, ValidationError{Field: field + ".name", Message: fmt.Sprintf("duplicate name %q (names must be unique)", f.Name)})
+		} else {
+			seen[f.Name] = struct{}{}
 		}
-		if _, dup := seen[f.Name]; dup {
-			return fmt.Errorf("config: federations: duplicate name %q (names must be unique)", f.Name)
-		}
-		seen[f.Name] = struct{}{}
 
 		switch f.SyncMode {
 		case "async", "inline":
 			// valid
 		case "bidirectional":
-			return fmt.Errorf("config: federations[%d] (%q): bidirectional sync mode is not yet implemented (Phase 3)", i, f.Name)
+			errs = append(errs, ValidationError{Field: field + ".sync_mode", Message: "bidirectional sync mode is not yet implemented (Phase 3)"})
 		default:
-			return fmt.Errorf("config: federations[%d] (%q): sync_mode must be \"async\" or \"inline\"; got %q", i, f.Name, f.SyncMode)
+			errs = append(errs, ValidationError{Field: field + ".sync_mode", Message: fmt.Sprintf("must be \"async\" or \"inline\"; got %q", f.SyncMode)})
 		}
 
 		if f.SyncMode == "async" && f.Interval <= 0 {
-			return fmt.Errorf("config: federations[%d] (%q): interval is required and must be >0 for async sync_mode", i, f.Name)
+			errs = append(errs, ValidationError{Field: field + ".interval", Message: "interval is required and must be >0 for async sync_mode"})
 		}
 	}
-	return nil
+	return errs
 }
 
 // validateServerEndpoints checks the client-routing endpoints. Runs at load
@@ -378,20 +442,16 @@ func validateEndpointURL(raw string) error {
 	return nil
 }
 
-func (c *Config) validateDuplicates() error {
-	d := c.Duplicates
-	policy := d.Policy
-	if policy == "" {
-		policy = "warn" // treat empty as default
-	}
-	switch policy {
-	case "warn", "drop", "keep":
-		// valid
+func validateDuplicates(d DuplicatesConfig) []ValidationError {
+	var errs []ValidationError
+	switch d.Policy {
+	case "", "warn", "drop", "keep":
+		// valid; empty is the default, warn
 	default:
-		return fmt.Errorf("config: duplicates.policy must be one of \"warn\", \"drop\", \"keep\"; got %q", d.Policy)
+		errs = append(errs, ValidationError{Field: "duplicates.policy", Message: fmt.Sprintf("must be one of \"warn\", \"drop\", \"keep\"; got %q", d.Policy)})
 	}
 	if d.SimilarityThreshold < 0.0 || d.SimilarityThreshold > 1.0 {
-		return fmt.Errorf("config: duplicates.similarity_threshold must be 0.0–1.0; got %f", d.SimilarityThreshold)
+		errs = append(errs, ValidationError{Field: "duplicates.similarity_threshold", Message: fmt.Sprintf("must be 0.0–1.0; got %f", d.SimilarityThreshold)})
 	}
-	return nil
+	return errs
 }

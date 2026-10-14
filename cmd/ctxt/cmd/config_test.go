@@ -119,6 +119,65 @@ func TestConfigValidateExitCode(t *testing.T) {
 	})
 }
 
+// config validate runs the full validator, not just a load: a config
+// that loads but breaks a rule exits non-zero and lists every error.
+func TestConfigValidateRunsFullValidation(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	content := "server:\n  port: 80\nduplicates:\n  policy: delete\nstorage:\n  blob:\n    backend: stub\n"
+	if err := os.WriteFile(cfgPath, []byte(content), 0600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	out, err := executeCommand("--config", cfgPath, "config", "validate")
+	if err == nil {
+		t.Fatalf("expected non-zero exit on an invalid config; output: %s", out)
+	}
+	for _, field := range []string{"server.port", "duplicates.policy", "storage.blob.backend"} {
+		if !strings.Contains(out, field) {
+			t.Errorf("expected %s in output; got: %s", field, out)
+		}
+	}
+	if strings.Contains(out, "Configuration is valid") {
+		t.Errorf("invalid config reported valid; got: %s", out)
+	}
+}
+
+// An unknown key is a warning: config validate names it and the file,
+// but the exit code stays 0 because Load ignores the key.
+func TestConfigValidateWarnsUnknownKeys(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(cfgPath, []byte("storage:\n  type: sqlite\n  bogus_key: 1\n"), 0600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	out, err := executeCommand("--config", cfgPath, "config", "validate")
+	if err != nil {
+		t.Fatalf("unknown key must not fail validate: %v\noutput: %s", err, out)
+	}
+	if !strings.Contains(out, "bogus_key") || !strings.Contains(out, cfgPath) {
+		t.Errorf("expected unknown-key warning naming bogus_key and %s; got: %s", cfgPath, out)
+	}
+}
+
+// Config never expands ${VAR}: config validate rejects such a value
+// instead of skipping it as an env-var reference.
+func TestConfigValidateRejectsEnvRef(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	content := "storage:\n  blob:\n    s3:\n      secret_key: \"${S3_SECRET_KEY}\"\n"
+	if err := os.WriteFile(cfgPath, []byte(content), 0600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	out, err := executeCommand("--config", cfgPath, "config", "validate")
+	if err == nil {
+		t.Fatalf("expected non-zero exit for an unexpanded ${VAR}; output: %s", out)
+	}
+	want := "storage.blob.s3.secret_key: config does not expand ${VAR}"
+	if !strings.Contains(out, want) {
+		t.Errorf("expected %q in output; got: %s", want, out)
+	}
+}
+
 func TestConfigHelp(t *testing.T) {
 	out, err := executeCommand("config", "--help")
 	if err != nil {

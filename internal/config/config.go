@@ -149,12 +149,13 @@ type EmbeddingsConfig struct {
 }
 
 // Validate rejects a MinCoverage outside 0..1 and a negative GracePeriod.
+// The error is a ValidationError naming the field.
 func (c EmbeddingsConfig) Validate() error {
 	if c.MinCoverage < 0 || c.MinCoverage > 1 {
-		return fmt.Errorf("embeddings.min_coverage must be a fraction between 0 and 1 such as 0.99, got %v", c.MinCoverage)
+		return ValidationError{Field: "embeddings.min_coverage", Message: fmt.Sprintf("must be a fraction between 0 and 1 such as 0.99, got %v", c.MinCoverage)}
 	}
 	if c.GracePeriod < 0 {
-		return fmt.Errorf("embeddings.grace_period must not be negative (a duration such as 720h), got %s", c.GracePeriod)
+		return ValidationError{Field: "embeddings.grace_period", Message: fmt.Sprintf("must not be negative (a duration such as 720h), got %s", c.GracePeriod)}
 	}
 	return nil
 }
@@ -1102,26 +1103,7 @@ func LoadWithOverrides(bin, cfgFile string, extraPaths []string, overrides map[s
 	// explicit (no kitconfig.OptionsForTool here) because contexthelp
 	// uses a per-binary file under a shared "contexthelp/" namespace
 	// rather than a single tool-level config.yaml.
-	system, user, project := cascadeSlots(bin)
-	if cfgFile != "" {
-		// Legacy single-file override: replace cascade with just this file.
-		// Stays in ExtraConfigPaths (strict) — a caller naming a file
-		// outright means it, so a missing one is an error.
-		system, user, project = "", "", ""
-		extraPaths = append([]string{cfgFile}, extraPaths...)
-	} else if envCfg := os.Getenv(EnvConfigPath); envCfg != "" {
-		// CTXT_CONFIG goes in the `user` SLOT, not ExtraConfigPaths:
-		// kit's loader tolerates a missing cascade slot but treats a
-		// missing extra path as a hard error. This env var is ambient
-		// rather than per-invocation, and pointing it at a not-yet-
-		// created file is the normal first-run state — `ctxt setup` is
-		// the command that CREATES it.
-		//
-		// Explicit -c paths keep flowing through extraPaths, where
-		// strictness is correct: ParseConfigArgs has already proven
-		// those files exist, and -c still layers after (wins over) this.
-		system, user, project = "", envCfg, ""
-	}
+	system, user, project, extraPaths := layerSlots(bin, cfgFile, extraPaths)
 
 	// envOverride re-applies env-bound viper keys to dst after files merge,
 	// preserving viper's "env > file" precedence. Without this, a yaml file
@@ -1167,6 +1149,34 @@ func LoadWithOverrides(bin, cfgFile string, extraPaths []string, overrides map[s
 	}
 
 	return &cfg, nil
+}
+
+// layerSlots returns the file layers LoadWithOverrides hands kit's
+// loader: the system/user/project slots (missing files are skipped) and
+// the strict extra paths, in merge order.
+func layerSlots(bin, cfgFile string, extraPaths []string) (system, user, project string, extra []string) {
+	system, user, project = cascadeSlots(bin)
+	extra = extraPaths
+	if cfgFile != "" {
+		// Legacy single-file override: replace cascade with just this file.
+		// Stays in ExtraConfigPaths (strict) — a caller naming a file
+		// outright means it, so a missing one is an error.
+		system, user, project = "", "", ""
+		extra = append([]string{cfgFile}, extraPaths...)
+	} else if envCfg := os.Getenv(EnvConfigPath); envCfg != "" {
+		// CTXT_CONFIG goes in the `user` SLOT, not ExtraConfigPaths:
+		// kit's loader tolerates a missing cascade slot but treats a
+		// missing extra path as a hard error. This env var is ambient
+		// rather than per-invocation, and pointing it at a not-yet-
+		// created file is the normal first-run state — `ctxt setup` is
+		// the command that CREATES it.
+		//
+		// Explicit -c paths keep flowing through extraPaths, where
+		// strictness is correct: ParseConfigArgs has already proven
+		// those files exist, and -c still layers after (wins over) this.
+		system, user, project = "", envCfg, ""
+	}
+	return system, user, project, extra
 }
 
 // cascadeSlots returns the system/user/project paths for the given bin.
