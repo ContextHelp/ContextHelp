@@ -2,7 +2,7 @@
   "scenario_id": "state-contract",
   "schema_version": "1",
   "verdict": "pass",
-  "scored_at": "2026-09-20T14:34:29.827846Z",
+  "scored_at": "2026-10-14T03:14:47.223122Z",
   "grader_version": "1.0.0",
   "rules_version": "2026.05.12.1",
   "tier": 3,

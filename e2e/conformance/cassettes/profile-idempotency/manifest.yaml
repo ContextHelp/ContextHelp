@@ -1,9 +1,9 @@
 schema_version: "1"
 binary: ctxt
-binary_version: 333b5a5
+binary_version: 8913416d
 recorder: xrr
 recorder_version: 0.1.0-alpha.3
-recorded_at: 2026-09-20T14:34:25Z
+recorded_at: 2026-10-14T03:14:05Z
 scenario_id: ctxt/profile-idempotency
 scenario_version: 1.0.0
 story_ref:

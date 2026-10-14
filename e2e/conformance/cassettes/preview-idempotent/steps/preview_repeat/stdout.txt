@@ -11,7 +11,7 @@
     {
       "kind": "vacuum",
       "target": "database:/var/folders/x6/lrc3lbzd1gs0wvmn_z_t76780000gn/T/dpkms-12fcc-record/preview-idempotent/data/contexthelp/db.sqlite",
-      "detail": "VACUUM; 136 pages of 544 KB currently allocated",
+      "detail": "VACUUM; 138 pages of 552 KB currently allocated",
       "count": 0,
       "reversible": false
     },

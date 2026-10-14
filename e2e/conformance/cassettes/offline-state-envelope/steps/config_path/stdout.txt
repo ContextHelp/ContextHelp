@@ -1,6 +1,6 @@
 {
-  "path": "\u003cdefaults\u003e",
-  "source": "default",
+  "path": "/tmp/ctxt-12fcc-record/offline-state-envelope/xdg/contexthelp/ctxt.yaml",
+  "source": "user",
   "scope": "",
   "exists": true
 }

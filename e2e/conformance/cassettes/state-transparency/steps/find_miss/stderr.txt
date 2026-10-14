@@ -1,0 +1,1 @@
+notice: semantic search unavailable (no_default_model): no default embedding model; register one with 'ctxt embeddings register' and make it the default; results are full-text only

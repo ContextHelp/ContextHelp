@@ -4,9 +4,9 @@
     "reconcile-demo": {
       "Default": false,
       "Description": "Profile for reconcile-demo",
-      "Tags": [],
-      "MentionNamespaces": [],
-      "RerankBoosts": {},
+      "Tags": null,
+      "MentionNamespaces": null,
+      "RerankBoosts": null,
       "SearchStrategy": {
         "Mode": "",
         "RRF": {
