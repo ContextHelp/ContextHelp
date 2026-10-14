@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -56,13 +57,33 @@ func withNoteHeader(req *http.Request, note string) {
 	}
 }
 
-func (c *APIClient) CreatePipeline(req service.CreatePipelineRequest, note string) (string, error) {
+// get sends GET url on ctx, so kit's --offline mark and cancellation
+// reach the request.
+func (c *APIClient) get(ctx context.Context, url string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	return c.client.Do(req)
+}
+
+// postJSON sends POST url with a JSON body on ctx.
+func (c *APIClient) postJSON(ctx context.Context, url string, body []byte) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	return c.client.Do(req)
+}
+
+func (c *APIClient) CreatePipeline(ctx context.Context, req service.CreatePipelineRequest, note string) (string, error) {
 	body, err := json.Marshal(req)
 	if err != nil {
 		return "", err
 	}
 
-	httpReq, err := http.NewRequest(http.MethodPost, c.baseURL+"/api/v1/pipelines", bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/pipelines", bytes.NewReader(body))
 	if err != nil {
 		return "", err
 	}
@@ -87,8 +108,11 @@ func (c *APIClient) CreatePipeline(req service.CreatePipelineRequest, note strin
 	return result["id"], nil
 }
 
-func (c *APIClient) DeletePipeline(name, note string) error {
-	req, _ := http.NewRequest(http.MethodDelete, c.baseURL+"/api/v1/pipelines/"+name, nil)
+func (c *APIClient) DeletePipeline(ctx context.Context, name, note string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+"/api/v1/pipelines/"+name, nil)
+	if err != nil {
+		return err
+	}
 	withNoteHeader(req, note)
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -103,8 +127,11 @@ func (c *APIClient) DeletePipeline(name, note string) error {
 	return nil
 }
 
-func (c *APIClient) ListPipelines(filter storage.PipelineFilter) ([]*storage.Pipeline, int, error) {
-	req, _ := http.NewRequest("GET", c.baseURL+"/api/v1/pipelines?name="+filter.Name, nil)
+func (c *APIClient) ListPipelines(ctx context.Context, filter storage.PipelineFilter) ([]*storage.Pipeline, int, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/pipelines?name="+filter.Name, nil)
+	if err != nil {
+		return nil, 0, err
+	}
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, 0, err
@@ -131,8 +158,8 @@ func (c *APIClient) ListPipelines(filter storage.PipelineFilter) ([]*storage.Pip
 	return pipelines, total, nil
 }
 
-func (c *APIClient) GetPipeline(name string) (*storage.Pipeline, error) {
-	resp, err := c.client.Get(c.baseURL + "/api/v1/pipelines/" + name)
+func (c *APIClient) GetPipeline(ctx context.Context, name string) (*storage.Pipeline, error) {
+	resp, err := c.get(ctx, c.baseURL+"/api/v1/pipelines/"+name)
 	if err != nil {
 		return nil, err
 	}
@@ -150,8 +177,11 @@ func (c *APIClient) GetPipeline(name string) (*storage.Pipeline, error) {
 	return &pipeline, nil
 }
 
-func (c *APIClient) ArchivePipeline(name, note string) error {
-	req, _ := http.NewRequest(http.MethodPost, c.baseURL+"/api/v1/pipelines/"+name+"/archive", nil)
+func (c *APIClient) ArchivePipeline(ctx context.Context, name, note string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/pipelines/"+name+"/archive", nil)
+	if err != nil {
+		return err
+	}
 	withNoteHeader(req, note)
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -166,8 +196,11 @@ func (c *APIClient) ArchivePipeline(name, note string) error {
 	return nil
 }
 
-func (c *APIClient) UnarchivePipeline(name, note string) error {
-	req, _ := http.NewRequest(http.MethodPost, c.baseURL+"/api/v1/pipelines/"+name+"/unarchive", nil)
+func (c *APIClient) UnarchivePipeline(ctx context.Context, name, note string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/pipelines/"+name+"/unarchive", nil)
+	if err != nil {
+		return err
+	}
 	withNoteHeader(req, note)
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -182,13 +215,13 @@ func (c *APIClient) UnarchivePipeline(name, note string) error {
 	return nil
 }
 
-func (c *APIClient) Enqueue(req service.AnalyzeRequest) (string, error) {
+func (c *APIClient) Enqueue(ctx context.Context, req service.AnalyzeRequest) (string, error) {
 	body, err := json.Marshal(req)
 	if err != nil {
 		return "", err
 	}
 
-	resp, err := c.client.Post(c.baseURL+"/api/v1/pipelines/enqueue", "application/json", bytes.NewReader(body))
+	resp, err := c.postJSON(ctx, c.baseURL+"/api/v1/pipelines/enqueue", body)
 	if err != nil {
 		return "", err
 	}
@@ -206,13 +239,13 @@ func (c *APIClient) Enqueue(req service.AnalyzeRequest) (string, error) {
 	return result["job_id"], nil
 }
 
-func (c *APIClient) ListSteps(source string) ([]*storage.RegisteredStep, int, error) {
+func (c *APIClient) ListSteps(ctx context.Context, source string) ([]*storage.RegisteredStep, int, error) {
 	url := c.baseURL + "/api/v1/steps"
 	if source != "" {
 		url += "?source=" + source
 	}
 
-	resp, err := c.client.Get(url)
+	resp, err := c.get(ctx, url)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -238,8 +271,8 @@ func (c *APIClient) ListSteps(source string) ([]*storage.RegisteredStep, int, er
 	return steps, total, nil
 }
 
-func (c *APIClient) GetStep(name string) (*storage.RegisteredStep, error) {
-	resp, err := c.client.Get(c.baseURL + "/api/v1/steps/" + name)
+func (c *APIClient) GetStep(ctx context.Context, name string) (*storage.RegisteredStep, error) {
+	resp, err := c.get(ctx, c.baseURL+"/api/v1/steps/"+name)
 	if err != nil {
 		return nil, err
 	}
@@ -257,14 +290,14 @@ func (c *APIClient) GetStep(name string) (*storage.RegisteredStep, error) {
 	return &step, nil
 }
 
-func (c *APIClient) InstallStep(name, fromRegistry string) error {
+func (c *APIClient) InstallStep(ctx context.Context, name, fromRegistry string) error {
 	reqBody := map[string]string{
 		"name":          name,
 		"from_registry": fromRegistry,
 	}
 	body, _ := json.Marshal(reqBody)
 
-	resp, err := c.client.Post(c.baseURL+"/api/v1/steps/install", "application/json", bytes.NewReader(body))
+	resp, err := c.postJSON(ctx, c.baseURL+"/api/v1/steps/install", body)
 	if err != nil {
 		return err
 	}
@@ -277,8 +310,11 @@ func (c *APIClient) InstallStep(name, fromRegistry string) error {
 	return nil
 }
 
-func (c *APIClient) UninstallStep(name string) error {
-	req, _ := http.NewRequest("DELETE", c.baseURL+"/api/v1/steps/"+name, nil)
+func (c *APIClient) UninstallStep(ctx context.Context, name string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+"/api/v1/steps/"+name, nil)
+	if err != nil {
+		return err
+	}
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return err
@@ -292,11 +328,11 @@ func (c *APIClient) UninstallStep(name string) error {
 	return nil
 }
 
-func (c *APIClient) FetchRegistry(url string) error {
+func (c *APIClient) FetchRegistry(ctx context.Context, url string) error {
 	reqBody := map[string]string{"url": url}
 	body, _ := json.Marshal(reqBody)
 
-	resp, err := c.client.Post(c.baseURL+"/api/v1/steps/registries/fetch", "application/json", bytes.NewReader(body))
+	resp, err := c.postJSON(ctx, c.baseURL+"/api/v1/steps/registries/fetch", body)
 	if err != nil {
 		return err
 	}
@@ -309,8 +345,8 @@ func (c *APIClient) FetchRegistry(url string) error {
 	return nil
 }
 
-func (c *APIClient) UpdateRegistry(url string) error {
-	resp, err := c.client.Post(c.baseURL+"/api/v1/steps/registries/"+url+"/update", "application/json", bytes.NewReader([]byte("{}")))
+func (c *APIClient) UpdateRegistry(ctx context.Context, url string) error {
+	resp, err := c.postJSON(ctx, c.baseURL+"/api/v1/steps/registries/"+url+"/update", []byte("{}"))
 	if err != nil {
 		return err
 	}
@@ -327,8 +363,8 @@ func (c *APIClient) ConfigureAutoUpdate(url string, enabled bool) error {
 	return fmt.Errorf("ConfigureAutoUpdate not yet implemented")
 }
 
-func (c *APIClient) ListRegistries() ([]*storage.RegistryCache, int, error) {
-	resp, err := c.client.Get(c.baseURL + "/api/v1/steps/registries")
+func (c *APIClient) ListRegistries(ctx context.Context) ([]*storage.RegistryCache, int, error) {
+	resp, err := c.get(ctx, c.baseURL+"/api/v1/steps/registries")
 	if err != nil {
 		return nil, 0, err
 	}
@@ -354,8 +390,8 @@ func (c *APIClient) ListRegistries() ([]*storage.RegistryCache, int, error) {
 	return registries, total, nil
 }
 
-func (c *APIClient) GetJob(id string) (*storage.Job, error) {
-	resp, err := c.client.Get(c.baseURL + "/api/v1/jobs/" + id)
+func (c *APIClient) GetJob(ctx context.Context, id string) (*storage.Job, error) {
+	resp, err := c.get(ctx, c.baseURL+"/api/v1/jobs/"+id)
 	if err != nil {
 		return nil, err
 	}
@@ -421,8 +457,8 @@ type HealthzWatcher struct {
 // Healthz fetches GET /healthz. The HTTP status code is returned so
 // callers can distinguish 200 healthy/degraded from 503 failed without
 // re-parsing the body.
-func (c *APIClient) Healthz() (HealthzEnvelope, int, error) {
-	req, err := http.NewRequest(http.MethodGet, c.baseURL+"/healthz", nil)
+func (c *APIClient) Healthz(ctx context.Context) (HealthzEnvelope, int, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/healthz", nil)
 	if err != nil {
 		return HealthzEnvelope{}, 0, err
 	}

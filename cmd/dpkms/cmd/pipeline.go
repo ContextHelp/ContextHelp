@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -295,7 +296,7 @@ func runPipelineCreate(cmd *cobra.Command, args []string) error {
 		return printJSON(req)
 	}
 
-	id, err := apiClient.CreatePipeline(req, pipelineNote)
+	id, err := apiClient.CreatePipeline(cmd.Context(), req, pipelineNote)
 	if err != nil {
 		return err
 	}
@@ -306,7 +307,7 @@ func runPipelineCreate(cmd *cobra.Command, args []string) error {
 
 func runPipelineRemove(cmd *cobra.Command, args []string) error {
 	name := args[0]
-	return apiClient.DeletePipeline(name, pipelineNote)
+	return apiClient.DeletePipeline(cmd.Context(), name, pipelineNote)
 }
 
 func runPipelineList(cmd *cobra.Command, _ []string) error {
@@ -316,7 +317,7 @@ func runPipelineList(cmd *cobra.Command, _ []string) error {
 		OnlyArchived:    pipelineOnlyArchived,
 	}
 
-	pipelines, _, err := apiClient.ListPipelines(filter)
+	pipelines, _, err := apiClient.ListPipelines(cmd.Context(), filter)
 	if err != nil {
 		return err
 	}
@@ -330,7 +331,7 @@ func runPipelineList(cmd *cobra.Command, _ []string) error {
 
 func runPipelineShow(cmd *cobra.Command, args []string) error {
 	name := args[0]
-	pipeline, err := apiClient.GetPipeline(name)
+	pipeline, err := apiClient.GetPipeline(cmd.Context(), name)
 	if err != nil {
 		return err
 	}
@@ -344,12 +345,12 @@ func runPipelineShow(cmd *cobra.Command, args []string) error {
 
 func runPipelineArchive(cmd *cobra.Command, args []string) error {
 	name := args[0]
-	return apiClient.ArchivePipeline(name, pipelineNote)
+	return apiClient.ArchivePipeline(cmd.Context(), name, pipelineNote)
 }
 
 func runPipelineUnarchive(cmd *cobra.Command, args []string) error {
 	name := args[0]
-	return apiClient.UnarchivePipeline(name, pipelineNote)
+	return apiClient.UnarchivePipeline(cmd.Context(), name, pipelineNote)
 }
 
 func runPipelineEnqueue(cmd *cobra.Command, args []string) error {
@@ -382,13 +383,13 @@ func runPipelineEnqueue(cmd *cobra.Command, args []string) error {
 		Pipeline: pipelinePipeline,
 	}
 
-	jobID, err := apiClient.Enqueue(req)
+	jobID, err := apiClient.Enqueue(cmd.Context(), req)
 	if err != nil {
 		return err
 	}
 
 	if pipelineWait {
-		return waitForJob(jobID)
+		return waitForJob(cmd.Context(), jobID)
 	}
 
 	printJSON(map[string]string{"job_id": jobID})
@@ -396,7 +397,7 @@ func runPipelineEnqueue(cmd *cobra.Command, args []string) error {
 }
 
 func runStepList(cmd *cobra.Command, _ []string) error {
-	steps, _, err := apiClient.ListSteps(stepSource)
+	steps, _, err := apiClient.ListSteps(cmd.Context(), stepSource)
 	if err != nil {
 		return err
 	}
@@ -413,21 +414,21 @@ func runStepInstall(cmd *cobra.Command, args []string) error {
 	if stepRegistry == "" {
 		return fmt.Errorf("--registry is required")
 	}
-	return apiClient.InstallStep(name, stepRegistry)
+	return apiClient.InstallStep(cmd.Context(), name, stepRegistry)
 }
 
 func runStepUninstall(cmd *cobra.Command, args []string) error {
 	name := args[0]
-	return apiClient.UninstallStep(name)
+	return apiClient.UninstallStep(cmd.Context(), name)
 }
 
 func runStepRegistryAdd(cmd *cobra.Command, args []string) error {
 	url := args[1]
-	return apiClient.FetchRegistry(url)
+	return apiClient.FetchRegistry(cmd.Context(), url)
 }
 
 func runStepRegistryList(cmd *cobra.Command, _ []string) error {
-	registries, _, err := apiClient.ListRegistries()
+	registries, _, err := apiClient.ListRegistries(cmd.Context())
 	if err != nil {
 		return err
 	}
@@ -441,7 +442,7 @@ func runStepRegistryList(cmd *cobra.Command, _ []string) error {
 
 func runStepRegistryUpdate(cmd *cobra.Command, args []string) error {
 	url := args[0]
-	return apiClient.UpdateRegistry(url)
+	return apiClient.UpdateRegistry(cmd.Context(), url)
 }
 
 func runStepRegistryAutoUpdate(cmd *cobra.Command, args []string) error {
@@ -542,9 +543,11 @@ func printRegistryTable(registries []*storage.RegistryCache) error {
 	return output.Render(os.Stdout, output.Table, rs, output.WithTableStyle(root.TableStyle()))
 }
 
-func waitForJob(jobID string) error {
+// waitForJob polls jobID until it settles. Each poll runs on ctx, so a
+// cancelled command (Ctrl-C) ends the wait at the next request.
+func waitForJob(ctx context.Context, jobID string) error {
 	for {
-		job, err := apiClient.GetJob(jobID)
+		job, err := apiClient.GetJob(ctx, jobID)
 		if err != nil {
 			return err
 		}

@@ -34,7 +34,7 @@ func TestAPIClient_ListPipelines_MalformedEntry_Errors(t *testing.T) {
 	ts := jsonServer(t, `{"pipelines":["not-a-pipeline-object"],"total":1}`)
 
 	c := NewAPIClient(ts.URL)
-	pipelines, total, err := c.ListPipelines(storage.PipelineFilter{})
+	pipelines, total, err := c.ListPipelines(t.Context(), storage.PipelineFilter{})
 	require.Error(t, err, "malformed pipelines payload must surface, got %d pipelines", len(pipelines))
 	assert.Contains(t, err.Error(), "decode pipelines")
 	assert.Nil(t, pipelines)
@@ -47,7 +47,7 @@ func TestAPIClient_ListSteps_MalformedEntry_Errors(t *testing.T) {
 	ts := jsonServer(t, `{"steps":["not-a-step-object"],"total":1}`)
 
 	c := NewAPIClient(ts.URL)
-	steps, total, err := c.ListSteps("")
+	steps, total, err := c.ListSteps(t.Context(), "")
 	require.Error(t, err, "malformed steps payload must surface, got %d steps", len(steps))
 	assert.Contains(t, err.Error(), "decode steps")
 	assert.Nil(t, steps)
@@ -60,7 +60,7 @@ func TestAPIClient_ListRegistries_MalformedEntry_Errors(t *testing.T) {
 	ts := jsonServer(t, `{"registries":["not-a-registry-object"],"total":1}`)
 
 	c := NewAPIClient(ts.URL)
-	registries, total, err := c.ListRegistries()
+	registries, total, err := c.ListRegistries(t.Context())
 	require.Error(t, err, "malformed registries payload must surface, got %d registries", len(registries))
 	assert.Contains(t, err.Error(), "decode registries")
 	assert.Nil(t, registries)
@@ -73,7 +73,7 @@ func TestAPIClient_ListPipelines_WellFormed_Succeeds(t *testing.T) {
 	ts := jsonServer(t, `{"pipelines":[{"name":"p-1"}],"total":1}`)
 
 	c := NewAPIClient(ts.URL)
-	pipelines, total, err := c.ListPipelines(storage.PipelineFilter{})
+	pipelines, total, err := c.ListPipelines(t.Context(), storage.PipelineFilter{})
 	require.NoError(t, err)
 	require.Len(t, pipelines, 1)
 	assert.Equal(t, "p-1", pipelines[0].Name)
@@ -92,7 +92,7 @@ func TestAPIClient_ParseError_NonJSONBody_ReportsRawBody(t *testing.T) {
 	t.Cleanup(ts.Close)
 
 	c := NewAPIClient(ts.URL)
-	_, _, err := c.ListPipelines(storage.PipelineFilter{})
+	_, _, err := c.ListPipelines(t.Context(), storage.PipelineFilter{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "gateway exploded")
 }
