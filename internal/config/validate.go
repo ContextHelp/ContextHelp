@@ -40,6 +40,10 @@ func Validate(c *Config) []ValidationError {
 		errs = append(errs, ValidationError{Field: "server.grpc_port", Message: fmt.Sprintf("must be 1024–65535, got %d", c.Server.GRPCPort)})
 	}
 
+	if c.Server.CookieBridgePort != 0 && (c.Server.CookieBridgePort < 1024 || c.Server.CookieBridgePort > 65535) {
+		errs = append(errs, ValidationError{Field: "server.cookie_bridge_port", Message: fmt.Sprintf("must be 1024–65535, got %d", c.Server.CookieBridgePort)})
+	}
+
 	errs = append(errs, validateAccess(c)...)
 	errs = append(errs, validateAuthRoles(c)...)
 	errs = append(errs, validateQuotas(c)...)

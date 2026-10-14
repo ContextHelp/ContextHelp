@@ -30,6 +30,11 @@ func TestValidate(t *testing.T) {
 			wantField: "server.grpc_port",
 		},
 		{
+			name:      "cookie bridge port below range",
+			mutate:    func(c *Config) { c.Server.CookieBridgePort = 443 },
+			wantField: "server.cookie_bridge_port",
+		},
+		{
 			name:      "poll interval too short",
 			mutate:    func(c *Config) { c.Jobs.PollInterval = 10 * time.Millisecond },
 			wantField: "jobs.poll_interval",

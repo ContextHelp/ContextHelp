@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -560,12 +561,29 @@ const (
 	AccessPublic = "public"
 )
 
+// Built-in listener ports of dpkms serve, used when no flag, env var or
+// config file sets one. Unlike a set port they are preferred, not
+// required: serve moves off a busy default to a free port.
+const (
+	DefaultServerPort = 8080
+	DefaultGRPCPort   = 9090
+	// DefaultCookieBridgePort is the port the browser extension
+	// connects to.
+	DefaultCookieBridgePort = 9377
+)
+
 // ServerConfig represents server configuration
 type ServerConfig struct {
-	Port     int  `mapstructure:"port" yaml:"port"`
-	GRPCPort int  `mapstructure:"grpc_port" yaml:"grpc_port"`
-	Workers  int  `mapstructure:"workers" yaml:"workers"`
-	Public   bool `mapstructure:"public" yaml:"public"`
+	// Port, GRPCPort and CookieBridgePort are serve's HTTP, gRPC and
+	// cookie-bridge listener ports. After Load each holds its effective
+	// value; PortSet, GRPCPortSet and CookieBridgePortSet report whether
+	// it came from a config file, -c override or env var rather than the
+	// built-in default. 0 asks for an OS-assigned port.
+	Port             int  `mapstructure:"port" yaml:"port"`
+	GRPCPort         int  `mapstructure:"grpc_port" yaml:"grpc_port"`
+	CookieBridgePort int  `mapstructure:"cookie_bridge_port" yaml:"cookie_bridge_port"`
+	Workers          int  `mapstructure:"workers" yaml:"workers"`
+	Public           bool `mapstructure:"public" yaml:"public"`
 	// Access classifies the instance: "private" (default), "protected",
 	// or "public". Empty means unset; EffectiveAccess resolves the
 	// default and the legacy server.public shorthand.
@@ -605,6 +623,50 @@ type ServerConfig struct {
 	// against instances whose URLs entry carries no token of its own.
 	// Empty = unauthenticated.
 	Token string `mapstructure:"token" yaml:"token,omitempty"`
+
+	// portsSet records which listener ports a layer above the built-in
+	// defaults set; filled by Load.
+	portsSet struct{ http, grpc, cookieBridge bool }
+}
+
+// PortSet reports whether Port was set by a config file, -c override or
+// CH_SERVER_PORT rather than left at DefaultServerPort.
+func (s ServerConfig) PortSet() bool { return s.portsSet.http }
+
+// GRPCPortSet reports whether GRPCPort was set by a config file, -c
+// override or CH_GRPC_PORT rather than left at DefaultGRPCPort.
+func (s ServerConfig) GRPCPortSet() bool { return s.portsSet.grpc }
+
+// CookieBridgePortSet reports whether CookieBridgePort was set by a
+// config file, -c override or CH_COOKIE_BRIDGE_PORT rather than left at
+// DefaultCookieBridgePort.
+func (s ServerConfig) CookieBridgePortSet() bool { return s.portsSet.cookieBridge }
+
+// portUnset marks a listener port no layer has set yet. Load seeds the
+// ports with it before merging files, env and overrides; whatever is
+// still portUnset afterwards takes its built-in default. No YAML file or
+// env var plausibly carries this value, and 0 cannot serve as the
+// marker because it means "OS-assigned port".
+const portUnset = math.MinInt
+
+// seedListenPorts marks every listener port unset.
+func (s *ServerConfig) seedListenPorts() {
+	s.Port, s.GRPCPort, s.CookieBridgePort = portUnset, portUnset, portUnset
+}
+
+// resolveListenPorts gives each port still unset its built-in default
+// and records which ones a layer set.
+func (s *ServerConfig) resolveListenPorts() {
+	resolve := func(port *int, def int) bool {
+		if *port == portUnset {
+			*port = def
+			return false
+		}
+		return true
+	}
+	s.portsSet.http = resolve(&s.Port, DefaultServerPort)
+	s.portsSet.grpc = resolve(&s.GRPCPort, DefaultGRPCPort)
+	s.portsSet.cookieBridge = resolve(&s.CookieBridgePort, DefaultCookieBridgePort)
 }
 
 // ServerUIConfig configures the web UI.
@@ -983,6 +1045,10 @@ func LoadWithOverrides(bin, cfgFile string, extraPaths []string, overrides map[s
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal defaults: %w", err)
 	}
+	// Listener ports carry no viper default: seeded unset here, they take
+	// their built-in default after the merge only when no layer set them,
+	// so serve can tell an operator's port from its own default.
+	cfg.Server.seedListenPorts()
 
 	// Stage 2: kit/core/config layered file merge. The cascade slots are
 	// explicit (no kitconfig.OptionsForTool here) because contexthelp
@@ -1026,6 +1092,7 @@ func LoadWithOverrides(bin, cfgFile string, extraPaths []string, overrides map[s
 	}); err != nil {
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
+	cfg.Server.resolveListenPorts()
 
 	// Sync FocusProfile.Default bool → ProfileConfig.Default string.
 	if err := syncProfileDefault(&cfg); err != nil {
@@ -1158,9 +1225,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("storage.blob.s3.presign_expiry", time.Hour)
 	v.SetDefault("storage.blob.s3.max_retries", 3)
 
-	// Server defaults
-	v.SetDefault("server.port", 8080)
-	v.SetDefault("server.grpc_port", 9090)
+	// Server defaults. The listener ports (server.port, grpc_port,
+	// cookie_bridge_port) are resolved after the merge instead; see
+	// ServerConfig.resolveListenPorts.
 	v.SetDefault("server.workers", 4)
 	v.SetDefault("server.public", false)
 
@@ -1305,6 +1372,7 @@ var envBindings = []struct{ Key, Env string }{
 	{"storage.blob.s3.secret_key", "CTXT_BLOB_S3_SECRET_KEY"},
 	{"server.port", "CH_SERVER_PORT"},
 	{"server.grpc_port", "CH_GRPC_PORT"},
+	{"server.cookie_bridge_port", "CH_COOKIE_BRIDGE_PORT"},
 	{"server.workers", EnvDPKMSWorkers},
 	{"server.public", "CH_PUBLIC"},
 	{"profile.default", EnvProfile},
