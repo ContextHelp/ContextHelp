@@ -415,4 +415,3 @@ User triggers recording, OS permission flow, capture, file lands, pipeline runs,
   - Android [MediaProjection](https://developer.android.com/reference/android/media/projection/MediaProjection) + [AudioPlaybackCapture](https://developer.android.com/guide/topics/media/playback-capture)
 - Prior art (proprietary, mostly auto-record-by-default): Otter, Granola, Cleft, Zoom AI Companion, Microsoft Copilot in Teams, Google Meet AI Notes
 - US one-party-vs-two-party-consent state survey: [DMLP State Law: Recording](https://www.dmlp.org/legal-guide/state-law-recording)
-- tlc track: `ambient-capture` (T-05XX to be added for this ADR's tasks; see below)

@@ -1,7 +1,6 @@
 ---
 status: paper
 adr: ADR-066, ADR-067
-task: T-0503
 ---
 
 # US-0215: Foreground Window / App Source
@@ -128,7 +127,7 @@ ctxt capture --ambient tail --source foreground         # follow focus events li
 ## Sprint
 
 **Skeleton 9.5 — Ambient Capture + Sessions + Agent-Native MCP**
-Implements ADR-066 Phase 3 (foreground-window source) — see `tlc track show ambient-capture`, task **T-0503**.
+Implements ADR-066 Phase 3 (foreground-window source).
 
 ---
 

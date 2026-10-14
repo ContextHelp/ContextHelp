@@ -1,7 +1,6 @@
 ---
 status: paper
 adr: ADR-066
-task: T-0501
 ---
 
 # US-0213: File-Watch / Drop-Folder Source
@@ -136,7 +135,7 @@ ctxt capture --ambient sources    # shows watched directories + recent-events co
 ## Sprint
 
 **Skeleton 9.5 — Ambient Capture + Sessions + Agent-Native MCP**
-Implements ADR-066 Phase 3 (file-watch source) — see `tlc track show ambient-capture`, task **T-0501**.
+Implements ADR-066 Phase 3 (file-watch source).
 
 ---
 

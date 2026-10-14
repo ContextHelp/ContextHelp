@@ -1,7 +1,6 @@
 ---
 status: paper
 adr: ADR-068, ADR-066
-task: T-0497-impl
 ---
 
 # US-0220: Local MCP During Network Loss (ctxd-side)
@@ -161,7 +160,7 @@ func (t *CurrentSessionTool) Invoke(ctx context.Context, args map[string]any) (a
 ## Sprint
 
 **Skeleton 9.5 — Ambient Capture + Sessions + Agent-Native MCP**
-Implements ADR-068 ctxd-side surface — see `tlc track show ambient-capture`, task **T-0497**.
+Implements ADR-068 ctxd-side surface.
 
 ---
 

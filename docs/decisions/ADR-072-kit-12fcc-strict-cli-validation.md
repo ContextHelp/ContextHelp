@@ -19,7 +19,7 @@ Before this sprint, `ctxt`:
 - Registered 28 depth-1 verbs against kit's default cap of 10 (ctxt is a meta-tool combining capture + curate + compose + organize, so the natural surface is wider than the single-purpose CLIs kit's defaults were tuned for).
 - Allowed per-command destructive bypasses via local `-y/--yes` flags on at least `delete`, `profile delete`, `profile schema remove-*`, `config restore`, `cursor delete`, `detector remove`, `embeddings deprecate`, `embeddings purge`, `feed delete`, `inbox clear`/`discard`, `link delete`, `registry delete`. Kit's reserved `--confirm` global was unused.
 
-The 12fcc-conformance track (T-0591 → T-0595) closed every bucket, raised `MaxTopLevelVerbs` to `30`, replaced per-command `-y` with kit's `--confirm` policy, and now flips the strict gates on at boot.
+The 12fcc conformance work (see `docs/sprints/12fcc-conformance-baseline.md`) closed every bucket, raised `MaxTopLevelVerbs` to `30`, replaced per-command `-y` with kit's `--confirm` policy, and now flips the strict gates on at boot.
 
 ---
 
@@ -79,7 +79,7 @@ Affected modules:
 - `cmd/ctxt/cmd/root.go` — `kitcli.Config` literal: strict-gate flags + `MaxTopLevelVerbs: 30` + `applyShapeAnnotations` walk + explicit `root.Validate()` in `Execute()`.
 - `cmd/ctxt/cmd/strict_validation_test.go` — regression guard (no build tag).
 - `cmd/ctxt/cmd/baseline_probe_test.go` — sprint probe driver (build tag `ctxtbaselineprobe`).
-- `internal/cli/cliconv/` — helpers for stamping `kit/side-effect`, `kit/idempotent`, `kit/examples`, `kit/next-steps`, `kit/destructive-token` on cobra commands. Subtree work in T-0593/T-0594 routed every annotation through these.
+- `internal/cli/cliconv/` — helpers for stamping `kit/side-effect`, `kit/idempotent`, `kit/examples`, `kit/next-steps`, `kit/destructive-token` on cobra commands. The per-subtree conformance work routed every annotation through these.
 - `docs/sprints/12fcc-conformance-baseline.md` — sprint baseline + Post-Sprint State.
 - `docs/release-notes/2026-05-12.md` — Operator-Impact rows for the strict-gate flip + `--confirm` UX change.
 

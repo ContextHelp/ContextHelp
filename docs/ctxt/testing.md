@@ -577,8 +577,8 @@ Keep both fixtures small. Targets:
 
 - `text-short-corpus.yaml`: < ~50 objects so the harness clears in under
   a second on a laptop.
-- `vector-corpus.yaml`: < ~30 objects until the real vector leg ships
-  (T-0584); after that the cassette set is the binding constraint.
+- `vector-corpus.yaml`: < ~30 objects until the real vector leg ships;
+  after that the cassette set is the binding constraint.
 
 Each query must have at least one `expected_id` present in the matching
 corpus file — the adapter validates this and exits 1 otherwise. Multiple
@@ -591,11 +591,11 @@ corpus file — the adapter validates this and exits 1 otherwise. Multiple
   and has no published tag, so a clean CI runner can't resolve it
   without checking out ben adjacent to ctxt. Re-enable once ben
   publishes a tagged version (gated on the coordinated open-source
-  reset to `0.1.0-alpha.0` for every kit-powered package — see T-0196).
+  reset to `0.1.0-alpha.0` for every kit-powered package).
   At that point the Makefile gains `go install hop.top/ben/cmd/ben@<tag>`
   as a third resolution tier and CI works without sibling checkout.
 - **Vector leg is a lexical baseline today.** Both candidates in
-  `recall-vector.ben.yaml` run the lexical baseline. T-0584 wires the
+  `recall-vector.ben.yaml` run the lexical baseline. A later change wires the
   candidate-model leg through xrr cassettes; the suite shape is in
   place so that PR is purely additive.
 

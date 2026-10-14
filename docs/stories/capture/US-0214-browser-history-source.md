@@ -1,7 +1,6 @@
 ---
 status: partial
 adr: ADR-066
-task: T-0502
 ---
 
 # US-0214: Browser-History Ambient Source
@@ -173,7 +172,7 @@ ctxt capture --ambient sources                       # shows last-poll per brows
 ## Sprint
 
 **Skeleton 9.5 — Ambient Capture + Sessions + Agent-Native MCP**
-Implements ADR-066 Phase 3 (browser-history source) — see `tlc track show ambient-capture`, task **T-0502**.
+Implements ADR-066 Phase 3 (browser-history source).
 
 ---
 

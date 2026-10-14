@@ -157,7 +157,7 @@ everyone else passes `false`.
 
 ### Typed `Candidate.IdentityKey` (landed)
 
-Substrate Amendment 2 (T-0307 / T-0309) promotes `identity_key` from a
+Substrate Amendment 2 promotes `identity_key` from a
 `Preview` entry to a typed `Candidate.IdentityKey` field. The resolver
 reads the typed field first; when empty, it falls back to
 `identitykey.Get(c.Preview)`. Strategies emit the typed field directly

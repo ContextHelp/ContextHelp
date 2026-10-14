@@ -25,7 +25,7 @@ keep §7.4 narrow because broadening it would explode adoption costs across
 every kit-built CLI (dpkms, aps, wsm, …) — most of which never need anything
 richer than `path`/`paths`.
 
-The conformance work in T-0591..T-0595 (ADR-072) audited every `ctxt config`
+The 12fcc conformance work (ADR-072) audited every `ctxt config`
 leaf against the 12fcc strict gate and confirmed each non-§7.4 verb carries the
 required `kit/side-effect` + `kit/idempotent` (+ guidance) annotations. We
 need a single source of truth recording this intentional divergence so future

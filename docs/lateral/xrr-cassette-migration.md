@@ -18,7 +18,7 @@ well enough for unit-level coverage but they:
 
 [xrr](https://github.com/hop-top/xrr) is the project's standard
 cassette tool: it intercepts HTTP / gRPC / SQL / Redis traffic and
-records replay-able cassettes. T-0334 was meant to migrate the
+records replay-able cassettes. The plan was to migrate the
 fetchers above to xrr, but xrr isn't yet on the engineering path
 (`which xrr` returns nothing).
 
@@ -76,7 +76,7 @@ Migrate platforms with stable schemas first (arxiv, wikipedia) because
 their cassettes age slowest. Defer YouTube + Google until those APIs
 have a stable rate-limit posture for cassette refresh.
 
-## What ships with T-0334
+## What ships today
 
 - This document — operator-facing migration guide.
 - The existing `fixtureFetcher` / stub clients stay in place; no

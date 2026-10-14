@@ -1,7 +1,6 @@
 ---
 status: paper
 adr: ADR-066
-task: T-0504
 ---
 
 # US-0212: Screenshot-on-Demand Source
@@ -10,7 +9,7 @@ task: T-0504
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md),
 [Researchers & OSINT Analysts](../../personas/researchers-osint.md)
 
-> **Re-grounded in ADR-066** (2026-05-05). The original draft proposed **continuous periodic screen capture (every 30s)**. ADR-066 §Rationale 5 explicitly rejects continuous screen-memory capture: ctxt captures *signals*, not *recordings*. This story is re-scoped to **screenshot-on-demand**: explicit hotkey or scheduled trigger only, never continuous. Implementation task: **T-0504** (Source: screenshot-on-demand → OCR).
+> **Re-grounded in ADR-066** (2026-05-05). The original draft proposed **continuous periodic screen capture (every 30s)**. ADR-066 §Rationale 5 explicitly rejects continuous screen-memory capture: ctxt captures *signals*, not *recordings*. This story is re-scoped to **screenshot-on-demand**: explicit hotkey or scheduled trigger only, never continuous. Source: screenshot-on-demand → OCR.
 >
 > If the user wants live screen-memory recording (the OpenChronicle model), that's a separate product surface and a separate ADR — not v1 scope.
 
@@ -147,7 +146,7 @@ ctxt list --ambient-source screenshot --since today
 ## Sprint
 
 **Skeleton 9.5 — Ambient Capture + Sessions + Agent-Native MCP**
-Implements ADR-066 Phase 3e (screenshot-on-demand source) — see `tlc track show ambient-capture`, task **T-0504**.
+Implements ADR-066 Phase 3e (screenshot-on-demand source).
 
 ---
 

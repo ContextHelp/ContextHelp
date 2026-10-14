@@ -1,7 +1,6 @@
 ---
 status: paper
 adr: ADR-066
-task: T-0500
 ---
 
 # US-0211: Passive Clipboard Watcher
@@ -10,7 +9,7 @@ task: T-0500
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md),
 [Researchers & OSINT Analysts](../../personas/researchers-osint.md)
 
-> **Re-grounded in ADR-066** (2026-05-05). The clipboard watcher now lands as the **first ambient source** under the substrate defined in [ADR-066](../../decisions/ADR-066-ambient-capture-substrate.md), with the rest of the substrate (runner, fingerprint dedup, buffer, kit/policy CEL guards, bus events) handling the heavy lifting. Implementation task: **T-0500** (Source: clipboard daemon).
+> **Re-grounded in ADR-066** (2026-05-05). The clipboard watcher now lands as the **first ambient source** under the substrate defined in [ADR-066](../../decisions/ADR-066-ambient-capture-substrate.md), with the rest of the substrate (runner, fingerprint dedup, buffer, kit/policy CEL guards, bus events) handling the heavy lifting. Source: clipboard daemon.
 >
 > The `ctxt watcher` CLI from the original draft is superseded by `ctxt capture --ambient` per [ADR-066 §Decision](../../decisions/ADR-066-ambient-capture-substrate.md#decision). Daemon is `ctxd`; sources are managed via `ctxt capture --ambient sources` / `tail` / `status`.
 
@@ -178,7 +177,7 @@ ctxt capture --ambient stop
 ## Sprint
 
 **Skeleton 9.5 — Ambient Capture + Sessions + Agent-Native MCP**
-Implements ADR-066 Phase 3a (clipboard source) — see `tlc track show ambient-capture`, task **T-0500**.
+Implements ADR-066 Phase 3a (clipboard source).
 
 ---
 

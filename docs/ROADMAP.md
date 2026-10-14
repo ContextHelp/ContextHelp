@@ -166,7 +166,7 @@ This is where `ctxt` starts feeling agentic.
 
 **Goal:** Capture happens *while you work*, not just when you remember to. Group ambient signals into temporal work units. Expose the graph natively to AI agents.
 
-ADRs locked: [066](decisions/ADR-066-ambient-capture-substrate.md), [067](decisions/ADR-067-session-workunit.md), [068](decisions/ADR-068-mcp-read-surface.md), [069](decisions/ADR-069-meeting-capture-source.md). Track: `tlc track show ambient-capture`.
+ADRs locked: [066](decisions/ADR-066-ambient-capture-substrate.md), [067](decisions/ADR-067-session-workunit.md), [068](decisions/ADR-068-mcp-read-surface.md), [069](decisions/ADR-069-meeting-capture-source.md).
 
 ### Substrate (Phase 2)
 - [ ] `internal/ambient/` skeleton — `AmbientSource` interface, runner, registry, lifecycle bus events

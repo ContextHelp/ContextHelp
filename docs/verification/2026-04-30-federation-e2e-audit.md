@@ -1,6 +1,5 @@
 # Federation E2E Coverage Audit — 2026-04-30
 
-**Task:** T-0088 (tools-showcase-scenarios)
 **Author:** $USER
 **Stories:** US-0318, US-0319, US-0320, US-0321, US-0322, US-0323
 **ADR:** ADR-064 (Status: Proposed)
@@ -193,8 +192,7 @@ async push working first.
 - Stand up an `internal/federation/e2etest` helper that boots two
   servers via `httptest.Server` + isolated SQLite paths so gap tests
   share setup.
-- File the 5 gap tasks against `tools-showcase-scenarios` (P1 first
-  two, P2 next three); link each back to T-0088.
+- File the 5 gaps (P1 first two, P2 next three).
 
 ---
 

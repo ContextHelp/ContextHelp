@@ -28,7 +28,7 @@ all node types are emitted in a single pass and stored canonically. Projection h
 derive `DocumentProjection` (display) and `IndexProjection` (FTS/vector/filter) on the way out,
 eliminating the need for per-step projection logic downstream.
 
-This story covers the `graph_extractor` ingest step (T-0176) that supersedes the piecemeal
+This story covers the `graph_extractor` ingest step that supersedes the piecemeal
 extraction steps for search and agent workflows.
 
 ---
