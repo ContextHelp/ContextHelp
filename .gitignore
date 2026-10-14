@@ -325,8 +325,6 @@ plugins/*/testdata/secrets/
 !.env.example
 !config/config.example.yaml
 !config/config.minimal.yaml
-!config/config.plugins.yaml
-!config/config.leann.yaml
 
 # Keep documentation
 !docs/**/*.md

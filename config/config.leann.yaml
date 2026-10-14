@@ -1,8 +1,0 @@
-# LEANN storage: not implemented
-#
-# There is no LEANN storage backend: storage.type accepts sqlite (default)
-# and postgres only, and vector search runs on sqlite-vec or pgvector inside
-# that store. This file sets nothing.
-#
-# Storage settings: the storage section of config/config.example.yaml and
-# docs/configuration-structure.md.

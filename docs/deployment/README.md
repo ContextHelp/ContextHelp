@@ -22,9 +22,7 @@ over HTTP (and gRPC).
 
 The Web2/Web3 hybrid model — IPFS, Arweave and blockchain storage drivers,
 libp2p and blockchain RPC transports, multi-target sync orchestration and
-on-chain settlement — has no code. [WEB2-WEB3-HYBRID.md](WEB2-WEB3-HYBRID.md)
-and [00-START-HERE.md](00-START-HERE.md) are stubs; the `*.mmd` / `*.png`
-diagrams in this directory showed that unbuilt design.
+on-chain settlement — has no code.
 
 ## Related
 

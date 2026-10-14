@@ -34,7 +34,7 @@ The directory stays a plain folder of plain files: editable in any editor, revie
 
 ## Wiring it in as a source
 
-Two ambient sensors cover the file-watching use case (see [ambient.md](ambient.md) for the full sensor catalog and `policy/ambient.yaml` schema):
+Two ambient sensors cover the file-watching use case (sensor catalog and `policy/ambient.yaml` design: [ADR-065 amendment](../decisions/ADR-065-pluggable-adapters.md#amendment-2026-05-06--service-vs-sensor-distinction-ambient-capture-os-platform-slots)):
 
 - **`files.local-fs`** — scan-on-tick: each sweep walks the tree and emits the full state. Best default for a knowledge directory; every sweep reconciles the index with reality.
 - **`watched-fs`** — fsnotify event stream: emits deltas (created/modified files) since the last sweep. Lower latency between save and ingestion, but a daemon restart loses pending events (Phase 2 limitation noted in the adapter).
@@ -117,7 +117,8 @@ For the outbound direction — materializing selected entities into a generated 
 
 ## See also
 
-- [ambient.md](ambient.md) — `policy/ambient.yaml` schema, sensor catalog, permission model
+- [ADR-065 amendment](../decisions/ADR-065-pluggable-adapters.md#amendment-2026-05-06--service-vs-sensor-distinction-ambient-capture-os-platform-slots) — sensor catalog and `policy/ambient.yaml` design
+- [../ambient.md](../ambient.md) — local capture that runs today
 - [capture.md](capture.md) — `ctxt capture` command spec
 - [hints.md](hints.md) — hints vs tags vs mentions
 - [schema-tag.md](schema-tag.md) — tag schema (weight, confidence, provenance)

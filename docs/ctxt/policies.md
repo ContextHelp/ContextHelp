@@ -63,7 +63,7 @@ the user policy file.
 > `policy/ctxt.yaml` (namespaced) by the
 > [ADR-065 amendment](../decisions/ADR-065-pluggable-adapters.md#amendment-2026-05-06--service-vs-sensor-distinction-ambient-capture-os-platform-slots).
 > The `policy/` subdirectory was meant to also hold `ambient.yaml`
-> (sensor enablement); no code reads that file — see [ambient.md](ambient.md).
+> (sensor enablement); no code reads that file — see [../ambient.md](../ambient.md#not-implemented).
 > **Migration is automatic** on first boot after the upgrade;
 > operators with custom `$CTXT_POLICY_FILE` overrides must update them
 > manually.

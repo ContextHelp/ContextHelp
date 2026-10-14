@@ -302,7 +302,7 @@ Per-source forms (`ctxt capture <url>`, `ctxt capture ./file`, etc.) target a si
 
 #### Config layout: `policy/ctxt.yaml` + `policy/ambient.yaml`
 
-PR #23's `$XDG_CONFIG_HOME/contexthelp/policies.yaml` relocates to `policy/ctxt.yaml` (tool-namespaced). The new `policy/ambient.yaml` declares per-sensor enablement, OS-permission requirements, and per-sensor config. Boot-time migration handles the relocation; `CTXT_POLICY_FILE` env override is updated. Full schema: [docs/ctxt/ambient.md](../ctxt/ambient.md).
+PR #23's `$XDG_CONFIG_HOME/contexthelp/policies.yaml` relocates to `policy/ctxt.yaml` (tool-namespaced). The new `policy/ambient.yaml` declares per-sensor enablement, OS-permission requirements, and per-sensor config. Boot-time migration handles the relocation; `CTXT_POLICY_FILE` env override is updated. Full schema: docs/ctxt/ambient.md.
 
 #### Acceptance Gate 4 closed in Phase 2
 

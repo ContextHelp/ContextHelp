@@ -103,13 +103,12 @@ Specced in ADR-066 to ADR-069, not built:
 - The `ctxd` daemon and its service files (brew service, launchd plist, systemd unit), and `ctxt capture --ambient` with `status`, `sources`, `tail`, `stop`, `buffer flush|purge`.
 - The foreground-window, screenshot, file-watch and meeting sources as running capture, and source-side redaction in the capture path.
 - The client-side buffer (local-fs / S3 / memory) and the `ambient.buffer`, `ambient.sources` and `ambient.session` config blocks.
-- Work sessions (`ctxt session ...`); see [`manual/workflows/sessions.md`](manual/workflows/sessions.md).
+- Work sessions (`ctxt session ...`, [ADR-067](decisions/ADR-067-session-workunit.md)). The session cutter in `internal/ambient/session/` is library code no command runs; to compose a time range, see [Composition](#composition).
 - The local MCP server on port 8744 and its tools.
-- `policy/ambient.yaml`; see [`ctxt/ambient.md`](ctxt/ambient.md).
+- `policy/ambient.yaml` and `CTXT_AMBIENT_FILE` (per-sensor enablement, specced in the [ADR-065 amendment](decisions/ADR-065-pluggable-adapters.md#amendment-2026-05-06--service-vs-sensor-distinction-ambient-capture-os-platform-slots)); no code reads either.
 
 ## Related
 
-- [`manual/workflows/ambient-capture.md`](manual/workflows/ambient-capture.md) — what to run today
 - [`architecture/ambient-capture.md`](architecture/ambient-capture.md) — design reference for the unbuilt daemon
 - [`manual/workflows/mcp-agents.md`](manual/workflows/mcp-agents.md) — agent integration
 - [`diagrams/ambient/`](diagrams/ambient/) — design diagrams (substrate, sessions, MCP, meeting capture)

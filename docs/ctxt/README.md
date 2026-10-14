@@ -27,7 +27,6 @@ This directory contains documentation for **`ctxt`** — the agentic context bra
 
 ### Capture & Sources
 - [capture.md](capture.md) - `ctxt capture` command spec
-- [ambient.md](ambient.md) - Ambient capture configuration (`policy/ambient.yaml`)
 - [knowledge-directory.md](knowledge-directory.md) - Repo-local knowledge directory as a content source
 
 ### Enrichment

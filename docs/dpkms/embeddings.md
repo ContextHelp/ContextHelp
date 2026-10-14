@@ -537,5 +537,4 @@ GET  /embeddings/status
 - [storage.md](./storage.md) - Storage backends
 - [query-language-spec.md](./query-language-spec.md) - Query syntax including similarity search
 - [ranking-and-reranking.md](./ranking-and-reranking.md) - Hybrid retrieval and reranking
-- [caching.md](./caching.md) - Caching strategies
 - [../design.md](../design.md) - System design patterns
