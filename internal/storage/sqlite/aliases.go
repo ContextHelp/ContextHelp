@@ -26,7 +26,8 @@ func (s *aliasStore) Create(ctx context.Context, a *storage.Alias) error {
 	return nil
 }
 
-// Resolve checks profile-scope first, then global scope.
+// Resolve checks profile-scope first, then global scope. A miss wraps
+// storage.ErrNotFound.
 func (s *aliasStore) Resolve(ctx context.Context, alias, profile string) (string, error) {
 	// Profile-scoped lookup first (if profile is non-empty).
 	if profile != "" {
@@ -49,7 +50,7 @@ func (s *aliasStore) Resolve(ctx context.Context, alias, profile string) (string
 		alias,
 	).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", fmt.Errorf("alias %q not found", alias)
+		return "", fmt.Errorf("alias %q: %w", alias, storage.ErrNotFound)
 	}
 	return id, err
 }
@@ -89,10 +90,21 @@ func (s *aliasStore) List(ctx context.Context, filter storage.AliasFilter) ([]*s
 	return out, rows.Err()
 }
 
+// Delete removes one alias by its full key. A miss wraps storage.ErrNotFound.
 func (s *aliasStore) Delete(ctx context.Context, alias, scope, profile string) error {
-	_, err := s.db.ExecContext(ctx,
+	res, err := s.db.ExecContext(ctx,
 		`DELETE FROM aliases WHERE alias=? AND scope=? AND profile=?`,
 		alias, scope, profile,
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("alias delete: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("alias delete: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("alias %q: %w", alias, storage.ErrNotFound)
+	}
+	return nil
 }

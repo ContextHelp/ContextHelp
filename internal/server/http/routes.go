@@ -152,7 +152,7 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		{Method: post, Pattern: "/suggestions/{id}/approve", Scope: authn.ScopeWriteObjects, Handler: ApproveSuggestion(svc)},
 		{Method: post, Pattern: "/suggestions/{id}/reject", Scope: authn.ScopeWriteObjects, Handler: RejectSuggestion(svc)},
 
-		// Aliases (aliasing plugin)
+		// Aliases (core alias store)
 		{Method: post, Pattern: "/aliases", Scope: authn.ScopeWriteObjects, Handler: CreateAlias(svc)},
 		{Method: get, Pattern: "/aliases", Scope: authn.ScopeReadObjects, Handler: ListAliases(svc)},
 		{Method: get, Pattern: "/aliases/{alias}", Scope: authn.ScopeReadObjects, Handler: ResolveAlias(svc)},

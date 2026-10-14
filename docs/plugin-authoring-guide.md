@@ -90,9 +90,8 @@ All interfaces are in `pkg/pluginapi/pluginapi.go` unless noted.
 | `OutputGenerator` | `GeneratorName`, `Accepts`, `Generate` | `OutputGenerators()`, `FindOutputGenerator()` |
 | `PluginRegistryProvider` (`registry_provider.go`) | `Metadata`, `FetchTaxonomy`, `FetchEntities`, `ResolveEntity` | `RegistryProviders()` |
 
-The host accessors exist on `internal/plugin.Registry`; apart from the alias
-REST handlers (`internal/server/http/handlers_aliases.go`), no core code calls
-them.
+The host accessors exist on `internal/plugin.Registry`; no core code calls
+them. The alias REST routes use the core alias store, not `AliasResolvers()`.
 
 `Deps` passed to `Init` carries `Bus` (CloudEvents v1.0 `Event`, with `Publish`,
 `Subscribe`, `Close`) and `Store` (a `StorageDriver` exposing only `Aliases()`).

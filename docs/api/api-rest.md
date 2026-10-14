@@ -135,6 +135,10 @@ Core endpoints:
 - `GET /objects/{id}/edges`
 - `POST /edges`
 - `DELETE /edges`
+- `POST /aliases`
+- `GET /aliases`
+- `GET /aliases/{alias}`
+- `DELETE /aliases/{alias}`
 - `POST /find`
 - `GET /search/graph`
 - `POST /inbox`
@@ -492,6 +496,44 @@ With `type`, only `source -[type]-> target` and `target -[inverse]-> source` go.
 ```
 
 A missing `source` or `target`, an unknown type or any other parameter is a 400 `INVALID_PARAM`.
+
+### Aliases
+
+An alias is a human-readable name for one object ID, stored in the instance's `aliases` table. A `global` alias resolves in every profile; a `profile` alias resolves only for its profile and wins over a global alias of the same name. The key is (`alias`, `scope`, `profile`): one global `charter` and one `charter` per profile can coexist. REST only: gRPC and MCP have no alias methods, and no `ctxt` command calls these routes. A storage backend without an alias store answers every alias route with 501 `NOT_IMPLEMENTED`.
+
+#### `POST /aliases`
+
+Stores an alias. Scope: `write:objects`.
+
+```json
+{"alias": "charter", "object_id": "o-a", "scope": "profile", "profile": "work"}
+```
+
+`alias` and `object_id` are required. `scope` is `global` (the default) or `profile`; `profile` is required with `profile` and refused with `global`. The response is 201 with the stored alias:
+
+```json
+{"alias": "charter", "object_id": "o-a", "scope": "profile", "profile": "work", "created_at": "…", "updated_at": "…"}
+```
+
+Errors, with nothing stored: 400 `INVALID_REQUEST` for a missing field, an unknown scope, a scope/profile mismatch or a body that isn't JSON; 404 `NOT_FOUND` for an unknown object; 409 `CONFLICT` when the (`alias`, `scope`, `profile`) key is taken. Delete the alias first to point it elsewhere.
+
+#### `GET /aliases`
+
+Lists aliases, all of them or, with `?object_id=`, those pointing at one object. Scope: `read:objects`. The response is 200 with a JSON array of alias records, `[]` when there are none.
+
+#### `GET /aliases/{alias}`
+
+Resolves an alias. Scope: `read:objects`. With `?profile=`, that profile's alias is tried before the global one; without it, only the global alias. The response is 200:
+
+```json
+{"alias": "charter", "object_id": "o-a"}
+```
+
+An alias that resolves to nothing is a 404 `NOT_FOUND`.
+
+#### `DELETE /aliases/{alias}`
+
+Deletes one alias by its key. Scope: `delete:aliases`, which only `admin` tokens hold: a `writer` gets 403 `INSUFFICIENT_SCOPE`. `?scope=` defaults to `global`; `?scope=profile` needs `?profile=`. Answers 204 with no body. No alias with that key is a 404 `NOT_FOUND`; a scope/profile mismatch is a 400 `INVALID_REQUEST`.
 
 ### Plugin Metadata
 

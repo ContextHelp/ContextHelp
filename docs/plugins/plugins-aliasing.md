@@ -1,8 +1,10 @@
 # Aliasing Plugin
 
 The aliasing plugin maps human-readable names to knowledge object IDs. The
-plugin code, the storage table and the REST routes exist, but **neither the
-`ctxt` nor the `dpkms` binary loads the plugin**, so aliases cannot be used
+alias REST routes work without it: they read and write the core `aliases`
+table directly (see [REST routes](#rest-routes)). The plugin itself is
+**loaded by neither the `ctxt` nor the `dpkms` binary**, so what only the
+plugin adds (its config and `ResolveID` for transparent lookup) is unused
 today. This page describes what exists and what is missing.
 
 ---
@@ -13,7 +15,7 @@ today. This page describes what exists and what is missing.
 |-------|-------|
 | Plugin module `plugins/aliasing/` | Exists (separate Go module, listed in `go.work`) |
 | `aliases` table | Exists (SQLite migration `010_aliases.sql`; Postgres `internal/storage/postgres/aliases.go`) |
-| REST routes `/api/v1/aliases` | Registered on the dpkms HTTP server |
+| REST routes `/api/v1/aliases` | Working: served by `Service` over the core alias store, plugin or not |
 | Plugin registration at startup | Not implemented: nothing creates `Service.PluginRegistry` outside tests |
 | `ctxt alias` command | Not available: `plugins/aliasing/cli.go` defines a cobra subtree, but no binary mounts it |
 | Alias resolution in other commands (`ctxt show`, `ctxt edit`, ...) | Not implemented: no core code calls `ResolveID` before an object lookup |
@@ -28,7 +30,9 @@ Entity aliases are a different feature: entities carry an `aliases` list, and
 ## REST routes
 
 Defined in `internal/server/http/routes.go` and
-`internal/server/http/handlers_aliases.go`.
+`internal/server/http/handlers_aliases.go`; the logic is in
+`internal/service/aliases.go`. Full reference: the Aliases section of
+[api-rest.md](../api/api-rest.md#aliases).
 
 | Method | Path | Scope | Body / query |
 |--------|------|-------|--------------|
@@ -37,16 +41,10 @@ Defined in `internal/server/http/routes.go` and
 | `GET` | `/api/v1/aliases/{alias}` | `read:objects` | `?profile=` |
 | `DELETE` | `/api/v1/aliases/{alias}` | `delete:aliases` | `?scope=` (default `global`), `?profile=` |
 
-The handlers delegate to the aliasing plugin through the plugin registry. Because
-the registry is never populated in a running server, the routes currently behave
-as follows:
-
-| Route | Response without the plugin |
-|-------|-----------------------------|
-| `POST /aliases` | `201` with the request echoed; **nothing is stored** |
-| `GET /aliases` | `200 []` |
-| `GET /aliases/{alias}` | `404 NOT_FOUND`, "aliasing plugin not configured" |
-| `DELETE /aliases/{alias}` | `204`; nothing is deleted |
+The routes do not go through the plugin registry. A create stores a row and
+answers 201 with it; an unknown object is a 404, a taken key a 409. Resolving
+or deleting an alias that does not exist is a 404. A storage backend without
+an alias store answers 501 `NOT_IMPLEMENTED` on every route.
 
 ---
 
@@ -72,10 +70,11 @@ What the code in `plugins/aliasing/` does if a host registers and initialises it
 
 | File | Purpose |
 |------|---------|
-| `plugins/aliasing/plugin.go` | `Plugin`: `Init`, `ResolveID`, `SetAliasOp`, `ListAliases`, `RemoveAlias` |
+| `plugins/aliasing/plugin.go` | `Plugin`: `Init`, `ResolveID`, `SetAliasOp`, `ListAliases`, `RemoveAlias` (the REST routes call none of them) |
 | `plugins/aliasing/store.go` | `SetAlias`, `ResolveAlias` over `pluginapi.AliasStore` |
 | `plugins/aliasing/config.go` | `AliasConfig`, `DefaultConfig`, `ConfigFromMap` |
 | `plugins/aliasing/cli.go` | Unmounted cobra subtree (`alias set/list/remove`) that calls the REST routes |
+| `internal/service/aliases.go` | `CreateAlias`, `ListAliases`, `ResolveAlias`, `DeleteAlias`: what the REST routes run |
 | `internal/storage/sqlite/aliases.go` | SQLite `AliasStore` |
 | `internal/storage/sqlite/migrations/010_aliases.sql` | Table schema |
 
