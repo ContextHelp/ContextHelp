@@ -17,7 +17,9 @@ import (
 // Same order as DeleteObject: the row goes first, so a failure after it
 // leaves at worst an orphan blob, returned in orphans with the row
 // updated and err nil. err reports that the object could not be read or
-// updated; nothing changed then.
+// updated, nothing changed then; or that a blob obj refers to was
+// deleted by a concurrent delete and could not be put back from
+// obj.BlobContent (see Ensure), the row updated then.
 func UpdateObject(ctx context.Context, drv storage.StorageDriver, obj *storage.KnowledgeObject) (orphans []Orphan, err error) {
 	old, err := drv.Objects().Get(ctx, obj.ID)
 	if err != nil {
@@ -25,6 +27,9 @@ func UpdateObject(ctx context.Context, drv storage.StorageDriver, obj *storage.K
 	}
 	if err := drv.Objects().Update(ctx, obj); err != nil {
 		return nil, err
+	}
+	if err := Ensure(ctx, drv.Blobs(), obj); err != nil {
+		return nil, fmt.Errorf("update object %s: %w", obj.ID, err)
 	}
 	kept := Keys(obj)
 	for _, key := range Keys(old) {

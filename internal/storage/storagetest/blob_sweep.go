@@ -75,6 +75,58 @@ func BlobSweepConformance(t *testing.T, drv storage.StorageDriver) {
 			t.Errorf("Deleted = %v, Failed = %v, want swporphan failed", res.Deleted, res.Failed)
 		}
 	})
+
+	// An ingest of an old orphan's content landing after the sweep has
+	// listed it (old) and counted its references (none), before the
+	// sweep deletes it: the sweep puts it back once it finds the
+	// ingest's row, or the ingest does once it finds its blob gone.
+	for _, tc := range []struct {
+		name, key string
+		rowFirst  bool // the ingest's row and check land before the delete
+	}{
+		{name: "ingest row lands before the blob delete", key: "swpracerow", rowFirst: true},
+		{name: "ingest row lands after the blob delete", key: "swpracelate"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			const content = "content the ingest holds"
+			if err := drv.Blobs().Put(ctx, tc.key, strings.NewReader(content), storage.BlobMeta{}); err != nil {
+				t.Fatalf("put: %v", err)
+			}
+			row := ingested("swp-"+tc.key, tc.key, content)
+			fired := false
+			hooked := countHookDriver{StorageDriver: NewAgedBlobs(drv, now.Add(-48*time.Hour)), after: func(key string) {
+				if key != tc.key || fired {
+					return
+				}
+				fired = true
+				if err := drv.Blobs().Put(ctx, tc.key, strings.NewReader(content), storage.BlobMeta{}); err != nil {
+					t.Fatalf("ingest put: %v", err)
+				}
+				if tc.rowFirst {
+					ingestRow(t, drv, row)
+				}
+			}}
+			res, err := blob.Sweep(ctx, hooked, blob.SweepOptions{Grace: grace, Now: now})
+			if err != nil {
+				t.Fatalf("Sweep: %v", err)
+			}
+			if !fired {
+				t.Fatal("the sweep never counted the blob's references")
+			}
+			if !tc.rowFirst {
+				ingestRow(t, drv, row)
+			}
+			if !exists(t, tc.key) {
+				t.Fatalf("an ingest racing the sweep lost its blob: %s names a deleted key", row.ID)
+			}
+			if got := blobContent(t, drv.Blobs(), tc.key); got != content {
+				t.Errorf("blob content = %q, want %q", got, content)
+			}
+			if tc.rowFirst && slices.Contains(res.Deleted, tc.key) {
+				t.Errorf("Deleted = %v lists %s, which the sweep put back", res.Deleted, tc.key)
+			}
+		})
+	}
 }
 
 // agedDriver is drv with a blob store that lists each blob with the

@@ -140,6 +140,59 @@ func BlobDeleteConformance(t *testing.T, drv storage.StorageDriver) {
 		}
 	})
 
+	// The same ingest landing after the delete has read the blob's age
+	// (still old) and before it deletes the blob. Whichever of the two
+	// acts last sees the other: the delete counts references again once
+	// the blob is gone and puts it back if the ingest's row has landed;
+	// the ingest checks its blob once its row is written and puts it back
+	// if the delete has removed it (blob.Ensure).
+	for _, tc := range []struct {
+		name, key string
+		// rowFirst lands the ingest's row and check inside the window,
+		// before the blob delete; otherwise only its put does, and the
+		// row and check follow the delete.
+		rowFirst bool
+	}{
+		{name: "ingest row lands before the blob delete", key: "raceagerow", rowFirst: true},
+		{name: "ingest row lands after the blob delete", key: "raceagelate"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			const content = "content the ingest holds"
+			put(t, tc.key)
+			create(t, &storage.KnowledgeObject{ID: "bdel-" + tc.key + "-old", RawContent: "blob://" + tc.key, Metadata: map[string]any{"blob_key": tc.key}})
+			row := ingested("bdel-"+tc.key+"-new", tc.key, content)
+			fired := false
+			hooked := listHookDriver{StorageDriver: aged, after: func(prefix string) {
+				if prefix != tc.key || fired {
+					return
+				}
+				fired = true
+				if err := drv.Blobs().Put(ctx, tc.key, strings.NewReader(content), storage.BlobMeta{}); err != nil {
+					t.Fatalf("ingest put: %v", err)
+				}
+				if tc.rowFirst {
+					ingestRow(t, drv, row)
+				}
+			}}
+			orphans, err := blob.DeleteObject(ctx, hooked, "bdel-"+tc.key+"-old")
+			if err != nil || len(orphans) != 0 {
+				t.Fatalf("DeleteObject = %v, %v", orphans, err)
+			}
+			if !fired {
+				t.Fatal("the delete never read the blob's age")
+			}
+			if !tc.rowFirst {
+				ingestRow(t, drv, row)
+			}
+			if !exists(t, tc.key) {
+				t.Fatalf("an ingest racing the blob delete lost its blob: %s names a deleted key", row.ID)
+			}
+			if got := blobContent(t, drv.Blobs(), tc.key); got != content {
+				t.Errorf("blob content = %q, want %q", got, content)
+			}
+		})
+	}
+
 	// A blob written inside the grace period is not deleted with its
 	// last object; the sweep deletes it once it is older.
 	t.Run("young blob left to sweep", func(t *testing.T) {
@@ -245,4 +298,16 @@ func BlobDeleteConformance(t *testing.T, drv storage.StorageDriver) {
 			t.Errorf("DeleteObject of a missing object: %v, want ErrNotFound", err)
 		}
 	})
+}
+
+// ingestRow writes row, then checks its blob the way ingest does.
+func ingestRow(t *testing.T, drv storage.StorageDriver, row *storage.KnowledgeObject) {
+	t.Helper()
+	ctx := context.Background()
+	if err := drv.Objects().Create(ctx, row); err != nil {
+		t.Fatalf("ingest Create %s: %v", row.ID, err)
+	}
+	if err := blob.Ensure(ctx, drv.Blobs(), row); err != nil {
+		t.Fatalf("ingest Ensure %s: %v", row.ID, err)
+	}
 }

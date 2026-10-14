@@ -2,7 +2,9 @@ package storagetest
 
 import (
 	"context"
+	"io"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -87,4 +89,62 @@ func (o countHookObjects) CountBlobRefs(ctx context.Context, key string) (int, e
 		o.after(key)
 	}
 	return n, err
+}
+
+// listHookDriver is drv whose blob store calls after(prefix) once a
+// List has returned: a fixed point between a delete's blob age read and
+// its blob delete, where a test lands a concurrent write.
+type listHookDriver struct {
+	storage.StorageDriver
+	after func(prefix string)
+}
+
+func (d listHookDriver) Blobs() storage.BlobStore {
+	inner := d.StorageDriver.Blobs()
+	if inner == nil {
+		return nil
+	}
+	return listHookStore{BlobStore: inner, after: d.after}
+}
+
+type listHookStore struct {
+	storage.BlobStore
+	after func(prefix string)
+}
+
+func (s listHookStore) List(ctx context.Context, prefix string) ([]storage.BlobInfo, error) {
+	items, err := s.BlobStore.List(ctx, prefix)
+	if err == nil {
+		s.after(prefix)
+	}
+	return items, err
+}
+
+// ingested is the row an ingest of key writes, holding the content its
+// externalize step put (what blob.Ensure puts back from).
+func ingested(id, key, content string) *storage.KnowledgeObject {
+	return &storage.KnowledgeObject{
+		ID:          id,
+		Type:        "note",
+		RawContent:  "blob://" + key,
+		Metadata:    map[string]any{"blob_key": key, "blob_content_type": "text/plain"},
+		BlobContent: map[string]string{key: content},
+		CreatedAt:   fixtureTime(),
+		UpdatedAt:   fixtureTime(),
+	}
+}
+
+// blobContent reads blob key, failing t when it is missing.
+func blobContent(t *testing.T, store storage.BlobStore, key string) string {
+	t.Helper()
+	rc, _, err := store.Get(context.Background(), key)
+	if err != nil {
+		t.Fatalf("get blob %s: %v", key, err)
+	}
+	defer rc.Close()
+	data, err := io.ReadAll(rc)
+	if err != nil {
+		t.Fatalf("read blob %s: %v", key, err)
+	}
+	return string(data)
 }

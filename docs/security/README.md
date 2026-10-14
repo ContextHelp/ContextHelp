@@ -38,7 +38,7 @@ Details: [What output shows secrets](./secrets-validation-and-log-sanitization.m
 
 1. Rotate it — [Secret Rotation](./secret-management.md#secret-rotation).
 2. Follow [Incident Response](./secret-management.md#incident-response).
-3. Scan logs and data directories for other copies, e.g. with `gitleaks detect --no-git --redact` (see [the validation guide](./secrets-validation-and-log-sanitization.md#what-output-shows-secrets)).
+3. Scan logs and data directories for other copies, e.g. with `gitleaks dir <dir> --redact` (see [the validation guide](./secrets-validation-and-log-sanitization.md#what-output-shows-secrets)).
 
 ## Related ADRs
 

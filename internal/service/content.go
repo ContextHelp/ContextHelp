@@ -102,6 +102,7 @@ func hasBlobRef(obj *storage.KnowledgeObject) bool {
 func (s *Service) storable(ctx context.Context, obj *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
 	cp := *obj
 	cp.Metadata = maps.Clone(obj.Metadata)
+	cp.BlobContent = maps.Clone(obj.BlobContent)
 
 	textTruncated, _ := cp.Metadata[psteps.MetaTextTruncated].(bool)
 	delete(cp.Metadata, psteps.MetaTextTruncated)

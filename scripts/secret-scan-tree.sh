@@ -4,7 +4,7 @@
 # Scans what git would commit: tracked files as they are on disk plus
 # untracked files that are not ignored. `gitleaks dir .` alone walks
 # ignored paths too (a local .env, build output, node_modules), and
-# `gitleaks detect` scans history, which this repo cannot rewrite.
+# `gitleaks git` scans history, which this repo cannot rewrite.
 # Extra arguments go to `gitleaks dir` (e.g. -r report.json -f json).
 set -euo pipefail
 

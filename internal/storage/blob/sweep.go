@@ -32,7 +32,9 @@ type SweepResult struct {
 	// Scanned is the number of blobs in the store.
 	Scanned int
 	// Deleted lists the unreferenced blobs older than the grace period
-	// that were deleted, or would be on a dry run.
+	// that were deleted, or would be on a dry run. A blob an object
+	// refers to again by the time it is deleted is put back, and not
+	// listed.
 	Deleted []string
 	// Young counts unreferenced blobs kept because they are younger than
 	// the grace period, or of unknown age.
@@ -82,8 +84,14 @@ func Sweep(ctx context.Context, drv storage.StorageDriver, opts SweepOptions) (S
 			continue
 		}
 		if !opts.DryRun {
-			if err := store.Delete(ctx, item.Key); err != nil {
+			// The age was read at the listing: an ingest of the same
+			// content may have put the blob since; remove catches it.
+			removed, err := remove(ctx, drv.Objects(), store, item.Key)
+			if err != nil {
 				res.Failed = append(res.Failed, Orphan{Key: item.Key, Err: err})
+				continue
+			}
+			if !removed {
 				continue
 			}
 		}

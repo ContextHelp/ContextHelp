@@ -110,6 +110,11 @@ type KnowledgeObject struct {
 	// timestamps say. Read-only — stores ignore it on write — and local
 	// to one store, so it never travels on the wire.
 	ChangeSeq int64 `json:"-"`
+	// BlobContent is the content the externalize step put in the blob
+	// store, by blob key, kept on the draft until its row is written:
+	// ingest then puts a blob back from it if a concurrent delete of the
+	// same key removed it (blob.Ensure). Never persisted or serialized.
+	BlobContent map[string]string `json:"-"`
 }
 
 // Draft is an alias for KnowledgeObject being progressively enriched.

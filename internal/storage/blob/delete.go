@@ -1,8 +1,11 @@
 package blob
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -59,13 +62,12 @@ func DeleteObject(ctx context.Context, drv storage.StorageDriver, id string) (or
 // it was last written more than DefaultSweepGrace ago.
 //
 // Ingest puts a blob before it writes the row that refers to it, and an
-// ingest of content another object holds puts that blob again. An
-// ingest landing between the reference count and the delete would
-// otherwise lose its blob: its row would name a deleted key. The age is
-// read after the count, so such an ingest has refreshed it by then, and
-// the blob is left to Sweep, which counts references again. A blob of
-// unknown age is left too. Only an ingest putting the blob between the
-// age read and the delete, two consecutive store calls, still races.
+// ingest of content another object holds puts that blob again. The age
+// is read after the reference count, so an ingest landing between the
+// two has made the blob young by then, and it is left to Sweep, which
+// counts references again. A blob of unknown age is left too. An ingest
+// putting the blob between the age read and the delete is caught by
+// remove.
 func deleteUnreferenced(ctx context.Context, drv storage.StorageDriver, key string) error {
 	n, err := drv.Objects().CountBlobRefs(ctx, key)
 	if err != nil {
@@ -82,7 +84,54 @@ func deleteUnreferenced(ctx context.Context, drv storage.StorageDriver, key stri
 	if err != nil || !old {
 		return err
 	}
-	return store.Delete(ctx, key)
+	_, err = remove(ctx, drv.Objects(), store, key)
+	return err
+}
+
+// remove deletes blob key, which no object referred to when its
+// references were last counted, and puts it back when one refers to it
+// once it is gone. removed reports that the blob is deleted.
+//
+// An ingest of the same content can land at any point of a delete: it
+// puts the blob, writes its row, then checks the blob is still there and
+// puts it back if not (Ensure). Whichever of the two acts last sees the
+// other: an ingest checking after the delete puts the blob back itself;
+// a delete landing after the ingest's check finds the ingest's row on
+// its second count, and puts back the content it read before deleting.
+// A blob that is already gone is not deleted.
+//
+// A conditional delete can't replace the second count: keys are content
+// hashes, so a re-put of the same key carries the same S3 ETag
+// (If-Match), and a delete conditional on the modification time is
+// directory-bucket only.
+func remove(ctx context.Context, objects storage.ObjectStore, store storage.BlobStore, key string) (removed bool, err error) {
+	rc, meta, err := store.Get(ctx, key)
+	if errors.Is(err, storage.ErrBlobNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("blob %s: read before delete: %w", key, err)
+	}
+	data, err := io.ReadAll(rc)
+	rc.Close()
+	if err != nil {
+		return false, fmt.Errorf("blob %s: read before delete: %w", key, err)
+	}
+	if err := store.Delete(ctx, key); err != nil {
+		return false, err
+	}
+	n, err := objects.CountBlobRefs(ctx, key)
+	if err == nil && n == 0 {
+		return true, nil
+	}
+	// Referred to again, or unknown: put it back.
+	if perr := store.Put(ctx, key, bytes.NewReader(data), meta); perr != nil {
+		return false, errors.Join(fmt.Errorf("blob %s: deleted while an object refers to it; put back: %w", key, perr), err)
+	}
+	if err != nil {
+		return false, fmt.Errorf("blob %s: count references after delete (blob put back): %w", key, err)
+	}
+	return false, nil
 }
 
 // olderThanGrace reports whether blob key exists and was last written
