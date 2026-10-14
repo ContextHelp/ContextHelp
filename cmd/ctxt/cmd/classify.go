@@ -1,13 +1,13 @@
 package cmd
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/spf13/cobra"
 )
 
@@ -17,8 +17,9 @@ var classifyCmd = &cobra.Command{
 	Long: `Run c12n classification on text or a knowledge object.
 
 If the argument starts with "o-", it is treated as an object ID and the
-object's content is fetched from storage. Otherwise the argument is
-classified as raw text.
+object is read from the dpkms instance ctxt resolves; its first summary,
+else its text, else its raw content is classified. Otherwise the argument
+is classified as raw text. Classification runs locally.
 
 Examples:
   # Classify raw text
@@ -53,6 +54,7 @@ func init() {
 	cliconv.WithIdempotency(classifyCmd, cliconv.IdempotencyConditional)
 
 	classifyCmd.Flags().String("pipeline", "", "pipeline name (reserved)")
+	classifyCmd.Flags().String("server", "", serverFlagUsage)
 }
 
 // classifyResult mirrors c12n.PipelineResult for display without importing c12n.
@@ -82,7 +84,7 @@ func runClassify(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("classify requires non-empty input")
 	}
 
-	text, err := resolveClassifyInput(input)
+	text, err := resolveClassifyInput(cmd, input)
 	if err != nil {
 		return err
 	}
@@ -101,22 +103,20 @@ func runClassify(cmd *cobra.Command, args []string) error {
 }
 
 // resolveClassifyInput returns the text to classify. When input starts with
-// "o-", the object is fetched from storage; otherwise input is returned
+// "o-", the object is read from the instance; otherwise input is returned
 // verbatim.
-func resolveClassifyInput(input string) (string, error) {
+func resolveClassifyInput(cmd *cobra.Command, input string) (string, error) {
 	if !strings.HasPrefix(input, "o-") {
 		return input, nil
 	}
 
-	svc, cleanup, err := newService()
+	client, err := newDpkmsClient(cmd, dpkmsclient.DefaultTimeout)
 	if err != nil {
-		return "", fmt.Errorf("open storage: %w", err)
+		return "", err
 	}
-	defer cleanup()
-
-	obj, err := svc.GetObject(context.Background(), input)
+	obj, err := client.GetObject(cmd.Context(), input)
 	if err != nil {
-		return "", fmt.Errorf("get object %s: %w", input, err)
+		return "", err
 	}
 
 	if len(obj.Summaries) > 0 {

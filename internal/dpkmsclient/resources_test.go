@@ -157,7 +157,6 @@ func TestNoStoreDependency(t *testing.T) {
 		module + "internal/storage/sqlite",
 		module + "internal/storage/postgres",
 		module + "internal/dblock",
-		module + "internal/idxbridge",
 	}
 	ctx := build.Default
 	ctx.BuildTags = append(ctx.BuildTags, "fts5")

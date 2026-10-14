@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
@@ -39,7 +39,7 @@ func NewAPIClient(baseURL string) *APIClient {
 
 // newEndpointClient is an APIClient for ep, sending ep's bearer token, if
 // any, with every request.
-func newEndpointClient(ep idxbridge.Endpoint) *APIClient {
+func newEndpointClient(ep dpkmsclient.Endpoint) *APIClient {
 	c := NewAPIClient(strings.TrimRight(ep.URL, "/"))
 	if ep.Token != "" {
 		c.client.Transport = bearerTransport{token: ep.Token}

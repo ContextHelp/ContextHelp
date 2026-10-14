@@ -29,14 +29,15 @@ ctxt find "<query>" --explain                     # per-signal score breakdown
 ctxt find "<query>" --graph [--no-browser]        # interactive search graph (see workflows/search-graph.md)
 ctxt find "<query>" --graph --format json|yaml    # search graph as JGF
 ctxt find "<query>" --graph -o <file>.html|.json|.yaml|.graphml|.gexf
-ctxt list [--type <type>] [--tag a,b] [--after <ISO>] [--q "<query>"]
-ctxt open <object_id> [--raw] [--output json|yaml|text]
+ctxt list [--type <type>] [--tagged <tag>] [--after <date>] [--q "<query>"]
+ctxt show <object_id> [--raw] [--format json|yaml]
+ctxt export <object_id> [--format yaml]
 ```
 
 ### Composition
 
 ```bash
-ctxt make brief|plan|summary|draft [--tag a,b] [--mention @entity.slug] [--since <ISO>] [--output-file <file>]
+ctxt compose brief|plan|summary|draft [--tagged <tag>] [--mention @entity.slug] [--since <date>] [--until <date>] [--output-file <file>]
 ```
 
 ### Profiles and config

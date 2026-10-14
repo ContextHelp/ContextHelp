@@ -22,32 +22,64 @@ func (c *Client) GetObject(ctx context.Context, id string) (*storage.KnowledgeOb
 	return &obj, nil
 }
 
-// ObjectFilter selects objects for ListObjects (GET /api/v1/objects).
-// Empty fields do not filter; the API documents each parameter.
+// ObjectFilter selects objects for ListObjects (GET /api/v1/objects) and
+// ObjectFacets (GET /api/v1/objects/facets). Empty fields do not filter;
+// dpkms validates every value and answers a malformed one with 400
+// (USAGE, exit 2). The API documents each parameter.
 type ObjectFilter struct {
-	Type     string
-	Subtype  string
+	Type    string
+	Subtype string
+	// Tag is one tag label.
 	Tag      string
 	Mention  string
 	Pipeline string
 	// Status is active (the API's default when empty), inbox, discarded,
 	// raw or all.
 	Status string
-	// Limit caps the page; 0 returns every match.
+	// After and Before bound created_at, both inclusive: an RFC 3339
+	// timestamp or a YYYY-MM-DD date (midnight UTC).
+	After  string
+	Before string
+	// MetaType, Topic, Person and SourceType match the object's
+	// metadata type, topics, people and source_type.
+	MetaType   string
+	Topic      string
+	Person     string
+	SourceType string
+	// Since and Until bound metadata.dates_mentioned: YYYY-MM-DD dates.
+	Since string
+	Until string
+	// Limit caps the page; 0 returns every match. ListObjects only.
 	Limit  int
 	Offset int
 	// Sort is created_at (the default) or updated_at; Dir is desc (the
-	// default) or asc.
+	// default) or asc. ListObjects only.
 	Sort string
 	Dir  string
 }
 
-func (f ObjectFilter) query() url.Values {
-	q := url.Values{"limit": {strconv.Itoa(f.Limit)}}
+// filterQuery encodes the selecting fields, the parameters both
+// GET /objects and GET /objects/facets take.
+func (f ObjectFilter) filterQuery() url.Values {
+	q := url.Values{}
 	for k, v := range map[string]string{
 		"type": f.Type, "subtype": f.Subtype, "tag": f.Tag, "mention": f.Mention,
-		"pipeline": f.Pipeline, "status": f.Status, "sort": f.Sort, "dir": f.Dir,
+		"pipeline": f.Pipeline, "status": f.Status, "after": f.After, "before": f.Before,
+		"meta_type": f.MetaType, "topic": f.Topic, "person": f.Person, "source_type": f.SourceType,
+		"since": f.Since, "until": f.Until,
 	} {
+		if v != "" {
+			q.Set(k, v)
+		}
+	}
+	return q
+}
+
+// query encodes the filter plus the page, for GET /objects.
+func (f ObjectFilter) query() url.Values {
+	q := f.filterQuery()
+	q.Set("limit", strconv.Itoa(f.Limit))
+	for k, v := range map[string]string{"sort": f.Sort, "dir": f.Dir} {
 		if v != "" {
 			q.Set(k, v)
 		}

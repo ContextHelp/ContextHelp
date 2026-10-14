@@ -14,7 +14,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
-	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"hop.top/kit/go/console/output"
@@ -244,7 +244,7 @@ func init() {
 	cliconv.WithSideEffect(stepUninstallCmd, cliconv.SideEffectDestructive)
 }
 
-func initPipelineClient(ep idxbridge.Endpoint) {
+func initPipelineClient(ep dpkmsclient.Endpoint) {
 	apiClient = newEndpointClient(ep)
 }
 

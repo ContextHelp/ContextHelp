@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"regexp"
@@ -9,6 +10,8 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
+	"github.com/ideacrafterslabs/ctxt/internal/schemaevolution"
 	"github.com/spf13/cobra"
 )
 
@@ -98,10 +101,11 @@ Requires --confirm=yes (or --confirm=prompt for an interactive confirmation).`,
 var schemaEvolveCmd = &cobra.Command{
 	Use:   "evolve <profile>",
 	Short: "Suggest schema improvements from recent ingestions",
-	Long: `Analyse recently-ingested content and suggest new entity types
-or topics worth adding to the profile schema. Read-only against the
-schema itself; suggestions are printed alongside the exact
-'ctxt profile schema add-*' invocations that would apply them.`,
+	Long: `Analyse the 100 most recently created objects of the dpkms
+instance ctxt resolves and suggest new entity types or topics worth
+adding to the profile schema. The analysis runs locally and is
+read-only against the schema itself; suggestions are printed alongside
+the exact 'ctxt profile schema add-*' invocations that would apply them.`,
 	Args: cobra.ExactArgs(1),
 	RunE: runSchemaEvolve,
 }
@@ -115,6 +119,7 @@ func init() {
 	profileSchemaCmd.AddCommand(schemaRemoveTypeCmd)
 	profileSchemaCmd.AddCommand(schemaRemoveTopicCmd)
 	profileSchemaCmd.AddCommand(schemaEvolveCmd)
+	schemaEvolveCmd.Flags().String("server", "", serverFlagUsage)
 
 	cliconv.WithSideEffect(schemaShowCmd, cliconv.SideEffectRead)
 	cliconv.WithExamples(schemaShowCmd, []cliconv.Example{
@@ -414,17 +419,25 @@ func runSchemaEvolve(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	svc, cleanup, err := newService()
+	// The most recently created objects come from the instance; the
+	// frequency analysis runs here.
+	client, err := newDpkmsClient(cmd, dpkmsclient.DefaultTimeout)
 	if err != nil {
-		return fmt.Errorf("failed to init service: %w", err)
+		return err
 	}
-	defer cleanup()
-
-	suggestions, err := svc.SuggestSchemaEvolution(
-		cmd.Context(), name, p.Schema)
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	objects, _, err := client.ListObjects(ctx, dpkmsclient.ObjectFilter{
+		Limit: schemaevolution.ScanLimit,
+		Sort:  "created_at",
+		Dir:   "desc",
+	})
 	if err != nil {
-		return fmt.Errorf("evolution analysis failed: %w", err)
+		return err
 	}
+	suggestions := schemaevolution.Suggest(name, p.Schema, objects)
 
 	if isJSONOutput() {
 		return outputJSON(os.Stdout, suggestions)
