@@ -314,3 +314,62 @@ func TestRegistrySyncStepsOnlySkipsEntities(t *testing.T) {
 		t.Errorf("output does not explain the skipped entities:\n%s", out)
 	}
 }
+
+// TestRegistryAddLeavesConfigAndSaysSo: add caches the manifest but does
+// not write the config file; its help and output say how to subscribe.
+func TestRegistryAddLeavesConfigAndSaysSo(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(storage.RegistryManifest{Name: "unlisted", Version: "1.0.0"})
+	}))
+	defer srv.Close()
+	db := setupTestDB(t)
+	before, err := os.ReadFile(db.ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := db.exec("registry", "add", "unlisted", srv.URL)
+	if err != nil {
+		t.Fatalf("registry add: %v", err)
+	}
+	after, err := os.ReadFile(db.ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Errorf("registry add changed the config file:\n%s", after)
+	}
+	if !strings.Contains(out, "Not in config") || !strings.Contains(out, "ctxt config edit") {
+		t.Errorf("add output does not say the registry is unconfigured:\n%s", out)
+	}
+
+	help, err := executeCommand("registry", "add", "--help")
+	if err != nil {
+		t.Fatalf("registry add --help: %v", err)
+	}
+	if strings.Contains(help, "record the named subscription in the config file") {
+		t.Errorf("help still claims add writes the config file:\n%s", help)
+	}
+	if !strings.Contains(help, "does not write the config file") || !strings.Contains(help, "registries:") {
+		t.Errorf("help does not say how to subscribe:\n%s", help)
+	}
+}
+
+// TestRegistryAddConfiguredHasNoNote: a registry already in the config
+// gets no subscribe note.
+func TestRegistryAddConfiguredHasNoNote(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(storage.RegistryManifest{Name: "listed", Version: "1.0.0"})
+	}))
+	defer srv.Close()
+	db := setupTestDB(t)
+	withRegistry(t, db, "listed", srv.URL, "")
+
+	out, err := db.exec("registry", "add", "listed", srv.URL)
+	if err != nil {
+		t.Fatalf("registry add: %v", err)
+	}
+	if strings.Contains(out, "Not in config") {
+		t.Errorf("configured registry got the subscribe note:\n%s", out)
+	}
+}

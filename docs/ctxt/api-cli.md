@@ -770,6 +770,17 @@ ctxt registry info <name>
 ctxt registry sync <name>
 ```
 
+`add` fetches and caches a registry's manifest (shown by `list`); it
+does not write the config file. `sync`, `info`, `login` and `delete`
+find a registry by name in the config file's `registries` list, so
+subscribe by adding an entry there (`ctxt config edit`):
+
+```yaml
+registries:
+  - name: uxpatterns
+    url: https://uxpatterns.example.com
+```
+
 `sync` re-fetches the registry's manifest and replaces the cached copy.
 When the manifest advertises `capabilities.entity_sync`, it also pulls
 the entity index (`/entities/index`) into the local entity store; a
