@@ -177,7 +177,9 @@ func init() {
 	// codebase (helpers.go, stats.go, etc. read from viper.Get*). Kit owns
 	// its private viper for parsing; we re-bind every persistent flag here.
 	pf := rootCmd.PersistentFlags()
-	for _, name := range []string{"format", "quiet", "no-color", "verbose", "config", "profile", "offline", "instance", "output", "no-hints", "chdir"} {
+	// --offline is kit's own (enforced on http.DefaultTransport), so it
+	// is not mirrored here.
+	for _, name := range []string{"format", "quiet", "no-color", "verbose", "config", "profile", "instance", "output", "no-hints", "chdir"} {
 		if f := pf.Lookup(name); f != nil {
 			_ = viper.BindPFlag(name, f)
 		}
@@ -185,7 +187,6 @@ func init() {
 	// Aliases the rest of the codebase reads.
 	viper.RegisterAlias("output.format", "format")
 	viper.RegisterAlias("profile.default", "profile")
-	viper.RegisterAlias("offline.enabled", "offline")
 	viper.RegisterAlias("cli.verbose", "verbose")
 	_ = viper.BindEnv("instance", "CTXT_INSTANCE")
 	_ = v.BindEnv("instance", "CTXT_INSTANCE")

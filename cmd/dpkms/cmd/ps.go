@@ -38,7 +38,7 @@ var psCmd = &cobra.Command{
 	Short: "List running dpkms instances",
 	Long: `List all dpkms processes running on this machine.
 
-Scans <data dir>/run/ (CTXT_DATA_DIR or storage.data_dir;
+Scans <data dir>/run/ (--data-dir, CTXT_DATA_DIR or storage.data_dir;
 default $XDG_DATA_HOME/contexthelp) for pidfiles and validates each
 process is still alive. Stale entries (from crashes or reboots) are
 removed automatically.

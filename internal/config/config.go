@@ -92,11 +92,6 @@ type Config struct {
 	// Privacy controls user-facing privacy preferences.
 	Privacy PrivacyConfig `mapstructure:"privacy" yaml:"privacy"`
 
-	// Offline forces local-only operation: no registry sync, no LLM/embedding API calls.
-	// Set via --offline flag or config key offline.enabled.
-	// Default: false.
-	Offline OfflineConfig `mapstructure:"offline" yaml:"offline"`
-
 	// Resurfacing controls the background resurfacing queue.
 	Resurfacing ResurfacingConfig `mapstructure:"resurfacing" yaml:"resurfacing"`
 
@@ -315,17 +310,6 @@ type SecuritySMTPConfig struct {
 	Port int    `mapstructure:"port" yaml:"port"`
 	From string `mapstructure:"from" yaml:"from"`
 	To   string `mapstructure:"to" yaml:"to"`
-}
-
-// OfflineConfig controls strict offline (air-gapped) operation mode.
-// When Enabled is true:
-//   - Registry sync jobs are queued but not executed.
-//   - Unresolved mentions create local stub entities.
-//   - LLM and embedding API calls are skipped; pipelines degrade gracefully.
-//   - Plugins that require network access are denied.
-type OfflineConfig struct {
-	// Enabled activates strict offline mode. Default: false.
-	Enabled bool `mapstructure:"enabled" yaml:"enabled"`
 }
 
 // ResurfacingConfig controls the background resurfacing queue process.
@@ -1366,9 +1350,6 @@ func setDefaults(v *viper.Viper) {
 	// Privacy defaults — telemetry off by default (local-first)
 	v.SetDefault("privacy.telemetry", false)
 
-	// Offline mode — disabled by default; enable for air-gapped environments.
-	v.SetDefault("offline.enabled", false)
-
 	// Registries global — require_signatures is off by default (permissive).
 	v.SetDefault("registries_global.require_signatures", false)
 
@@ -1516,7 +1497,7 @@ func configDirXDG() (string, error) {
 
 // DefaultDataDir returns the built-in data directory: the XDG data dir
 // for contexthelp. It is the bottom layer of storage.data_dir
-// (-c > CTXT_DATA_DIR > file > this); code holding a loaded
+// (dpkms --data-dir > -c > CTXT_DATA_DIR > file > this); code holding a loaded
 // Config reads cfg.Storage.DataDir instead.
 func DefaultDataDir() (string, error) {
 	dir, err := xdg.RawDataDir(xdgTool)

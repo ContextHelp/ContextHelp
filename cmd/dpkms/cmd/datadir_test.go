@@ -55,3 +55,40 @@ func TestDataDir_EnvIsDirectory(t *testing.T) {
 	assertDir(t, dataDir)
 	assertDir(t, filepath.Join(dataDir, "run"))
 }
+
+// --data-dir, when passed, outranks -c storage.data_dir, CTXT_DATA_DIR
+// and the config file: the run dir and the default database follow it.
+func TestDataDir_FlagWins(t *testing.T) {
+	root := hermeticConfigEnv(t)
+	flagDir := filepath.Join(root, "flag-data")
+	envDir := filepath.Join(root, "env-data")
+	t.Setenv(config.EnvDataDir, envDir)
+	fileCfg := filepath.Join(root, "dpkms-test.yaml")
+	if err := os.WriteFile(fileCfg, []byte("storage:\n  data_dir: "+filepath.Join(root, "file-data")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := runWithConfigFlag(t, "ps", "--data-dir", flagDir,
+		"-c", fileCfg, "-c", "storage.data_dir="+filepath.Join(root, "override-data")); err != nil {
+		t.Fatalf("ps --data-dir: %v", err)
+	}
+	if cfg == nil {
+		t.Fatal("cfg not loaded")
+	}
+	if cfg.Storage.DataDir != flagDir {
+		t.Errorf("storage.data_dir = %q, want the --data-dir value %q", cfg.Storage.DataDir, flagDir)
+	}
+	if want := filepath.Join(flagDir, config.DBFileName); cfg.Storage.Path != want {
+		t.Errorf("storage.path = %q, want %q", cfg.Storage.Path, want)
+	}
+	assertUnder(t, root, cfg.Storage.Path)
+	assertDir(t, filepath.Join(flagDir, "run"))
+
+	// Not passed: the env layer is back in charge.
+	if _, err := runWithConfigFlag(t, "ps"); err != nil {
+		t.Fatalf("ps: %v", err)
+	}
+	if cfg.Storage.DataDir != envDir {
+		t.Errorf("without --data-dir, storage.data_dir = %q, want CTXT_DATA_DIR %q", cfg.Storage.DataDir, envDir)
+	}
+}

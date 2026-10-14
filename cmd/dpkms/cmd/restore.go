@@ -21,8 +21,9 @@ Restores:
   - Config files + keys (if present in backup)
   - Blob files (if present in backup)
 
-The target data directory is taken from config (storage.path) unless
-overridden with --data-dir. Existing files are overwritten.
+The database is restored to storage.path, which defaults to db.sqlite in
+the data directory (--data-dir, CTXT_DATA_DIR or storage.data_dir), so
+--data-dir moves the default target. Existing files are overwritten.
 
 Examples:
   dpkms restore ctxt-backup-2026-04-25T13-51-54Z.tar.gz
