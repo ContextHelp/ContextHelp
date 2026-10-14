@@ -15,10 +15,79 @@ type EdgeStore struct {
 	db *sql.DB
 }
 
+// edgeExecer is what an edge write runs on: the database or a
+// transaction.
+type edgeExecer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
 func (s *EdgeStore) Create(ctx context.Context, edge *storage.Edge) error {
+	return insertEdge(ctx, s.db, edge)
+}
+
+// CreateAll stores every edge in one transaction.
+func (s *EdgeStore) CreateAll(ctx context.Context, edges []*storage.Edge) error {
+	if len(edges) == 0 {
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("create edges: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, e := range edges {
+		if err := insertEdge(ctx, tx, e); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("create edges: commit: %w", err)
+	}
+	return nil
+}
+
+// DeleteMatching deletes every edge the matches select in one
+// transaction.
+func (s *EdgeStore) DeleteMatching(ctx context.Context, matches []storage.EdgeMatch) (int, error) {
+	for _, m := range matches {
+		if len(m.EdgeTypes) == 0 {
+			return 0, fmt.Errorf("delete edges %s/%s -> %s/%s: no edge types", m.FromType, m.FromID, m.ToType, m.ToID)
+		}
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("delete edges: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	deleted := 0
+	for _, m := range matches {
+		args := []any{m.FromType, m.FromID, m.ToType, m.ToID}
+		for _, t := range m.EdgeTypes {
+			args = append(args, t)
+		}
+		// #nosec G202 -- the IN list is "?" placeholders only
+		res, err := tx.ExecContext(ctx, `DELETE FROM edges
+			WHERE from_type = ? AND from_id = ? AND to_type = ? AND to_id = ?
+			AND edge_type IN (`+strings.Repeat("?,", len(m.EdgeTypes)-1)+`?)`, args...)
+		if err != nil {
+			return 0, fmt.Errorf("delete edges: %w", err)
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return 0, fmt.Errorf("delete edges: %w", err)
+		}
+		deleted += int(n)
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("delete edges: commit: %w", err)
+	}
+	return deleted, nil
+}
+
+func insertEdge(ctx context.Context, db edgeExecer, edge *storage.Edge) error {
 	metadata, _ := json.Marshal(edge.Metadata)
 
-	_, err := s.db.ExecContext(ctx, `INSERT INTO edges (
+	_, err := db.ExecContext(ctx, `INSERT INTO edges (
 		id, from_type, from_id, to_type, to_id, edge_type, weight, metadata, created_at
 	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		edge.ID, edge.FromType, edge.FromID, edge.ToType, edge.ToID,

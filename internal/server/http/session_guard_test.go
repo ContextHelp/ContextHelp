@@ -73,6 +73,8 @@ func TestUISession_ScopeRefusals(t *testing.T) {
 		{http.MethodPost, "/api/v1/inbox", authn.ScopeWriteInbox},
 		{http.MethodGet, "/api/v1/watches", authn.ScopeReadWatches},
 		{http.MethodPatch, "/api/v1/objects/x", authn.ScopeWriteObjects},
+		{http.MethodPost, "/api/v1/edges", authn.ScopeWriteObjects},
+		{http.MethodDelete, "/api/v1/edges", authn.ScopeDeleteEdges},
 		{http.MethodDelete, "/api/v1/aliases/x", authn.ScopeDeleteAliases},
 		{http.MethodDelete, "/api/v1/search-history", authn.ScopeDeleteSearches},
 		{http.MethodPost, "/api/v1/ui/login-codes", authn.ScopeReadUI},

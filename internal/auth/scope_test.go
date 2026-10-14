@@ -59,7 +59,7 @@ func TestWriterBundleExcludesDeleteProcessSyncAdmin(t *testing.T) {
 		}
 	}
 	for _, s := range []Scope{
-		ScopeDeleteObjects, ScopeDeleteAliases, ScopeDeleteSearches, ScopeProcessInbox,
+		ScopeDeleteObjects, ScopeDeleteEdges, ScopeDeleteAliases, ScopeDeleteSearches, ScopeProcessInbox,
 		ScopeSyncRegistries, ScopeAdminAudit, ScopeSignoutUI,
 	} {
 		if slices.Contains(got, s) {
@@ -111,7 +111,7 @@ func TestUISessionScopesPinned(t *testing.T) {
 		}
 	}
 	for _, s := range []Scope{
-		ScopeReadUI, ScopeReadMCP, ScopeWriteObjects, ScopeDeleteAliases, ScopeDeleteSearches,
+		ScopeReadUI, ScopeReadMCP, ScopeWriteObjects, ScopeDeleteEdges, ScopeDeleteAliases, ScopeDeleteSearches,
 		ScopeReadPipelines, ScopeReadWatches, ScopeWriteSystem, ScopeAdminAudit,
 	} {
 		if slices.Contains(UISessionScopes, s) {

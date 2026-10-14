@@ -154,6 +154,10 @@ func (m *mockEdgeStore) CountMentionsTo(ctx context.Context, toType, toID string
 func (m *mockEdgeStore) RelatedObjectIDs(ctx context.Context, objectID string, depth, limit int) ([]string, error) {
 	return nil, nil
 }
+func (m *mockEdgeStore) CreateAll(ctx context.Context, edges []*Edge) error { return nil }
+func (m *mockEdgeStore) DeleteMatching(ctx context.Context, matches []EdgeMatch) (int, error) {
+	return 0, nil
+}
 
 type mockJobStore struct{}
 

@@ -21,11 +21,15 @@ const (
 	// suggestions and the event stream.
 	ScopeReadObjects Scope = "read:objects"
 	// ScopeWriteObjects creates and updates knowledge: analyze, capture,
-	// imports, enqueues, object edits, aliases, saved searches,
+	// imports, enqueues, object edits, links, aliases, saved searches,
 	// suggestion review and entity pulls.
 	ScopeWriteObjects Scope = "write:objects"
 	// ScopeDeleteObjects deletes objects.
 	ScopeDeleteObjects Scope = "delete:objects"
+	// ScopeDeleteEdges deletes typed links between objects. Split from
+	// delete:objects, which a web UI session holds: a session never
+	// deletes links.
+	ScopeDeleteEdges Scope = "delete:edges"
 	// ScopeDeleteAliases deletes aliases.
 	ScopeDeleteAliases Scope = "delete:aliases"
 	// ScopeDeleteSearches deletes saved searches and clears the search
@@ -96,7 +100,7 @@ const (
 // AllScopes lists every scope in a stable order: grouped by resource,
 // read before write before the rest.
 var AllScopes = []Scope{
-	ScopeReadObjects, ScopeWriteObjects, ScopeDeleteObjects,
+	ScopeReadObjects, ScopeWriteObjects, ScopeDeleteObjects, ScopeDeleteEdges,
 	ScopeDeleteAliases, ScopeDeleteSearches, ScopeReadMCP,
 	ScopeReadInbox, ScopeWriteInbox, ScopeProcessInbox,
 	ScopeReadFeeds, ScopeWriteFeeds, ScopeDeleteFeeds,

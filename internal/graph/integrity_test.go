@@ -126,6 +126,15 @@ func (s *stubEdgeStore) DeleteByObject(_ context.Context, objectID string) error
 func (s *stubEdgeStore) RelatedObjectIDs(_ context.Context, objectID string, depth, limit int) ([]string, error) {
 	return nil, nil
 }
+func (s *stubEdgeStore) CreateAll(ctx context.Context, edges []*storage.Edge) error {
+	for _, e := range edges {
+		_ = s.Create(ctx, e)
+	}
+	return nil
+}
+func (s *stubEdgeStore) DeleteMatching(_ context.Context, _ []storage.EdgeMatch) (int, error) {
+	return 0, nil
+}
 func (s *stubEdgeStore) CountMentionsTo(_ context.Context, toType, toID string) (int, error) {
 	n := 0
 	for _, e := range s.edges {

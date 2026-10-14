@@ -132,6 +132,9 @@ Core endpoints:
 - `PATCH /objects/{id}`
 - `DELETE /objects/{id}`
 - `POST /objects/{id}/reprocess`
+- `GET /objects/{id}/edges`
+- `POST /edges`
+- `DELETE /edges`
 - `POST /find`
 - `GET /search/graph`
 - `POST /inbox`
@@ -415,6 +418,64 @@ Queues a job that re-runs one enrichment step on a stored object and writes the 
 Follow the job with `GET /jobs/{job_id}`. Its type is `object:reprocess`, and on completion `result_id` is the object ID. A job whose object was deleted in the meantime fails without a retry.
 
 Errors: 400 `INVALID_REQUEST` for an unknown or missing `step`, an unknown field or a body that isn't JSON; 404 `NOT_FOUND` for an unknown object. Nothing is queued on an error.
+
+### `POST /edges`
+
+Stores a typed link between two objects and, unless the type is symmetric, its inverse, in one transaction. Scope: `write:objects`. REST only; gRPC has no equivalent method.
+
+```json
+{"source": "o-a", "target": "o-b", "type": "extends", "context": "newer research"}
+```
+
+`type` is one of `extends`, `contradicts`, `supersedes`, `supports`, `related-to`, `derived-from`, or an inverse name (`extended-by`, `contradicted-by`, `superseded-by`, `supported-by`, `derived-to`). The inverse edge runs from `target` to `source` with the inverse type; `related-to` is symmetric and stores one edge. `context` is optional and is stored as each edge's `metadata.context`. The response is 201 with the stored edges, forward first:
+
+```json
+{"data": [
+  {"id": "…", "from_type": "object", "from_id": "o-a", "to_type": "object", "to_id": "o-b", "edge_type": "extends", "weight": 1, "metadata": {"context": "newer research"}, "created_at": "…"},
+  {"id": "…", "from_type": "object", "from_id": "o-b", "to_type": "object", "to_id": "o-a", "edge_type": "extended-by", "weight": 1, "metadata": {"context": "newer research"}, "created_at": "…"}
+]}
+```
+
+Errors, with nothing stored: 400 `INVALID_REQUEST` for a missing `source`, `target` or `type`, an unknown type, an unknown field or a body that isn't JSON; 404 `NOT_FOUND` when either object is missing.
+
+### `GET /objects/{id}/edges`
+
+The object's edges to and from other objects: typed links, their inverses and other object-to-object edges. Scope: `read:objects`. REST only.
+
+| Parameter | Values | Default |
+|---|---|---|
+| `direction` | `out`, `in`, `both` | `both` |
+| `type` | an edge type; only edges of that type | every type |
+| `depth` | 1 to 3 | none |
+
+Without `depth`, every edge touching the object: outbound first, then inbound. With `depth`, a breadth-first walk to that many hops that reaches each object once, through the first edge found; `direction` and `type` apply at every hop. Each entry is a hop:
+
+```json
+{"data": [
+  {"depth": 1, "from": "o-a", "direction": "out", "object_id": "o-b", "edge": {"edge_type": "extends", "...": "..."}},
+  {"depth": 2, "from": "o-b", "direction": "out", "object_id": "o-c", "edge": {"edge_type": "supports", "...": "..."}}
+]}
+```
+
+`from` is the object the hop leaves, `direction` whether the edge leaves it (`out`) or points at it (`in`), and `object_id` the other end. No edges is `{"data": []}`. Any other parameter, or a value out of range, is a 400 `INVALID_PARAM`; an unknown `{id}` a 404 `NOT_FOUND`.
+
+### `DELETE /edges`
+
+Deletes the links between two objects in both directions, each link together with its inverse, in one transaction. Scope: `delete:edges`, which only `admin` tokens hold: a `writer` gets 403 `INSUFFICIENT_SCOPE`. REST only.
+
+| Parameter | Values |
+|---|---|
+| `source` | object ID, required |
+| `target` | object ID, required |
+| `type` | a link type, optional |
+
+With `type`, only `source -[type]-> target` and `target -[inverse]-> source` go. Without it, every link either way between the two. Object edges that are not links (mentions, alternatives) stay. The response is 200 with the number of edges deleted, 0 when there were none:
+
+```json
+{"deleted": 2}
+```
+
+A missing `source` or `target`, an unknown type or any other parameter is a 400 `INVALID_PARAM`.
 
 ### Plugin Metadata
 

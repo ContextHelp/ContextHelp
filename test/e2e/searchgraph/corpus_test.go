@@ -3,11 +3,9 @@
 package searchgraph_test
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -41,7 +39,8 @@ type fixtureObject struct {
 	embedding []float32
 }
 
-// fixtureLink is one `ctxt link create` call.
+// fixtureLink is one typed link, as `ctxt link create` asks dpkms to
+// store it (POST /api/v1/edges).
 type fixtureLink struct{ from, typ, to string }
 
 // The corpus is shaped so one query exercises every graph feature:
@@ -114,34 +113,20 @@ type corpus struct {
 // seedCorpus builds the fixture database. Objects go in through the
 // service's raw analyze path, what `ctxt analyze --raw --mention` asks
 // dpkms to run (ctxt itself never writes a store), so each object keeps
-// its entity mentions. `link create` then stores each typed link with its
-// inverse through the binary. The default model and its vectors go in
-// through the storage driver: registering through the CLI probes a live
-// provider, and vectors are written by the dpkms migration job.
-func seedCorpus(bin, dir string) (*corpus, error) {
+// its entity mentions. Each typed link then goes in with its inverse
+// through the service's link path, what `ctxt link create` asks dpkms to
+// run. The default model and its vectors go in through the storage
+// driver: registering through the CLI probes a live provider, and
+// vectors are written by the dpkms migration job.
+func seedCorpus(dir string) (*corpus, error) {
 	h, err := newHome(dir, closedURL(), closedURL())
 	if err != nil {
 		return nil, err
-	}
-	run := func(args ...string) (string, error) {
-		cmd := exec.Command(bin, args...)
-		cmd.Env = h.environ()
-		var out, errb bytes.Buffer
-		cmd.Stdout, cmd.Stderr = &out, &errb
-		if err := cmd.Run(); err != nil {
-			return "", fmt.Errorf("ctxt %s: %w\nstdout: %s\nstderr: %s", strings.Join(args, " "), err, out.String(), errb.String())
-		}
-		return out.String(), nil
 	}
 
 	c := &corpus{db: h.db, ids: map[string]string{}}
 	if err := storeObjects(c); err != nil {
 		return nil, err
-	}
-	for _, l := range fixtureLinks {
-		if _, err := run("link", "create", c.ids[l.from], c.ids[l.to], "--type", l.typ); err != nil {
-			return nil, err
-		}
 	}
 	if err := storeEmbeddings(c); err != nil {
 		return nil, err
@@ -151,7 +136,8 @@ func seedCorpus(bin, dir string) (*corpus, error) {
 
 // storeObjects stores each fixture object through the service's raw
 // analyze path as `ctxt analyze --raw` stored it (source "argument"),
-// with its --mention value split as the CLI splits it.
+// with its --mention value split as the CLI splits it, then each fixture
+// link through the service's link path.
 func storeObjects(c *corpus) error {
 	ctx := context.Background()
 	if err := os.MkdirAll(filepath.Dir(c.db), 0o700); err != nil {
@@ -175,6 +161,11 @@ func storeObjects(c *corpus) error {
 			return fmt.Errorf("store %s: %w", o.alias, err)
 		}
 		c.ids[o.alias] = id
+	}
+	for _, l := range fixtureLinks {
+		if _, err := svc.CreateLink(ctx, service.LinkRequest{Source: c.ids[l.from], Target: c.ids[l.to], Type: l.typ}); err != nil {
+			return fmt.Errorf("link %s -[%s]-> %s: %w", l.from, l.typ, l.to, err)
+		}
 	}
 	return nil
 }

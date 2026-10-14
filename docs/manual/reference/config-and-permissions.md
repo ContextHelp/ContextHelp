@@ -72,7 +72,7 @@ A token needs at least one known role; an unknown or missing role fails `ctxt co
 
 | Scope | Bundles | Routes (under `/api/v1`) and gRPC methods |
 |---|---|---|
-| `read:objects` | reader, writer, admin | `GET` objects (list, facets, show, related), search, the search graph, entities (list, search, resolve, show, backlinks), aliases, saved searches, search history, suggestions; `POST /find`; `GET /events`; gRPC `QueryService/*`, `EntityService/*` |
+| `read:objects` | reader, writer, admin | `GET` objects (list, facets, show, related, edges), search, the search graph, entities (list, search, resolve, show, backlinks), aliases, saved searches, search history, suggestions; `POST /find`; `GET /events`; gRPC `QueryService/*`, `EntityService/*` |
 | `read:mcp` | reader, writer, admin | the MCP mount (`/mcp`) |
 | `read:inbox` | reader, writer, admin | `GET /inbox`, `inbox/queue` |
 | `read:feeds` | reader, writer, admin | `GET /feeds` |
@@ -81,12 +81,13 @@ A token needs at least one known role; an unknown or missing role fails `ctxt co
 | `read:system` | reader, writer, admin | `GET /whoami`, `GET /system/reminders`; gRPC reflection |
 | `read:pipelines` | reader, writer, admin | `GET` pipelines and steps |
 | `read:watches` | reader, writer, admin | `GET` watches and watch files |
-| `write:objects` | writer, admin | `POST /analyze`, `capture/*`, `import`, `importers/*/run`, `pipelines/enqueue`, `aliases`, `saved-searches`, suggestion approve and reject, `entities/{slug}/pull`; `PATCH /objects/{id}`, `POST /objects/{id}/reprocess`; gRPC `AnalyzeService/Analyze` |
+| `write:objects` | writer, admin | `POST /analyze`, `capture/*`, `import`, `importers/*/run`, `pipelines/enqueue`, `aliases`, `saved-searches`, suggestion approve and reject, `entities/{slug}/pull`; `PATCH /objects/{id}`, `POST /objects/{id}/reprocess`, `POST /edges`; gRPC `AnalyzeService/Analyze` |
 | `write:inbox` | writer, admin | `POST /inbox` |
 | `write:feeds` | writer, admin | `POST /feeds`, `feeds/sync`, `feeds/{id}/sync` |
 | `write:jobs` | writer, admin | `POST /jobs/{id}/retry` |
 | `write:system` | writer, admin | `POST /system/reminders/{id}/dismiss` |
 | `delete:objects` | admin | `DELETE /objects/{id}` |
+| `delete:edges` | admin | `DELETE /edges` |
 | `delete:aliases` | admin | `DELETE /aliases/{alias}` |
 | `delete:searches` | admin | `DELETE /saved-searches/{name}`, `DELETE /search-history` |
 | `delete:feeds` | admin | `DELETE /feeds/{id}` |

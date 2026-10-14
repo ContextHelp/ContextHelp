@@ -41,6 +41,12 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		{Method: del, Pattern: "/objects/{id}", Scope: authn.ScopeDeleteObjects, Handler: DeleteObject(svc)},
 		{Method: post, Pattern: "/objects/{id}/reprocess", Scope: authn.ScopeWriteObjects, Handler: ReprocessObject(svc)},
 
+		// Typed links between objects. A web UI session reads them
+		// (read:objects) but never links or unlinks.
+		{Method: post, Pattern: "/edges", Scope: authn.ScopeWriteObjects, Handler: CreateEdge(svc)},
+		{Method: get, Pattern: "/objects/{id}/edges", Scope: authn.ScopeReadObjects, Handler: ObjectEdges(svc)},
+		{Method: del, Pattern: "/edges", Scope: authn.ScopeDeleteEdges, Handler: DeleteEdges(svc)},
+
 		// Analyze
 		{Method: post, Pattern: "/analyze", Scope: authn.ScopeWriteObjects, Handler: Analyze(svc)},
 

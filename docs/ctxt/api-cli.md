@@ -70,6 +70,7 @@ go build -o dpkms cmd/dpkms/main.go
 | `ctxt delete` | Remove knowledge objects |
 | `ctxt edit` | Modify knowledge object metadata |
 | `ctxt reprocess` | Re-run an enrichment step on an object, as a dpkms job |
+| `ctxt link` | Create, list and delete typed links between objects |
 | `ctxt profile` | Manage focus profiles |
 | `ctxt make` | Generate compositions (briefs, plans) |
 | `ctxt stats` | Live at-a-glance system summary |
@@ -397,6 +398,23 @@ ctxt reprocess <id> [--step structured_metadata|entity_extractor|tagger]
 - The step runs where dpkms runs, with that instance's providers and configuration. ctxt only queues it and prints the job ID; `--format json` prints `{id, step, job_id, status: "queued"}`.
 - `--step` defaults to `structured_metadata`. An unknown step exits 2, an unknown ID 3, a reader token 5.
 - The job's type is `object:reprocess`. Once it completes, `ctxt show <id>` shows the result.
+
+---
+
+## `ctxt link`
+
+Typed links between two objects, stored on the dpkms instance.
+
+```bash
+ctxt link create <source_id> <target_id> --type <type> [--context "<reason>"]
+ctxt link list <object_id> [--type <type>] [--follow 1-3]
+ctxt link delete <source_id> <target_id> --confirm-token=<sha>
+```
+
+- **Types:** `extends`, `contradicts`, `supersedes`, `supports`, `related-to`, `derived-from`, or an inverse name such as `extended-by`. dpkms stores the reverse edge with each link (`extends` gets `extended-by`), except for the symmetric `related-to`, and deletes the two together.
+- **create** (`POST /api/v1/edges`) needs `write:objects`. An unknown type exits 2, an unknown object 3.
+- **list** (`GET /api/v1/objects/{id}/edges`) needs `read:objects`. Without `--follow` it prints every edge in and out of the object, with its context. `--follow N` walks N hops (at most 3) and prints each object once. An unknown object exits 3.
+- **delete** (`DELETE /api/v1/edges`) removes every link between the two objects, both directions. It needs `delete:edges`, which only the `admin` role holds: a `writer` token exits 5 and deletes nothing.
 
 ---
 
