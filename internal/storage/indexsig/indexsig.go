@@ -48,7 +48,10 @@ const FTSSignatureID = "objects_fts"
 // text (trimmed) already appeared is indexed once, first occurrence first.
 // v3 = v2 with blob:// refs dropped: an externalized object's ref is
 // never indexed text.
-const ProjectionVersion = "v3"
+// v4 = v3. Bumped so the re-projection runs again and gives text back to
+// rows whose text_content is their blob:// ref (written before v3; see
+// storage.RefTextStore), on databases a v3 run already stamped.
+const ProjectionVersion = "v4"
 
 // SQLiteFTSTokenizer is the tokenizer in use for objects_fts. The DDL does
 // not specify `tokenize=`, so FTS5 falls back to its default ("unicode61"

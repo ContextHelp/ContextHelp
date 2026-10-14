@@ -506,11 +506,9 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 	}
 	contentArgs = append(contentArgs, hash)
 
-	// fts_indexed is left untouched: Reinforce never removes the
-	// objects_fts row written at Create/Update time, and no downstream
-	// re-indexer exists to flip the flag back. Clearing it here misreported
-	// reinforced (deduplicated) objects as unindexed even though FTS still
-	// matched them.
+	// fts_indexed is not cleared here: the row is re-indexed below, which
+	// sets it when the new body is non-empty. Clearing it misreported
+	// reinforced (deduplicated) objects as unindexed.
 	query := fmt.Sprintf(`
 		UPDATE objects SET
 			tags = ?,
@@ -523,6 +521,12 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 	_, err = tx.ExecContext(ctx, query, contentArgs...)
 	if err != nil {
 		return "", fmt.Errorf("reinforce: update: %w", err)
+	}
+	// The text, tags and mentions just written feed the FTS body:
+	// re-index the row as Update does, or search keeps matching what
+	// it held before. content_hash is unique: one row.
+	if err := reindexRowTx(ctx, tx, obj.ID); err != nil {
+		return "", fmt.Errorf("reinforce: reindex: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {

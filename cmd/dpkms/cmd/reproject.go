@@ -16,12 +16,15 @@ import (
 // handleReproject registers the re-projection job handler (ADR-070
 // reindex_auto for a projection change). Progress goes to the daemon's
 // upgrade status, so `ctxt upgrade status` and the CLI banner show it.
-func handleReproject(pool *jobs.WorkerPool, driver storage.StorageDriver, mgr *upgrade.Manager, bus events.Bus) {
+// textCap (storage.blob.threshold) caps the text the run gives back to
+// objects whose text_content is a blob ref.
+func handleReproject(pool *jobs.WorkerPool, driver storage.StorageDriver, mgr *upgrade.Manager, bus events.Bus, textCap int64) {
 	r, err := jobs.NewReprojector(driver, mgr, bus)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "warning: re-projection unavailable; a projection change will not be applied: %v\n", err)
 		return
 	}
+	r.TextCap = textCap
 	pool.Handle(jobs.ReprojectJobType, r.Handle)
 }
 

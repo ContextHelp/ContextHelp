@@ -42,6 +42,9 @@ const ReprojectJobType = "projection:reproject"
 
 // Re-projection defaults.
 const (
+	// DefaultTextCap caps repaired text when TextCap is unset; it is the
+	// storage.blob.threshold default.
+	DefaultTextCap = 65536
 	// DefaultReprojectBatch is the stale-ID page size.
 	DefaultReprojectBatch = 200
 	// defaultReprojectBusyPoll is how often a run retries claiming the
@@ -81,6 +84,12 @@ type ReprojectResult struct {
 	Skipped       int      `json:"skipped"`
 	Failed        int      `json:"failed"`
 	FailedObjects []string `json:"failed_objects,omitempty"`
+	// TextRepaired objects had a blob:// ref as text_content and got
+	// their text back (see repairRefText); TextRepairFailed ones keep
+	// the ref (their blob could not be read).
+	TextRepaired            int      `json:"text_repaired,omitempty"`
+	TextRepairFailed        int      `json:"text_repair_failed,omitempty"`
+	TextRepairFailedObjects []string `json:"text_repair_failed_objects,omitempty"`
 }
 
 // Done is the number of objects the run handled.
@@ -91,6 +100,13 @@ func (r ReprojectResult) Done() int { return r.Reprojected + r.Skipped + r.Faile
 // poll (BusyPoll).
 type Reprojector struct {
 	Store storage.ProjectionStore
+	// RefText and Blobs repair text_content that is a blob:// ref before
+	// re-projecting (see repairRefText); a nil RefText skips the repair.
+	RefText storage.RefTextStore
+	Blobs   storage.BlobStore
+	// TextCap caps repaired text: storage.blob.threshold, what
+	// externalize_content keeps inline. Zero is DefaultTextCap.
+	TextCap int64
 	// Stamp stores the current FTS signature; called once every object
 	// is re-projected.
 	Stamp    func(ctx context.Context) error
@@ -106,7 +122,8 @@ func NewReprojector(driver storage.StorageDriver, progress ReprojectProgress, b 
 	if !ok {
 		return nil, fmt.Errorf("reproject: %T object store cannot re-project", driver.Objects())
 	}
-	r := &Reprojector{Store: store, Progress: progress, Bus: b}
+	r := &Reprojector{Store: store, Progress: progress, Bus: b, Blobs: driver.Blobs()}
+	r.RefText, _ = driver.Objects().(storage.RefTextStore)
 	switch d := driver.(type) {
 	case *sqlite.Driver:
 		r.Stamp = func(ctx context.Context) error { return indexsig.StampFTS(ctx, d.DB(), indexsig.DialectSQLite) }
@@ -152,8 +169,8 @@ func (r *Reprojector) Handle(ctx context.Context, job *storage.Job) (string, err
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("reprojected %d of %d objects to %s (%d failed)",
-		res.Reprojected, res.Total, ReprojectTarget(), res.Failed), nil
+	return fmt.Sprintf("reprojected %d of %d objects to %s (%d failed); repaired the text of %d (%d failed)",
+		res.Reprojected, res.Total, ReprojectTarget(), res.Failed, res.TextRepaired, res.TextRepairFailed), nil
 }
 
 // Run re-projects every stale object and stamps the FTS signature when
@@ -163,6 +180,14 @@ func (r *Reprojector) Handle(ctx context.Context, job *storage.Job) (string, err
 func (r *Reprojector) Run(ctx context.Context, jobID string) (ReprojectResult, error) {
 	x := &reprojectRun{Reprojector: r, jobID: jobID, start: time.Now()}
 	x.res.ProjectionVersion = indexsig.ProjectionVersion
+	// Before counting: a repaired row is marked stale, so the pass below
+	// re-indexes it whatever projection it was stamped with.
+	if err := x.repairRefText(ctx); err != nil {
+		if ctx.Err() != nil {
+			return x.res, interruptCause(ctx)
+		}
+		return x.res, fmt.Errorf("repair ref text: %w", err)
+	}
 	if err := x.begin(ctx); err != nil {
 		return x.res, err
 	}

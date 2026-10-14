@@ -111,7 +111,7 @@ Optional retention prune (policy-controlled):
 dpkms housekeeping prune --before 2025-01-01
 ```
 
-Prune deletes each object with the blob its content is stored in (content above `storage.blob.threshold`), unless another object still refers to that blob. A blob it can't delete is listed as an orphan blob; its object is deleted either way.
+Prune deletes each object the way `DELETE /api/v1/objects/{id}` does: its edges, then the object, then the blob its content is stored in (content above `storage.blob.threshold`), unless another object still refers to that blob. A blob it can't delete is listed as an orphan blob; its object is deleted either way. `--dry-run` lists the objects and the blobs it would delete. `dpkms housekeeping run` purges blobs no object refers to once they are older than `--blob-grace` (default `1h`), orphans included.
 
 ### 2. Pipeline and step governance
 

@@ -2,6 +2,7 @@ package s3
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -109,5 +110,40 @@ func TestExistsAccessDeniedIsError(t *testing.T) {
 	}
 	if ok {
 		t.Error("Exists = true alongside an error, want false")
+	}
+}
+
+// TestListFollowsContinuation pins that List returns every page of a
+// truncated ListObjectsV2 listing, not just the first (S3 caps a page at
+// 1000 keys). The orphan-blob sweep relies on seeing every key.
+func TestListFollowsContinuation(t *testing.T) {
+	const page = `<?xml version="1.0" encoding="UTF-8"?>
+<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+<Name>test-bucket</Name><IsTruncated>%s</IsTruncated>%s
+<Contents><Key>%s</Key><Size>3</Size><LastModified>2026-01-02T03:04:05.000Z</LastModified></Contents>
+<Contents><Key>%s.meta.json</Key><Size>2</Size><LastModified>2026-01-02T03:04:05.000Z</LastModified></Contents>
+</ListBucketResult>`
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/xml")
+		if r.URL.Query().Get("continuation-token") == "" {
+			fmt.Fprintf(w, page, "true", "<NextContinuationToken>next</NextContinuationToken>", "ab/cd/abcdfirst", "ab/cd/abcdfirst")
+			return
+		}
+		fmt.Fprintf(w, page, "false", "", "ef/01/ef01second", "ef/01/ef01second")
+	}))
+	defer srv.Close()
+
+	items, err := newTestStore(t, srv).List(context.Background(), "")
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	var keys []string
+	for _, it := range items {
+		keys = append(keys, it.Key)
+	}
+	if len(keys) != 2 || keys[0] != "abcdfirst" || keys[1] != "ef01second" {
+		t.Errorf("List keys = %v, want [abcdfirst ef01second] (calls: %d)", keys, calls)
 	}
 }

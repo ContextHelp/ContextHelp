@@ -16,20 +16,26 @@ type Orphan struct {
 
 func (o Orphan) String() string { return fmt.Sprintf("%s: %v", o.Key, o.Err) }
 
-// DeleteObject hard-deletes object id, then each blob its content is
-// externalized to that no other object still refers to (keys are content
-// hashes, so objects can share one).
+// DeleteObject hard-deletes object id: its edges, its row, then each
+// blob its content is externalized to that no other object still refers
+// to (keys are content hashes, so objects can share one). It is the one
+// hard-delete path: DELETE /objects/{id} and prune both go through it.
 //
-// The row goes first. A failure after it leaves at worst an orphan blob,
-// returned in orphans with the object deleted and err nil, never a row
-// whose ref names a deleted blob. err reports that the object could not
-// be read or deleted; nothing was deleted then.
+// Edges go first: no foreign key cascades them, and an edge left naming
+// a deleted object is never cleaned up. The row goes before its blobs. A
+// failure after it leaves at worst an orphan blob, returned in orphans
+// with the object deleted and err nil, never a row whose ref names a
+// deleted blob. err reports that the object could not be read, or its
+// edges or row deleted; its row and blobs are intact then.
 func DeleteObject(ctx context.Context, drv storage.StorageDriver, id string) (orphans []Orphan, err error) {
 	obj, err := drv.Objects().Get(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("delete object %s: %w", id, err)
 	}
 	keys := Keys(obj)
+	if err := drv.Edges().DeleteByObject(ctx, id); err != nil {
+		return nil, fmt.Errorf("delete object %s: %w", id, err)
+	}
 	if err := drv.Objects().Delete(ctx, id); err != nil {
 		return nil, err
 	}
@@ -81,4 +87,31 @@ func Keys(obj *storage.KnowledgeObject) []string {
 		add(key)
 	}
 	return keys
+}
+
+// PlanDelete returns the blob keys DeleteObject would delete were every
+// object in objs deleted: each key they refer to that no object outside
+// objs refers to, in the order objs first name them. It reads only.
+func PlanDelete(ctx context.Context, drv storage.StorageDriver, objs []*storage.KnowledgeObject) ([]string, error) {
+	var order []string
+	refs := map[string]int{} // key -> objects in objs referring to it
+	for _, obj := range objs {
+		for _, key := range Keys(obj) {
+			if refs[key] == 0 {
+				order = append(order, key)
+			}
+			refs[key]++
+		}
+	}
+	var keys []string
+	for _, key := range order {
+		n, err := drv.Objects().CountBlobRefs(ctx, key)
+		if err != nil {
+			return nil, err
+		}
+		if n <= refs[key] {
+			keys = append(keys, key)
+		}
+	}
+	return keys, nil
 }
