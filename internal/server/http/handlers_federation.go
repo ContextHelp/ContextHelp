@@ -3,6 +3,8 @@ package http
 import (
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/ideacrafterslabs/ctxt/internal/federation"
@@ -18,6 +20,10 @@ import (
 // — an authenticated principal alone is never enough to push. When a
 // token is configured it is always enforced (private instances too),
 // compared in constant time.
+//
+// A body over federation.max_request_bytes is 413 PAYLOAD_TOO_LARGE,
+// read no further: the pusher sends an object over its own request cap
+// alone, and fails that object, not the target, on a 413.
 //
 // Response: 200 OK {"accepted": N} where N = count of newly inserted objects.
 func FederationPush(svc *service.Service, requireCredential bool) http.HandlerFunc {
@@ -36,8 +42,14 @@ func FederationPush(svc *service.Service, requireCredential bool) http.HandlerFu
 			}
 		}
 
+		limit := svc.Cfg.Federation.RequestLimit()
 		var req federation.FederationPushRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit)).Decode(&req); err != nil {
+			if tooLarge := (*http.MaxBytesError)(nil); errors.As(err, &tooLarge) {
+				WriteError(w, http.StatusRequestEntityTooLarge, "PAYLOAD_TOO_LARGE", fmt.Sprintf(
+					"push body over %d bytes (federation.max_request_bytes)", limit))
+				return
+			}
 			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid JSON body")
 			return
 		}

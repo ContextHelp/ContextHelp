@@ -35,6 +35,13 @@ var ErrCapabilityMissing = errors.New("storage capability missing")
 // the driver and unequal between drivers.
 var ErrNotFound = errors.New("not found")
 
+// ErrBlobNotFound is the cross-backend sentinel for "the blob store
+// holds no blob under this key". BlobStore.Get returns an error wrapping
+// it for a missing key, and only then: a store it cannot reach (network,
+// timeout, 5xx, permissions) is some other error, so callers can tell a
+// blob that is gone from one they could not read this time.
+var ErrBlobNotFound = errors.New("blob not found")
+
 // ErrNotImplemented is returned by a store a backend does not implement
 // yet, so callers can tell a missing capability from a failed query.
 var ErrNotImplemented = errors.New("not implemented by this storage backend")
@@ -150,6 +157,8 @@ type AuditStore interface {
 // BlobStore manages external binary content.
 type BlobStore interface {
 	Put(ctx context.Context, key string, data io.Reader, meta BlobMeta) error
+	// Get opens the blob under key. A missing key is an error wrapping
+	// ErrBlobNotFound.
 	Get(ctx context.Context, key string) (io.ReadCloser, BlobMeta, error)
 	Delete(ctx context.Context, key string) error
 	Exists(ctx context.Context, key string) (bool, error)

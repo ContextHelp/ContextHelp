@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 )
@@ -36,11 +37,12 @@ type pushBody struct {
 
 // DefaultMaxRequestBytes caps the encoded objects one push request
 // carries. Content travels inline, so a batch of large objects is split
-// across requests. An object larger than the cap still goes, alone:
-// FederationPush reads a body of any size. A receiver that refuses it
-// anyway (HTTP 413, from a proxy in front) fails it with an
-// *ObjectError, so Sync eventually skips it.
-const DefaultMaxRequestBytes = 4 << 20
+// across requests. An object larger than the cap still goes, alone: a
+// receiving dpkms reads a body up to its federation.max_request_bytes,
+// at least this cap. A receiver that refuses it (HTTP 413, from that
+// limit or a proxy in front) fails it with an *ObjectError, so Sync
+// eventually skips it.
+const DefaultMaxRequestBytes = int(config.MinFederationMaxRequestBytes)
 
 // RemotePusher pushes objects to a remote dpkms instance via HTTP POST.
 // Endpoint: POST /api/v1/federation/push
@@ -116,15 +118,16 @@ func (p *RemotePusher) Advance(ctx context.Context, seq int64) error {
 
 // encodeInline returns o encoded for the wire, every blob:// ref
 // replaced by the content it names, read from the source's store. o is
-// not modified. Content it cannot read is an *ObjectError.
+// not modified. A blob the store does not hold is an *ObjectError; any
+// other read failure is the store's, not the object's.
 func (p *RemotePusher) encodeInline(ctx context.Context, o storage.KnowledgeObject) (json.RawMessage, error) {
 	raw, err := blob.Content(ctx, p.blobs, o.RawContent)
 	if err != nil {
-		return nil, &ObjectError{ID: o.ID, Err: err}
+		return nil, objectBlobError(o.ID, err)
 	}
 	text, err := blob.Content(ctx, p.blobs, o.TextContent)
 	if err != nil {
-		return nil, &ObjectError{ID: o.ID, Err: err}
+		return nil, objectBlobError(o.ID, err)
 	}
 	o.RawContent, o.TextContent = raw, text
 	enc, err := json.Marshal(o)

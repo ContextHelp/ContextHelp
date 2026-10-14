@@ -128,8 +128,11 @@ func (s *Store) Get(ctx context.Context, key string) (io.ReadCloser, storage.Blo
 		Bucket: &s.bucket,
 		Key:    &objKey,
 	})
+	if isNotFound(err) {
+		return nil, storage.BlobMeta{}, fmt.Errorf("blob %q: %w: %w", key, storage.ErrBlobNotFound, err)
+	}
 	if err != nil {
-		return nil, storage.BlobMeta{}, fmt.Errorf("blob %q not found: %w", key, err)
+		return nil, storage.BlobMeta{}, fmt.Errorf("blob s3 get %q: %w", key, err)
 	}
 
 	var meta storage.BlobMeta
@@ -176,9 +179,7 @@ func (s *Store) Exists(ctx context.Context, key string) (bool, error) {
 		// unknown, and reporting it as absent would let callers overwrite
 		// or re-upload live data. Mirrors the local store, which returns
 		// the error for any stat failure other than ErrNotExist.
-		var notFound *types.NotFound
-		var noSuchKey *types.NoSuchKey
-		if errors.As(err, &notFound) || errors.As(err, &noSuchKey) {
+		if isNotFound(err) {
 			return false, nil
 		}
 		return false, fmt.Errorf("blob s3 exists: %w", err)
@@ -243,4 +244,14 @@ func (s *Store) URL(ctx context.Context, key string) (string, error) {
 		return "", fmt.Errorf("blob s3 url: %w", err)
 	}
 	return result.URL, nil
+}
+
+// isNotFound reports whether err is S3's definitive "no such key": a
+// NoSuchKey or NotFound error (HeadObject has no body to name it). Any
+// other failure (auth, network, throttling, 5xx) leaves the object's
+// existence unknown.
+func isNotFound(err error) bool {
+	var notFound *types.NotFound
+	var noSuchKey *types.NoSuchKey
+	return errors.As(err, &notFound) || errors.As(err, &noSuchKey)
 }

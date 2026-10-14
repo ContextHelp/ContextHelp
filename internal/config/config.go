@@ -241,6 +241,34 @@ type FederationConfig struct {
 	// Token is the expected Bearer token for incoming push requests.
 	// Empty = no auth check; any token accepted.
 	Token string `mapstructure:"token" yaml:"token" secret:"true"`
+	// MaxRequestBytes caps the body of one incoming push request; a
+	// larger one is refused with 413. 0 = DefaultFederationMaxRequestBytes.
+	MaxRequestBytes int64 `mapstructure:"max_request_bytes" yaml:"max_request_bytes"`
+}
+
+const (
+	// DefaultFederationMaxRequestBytes is federation.max_request_bytes
+	// unset. A pusher batches requests up to
+	// MinFederationMaxRequestBytes of objects but sends a larger object
+	// alone, content inline: raw and text, each JSON-escaped. The
+	// largest object a pipeline reads (file_reader's 50 MB cap) comes to
+	// about 100 MB that way, plus escaping; this leaves room for that.
+	// An object captured directly (CLI, POST /api/v1/objects), which
+	// nothing caps, can exceed it: its pusher skips it after 3 refusals.
+	DefaultFederationMaxRequestBytes int64 = 256 << 20
+	// MinFederationMaxRequestBytes is the encoded objects a pusher puts
+	// in one request (federation.DefaultMaxRequestBytes): a lower limit
+	// would refuse ordinary batches.
+	MinFederationMaxRequestBytes int64 = 4 << 20
+)
+
+// RequestLimit returns the push body limit: MaxRequestBytes, or
+// DefaultFederationMaxRequestBytes when it is 0.
+func (f FederationConfig) RequestLimit() int64 {
+	if f.MaxRequestBytes == 0 {
+		return DefaultFederationMaxRequestBytes
+	}
+	return f.MaxRequestBytes
 }
 
 // FederationEntry describes one remote dPKMS instance to federate with.
@@ -1333,6 +1361,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("server.public", false)
 	v.SetDefault("server.dev", false)
 	v.SetDefault("server.reminder_interval", DefaultReminderInterval)
+
+	// Federation receive-side defaults
+	v.SetDefault("federation.max_request_bytes", DefaultFederationMaxRequestBytes)
 
 	// Profile defaults
 	v.SetDefault("profile.default", "")

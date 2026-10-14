@@ -235,20 +235,33 @@ Objects go 100 per batch; to an `http(s)` target, in requests of at most
 4 MiB of objects, content inline; a larger object goes alone. A refused
 batch leaves the watermark where it was and is re-sent on the next tick.
 An object that fails 3 ticks in a row on its own — its source blob is
-gone, or the receiver answers 413 to it sent alone — is skipped: dpkms
+gone, or the receiver answers 413 to it sent alone (over the receiver's
+`federation.max_request_bytes` or a proxy's limit) — is skipped: dpkms
 logs `federation: skipping object after repeated push failures` with its
-id, and the rest of the batch goes through. Editing the object sends it
-again. Renaming an entry starts its watermark over.
+id, and the rest of the batch goes through. Only a blob the source store
+reports missing counts: a store that cannot be read (network, timeout,
+S3 5xx or access denied) fails the tick and the next one retries, however
+long it lasts. Editing the object sends it again. Renaming an entry starts its watermark over.
 
 ### Inbound auth (`federation`)
 
 ```yaml
 federation:
   token: <accept-token>        # literal; keep this file 0600
+  max_request_bytes: 268435456 # default (256 MiB)
 ```
 
 Set `token` to require a Bearer token on incoming push requests.
 Empty = accept any token (use only in trusted network environments).
+
+`max_request_bytes` caps one push request body; a larger one gets
+`413 PAYLOAD_TOO_LARGE`. Unset or `0` is 256 MiB; the minimum is 4 MiB,
+the objects a pusher batches per request. An object over the pusher's
+4 MiB cap goes alone with its raw and text content inline, so the
+default takes the largest object a pipeline reads (50 MB file) with
+room for JSON escaping. An object captured directly (CLI or API), which
+nothing caps, can exceed it: the pusher skips it after 3 ticks. Raise
+the limit on the receiver to take it.
 
 ---
 

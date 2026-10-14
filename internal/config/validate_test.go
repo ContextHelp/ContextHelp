@@ -103,6 +103,16 @@ func TestValidate(t *testing.T) {
 			},
 			wantField: "registries[0].auth.header_name",
 		},
+		{
+			name:      "federation request limit below the pusher's request cap",
+			mutate:    func(c *Config) { c.Federation.MaxRequestBytes = MinFederationMaxRequestBytes - 1 },
+			wantField: "federation.max_request_bytes",
+		},
+		{
+			name:      "federation request limit negative",
+			mutate:    func(c *Config) { c.Federation.MaxRequestBytes = -1 },
+			wantField: "federation.max_request_bytes",
+		},
 	}
 
 	for _, tc := range cases {
@@ -320,6 +330,21 @@ func TestValidateDefaultsClean(t *testing.T) {
 	cfg, err := Load("ctxt", "")
 	require.NoError(t, err)
 	assert.Empty(t, Validate(cfg))
+}
+
+// federation.max_request_bytes loads its default, takes the pusher's
+// request cap as a floor, and 0 means the default.
+func TestFederationMaxRequestBytes(t *testing.T) {
+	cfg, err := Load("ctxt", "")
+	require.NoError(t, err)
+	assert.Equal(t, DefaultFederationMaxRequestBytes, cfg.Federation.MaxRequestBytes)
+
+	for _, n := range []int64{0, MinFederationMaxRequestBytes} {
+		c := &Config{Federation: FederationConfig{MaxRequestBytes: n}}
+		assert.Empty(t, Validate(c), "max_request_bytes %d", n)
+	}
+	assert.Equal(t, DefaultFederationMaxRequestBytes, FederationConfig{}.RequestLimit())
+	assert.Equal(t, int64(8<<20), FederationConfig{MaxRequestBytes: 8 << 20}.RequestLimit())
 }
 
 func TestValidateBlob(t *testing.T) {

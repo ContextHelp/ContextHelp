@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 )
 
 // seedWithLostBlob stores one inline object per id, except lost, whose
@@ -247,5 +248,109 @@ func TestWorkerSet_ReportsSkippedObjects(t *testing.T) {
 	got := ws.Skipped()
 	if len(got) != 1 || len(got["fed-skip"]) != 1 || got["fed-skip"][0].ID != "w-2" {
 		t.Errorf("Skipped() = %+v, want w-2 under fed-skip", got)
+	}
+}
+
+// flakyBlobs is a blob store whose reads fail with err while down is
+// set, the way a store does through an outage (network, timeout, 5xx).
+type flakyBlobs struct {
+	storage.BlobStore
+	mu   sync.Mutex
+	down bool
+	err  error
+}
+
+func (f *flakyBlobs) Get(ctx context.Context, key string) (io.ReadCloser, storage.BlobMeta, error) {
+	f.mu.Lock()
+	down := f.down
+	f.mu.Unlock()
+	if down {
+		return nil, storage.BlobMeta{}, f.err
+	}
+	return f.BlobStore.Get(ctx, key)
+}
+
+func (f *flakyBlobs) recover() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.down = false
+}
+
+// A source blob store that is down fails the sync but is not the
+// object's fault: however many syncs it lasts, nothing is skipped and
+// the watermark stays, so once the store is back every object goes.
+// Only a blob the store reports missing counts toward a skip.
+func TestSyncer_BlobStoreOutageNeverSkips(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		pusher func(t *testing.T, blobs storage.BlobStore, src storage.StorageDriver) (Pusher, func() []string)
+	}{
+		{"local", func(t *testing.T, blobs storage.BlobStore, src storage.StorageDriver) (Pusher, func() []string) {
+			_, target := newTestDB(t)
+			return NewLocalPusher("outage-local", target, nil, blobs), func() []string {
+				return objectIDs(t, openPath(t, target))
+			}
+		}},
+		{"remote", func(t *testing.T, blobs storage.BlobStore, src storage.StorageDriver) (Pusher, func() []string) {
+			rv := &receiver{}
+			p := NewRemotePusherWithWatermarks("outage-remote", rv.serve(t).URL, "", src.Watermarks(), blobs)
+			return p, func() []string {
+				ids := slices.Clone(rv.sent())
+				slices.Sort(ids)
+				return slices.Compact(ids)
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			src := seedWithLostBlob(t, "b-2", "b-1", "b-2", "b-3")
+			if err := src.Blobs().Put(ctx, lostKey, strings.NewReader("here"), storage.BlobMeta{Size: 4}); err != nil {
+				t.Fatal(err)
+			}
+			blobs := &flakyBlobs{BlobStore: src.Blobs(), down: true,
+				err: fmt.Errorf("blob s3 get %q: %w", lostKey, errors.New("dial tcp: i/o timeout"))}
+			p, delivered := tc.pusher(t, blobs, src)
+			s := NewSyncer(src, p, 0)
+
+			_, errs := syncTimes(s, 2*maxObjectFailures)
+			for i, err := range errs {
+				var oe *ObjectError
+				if err == nil || errors.As(err, &oe) {
+					t.Fatalf("sync %d during the outage: err = %v, want a failure that is not an ObjectError", i+1, err)
+				}
+			}
+			if got := s.Skipped(); len(got) != 0 {
+				t.Fatalf("skipped %+v during a blob store outage", got)
+			}
+			if wm := mustWatermark(t, p); wm >= seqOf(t, src, "b-2") {
+				t.Fatalf("watermark %d passed b-2 (%d) during the outage", wm, seqOf(t, src, "b-2"))
+			}
+
+			blobs.recover()
+			if _, err := s.Sync(ctx); err != nil {
+				t.Fatalf("sync after the outage: %v", err)
+			}
+			if got, want := delivered(), []string{"b-1", "b-2", "b-3"}; !slices.Equal(got, want) {
+				t.Errorf("target holds %v, want %v", got, want)
+			}
+		})
+	}
+}
+
+// A source with no blob store cannot read any blob: that is the
+// source's setup, not one object's fault, so nothing is skipped.
+func TestSyncer_NoSourceBlobStoreNeverSkips(t *testing.T) {
+	src := seedWithLostBlob(t, "n-2", "n-1", "n-2")
+	_, target := newTestDB(t)
+	s := NewSyncer(src, NewLocalPusher("no-store", target, nil, nil), 0)
+	_, errs := syncTimes(s, 2*maxObjectFailures)
+	for i, err := range errs {
+		var oe *ObjectError
+		if !errors.Is(err, blob.ErrNoStore) || errors.As(err, &oe) {
+			t.Fatalf("sync %d: err = %v, want ErrNoStore, not an ObjectError", i+1, err)
+		}
+	}
+	if got := s.Skipped(); len(got) != 0 {
+		t.Errorf("skipped %+v with no source blob store", got)
 	}
 }
