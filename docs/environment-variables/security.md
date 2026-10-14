@@ -1,6 +1,6 @@
 # Security Environment Variables
 
-Secrets backend and backup-bundle encryption. Inbound auth has no env
+Secrets backend, policy rules file and backup-bundle encryption. Inbound auth has no env
 vars: set `server.access` and `server.auth` in the config file — see
 [Inbound auth, roles and scopes](../manual/reference/config-and-permissions.md#inbound-auth-roles-and-scopes).
 
@@ -46,6 +46,32 @@ CTXT_AGE_IDENTITY=~/.config/contexthelp/age.key
 
 Config-file only: `secrets.keychain_service` (default `ctxt`),
 `secrets.onepassword_vault`, `secrets.gh_repo`.
+
+---
+
+## Policy rules
+
+### CTXT_POLICY_FILE
+**Type:** string (path)\
+**Default:** `<config dir>/contexthelp/policy/ctxt.yaml`
+
+The kit CEL policy file `dpkms serve` loads at startup. Read by `dpkms`
+only. The config dir is `$XDG_CONFIG_HOME`, else `~/.config` on Linux and
+`~/Library/Application Support` on macOS.
+
+- **Unset:** the default path is used. A missing or empty file is seeded
+  from the bundled default; a pre-existing `<config dir>/contexthelp/policies.yaml`
+  is moved there first. If seeding fails, the bundled default is applied
+  without writing a file.
+- **Set:** that file is loaded as is — never seeded, never migrated. A
+  missing or invalid file stops `dpkms serve`.
+
+```bash
+CTXT_POLICY_FILE=/etc/contexthelp/policy/ctxt.yaml dpkms serve
+```
+
+Rule syntax: [../ctxt/policies.md](../ctxt/policies.md). Source:
+`internal/policy/policy.go`.
 
 ---
 
