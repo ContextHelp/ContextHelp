@@ -18,12 +18,16 @@ func TestConfigFromAlertsDefaults(t *testing.T) {
 	if c.WindowDuration != 60*time.Second {
 		t.Errorf("WindowDuration = %s, want 60s", c.WindowDuration)
 	}
+	if c.DeliveryTimeout != 10*time.Second {
+		t.Errorf("DeliveryTimeout = %s, want default 10s", c.DeliveryTimeout)
+	}
 }
 
 func TestConfigFromAlertsOverrides(t *testing.T) {
 	c := ConfigFromAlerts(config.SecurityAlertsConfig{
 		AuthFailureThreshold: 7,
 		ACLDenialThreshold:   2,
+		DeliveryTimeout:      3 * time.Second,
 		WebhookURL:           "https://alerts.example/hook",
 		SMTP: config.SecuritySMTPConfig{
 			Host: "smtp.example", Port: 587, From: "a@example", To: "b@example",
@@ -31,6 +35,9 @@ func TestConfigFromAlertsOverrides(t *testing.T) {
 	})
 	if c.AuthFailureThreshold != 7 || c.ACLDenialThreshold != 2 {
 		t.Errorf("thresholds = %d/%d, want 7/2", c.AuthFailureThreshold, c.ACLDenialThreshold)
+	}
+	if c.DeliveryTimeout != 3*time.Second {
+		t.Errorf("DeliveryTimeout = %s, want 3s", c.DeliveryTimeout)
 	}
 	if c.WebhookURL != "https://alerts.example/hook" {
 		t.Errorf("WebhookURL = %q", c.WebhookURL)

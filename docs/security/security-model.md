@@ -405,7 +405,9 @@ Reference: [Inbound auth, roles and scopes](../manual/reference/config-and-permi
   `dpkms serve` writes the queued rows before it closes the store on
   shutdown (within `jobs.drain_timeout`). A full queue drops rows instead
   of slowing requests, with a `security: audit rows dropped` warning
-  (`dropped_total`) at most every 10s
+  (`dropped_total`) at most every 10s. Each webhook POST or SMTP session
+  ends after `security.alerts.delivery_timeout` (10s), and shutdown
+  cancels the ones still running when `jobs.drain_timeout` runs out
 - No sanitization: process logs are written as-is (see
   [Secrets Validation and Log Sanitization](secrets-validation-and-log-sanitization.md#what-output-shows-secrets))
 

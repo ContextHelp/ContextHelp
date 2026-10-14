@@ -253,6 +253,7 @@
 #      port: 587
 #      from: dpkms@example.net
 #      to: ops@example.net
+#    delivery_timeout: 10s   # bounds each webhook POST / SMTP session
 
 # Post-ingest fan-out enrichment (dpkms serve).
 #fanout:

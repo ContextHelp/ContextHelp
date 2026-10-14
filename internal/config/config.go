@@ -352,6 +352,9 @@ type SecurityAlertsConfig struct {
 	WebhookURL string `mapstructure:"webhook_url" yaml:"webhook_url" secret:"true"`
 	// SMTP holds optional SMTP delivery config.
 	SMTP SecuritySMTPConfig `mapstructure:"smtp" yaml:"smtp"`
+	// DeliveryTimeout bounds each webhook POST and SMTP session.
+	// Default: 10s.
+	DeliveryTimeout time.Duration `mapstructure:"delivery_timeout" yaml:"delivery_timeout"`
 }
 
 // SecuritySMTPConfig holds SMTP delivery settings for security alerts.
@@ -1470,6 +1473,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("security.alerts.auth_failure_threshold", 3)
 	v.SetDefault("security.alerts.acl_denial_threshold", 10)
 	v.SetDefault("security.alerts.smtp.port", 587)
+	v.SetDefault("security.alerts.delivery_timeout", 10*time.Second)
 }
 
 // bindEnvVars binds environment variables to configuration keys
