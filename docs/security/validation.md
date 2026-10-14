@@ -75,8 +75,8 @@ ctxt has no command that scans arbitrary files or directories for secrets.
 Use an external scanner:
 
 ```bash
-gitleaks detect --source ~/.config/contexthelp/ --no-git --verbose --redact
-gitleaks detect --verbose --redact   # the current repository's history
+gitleaks dir ~/.config/contexthelp/ --verbose --redact
+gitleaks git . --verbose --redact   # the current repository's history
 ```
 
 ---

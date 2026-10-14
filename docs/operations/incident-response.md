@@ -107,7 +107,7 @@ Sensitive value committed and pushed; may be in forks, CI caches, pull request d
 
 8. **Audit forks** for cached copies of the commit.
 9. **Rotate secondary secrets** from the same commit or file.
-10. **Scan full history** for other secrets: `gitleaks detect --redact` (this repo: `bash scripts/secret-scan-tree.sh` for the working tree).
+10. **Scan full history** for other secrets: `gitleaks git . --redact` (this repo: `make security-scan`; `bash scripts/secret-scan-tree.sh` for the working tree).
 11. **Add a pre-commit scanner** if missing (gitleaks pre-commit hook) and gitignore the secrets file.
 
 ### Post-Incident Review Checklist

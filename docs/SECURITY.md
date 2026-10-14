@@ -810,21 +810,24 @@ ctxt audit export --format json > audit-2024-01.json
 
 **Pre-commit hooks:**
 ```bash
-# Install gitleaks
-brew install gitleaks
+# Install the pinned gitleaks, then the repo's hooks
+make install-gitleaks
+make install-hooks
+# pre-commit runs: gitleaks git --staged --config .gitleaks.toml --redact --verbose
+```
 
-# Add pre-commit hook
-cat > .git/hooks/pre-commit << 'EOF'
-#!/bin/bash
-gitleaks detect --no-git --verbose --redact
-EOF
-chmod +x .git/hooks/pre-commit
+**Scan the working tree** (tracked plus untracked, non-ignored files):
+```bash
+make secret-scan-local   # scripts/secret-scan-tree.sh: gitleaks dir on that file set
 ```
 
 **Scan repository history:**
 ```bash
-# Using gitleaks
-gitleaks detect --verbose --redact --report-path gitleaks-report.json
+# Using gitleaks: new findings only, .gitleaksignore is the baseline
+make security-scan
+# or directly, with a report
+gitleaks git . --config .gitleaks.toml --gitleaks-ignore-path .gitleaksignore \
+  --redact --verbose --report-path gitleaks-report.json
 
 # Using trufflehog
 trufflehog git file://. --json > trufflehog-report.json
@@ -839,7 +842,7 @@ ctxt config validate
 ctxt config doctor
 
 # Scan the config directory as files — use gitleaks:
-gitleaks detect --source ~/.config/contexthelp/ --no-git --verbose
+gitleaks dir ~/.config/contexthelp/ --verbose --redact
 ```
 
 ---

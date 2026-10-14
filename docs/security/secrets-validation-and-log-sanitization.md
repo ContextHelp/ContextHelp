@@ -61,7 +61,7 @@ lists or inline skip comments. To scan files outside the config, use an
 external tool:
 
 ```bash
-gitleaks detect --source ~/.config/contexthelp/ --no-git --verbose --redact
+gitleaks dir ~/.config/contexthelp/ --verbose --redact
 ```
 
 ---
@@ -190,7 +190,7 @@ literal secret to a config struct field such as `server.token` or
 To check a log or data directory for leaked secrets, scan it:
 
 ```bash
-gitleaks detect --source ~/.local/share/contexthelp/ --no-git --verbose --redact
+gitleaks dir ~/.local/share/contexthelp/ --verbose --redact
 ```
 
 ---
