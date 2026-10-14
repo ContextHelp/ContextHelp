@@ -71,10 +71,6 @@ type SemanticSource struct {
 	// Resolver builds the default model's provider from its registry
 	// entry; runtime overrides may change transport only.
 	Resolver embeddings.ProviderResolver
-	// Blend, when set, rewrites the query vector before search (session
-	// context). It receives the model the vector belongs to so it never
-	// mixes vectors from different models.
-	Blend func(modelID string, vec []float32) []float32
 }
 
 // Embed reads the default model, resolves its provider, embeds text and
@@ -138,20 +134,16 @@ func noIndexDetail(modelID string) string {
 		"the 'embedding index skipped' warning says why", modelID)
 }
 
-// Search runs the semantic leg for text: Embed, the optional Blend, then
-// VectorSearch over the default model's index with filter. A model whose
-// index is missing or holds no vectors yields a non-ok report and no hits;
-// other storage failures are errors.
+// Search runs the semantic leg for text: Embed, then VectorSearch over the
+// default model's index with filter. A model whose index is missing or
+// holds no vectors yields a non-ok report and no hits; other storage
+// failures are errors.
 func (s SemanticSource) Search(ctx context.Context, drv storage.StorageDriver, text string, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, SemanticReport, error) {
 	qv, rep, err := s.Embed(ctx, text)
 	if err != nil || !rep.OK() {
 		return nil, rep, err
 	}
-	vec := qv.Vector
-	if s.Blend != nil {
-		vec = s.Blend(qv.ModelID, qv.Vector)
-	}
-	q := storage.VectorQuery{ModelID: qv.ModelID, Vector: vec, TopK: filter.Limit}
+	q := storage.VectorQuery{ModelID: qv.ModelID, Vector: qv.Vector, TopK: filter.Limit}
 	objs, err := drv.Objects().VectorSearch(ctx, q, filter)
 	if rep, handled := classifyVectorError(qv.ModelID, err); handled {
 		return nil, rep, nil
