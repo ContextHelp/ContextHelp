@@ -341,6 +341,46 @@ func TestRegistrySyncNotTrustedSaysEntitiesHeld(t *testing.T) {
 	}
 }
 
+// TestRegistrySyncHonoursFormat: plain and dry-run `registry sync` emit
+// one parseable JSON document under the global --format json, with no
+// progress line in front of it.
+func TestRegistrySyncHonoursFormat(t *testing.T) {
+	srv, _ := syncTestRegistry(t, true)
+	db := setupTestDB(t)
+	withRegistry(t, db, "sync-cli", srv.URL, "")
+
+	for _, flag := range [][]string{{"--format", "json"}, {"--format=json"}} {
+		out, err := db.exec(append([]string{"registry", "sync", "sync-cli"}, flag...)...)
+		if err != nil {
+			t.Fatalf("registry sync %v: %v\n%s", flag, err, out)
+		}
+		var doc struct {
+			Registry        string `json:"registry"`
+			EntitySync      bool   `json:"entity_sync"`
+			TrustLevel      string `json:"trust_level"`
+			Upserted        *int   `json:"upserted"`
+			PendingApproval int    `json:"pending_approval"`
+			Blocked         *int   `json:"blocked"`
+		}
+		if err := json.Unmarshal([]byte(out), &doc); err != nil {
+			t.Fatalf("registry sync %v is not one JSON document: %v\n%s", flag, err, out)
+		}
+		if doc.Registry != "sync-cli" || !doc.EntitySync || doc.TrustLevel != "untrusted" ||
+			doc.Upserted == nil || *doc.Upserted != 0 || doc.PendingApproval != 1 || doc.Blocked == nil {
+			t.Errorf("registry sync %v JSON = %+v", flag, doc)
+		}
+	}
+
+	out, err := db.exec("registry", "sync", "sync-cli", "--dry-run", "--format", "json")
+	if err != nil {
+		t.Fatalf("registry sync --dry-run --format json: %v\n%s", err, out)
+	}
+	var dry map[string]any
+	if err := json.Unmarshal([]byte(out), &dry); err != nil || dry["dry_run"] != true {
+		t.Errorf("dry-run JSON = %v (%v):\n%s", dry, err, out)
+	}
+}
+
 // indexOnlyRegistry serves an entity index of one entity, slug.
 func indexOnlyRegistry(t *testing.T, slug string) string {
 	t.Helper()
