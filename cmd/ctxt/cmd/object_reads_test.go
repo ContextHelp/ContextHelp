@@ -14,8 +14,8 @@ import (
 	"hop.top/kit/go/console/output"
 )
 
-// Fixtures for list, show, export and classify, which read objects over
-// the API only.
+// Fixtures for list, show, export, classify, compose and profile schema
+// evolve, which read objects over the API only.
 
 // edt is the zone the corpus is stamped in: the daemon stamps objects in
 // its local zone, and the API compares bounds as instants.
@@ -295,6 +295,8 @@ func TestObjectReadsNeverOpenLocalStore(t *testing.T) {
 		{[]string{"show", "r-url"}, "Knowledge Object: r-url"},
 		{[]string{"export", "r-url"}, `"id": "r-url"`},
 		{[]string{"classify", "o-cls"}, "The server crashed"},
+		{[]string{"compose", "brief", "--tagged", "ux"}, "## r-url"},
+		{[]string{"profile", "schema", "evolve", "ops"}, "ops"},
 	} {
 		out, err := db.exec(tc.args...)
 		if err != nil {
@@ -314,6 +316,7 @@ func TestObjectReadsExitCodes(t *testing.T) {
 	withClassifier(t)
 	commands := [][]string{
 		{"list"}, {"list", "--facets"}, {"show", "o-x"}, {"export", "o-x"}, {"classify", "o-x"},
+		{"compose", "brief"}, {"profile", "schema", "evolve", "ops"},
 	}
 	profile := func(t *testing.T, db *testDB) {
 		t.Helper()
@@ -433,5 +436,76 @@ func TestClassifyObjectOverAPI(t *testing.T) {
 	}
 	if out, err := db.exec("classify", "plain text"); err != nil || *seen != "plain text" {
 		t.Errorf("raw text: %q %v\n%s", *seen, err, out)
+	}
+}
+
+// TestComposeOverAPI: compose selects through GET /objects and renders
+// on the client.
+func TestComposeOverAPI(t *testing.T) {
+	db := setupTestDB(t)
+	seedReadCorpus(t, db)
+
+	out, err := db.exec("compose", "brief", "--tagged", "ux", "--since", "2026-03-11")
+	if err != nil {
+		t.Fatalf("compose: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "# brief") || !strings.Contains(out, "## r-note") || strings.Contains(out, "## r-url") ||
+		!strings.Contains(out, "Rotate the auth keys [ref:r-note]") {
+		t.Errorf("compose output:\n%s", out)
+	}
+
+	out, err = db.exec("compose", "summary", "--mention", "@ui.best-practice", "--export", "json")
+	if err != nil {
+		t.Fatalf("compose json: %v\n%s", err, out)
+	}
+	var res struct {
+		SourceIDs []string `json:"source_ids"`
+	}
+	decodeFirstJSON(t, out, &res)
+	if !slices.Equal(res.SourceIDs, []string{"r-url"}) {
+		t.Errorf("source_ids = %v", res.SourceIDs)
+	}
+
+	for _, args := range [][]string{{"--since", "yesterday"}, {"--until", "now"}, {"--tagged", "ux,design"}} {
+		if _, err := db.exec(append([]string{"compose", "brief"}, args...)...); exitOf(err) != output.ExitUsage {
+			t.Errorf("compose %v: exit %d (%v); want 2", args, exitOf(err), err)
+		}
+	}
+	if _, err := db.exec("compose", "brief", "--session", "sess_1"); err == nil {
+		t.Error("compose --session was accepted; the flag is removed")
+	}
+}
+
+// TestSchemaEvolveOverAPI: evolve reads recent objects from the instance
+// and suggests what the profile's schema lacks.
+func TestSchemaEvolveOverAPI(t *testing.T) {
+	db := setupTestDB(t)
+	for i, m := range []map[string]any{
+		{"type": "incident", "topics": []any{"k8s"}},
+		{"type": "incident", "topics": []any{"k8s", "auth"}},
+		{"type": "task", "topics": []any{"auth"}},
+	} {
+		at := readAt.Add(time.Duration(i) * time.Hour)
+		seedObj(t, db, &storage.KnowledgeObject{
+			ID: "se-" + string(rune('a'+i)), Status: "active", CreatedAt: at, UpdatedAt: at,
+			Metadata: map[string]any{"enrichment.structured_metadata": m},
+		})
+	}
+	if _, err := db.exec("profile", "create", "ops"); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := db.exec("profile", "schema", "evolve", "ops", "--format", "json")
+	if err != nil {
+		t.Fatalf("evolve: %v\n%s", err, out)
+	}
+	var res struct {
+		NewTypes  []struct{ Value string } `json:"new_types"`
+		NewTopics []struct{ Value string } `json:"new_topics"`
+	}
+	decodeFirstJSON(t, out, &res)
+	if len(res.NewTypes) != 1 || res.NewTypes[0].Value != "incident" ||
+		len(res.NewTopics) != 2 || res.NewTopics[0].Value != "auth" || res.NewTopics[1].Value != "k8s" {
+		t.Errorf("evolve = %+v", res)
 	}
 }
