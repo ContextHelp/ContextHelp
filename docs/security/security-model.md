@@ -8,15 +8,17 @@ ContextHelp implements a **local-first, defense-in-depth security model** that p
 
 ### Core Security Guarantees
 
-> **Pre-alpha:** encryption at rest (ADR-019), API authentication (ADR-023), and
-> plugin sandboxing (ADR-027) are designed but not yet active at runtime.
+> **Pre-alpha:** encryption at rest (ADR-019) and plugin sandboxing (ADR-027)
+> are designed but not active at runtime. API authentication is active:
+> static tokens with roles and scopes on protected and public instances.
 
 - **Local-First**: Minimal external communication by default ✅
 - **No Auto-Telemetry**: Zero automatic data transmission ✅
+- **Loopback by Default**: a `private` instance (the default) binds `127.0.0.1` only ✅
+- **Authenticated Remote Access**: `protected` / `public` instances require static tokens with roles ✅
 - **Encrypted Storage**: ⚠️ Planned — optional AES-256-GCM at rest (ADR-019)
 - **Process Isolation**: ⚠️ Planned — plugin/pipeline sandboxing (ADR-027)
-- **Secrets Protection**: Automatic detection and sanitization ✅
-- **Schema Validation**: All external inputs validated against strict schemas ✅
+- **Secrets Protection**: plaintext-secret scan of config (`ctxt config validate`); logs are **not** sanitized
 - **Explicit Configuration**: Remote features require opt-in configuration ✅
 
 ## Threat Model
@@ -63,11 +65,11 @@ ContextHelp protects the following critical assets:
 - Local privilege escalation
 
 **Mitigations**:
-- Localhost-only API binding by default
-- File permission validation (600 for sensitive files)
-- Optional storage encryption
-- User permission validation before data access
-- SELinux/AppArmor integration points
+- Localhost-only API binding by default (`server.access: private`)
+- Static-token authentication with role-based scopes on protected/public instances
+- Host header allowlist and cross-origin guard against DNS rebinding and CSRF
+- Config file permission check (`ctxt config doctor`, `--fix` sets 0600)
+- OS disk encryption for the data directory (no built-in encryption yet)
 
 #### 2. Credential Exposure
 
@@ -81,9 +83,10 @@ ContextHelp protects the following critical assets:
 - Version control history
 
 **Mitigations**:
-- Automatic log sanitization (all output redacted)
-- Secret pattern detection
-- Configuration validation
+- Plaintext-secret scan of config (`ctxt config validate`, `ctxt config doctor`)
+- Configuration validation (rejects `${VAR}` values, short or placeholder tokens)
+- Registry tokens in the OS keychain, never in config
+- No log sanitization: logs and `ctxt config show --format json` print values as-is
 - Pre-commit hook integration
 - Secrets management guidance
 
@@ -276,34 +279,50 @@ ContextHelp protects the following critical assets:
 - TLS certificates
 
 **Protection**:
-- Localhost binding by default
-- Optional TLS termination
-- Authentication/authorization checks
-- Input validation and rate limiting
-- Output sanitization
-- CORS restrictions
+- Localhost binding by default; `protected` / `public` bind all interfaces
+  and require inbound auth
+- Bearer / `X-API-Key` static tokens; one scope per route and gRPC method
+- Host header allowlist, cross-origin guard, JSON-only request bodies
+- `/healthz` details hidden from anonymous callers on public instances
+- No TLS in dpkms: terminate it at a reverse proxy
+- No rate limiting; per-principal quotas (`server.quotas`) cap the
+  entity-serving surface only
 
 ## Security Controls
 
 ### Authentication & Authorization
 
-> ⚠️ **Planned** — auth system designed in ADR-023; not yet enforced at runtime.
-> Current release binds to localhost by default; no token required for local access.
+**Access classes** (`server.access`):
+- `private` (default): binds `127.0.0.1`, authenticates nobody, every local
+  caller holds every scope. The Host check is always on.
+- `protected` / `public`: bind all interfaces and require
+  `server.auth.provider: static` with at least one token; `dpkms serve`
+  refuses to start otherwise.
 
-**REST API** (planned):
-- Optional JWT token authentication
-- Session-based authentication
-- mTLS support for internal connections
-- Per-user permission scopes
+**REST, gRPC and MCP** (`internal/auth`, active on protected/public):
+- Static tokens from `server.auth.static.tokens`, each with a `principal`
+  and one or more roles (`admin`, `writer`, `reader`); at least 32
+  characters, no `REPLACE_ME`. Sent as `Authorization: Bearer` or
+  `X-API-Key`.
+- Roles expand to scopes (`read:objects`, `write:objects`, `delete:edges`,
+  `read:mcp`, `admin:audit`, ...). Every `/api/v1` route and gRPC method
+  requires one; `401` without a valid token, `403 INSUFFICIENT_SCOPE`
+  without the scope.
+- Web UI sessions: `ctxt ui open` mints a single-use sign-in link; the
+  session holds the intersection of the web UI's scope set and its
+  token's scopes, expires on `server.ui.session.idle_ttl` / `max_ttl`, and
+  ends when the token is removed. `dpkms session list|revoke` manage them.
+- Federation push on non-private instances also needs `federation.token`.
+- Not implemented: `oidc` and `mtls` providers (reserved names), per-user
+  accounts.
 
-**gRPC API** (planned):
-- JWT token validation
-- Per-connection authentication
-- Stream-level authorization checks
+Reference: [Inbound auth, roles and scopes](../manual/reference/config-and-permissions.md#inbound-auth-roles-and-scopes),
+[Web UI sessions](../manual/reference/config-and-permissions.md#web-ui-sessions).
 
-**CLI** (active):
-- Local user authentication via OS file permissions (0600 config)
-- No network authentication needed for local-only operation
+**CLI**:
+- `server.token` / `server.urls[].token` hold the token ctxt sends to a
+  protected instance
+- Local-only operation needs no token
 
 ### Encryption
 
@@ -370,21 +389,21 @@ ContextHelp protects the following critical assets:
 ### Audit Logging
 
 **Events Logged**:
-- Authentication attempts (successes and failures)
-- Permission checks and denials
-- Configuration changes
-- Plugin installations/removals
-- Registry access attempts
-- Secrets detection (without exposing)
-- Data access patterns
-- Error conditions
+- Repeated authentication failures and ACL denials past the
+  `security.alerts` thresholds (`security.auth_failure`,
+  `security.acl_denial`), quota exhaustion, signing failures, worker crash
+  loops
+- Duplicate detection (`dedup.*`) and fan-out enrichment (`fanout.completed`)
+- `ctxt doctor` runs (`doctor.run`)
+- Not recorded: successful sign-ins, configuration changes, plugin installs
 
 **Log Protection**:
-- Automatic sanitization of sensitive data
-- Structured logging for analysis
-- Immutable log appending
-- Log rotation and retention
-- Syslog integration for centralization
+- The audit log lives in the dpkms database; read it with `ctxt audit list`
+  / `ctxt audit export` (`admin:audit` scope over HTTP)
+- Forwarding via `audit.syslog` and `audit.webhook`
+- Security alerts (`security.alerts`) to the audit log, a webhook or SMTP
+- No sanitization: process logs are written as-is (see
+  [Secrets Validation and Log Sanitization](secrets-validation-and-log-sanitization.md#what-output-shows-secrets))
 
 ## Compliance & Standards
 
@@ -398,9 +417,9 @@ ContextHelp protects the following critical assets:
 | A04 Insecure Design | Threat modeling, secure defaults, least privilege |
 | A05 Security Misconfiguration | Validation tools, secure defaults, warnings |
 | A06 Vulnerable Components | Dependency scanning, version management |
-| A07 Authentication Failure | Optional auth, secure token handling |
+| A07 Authentication Failure | Mandatory static-token auth off loopback, 32-char minimum, placeholder rejection, constant-time compare |
 | A08 Data Integrity | Schema validation, HMAC verification |
-| A09 Logging & Monitoring | Audit logging, sanitization |
+| A09 Logging & Monitoring | Audit log, syslog/webhook forwarding, security alerts (no log sanitization) |
 | A10 SSRF | No automatic external calls, whitelisting |
 
 ### Security Standards
@@ -435,9 +454,13 @@ CTXT_SECRETS_BACKEND=keyring       # provider API keys from the OS keychain
 CH_DISABLE_TELEMETRY=true
 ```
 
-Keep `server.access: private` behind a reverse proxy on the same host.
-`protected` and `public` instances need inbound auth under `server.auth`,
-or serve refuses to start — see
+Never put a `private` instance behind a reverse proxy: it authenticates
+nobody, so the proxy opens the whole API. For remote access use
+`server.access: protected` behind a TLS-terminating proxy
+([Put dpkms Behind a Reverse Proxy](../manual/operations/reverse-proxy.md)),
+or tunnel to a private instance over SSH. `protected` and `public`
+instances need inbound auth under `server.auth`, or serve refuses to
+start — see
 [Inbound auth, roles and scopes](../manual/reference/config-and-permissions.md#inbound-auth-roles-and-scopes).
 
 **Network Security**:
@@ -499,7 +522,7 @@ USER contexthelp
 Monitor for:
 - Unusual registry access patterns
 - Failed authentication attempts
-- Secrets detected in logs
+- `security.*` entries in the audit log (`ctxt audit list --event-type security.auth_failure`)
 - Plugin crashes or resource overuse
 - Unauthorized file access
 

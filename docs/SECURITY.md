@@ -351,7 +351,7 @@ ctxt registry logout uxpatterns   # removes it
 
 ### Current Status
 
-**⚠️ IMPORTANT:** As of the current release, encryption features are **documented but not yet fully implemented**. See [ADR-019](docs/decisions/ADR-019-encryption-and-privacy.md) for the complete encryption architecture.
+**⚠️ IMPORTANT:** As of the current release, encryption features are **documented but not yet fully implemented**. See [ADR-019](decisions/ADR-019-encryption-and-privacy.md) for the complete encryption architecture.
 
 ### Planned Encryption Features
 
@@ -499,51 +499,93 @@ storage:
 
 ## 🔐 Authentication & Authorization
 
-### Current Status
+### Access classes
 
-**⚠️ IMPORTANT:** Authentication system is **designed but not yet implemented**.
-See [ADR-023](docs/decisions/ADR-023-authentication-authorization-model.md) for
-specifications. The server currently accepts unauthenticated requests to localhost.
+`server.access` decides who can reach a dpkms instance:
 
-**Operator guidance until ADR-023 ships:**
-- Keep `dpkms serve` on `127.0.0.1` (default; do not use `--public` without a
-  TLS-terminating reverse proxy and network ACLs).
-- If exposing the port on a shared machine, use firewall rules to restrict access
-  to trusted UIDs/IPs.
+| `server.access` | Binds | Inbound auth |
+|---|---|---|
+| `private` (default) | `127.0.0.1` only | none; every local caller gets every scope |
+| `protected` | all interfaces | required; for a trusted network or behind a reverse proxy |
+| `public` | all interfaces | required; internet-facing, and anonymous `/healthz` shows only the health verdict |
 
-### Planned Features (ADR-023)
+`dpkms serve --public` (or the deprecated `server.public: true`) is
+shorthand for `public`. A protected or public instance without
+`server.auth` fails `ctxt config validate`, and `dpkms serve` refuses to
+start before binding a port.
 
-#### 1. Personal Access Tokens (PATs)
+### Static tokens and roles
+
+The only implemented provider is `static` (`internal/auth`). `oidc` and
+`mtls` are reserved names with no backend behind them. Each token maps to a
+principal and one or more roles:
 
 ```yaml
-# Planned config — not active in current release
-security:
-  authentication:
-    enabled: true
-    jwt:
-      secret: <jwt-secret>
-      expiration: 24h
+server:
+  access: protected
+  auth:
+    provider: static
+    static:
+      tokens:
+        - token: <owner-token>      # openssl rand -hex 32
+          principal: owner
+          roles: [admin]
+        - token: <phone-token>
+          principal: phone
+          roles: [writer]           # capture-only device
 ```
 
-#### 2. Registry Authentication (active)
+- Tokens must be at least 32 characters and must not contain `REPLACE_ME`
+  (the Docker example's placeholder). Keep them in a separate 0600 file
+  layered with a second `--config` (see
+  [Config Files](#2-config-files-no-var-secrets-in-their-own-file)).
+- Clients send `Authorization: Bearer <token>` or `X-API-Key: <token>`.
+- Roles are fixed scope bundles: `admin` holds every scope, `writer` every
+  `read:*` and `write:*` scope, `reader` every `read:*` scope.
+- Every `/api/v1` route and gRPC method requires one scope (`read:objects`,
+  `write:objects`, `delete:edges`, `read:mcp`, `admin:audit`, ...). A missing
+  or invalid token gets `401`; a token without the scope gets
+  `403 INSUFFICIENT_SCOPE`. `GET /api/v1/whoami` shows the caller's
+  principal, roles and scopes.
+- On non-private instances the federation push route also needs the
+  `federation.token` credential.
 
-Registry `login` / `logout` is shipped:
+The full scope table is in
+[Inbound auth, roles and scopes](manual/reference/config-and-permissions.md#inbound-auth-roles-and-scopes).
+On the client side, `server.token` or a `server.urls[].token` entry holds
+the token ctxt sends; see [Docker: Secrets](deployment/docker.md#secrets).
+
+### Web UI sessions
+
+`ctxt ui open` mints a single-use sign-in link for the web UI. The browser
+session acts as the principal of the token that minted it, but only with
+the scopes the web UI needs, and ends after `server.ui.session.idle_ttl`
+(default 12h) without a request, `server.ui.session.max_ttl` (default
+168h) after sign-in, or as soon as its token is removed from the config.
+`dpkms session list` and `dpkms session revoke` manage sessions. See
+[Sign In to the Web UI](manual/workflows/web-ui-sign-in.md).
+
+### Transport security
+
+dpkms serves plain HTTP and has no TLS settings. For remote access, put a
+protected instance behind a TLS-terminating reverse proxy
+([Put dpkms Behind a Reverse Proxy](manual/operations/reverse-proxy.md)),
+or keep it private and tunnel (`ssh -L 8080:127.0.0.1:8080 <host>`). Never
+proxy a private instance: it authenticates nobody.
+
+### Registry Authentication
+
 ```bash
 ctxt registry login <name>    # prompts for token; stores it in the OS keychain
 ctxt registry logout <name>
 ```
 
-#### 3. Plugin Capabilities (Planned — ADR-027)
+### Not implemented
 
-```yaml
-# Planned config — not active in current release
-plugins:
-  load:
-    - name: github-plugin
-      capabilities:
-        - network.github.com  # Restricted to GitHub API only
-        - storage.read        # Read-only storage access
-```
+OIDC/JWT and mTLS providers, per-user accounts and plugin capability
+restrictions ([ADR-027](decisions/ADR-027-plugin-isolation-sandboxing.md))
+are designed but not implemented. The auth design is in
+[ADR-023](decisions/ADR-023-authentication-authorization-model.md).
 
 ---
 
@@ -565,46 +607,58 @@ dpkms serve --verbose
 ### Production Environment
 
 **Checklist:**
-- [ ] Use encrypted storage backend (SQLCipher or encrypted PostgreSQL)
-- [ ] Enable TLS for all network communication
-- [ ] Use production-grade secret management (Vault, AWS Secrets Manager)
-- [ ] Set restrictive file permissions (600 for config, 700 for data dirs)
-- [ ] Disable telemetry if required: `CH_DISABLE_TELEMETRY=true`
-- [ ] Enable audit logging
-- [ ] Configure automated backups (encrypted)
-- [ ] Set up monitoring and alerting
-- [ ] Use read-only filesystem where possible
-- [ ] Run with least-privilege user account
-- [ ] Enable rate limiting for API endpoints
-- [ ] Configure CORS properly for web interfaces
+- [ ] Keep `server.access: private` unless remote clients need the instance
+- [ ] For remote access: `server.access: protected`, static tokens with the
+      narrowest role each client needs, `server.allowed_hosts` set
+- [ ] Terminate TLS at a reverse proxy; dpkms has no TLS listener
+- [ ] Keep tokens and passwords out of committed config (separate 0600 file,
+      env vars, `PGPASSWORD`)
+- [ ] Set restrictive file permissions (600 for config, 700 for data dirs);
+      `ctxt config doctor` checks the ctxt config file
+- [ ] Run `ctxt config validate` before deploying a config change
+- [ ] Telemetry is off by default (`privacy.telemetry: false`);
+      `CH_DISABLE_TELEMETRY=true` forces it off
+- [ ] Forward the audit log (`audit.syslog`, `audit.webhook`) and set
+      `security.alerts` for auth-failure alerts
+- [ ] Use full-disk encryption for the data directory (no built-in
+      encryption at rest)
+- [ ] Configure automated backups
+- [ ] Run with a least-privilege user account
 
 **Example production config:**
 ```yaml
+# dpkms.yaml (committable)
 storage:
   type: postgres
-  path: "service=contexthelp_prod"
-  encryption:
-    enabled: true
+  # Password from PGPASSWORD or ~/.pgpass, never in this file
+  path: "postgresql://contexthelp@db.internal/contexthelp?sslmode=verify-full"
 
 server:
-  http:
-    port: 7700
-    public: false  # Only localhost
-    tls:
-      enabled: true
-      cert: /etc/ctxt/tls/cert.pem
-      key: /etc/ctxt/tls/key.pem
-
-security:
-  telemetry: false
-  allow_external_pipelines: false
-  rate_limiting:
-    enabled: true
-    requests_per_minute: 60
+  access: protected
+  allowed_hosts:
+    - dpkms.example.com
 
 audit:
-  enabled: true
-  log_file: /var/log/ctxt/audit.log
+  syslog:
+    enabled: true
+    protocol: tls
+    address: logs.internal:6514
+```
+
+```yaml
+# dpkms-secrets.yaml (mode 0600, gitignored)
+server:
+  auth:
+    provider: static
+    static:
+      tokens:
+        - token: <owner-token>   # openssl rand -hex 32
+          principal: owner
+          roles: [admin]
+```
+
+```bash
+dpkms serve --config dpkms.yaml --config dpkms-secrets.yaml
 ```
 
 ### Docker/Container Deployment
@@ -721,18 +775,20 @@ spec:
 
 ### Logging
 
-**What is logged:**
-- Authentication attempts (success/failure)
-- API key usage (sanitized)
-- Configuration changes
-- Database operations
-- Plugin installations
+**What the audit log records:**
+- Security alerts: `security.auth_failure` and `security.acl_denial` once
+  the `security.alerts` thresholds are crossed, plus quota exhaustion,
+  signing failures and worker crash loops
+- Duplicate detection (`dedup.*`) and fan-out enrichment
+  (`fanout.completed`)
+- `ctxt doctor` runs (`doctor.run`)
 
-**What is NOT logged:**
-- API keys (sanitized as `sk-***`)
-- Passwords (sanitized as `***`)
-- Full connection strings (sanitized)
-- User content (unless explicitly enabled)
+Successful sign-ins, configuration changes and plugin installs are not
+recorded.
+
+**Process logs are not sanitized.** ctxt and dpkms log to stderr through
+`slog` with no redaction layer; see
+[What output shows secrets](security/secrets-validation-and-log-sanitization.md#what-output-shows-secrets).
 
 **Audit log location:** the audit log is kept by dpkms, not in a file.
 Read it with `ctxt audit list` / `ctxt audit export`; forward it with the
@@ -744,7 +800,7 @@ Read it with `ctxt audit list` / `ctxt audit export`; forward it with the
 ctxt audit list --limit 100
 
 # Filter by event type and time window
-ctxt audit list --event-type auth --since 24h
+ctxt audit list --event-type security.auth_failure --since 24h
 
 # Export for analysis
 ctxt audit export --format json > audit-2024-01.json
@@ -776,13 +832,13 @@ trufflehog git file://. --json > trufflehog-report.json
 
 **Configuration validation:**
 ```bash
-# Validate config structure
+# Validate config and scan it for plaintext secrets
 ctxt config validate
 
-# Lint for common issues
-ctxt config lint
+# Lint: validation, secrets, file permissions, access smells
+ctxt config doctor
 
-# Check for plaintext secrets — use gitleaks on config files:
+# Scan the config directory as files — use gitleaks:
 gitleaks detect --source ~/.config/contexthelp/ --no-git --verbose
 ```
 
@@ -955,17 +1011,18 @@ git push --force --tags
 ### Production Deployment
 
 - [ ] Use production-grade secret management (Vault, AWS Secrets Manager)
-- [ ] Enable encryption at rest
-- [ ] Configure TLS for all network communication
+- [ ] Remote access only as `server.access: protected` (or `public`) with
+      static tokens, narrowest role per client, `server.allowed_hosts` set
+- [ ] Terminate TLS at a reverse proxy (dpkms has no TLS listener)
+- [ ] Use disk encryption for the data directory (no built-in encryption at rest)
 - [ ] Set restrictive file permissions (600/700)
 - [ ] Disable telemetry: `CH_DISABLE_TELEMETRY=true`
-- [ ] Enable audit logging
+- [ ] Forward the audit log (`audit.syslog` / `audit.webhook`) and set `security.alerts`
 - [ ] Configure automated backups (encrypted)
 - [ ] Set up monitoring and alerting
 - [ ] Run as non-root user
 - [ ] Use read-only filesystem where possible
-- [ ] Configure rate limiting
-- [ ] Review security logs weekly
+- [ ] Review the audit log and `dpkms session list` weekly
 
 ### Regular Maintenance
 
@@ -986,8 +1043,8 @@ git push --force --tags
 - [Environment Variables Reference](docs/environment-variables.md)
 - [Configuration Guide](docs/ctxt/configuration.md)
 - [CLI Flag Binding](docs/ctxt/cli-flag-binding.md)
-- [ADR-019: Encryption Architecture](docs/decisions/ADR-019-encryption-and-privacy.md)
-- [ADR-023: Authentication Model](docs/decisions/ADR-023-authentication-authorization-model.md)
+- [ADR-019: Encryption Architecture](decisions/ADR-019-encryption-and-privacy.md)
+- [ADR-023: Authentication Model](decisions/ADR-023-authentication-authorization-model.md)
 - [Security Design](docs/dpkms/security.md)
 - [Compliance — GDPR, SOC 2, erasure, dependency assessment](docs/operations/compliance.md)
 
