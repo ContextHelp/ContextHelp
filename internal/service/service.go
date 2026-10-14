@@ -465,17 +465,29 @@ func (s *Service) FacetCounts(ctx context.Context, filter storage.ObjectFilter) 
 	return counts, nil
 }
 
+// logOrphans logs each blob a write could not delete once nothing
+// referred to it: its object is written, the blob is left behind.
+func logOrphans(op, id string, orphans []blob.Orphan) {
+	for _, o := range orphans {
+		slog.Warn(op+": orphan blob left behind", "object", id, "blob", o.Key, "err", o.Err)
+	}
+}
+
 // UpdateObject updates a knowledge object.
 // Content above storage.blob.threshold is stored externalized, and a
 // list preview is stored as the ref it was read from (see storable).
+// The blob of content the update replaced is deleted unless another
+// object refers to it (see blob.UpdateObject).
 func (s *Service) UpdateObject(ctx context.Context, obj *storage.KnowledgeObject) error {
 	row, err := s.storable(ctx, obj)
 	if err != nil {
 		return err
 	}
-	if err := s.Store.Objects().Update(ctx, row); err != nil {
+	orphans, err := blob.UpdateObject(ctx, s.Store, row)
+	if err != nil {
 		return err
 	}
+	logOrphans("update object", obj.ID, orphans)
 	if ev, err := events.NewEvent("service.objects", string(events.TopicObjectUpdated), events.ObjectUpdatedPayload{
 		ObjectID: obj.ID,
 		Type:     obj.Type,
@@ -493,9 +505,7 @@ func (s *Service) DeleteObject(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	for _, o := range orphans {
-		slog.Warn("delete object: orphan blob left behind", "object", id, "blob", o.Key, "err", o.Err)
-	}
+	logOrphans("delete object", id, orphans)
 	if ev, err := events.NewEvent("service.objects", string(events.TopicObjectDeleted), events.ObjectDeletedPayload{ObjectID: id}); err == nil {
 		_ = s.Bus.Publish(ctx, ev)
 	}

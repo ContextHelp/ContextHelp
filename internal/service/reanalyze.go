@@ -18,6 +18,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 )
 
 // ReanalyzeObject re-runs the registry's currently-installed pipeline for
@@ -137,9 +138,12 @@ func (s *Service) ReanalyzeObject(ctx context.Context, id string) (newPipelineVe
 	if err != nil {
 		return "", 0, fmt.Errorf("reanalyze: persist %q: %w", id, err)
 	}
-	if err := s.Store.Objects().Update(ctx, row); err != nil {
+	// The blob of content the pipeline replaced goes with it.
+	orphans, err := blob.UpdateObject(ctx, s.Store, row)
+	if err != nil {
 		return "", 0, fmt.Errorf("reanalyze: persist %q: %w", id, err)
 	}
+	logOrphans("reanalyze", id, orphans)
 	// Replace the object's vectors for every model the embedding step
 	// produced; other models' rows stay. Vectors are additive: a failed
 	// write is logged, never fails the re-analysis.

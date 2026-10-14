@@ -399,3 +399,75 @@ func TestDeleteObjectDeletesUnsharedBlob(t *testing.T) {
 	require.NoError(t, svc.DeleteObject(ctx, "obj-twin"))
 	require.False(t, exists(), "deleting the last object left its blob behind")
 }
+
+// storedBlobKey returns the blob key object id's content is stored under.
+func storedBlobKey(t *testing.T, svc *Service, id string) string {
+	t.Helper()
+	stored, err := svc.Store.Objects().Get(context.Background(), id)
+	require.NoError(t, err)
+	key, ok := blob.BlobKey(stored.RawContent)
+	require.True(t, ok, "object %s: content is not externalized", id)
+	return key
+}
+
+func blobExists(t *testing.T, svc *Service, key string) bool {
+	t.Helper()
+	ok, err := svc.Store.Blobs().Exists(context.Background(), key)
+	require.NoError(t, err)
+	return ok
+}
+
+// An update that replaces externalized content deletes the blob the
+// old content was stored in.
+func TestUpdateObjectReplacingContentDeletesOldBlob(t *testing.T) {
+	svc := blobTestService(t)
+	ctx := context.Background()
+	seedBlobObject(t, svc, "obj-big", bigBody(500))
+	oldKey := storedBlobKey(t, svc, "obj-big")
+
+	obj, err := svc.GetObject(ctx, "obj-big")
+	require.NoError(t, err)
+	obj.RawContent = "rewritten " + bigBody(400)
+	obj.TextContent = ""
+	require.NoError(t, svc.UpdateObject(ctx, obj))
+
+	newKey := storedBlobKey(t, svc, "obj-big")
+	require.NotEqual(t, oldKey, newKey)
+	require.False(t, blobExists(t, svc, oldKey), "update left the replaced content's blob behind")
+	require.True(t, blobExists(t, svc, newKey))
+}
+
+// Re-analysis whose pipeline rewrites the content deletes the blob the
+// old content was stored in.
+func TestReanalyzeReplacingContentDeletesOldBlob(t *testing.T) {
+	svc := blobTestService(t)
+	ctx := context.Background()
+	seedBlobObject(t, svc, "obj-big", bigBody(500))
+	oldKey := storedBlobKey(t, svc, "obj-big")
+	stored, err := svc.Store.Objects().Get(ctx, "obj-big")
+	require.NoError(t, err)
+	stored.Pipeline = "rewrite@v1"
+	require.NoError(t, svc.Store.Objects().Update(ctx, stored))
+	svc.Pipes.Upsert("rewrite@v1", &pipeline.Pipeline{
+		PipelineName: "rewrite@v1",
+		Steps:        []pipeline.PipelineStep{contentRewriter{}},
+	})
+
+	_, _, err = svc.ReanalyzeObject(ctx, "obj-big")
+	require.NoError(t, err)
+
+	newKey := storedBlobKey(t, svc, "obj-big")
+	require.NotEqual(t, oldKey, newKey)
+	require.False(t, blobExists(t, svc, oldKey), "re-analysis left the replaced content's blob behind")
+	require.True(t, blobExists(t, svc, newKey))
+}
+
+// contentRewriter prepends to the draft's content.
+type contentRewriter struct{ pipeline.BaseContract }
+
+func (contentRewriter) Name() string { return "content_rewriter" }
+func (contentRewriter) Run(_ context.Context, d *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
+	d.RawContent = "rewritten " + d.RawContent
+	d.TextContent = ""
+	return d, nil
+}
