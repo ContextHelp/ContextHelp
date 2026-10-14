@@ -224,48 +224,34 @@ fi
 info "Step 7: Creating local configuration..."
 if [ ! -f ".env" ]; then
     cat > .env << 'EOF'
-# ContextHelp Development Environment Configuration
-# Copy this to .env and customize as needed
+# ContextHelp development environment (subset of .env.example)
+#
+# Nothing loads this file automatically. Export it into your shell:
+#   set -a; . ./.env; set +a
+#
+# Values shown are the built-in defaults; uncomment to change. Everything
+# else is set in the config file.
 
-# Environment
-ENV=development
+# Storage backend: sqlite or postgres (config key: storage.type)
+# CH_STORAGE_TYPE=sqlite
 
-# Storage
-STORAGE_BACKEND=sqlite
-SQLITE_PATH=./data/sqlite/contexthelp.db
+# dpkms serve listener ports. No bind-host variable: bind address follows
+# server.access in the config file.
+# CH_SERVER_PORT=8080
+# CH_GRPC_PORT=9090
+# CH_COOKIE_BRIDGE_PORT=9377
 
-# Optional: Postgres (when using Docker Compose)
-# STORAGE_BACKEND=postgres
-# POSTGRES_HOST=localhost
-# POSTGRES_PORT=5432
-# POSTGRES_USER=contexthelp
-# POSTGRES_PASSWORD=dev_password
-# POSTGRES_DB=contexthelp
-
-# Redis (optional, for distributed jobs)
-# REDIS_HOST=localhost
-# REDIS_PORT=6379
-
-# Qdrant (optional, for vector search)
-# QDRANT_HOST=localhost
-# QDRANT_PORT=6333
-
-# AI Providers (add your keys)
+# AI providers (checked after the secrets store)
 # OPENAI_API_KEY=
 # ANTHROPIC_API_KEY=
 
-# Logging
-LOG_LEVEL=debug
-LOG_FORMAT=console
-
-# Server
-API_HOST=localhost
-API_PORT=8080
-GRPC_PORT=9090
-
-# Development
-DEV_MODE=true
-ENABLE_PROFILING=false
+# Postgres integration tests only (go test -tags=integration); values match
+# docker-compose.dev.yml
+# POSTGRES_HOST=localhost
+# POSTGRES_PORT=5432
+# POSTGRES_USER=ctxt
+# POSTGRES_PASSWORD=ctxt
+# POSTGRES_DB=ctxt
 EOF
     success ".env file created"
 else
@@ -316,7 +302,7 @@ echo ""
 success "Development environment setup complete!"
 echo ""
 echo "=== Next Steps ==="
-echo "1. Review and update .env with your API keys"
+echo "1. Review .env, then export it: set -a; . ./.env; set +a (nothing loads it automatically)"
 echo "2. Run 'task --list' to see available commands"
 echo "3. Run 'task test' to verify everything works"
 echo "4. Run 'task build' to build binaries"
