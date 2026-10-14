@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -106,4 +108,37 @@ func TestAttachmentStore_AttachmentIDsOnObjectGet(t *testing.T) {
 	got, err = d.Objects().Get(ctx, obj.ID)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{id1, id2}, got.AttachmentIDs)
+}
+
+// TestAttachmentStore_HardDeleteObject pins that hard-deleting an object
+// takes its attachments with it. attachments.object_id references
+// objects(id) without a cascade and foreign keys are on, so a delete
+// that left them would fail with a constraint error instead.
+func TestAttachmentStore_HardDeleteObject(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+	obj := makeObject("obj-att-del", "text")
+	require.NoError(t, d.Objects().Create(ctx, obj))
+	kept := makeObject("obj-att-kept", "text")
+	require.NoError(t, d.Objects().Create(ctx, kept))
+	_, err := d.Attachments().SaveAttachment(ctx, obj.ID, "a.txt", "text/plain", []byte("a"))
+	require.NoError(t, err)
+	_, err = d.Attachments().SaveAttachment(ctx, obj.ID, "b.txt", "text/plain", []byte("b"))
+	require.NoError(t, err)
+	keptID, err := d.Attachments().SaveAttachment(ctx, kept.ID, "c.txt", "text/plain", []byte("c"))
+	require.NoError(t, err)
+
+	orphans, err := blob.DeleteObject(ctx, d, obj.ID)
+	require.NoError(t, err, "hard delete of an object with attachments")
+	assert.Empty(t, orphans)
+
+	_, err = d.Objects().Get(ctx, obj.ID)
+	assert.ErrorIs(t, err, storage.ErrNotFound)
+	left, err := d.Attachments().ListAttachments(ctx, obj.ID)
+	require.NoError(t, err)
+	assert.Empty(t, left, "attachments of the deleted object")
+	others, err := d.Attachments().ListAttachments(ctx, kept.ID)
+	require.NoError(t, err)
+	require.Len(t, others, 1, "attachments of another object")
+	assert.Equal(t, keptID, others[0].ID)
 }

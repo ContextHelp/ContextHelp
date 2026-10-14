@@ -183,9 +183,10 @@ type ObjectStore interface {
 	// racing on the same object cannot both move it. A missing object,
 	// or one in any other status, wraps ErrNotFound.
 	TransitionStatus(ctx context.Context, id, from, to string, at time.Time) error
-	// Delete removes the object's row only. A hard delete goes through
-	// blob.DeleteObject, which also deletes the blob its content is
-	// externalized to.
+	// Delete removes the object's row and the rows the database ties to
+	// it (its attachments, its index entries). A hard delete goes
+	// through blob.DeleteObject, which also deletes its edges and the
+	// blob its content is externalized to.
 	Delete(ctx context.Context, id string) error
 	// CountBlobRefs counts the objects that refer to blob key: their
 	// raw_content or text_content is its blob:// ref, or metadata.blob_key

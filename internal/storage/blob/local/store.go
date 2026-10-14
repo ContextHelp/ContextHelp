@@ -102,9 +102,19 @@ func (s *Store) Exists(_ context.Context, key string) (bool, error) {
 	return false, err
 }
 
+// List returns the blobs whose key starts with prefix, every blob for
+// an empty one. A prefix of four or more characters names one shard
+// directory (blobPath), so only that directory is walked.
 func (s *Store) List(_ context.Context, prefix string) ([]storage.BlobInfo, error) {
+	dir := s.root
+	if len(prefix) >= 4 {
+		dir = filepath.Dir(s.blobPath(prefix))
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			return nil, nil
+		}
+	}
 	var items []storage.BlobInfo
-	err := filepath.Walk(s.root, func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}

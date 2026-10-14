@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
@@ -70,6 +71,10 @@ func BlobDeleteConformance(t *testing.T, drv storage.StorageDriver) {
 		}
 	})
 
+	// Blobs put by the subtests list as written long ago, outside the
+	// grace period, unless a subtest touches them.
+	aged := NewAgedBlobs(drv, time.Now().Add(-48*time.Hour))
+
 	t.Run("delete", func(t *testing.T) {
 		put(t, "ownkey")
 		put(t, "sharedkey")
@@ -78,7 +83,7 @@ func BlobDeleteConformance(t *testing.T, drv storage.StorageDriver) {
 		create(t, &storage.KnowledgeObject{ID: "bdel-b", RawContent: "blob://sharedkey", Metadata: map[string]any{"blob_key": "sharedkey"}})
 
 		for _, id := range []string{"bdel-own", "bdel-a"} {
-			orphans, err := blob.DeleteObject(ctx, drv, id)
+			orphans, err := blob.DeleteObject(ctx, aged, id)
 			if err != nil || len(orphans) != 0 {
 				t.Fatalf("DeleteObject %s = %v, %v", id, orphans, err)
 			}
@@ -92,11 +97,70 @@ func BlobDeleteConformance(t *testing.T, drv storage.StorageDriver) {
 		if !exists(t, "sharedkey") {
 			t.Fatal("deleting one of two objects sharing a blob deleted the blob")
 		}
-		if _, err := blob.DeleteObject(ctx, drv, "bdel-b"); err != nil {
+		if _, err := blob.DeleteObject(ctx, aged, "bdel-b"); err != nil {
 			t.Fatalf("DeleteObject bdel-b: %v", err)
 		}
 		if exists(t, "sharedkey") {
 			t.Error("deleting the last object referring to a blob left the blob behind")
+		}
+	})
+
+	// An ingest of the content the deleted object holds puts the same
+	// key again, then writes its row. Landing between the delete's
+	// reference count (0) and its blob delete, it must keep its blob:
+	// the put made it young, so the delete leaves it to the sweep.
+	t.Run("ingest during delete", func(t *testing.T) {
+		put(t, "racekey")
+		create(t, &storage.KnowledgeObject{ID: "bdel-race-old", RawContent: "blob://racekey", Metadata: map[string]any{"blob_key": "racekey"}})
+		ingested := false
+		hooked := countHookDriver{StorageDriver: aged, after: func(key string) {
+			if key != "racekey" || ingested {
+				return
+			}
+			ingested = true
+			put(t, "racekey")
+			aged.Touch("racekey", time.Now())
+			create(t, &storage.KnowledgeObject{ID: "bdel-race-new", RawContent: "blob://racekey", Metadata: map[string]any{"blob_key": "racekey"}})
+		}}
+		orphans, err := blob.DeleteObject(ctx, hooked, "bdel-race-old")
+		if err != nil || len(orphans) != 0 {
+			t.Fatalf("DeleteObject = %v, %v", orphans, err)
+		}
+		if !ingested {
+			t.Fatal("the delete never counted racekey's references")
+		}
+		if !exists(t, "racekey") {
+			t.Fatal("an ingest landing between the reference count and the blob delete lost its blob: bdel-race-new names a deleted key")
+		}
+		if _, err := blob.Sweep(ctx, aged, blob.SweepOptions{Now: time.Now().Add(2 * blob.DefaultSweepGrace)}); err != nil {
+			t.Fatalf("Sweep: %v", err)
+		}
+		if !exists(t, "racekey") {
+			t.Error("the sweep deleted a blob an object refers to")
+		}
+	})
+
+	// A blob written inside the grace period is not deleted with its
+	// last object; the sweep deletes it once it is older.
+	t.Run("young blob left to sweep", func(t *testing.T) {
+		put(t, "youngkey")
+		aged.Touch("youngkey", time.Now())
+		create(t, &storage.KnowledgeObject{ID: "bdel-young", RawContent: "blob://youngkey", Metadata: map[string]any{"blob_key": "youngkey"}})
+		orphans, err := blob.DeleteObject(ctx, aged, "bdel-young")
+		if err != nil || len(orphans) != 0 {
+			t.Fatalf("DeleteObject = %v, %v", orphans, err)
+		}
+		if _, err := drv.Objects().Get(ctx, "bdel-young"); !errors.Is(err, storage.ErrNotFound) {
+			t.Errorf("Get after delete: %v, want ErrNotFound", err)
+		}
+		if !exists(t, "youngkey") {
+			t.Fatal("the delete removed a blob written inside the grace period")
+		}
+		if _, err := blob.Sweep(ctx, aged, blob.SweepOptions{Now: time.Now().Add(2 * blob.DefaultSweepGrace)}); err != nil {
+			t.Fatalf("Sweep: %v", err)
+		}
+		if exists(t, "youngkey") {
+			t.Error("the sweep left the blob once it was past the grace period")
 		}
 	})
 

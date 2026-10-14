@@ -402,6 +402,12 @@ func (s *ObjectStore) Delete(ctx context.Context, id string) error {
 	if err := deleteObjectFTSTx(ctx, tx, id); err != nil {
 		return fmt.Errorf("delete object fts index: %w", err)
 	}
+	// Attachments reference the row without a cascade and foreign keys
+	// are on: they go first, in the same transaction, or the row's
+	// delete fails. Their data is inline; no blob refers to them.
+	if _, err := tx.ExecContext(ctx, "DELETE FROM attachments WHERE object_id = ?", id); err != nil {
+		return fmt.Errorf("delete object attachments: %w", err)
+	}
 	result, err := tx.ExecContext(ctx, "DELETE FROM objects WHERE id = ?", id)
 	if err != nil {
 		return fmt.Errorf("delete object: %w", err)

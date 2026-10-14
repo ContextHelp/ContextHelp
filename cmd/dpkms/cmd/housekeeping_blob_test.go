@@ -32,12 +32,19 @@ func setupPruneBlobDB(t *testing.T) *pruneBlobFixture {
 	return &pruneBlobFixture{testDB: db, dataDir: dataDir, blobs: bs}
 }
 
-// seed stores an object whose content is externalized under key.
+// seed stores an object whose content is externalized under key, in a
+// blob written 3h ago: past the grace period a delete waits out.
 func (f *pruneBlobFixture) seed(t *testing.T, id, key string, created time.Time) {
+	t.Helper()
+	f.seedAged(t, id, key, created, 3*time.Hour)
+}
+
+// seedAged is seed with a blob written age ago.
+func (f *pruneBlobFixture) seedAged(t *testing.T, id, key string, created time.Time, age time.Duration) {
 	t.Helper()
 	ctx := context.Background()
 	if ok, _ := f.blobs.Exists(ctx, key); !ok {
-		require.NoError(t, f.blobs.Put(ctx, key, strings.NewReader("content of "+key), storage.BlobMeta{}))
+		f.putAgedBlob(t, key, age)
 	}
 	require.NoError(t, f.Driver.Objects().Create(ctx, &storage.KnowledgeObject{
 		ID: id, Type: "text", RawContent: "blob://" + key, TextContent: "content of " + key,
@@ -68,7 +75,7 @@ func (f *pruneBlobFixture) blobExists(t *testing.T, key string) bool {
 }
 
 // Prune deletes a pruned object's blob, and keeps a blob another
-// object still refers to.
+// object still refers to or one written inside the grace period.
 func TestHousekeepingPruneDeletesBlobs(t *testing.T) {
 	f := setupPruneBlobDB(t)
 	old := time.Date(2023, 6, 1, 0, 0, 0, 0, time.UTC)
@@ -76,15 +83,17 @@ func TestHousekeepingPruneDeletesBlobs(t *testing.T) {
 	f.seed(t, "obj_old_own", "keyown", old)
 	f.seed(t, "obj_old_shared", "keyshared", old)
 	f.seed(t, "obj_new_shared", "keyshared", recent)
+	f.seedAged(t, "obj_old_fresh", "keyfresh", old, 10*time.Minute)
 
 	out := f.prune(t)
-	require.Contains(t, out, "Pruned 2 objects")
+	require.Contains(t, out, "Pruned 3 objects")
 	require.NotContains(t, out, "orphan")
 
 	_, err := f.Driver.Objects().Get(context.Background(), "obj_old_own")
 	require.ErrorIs(t, err, storage.ErrNotFound)
 	require.False(t, f.blobExists(t, "keyown"), "prune left the pruned object's blob behind")
 	require.True(t, f.blobExists(t, "keyshared"), "prune deleted a blob another object refers to")
+	require.True(t, f.blobExists(t, "keyfresh"), "prune deleted a blob inside the grace period")
 }
 
 // Prune deletes a pruned object's edges like DELETE /objects/{id}: no
@@ -147,6 +156,9 @@ func TestHousekeepingPruneDryRunListsBlobs(t *testing.T) {
 	f.seed(t, "obj_old_both_b", "keyboth", old)
 	f.seed(t, "obj_old_shared", "keyshared", old)
 	f.seed(t, "obj_new_shared", "keyshared", recent)
+	// Written inside the grace period: a real prune leaves it to the
+	// housekeeping sweep.
+	f.seedAged(t, "obj_old_fresh", "keyfresh", old, 10*time.Minute)
 
 	args := []string{"--data-dir", f.dataDir, "housekeeping", "prune", "--before", "2024-01-01", "--dry-run"}
 	out, err := f.run(args...)
@@ -154,6 +166,7 @@ func TestHousekeepingPruneDryRunListsBlobs(t *testing.T) {
 	require.Contains(t, out, "delete blob keyown")
 	require.Contains(t, out, "delete blob keyboth")
 	require.NotContains(t, out, "keyshared", "a blob an unpruned object refers to is not deleted")
+	require.NotContains(t, out, "delete blob keyfresh", "a blob inside the grace period is not deleted")
 	require.Contains(t, out, "Would delete 2 blob(s)")
 
 	out, err = f.run(append(args, "--format", "json")...)
@@ -168,7 +181,7 @@ func TestHousekeepingPruneDryRunListsBlobs(t *testing.T) {
 	}
 	require.ElementsMatch(t, []string{"blob:keyown", "blob:keyboth"}, blobs)
 
-	for _, key := range []string{"keyown", "keyboth", "keyshared"} {
+	for _, key := range []string{"keyown", "keyboth", "keyshared", "keyfresh"} {
 		require.True(t, f.blobExists(t, key), "dry-run deleted blob %s", key)
 	}
 }

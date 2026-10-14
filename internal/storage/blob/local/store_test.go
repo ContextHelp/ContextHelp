@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob/blobtest"
 )
 
 func newTestStore(t *testing.T) *Store {
@@ -194,4 +195,9 @@ func TestGetNotFound(t *testing.T) {
 	if err == nil || errors.Is(err, storage.ErrBlobNotFound) {
 		t.Errorf("Get unreadable blob: err = %v, want an error that is not ErrBlobNotFound", err)
 	}
+}
+
+// TestListConformance runs the backend-shared List(prefix) contract.
+func TestListConformance(t *testing.T) {
+	blobtest.ListConformance(t, newTestStore(t))
 }

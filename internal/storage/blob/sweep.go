@@ -9,7 +9,8 @@ import (
 )
 
 // DefaultSweepGrace is how old an unreferenced blob must be before Sweep
-// deletes it.
+// deletes it, and before DeleteObject and UpdateObject delete one they
+// free (they leave a younger one to Sweep).
 //
 // Ingest puts a blob before it writes the row that refers to it, so a
 // young unreferenced blob may be one an ingest is still writing. Keys
@@ -43,8 +44,9 @@ type SweepResult struct {
 // Sweep deletes the orphan blobs in drv's blob store: blobs no object
 // refers to (CountBlobRefs) that are older than the grace period. Hard
 // deletes and updates delete the blobs they free as they go; Sweep
-// collects the rest: blobs whose delete failed, blobs left by earlier
-// releases, and blobs an ingest put but never wrote a row for.
+// collects the rest: blobs they freed inside DefaultSweepGrace, blobs
+// whose delete failed, blobs left by earlier releases, and blobs an
+// ingest put but never wrote a row for.
 //
 // err reports that the store could not be listed or a reference count
 // could not be read; a blob that can't be deleted is in Failed.

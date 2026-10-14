@@ -11,7 +11,8 @@ import (
 // UpdateObject writes obj over its stored row, then deletes each blob
 // the row referred to that obj does not and no other object does: the
 // content an update replaced (keys are content hashes, so new content
-// gets a new key).
+// gets a new key). A blob younger than DefaultSweepGrace is left to
+// Sweep, as DeleteObject leaves it.
 //
 // Same order as DeleteObject: the row goes first, so a failure after it
 // leaves at worst an orphan blob, returned in orphans with the row

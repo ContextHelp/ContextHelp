@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
@@ -61,11 +62,15 @@ func BlobUpdateConformance(t *testing.T, drv storage.StorageDriver) {
 		return orphans
 	}
 
+	// Blobs put by the subtests list as written long ago, outside the
+	// grace period.
+	aged := NewAgedBlobs(drv, time.Now().Add(-48*time.Hour))
+
 	t.Run("replaced", func(t *testing.T) {
 		put(t, "updold")
 		put(t, "updnew")
 		create(t, externalized("bupd-replace", "updold"))
-		if orphans := update(t, drv, externalized("bupd-replace", "updnew")); len(orphans) != 0 {
+		if orphans := update(t, aged, externalized("bupd-replace", "updnew")); len(orphans) != 0 {
 			t.Fatalf("orphans = %v", orphans)
 		}
 		if exists(t, "updold") {
@@ -79,7 +84,7 @@ func BlobUpdateConformance(t *testing.T, drv storage.StorageDriver) {
 	t.Run("inlined", func(t *testing.T) {
 		put(t, "updinline")
 		create(t, externalized("bupd-inline", "updinline"))
-		if orphans := update(t, drv, &storage.KnowledgeObject{
+		if orphans := update(t, aged, &storage.KnowledgeObject{
 			ID: "bupd-inline", Type: "note", RawContent: "small now",
 			CreatedAt: fixtureTime(), UpdatedAt: fixtureTime(),
 		}); len(orphans) != 0 {
@@ -95,7 +100,7 @@ func BlobUpdateConformance(t *testing.T, drv storage.StorageDriver) {
 		obj := externalized("bupd-same", "updsame")
 		create(t, obj)
 		obj.Summaries = []string{"edited"}
-		update(t, drv, obj)
+		update(t, aged, obj)
 		if !exists(t, "updsame") {
 			t.Error("an update that kept the content deleted its blob")
 		}
@@ -105,7 +110,7 @@ func BlobUpdateConformance(t *testing.T, drv storage.StorageDriver) {
 		put(t, "updshared")
 		create(t, externalized("bupd-shared-a", "updshared"))
 		create(t, externalized("bupd-shared-b", "updshared"))
-		update(t, drv, &storage.KnowledgeObject{
+		update(t, aged, &storage.KnowledgeObject{
 			ID: "bupd-shared-a", Type: "note", RawContent: "small now",
 			CreatedAt: fixtureTime(), UpdatedAt: fixtureTime(),
 		})
@@ -117,7 +122,7 @@ func BlobUpdateConformance(t *testing.T, drv storage.StorageDriver) {
 	t.Run("orphan", func(t *testing.T) {
 		put(t, "updstuck")
 		create(t, externalized("bupd-stuck", "updstuck"))
-		failing := failingDeleteDriver{StorageDriver: drv}
+		failing := failingDeleteDriver{StorageDriver: aged}
 		orphans := update(t, failing, &storage.KnowledgeObject{
 			ID: "bupd-stuck", Type: "note", RawContent: "small now",
 			CreatedAt: fixtureTime(), UpdatedAt: fixtureTime(),
