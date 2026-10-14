@@ -137,8 +137,7 @@ func TestRefreshEntityPage_NotFound(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := svc.RefreshEntityPage(ctx, "nonexistent.page")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not found")
+	require.ErrorIs(t, err, storage.ErrNotFound)
 }
 
 func TestGetEntityPage_NotFound(t *testing.T) {

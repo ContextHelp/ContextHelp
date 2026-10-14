@@ -76,14 +76,19 @@ func (s *Service) GetTopicEntries(
 	if idx == nil {
 		return nil, nil
 	}
+	return idx.Entries(topic), nil
+}
+
+// Entries returns the entries of the first category whose name equals
+// or starts with topic, ignoring case; nil when none does.
+func (idx *TopicIndex) Entries(topic string) []TopicEntry {
 	lower := strings.ToLower(topic)
 	for _, cat := range idx.Categories {
-		if strings.ToLower(cat.Topic) == lower ||
-			strings.HasPrefix(strings.ToLower(cat.Topic), lower) {
-			return cat.Entries, nil
+		if strings.HasPrefix(strings.ToLower(cat.Topic), lower) {
+			return cat.Entries
 		}
 	}
-	return nil, nil
+	return nil
 }
 
 // UpdateTopicIndexIncremental adds a single object to the existing
