@@ -165,6 +165,14 @@ env or file) is explicit: serve binds exactly that port or fails. Only an
 untouched built-in default falls back to another port when busy. Port `0`
 binds an OS-assigned port. The cookie bridge always binds `127.0.0.1`.
 
+### `dpkms --data-dir`
+
+`--data-dir <dir>` is a `dpkms` global for `storage.data_dir`. When
+passed it wins over `-c storage.data_dir=...`, `CTXT_DATA_DIR` and every
+config file; the run dir and the `storage.path` / `storage.blob.local.path`
+defaults follow it. `ctxt` has no `--data-dir`: use `CTXT_DATA_DIR` or
+`storage.data_dir`.
+
 ### `dpkms serve --public`
 
 `--public` is OR-ed with `server.public` (`CH_PUBLIC`): either one selects
@@ -191,10 +199,14 @@ Commands that talk to dpkms pick one endpoint, first match wins:
 
 Both binaries inherit kit's global flags (`-c/--config`, `--format`,
 `-o/--output`, `--quiet`, `--no-color`, `-V/--verbose`, `-C/--chdir`,
-`--dry-run`, `--confirm`, ...). Apart from `-c`, these are per-invocation
-options with no config key behind them. `ctxt` adds `--profile` and
-`--instance`. Run `ctxt --help-all` or `dpkms --help-all` for the full
-list.
+`--dry-run`, `--confirm`, `--offline`, ...). Apart from `-c`, these are
+per-invocation options with no config key behind them. `ctxt` adds
+`--profile` and `--instance`; `dpkms` adds `--data-dir`. Run
+`ctxt --help-all` or `dpkms --help-all` for the full list.
+
+`--offline` is enforced by kit: requests through `http.DefaultTransport`
+made on the command's context fail with `network disabled by --offline`
+unless they target loopback. It has no env var or config key.
 
 ---
 

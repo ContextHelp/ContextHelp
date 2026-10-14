@@ -41,7 +41,8 @@ it:
 | `blobs/` | the `local` blob store, unless `storage.blob.local.path` is set |
 | `repl_history` | `ctxt shell` history |
 
-It always names a directory, never the database file.
+It always names a directory, never the database file. `dpkms --data-dir`
+overrides it for one invocation.
 
 ```bash
 CTXT_DATA_DIR=/srv/contexthelp dpkms serve   # database: /srv/contexthelp/db.sqlite
