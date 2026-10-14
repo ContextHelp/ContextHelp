@@ -40,14 +40,18 @@ Done. Caddy handles TLS automatically via Let's Encrypt.
 
 ## Data persistence
 
+`docker/config.docker.yaml` (copied into the image as `/app/config.yaml`) is the one place that sets in-container paths. Compose and the image set no storage env var: env overrides the file.
+
 | Volume | Contents |
 |--------|----------|
-| `ctxt_data` | SQLite database (`/data/dpkms.db`) |
-| `ctxt_blobs` | Binary objects (PDFs, audio, images) when `blob.backend: local` |
+| `ctxt_data` | SQLite database (`storage.path: /data/dpkms.db`) |
+| `ctxt_blobs` | Binary objects (PDFs, audio, images) at `storage.blob.local.path: /data/blobs` |
 | `caddy_data` | TLS certificates |
 | `caddy_config` | Caddy runtime config |
 
-Back up `ctxt_data` and `ctxt_blobs` volumes. When using a remote blob backend (`backend: s3 | garage`) the `ctxt_blobs` volume is unused — back up the bucket out-of-band instead. See [`docs/ctxt/configuration.md`](../ctxt/configuration.md#blob-storage-configuration) for backend options.
+Back up `ctxt_data` and `ctxt_blobs` volumes. When using a remote blob backend (`storage.blob.backend: s3 | garage`) the `ctxt_blobs` volume is unused — back up the bucket out-of-band instead. See [`docs/ctxt/configuration.md`](../ctxt/configuration.md#blob-storage-configuration) for backend options.
+
+Runtime files (pidfiles, upgrade state) stay in the container user's home, outside `/data`, and go with the container.
 
 ## Upgrade
 

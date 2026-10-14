@@ -43,7 +43,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates tzdata libsqlite3-0 wget \
     && rm -rf /var/lib/apt/lists/*
 
-RUN groupadd -r ctxt && useradd -r -g ctxt -u 1000 ctxt
+# A real home: runtime files (pidfiles under the XDG data dir) need a
+# writable place outside the /data volume, so they go with the container.
+RUN groupadd -r ctxt && useradd -r -m -d /home/ctxt -g ctxt -u 1000 ctxt
 
 WORKDIR /app
 
@@ -51,13 +53,10 @@ COPY --from=go-builder /out/dpkms /app/dpkms
 COPY --from=go-builder /out/ctxt   /app/ctxt
 COPY docker/config.docker.yaml     /app/config.yaml
 
+# Volume mount points; config.yaml puts the database and blobs here.
 RUN mkdir -p /data/blobs && chown -R ctxt:ctxt /data /app
 
 USER ctxt
-
-ENV DPKMS_DATA_DIR=/data \
-    DPKMS_WORKERS=4 \
-    CH_PUBLIC=true
 
 EXPOSE 8080 9090
 
@@ -65,4 +64,4 @@ HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 \
     CMD wget -q --spider http://127.0.0.1:8080/health || exit 1
 
 ENTRYPOINT ["/app/dpkms"]
-CMD ["serve", "--config", "/app/config.yaml", "--public"]
+CMD ["serve", "--config", "/app/config.yaml"]

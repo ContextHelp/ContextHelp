@@ -8,11 +8,8 @@ name: ctxt
 x-dpkms-common: &dpkms-common
   image: ctxt/dpkms:${TAG:-latest}
   restart: unless-stopped
-  environment:
-    CH_STORAGE_TYPE: sqlite
-    CTXT_DATA_DIR: /data/dpkms.db
-    CTXT_BLOB_BACKEND: local
-    DPKMS_WORKERS: ${DPKMS_WORKERS:-4}
+  # No storage / server env: docker/config.docker.yaml (the image's
+  # /app/config.yaml) is the single source, and env would override it.
 
 services:
 
@@ -59,12 +56,8 @@ services:
     ports:
       - "8080:8080"   # HTTP API
       - "9090:9090"   # gRPC
+    # Build env only; serve settings come from docker/config.docker.yaml.
     environment:
-      CH_STORAGE_TYPE: sqlite
-      CTXT_DATA_DIR: /data/dpkms.db
-      CTXT_BLOB_BACKEND: local
-      DPKMS_WORKERS: ${DPKMS_WORKERS:-2}
-      CH_PUBLIC: "true"
       CGO_ENABLED: "1"
       GOOS: linux
     networks:
