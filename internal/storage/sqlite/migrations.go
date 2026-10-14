@@ -338,6 +338,12 @@ func (d *Driver) migrateThrough(ctx context.Context, target int) error {
 		return fmt.Errorf("read schema version: %w", err)
 	}
 
+	// Snapshot before anything below writes: a failed or wrong migration
+	// is then recoverable from the copy. No snapshot, no migration.
+	if err := d.snapshotBeforeMigrate(ctx, current, target); err != nil {
+		return err
+	}
+
 	// Repair: some databases were upgraded from an earlier numbering scheme
 	// where migration 013 was "remind_at" instead of "entity_thin_sync".
 	// Those DBs have schema_version=13 but lack content_status/version_hash/

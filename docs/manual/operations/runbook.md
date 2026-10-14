@@ -128,6 +128,34 @@ dpkms pipeline step registry autoupdate <registry-url> --disable
 
 ## After upgrading dpkms
 
+### Schema migrations snapshot the database first
+
+The first open by a new binary (`dpkms serve`, or any `ctxt`/`dpkms` command that opens the store) applies pending schema migrations. On SQLite, before applying any, it copies the database to `backups/` beside the database file (`<data dir>/backups/` with the default `storage.path`):
+
+```text
+backups/pre-migrate-v40-v41-20261014T091500Z.sqlite
+```
+
+- **Name**: schema version before (`v40`) and after (`v41`), UTC time. Written with SQLite's online backup (`VACUUM INTO`), fsynced, owner-only permissions.
+- **When**: only when migrations are pending on an existing database. No snapshot when the schema is current or the database is new.
+- **No snapshot, no migration**: if the copy cannot be written (disk full, `backups/` not writable), the open fails with the reason and the database stays at its old version. Free space or fix permissions and start again.
+- **Retention**: the newest 3 `pre-migrate-*` files per `backups/` directory are kept; older ones are deleted after a new snapshot succeeds. Other files in `backups/` are never touched.
+- **Disk**: each snapshot is about the size of the database, so allow up to 3x the database size in `backups/`.
+- **Blobs are not copied.** They are content-addressed and migrations never change them; the blob store stays as it is.
+- **Turn it off**: `storage.migrate_snapshot: false` (or `-c storage.migrate_snapshot=false`) migrates without a copy.
+- **Postgres** gets no snapshot. `dpkms` logs a warning naming both versions when it migrates an existing Postgres database: take a `pg_dump` before installing a new binary.
+
+Roll back a migration that went wrong:
+
+1. Stop every `dpkms serve` and `ctxt` process using the database.
+2. Move `db.sqlite`, `db.sqlite-wal` and `db.sqlite-shm` aside.
+3. Copy the snapshot to `db.sqlite`.
+4. Reinstall the previous binary and start it. The snapshot is at the old schema; the new binary would migrate it again.
+
+Objects written after the snapshot are not in it. Their blobs stay in the blob store, unreferenced.
+
+### Index changes re-apply automatically
+
 A release that changes how objects are indexed for full-text search is re-applied automatically: on its first start, `dpkms serve` prints
 
 ```text
@@ -220,7 +248,7 @@ Before major config/pipeline changes:
 
 ## Data safety note
 
-Current CLI surface does not provide built-in full backup/export commands in `dpkms`. Use your storage backend snapshot/backup tooling and validate restore procedures externally.
+`dpkms backup --output-dir <dir>` writes a full SQLite archive (database, optionally blobs and config); `dpkms restore <archive>` reads it back. Schema migrations also snapshot the database on their own (see [Schema migrations snapshot the database first](#schema-migrations-snapshot-the-database-first)). For Postgres use `pg_dump` and validate restores externally.
 
 ## Cross-links
 

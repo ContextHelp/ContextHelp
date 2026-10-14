@@ -14,29 +14,32 @@ import (
 
 // Driver implements storage.StorageDriver for SQLite.
 type Driver struct {
-	db            *sql.DB
-	path          string
-	objects       *ObjectStore
-	entities      *EntityStore
-	edges         *EdgeStore
-	jobs          *JobStore
-	pipelines     *PipelineStore
-	steps         *StepStore
-	registries    *RegistryStore
-	reminders     *ReminderStore
-	feeds         *FeedStore
-	feedItems     *FeedItemStore
-	batches       *BatchStore
-	detectors     *DetectorStore
-	blobs         storage.BlobStore
-	proximity     *ProximityStore
-	watches       *WatchStore
-	attachments   *AttachmentStore
-	resurfacing   *ResurfacingQueueStore
-	entitlements  *entitlementStore
-	metering      *MeteringStore
-	savedSearches *SavedSearchStore
-	searchHistory *SearchHistoryStore
+	db   *sql.DB
+	path string
+	// skipMigrateSnapshot turns off the snapshot Migrate writes before
+	// applying pending migrations (WithMigrateSnapshot(false)).
+	skipMigrateSnapshot bool
+	objects             *ObjectStore
+	entities            *EntityStore
+	edges               *EdgeStore
+	jobs                *JobStore
+	pipelines           *PipelineStore
+	steps               *StepStore
+	registries          *RegistryStore
+	reminders           *ReminderStore
+	feeds               *FeedStore
+	feedItems           *FeedItemStore
+	batches             *BatchStore
+	detectors           *DetectorStore
+	blobs               storage.BlobStore
+	proximity           *ProximityStore
+	watches             *WatchStore
+	attachments         *AttachmentStore
+	resurfacing         *ResurfacingQueueStore
+	entitlements        *entitlementStore
+	metering            *MeteringStore
+	savedSearches       *SavedSearchStore
+	searchHistory       *SearchHistoryStore
 }
 
 // ErrNoBlobStore is returned by New when it is given no blob store.
@@ -46,8 +49,11 @@ var ErrNoBlobStore = errors.New("sqlite: blob store is required")
 
 // New creates a new SQLite driver for the given database path. blobs is
 // where externalized content lives: build it with blob.New from
-// storage.blob, or open both through storageutil.Open.
-func New(path string, blobs storage.BlobStore) (*Driver, error) {
+// storage.blob, or open both through storageutil.Open. Before Init
+// applies pending migrations to an existing database it snapshots the
+// database into SnapshotDir(path); WithMigrateSnapshot(false) turns
+// that off.
+func New(path string, blobs storage.BlobStore, opts ...Option) (*Driver, error) {
 	if blobs == nil {
 		return nil, ErrNoBlobStore
 	}
@@ -71,6 +77,9 @@ func New(path string, blobs storage.BlobStore) (*Driver, error) {
 	}
 
 	d := &Driver{db: db, path: path}
+	for _, o := range opts {
+		o(d)
+	}
 	d.objects = &ObjectStore{db: db}
 	d.objects.emb = d.Embeddings()
 	d.entities = &EntityStore{db: db}
