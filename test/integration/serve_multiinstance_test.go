@@ -6,24 +6,29 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pidfile"
+	"github.com/ideacrafterslabs/ctxt/internal/testguard"
 )
 
-// TestMultiInstanceAutoPort is a regression test for the bug where
-// findFreePort was only called for gRPC, not HTTP. The second daemon
-// instance would fail to bind port 8080 and silently exit instead of
-// auto-assigning a free port.
+// TestMultiInstanceAutoPort builds the real dpkms binary, runs two instances
+// side by side on OS-assigned ports, and verifies each records the ports it
+// really bound, distinct from the other's, serves /health on its recorded
+// HTTP port, and has a unique, non-empty Name in its pidfile.
 //
-// The test builds the real dpkms binary, starts two instances that both
-// request the default ports, and verifies they both come up on distinct ports.
-// Also verifies that each instance has a unique, non-empty Name in its pidfile.
+// Every instance passes port 0 for each listener: the defaults (8080, 9090,
+// 9377) may belong to a live dpkms on this host. The fallback from a busy
+// default port is covered in cmd/dpkms/cmd (TestListenTCP_DefaultPortBusyFallsBack,
+// TestAcquireListeners_DefaultBusyIsAnnounced) without binding a default.
 func TestMultiInstanceAutoPort(t *testing.T) {
 	bin := buildDpkmsBinary(t)
 
@@ -36,10 +41,8 @@ func TestMultiInstanceAutoPort(t *testing.T) {
 	cfg1 := writeServeConfig(t, dataDir, "alpha")
 	cfg2 := writeServeConfig(t, dataDir, "beta")
 
-	// Both instances request the same default HTTP (8080) and gRPC (9090) ports.
-	// The second must auto-assign free alternatives. Starting the first
-	// before the second keeps the pidfile order deterministic; serve binds
-	// each listener once, so simultaneous starts no longer race.
+	// Starting the first before the second keeps the pidfile order
+	// deterministic.
 	p1 := startServeProcessWithName(t, bin, cfg1, "alpha", env)
 	defer p1.Process.Kill()
 
@@ -52,12 +55,13 @@ func TestMultiInstanceAutoPort(t *testing.T) {
 	instances := waitForPidfiles(t, runDir, 2, 15*time.Second)
 
 	if instances[0].Port == instances[1].Port {
-		t.Errorf("both instances share HTTP port %d — auto-assign broken", instances[0].Port)
+		t.Errorf("both instances share HTTP port %d", instances[0].Port)
 	}
 	if instances[0].GRPCPort == instances[1].GRPCPort {
-		t.Errorf("both instances share gRPC port %d — auto-assign broken", instances[0].GRPCPort)
+		t.Errorf("both instances share gRPC port %d", instances[0].GRPCPort)
 	}
 	for _, info := range instances {
+		assertBoundPorts(t, info)
 		waitHTTPHealthy(t, info.Port, 5*time.Second)
 		if info.Name == "" {
 			t.Errorf("instance on port %d has empty Name in pidfile", info.Port)
@@ -87,7 +91,7 @@ func TestMultiInstanceNameConflict(t *testing.T) {
 	waitForPidfiles(t, runDir, 1, 10*time.Second)
 
 	// Second instance with the same name should exit non-zero.
-	c := exec.Command(bin, "--config", cfg2, "serve", "--name", "shared", "--cookie-bridge-port", "0")
+	c := exec.Command(bin, serveArgs(t, cfg2, "shared")...)
 	c.Env = env
 	err := c.Run()
 	if err == nil {
@@ -95,8 +99,8 @@ func TestMultiInstanceNameConflict(t *testing.T) {
 	}
 }
 
-// TestMultiInstanceAutoPort_PS verifies that dpkms ps --output json lists
-// both instances with distinct ports and distinct names after auto-assignment.
+// TestMultiInstanceAutoPort_PS verifies that dpkms ps --format json lists
+// both instances with distinct ports and distinct names.
 func TestMultiInstanceAutoPort_PS(t *testing.T) {
 	bin := buildDpkmsBinary(t)
 	dataDir := t.TempDir()
@@ -148,6 +152,7 @@ func TestMultiInstanceAutoPort_PS(t *testing.T) {
 			t.Errorf("duplicate HTTP port %d in ps output", info.Port)
 		}
 		seenPorts[info.Port] = true
+		assertBoundPorts(t, info)
 		if info.Name == "" {
 			t.Errorf("instance on port %d has empty Name in ps output", info.Port)
 		}
@@ -170,10 +175,53 @@ func writeServeConfig(t *testing.T, dir, id string) string {
 	return path
 }
 
+// serveArgs returns the dpkms serve arguments for an instance named name.
+func serveArgs(t *testing.T, configPath, name string) []string {
+	t.Helper()
+	args := []string{"--config", configPath, "serve", "--name", name,
+		"--port", "0", "--grpc-port", "0", "--cookie-bridge-port", "0"}
+	refuseDefaultPorts(t, args)
+	return args
+}
+
+// serveListenerFlags are the dpkms serve flags that pick a listener port.
+var serveListenerFlags = []string{"--port", "--grpc-port", "--cookie-bridge-port"}
+
+// refuseDefaultPorts fails the test before any process starts unless args
+// set every listener port, to a port that is not guarded. An unset flag
+// falls back to its default (8080, 9090, 9377), which a live dpkms on this
+// host may hold.
+func refuseDefaultPorts(t *testing.T, args []string) {
+	t.Helper()
+	for _, flag := range serveListenerFlags {
+		i := slices.Index(args, flag)
+		if i < 0 || i+1 >= len(args) {
+			t.Fatalf("serve args %q leave %s at its default port; refusing to start", args, flag)
+		}
+		if testguard.Guarded(net.JoinHostPort("127.0.0.1", args[i+1])) {
+			t.Fatalf("serve args %q set %s to guarded port %s; refusing to start", args, flag, args[i+1])
+		}
+	}
+}
+
+// assertBoundPorts fails unless every port info records was really bound
+// (non-zero) and none is a guarded default.
+func assertBoundPorts(t *testing.T, info pidfile.Info) {
+	t.Helper()
+	for name, port := range map[string]int{"HTTP": info.Port, "gRPC": info.GRPCPort, "cookie bridge": info.CookieBridgePort} {
+		if port == 0 {
+			t.Errorf("instance %q recorded no %s port", info.Name, name)
+		}
+		if testguard.Guarded(net.JoinHostPort("127.0.0.1", strconv.Itoa(port))) {
+			t.Errorf("instance %q bound guarded %s port %d", info.Name, name, port)
+		}
+	}
+}
+
 // startServeProcessWithName launches dpkms serve with an explicit --name flag.
 func startServeProcessWithName(t *testing.T, bin, configPath, name string, env []string) *exec.Cmd {
 	t.Helper()
-	c := exec.Command(bin, "--config", configPath, "serve", "--name", name, "--cookie-bridge-port", "0")
+	c := exec.Command(bin, serveArgs(t, configPath, name)...)
 	c.Env = env
 	c.Stdout = os.Stderr
 	c.Stderr = os.Stderr
