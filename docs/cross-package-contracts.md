@@ -62,7 +62,7 @@ Endpoint and message reference: [api/api-rest.md](api/api-rest.md),
 | JSON shape contracts for operator-facing output (`/healthz`, upgrade status, embeddings list, search staleness) | `contracts/*.eva.yaml`, checked by `make eva` (part of `make check`) |
 | Node-aware query types (`NodeAwareFilter`, `NodeHit`, `NodeAwareResult`) | `pkg/pluginapi/query_contract.go` |
 | Plugin manifest (`plugins/<name>/`) | `pkg/pluginapi/manifest.go`, [plugin-authoring-guide.md §2](plugin-authoring-guide.md#2-plugin-manifest) |
-| Contribution manifest (`extensions/<slug>/`, `skills/<slug>/`) | `.github/manifest.schema.json`, [manifest-spec.md](manifest-spec.md) |
+| Contribution catalog entry (`extensions/<slug>/catalog.json`, `skills/<slug>/catalog.json`) | `.github/catalog.schema.json`, [catalog-spec.md](catalog-spec.md) |
 
 ---
 

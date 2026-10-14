@@ -52,7 +52,7 @@ config (`pipelines.overrides`), or install steps from a step registry with
 `plugin.LoadManifest(dir)`. No host code calls `LoadManifest` yet.
 Ship one of the two: `LoadManifest` reads `manifest.json` first and never
 looks at a `manifest.yaml` beside it. The contribution manifest in
-[manifest-spec.md](manifest-spec.md) is for `extensions/` and `skills/`, not plugins.
+[catalog-spec.md](catalog-spec.md) (`catalog.json`) is for `extensions/` and `skills/`, not plugins.
 
 ```yaml
 apiVersion: v1

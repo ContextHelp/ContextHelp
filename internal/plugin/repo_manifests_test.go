@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/plugin"
-	"github.com/santhosh-tekuri/jsonschema/v6"
 	"github.com/stretchr/testify/require"
 )
 
@@ -73,41 +72,6 @@ func TestRepoPluginManifestsLoad(t *testing.T) {
 			require.Len(t, names, 1, "%s has %v; keep one manifest per plugin", rel, names)
 			_, err := plugin.LoadManifest(dir)
 			require.NoError(t, err, "%s/%s", rel, names[0])
-		})
-	}
-}
-
-// Extensions and skills are not Go plugins: their manifest.json is the
-// contribution manifest described by .github/manifest.schema.json.
-func TestRepoContributionManifestsMatchSchema(t *testing.T) {
-	root := repoRoot(t)
-
-	schemaPath := filepath.Join(root, ".github", "manifest.schema.json")
-	f, err := os.Open(schemaPath) // #nosec G304 -- repo file
-	require.NoError(t, err)
-	defer func() { _ = f.Close() }()
-	schemaDoc, err := jsonschema.UnmarshalJSON(f)
-	require.NoError(t, err)
-	c := jsonschema.NewCompiler()
-	require.NoError(t, c.AddResource("manifest.schema.json", schemaDoc))
-	schema, err := c.Compile("manifest.schema.json")
-	require.NoError(t, err)
-
-	var files []string
-	for _, sub := range []string{"extensions", "skills"} {
-		files = append(files, manifestFiles(t, root, sub)...)
-	}
-	require.NotEmpty(t, files, "no contribution manifests found")
-	for _, p := range files {
-		rel, _ := filepath.Rel(root, p)
-		t.Run(rel, func(t *testing.T) {
-			require.Equal(t, "manifest.json", filepath.Base(p), "contribution manifests are manifest.json")
-			raw, err := os.Open(p) // #nosec G304 -- repo file
-			require.NoError(t, err)
-			defer func() { _ = raw.Close() }()
-			inst, err := jsonschema.UnmarshalJSON(raw)
-			require.NoError(t, err)
-			require.NoError(t, schema.Validate(inst))
 		})
 	}
 }

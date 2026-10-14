@@ -76,7 +76,7 @@ task build
 
 We've adopted high standards for contributions to ensure quality and interoperability:
 
-- **Manifest:** Every contribution in `extensions/` or `skills/` must include a `manifest.json` file. See [.github/manifest.schema.json](./.github/manifest.schema.json) for the specification. A plugin in `plugins/` carries a plugin manifest instead (`apiVersion: v1`, see [docs/plugin-authoring-guide.md](docs/plugin-authoring-guide.md#2-plugin-manifest)).
+- **Catalog entry:** Every contribution in `extensions/` or `skills/` must include a `catalog.json` file. See [docs/catalog-spec.md](docs/catalog-spec.md) and [.github/catalog.schema.json](./.github/catalog.schema.json). A plugin in `plugins/` carries a plugin manifest instead (`apiVersion: v1`, see [docs/plugin-authoring-guide.md](docs/plugin-authoring-guide.md#2-plugin-manifest)).
 - **Agent Ready:** We use [CLAUDE.md](./CLAUDE.md) to maintain context for AI coding tools.
 - **Visuals:** Use GitHub alerts and clear headers in all documentation.
 

@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/ContextHelp/ctxt/blob/main/.github/manifest.schema.json",
-  "title": "ContextHelp Contribution Manifest",
-  "description": "Schema for manifest.json files in ContextHelp contributions.",
+  "$id": "https://github.com/ContextHelp/ctxt/blob/main/.github/catalog.schema.json",
+  "title": "ContextHelp Contribution Catalog Entry",
+  "description": "Schema for catalog.json: discovery metadata for an extension or skill in extensions/ or skills/. Nothing in ctxt or dpkms reads it.",
   "type": "object",
   "required": [
     "name",
