@@ -1,5 +1,6 @@
 // Package dblock coordinates single-writer access to a database file through
-// an advisory flock on a "<dbpath>.lock" sidecar file.
+// an advisory file lock (internal/filelock: flock on Unix, LockFileEx on
+// Windows) on a "<dbpath>.lock" sidecar file.
 //
 // Advisory means the gate binds only processes that acquire it. dpkms serve
 // holds it (RoleDaemon) on the SQLite database it opens for its whole
@@ -8,14 +9,14 @@
 // held and holds it (RoleCLI) while it writes. Anything else that opens the
 // database goes through SQLite's own locking and does not take this lock.
 //
-// The flock is the authority: it is kernel-owned, released automatically on
+// The lock is the authority: it is kernel-owned, released automatically on
 // process exit (no stale-lock recovery needed), atomic to acquire (no
 // check-then-act window), and same-host only — matching SQLite's own WAL
 // constraints. After acquiring, the holder truncate-writes a small JSON body
 // ({pid, role, instance, started_at}) into the sidecar; the body is purely
 // diagnostic, letting a contender name the holder in error messages.
 //
-// The sidecar is never unlinked on release: flock state is per-fd, and
+// The sidecar is never unlinked on release: lock state is per open file, and
 // removing the file would race other waiters that already hold an fd to it
 // (see internal/cursor/lock.go for the same rule).
 package dblock
@@ -26,8 +27,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"syscall"
 	"time"
+
+	"github.com/ideacrafterslabs/ctxt/internal/filelock"
 )
 
 // Role identifies the kind of process holding the lock.
@@ -55,7 +57,7 @@ const (
 var ErrHeld = errors.New("database lock held")
 
 // Info is the diagnostic lock body written by the holder after acquiring.
-// The flock is the authority; Info exists for error attribution only.
+// The lock is the authority; Info exists for error attribution only.
 type Info struct {
 	PID       int       `json:"pid"`
 	Role      Role      `json:"role"`
@@ -106,7 +108,7 @@ func Path(dbPath string) string { return dbPath + sidecarSuffix }
 // Path returns the sidecar path this lock holds.
 func (l *Lock) Path() string { return l.path }
 
-// Acquire takes the advisory lock non-blocking (LOCK_EX|LOCK_NB) and writes
+// Acquire takes the advisory lock exclusive and non-blocking, and writes
 // the diagnostic body. On contention it returns a *HeldError wrapping ErrHeld,
 // with the current holder's identity when the lock body is readable.
 func Acquire(dbPath string, info Info) (*Lock, error) {
@@ -115,14 +117,13 @@ func Acquire(dbPath string, info Info) (*Lock, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open lock file: %w", err)
 	}
-	fd := int(f.Fd()) // #nosec G115 -- fd is a small positive int
-	if err := syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+	if err := filelock.TryLock(f); err != nil {
 		_ = f.Close()
-		if errors.Is(err, syscall.EWOULDBLOCK) || errors.Is(err, syscall.EAGAIN) {
+		if errors.Is(err, filelock.ErrLocked) {
 			holder, _ := ReadHolder(dbPath) // best effort: attribution only
 			return nil, &HeldError{Path: path, Holder: holder}
 		}
-		return nil, fmt.Errorf("flock %s: %w", path, err)
+		return nil, err
 	}
 
 	if info.PID == 0 {
@@ -132,7 +133,7 @@ func Acquire(dbPath string, info Info) (*Lock, error) {
 		info.StartedAt = time.Now()
 	}
 	if err := writeBody(f, info); err != nil {
-		_ = syscall.Flock(fd, syscall.LOCK_UN)
+		_ = filelock.Unlock(f)
 		_ = f.Close()
 		return nil, fmt.Errorf("write lock body: %w", err)
 	}
@@ -164,20 +165,19 @@ func AcquireRetry(ctx context.Context, dbPath string, info Info, budget time.Dur
 }
 
 // Release unlocks and closes the sidecar fd. The file itself is never
-// unlinked: flock state is per-fd, and removing the path would race waiters
-// holding their own fd to it. The stale body left behind is harmless — the
-// next holder truncate-writes it, and contenders only read it after a failed
-// flock.
+// unlinked: lock state is per open file, and removing the path would race
+// waiters holding their own fd to it. The stale body left behind is harmless
+// — the next holder truncate-writes it, and contenders only read it after a
+// failed lock.
 func (l *Lock) Release() error {
 	if l == nil || l.f == nil {
 		return nil
 	}
-	fd := int(l.f.Fd()) // #nosec G115 -- fd is a small positive int
-	unlockErr := syscall.Flock(fd, syscall.LOCK_UN)
+	unlockErr := filelock.Unlock(l.f)
 	closeErr := l.f.Close()
 	l.f = nil
 	if unlockErr != nil {
-		return fmt.Errorf("funlock %s: %w", l.path, unlockErr)
+		return unlockErr
 	}
 	if closeErr != nil {
 		return fmt.Errorf("close %s: %w", l.path, closeErr)
@@ -186,7 +186,7 @@ func (l *Lock) Release() error {
 }
 
 // ReadHolder reads the recorded holder identity from dbPath's sidecar for
-// error attribution. It does not consult the flock: a readable body proves
+// error attribution. It does not consult the lock: a readable body proves
 // nothing about whether the lock is currently held.
 func ReadHolder(dbPath string) (*Info, error) {
 	data, err := os.ReadFile(Path(dbPath)) // #nosec G304 -- caller-supplied DB path
@@ -219,18 +219,14 @@ func Check(dbPath string) error {
 		return fmt.Errorf("open lock file: %w", err)
 	}
 	defer func() { _ = f.Close() }()
-	fd := int(f.Fd()) // #nosec G115 -- fd is a small positive int
-	if err := syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		if errors.Is(err, syscall.EWOULDBLOCK) || errors.Is(err, syscall.EAGAIN) {
+	if err := filelock.TryLock(f); err != nil {
+		if errors.Is(err, filelock.ErrLocked) {
 			holder, _ := ReadHolder(dbPath) // best effort: attribution only
 			return &HeldError{Path: path, Holder: holder}
 		}
-		return fmt.Errorf("flock %s: %w", path, err)
+		return err
 	}
-	if err := syscall.Flock(fd, syscall.LOCK_UN); err != nil {
-		return fmt.Errorf("funlock %s: %w", path, err)
-	}
-	return nil
+	return filelock.Unlock(f)
 }
 
 // writeBody truncate-writes the JSON body at the start of the lock file.

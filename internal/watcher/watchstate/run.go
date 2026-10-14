@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"syscall"
 	"time"
+
+	"github.com/ideacrafterslabs/ctxt/internal/filelock"
 )
 
 // RunInfo describes a running `ctxt watch start`. It never holds a token.
@@ -54,13 +55,13 @@ func AcquireRun(path string, info RunInfo) (*Run, error) {
 		if err != nil {
 			return nil, fmt.Errorf("watch run: open %s: %w", path, err)
 		}
-		if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil { // #nosec G115 -- fd is a small positive int
+		if err := filelock.TryLock(f); err != nil {
 			_ = f.Close()
-			if errors.Is(err, syscall.EWOULDBLOCK) {
+			if errors.Is(err, filelock.ErrLocked) {
 				held, _, _ := ReadRun(path)
 				return nil, &RunningError{Path: path, Info: held}
 			}
-			return nil, fmt.Errorf("watch run: flock %s: %w", path, err)
+			return nil, fmt.Errorf("watch run: %w", err)
 		}
 		// The previous holder may have removed the file between our open
 		// and our lock: then the lock is on an unlinked inode. Retry.
@@ -114,7 +115,7 @@ func (r *Run) Release() error {
 	if errors.Is(err, os.ErrNotExist) {
 		err = nil
 	}
-	_ = syscall.Flock(int(r.f.Fd()), syscall.LOCK_UN) // #nosec G115 -- fd is a small positive int
+	_ = filelock.Unlock(r.f)
 	if cerr := r.f.Close(); err == nil {
 		err = cerr
 	}
@@ -136,13 +137,13 @@ func ReadRun(path string) (RunInfo, bool, error) {
 	defer f.Close()
 
 	alive := false
-	switch err := syscall.Flock(int(f.Fd()), syscall.LOCK_SH|syscall.LOCK_NB); { // #nosec G115 -- fd is a small positive int
+	switch err := filelock.TryRLock(f); {
 	case err == nil:
-		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN) // #nosec G115 -- fd is a small positive int
-	case errors.Is(err, syscall.EWOULDBLOCK):
+		_ = filelock.Unlock(f)
+	case errors.Is(err, filelock.ErrLocked):
 		alive = true
 	default:
-		return RunInfo{}, false, fmt.Errorf("watch run: flock %s: %w", path, err)
+		return RunInfo{}, false, fmt.Errorf("watch run: %w", err)
 	}
 
 	var info RunInfo
@@ -169,13 +170,13 @@ func RemoveStale(path string) (bool, error) {
 		return false, fmt.Errorf("watch run: open %s: %w", path, err)
 	}
 	defer f.Close()
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil { // #nosec G115 -- fd is a small positive int
-		if errors.Is(err, syscall.EWOULDBLOCK) {
+	if err := filelock.TryLock(f); err != nil {
+		if errors.Is(err, filelock.ErrLocked) {
 			return false, nil
 		}
-		return false, fmt.Errorf("watch run: flock %s: %w", path, err)
+		return false, fmt.Errorf("watch run: %w", err)
 	}
-	defer func() { _ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN) }() // #nosec G115 -- fd is a small positive int
+	defer func() { _ = filelock.Unlock(f) }()
 	if !samePath(f, path) {
 		return false, nil
 	}

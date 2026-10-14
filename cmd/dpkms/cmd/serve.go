@@ -649,7 +649,7 @@ func daemonize(cmd *cobra.Command) error {
 	c.Stdin = devNull
 	c.Stdout = devNull
 	c.Stderr = devNull
-	c.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	c.SysProcAttr = detachedProcAttr()
 
 	if err := c.Start(); err != nil {
 		return fmt.Errorf("daemon: start: %w", err)

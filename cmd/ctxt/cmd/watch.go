@@ -366,7 +366,11 @@ func runWatchStop(cmd *cobra.Command, _ []string) error {
 	if info.PID <= 0 {
 		return fmt.Errorf("the watcher for instance %s is starting; its run file %s has no pid yet, retry", r.Key, path)
 	}
-	if err := syscall.Kill(info.PID, syscall.SIGTERM); err != nil {
+	proc, err := os.FindProcess(info.PID)
+	if err != nil {
+		return fmt.Errorf("find watcher pid %d: %w", info.PID, err)
+	}
+	if err := proc.Signal(syscall.SIGTERM); err != nil {
 		return fmt.Errorf("signal watcher pid %d: %w", info.PID, err)
 	}
 	deadline := time.Now().Add(watchStopTimeout)
