@@ -23,7 +23,11 @@ Tool versions are managed by [mise](https://mise.jdx.dev). From the repo root:
 mise install
 ```
 
-This installs the pinned Go toolchain plus `age` and `fnox`. Verify:
+This installs the pinned Go toolchain plus `age` and `fnox`, and the Node
+version that builds the embedded web bundles (`web/ui`, `web/searchgraph`).
+CI reads the same `node` pin from `mise.toml`; `make toolchain-check` fails
+when a workflow, compose file, Dockerfile, `.nvmrc`/`.node-version` or
+`package.json` `engines.node` disagrees with it. Verify:
 
 ```bash
 go version   # must match the `go` directive in go.mod

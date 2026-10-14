@@ -8,11 +8,17 @@
 #
 # Checks:
 #   1. Dockerfile golang base image == mise go pin, and so is every golang
-#      image a compose file runs (docker-compose*.yml, docker/, .devcontainer/);
-#      every other compose image and Dockerfile base image names an exact
-#      release (X.Y.Z tag, dated tag or digest), never a floating tag
+#      image a compose file (docker-compose*.yml, docker/, .devcontainer/) or
+#      a workflow (.github/workflows/*.yml: services, job containers,
+#      docker:// steps) runs; every other image those files pull and every
+#      Dockerfile base image names an exact release (X.Y.Z tag, dated tag or
+#      digest), never a floating tag
 #   2. go.mod `go` directive is satisfied by the mise go pin (pin >= directive)
 #   3. no workflow hardcodes a go-version literal instead of deriving it
+#   4. node: mise pins an exact version; no workflow hardcodes node-version;
+#      every node image (compose, workflows, Dockerfile FROM) runs the pin;
+#      .nvmrc / .node-version equal it; package.json engines.node is the pin
+#      or a >= minimum the pin satisfies
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -28,13 +34,18 @@ mise_go=$(sed -n 's/^go = "\(.*\)"$/\1/p' mise.toml)
 # golangci-lint is declared via the `go:` backend, so the key is quoted:
 #   "go:github.com/golangci/golangci-lint/v2/cmd/golangci-lint" = "2.1.6"
 mise_lint=$(sed -n 's/^"go:.*golangci-lint" = "\(.*\)"$/\1/p' mise.toml)
+mise_node=$(sed -n 's/^node = "\(.*\)"$/\1/p' mise.toml)
 
 [ -n "$mise_go" ] || err "mise.toml has no exact 'go' pin"
 [ -n "$mise_lint" ] || err "mise.toml has no exact 'golangci-lint' pin"
 case "$mise_go" in
 *latest* | "") err "mise.toml go pin must be an exact version, got '$mise_go'" ;;
 esac
-echo "mise.toml: go=$mise_go golangci-lint=$mise_lint"
+# node builds the embedded web bundles; an alias (lts, latest) or a major
+# line (22) installs whatever is newest today.
+[[ "$mise_node" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
+	err "mise.toml node pin must be an exact X.Y.Z version, got '$mise_node'"
+echo "mise.toml: go=$mise_go golangci-lint=$mise_lint node=$mise_node"
 
 # ── 1. Dockerfiles ───────────────────────────────────────────────────────────
 # Both build stages must use the same Go as mise/CI, or a container build can
@@ -52,23 +63,6 @@ for df in Dockerfile; do
 			echo "ok: $df -> golang:$ver"
 		fi
 	done < <(grep -oE '\bgolang:[0-9][^ ]*' "$df" || true)
-done
-
-# Compose files run golang images directly (the dev service builds and
-# hot-reloads inside one). A floating tag such as golang:1.26-bookworm
-# tracks the newest patch, so the tag must name the exact pin too.
-for cf in docker-compose*.yml docker/docker-compose*.yml .devcontainer/docker-compose*.yml; do
-	[ -f "$cf" ] || continue
-	while read -r img; do
-		[ -n "$img" ] || continue
-		ver=${img#golang:}
-		ver=${ver%%-*}
-		if [ "$ver" != "$mise_go" ]; then
-			err "$cf runs image $img but mise.toml pins go $mise_go (use golang:$mise_go-<variant>)"
-		else
-			echo "ok: $cf -> $img"
-		fi
-	done < <(grep -E '^[[:space:]]*image:' "$cf" | grep -oE "\bgolang:[^ \"'#]*" || true)
 done
 
 # Every other image must name one release as well. mise.toml pins no
@@ -92,6 +86,33 @@ exact_ref() {
 }
 floating="a floating tag; pin an exact release (X.Y.Z or a dated tag) or a digest"
 
+# toolchain_mismatch <ref>: prints why an image that carries a toolchain
+# mise.toml pins (golang, node) runs a different version; prints nothing
+# for an image that agrees or carries no pinned toolchain. Compose files,
+# workflows and Dockerfiles run these images directly (the dev service
+# builds and hot-reloads inside one), so exact is not enough: it must be
+# the pin.
+toolchain_mismatch() {
+	local name=${1##*/} tag ver
+	name=${name%%@*} # golang:1.26.8@sha256:... -> golang:1.26.8
+	case "$name" in
+	golang | golang:*)
+		tag=${name#golang}
+		tag=${tag#:}
+		ver=${tag%%-*}
+		[ "$ver" = "$mise_go" ] ||
+			echo "but mise.toml pins go $mise_go (use golang:$mise_go-<variant>)"
+		;;
+	node | node:*)
+		tag=${name#node}
+		tag=${tag#:}
+		ver=${tag%%-*}
+		[ "$ver" = "$mise_node" ] ||
+			echo "but mise.toml pins node $mise_node (use node:$mise_node-<variant>)"
+		;;
+	esac
+}
+
 for cf in docker-compose*.yml docker/docker-compose*.yml .devcontainer/docker-compose*.yml; do
 	[ -f "$cf" ] || continue
 	while read -r img; do
@@ -108,10 +129,41 @@ for cf in docker-compose*.yml docker/docker-compose*.yml .devcontainer/docker-co
 			err "$cf runs image $img, which has no default to check; give it an exact default"
 		elif ! exact_ref "$ref"; then
 			err "$cf runs image $img, $floating"
+		elif why=$(toolchain_mismatch "$ref") && [ -n "$why" ]; then
+			err "$cf runs image $img $why"
 		else
 			echo "ok: $cf -> $img"
 		fi
 	done < <(sed -n "s/^[[:space:]]*image:[[:space:]]*//p" "$cf" | sed -e 's/[[:space:]]#.*$//' -e 's/[[:space:]]*$//' -e "s/^[\"']//" -e "s/[\"']\$//")
+done
+
+# Workflows pull images as well: service containers (services.*.image), a
+# job's container (`container: <image>` or `container: {image: ...}`) and
+# `uses: docker://<image>` steps. Same rule as compose. An expression such
+# as ${{ matrix.image }} resolves at run time, so the gate cannot check it.
+workflow_images() {
+	sed -n -E \
+		-e 's/^[[:space:]]*(-[[:space:]]+)?image:[[:space:]]*//p' \
+		-e 's/^[[:space:]]*container:[[:space:]]*([^[:space:]#].*)$/\1/p' \
+		-e 's|^[[:space:]]*(-[[:space:]]+)?uses:[[:space:]]*["'"'"']?docker://||p' "$1" |
+		sed -e 's/[[:space:]]#.*$//' -e 's/[[:space:]]*$//' -e "s/^[\"']//" -e "s/[\"']\$//"
+}
+
+for wf in .github/workflows/*.yml .github/workflows/*.yaml; do
+	[ -f "$wf" ] || continue
+	while read -r img; do
+		[ -n "$img" ] || continue
+		# shellcheck disable=SC2016 # literal ${{ expression marker
+		if [[ "$img" == *'${{'* ]]; then
+			err "$wf runs image $img, an expression the gate cannot check; name an exact release"
+		elif ! exact_ref "$img"; then
+			err "$wf runs image $img, $floating"
+		elif why=$(toolchain_mismatch "$img") && [ -n "$why" ]; then
+			err "$wf runs image $img $why"
+		else
+			echo "ok: $wf -> $img"
+		fi
+	done < <(workflow_images "$wf")
 done
 
 # Dockerfile base images: every FROM that pulls an image. ARG defaults are
@@ -168,6 +220,8 @@ for df in Dockerfile Dockerfile.* docker/Dockerfile* docker/*/Dockerfile* .devco
 			err "$df builds FROM $img, which has no ARG default to check; give it an exact default"
 		elif ! exact_ref "$ref"; then
 			err "$df builds FROM $img, $floating"
+		elif why=$(toolchain_mismatch "$ref") && [ -n "$why" ]; then
+			err "$df builds FROM $img $why"
 		else
 			echo "ok: $df -> FROM $ref"
 		fi
@@ -228,6 +282,76 @@ while read -r hit; do
 	[ -n "$hit" ] || continue
 	err "workflow hardcodes a golangci-lint version, derive it from mise.toml instead: $hit"
 done < <(grep -rnE "golangci-lint.*@v?[0-9]+\.[0-9]+|golangci-lint/(master|v[0-9])" .github/workflows/ | grep -vE 'golangci-lint/v2/cmd/golangci-lint@v\$\{\{' || true)
+
+# ── 4. node ──────────────────────────────────────────────────────────────────
+# setup-node cannot read mise.toml, so CI derives node-version from it in the
+# toolchain job, exactly like go-version. A literal (even today's pin) or a
+# version file is a second source of truth.
+while read -r hit; do
+	[ -n "$hit" ] || continue
+	err "workflow hardcodes a Node version, derive it from mise.toml instead: $hit"
+done < <(grep -rnE "^\s*(NODE_VERSION|node-version):" .github/workflows/ | grep -vE "(NODE_VERSION|node-version):\s*['\"]?\\$\{\{" || true)
+
+while read -r hit; do
+	[ -n "$hit" ] || continue
+	err "workflow reads node-version-file instead of the mise.toml pin: $hit"
+done < <(grep -rnE "^\s*node-version-file:" .github/workflows/ || true)
+
+# engines_node <package.json>: the engines.node constraint, if any.
+engines_node() {
+	awk '
+		/"engines"[[:space:]]*:[[:space:]]*[{]/ { in_e = 1 }
+		in_e && match($0, /"node"[[:space:]]*:[[:space:]]*"[^"]*"/) {
+			s = substr($0, RSTART, RLENGTH)
+			sub(/^"node"[[:space:]]*:[[:space:]]*"/, "", s)
+			sub(/"$/, "", s)
+			print s
+			exit
+		}
+		in_e && /[}]/ { in_e = 0 }
+	' "$1"
+}
+
+# nvm, fnm, setup-node and corepack read these, so a contradicting value
+# builds the bundles with a different Node depending on who runs them.
+while IFS= read -r f; do
+	f=${f#./}
+	case "$f" in
+	*package.json)
+		eng=$(engines_node "$f")
+		[ -n "$eng" ] || continue
+		e=${eng// /}
+		case "$e" in
+		">="*)
+			min=${e#>=}
+			min=${min#v}
+			if [[ "$min" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]] &&
+				[ "$(printf '%s\n%s\n' "$mise_node" "$min" | sort -V | head -1)" = "$min" ]; then
+				echo "ok: $f -> engines.node $eng"
+			else
+				err "$f engines.node $eng is not satisfied by mise.toml node pin $mise_node"
+			fi
+			;;
+		*)
+			if [ "${e#v}" = "$mise_node" ]; then
+				echo "ok: $f -> engines.node $eng"
+			else
+				err "$f engines.node $eng: use the mise.toml pin $mise_node or a >= minimum it satisfies"
+			fi
+			;;
+		esac
+		;;
+	*)
+		v=$(head -1 "$f" | tr -d '[:space:]')
+		v=${v#v}
+		if [ "$v" != "$mise_node" ]; then
+			err "$f pins node $v but mise.toml pins node $mise_node"
+		else
+			echo "ok: $f -> node $v"
+		fi
+		;;
+	esac
+done < <(find . \( -name node_modules -o -name .git \) -prune -o -type f \( -name .nvmrc -o -name .node-version -o -name package.json \) -print | sort)
 
 if [ "$fail" -ne 0 ]; then
 	echo
