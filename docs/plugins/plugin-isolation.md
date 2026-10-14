@@ -1,5 +1,9 @@
 # Plugin Isolation Mechanism
 
+> **Design, not implemented.** No plugin is loaded at runtime, and nothing
+> enforces manifest permissions: `internal/plugin.CapabilityEnforcer` exists
+> but no host code calls it. See [plugins.md](plugins.md#current-state).
+
 This document provides detailed operational guidance on the plugin isolation and sandboxing mechanism for ContextHelp. It supplements [ADR-027](../decisions/ADR-027-plugin-isolation-sandboxing.md) with implementation-focused specifications for developers building and operating plugins.
 
 ---
