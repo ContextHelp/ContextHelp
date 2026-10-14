@@ -18,7 +18,6 @@ import (
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	"github.com/spf13/viper"
 
 	"github.com/ideacrafterslabs/ctxt/internal/browser"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
@@ -94,22 +93,18 @@ func init() {
 	serveCmd.Flags().Int("grpc-port", config.DefaultGRPCPort, "gRPC port (overrides server.grpc_port and CH_GRPC_PORT)")
 	serveCmd.Flags().Int("cookie-bridge-port", config.DefaultCookieBridgePort,
 		"browser-extension cookie bridge port, loopback only (overrides server.cookie_bridge_port and CH_COOKIE_BRIDGE_PORT)")
-	serveCmd.Flags().Int("workers", 4, "number of worker threads")
+	serveCmd.Flags().Int("workers", config.DefaultServerWorkers,
+		"number of worker threads (overrides server.workers and "+config.EnvDPKMSWorkers+")")
 	serveCmd.Flags().Bool("public", false, "allow remote connections")
-	serveCmd.Flags().String("profile", "", "default focus profile")
-	serveCmd.Flags().String("steps-path", "", "path to external steps directory")
-	serveCmd.Flags().Bool("dev", false, "enable CORS for Vite dev server (http://localhost:5173)")
-	serveCmd.Flags().Duration("reminder-interval", time.Minute, "how often to check for due reminders")
+	serveCmd.Flags().String("profile", "", "default focus profile (overrides profile.default and "+config.EnvProfile+")")
+	serveCmd.Flags().String("steps-path", "", "path to external steps directory (overrides steps.path)")
+	serveCmd.Flags().Bool("dev", false, "enable CORS for the Vite dev server at http://localhost:5173 (overrides server.dev)")
+	serveCmd.Flags().Duration("reminder-interval", config.DefaultReminderInterval,
+		"how often to check for due reminders (overrides server.reminder_interval)")
 	serveCmd.Flags().Bool("daemon", false, "run as background daemon (detach from terminal)")
 
-	// Bind flags to viper. The listener ports are not bound: serve reads
-	// them from cfg.Server (see serveListenSpecs).
-	viper.BindPFlag("server.workers", serveCmd.Flags().Lookup("workers"))
-	viper.BindPFlag("server.public", serveCmd.Flags().Lookup("public"))
-	viper.BindPFlag("profile.default", serveCmd.Flags().Lookup("profile"))
-	viper.BindPFlag("steps.path", serveCmd.Flags().Lookup("steps-path"))
-	viper.BindPFlag("server.dev", serveCmd.Flags().Lookup("dev"))
-	viper.BindPFlag("server.reminder_interval", serveCmd.Flags().Lookup("reminder-interval"))
+	// No flag is bound to viper: serve reads its settings from cfg, a
+	// passed flag overriding (see resolveServeSettings, serveListenSpecs).
 }
 
 func runServe(cmd *cobra.Command, args []string) error {
@@ -129,9 +124,10 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	workers := viper.GetInt("server.workers")
-	public := viper.GetBool("server.public")
-	reminderInterval := viper.GetDuration("server.reminder_interval")
+	settings := resolveServeSettings(cmd.Flags(), cfg)
+	workers := settings.workers
+	public, _ := cmd.Flags().GetBool("public")
+	reminderInterval := settings.reminderInterval
 
 	// Resolve the access class and inbound auth provider before any
 	// resource is initialized: a protected/public instance with no
@@ -201,7 +197,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}()
 
 	// 4. Get steps path.
-	stepsPath := viper.GetString("steps.path")
+	stepsPath := settings.stepsPath
 	if stepsPath == "" {
 		homeDir, _ := os.UserHomeDir()
 		stepsPath = homeDir + "/.config/contexthelp/steps"
@@ -289,7 +285,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		StepsPath:  stepsPath,
 		ConfigPath: config.GetConfigPath(binName),
 		Probes:     healthProbes,
-		DevCORS:    viper.GetBool("server.dev"),
+		DevCORS:    settings.dev,
 		HTTPPort:   port,
 		Warnings:   os.Stderr,
 		Notes:      os.Stdout,
@@ -523,6 +519,39 @@ func runServe(cmd *cobra.Command, args []string) error {
 	return runErr
 }
 
+// serveSettings are serve's settings other than its listeners.
+type serveSettings struct {
+	workers          int
+	dev              bool
+	reminderInterval time.Duration
+	stepsPath        string
+}
+
+// resolveServeSettings returns c's serve settings (env var over config
+// file over built-in default, as Load resolved them), each replaced by
+// its flag when passed.
+func resolveServeSettings(flags *pflag.FlagSet, c *config.Config) serveSettings {
+	s := serveSettings{
+		workers:          c.Server.Workers,
+		dev:              c.Server.Dev,
+		reminderInterval: c.Server.ReminderInterval,
+		stepsPath:        c.Steps.Path,
+	}
+	if flags.Changed("workers") {
+		s.workers, _ = flags.GetInt("workers")
+	}
+	if flags.Changed("dev") {
+		s.dev, _ = flags.GetBool("dev")
+	}
+	if flags.Changed("reminder-interval") {
+		s.reminderInterval, _ = flags.GetDuration("reminder-interval")
+	}
+	if flags.Changed("steps-path") {
+		s.stepsPath, _ = flags.GetString("steps-path")
+	}
+	return s
+}
+
 // serveListenSpecs lists the listeners serve binds, in order: HTTP and
 // gRPC on bind, then the cookie bridge, which stays on loopback whatever
 // the access class. Each port is its flag when passed, else srv's value
@@ -636,16 +665,20 @@ func daemonize(cmd *cobra.Command) error {
 
 // resolveDefaultProfile ensures cfg.Profile.Default is set before the server
 // starts. Priority:
-//  1. --profile flag (already bound to viper "profile.default" in init())
-//  2. profile.default from config file (via cfg.Profile.Default, set by Load())
+//  1. --profile flag
+//  2. profile.default from CTXT_PROFILE or config file (cfg.Profile.Default, set by Load())
 //  3. If exactly one profile is defined, use it automatically.
 //  4. If multiple profiles and none flagged as default, prompt the user to pick.
 //
 // Non-interactive contexts (no TTY) fall through without error if no default is
 // set — the server starts with no active profile.
 func resolveDefaultProfile(cmd *cobra.Command) error {
-	// Already set via flag or config?
-	if viper.GetString("profile.default") != "" {
+	if cmd.Flags().Changed("profile") {
+		cfg.Profile.Default, _ = cmd.Flags().GetString("profile")
+		return nil
+	}
+	// Already set via env or config?
+	if cfg.Profile.Default != "" {
 		return nil
 	}
 
@@ -662,7 +695,7 @@ func resolveDefaultProfile(cmd *cobra.Command) error {
 
 	// Single profile: use it automatically.
 	if len(names) == 1 {
-		viper.Set("profile.default", names[0])
+		cfg.Profile.Default = names[0]
 		return nil
 	}
 
@@ -701,7 +734,7 @@ func resolveDefaultProfile(cmd *cobra.Command) error {
 	}
 
 	if selected != "" {
-		viper.Set("profile.default", selected)
+		cfg.Profile.Default = selected
 	}
 	return nil
 }

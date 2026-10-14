@@ -119,6 +119,9 @@ type Config struct {
 	// Capture configures browser capture (open tabs, history).
 	Capture CaptureConfig `mapstructure:"capture" yaml:"capture"`
 
+	// Steps locates external pipeline steps.
+	Steps StepsConfig `mapstructure:"steps" yaml:"steps"`
+
 	// Embeddings configures the embedding-model lifecycle guards of
 	// `ctxt embeddings set-default` and `purge` (ADR-071).
 	Embeddings EmbeddingsConfig `mapstructure:"embeddings" yaml:"embeddings"`
@@ -572,6 +575,15 @@ const (
 	DefaultCookieBridgePort = 9377
 )
 
+// Built-in defaults of dpkms serve's other settings.
+const (
+	// DefaultServerWorkers is the job worker count (server.workers).
+	DefaultServerWorkers = 4
+	// DefaultReminderInterval is how often serve checks for due
+	// reminders (server.reminder_interval).
+	DefaultReminderInterval = time.Minute
+)
+
 // ServerConfig represents server configuration
 type ServerConfig struct {
 	// Port, GRPCPort and CookieBridgePort are serve's HTTP, gRPC and
@@ -584,6 +596,11 @@ type ServerConfig struct {
 	CookieBridgePort int  `mapstructure:"cookie_bridge_port" yaml:"cookie_bridge_port"`
 	Workers          int  `mapstructure:"workers" yaml:"workers"`
 	Public           bool `mapstructure:"public" yaml:"public"`
+
+	// Dev enables CORS for the Vite dev server (http://localhost:5173).
+	Dev bool `mapstructure:"dev" yaml:"dev"`
+	// ReminderInterval is how often serve checks for due reminders.
+	ReminderInterval time.Duration `mapstructure:"reminder_interval" yaml:"reminder_interval"`
 	// Access classifies the instance: "private" (default), "protected",
 	// or "public". Empty means unset; EffectiveAccess resolves the
 	// default and the legacy server.public shorthand.
@@ -667,6 +684,13 @@ func (s *ServerConfig) resolveListenPorts() {
 	s.portsSet.http = resolve(&s.Port, DefaultServerPort)
 	s.portsSet.grpc = resolve(&s.GRPCPort, DefaultGRPCPort)
 	s.portsSet.cookieBridge = resolve(&s.CookieBridgePort, DefaultCookieBridgePort)
+}
+
+// StepsConfig locates external pipeline steps.
+type StepsConfig struct {
+	// Path is the external steps directory serve loads. Empty means
+	// ~/.config/contexthelp/steps.
+	Path string `mapstructure:"path" yaml:"path"`
 }
 
 // ServerUIConfig configures the web UI.
@@ -1228,8 +1252,10 @@ func setDefaults(v *viper.Viper) {
 	// Server defaults. The listener ports (server.port, grpc_port,
 	// cookie_bridge_port) are resolved after the merge instead; see
 	// ServerConfig.resolveListenPorts.
-	v.SetDefault("server.workers", 4)
+	v.SetDefault("server.workers", DefaultServerWorkers)
 	v.SetDefault("server.public", false)
+	v.SetDefault("server.dev", false)
+	v.SetDefault("server.reminder_interval", DefaultReminderInterval)
 
 	// Profile defaults
 	v.SetDefault("profile.default", "")

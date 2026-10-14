@@ -71,6 +71,11 @@ server:
   cookie_bridge_port: 9377
   workers: 4
   public: false
+  dev: false
+  reminder_interval: 1m
+
+steps:
+  path: ~/.config/contexthelp/steps
 
 profile:
   default: founder
@@ -113,6 +118,10 @@ All command flags are bound to Viper configuration keys, allowing:
 - Command-line flags to override config file
 - Environment variables to override config file
 - Precedence: CLI flags > Environment > Config file > Defaults
+
+`dpkms serve` binds none of its flags: it reads each setting from the
+loaded config (env over file over default) and a passed flag overrides
+it.
 
 Example from `analyze.go`:
 
