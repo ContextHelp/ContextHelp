@@ -21,25 +21,31 @@ const fakeToken = "fake-registry-token"
 // fakeTokens is an in-memory TokenSource that records every lookup.
 type fakeTokens struct {
 	mu     sync.Mutex
-	tokens map[string]string
+	tokens map[string]registry.StoredToken
 	calls  int
 }
 
+// newFakeTokens takes (name, login url, token) triples: each token is
+// bound to the origin of the url it was "logged in" against.
 func newFakeTokens(kv ...string) *fakeTokens {
-	f := &fakeTokens{tokens: map[string]string{}}
-	for i := 0; i+1 < len(kv); i += 2 {
-		f.tokens[kv[i]] = kv[i+1]
+	f := &fakeTokens{tokens: map[string]registry.StoredToken{}}
+	for i := 0; i+2 < len(kv); i += 3 {
+		origin, err := registry.CanonicalOrigin(kv[i+1])
+		if err != nil {
+			panic(err)
+		}
+		f.tokens[kv[i]] = registry.StoredToken{Origin: origin, Token: kv[i+2]}
 	}
 	return f
 }
 
-func (f *fakeTokens) Get(name string) (string, error) {
+func (f *fakeTokens) Get(name string) (registry.StoredToken, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls++
 	tok, ok := f.tokens[name]
 	if !ok {
-		return "", registry.ErrNoToken{RegistryName: name}
+		return registry.StoredToken{}, registry.ErrNoToken{RegistryName: name}
 	}
 	return tok, nil
 }
@@ -116,7 +122,7 @@ func TestSync_StoredTokenPerAuthType(t *testing.T) {
 				Name: "paid", URL: srv.URL, Auth: tc.auth,
 				TrustLevel: config.RegistryTrustLevelTrusted,
 			}
-			res, err := syncOne(t, cfg, newFakeTokens("paid", fakeToken))
+			res, err := syncOne(t, cfg, newFakeTokens("paid", cfg.URL, fakeToken))
 			if err != nil {
 				t.Fatalf("Sync with stored token: %v", err)
 			}
@@ -140,7 +146,7 @@ func TestSync_APIKeyDoesNotSendAuthorization(t *testing.T) {
 		Auth:       config.RegistryAuthConfig{Type: config.RegistryAuthAPIKey},
 		TrustLevel: config.RegistryTrustLevelTrusted,
 	}
-	if _, err := syncOne(t, cfg, newFakeTokens("paid", fakeToken)); err != nil {
+	if _, err := syncOne(t, cfg, newFakeTokens("paid", cfg.URL, fakeToken)); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
 	for _, v := range log.get("/entities/index") {
@@ -188,7 +194,7 @@ func TestSync_RejectedToken_LoginHint(t *testing.T) {
 		Name: "paid", URL: srv.URL,
 		Auth: config.RegistryAuthConfig{Type: config.RegistryAuthBearer},
 	}
-	_, err := syncOne(t, cfg, newFakeTokens("paid", fakeToken))
+	_, err := syncOne(t, cfg, newFakeTokens("paid", cfg.URL, fakeToken))
 	if err == nil {
 		t.Fatal("Sync against a 403 registry succeeded")
 	}
@@ -217,7 +223,7 @@ func TestSync_PublicRegistryUnauthenticated(t *testing.T) {
 
 	// A token is stored, but the registry declares no auth: nothing is
 	// looked up and nothing is sent.
-	tokens := newFakeTokens("public", fakeToken)
+	tokens := newFakeTokens("public", srv.URL, fakeToken)
 	cfg := config.RegistryConfig{Name: "public", URL: srv.URL, TrustLevel: config.RegistryTrustLevelTrusted}
 	res, err := syncOne(t, cfg, tokens)
 	if err != nil {
@@ -281,7 +287,7 @@ func TestSync_CrossHostRedirectDropsToken(t *testing.T) {
 				Name: "paid", URL: reg.URL, Auth: tc.auth,
 				TrustLevel: config.RegistryTrustLevelTrusted,
 			}
-			if _, err := syncOne(t, cfg, newFakeTokens("paid", fakeToken)); err != nil {
+			if _, err := syncOne(t, cfg, newFakeTokens("paid", cfg.URL, fakeToken)); err != nil {
 				t.Fatalf("Sync: %v", err)
 			}
 			if got := regLog.get("/entities/index"); len(got) != 1 || got[0] == "" {
@@ -317,7 +323,7 @@ func TestSync_SameHostRedirectKeepsToken(t *testing.T) {
 		Auth:       config.RegistryAuthConfig{Type: config.RegistryAuthBearer},
 		TrustLevel: config.RegistryTrustLevelTrusted,
 	}
-	if _, err := syncOne(t, cfg, newFakeTokens("paid", fakeToken)); err != nil {
+	if _, err := syncOne(t, cfg, newFakeTokens("paid", cfg.URL, fakeToken)); err != nil {
 		t.Fatalf("Sync through same-host redirect: %v", err)
 	}
 }
@@ -341,7 +347,7 @@ func TestSync_SharedHostPicksRegistryByPath(t *testing.T) {
 		{Name: "team", URL: srv.URL + "/team", Auth: bearer, TrustLevel: config.RegistryTrustLevelTrusted},
 		{Name: "org", URL: srv.URL + "/org", Auth: bearer, TrustLevel: config.RegistryTrustLevelTrusted},
 	}
-	creds := registry.NewCredentials(regs, newFakeTokens("team", "team-token", "org", "org-token"))
+	creds := registry.NewCredentials(regs, newFakeTokens("team", regs[0].URL, "team-token", "org", regs[1].URL, "org-token"))
 	syncer := registry.New(&stubEntityStore{}).WithCredentials(creds)
 	for _, cfg := range regs {
 		if _, err := syncer.Sync(context.Background(), cfg); err != nil {
@@ -362,7 +368,7 @@ func TestSync_UnknownAuthTypeFails(t *testing.T) {
 		Name: "paid", URL: srv.URL,
 		Auth: config.RegistryAuthConfig{Type: "basic"},
 	}
-	_, err := syncOne(t, cfg, newFakeTokens("paid", fakeToken))
+	_, err := syncOne(t, cfg, newFakeTokens("paid", cfg.URL, fakeToken))
 	if err == nil || !strings.Contains(err.Error(), `unsupported auth.type "basic"`) {
 		t.Fatalf("Sync with unknown auth.type: err = %v", err)
 	}
@@ -378,7 +384,7 @@ func TestMultiSync_TokenPerRegistry(t *testing.T) {
 		{Name: "a", URL: a.URL, Auth: config.RegistryAuthConfig{Type: config.RegistryAuthBearer}},
 		{Name: "b", URL: b.URL, Auth: config.RegistryAuthConfig{Type: config.RegistryAuthAPIKey}},
 	}
-	creds := registry.NewCredentials(regs, newFakeTokens("a", "token-a", "b", "token-b"))
+	creds := registry.NewCredentials(regs, newFakeTokens("a", a.URL, "token-a", "b", b.URL, "token-b"))
 	out, err := registry.New(&stubEntityStore{}).WithCredentials(creds).
 		MultiSync(context.Background(), registry.MultiSyncConfig{Registries: regs})
 	if err != nil {
@@ -409,7 +415,7 @@ func TestSync_EntitlementRequestCarriesToken(t *testing.T) {
 		TrustLevel: config.RegistryTrustLevelTrusted,
 	}
 	ents := newStubEntitlementStore()
-	creds := registry.NewCredentials([]config.RegistryConfig{cfg}, newFakeTokens("paid", fakeToken))
+	creds := registry.NewCredentials([]config.RegistryConfig{cfg}, newFakeTokens("paid", cfg.URL, fakeToken))
 	_, err := registry.New(&stubEntityStore{}).WithEntitlements(ents).WithCredentials(creds).
 		Sync(context.Background(), cfg)
 	if err != nil {
@@ -452,7 +458,7 @@ func TestBookmarkSearch_CarriesToken(t *testing.T) {
 		Name: "paid", URL: srv.URL,
 		Auth: config.RegistryAuthConfig{Type: config.RegistryAuthBearer},
 	}
-	creds := registry.NewCredentials([]config.RegistryConfig{cfg}, newFakeTokens("paid", fakeToken))
+	creds := registry.NewCredentials([]config.RegistryConfig{cfg}, newFakeTokens("paid", cfg.URL, fakeToken))
 	client := registry.NewBookmarkSearchClient(0).WithCredentials(creds)
 	got, err := client.Search(context.Background(), srv.URL, "q")
 	if err != nil {
@@ -473,9 +479,9 @@ func TestBookmarkSearch_CarriesToken(t *testing.T) {
 // failingTokens fails the test on any lookup.
 type failingTokens struct{ t *testing.T }
 
-func (f failingTokens) Get(name string) (string, error) {
+func (f failingTokens) Get(name string) (registry.StoredToken, error) {
 	f.t.Errorf("token store consulted for %q, a registry without auth", name)
-	return "", registry.ErrNoToken{RegistryName: name}
+	return registry.StoredToken{}, registry.ErrNoToken{RegistryName: name}
 }
 
 func TestCredentials_NoAuthRegistryNeverLooksUpToken(t *testing.T) {

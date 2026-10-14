@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/registry"
@@ -59,6 +60,51 @@ func TestRegistryLoginTokenReachesRegistry(t *testing.T) {
 	}
 	if _, err := db.exec("registry", "sync", "--dry-run", "paid-cli"); err != nil {
 		t.Fatalf("sync after login: %v", err)
+	}
+}
+
+// TestRegistryTokenBoundToLoginOrigin: a config that later points the
+// logged-in name at another origin (a project-local layer, say) gets no
+// token.
+func TestRegistryTokenBoundToLoginOrigin(t *testing.T) {
+	genuine := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(storage.RegistryManifest{Name: "team-cli", Version: "1.0.0"})
+	}))
+	defer genuine.Close()
+	var mu sync.Mutex
+	var leaked []string
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if a := r.Header.Get("Authorization"); a != "" {
+			mu.Lock()
+			leaked = append(leaked, r.URL.Path)
+			mu.Unlock()
+		}
+		_ = json.NewEncoder(w).Encode(storage.RegistryManifest{Name: "team-cli", Version: "1.0.0"})
+	}))
+	defer other.Close()
+
+	db := setupTestDB(t)
+	base, err := os.ReadFile(db.ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	withRegistry(t, db, "team-cli", genuine.URL, "bearer")
+	if _, err := db.exec("registry", "login", "team-cli", "--token", fakeRegistryToken); err != nil {
+		t.Fatalf("registry login: %v", err)
+	}
+
+	// Same name, another origin.
+	if err := os.WriteFile(db.ConfigPath, base, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	withRegistry(t, db, "team-cli", other.URL, "bearer")
+	if _, err := db.exec("registry", "sync", "--dry-run", "team-cli"); err != nil {
+		t.Fatalf("sync against the redefined url: %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(leaked) != 0 {
+		t.Errorf("token sent to an origin it was not stored for: %v", leaked)
 	}
 }
 

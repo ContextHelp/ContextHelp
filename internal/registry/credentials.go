@@ -3,19 +3,22 @@ package registry
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 )
 
-// TokenSource looks up the stored token for a registry by name. Get
-// returns ErrNoToken when nothing is stored. *TokenStore satisfies it.
+// TokenSource looks up the stored token, and the origin it is bound to,
+// for a registry by name. Get returns ErrNoToken when nothing is stored.
+// *TokenStore satisfies it.
 type TokenSource interface {
-	Get(registryName string) (string, error)
+	Get(registryName string) (StoredToken, error)
 }
 
 // KeychainTokens returns a TokenSource over the OS keychain that opens
@@ -37,7 +40,7 @@ func newLazyTokens(open func() TokenSource) *lazyTokens {
 	return &lazyTokens{open: open}
 }
 
-func (l *lazyTokens) Get(registryName string) (string, error) {
+func (l *lazyTokens) Get(registryName string) (StoredToken, error) {
 	l.once.Do(func() { l.store = l.open() })
 	return l.store.Get(registryName)
 }
@@ -53,10 +56,21 @@ func (l *lazyTokens) Get(registryName string) (string, error) {
 //
 // Only registries whose auth.type is set are authenticated; a registry
 // without one is public and the token store is never consulted for it.
+//
+// A stored token is released only to the origin recorded with it at login
+// (StoredToken.Origin), and only over https or to a loopback host. A
+// config entry that points a logged-in name at another origin (say, a
+// project-local config layer) gets no token, and a one-line warning
+// naming the registry and both origins goes to the warnings writer.
+//
 // A nil *Credentials authenticates nothing.
 type Credentials struct {
 	registries []credRegistry
 	tokens     TokenSource
+
+	warnMu sync.Mutex
+	warn   io.Writer
+	warned map[string]bool
 }
 
 type credRegistry struct {
@@ -70,7 +84,7 @@ type credRegistry struct {
 // tokens read from tokens on each request. Entries without a parseable
 // http(s) url are ignored.
 func NewCredentials(registries []config.RegistryConfig, tokens TokenSource) *Credentials {
-	c := &Credentials{tokens: tokens}
+	c := &Credentials{tokens: tokens, warn: os.Stderr, warned: map[string]bool{}}
 	for _, r := range registries {
 		u, err := url.Parse(r.URL)
 		if err != nil {
@@ -87,6 +101,13 @@ func NewCredentials(registries []config.RegistryConfig, tokens TokenSource) *Cre
 			path:   strings.TrimSuffix(u.Path, "/"),
 		})
 	}
+	return c
+}
+
+// WithWarnings sends the withheld-token warnings to w (default
+// os.Stderr). Each distinct warning is written once.
+func (c *Credentials) WithWarnings(w io.Writer) *Credentials {
+	c.warn = w
 	return c
 }
 
@@ -125,8 +146,8 @@ func (c *Credentials) CheckResponse(resp *http.Response) error {
 		Configured:   reg.cfg.Auth.Type != "",
 	}
 	if e.Configured {
-		_, found, err := c.token(reg.cfg.Name)
-		e.TokenSent = found && err == nil
+		_, sent, err := c.release(reg, resp.Request.URL)
+		e.TokenSent = sent && err == nil
 	}
 	return e
 }
@@ -195,19 +216,103 @@ func (c *Credentials) match(u *url.URL) (*credRegistry, bool) {
 
 // token reads the stored token for name; found is false when none is
 // stored.
-func (c *Credentials) token(name string) (tok string, found bool, err error) {
+func (c *Credentials) token(name string) (tok StoredToken, found bool, err error) {
 	if c.tokens == nil || name == "" {
-		return "", false, nil
+		return StoredToken{}, false, nil
 	}
 	tok, err = c.tokens.Get(name)
 	if err != nil {
 		var none ErrNoToken
 		if errors.As(err, &none) {
-			return "", false, nil
+			return StoredToken{}, false, nil
 		}
-		return "", false, fmt.Errorf("registry %q: read stored token: %w", name, err)
+		return StoredToken{}, false, fmt.Errorf("registry %q: read stored token: %w", name, err)
 	}
-	return tok, tok != "", nil
+	return tok, tok.Token != "" && tok.Origin != "", nil
+}
+
+// release returns reg's stored token when it may go to u: u's origin is
+// the one recorded at login, and u is https or a loopback host. A
+// withheld token is warned about, never printed.
+func (c *Credentials) release(reg *credRegistry, u *url.URL) (string, bool, error) {
+	tok, found, err := c.token(reg.cfg.Name)
+	if err != nil || !found {
+		return "", false, err
+	}
+	origin := requestOrigin(u)
+	if tok.Origin != origin {
+		c.warnOnce(fmt.Sprintf("warning: registry %q: stored token is bound to %s, not sent to %s (run: ctxt registry login %s)",
+			reg.cfg.Name, tok.Origin, origin, reg.cfg.Name))
+		return "", false, nil
+	}
+	if InsecureOrigin(origin) {
+		c.warnOnce(fmt.Sprintf("warning: registry %q: token not sent over plain http to %s; use https",
+			reg.cfg.Name, origin))
+		return "", false, nil
+	}
+	return tok.Token, true, nil
+}
+
+// requestOrigin is u's CanonicalOrigin; for a URL that has none it is
+// the raw scheme://host, which never equals a stored token's origin.
+func requestOrigin(u *url.URL) string {
+	if origin, err := CanonicalOrigin(u.String()); err == nil {
+		return origin
+	}
+	return u.Scheme + "://" + u.Host
+}
+
+func (c *Credentials) warnOnce(msg string) {
+	c.warnMu.Lock()
+	defer c.warnMu.Unlock()
+	if c.warn == nil || c.warned[msg] {
+		return
+	}
+	c.warned[msg] = true
+	fmt.Fprintln(c.warn, msg)
+}
+
+// CanonicalOrigin returns the origin of an http(s) URL: lower-cased
+// scheme and host, the scheme's default port dropped, no path. A stored
+// token is bound to the CanonicalOrigin of the registry url at login.
+func CanonicalOrigin(rawURL string) (string, error) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "", fmt.Errorf("registry: parse url: %w", err)
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return "", fmt.Errorf("registry: url %q is not http(s)", rawURL)
+	}
+	if u.Hostname() == "" {
+		return "", fmt.Errorf("registry: url %q has no host", rawURL)
+	}
+	host := canonicalHost(u)
+	if u.Port() == "" || host == strings.ToLower(u.Hostname()) {
+		// No port left: bracket an IPv6 literal.
+		if strings.Contains(host, ":") {
+			host = "[" + host + "]"
+		}
+	}
+	return scheme + "://" + host, nil
+}
+
+// InsecureOrigin reports whether a token must not be sent to origin: plain
+// http to a host other than localhost or a loopback address.
+func InsecureOrigin(origin string) bool {
+	u, err := url.Parse(origin)
+	if err != nil {
+		return true
+	}
+	if strings.ToLower(u.Scheme) == "https" {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "localhost" {
+		return false
+	}
+	ip := net.ParseIP(host)
+	return ip == nil || !ip.IsLoopback()
 }
 
 // authHeader returns the header and value prefix auth uses.
@@ -247,12 +352,12 @@ func (t *authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		closeBody(req)
 		return nil, fmt.Errorf("registry %q: %w", reg.cfg.Name, err)
 	}
-	tok, found, err := t.creds.token(reg.cfg.Name)
+	tok, sent, err := t.creds.release(reg, req.URL)
 	if err != nil {
 		closeBody(req)
 		return nil, err
 	}
-	if !found {
+	if !sent {
 		return next.RoundTrip(req)
 	}
 	authed := req.Clone(req.Context())

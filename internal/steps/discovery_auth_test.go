@@ -18,13 +18,29 @@ import (
 // fakeToken is a fixed, non-secret value; failure messages may print it.
 const fakeToken = "fake-registry-token"
 
+// mapTokens maps a registry name to its token; each token is bound to
+// the origin of the url the test registry runs at (set via bind).
 type mapTokens map[string]string
 
-func (m mapTokens) Get(name string) (string, error) {
-	if tok, ok := m[name]; ok {
-		return tok, nil
+func (m mapTokens) bind(url string) registry.TokenSource {
+	return boundTokens{tokens: m, url: url}
+}
+
+type boundTokens struct {
+	tokens mapTokens
+	url    string
+}
+
+func (b boundTokens) Get(name string) (registry.StoredToken, error) {
+	tok, ok := b.tokens[name]
+	if !ok {
+		return registry.StoredToken{}, registry.ErrNoToken{RegistryName: name}
 	}
-	return "", registry.ErrNoToken{RegistryName: name}
+	origin, err := registry.CanonicalOrigin(b.url)
+	if err != nil {
+		return registry.StoredToken{}, err
+	}
+	return registry.StoredToken{Origin: origin, Token: tok}, nil
 }
 
 // stepRegistry serves a manifest with one step and that step's SKILL.md,
@@ -65,7 +81,7 @@ func newDiscovery(t *testing.T, srvURL string, tokens registry.TokenSource) *ste
 
 func TestDiscovery_ManifestAndStepDownloadCarryToken(t *testing.T) {
 	srv := stepRegistry(t)
-	sd := newDiscovery(t, srv.URL, mapTokens{"paid": fakeToken})
+	sd := newDiscovery(t, srv.URL, mapTokens{"paid": fakeToken}.bind(srv.URL))
 	ctx := context.Background()
 
 	if _, err := sd.FetchRemoteManifest(ctx, srv.URL); err != nil {
@@ -81,7 +97,7 @@ func TestDiscovery_ManifestAndStepDownloadCarryToken(t *testing.T) {
 
 func TestDiscovery_NoToken_LoginHint(t *testing.T) {
 	srv := stepRegistry(t)
-	sd := newDiscovery(t, srv.URL, mapTokens{})
+	sd := newDiscovery(t, srv.URL, mapTokens{}.bind(srv.URL))
 	ctx := context.Background()
 
 	_, err := sd.FetchRemoteManifest(ctx, srv.URL)

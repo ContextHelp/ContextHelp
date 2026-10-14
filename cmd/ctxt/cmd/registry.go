@@ -781,8 +781,15 @@ func runRegistryLogin(cmd *cobra.Command, args []string) error {
 	name := args[0]
 
 	// Validate registry exists in config.
-	if !registryExistsInConfig(name) {
+	reg, ok := registryConfigByName(name)
+	if !ok {
 		return fmt.Errorf("registry %q not found in config — add it first with: ctxt registry add %s <url>", name, name)
+	}
+	// The token is bound to this origin: a config that later points the
+	// name elsewhere does not get it.
+	origin, err := registry.CanonicalOrigin(reg.URL)
+	if err != nil {
+		return fmt.Errorf("registry login: registry %q: %w", name, err)
 	}
 
 	token, err := cmd.Flags().GetString("token")
@@ -802,15 +809,19 @@ func runRegistryLogin(cmd *cobra.Command, args []string) error {
 	}
 
 	store := registry.NewTokenStore()
-	if err := store.Set(name, token); err != nil {
+	if err := store.Set(name, origin, token); err != nil {
 		return fmt.Errorf("registry login: %w", err)
 	}
 
-	fmt.Fprintf(cmd.OutOrStdout(), "Token stored securely in keychain for registry %q.\n", name)
-	if r, ok := registryConfigByName(name); ok && r.Auth.Type == "" {
+	fmt.Fprintf(cmd.OutOrStdout(), "Token stored securely in keychain for registry %q (%s).\n", name, origin)
+	if reg.Auth.Type == "" {
 		fmt.Fprintf(cmd.ErrOrStderr(),
 			"note: registry %q has no auth.type, so the token is not sent; set registries[].auth.type (bearer | api_key | oauth2)\n",
 			name)
+	}
+	if registry.InsecureOrigin(origin) {
+		fmt.Fprintf(cmd.ErrOrStderr(),
+			"note: registry %q is plain http; the token is sent only over https or to a loopback host\n", name)
 	}
 	return nil
 }

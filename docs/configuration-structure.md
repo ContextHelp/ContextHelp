@@ -172,9 +172,13 @@ default `X-API-Key`).
 Every request ctxt makes to a registry with an `auth.type` (manifest,
 entity index, entity pull, entitlements, step download, bookmark search)
 carries its stored token: `bearer` and `oauth2` as `Authorization: Bearer
-<token>`, `api_key` as `<header_name>: <token>`. The token goes only to
-the host in the registry's `url`, same scheme; a redirect elsewhere drops
-it. With no token stored the request goes out unauthenticated, and a 401
+<token>`, `api_key` as `<header_name>: <token>`. `login` binds the token
+to the origin (scheme, host, port) of the registry's `url` at that moment;
+it goes only to that origin, over https or to a loopback host. A config
+that later points the name elsewhere (a project-local
+`.contexthelp/ctxt.yaml`, say) gets no token and a one-line warning: run
+`login` again if the move is genuine. A redirect to another host drops
+the token. With no token stored the request goes out unauthenticated, and a 401
 or 403 names `ctxt registry login <name>`. A registry without `auth` is
 public: the keychain is never read for it. `ctxt config doctor` rejects an
 unknown `auth.type`.

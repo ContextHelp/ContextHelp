@@ -22,13 +22,29 @@ import (
 // fakeRegistryToken is a fixed, non-secret value; failures may print it.
 const fakeRegistryToken = "fake-registry-token"
 
+// mapTokens maps a registry name to its token; each token is bound to
+// the origin of the url the test registry runs at (set via bind).
 type mapTokens map[string]string
 
-func (m mapTokens) Get(name string) (string, error) {
-	if tok, ok := m[name]; ok {
-		return tok, nil
+func (m mapTokens) bind(url string) registrysync.TokenSource {
+	return boundTokens{tokens: m, url: url}
+}
+
+type boundTokens struct {
+	tokens mapTokens
+	url    string
+}
+
+func (b boundTokens) Get(name string) (registrysync.StoredToken, error) {
+	tok, ok := b.tokens[name]
+	if !ok {
+		return registrysync.StoredToken{}, registrysync.ErrNoToken{RegistryName: name}
 	}
-	return "", registrysync.ErrNoToken{RegistryName: name}
+	origin, err := registrysync.CanonicalOrigin(b.url)
+	if err != nil {
+		return registrysync.StoredToken{}, err
+	}
+	return registrysync.StoredToken{Origin: origin, Token: tok}, nil
 }
 
 // paidRegistry answers every registry endpoint the service calls, only
@@ -86,7 +102,7 @@ func newAuthSvc(t *testing.T, regURL string, tokens registrysync.TokenSource) *S
 
 func TestService_RegistryRequestsCarryStoredToken(t *testing.T) {
 	reg := newPaidRegistry(t)
-	svc := newAuthSvc(t, reg.URL, mapTokens{"paid": fakeRegistryToken})
+	svc := newAuthSvc(t, reg.URL, mapTokens{"paid": fakeRegistryToken}.bind(reg.URL))
 	ctx := context.Background()
 
 	if err := svc.FetchRegistry(ctx, reg.URL); err != nil {
@@ -121,7 +137,7 @@ func TestService_RegistryRequestsCarryStoredToken(t *testing.T) {
 
 func TestService_RegistryNoToken_LoginHint(t *testing.T) {
 	reg := newPaidRegistry(t)
-	svc := newAuthSvc(t, reg.URL, mapTokens{})
+	svc := newAuthSvc(t, reg.URL, mapTokens{}.bind(reg.URL))
 	ctx := context.Background()
 
 	_, err := svc.SyncRegistryEntities(ctx, reg.URL)
