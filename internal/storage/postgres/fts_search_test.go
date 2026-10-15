@@ -307,6 +307,13 @@ func TestPostgresSimilarQueryEndToEnd(t *testing.T) {
 	if err := drv.Objects().Create(ctx, makePgFTSObject("fts-pg-dsl2", "note", "unrelated body")); err != nil {
 		t.Fatalf("create non-match: %v", err)
 	}
+	// An inbox match is not a hit: the engine's status predicate follows
+	// the compiled $N placeholders.
+	inbox := makePgFTSObject("fts-pg-dsl3", "note", "canary predicate body in the inbox")
+	inbox.Status = "inbox"
+	if err := drv.Objects().Create(ctx, inbox); err != nil {
+		t.Fatalf("create inbox match: %v", err)
+	}
 
 	results, total, err := search.NewEngine(drv).Search(ctx, "similar==canary", 10, 0)
 	if err != nil {

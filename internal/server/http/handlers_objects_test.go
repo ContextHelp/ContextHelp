@@ -223,6 +223,11 @@ func TestDeleteObject_FTSSearchStaysHealthy(t *testing.T) {
 		t.Fatalf("analyze: status %d, body %v", resp.StatusCode, analyzed)
 	}
 	objID := analyzed["job_id"] // raw path returns the object ID
+	// A raw object is not a search hit; the repro needs one a search
+	// reaches, so activate it first.
+	if err := ts.svc.Store.Objects().TransitionStatus(context.Background(), objID, "raw", "active", time.Now()); err != nil {
+		t.Fatalf("activate object: %v", err)
+	}
 
 	searchURL := ts.URL + "/api/v1/search?q=" + url.QueryEscape(`similar=="`+token+`"`)
 	search := func() (int, int) {

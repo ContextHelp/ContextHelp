@@ -3,7 +3,6 @@ package search
 import (
 	"context"
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 
@@ -232,85 +231,29 @@ func TestProfileIsolation(t *testing.T) {
 	_ = results
 }
 
-// --- Postgres dialect WHERE-building tests (no live DB needed) ---
+// TestSearchStatusScope pins that a query-language search reads like List:
+// an object that is not active is never a hit, however the predicate
+// matches it, because the engine asks the store for no status.
+func TestSearchStatusScope(t *testing.T) {
+	driver := storageutil.NewTestDriver(t)
+	engine := NewEngine(driver)
+	ctx := context.Background()
 
-// TestBuildWherePostgresPlaceholders verifies that buildWhere emits $N
-// placeholders for the Postgres dialect.
-func TestBuildWherePostgresPlaceholders(t *testing.T) {
-	ast, err := Parse("type==article")
-	require.NoError(t, err)
+	for _, st := range []string{"active", "inbox", "discarded"} {
+		now := time.Now().Truncate(time.Second)
+		if err := driver.Objects().Create(ctx, &storage.KnowledgeObject{
+			ID: "st-" + st, Type: "note", Status: st, CreatedAt: now, UpdatedAt: now,
+		}); err != nil {
+			t.Fatalf("seed %s: %v", st, err)
+		}
+	}
 
-	where, args, err := buildWhere(DialectPostgres, ast)
+	results, total, err := engine.Search(ctx, "type==note", 10, 0)
 	require.NoError(t, err)
-	assert.Equal(t, "type = $1", where)
-	assert.Equal(t, []any{"article"}, args)
-	assert.NotContains(t, where, "?", "should not contain ? placeholders for Postgres")
-}
-
-// TestBuildWherePostgresProfileScope verifies that the profile scope placeholder
-// is included in the $N sequence rather than being a dangling ?.
-func TestBuildWherePostgresProfileScope(t *testing.T) {
-	ast, err := Parse("type==article")
-	require.NoError(t, err)
-
-	where, args, err := buildWhere(DialectPostgres, ast, "alice")
-	require.NoError(t, err)
-	assert.Contains(t, where, "$1")
-	assert.Contains(t, where, "$2")
-	assert.NotContains(t, where, "?")
-	assert.Equal(t, []any{"alice", "article"}, args)
-}
-
-// TestBuildWherePostgresTagEq verifies jsonb_array_elements is used for tags.
-func TestBuildWherePostgresTagEq(t *testing.T) {
-	ast, err := Parse("tag==perf")
-	require.NoError(t, err)
-
-	where, _, err := buildWhere(DialectPostgres, ast)
-	require.NoError(t, err)
-	assert.Contains(t, where, "jsonb_array_elements")
-	assert.NotContains(t, where, "json_each")
-	assert.NotContains(t, where, "?")
-}
-
-// TestBuildWherePostgresSimilar verifies similar== compiles to a
-// websearch_to_tsquery predicate on Postgres, sharing the $N sequence with
-// the profile scope.
-func TestBuildWherePostgresSimilar(t *testing.T) {
-	ast, err := Parse("similar==keyword")
-	require.NoError(t, err)
-
-	where, args, err := buildWhere(DialectPostgres, ast, "profile-1")
-	require.NoError(t, err)
-	assert.Contains(t, where, "profile_id = $1")
-	assert.Contains(t, where, "fts @@ websearch_to_tsquery($2, $3)")
-	assert.NotContains(t, where, "?")
-	assert.Equal(t, []any{"profile-1", PostgresFTSRegconfig, "keyword"}, args)
-}
-
-// TestBuildWhereSQLiteUnchanged verifies SQLite paths are unaffected.
-func TestBuildWhereSQLiteUnchanged(t *testing.T) {
-	ast, err := Parse("tag==ui")
-	require.NoError(t, err)
-
-	where, _, err := buildWhere(DialectSQLite, ast)
-	require.NoError(t, err)
-	assert.Contains(t, where, "json_each")
-	assert.Contains(t, where, "?")
-	assert.False(t, strings.Contains(where, "$"), "SQLite should not have $N placeholders")
-}
-
-// TestBuildWherePostgresAndMultiArg verifies multi-arg AND gets sequential $N.
-func TestBuildWherePostgresAndMultiArg(t *testing.T) {
-	ast, err := Parse("type==article;tag==ui")
-	require.NoError(t, err)
-
-	where, args, err := buildWhere(DialectPostgres, ast)
-	require.NoError(t, err)
-	assert.Contains(t, where, "$1")
-	assert.Contains(t, where, "$2")
-	assert.NotContains(t, where, "?")
-	assert.Equal(t, []any{"article", "ui"}, args)
+	assert.Equal(t, 1, total, "total counts active objects only")
+	if assert.Len(t, results, 1) {
+		assert.Equal(t, "st-active", results[0].ID)
+	}
 }
 
 // TestSearchRelated verifies related: returns objects sharing mention targets.

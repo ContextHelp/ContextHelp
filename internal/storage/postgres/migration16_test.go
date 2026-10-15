@@ -115,7 +115,7 @@ func assertPgTextContentEverywhere(t *testing.T, objs storage.ObjectStore, term,
 	if listed[0].TextContent != want {
 		t.Errorf("List TextContent = %q, want %q", listed[0].TextContent, want)
 	}
-	bySQL, _, err := objs.ListBySQL(ctx, "id = $1", []any{"tc"}, 10, 0)
+	bySQL, _, err := objs.ListBySQL(ctx, "id = $1", []any{"tc"}, storage.ObjectFilter{Limit: 10})
 	if err != nil || len(bySQL) != 1 {
 		t.Fatalf("ListBySQL: %d objects, %v", len(bySQL), err)
 	}

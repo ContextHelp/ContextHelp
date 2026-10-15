@@ -276,6 +276,7 @@ func (o *embeddingsObjects) VectorSearch(ctx context.Context, q storage.VectorQu
 	if err != nil {
 		return nil, err
 	}
+	status, statusScoped := filter.StatusScope()
 	out := make([]*storage.KnowledgeObject, 0, limit)
 	for _, h := range hits {
 		if len(out) >= limit {
@@ -285,7 +286,8 @@ func (o *embeddingsObjects) VectorSearch(ctx context.Context, q storage.VectorQu
 		if err != nil || obj == nil {
 			continue
 		}
-		if (filter.Type != "" && obj.Type != filter.Type) ||
+		if (statusScoped && obj.Status != status) ||
+			(filter.Type != "" && obj.Type != filter.Type) ||
 			(filter.Subtype != "" && obj.Subtype != filter.Subtype) ||
 			(filter.Pipeline != "" && obj.Pipeline != filter.Pipeline) ||
 			(filter.ProfileID != "" && obj.ProfileID != filter.ProfileID) {

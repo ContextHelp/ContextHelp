@@ -195,6 +195,10 @@ const EdgeEndpointEntity = "entity"
 // carries none, and the status an ObjectFilter with no Status matches.
 const ObjectStatusActive = "active"
 
+// ObjectStatusAll is the ObjectFilter.Status value that lifts the status
+// filter: every status matches.
+const ObjectStatusAll = "all"
+
 // FeedStatusActive is the status a Feed is created with when it carries none.
 const FeedStatusActive = "active"
 
@@ -225,7 +229,9 @@ type ObjectFilter struct {
 	Offset    int
 	Sort      string // "created_at", "updated_at"
 	Dir       string // "asc", "desc"
-	Status    string // "" → default to "active"; "inbox"; "discarded"; "all"
+	// Status selects one object status: "" means ObjectStatusActive,
+	// ObjectStatusAll lifts the filter. See StatusScope.
+	Status string // "" → default to "active"; "inbox"; "discarded"; "raw"; "all"
 
 	// Metadata facet filters (US-0407): applied via JSON extraction on the metadata column.
 	MetadataType   string     // metadata.type (e.g. "observation", "task")
@@ -240,6 +246,23 @@ type ObjectFilter struct {
 	// place of Sort and Dir. With Limit it pages through changes: the
 	// next page starts after the last object's ChangeSeq.
 	ChangedAfter *int64
+}
+
+// StatusScope is the object status f selects, and false when it selects
+// every status. An empty Status selects ObjectStatusActive, so a read with
+// no status asked for never returns an object that is not active;
+// ObjectStatusAll lifts the filter. List, ListBySQL, FTSSearch and
+// VectorSearch all apply it, so the status rule is the same on every read
+// path and every driver.
+func (f ObjectFilter) StatusScope() (string, bool) {
+	switch f.Status {
+	case "":
+		return ObjectStatusActive, true
+	case ObjectStatusAll:
+		return "", false
+	default:
+		return f.Status, true
+	}
 }
 
 // ListOrder is the ORDER BY expression (without the keywords) a List over f

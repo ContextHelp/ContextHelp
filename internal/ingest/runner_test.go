@@ -66,7 +66,7 @@ func (m *memObjectStore) Delete(_ context.Context, _ string) error { return nil 
 
 func (m *memObjectStore) CountBlobRefs(_ context.Context, _ string) (int, error) { return 0, nil }
 
-func (m *memObjectStore) ListBySQL(_ context.Context, _ string, _ []any, _, _ int) ([]*storage.KnowledgeObject, int, error) {
+func (m *memObjectStore) ListBySQL(_ context.Context, _ string, _ []any, _ storage.ObjectFilter) ([]*storage.KnowledgeObject, int, error) {
 	return nil, 0, nil
 }
 

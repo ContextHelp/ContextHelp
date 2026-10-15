@@ -122,7 +122,7 @@ func (s *ObjectStore) GetBySourceKey(ctx context.Context, key string) (*storage.
 }
 
 func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, int, error) {
-	conditions, args, idx := objectListConditionsPG(filter)
+	conditions, args, idx := objectListConditionsPG(filter, 1)
 
 	where := ""
 	if len(conditions) > 0 {
@@ -168,19 +168,16 @@ func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]
 }
 
 // objectListConditionsPG turns filter into List's WHERE predicates and their
-// bound arguments, and returns the next free $N placeholder index.
-func objectListConditionsPG(filter storage.ObjectFilter) ([]string, []any, int) {
+// bound arguments, numbering placeholders from $start, and returns the next
+// free $N placeholder index.
+func objectListConditionsPG(filter storage.ObjectFilter, start int) ([]string, []any, int) {
 	var conditions []string
 	var args []any
-	idx := 1
+	idx := start
 
-	statusVal := filter.Status
-	if statusVal == "" {
-		statusVal = storage.ObjectStatusActive
-	}
-	if statusVal != "all" {
+	if st, ok := filter.StatusScope(); ok {
 		conditions = append(conditions, fmt.Sprintf("status = $%d", idx))
-		args = append(args, statusVal)
+		args = append(args, st)
 		idx++
 	}
 	if filter.Type != "" {
@@ -449,38 +446,42 @@ func reindexByHashTx(ctx context.Context, tx *sql.Tx, hash string) error {
 	return nil
 }
 
-func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, limit, offset int) ([]*storage.KnowledgeObject, int, error) {
-	countQuery := "SELECT COUNT(*) FROM objects"
+func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, int, error) {
+	// List's predicates (status scope first) are numbered after the
+	// caller's $N placeholders, so where runs exactly as compiled.
+	conditions, condArgs, idx := objectListConditionsPG(filter, len(args)+1)
 	if where != "" {
-		countQuery += " WHERE " + where
+		conditions = append([]string{"(" + where + ")"}, conditions...)
 	}
+	args = append(append([]any(nil), args...), condArgs...)
+	clause := ""
+	if len(conditions) > 0 {
+		clause = " WHERE " + strings.Join(conditions, " AND ")
+	}
+
 	var total int
-	if err := s.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM objects"+clause, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count by sql: %w", err)
 	}
 
 	// where is a compiled RSQL predicate (internal/search): literals are
 	// already bound as $N placeholders in args, only operators and column
-	// names reach the SQL text. LIMIT/OFFSET are bound below rather than
-	// formatted in.
+	// names reach the SQL text. clause adds objectListConditionsPG's fixed
+	// fragments (values in args), order is a ListOrder literal, and
+	// LIMIT/OFFSET are bound below rather than formatted in.
 	// #nosec G202 -- see above; caller values travel in args, not the string.
-	query := objectSelectCols + ` FROM objects`
-	if where != "" {
-		query += " WHERE " + where
-	}
-	query += " ORDER BY created_at DESC"
-	pageArgs := append([]any(nil), args...)
-	idx := len(pageArgs) + 1
-	if limit > 0 {
+	query := objectSelectCols + ` FROM objects` + clause + " ORDER BY " + filter.ListOrder()
+	pageArgs := args
+	if filter.Limit > 0 {
 		// #nosec G202 -- appends a generated "$N" placeholder; value in args.
 		query += fmt.Sprintf(" LIMIT $%d", idx)
-		pageArgs = append(pageArgs, limit)
+		pageArgs = append(pageArgs, filter.Limit)
 		idx++
 	}
-	if offset > 0 {
+	if filter.Offset > 0 {
 		// #nosec G202 -- appends a generated "$N" placeholder; value in args.
 		query += fmt.Sprintf(" OFFSET $%d", idx)
-		pageArgs = append(pageArgs, offset)
+		pageArgs = append(pageArgs, filter.Offset)
 	}
 
 	rows, err := s.db.QueryContext(ctx, query, pageArgs...)
@@ -531,6 +532,11 @@ func (s *ObjectStore) VectorSearch(ctx context.Context, q storage.VectorQuery, f
 	args := []any{encodePgVector(q.Vector)}
 	idx := 2
 
+	if st, ok := filter.StatusScope(); ok {
+		conditions = append(conditions, fmt.Sprintf("status = $%d", idx))
+		args = append(args, st)
+		idx++
+	}
 	if filter.Type != "" {
 		conditions = append(conditions, fmt.Sprintf("type = $%d", idx))
 		args = append(args, filter.Type)
@@ -664,11 +670,16 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 	// $1 is the raw query text; the tsquery is computed once in the FROM
 	// clause and shared by the match predicate and the rank expression.
 	// Filter placeholders number themselves from $2, mirroring the SQLite
-	// filter shape (type + profile + metadata facets).
+	// filter shape (status + type + profile + metadata facets).
 	conditions := []string{"fts @@ q"}
 	args := []any{query}
 	idx := 2
 
+	if st, ok := filter.StatusScope(); ok {
+		conditions = append(conditions, fmt.Sprintf("status = $%d", idx))
+		args = append(args, st)
+		idx++
+	}
 	if filter.Type != "" {
 		conditions = append(conditions, fmt.Sprintf("type = $%d", idx))
 		args = append(args, filter.Type)

@@ -190,7 +190,7 @@ func TestListBySQL_SimpleWhere(t *testing.T) {
 	require.NoError(t, d.Objects().Create(ctx, makeObject("art-2", "article")))
 	require.NoError(t, d.Objects().Create(ctx, makeObject("note-1", "note")))
 
-	objs, total, err := d.Objects().ListBySQL(ctx, "type = ?", []any{"article"}, 0, 0)
+	objs, total, err := d.Objects().ListBySQL(ctx, "type = ?", []any{"article"}, storage.ObjectFilter{})
 	require.NoError(t, err)
 	assert.Equal(t, 2, total)
 	assert.Len(t, objs, 2)
@@ -203,7 +203,7 @@ func TestListBySQL_Empty(t *testing.T) {
 	d := newTestDriver(t)
 	ctx := context.Background()
 
-	objs, total, err := d.Objects().ListBySQL(ctx, "type = ?", []any{"nonexistent"}, 0, 0)
+	objs, total, err := d.Objects().ListBySQL(ctx, "type = ?", []any{"nonexistent"}, storage.ObjectFilter{})
 	require.NoError(t, err)
 	assert.Equal(t, 0, total)
 	assert.Len(t, objs, 0)
@@ -221,7 +221,7 @@ func TestListBySQL_Pagination(t *testing.T) {
 		require.NoError(t, d.Objects().Create(ctx, obj))
 	}
 
-	objs, total, err := d.Objects().ListBySQL(ctx, "", nil, 2, 1)
+	objs, total, err := d.Objects().ListBySQL(ctx, "", nil, storage.ObjectFilter{Limit: 2, Offset: 1})
 	require.NoError(t, err)
 	assert.Equal(t, 5, total)
 	assert.Len(t, objs, 2)
@@ -241,7 +241,7 @@ func TestListBySQL_OffsetWithoutLimit(t *testing.T) {
 		require.NoError(t, d.Objects().Create(ctx, obj))
 	}
 
-	objs, total, err := d.Objects().ListBySQL(ctx, "", nil, 0, 2)
+	objs, total, err := d.Objects().ListBySQL(ctx, "", nil, storage.ObjectFilter{Offset: 2})
 	require.NoError(t, err)
 	assert.Equal(t, 5, total)
 	assert.Len(t, objs, 3, "offset 2 of 5 rows with no limit should return 3")
@@ -437,7 +437,7 @@ func TestListBySQL_JSONExtract(t *testing.T) {
 	obj3.Metadata = map[string]any{"different": "field"}
 	require.NoError(t, d.Objects().Create(ctx, obj3))
 
-	objs, total, err := d.Objects().ListBySQL(ctx, "json_extract(metadata, '$.key') = ?", []any{"val"}, 0, 0)
+	objs, total, err := d.Objects().ListBySQL(ctx, "json_extract(metadata, '$.key') = ?", []any{"val"}, storage.ObjectFilter{})
 	require.NoError(t, err)
 	assert.Equal(t, 1, total)
 	assert.Len(t, objs, 1)

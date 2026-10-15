@@ -205,7 +205,13 @@ type ObjectStore interface {
 	// raw_content or text_content is its blob:// ref, or metadata.blob_key
 	// names it. Keys are content hashes, so objects can share one.
 	CountBlobRefs(ctx context.Context, key string) (int, error)
-	ListBySQL(ctx context.Context, where string, args []any, limit, offset int) ([]*KnowledgeObject, int, error)
+	// ListBySQL lists the objects List(filter) would return that also
+	// satisfy where, a raw predicate over the objects table in the
+	// driver's dialect whose values are bound in args (placeholders
+	// numbered from 1; the driver's own predicates come after). Status,
+	// profile, paging and order come from filter exactly as for List, so
+	// a query-language search never reaches an object a List would not.
+	ListBySQL(ctx context.Context, where string, args []any, filter ObjectFilter) ([]*KnowledgeObject, int, error)
 	Reinforce(ctx context.Context, hash string, mergeData *KnowledgeObject) (string, error)
 	// SetReminder sets remind_at on the object identified by id.
 	SetReminder(ctx context.Context, id string, at time.Time) error
@@ -218,12 +224,14 @@ type ObjectStore interface {
 	// ListPendingReminders returns all objects with a non-null remind_at.
 	ListPendingReminders(ctx context.Context) ([]*KnowledgeObject, error)
 	// VectorSearch returns objects ranked by q.ModelID's index (cosine
-	// distance, closest first), filtered by filter and capped at
-	// filter.Limit. Each result carries Metadata["score"] = 1 - distance.
-	// Fails with ErrEmbeddingIndexMissing when the model has no index.
+	// distance, closest first), filtered by filter (its StatusScope
+	// included) and capped at filter.Limit. Each result carries
+	// Metadata["score"] = 1 - distance. Fails with
+	// ErrEmbeddingIndexMissing when the model has no index.
 	VectorSearch(ctx context.Context, q VectorQuery, filter ObjectFilter) ([]*KnowledgeObject, error)
-	// FTSSearch queries the objects_fts FTS5 virtual table using SQLite FTS5 MATCH syntax.
-	// Returns results ranked by FTS5 bm25 score, filtered by ObjectFilter.
+	// FTSSearch runs full-text search over the driver's index for raw
+	// query text and returns matches best first, filtered by filter (its
+	// StatusScope included). Each result carries Metadata["fts_score"].
 	FTSSearch(ctx context.Context, query string, filter ObjectFilter) ([]*KnowledgeObject, error)
 	// FTSSearchNodeAware runs FTS search and applies NodeAwareFilter post-query.
 	// When naf.NodeTypes is non-empty, only objects with ALL listed node types are returned.
