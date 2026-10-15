@@ -215,12 +215,14 @@ func (ws *WorkerSet) Skipped() map[string][]SkippedObject {
 // collectEntitiesForEdges returns the entity rows referenced by any edge
 // with to_type='entity' (the canonical mention-target shape per ADR-049).
 // Slugs are deduped within the batch. Missing entities are skipped: a
-// dangling mention edge at the source is not a federation concern.
+// dangling mention edge at the source is not a federation concern. Any
+// other store error is returned, failing the batch so the next push
+// retries it rather than shipping mention edges without their targets.
 func collectEntitiesForEdges(
 	ctx context.Context,
 	src storage.StorageDriver,
 	edges []storage.Edge,
-) []storage.Entity {
+) ([]storage.Entity, error) {
 	seen := make(map[string]bool, len(edges))
 	var entities []storage.Entity //nolint:prealloc // nil when no edge names an entity; preallocating turns the push payload's "entities": null into []
 	store := src.Entities()
@@ -231,12 +233,15 @@ func collectEntitiesForEdges(
 		}
 		seen[e.ToID] = true
 		ent, err := store.Get(ctx, e.ToID)
-		if err != nil || ent == nil {
+		if errors.Is(err, storage.ErrNotFound) || (err == nil && ent == nil) {
 			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("get source entity %q: %w", e.ToID, err)
 		}
 		entities = append(entities, *ent)
 	}
-	return entities
+	return entities, nil
 }
 
 // pusherFor returns the appropriate Pusher implementation for a federation
