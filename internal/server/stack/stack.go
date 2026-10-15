@@ -332,6 +332,12 @@ func Build(in Inputs) (*Stack, error) {
 	buildOpts.BlobThreshold = cfg.Storage.Blob.Threshold
 	buildOpts.BrowserClient = in.Browser
 	buildOpts.FetchGuard = config.FetchGuard(cfg)
+	// ADR-080 §3, §7: on protected and public instances every pipeline
+	// runs content_classes with the configured class rules and the
+	// embedding step writes the masked variant; a private instance
+	// shares nothing and does neither.
+	buildOpts.Access = access
+	buildOpts.ClassRules = builtins.ClassRulesFromConfig(cfg.Sharing)
 	// Installed steps pipelines.overrides may insert (ADR-058).
 	runners := steps.DefaultRunners()
 	if in.StepRunners != nil {
