@@ -116,7 +116,7 @@ func scanStep(row interface{ Scan(...any) error }) (*storage.RegisteredStep, err
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("step not found")
+			return nil, fmt.Errorf("step: %w", storage.ErrNotFound)
 		}
 		return nil, fmt.Errorf("scan step: %w", err)
 	}

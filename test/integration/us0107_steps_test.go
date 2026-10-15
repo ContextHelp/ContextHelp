@@ -18,8 +18,12 @@ func TestUS0107_ListAvailableSteps(t *testing.T) {
 	defer env.stop(t)
 
 	ctx := context.Background()
-	if err := env.svc.Discovery.DiscoverAll(ctx); err != nil {
-		t.Fatalf("discovery: %v", err)
+	now := time.Now()
+	for _, name := range []string{"list-a", "list-b", "list-c"} {
+		require.NoError(t, env.svc.Store.Steps().Create(ctx, &storage.RegisteredStep{
+			Name: name, Source: "local", Metadata: &storage.StepMetadata{Name: name},
+			InstalledAt: now, UpdatedAt: now,
+		}))
 	}
 
 	resp, err := gohttp.Get(env.URL + "/api/v1/steps")

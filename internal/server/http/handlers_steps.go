@@ -2,9 +2,11 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/steps"
 )
 
 // ListSteps handles step listing.
@@ -44,40 +46,45 @@ func GetStep(svc *service.Service) http.HandlerFunc {
 	}
 }
 
-// InstallStep handles step installation.
+// maxStepInstallBody bounds an install request: a base64 step archive
+// of steps.MaxArchiveBytes plus the JSON around it.
+const maxStepInstallBody = steps.MaxArchiveBytes/3*4 + 64<<10
+
+// InstallStep handles step installation: from a configured registry
+// (from_registry) or from a packaged directory (archive, base64).
 func InstallStep(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var req struct {
-			Name         string `json:"name"`
-			FromRegistry string `json:"from_registry"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid JSON body")
+		var req service.StepInstallRequest
+		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxStepInstallBody))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&req); err != nil {
+			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid JSON body: "+err.Error())
 			return
 		}
-
 		if req.Name == "" {
 			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "name is required")
 			return
 		}
-
-		if req.FromRegistry == "" {
-			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "from_registry is required")
+		if req.FromRegistry == "" && len(req.Archive) == 0 {
+			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "from_registry or archive is required")
 			return
 		}
 
-		if err := svc.InstallStep(r.Context(), req.Name, req.FromRegistry); err != nil {
-			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		step, err := svc.InstallStep(r.Context(), req)
+		if err != nil {
+			status, code := stepErrorStatus(err)
+			WriteError(w, status, code, err.Error())
 			return
 		}
-
-		WriteJSON(w, http.StatusOK, map[string]string{
+		WriteJSON(w, http.StatusOK, map[string]any{
 			"status": "installed",
+			"step":   step,
 		})
 	}
 }
 
-// UninstallStep handles step uninstallation.
+// UninstallStep handles step uninstallation: the step's files and its
+// record go.
 func UninstallStep(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		name := r.PathValue("name")
@@ -87,10 +94,31 @@ func UninstallStep(svc *service.Service) http.HandlerFunc {
 		}
 
 		if err := svc.UninstallStep(r.Context(), name); err != nil {
-			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+			status, code := stepErrorStatus(err)
+			WriteError(w, status, code, err.Error())
 			return
 		}
 
 		WriteJSON(w, http.StatusNoContent, nil)
+	}
+}
+
+// stepErrorStatus maps install and uninstall failures to responses.
+func stepErrorStatus(err error) (int, string) {
+	switch {
+	case errors.Is(err, steps.ErrInvalidStep):
+		return http.StatusBadRequest, "INVALID_STEP"
+	case errors.Is(err, steps.ErrStepExists):
+		return http.StatusConflict, "STEP_EXISTS"
+	case errors.Is(err, service.ErrStepInUse):
+		return http.StatusConflict, "STEP_IN_USE"
+	case errors.Is(err, steps.ErrStepNotFound), errors.Is(err, steps.ErrNotInRegistry):
+		return http.StatusNotFound, "NOT_FOUND"
+	case errors.Is(err, steps.ErrUntrustedRegistry):
+		return http.StatusUnprocessableEntity, "UNTRUSTED_REGISTRY"
+	case errors.Is(err, steps.ErrDigestMismatch):
+		return http.StatusUnprocessableEntity, "DIGEST_MISMATCH"
+	default:
+		return http.StatusInternalServerError, "INTERNAL_ERROR"
 	}
 }

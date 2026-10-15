@@ -20,7 +20,10 @@ import (
 // builds the registry.
 func fetchStep(t *testing.T, opts BuildOpts, pipelineName, stepName string) pipeline.PipelineStep {
 	t.Helper()
-	reg := ConfiguredRegistryWithPipelineOverrides(opts, config.ProvidersConfig{}, config.PipelinesConfig{})
+	reg, err := ConfiguredRegistryWithPipelineOverrides(opts, config.ProvidersConfig{}, config.PipelinesConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	p, err := reg.Get(pipelineName)
 	if err != nil {
 		t.Fatalf("pipeline %s: %v", pipelineName, err)

@@ -383,8 +383,51 @@ type StepMetadata struct {
 	License        string         `json:"license"`
 	Version        string         `json:"version"`
 	Author         string         `json:"author"`
-	ConfigSchema   map[string]any `json:"config_schema,omitempty"`
 	SupportedLangs []string       `json:"supported_languages,omitempty"`
+	Execution      *StepExecution `json:"execution,omitempty"`
+}
+
+// Isolation levels an installed step runs under (ADR-058).
+const (
+	StepIsolationProcess   = "process"
+	StepIsolationContainer = "container"
+)
+
+// StepExecution is how an installed step runs: SKILL.md's execution
+// block, plus what install recorded about the files it accepted.
+type StepExecution struct {
+	// Type is "external": a program run per object over stdin/stdout.
+	Type string `json:"type"`
+	// Executable is the program, relative to the step's directory.
+	Executable string `json:"executable"`
+	// ConfigSchema is the JSON Schema the per-pipeline step config is
+	// checked against when dpkms serve starts.
+	ConfigSchema map[string]any `json:"config_schema,omitempty"`
+	// MinimumIsolation is "process" (default) or "container".
+	MinimumIsolation string `json:"minimum_isolation,omitempty"`
+	// Network declares the step needs outbound network access. Only
+	// container isolation enforces its absence.
+	Network bool `json:"network,omitempty"`
+	// ContainerImage is the image container isolation runs the
+	// executable in; required for container isolation.
+	ContainerImage string `json:"container_image,omitempty"`
+	// Resources are the step's default limits.
+	Resources StepResources `json:"resource_requirements,omitempty"`
+
+	// ExecutableSHA256 is the hex SHA-256 of the executable install
+	// accepted; every run refuses an executable that no longer matches.
+	ExecutableSHA256 string `json:"executable_sha256"`
+	// TrustLevel is the trust_level of the registry the step came from;
+	// empty for a step installed from a local directory.
+	TrustLevel string `json:"trust_level,omitempty"`
+}
+
+// StepResources are an installed step's resource limits.
+type StepResources struct {
+	MaxMemory string `json:"max_memory,omitempty"` // e.g. "256MB"
+	MaxCPU    string `json:"max_cpu,omitempty"`    // e.g. "50%" or "0.5" (container only)
+	Timeout   string `json:"timeout,omitempty"`    // e.g. "30s"
+	MaxOutput string `json:"max_output,omitempty"` // stdout cap, e.g. "64MB"
 }
 
 // RegistryCapabilities declares optional features supported by a registry.
@@ -437,9 +480,14 @@ type RegistryTaxonomyEntry struct {
 }
 
 // ManifestStep describes a step available in a registry.
+//
+// Archive is a gzipped tar of the step's directory (SKILL.md at its
+// root), relative to the registry URL; SHA256 is the archive's hex
+// SHA-256 digest, which install verifies before unpacking anything.
 type ManifestStep struct {
 	Name    string `json:"name"`
-	Path    string `json:"path"`
+	Archive string `json:"archive"`
+	SHA256  string `json:"sha256"`
 	License string `json:"license"`
 	Version string `json:"version"`
 }

@@ -4,13 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
-
-	"gopkg.in/yaml.v3"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/registry"
@@ -18,17 +15,15 @@ import (
 )
 
 type StepDiscovery struct {
-	store     storage.StorageDriver
-	client    *http.Client
-	creds     *registry.Credentials
-	stepsPath string
+	store  storage.StorageDriver
+	client *http.Client
+	creds  *registry.Credentials
 }
 
-func NewStepDiscovery(store storage.StorageDriver, stepsPath string) *StepDiscovery {
+func NewStepDiscovery(store storage.StorageDriver) *StepDiscovery {
 	return &StepDiscovery{
-		store:     store,
-		client:    &http.Client{Timeout: 30 * time.Second},
-		stepsPath: stepsPath,
+		store:  store,
+		client: &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
@@ -40,188 +35,6 @@ func (sd *StepDiscovery) WithCredentials(c *registry.Credentials) *StepDiscovery
 	sd.creds = c
 	sd.client = c.Client(sd.client)
 	return sd
-}
-
-func (sd *StepDiscovery) DiscoverAll(ctx context.Context) error {
-	if err := sd.LoadBuiltinSteps(ctx); err != nil {
-		return fmt.Errorf("load builtin steps: %w", err)
-	}
-
-	if err := sd.ScanLocalSteps(ctx); err != nil {
-		return fmt.Errorf("scan local steps: %w", err)
-	}
-
-	if err := sd.CheckRegistryUpdates(ctx); err != nil {
-		return fmt.Errorf("check registry updates: %w", err)
-	}
-
-	return nil
-}
-
-func (sd *StepDiscovery) LoadBuiltinSteps(ctx context.Context) error {
-	builtinSteps := map[string]*storage.RegisteredStep{
-		"text_summary": {
-			Name:   "text_summary",
-			Source: "builtin",
-			Path:   "",
-			Metadata: &storage.StepMetadata{
-				Name:        "text_summary",
-				Description: "Summarizes text content using LLM",
-				License:     "MIT",
-				Version:     "1.0.0",
-				Author:      "ContextHelp",
-			},
-			InstalledAt: time.Now(),
-			UpdatedAt:   time.Now(),
-		},
-		"text_analysis": {
-			Name:   "text_analysis",
-			Source: "builtin",
-			Path:   "",
-			Metadata: &storage.StepMetadata{
-				Name:        "text_analysis",
-				Description: "Analyzes text content and extracts entities, decisions, tasks",
-				License:     "MIT",
-				Version:     "1.0.0",
-				Author:      "ContextHelp",
-			},
-			InstalledAt: time.Now(),
-			UpdatedAt:   time.Now(),
-		},
-		"embed_text": {
-			Name:   "embed_text",
-			Source: "builtin",
-			Path:   "",
-			Metadata: &storage.StepMetadata{
-				Name:        "embed_text",
-				Description: "Generates embeddings for text content",
-				License:     "MIT",
-				Version:     "1.0.0",
-				Author:      "ContextHelp",
-			},
-			InstalledAt: time.Now(),
-			UpdatedAt:   time.Now(),
-		},
-	}
-
-	for _, step := range builtinSteps {
-		if err := sd.store.Steps().Create(ctx, step); err != nil {
-			return fmt.Errorf("create builtin step %s: %w", step.Name, err)
-		}
-	}
-
-	return nil
-}
-
-func (sd *StepDiscovery) ScanLocalSteps(ctx context.Context) error {
-	if sd.stepsPath == "" {
-		sd.stepsPath = filepath.Join(os.Getenv("HOME"), ".config", "contexthelp", "steps")
-	}
-
-	entries, err := os.ReadDir(sd.stepsPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return fmt.Errorf("read steps directory: %w", err)
-	}
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-
-		stepPath := filepath.Join(sd.stepsPath, entry.Name())
-		skillPath := filepath.Join(stepPath, "SKILL.md")
-
-		metadata, err := sd.parseSkillFile(skillPath)
-		if err != nil {
-			continue
-		}
-
-		step := &storage.RegisteredStep{
-			Name:        metadata.Name,
-			Source:      "local:" + stepPath,
-			Path:        stepPath,
-			Metadata:    metadata,
-			InstalledAt: time.Now(),
-			UpdatedAt:   time.Now(),
-		}
-
-		if err := sd.store.Steps().Create(ctx, step); err != nil {
-			return fmt.Errorf("create local step %s: %w", step.Name, err)
-		}
-	}
-
-	return nil
-}
-
-func (sd *StepDiscovery) parseSkillFile(path string) (*storage.StepMetadata, error) {
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read skill file: %w", err)
-	}
-
-	metadata := &storage.StepMetadata{
-		Name:           filepath.Base(filepath.Dir(path)),
-		Description:    "",
-		License:        "UNKNOWN",
-		Version:        "1.0.0",
-		Author:         "",
-		ConfigSchema:   make(map[string]any),
-		SupportedLangs: []string{},
-	}
-
-	lines := strings.Split(string(content), "\n")
-	inFrontmatter := false
-	frontmatterLines := []string{}
-
-	for _, line := range lines {
-		if strings.TrimSpace(line) == "---" {
-			if !inFrontmatter {
-				inFrontmatter = true
-				continue
-			}
-			break
-		}
-
-		if inFrontmatter {
-			frontmatterLines = append(frontmatterLines, line)
-		}
-	}
-
-	if len(frontmatterLines) > 0 {
-		var frontmatter map[string]any
-		if err := yaml.Unmarshal([]byte(strings.Join(frontmatterLines, "\n")), &frontmatter); err == nil {
-			if name, ok := frontmatter["name"].(string); ok {
-				metadata.Name = name
-			}
-			if desc, ok := frontmatter["description"].(string); ok {
-				metadata.Description = desc
-			}
-			if license, ok := frontmatter["license"].(string); ok {
-				metadata.License = license
-			}
-			if version, ok := frontmatter["version"].(string); ok {
-				metadata.Version = version
-			}
-			if author, ok := frontmatter["author"].(string); ok {
-				metadata.Author = author
-			}
-			if schema, ok := frontmatter["config_schema"].(map[string]any); ok {
-				metadata.ConfigSchema = schema
-			}
-			if langs, ok := frontmatter["supported_languages"].([]any); ok {
-				for _, lang := range langs {
-					if langStr, ok := lang.(string); ok {
-						metadata.SupportedLangs = append(metadata.SupportedLangs, langStr)
-					}
-				}
-			}
-		}
-	}
-
-	return metadata, nil
 }
 
 // FetchRemoteManifest fetches a registry manifest from url without caching it.
@@ -333,82 +146,39 @@ func (sd *StepDiscovery) CheckRegistryUpdates(ctx context.Context) error {
 	return nil
 }
 
-func (sd *StepDiscovery) DownloadStep(ctx context.Context, name, fromRegistry string) error {
-	manifest, err := sd.FetchRegistryManifest(ctx, fromRegistry)
+// DownloadArchive fetches a step archive the registry at registryURL
+// lists at rel, a path relative to the registry URL (an absolute URL is
+// refused, so the registry's token never travels elsewhere), with the
+// registry's credentials. It reads at most MaxArchiveBytes.
+func (sd *StepDiscovery) DownloadArchive(ctx context.Context, registryURL, rel string) ([]byte, error) {
+	clean, err := cleanRelPath(rel)
+	if err != nil || strings.Contains(rel, "://") || strings.ContainsAny(rel, "?#") {
+		return nil, invalid("registry archive path %q: want a path relative to the registry URL", rel)
+	}
+	archiveURL := strings.TrimSuffix(registryURL, "/") + "/" + clean
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, archiveURL, nil)
 	if err != nil {
-		return fmt.Errorf("fetch manifest: %w", err)
+		return nil, fmt.Errorf("create download request: %w", err)
 	}
-
-	var manifestStep *storage.ManifestStep
-	for _, step := range manifest.Steps {
-		if step.Name == name {
-			manifestStep = &step
-			break
-		}
-	}
-
-	if manifestStep == nil {
-		return fmt.Errorf("step %s not found in registry", name)
-	}
-
-	stepPath := filepath.Join(sd.stepsPath, name)
-	if err := os.MkdirAll(stepPath, 0750); err != nil {
-		return fmt.Errorf("create step directory: %w", err)
-	}
-
-	stepURL := fromRegistry + "/" + manifestStep.Path
-	req, err := http.NewRequestWithContext(ctx, "GET", stepURL, nil)
-	if err != nil {
-		return fmt.Errorf("create download request: %w", err)
-	}
-
 	resp, err := sd.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("download step: %w", err)
+		return nil, fmt.Errorf("download step: %w", config.RedactURLError(err))
 	}
 	defer resp.Body.Close()
-
 	if err := sd.creds.CheckResponse(resp); err != nil {
-		return fmt.Errorf("download step: %w", err)
+		return nil, fmt.Errorf("download step: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download step: status %d", resp.StatusCode)
+		return nil, fmt.Errorf("download step: status %d", resp.StatusCode)
 	}
-
-	skillPath := filepath.Join(stepPath, "SKILL.md")
-	out, err := os.Create(skillPath)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, MaxArchiveBytes+1))
 	if err != nil {
-		return fmt.Errorf("create skill file: %w", err)
+		return nil, fmt.Errorf("download step: %w", err)
 	}
-	defer out.Close()
-
-	if _, err := out.ReadFrom(resp.Body); err != nil {
-		return fmt.Errorf("write skill file: %w", err)
+	if len(body) > MaxArchiveBytes {
+		return nil, invalid("step archive is larger than %d bytes", MaxArchiveBytes)
 	}
-
-	metadata, err := sd.parseSkillFile(skillPath)
-	if err != nil {
-		return fmt.Errorf("parse skill file: %w", err)
-	}
-
-	step := &storage.RegisteredStep{
-		Name:        name,
-		Source:      "registry:" + fromRegistry,
-		Path:        stepPath,
-		Metadata:    metadata,
-		InstalledAt: time.Now(),
-		UpdatedAt:   time.Now(),
-	}
-
-	if err := sd.store.Steps().Create(ctx, step); err != nil {
-		return fmt.Errorf("register step: %w", err)
-	}
-
-	return nil
-}
-
-func (sd *StepDiscovery) InstallStep(ctx context.Context, name, fromRegistry string) error {
-	return sd.DownloadStep(ctx, name, fromRegistry)
+	return body, nil
 }
 
 func (sd *StepDiscovery) NotifyUpdateAvailable(ctx context.Context, url, etag string) error {

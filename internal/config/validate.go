@@ -56,6 +56,7 @@ func Validate(c *Config) []ValidationError {
 	errs = append(errs, validateAuthTokens(c)...)
 	errs = append(errs, validateQuotas(c)...)
 	errs = append(errs, validateDuplicates(c.Duplicates)...)
+	errs = append(errs, c.Pipelines.Validate()...)
 	errs = append(errs, validateFederations(c.Federations)...)
 	if n := c.Federation.MaxRequestBytes; n != 0 && n < MinFederationMaxRequestBytes {
 		errs = append(errs, ValidationError{Field: "federation.max_request_bytes", Message: fmt.Sprintf(
@@ -555,6 +556,51 @@ func validateDuplicates(d DuplicatesConfig) []ValidationError {
 	}
 	if d.SimilarityThreshold < 0.0 || d.SimilarityThreshold > 1.0 {
 		errs = append(errs, ValidationError{Field: "duplicates.similarity_threshold", Message: fmt.Sprintf("must be 0.0–1.0; got %f", d.SimilarityThreshold)})
+	}
+	return errs
+}
+
+// Validate checks the shape of each pipelines.overrides entry. Whether its pipeline, step and anchor names
+// exist is checked against the pipeline registry and the installed steps
+// (builtins.ValidateOverrides) by `dpkms config validate` and at serve
+// start.
+func (p PipelinesConfig) Validate() []ValidationError {
+	var errs []ValidationError
+	names := make([]string, 0, len(p.Overrides))
+	for name := range p.Overrides {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	for _, name := range names {
+		o := p.Overrides[name]
+		base := "pipelines.overrides." + name
+		for i, s := range o.SkipSteps {
+			if strings.TrimSpace(s) == "" {
+				errs = append(errs, ValidationError{Field: fmt.Sprintf("%s.skip_steps[%d]", base, i), Message: "empty step name"})
+			}
+		}
+		for i, ins := range o.InsertSteps {
+			field := fmt.Sprintf("%s.insert_steps[%d]", base, i)
+			if strings.TrimSpace(ins.Step) == "" {
+				errs = append(errs, ValidationError{Field: field + ".step", Message: "required: the name of the step to insert"})
+			}
+			if ins.Before != "" && ins.After != "" {
+				errs = append(errs, ValidationError{Field: field, Message: fmt.Sprintf("set before or after, not both (before %q, after %q)", ins.Before, ins.After)})
+			}
+			switch ins.OnError {
+			case "", StepOnErrorFail, StepOnErrorContinue:
+			default:
+				errs = append(errs, ValidationError{Field: field + ".on_error", Message: fmt.Sprintf("must be %q or %q, got %q", StepOnErrorFail, StepOnErrorContinue, ins.OnError)})
+			}
+			switch ins.Isolation {
+			case "", "container":
+			default:
+				errs = append(errs, ValidationError{Field: field + ".isolation", Message: fmt.Sprintf("must be \"container\" (isolation can only be raised), got %q", ins.Isolation)})
+			}
+			if ins.Timeout < 0 {
+				errs = append(errs, ValidationError{Field: field + ".timeout", Message: fmt.Sprintf("must be positive, got %s", ins.Timeout)})
+			}
+		}
 	}
 	return errs
 }

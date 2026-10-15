@@ -106,7 +106,7 @@ require (
 	filippo.io/hpke v0.4.0 // indirect
 	github.com/catppuccin/go v0.3.0 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.6 // indirect
-	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/dustin/go-humanize v1.0.1
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect
 	github.com/mitchellh/hashstructure/v2 v2.0.2 // indirect

@@ -41,6 +41,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/security"
 	httpserver "github.com/ideacrafterslabs/ctxt/internal/server/http"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/watcher"
 )
@@ -67,6 +68,9 @@ type Inputs struct {
 	Browser *browser.Client
 	// StepsPath is the external steps directory.
 	StepsPath string
+	// StepRunners replaces the runners installed steps run through
+	// (tests); nil means steps.DefaultRunners.
+	StepRunners *steps.Runners
 	// ConfigPath is the config file the event subscriber reports.
 	ConfigPath string
 	// Probes injects runtime signals into /healthz.
@@ -318,7 +322,20 @@ func Build(in Inputs) (*Stack, error) {
 	buildOpts.BlobThreshold = cfg.Storage.Blob.Threshold
 	buildOpts.BrowserClient = in.Browser
 	buildOpts.FetchGuard = config.FetchGuard(cfg)
-	s.Pipelines = builtins.ConfiguredRegistryWithPipelineOverrides(buildOpts, cfg.Providers, cfg.Pipelines)
+	// Installed steps pipelines.overrides may insert (ADR-058).
+	runners := steps.DefaultRunners()
+	if in.StepRunners != nil {
+		runners = *in.StepRunners
+	}
+	catalog, err := steps.LoadCatalog(context.Background(), in.Driver, runners)
+	if err != nil {
+		return nil, err
+	}
+	buildOpts.External = catalog
+	s.Pipelines, err = builtins.ConfiguredRegistryWithPipelineOverrides(buildOpts, cfg.Providers, cfg.Pipelines)
+	if err != nil {
+		return nil, err
+	}
 	pipes := s.Pipelines
 	s.Queue.SetPipelineValidator(func(name string) error {
 		_, err := pipes.Get(name)
@@ -352,6 +369,7 @@ func Build(in Inputs) (*Stack, error) {
 		in.Driver, s.Queue, s.Pipelines, s.Engine, in.StepsPath, bus,
 		[]service.Option{
 			service.WithPolicyPublisher(pol.Publisher()),
+			service.WithReservedStepNames(builtins.IsStepName),
 			// A server has no login keychain: registry tokens come from
 			// secrets.backend under registry/<name>.
 			service.WithRegistryTokens(registry.SecretTokens(func() (secret.Store, error) { return secretsStore, nil })),

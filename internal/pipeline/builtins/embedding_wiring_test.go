@@ -93,7 +93,7 @@ func TestPipelineOverridesKeepRegistryEmbeddingProvider(t *testing.T) {
 	t.Cleanup(func() { log.SetOutput(prevOut); log.SetFlags(prevFlags) })
 
 	base := config.ProvidersConfig{LLM: config.ProviderBackendConfig{Backend: "stub"}}
-	reg := ConfiguredRegistryWithPipelineOverrides(BuildOpts{
+	reg, err := ConfiguredRegistryWithPipelineOverrides(BuildOpts{
 		Factory:  providers.NewFactory(base, nil),
 		Models:   wiringModels(),
 		Resolver: wiringResolver(t),
@@ -102,6 +102,9 @@ func TestPipelineOverridesKeepRegistryEmbeddingProvider(t *testing.T) {
 			"embedding": {Backend: "stub"},
 		}},
 	}})
+	if err != nil {
+		t.Fatal(err)
+	}
 	p, err := reg.Get("text.long")
 	if err != nil {
 		t.Fatal(err)

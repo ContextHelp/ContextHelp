@@ -298,12 +298,13 @@ func (c *APIClient) GetStep(ctx context.Context, name string) (*storage.Register
 	return &step, nil
 }
 
-func (c *APIClient) InstallStep(ctx context.Context, name, fromRegistry string) error {
-	reqBody := map[string]string{
-		"name":          name,
-		"from_registry": fromRegistry,
+// InstallStep installs a step on the server: from the registry at
+// fromRegistry, or from archive (steps.PackDir of a local directory).
+func (c *APIClient) InstallStep(ctx context.Context, name, fromRegistry string, archive []byte) error {
+	body, err := json.Marshal(service.StepInstallRequest{Name: name, FromRegistry: fromRegistry, Archive: archive})
+	if err != nil {
+		return err
 	}
-	body, _ := json.Marshal(reqBody)
 
 	resp, err := c.postJSON(ctx, c.baseURL+"/api/v1/steps/install", body)
 	if err != nil {

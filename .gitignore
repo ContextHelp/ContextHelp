@@ -350,3 +350,6 @@ web/ui/node_modules/
 extensions/browser/.output/
 extensions/browser/node_modules/
 .task/
+
+# Built example step executables
+/examples/steps/pii-mask/pii-mask
