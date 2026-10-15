@@ -62,7 +62,7 @@ Work:
 6. **Sign-in again without passkeys.** The owner mints a single-use sign-in link for a principal (`ctxt principal link <id>`), with the same ticket store and a 10-minute TTL. This is the stopgap until passkeys in Phase 3.
 7. **Sessions.** The `ui_sessions.token_hash` coupling becomes `identity_id` referencing `principal_identities`. Revoking a principal or any of its identities ends the sessions it minted.
 8. **Scopes.** `admin:principals` and `admin:shares` in the `admin` bundle (owner only by default); `write:self` in every bundle, with an owner-of-target check on each route under it.
-9. **Deploy note.** Both live instances on m3 (`ctxt-personal`, `ctxt-innoprofit`) run `protected` with static tokens behind `tailscale serve`. Deploying this phase there means: create the owner key on the host with `dpkms auth key create --principal owner` before the new build starts, then rotate the ctxt-m3 passthrough tokens and the tokens in `dpkms.yaml`/`ctxt.yaml`. The release-notes row carries `Operator-Impact: config` and names the command.
+9. **Deploy note.** Both live instances on m3 (`ctxt-personal`, `ctxt-innoprofit`) run `protected` with static tokens behind `tailscale serve`. Deploying this phase there means: create the owner key on the host with `dpkms auth key create --principal owner` before the new build starts, then rotate the ctxt-m3 passthrough tokens and the tokens in `dpkms.yaml`/`ctxt.yaml`. The release-notes row is marked BREAKING and names the command; the `Operator-Impact:` trailer stays `none`, since the CI check accepts only `none | reindex_auto | reingest_selective | reingest_all` and a config change is none of the data buckets.
 
 Exit criteria:
 
