@@ -56,7 +56,7 @@ func (c *Corridor) runOnce(ctx context.Context) {
 
 	total := 0
 	for _, e := range entities {
-		orphans, err := FindOrphanedEdges(ctx, c.es, c.edgeStore, "entity", e.Slug)
+		orphans, err := FindOrphanedEdges(ctx, c.es, c.edgeStore, storage.EdgeEndpointEntity, e.Slug)
 		if err != nil {
 			c.log.WarnContext(ctx, "corridor: orphan check failed", "entity", e.Slug, "err", err)
 			continue
@@ -68,13 +68,13 @@ func (c *Corridor) runOnce(ctx context.Context) {
 
 		// Cycle detection: outgoing edges from this entity.
 		err = DetectCycles(ctx, e.Slug, func(ctx context.Context, id string) ([]string, error) {
-			edges, err := c.edgeStore.ListFrom(ctx, "entity", id)
+			edges, err := c.edgeStore.ListFrom(ctx, storage.EdgeEndpointEntity, id)
 			if err != nil {
 				return nil, err
 			}
 			var targets []string
 			for _, edge := range edges {
-				if edge.ToType == "entity" {
+				if edge.ToType == storage.EdgeEndpointEntity {
 					targets = append(targets, mentionToSlug(edge.ToID))
 				}
 			}
