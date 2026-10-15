@@ -160,7 +160,7 @@ func runRemindList(cmd *cobra.Command, args []string) error {
 	now := time.Now()
 	fmt.Printf("Reminders (%d)\n\n", len(objects))
 	headers := []string{"ID", "Title", "Remind At", "Status"}
-	var rows [][]string
+	rows := make([][]string, 0, len(objects))
 	for _, obj := range objects {
 		title := objectTitle(obj)
 		remindAt := obj.RemindAt.Format("2006-01-02 15:04 MST")

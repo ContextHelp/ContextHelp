@@ -157,7 +157,7 @@ func runImportDropbox(cmd *cobra.Command, args []string) error {
 		}
 
 		payload := renderDropboxText(f)
-		_, err = enqueueContent(dc, payload, "text", pipelineName, "import:dropbox")
+		_, err = enqueueContent(dc, payload, objectTypeText, pipelineName, "import:dropbox")
 		if err != nil {
 			failed++
 			if firstErr == nil {

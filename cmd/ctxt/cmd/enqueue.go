@@ -33,7 +33,7 @@ func enqueueClient(cmd *cobra.Command) (*dpkmsclient.Client, dpkmsclient.Resolve
 // urlCaptureRequest is the request `ctxt capture <url>` builds for one
 // URL: the server picks the pipeline.
 func urlCaptureRequest(u, focusProfile string) dpkmsclient.AnalyzeRequest {
-	return dpkmsclient.AnalyzeRequest{Content: u, Source: u, Type: "text", Profile: focusProfile}
+	return dpkmsclient.AnalyzeRequest{Content: u, Source: u, Type: objectTypeText, Profile: focusProfile}
 }
 
 // endsBatch reports an enqueue failure after which a batch stops: nothing

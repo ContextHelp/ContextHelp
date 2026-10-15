@@ -124,6 +124,17 @@ func runBookmarkImport(cmd *cobra.Command, b bookmarkBrowser) error {
 	return nil
 }
 
+// Object types the dpkms enqueue and analyze endpoints accept for
+// content ctxt sends.
+const (
+	objectTypeText = "text"
+	objectTypeURL  = "url"
+)
+
+// pipelineTextShort is the dpkms pipeline for short text items: posts,
+// tweets, notes.
+const pipelineTextShort = "text.short"
+
 type enqueueRequest struct {
 	Content  string `json:"content"`
 	Type     string `json:"type"`
@@ -136,7 +147,7 @@ type enqueueResponse struct {
 }
 
 func enqueueBookmark(dc *dpkmsclient.Client, url, pipelineName, source string) (string, error) {
-	return enqueueContent(dc, url, "url", pipelineName, source)
+	return enqueueContent(dc, url, objectTypeURL, pipelineName, source)
 }
 
 // enqueueContent enqueues one item on the dpkms dc talks to and returns

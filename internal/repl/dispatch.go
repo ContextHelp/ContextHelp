@@ -44,7 +44,7 @@ func Dispatch(ctx context.Context, line string, state *SessionState, execCobra f
 
 	// Branch 3: pipe syntax (" | " with surrounding spaces).
 	if lhs, rhs, isPipe := ParsePipe(line); isPipe {
-		return dispatchPipe(ctx, lhs, rhs, state, execCobra)
+		return dispatchPipe(lhs, rhs, state, execCobra)
 	}
 
 	// Branch 4: RSQL expression.
@@ -58,7 +58,7 @@ func Dispatch(ctx context.Context, line string, state *SessionState, execCobra f
 
 // dispatchPipe executes a piped expression: LHS as find, then builds and
 // runs a make command targeting the results.
-func dispatchPipe(ctx context.Context, lhs, rhs string, state *SessionState, execCobra func(args []string) error) error {
+func dispatchPipe(lhs, rhs string, state *SessionState, execCobra func(args []string) error) error {
 	lhsArgs := splitArgs(lhs)
 	if len(lhsArgs) > 0 && lhsArgs[0] != "find" {
 		lhsArgs = append([]string{"find"}, lhsArgs...)

@@ -155,7 +155,7 @@ func runEntitiesList(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("Entities (%d)\n\n", len(entities))
 	headers := []string{"Slug", "Title", "Namespace"}
-	var rows [][]string
+	rows := make([][]string, 0, len(entities))
 	for _, e := range entities {
 		rows = append(rows, []string{e.Slug, e.Title, e.Namespace})
 	}
@@ -216,7 +216,7 @@ func runEntitiesSearch(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("Entity search: %q (%d results)\n\n", query, len(results))
 	headers := []string{"Slug", "Title", "Namespace"}
-	var rows [][]string
+	rows := make([][]string, 0, len(results))
 	for _, e := range results {
 		rows = append(rows, []string{e.Slug, e.Title, e.Namespace})
 	}
@@ -242,7 +242,7 @@ func runEntitiesBacklinks(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("Backlinks for %s (%d objects)\n\n", slug, len(objects))
 	headers := []string{"ID", "Type", "Created"}
-	var rows [][]string
+	rows := make([][]string, 0, len(objects))
 	for _, obj := range objects {
 		rows = append(rows, []string{
 			obj.ID,

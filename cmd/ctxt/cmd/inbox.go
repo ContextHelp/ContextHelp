@@ -222,7 +222,7 @@ func runInboxList(cmd *cobra.Command, _ []string) error {
 
 	fmt.Fprintf(out, "Inbox (%d total)\n\n", total)
 	headers := []string{"ID", "Type", "Source", "Note", "Created"}
-	var rows [][]string
+	rows := make([][]string, 0, len(objs))
 	for _, obj := range objs {
 		note := obj.InboxNote
 		if len(note) > 30 {

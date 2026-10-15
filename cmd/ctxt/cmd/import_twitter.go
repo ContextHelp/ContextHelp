@@ -144,10 +144,10 @@ func runImportTwitter(cmd *cobra.Command, _ []string) error {
 
 		pipeline := pipelineName
 		if pipeline == "" {
-			pipeline = "text.short"
+			pipeline = pipelineTextShort
 		}
 
-		_, err := enqueueContent(dc, content, "text", pipeline, source)
+		_, err := enqueueContent(dc, content, objectTypeText, pipeline, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {

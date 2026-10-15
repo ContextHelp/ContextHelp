@@ -165,9 +165,9 @@ func runAuditExport(cmd *cobra.Command, _ []string) error {
 	// explicitly set --format to a SIEM-compatible value.
 	fmtStr := mustGetString(cmd, "format")
 	if fmtStr == "" || !cmd.Flags().Changed("format") {
-		fmtStr = "json"
+		fmtStr = formatJSON
 	}
-	fmt_, err := audit.ParseFormat(fmtStr)
+	format, err := audit.ParseFormat(fmtStr)
 	if err != nil {
 		return err
 	}
@@ -192,7 +192,7 @@ func runAuditExport(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("audit export: %w", err)
 	}
 
-	return writeExport(os.Stdout, entries, fmt_)
+	return writeExport(os.Stdout, entries, format)
 }
 
 // writeExport serialises entries in the requested format to w, one record per line.

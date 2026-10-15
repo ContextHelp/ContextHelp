@@ -165,7 +165,7 @@ func runCursorList(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	headers := []string{"Name", "LastSeenAt", "LastObjectID", "Updated"}
-	var rows [][]string
+	rows := make([][]string, 0, len(cs))
 	for _, c := range cs {
 		rows = append(rows, []string{
 			c.Name,

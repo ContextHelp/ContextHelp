@@ -47,7 +47,7 @@ func runExport(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if source == "clipboard" {
+	if source == cli.SourceClipboard {
 		fmt.Fprintf(os.Stderr, "Exporting object ID from clipboard: %q\n", objectID)
 	}
 

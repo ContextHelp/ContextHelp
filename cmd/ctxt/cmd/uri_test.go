@@ -93,7 +93,7 @@ func TestRootSubcommandsIncludesURI(t *testing.T) {
 }
 
 func TestDispatchURISearchRouting(t *testing.T) {
-	// ctxt://search/<query> should route to find, not produce a parse/routing error.
+	// A search URI (ctxt://search/<query>) should route to find, not fail to parse or route.
 	db := setupTestDB(t)
 	_, err := db.exec("ctxt://search/golang")
 	// find may return "no results" or succeed — either is fine.

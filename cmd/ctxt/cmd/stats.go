@@ -86,9 +86,9 @@ func typeBreakdown(byType map[string]int) string {
 	}
 	rank := func(k string) int {
 		switch k {
-		case "text":
+		case objectTypeText:
 			return 0
-		case "url":
+		case objectTypeURL:
 			return 1
 		}
 		return 2

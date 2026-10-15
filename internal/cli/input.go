@@ -1,3 +1,4 @@
+// Package cli reads command input from arguments, piped stdin or the clipboard.
 package cli
 
 import (
@@ -10,6 +11,15 @@ import (
 	"github.com/atotto/clipboard"
 )
 
+// Input sources GetInput reports, plus SourceFile for callers that read
+// a --file themselves.
+const (
+	SourceArgument  = "argument"
+	SourceStdin     = "stdin"
+	SourceClipboard = "clipboard"
+	SourceFile      = "file"
+)
+
 // GetInput retrieves content from arguments, stdin, or clipboard.
 // order of precedence:
 // 1. args joined by spaces if present
@@ -20,7 +30,7 @@ func GetInput(args []string) (string, string, error) {
 	if len(args) > 0 {
 		content := strings.Join(args, " ")
 		if content != "" {
-			return content, "argument", nil
+			return content, SourceArgument, nil
 		}
 	}
 
@@ -32,7 +42,7 @@ func GetInput(args []string) (string, string, error) {
 			return "", "", fmt.Errorf("failed to read stdin: %w", err)
 		}
 		if content := strings.TrimSpace(string(data)); content != "" {
-			return content, "stdin", nil
+			return content, SourceStdin, nil
 		}
 	}
 
@@ -43,7 +53,7 @@ func GetInput(args []string) (string, string, error) {
 
 	content, err := clipboard.ReadAll()
 	if err == nil && content != "" {
-		return content, "clipboard", nil
+		return content, SourceClipboard, nil
 	}
 
 	return "", "", fmt.Errorf("no input provided (use argument, stdin, or clipboard)")

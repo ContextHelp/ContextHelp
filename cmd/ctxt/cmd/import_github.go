@@ -128,7 +128,7 @@ func runImportGitHub(cmd *cobra.Command, args []string) error {
 	var firstErr error
 	for _, r := range repos {
 		payload := githubimporter.RenderContent(r)
-		_, err := enqueueGitHubItem(dc, payload, "text", pipelineName, r.URL)
+		_, err := enqueueGitHubItem(dc, payload, objectTypeText, pipelineName, r.URL)
 		if err != nil {
 			failed++
 			if firstErr == nil {
@@ -151,7 +151,7 @@ func runImportGitHub(cmd *cobra.Command, args []string) error {
 
 // renderGitHubOutput renders repos to w in the requested format.
 func renderGitHubOutput(w io.Writer, format string, repos []githubimporter.ImportedRepo) error {
-	if format == "json" {
+	if format == formatJSON {
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
 		return enc.Encode(repos)

@@ -182,7 +182,7 @@ func runImportPinboard(cmd *cobra.Command, args []string) error {
 			source = "import:pinboard"
 		}
 
-		_, err := enqueuePinboardItem(dc, payload, "text", pipelineName, source)
+		_, err := enqueuePinboardItem(dc, payload, objectTypeText, pipelineName, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {

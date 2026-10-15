@@ -85,7 +85,7 @@ func init() {
 
 	// Citation flags
 	composeCmd.Flags().Bool("no-citations", false, "disable inline [ref:ID] citations")
-	composeCmd.Flags().String("export", "markdown", "output format: markdown or json")
+	composeCmd.Flags().String("export", formatMarkdown, "output format: markdown or json")
 	composeCmd.Flags().String("server", "", serverFlagUsage)
 
 	for _, name := range []string{"mention", "tagged", "since", "until", "output-file", "no-citations", "export"} {
@@ -104,7 +104,7 @@ func runCompose(cmd *cobra.Command, args []string) error {
 
 	exportFormat := viper.GetString("compose.export")
 	switch exportFormat {
-	case "markdown", "json", "":
+	case formatMarkdown, formatJSON, "":
 	default:
 		return output.UsageError(fmt.Sprintf("unknown export format: %s (expected markdown or json)", exportFormat))
 	}
@@ -139,7 +139,7 @@ func runCompose(cmd *cobra.Command, args []string) error {
 	} else {
 		// Citation-enriched composition (default path).
 		result := composition.WithCitations(objects, compositionType)
-		if exportFormat == "json" {
+		if exportFormat == formatJSON {
 			b, err := json.MarshalIndent(result, "", "  ")
 			if err != nil {
 				return fmt.Errorf("marshal: %w", err)

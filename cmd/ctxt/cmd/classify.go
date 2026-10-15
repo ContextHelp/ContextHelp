@@ -133,7 +133,7 @@ func resolveClassifyInput(cmd *cobra.Command, input string) (string, error) {
 
 func printClassifyTable(r *classifyResult) {
 	headers := []string{"SIGNAL", "TYPE", "CONFIDENCE", "LABELS"}
-	var rows [][]string
+	rows := make([][]string, 0, len(r.Results))
 	for _, s := range r.Results {
 		rows = append(rows, []string{
 			s.Name,

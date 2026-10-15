@@ -302,7 +302,7 @@ func runImportOneDrive(cmd *cobra.Command, args []string) error {
 			source = "import:onedrive"
 		}
 
-		_, err := enqueueOneDriveContent(dc, content, "text", pipelineName, source)
+		_, err := enqueueOneDriveContent(dc, content, objectTypeText, pipelineName, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {

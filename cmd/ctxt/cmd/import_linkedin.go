@@ -175,7 +175,7 @@ func runImportLinkedIn(cmd *cobra.Command, _ []string) error {
 	seenKeys := make(map[string]struct{}, totalItems)
 	pipeline := pipelineName
 	if pipeline == "" {
-		pipeline = "text.short"
+		pipeline = pipelineTextShort
 	}
 
 	for _, p := range posts {
@@ -192,7 +192,7 @@ func runImportLinkedIn(cmd *cobra.Command, _ []string) error {
 			source = "import:linkedin"
 		}
 
-		_, err := enqueueContent(dc, content, "text", pipeline, source)
+		_, err := enqueueContent(dc, content, objectTypeText, pipeline, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {
@@ -217,7 +217,7 @@ func runImportLinkedIn(cmd *cobra.Command, _ []string) error {
 			source = "import:linkedin"
 		}
 
-		_, err := enqueueContent(dc, content, "text", pipeline, source)
+		_, err := enqueueContent(dc, content, objectTypeText, pipeline, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {

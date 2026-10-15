@@ -129,6 +129,9 @@ func classifyErr(err error) (string, bool) {
 // wrapped by installErrorClassification, so a second call is a no-op.
 const classifiedAnnotation = "ctxt.cli.runE.classified"
 
+// annotationTrue is the classifiedAnnotation value marking a wrapped RunE.
+const annotationTrue = "true"
+
 // installErrorClassification wraps every runnable command's RunE so a
 // bare error it returns is promoted to a kit envelope naming its
 // class.
@@ -150,7 +153,7 @@ func installErrorClassification(cmd *cobra.Command) {
 	if cmd == nil {
 		return
 	}
-	if cmd.RunE != nil && (cmd.Annotations == nil || cmd.Annotations[classifiedAnnotation] != "true") {
+	if cmd.RunE != nil && (cmd.Annotations == nil || cmd.Annotations[classifiedAnnotation] != annotationTrue) {
 		inner := cmd.RunE
 		cmd.RunE = func(c *cobra.Command, args []string) error {
 			return classifyReturn(inner(c, args))
@@ -158,7 +161,7 @@ func installErrorClassification(cmd *cobra.Command) {
 		if cmd.Annotations == nil {
 			cmd.Annotations = make(map[string]string)
 		}
-		cmd.Annotations[classifiedAnnotation] = "true"
+		cmd.Annotations[classifiedAnnotation] = annotationTrue
 	}
 	for _, child := range cmd.Commands() {
 		installErrorClassification(child)

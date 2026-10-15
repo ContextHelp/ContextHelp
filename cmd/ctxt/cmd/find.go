@@ -179,7 +179,7 @@ func runFind(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	if source == "clipboard" {
+	if source == cli.SourceClipboard {
 		fmt.Fprintf(os.Stderr, "Searching clipboard content: %q\n", query)
 	}
 

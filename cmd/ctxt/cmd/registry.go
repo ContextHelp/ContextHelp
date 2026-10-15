@@ -404,7 +404,7 @@ func runRegistryList(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	headers := []string{"URL", "Last Fetched"}
-	var rows [][]string
+	rows := make([][]string, 0, len(registries))
 	for _, r := range registries {
 		rows = append(rows, []string{
 			config.RedactDSN(r.RegistryURL),
@@ -607,11 +607,11 @@ func runRegistrySync(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
 	if dryRun {
-		return runRegistrySyncDryRun(cmd, ctx, svc, name, registryURL)
+		return runRegistrySyncDryRun(ctx, svc, name, registryURL)
 	}
 
 	if reconcile {
-		return runRegistrySyncReconcile(cmd, ctx, svc, registry.MergeStrategy(mergeStrategy))
+		return runRegistrySyncReconcile(ctx, cmd, svc, registry.MergeStrategy(mergeStrategy))
 	}
 
 	w := cmd.OutOrStdout()
@@ -671,8 +671,8 @@ func printHeldEntities(w io.Writer, name string, c service.RegistryEntityCounts)
 // runRegistrySyncReconcile syncs all configured registries with multi-registry
 // entity reconciliation and prints the conflict report.
 func runRegistrySyncReconcile(
-	cmd *cobra.Command,
 	ctx context.Context,
+	cmd *cobra.Command,
 	svc *service.Service,
 	strategy registry.MergeStrategy,
 ) error {
@@ -733,7 +733,6 @@ func runRegistrySyncReconcile(
 // runRegistrySyncDryRun fetches the remote manifest, diffs against local state,
 // and prints a table of would-be changes. Writes nothing to storage.
 func runRegistrySyncDryRun(
-	cmd *cobra.Command,
 	ctx context.Context,
 	svc *service.Service,
 	name, registryURL string,
@@ -1026,12 +1025,6 @@ func runRegistryLogout(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// registryExistsInConfig reports whether name appears in cfg.Registries.
-func registryExistsInConfig(name string) bool {
-	_, ok := registryConfigByName(name)
-	return ok
-}
-
 // registryConfigByName returns the cfg.Registries entry named name.
 func registryConfigByName(name string) (config.RegistryConfig, bool) {
 	if cfg == nil {
@@ -1045,6 +1038,10 @@ func registryConfigByName(name string) (config.RegistryConfig, bool) {
 	return config.RegistryConfig{}, false
 }
 
+// defaultRegistryName names the bundled default registry
+// (registry.DefaultRegistryURL) on the command line.
+const defaultRegistryName = "default"
+
 // runRegistryCapabilities fetches the cached manifest for name and runs the
 // capability handshake, printing any version or feature warnings.
 func runRegistryCapabilities(cmd *cobra.Command, args []string) error {
@@ -1052,7 +1049,7 @@ func runRegistryCapabilities(cmd *cobra.Command, args []string) error {
 
 	// Resolve URL: "default" maps to the bundled sentinel URL.
 	registryURL := registry.DefaultRegistryURL
-	if name != "default" {
+	if name != defaultRegistryName {
 		for _, r := range cfg.Registries {
 			if r.Name == name {
 				registryURL = r.URL
@@ -1104,7 +1101,7 @@ func runRegistryCapabilities(cmd *cobra.Command, args []string) error {
 		mMinClient = cache.Manifest.MinClientVersion
 	}
 
-	var warnMaps []map[string]string
+	warnMaps := make([]map[string]string, 0, len(warnings))
 	for _, w := range warnings {
 		warnMaps = append(warnMaps, map[string]string{
 			"feature": w.Feature,

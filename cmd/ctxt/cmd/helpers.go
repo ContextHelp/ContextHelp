@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -31,6 +32,16 @@ import (
 	kitstyles "hop.top/kit/go/console/tui/styles"
 )
 
+// storageTypeSQLite is the storage.type value naming the SQLite backend,
+// the default when the config leaves it empty.
+const storageTypeSQLite = "sqlite"
+
+// Output format names: --format, compose.export and import payloads.
+const (
+	formatJSON     = output.JSON
+	formatMarkdown = "markdown"
+)
+
 // sessionSvc holds the service instance for the duration of a `ctxt shell` session.
 // When non-nil, newService() returns it directly, avoiding ~50ms SQLite reinit per command.
 // Set by shell.go; cleared when the shell exits.
@@ -52,7 +63,7 @@ func newService() (*service.Service, func(), error) {
 
 	storageType := cfg.Storage.Type
 	if storageType == "" {
-		storageType = "sqlite"
+		storageType = storageTypeSQLite
 	}
 	storagePath, err := resolveStoragePath()
 	if err != nil {
@@ -69,8 +80,7 @@ func newService() (*service.Service, func(), error) {
 	}
 	ctx := context.Background()
 	if err := driver.Init(ctx); err != nil {
-		driver.Close(ctx)
-		return nil, nil, fmt.Errorf("init storage: %w", err)
+		return nil, nil, errors.Join(fmt.Errorf("init storage: %w", err), driver.Close(ctx))
 	}
 
 	queue := jobs.NewQueue(driver.Jobs())
@@ -91,7 +101,11 @@ func newService() (*service.Service, func(), error) {
 	// Registry requests carry the token `ctxt registry login` stored.
 	svc := service.NewWithOptions(driver, queue, pipes, engine, "", nil,
 		[]service.Option{service.WithRegistryTokens(registry.KeychainTokens())}, *cfg)
-	cleanup := func() { driver.Close(context.Background()) }
+	cleanup := func() {
+		if err := driver.Close(context.Background()); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close storage: %v\n", err)
+		}
+	}
 
 	// Ensure bundled default registry is always present in the cache.
 	if err := svc.EnsureDefaultRegistry(ctx); err != nil {
@@ -307,13 +321,13 @@ func koLabel(ko *storage.KnowledgeObject) string {
 func statusStyle(status string) string {
 	st := kitstyles.NewStyles(root.Theme)
 	switch strings.ToLower(status) {
-	case "completed":
+	case string(storage.JobCompleted):
 		return st.Success.Render(status)
-	case "failed":
+	case string(storage.JobFailed):
 		return st.Error.Render(status)
-	case "running", "processing":
+	case string(storage.JobRunning), "processing":
 		return st.Accent.Render(status)
-	case "pending":
+	case string(storage.JobPending):
 		return st.Muted.Render(status)
 	default:
 		return st.Secondary.Render(status)

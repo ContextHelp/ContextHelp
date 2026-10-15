@@ -129,7 +129,7 @@ func runPageList(cmd *cobra.Command, _ []string) error {
 
 	fmt.Fprintf(out, "Entity Pages (%d)\n\n", len(pages))
 	headers := []string{"ID", "Entity", "Sources", "Updated"}
-	var rows [][]string
+	rows := make([][]string, 0, len(pages))
 	for _, p := range pages {
 		meta, _ := dpkmsclient.PageMeta(p)
 		id := p.ID

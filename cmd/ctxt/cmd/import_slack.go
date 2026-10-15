@@ -148,7 +148,7 @@ func runImportSlack(cmd *cobra.Command, args []string) error {
 			source = "import:slack"
 		}
 
-		_, err := enqueueContent(dc, content, "text", pipelineName, source)
+		_, err := enqueueContent(dc, content, objectTypeText, pipelineName, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {

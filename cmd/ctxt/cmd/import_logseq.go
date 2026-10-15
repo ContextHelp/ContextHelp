@@ -146,7 +146,7 @@ func runImportLogseq(cmd *cobra.Command, args []string) error {
 		content := logseqImporter.RenderContent(p)
 		source := "import:logseq:" + p.RelPath
 
-		_, err := enqueueContent(dc, content, "text", pipelineName, source)
+		_, err := enqueueContent(dc, content, objectTypeText, pipelineName, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {

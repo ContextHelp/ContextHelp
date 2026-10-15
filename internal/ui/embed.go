@@ -1,3 +1,4 @@
+// Package ui embeds the compiled dpkms web UI.
 package ui
 
 import "embed"

@@ -227,14 +227,14 @@ func gdrivePayloadForFile(ctx context.Context, client *gdriveimporter.Client, f 
 			return "", "", fmt.Errorf("export %s (%s): %w", f.Name, f.ID, err)
 		}
 		payload := renderGDriveText(f, body)
-		return payload, "text", nil
+		return payload, objectTypeText, nil
 	}
 
 	if strings.TrimSpace(f.WebViewLink) != "" {
-		return f.WebViewLink, "url", nil
+		return f.WebViewLink, objectTypeURL, nil
 	}
 	if strings.TrimSpace(f.WebContentLink) != "" {
-		return f.WebContentLink, "url", nil
+		return f.WebContentLink, objectTypeURL, nil
 	}
 
 	return "", "", nil

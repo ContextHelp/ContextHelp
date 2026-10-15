@@ -1,4 +1,4 @@
-// Package cmd: ctxt status — calls dpkms's GET /healthz and renders the
+// ctxt status calls dpkms's GET /healthz and renders the
 // envelope. Used both interactively (table view) and by automation
 // (--format json passes the daemon response through unchanged).
 //
@@ -9,8 +9,8 @@
 //	70 — server unreachable
 //
 // The envelope schema is documented in internal/server/http/handlers_healthz.go;
-// keep this file's type mirror in sync if T-0580 (or later) adds top-level
-// fields.
+// keep this file's type mirror in sync when it gains top-level fields.
+
 package cmd
 
 import (
@@ -29,6 +29,10 @@ import (
 	"github.com/spf13/cobra"
 	"hop.top/kit/go/console/output"
 )
+
+// healthFailed mirrors internal/server/http.HealthFailed: the daemon
+// answered and reports itself failed.
+const healthFailed = "failed"
 
 // statusEnvelope mirrors internal/server/http.HealthzEnvelope. Duplicated
 // so the CLI doesn't pull the server package transitively.
@@ -163,7 +167,7 @@ func statusOnce(cmd *cobra.Command, client *dpkmsclient.Client) error {
 
 	// GENERIC by construction: the daemon answered and reports itself
 	// failed.
-	if failed || env.Health == "failed" {
+	if failed || env.Health == healthFailed {
 		return output.GenericError("dpkms health: " + env.Health)
 	}
 	return nil

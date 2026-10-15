@@ -285,8 +285,9 @@ func requiresToken(c *cobra.Command) bool {
 }
 
 func flagNames(line string) []string {
-	var names []string
-	for _, m := range flagRe.FindAllStringSubmatchIndex(line, -1) {
+	matches := flagRe.FindAllStringSubmatchIndex(line, -1)
+	names := make([]string, 0, len(matches))
+	for _, m := range matches {
 		name := line[m[4]:m[5]]
 		if end := m[5]; end < len(line) && strings.ContainsRune("-*<", rune(line[end])) {
 			continue // a pattern such as --embedding-* or --<name>

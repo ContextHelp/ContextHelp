@@ -47,9 +47,7 @@ config (system/user/project). See docs/ctxt/cli-lateral.md for the full
 reference.
 
 When invoked with no subcommand, ctxt lateral defaults to 'start'.`,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		return runLateralStart(cmd, args)
-	},
+	RunE: runLateralStart,
 }
 
 var lateralStartCmd = &cobra.Command{
