@@ -41,10 +41,21 @@ const (
 var ErrInvalidTicket = fmt.Errorf("%w: ticket is unknown, used or expired", ErrInvalidCredential)
 
 // InvitePayload is what an invite ticket carries (the grants column):
-// the display name of the person it creates. Audiences and roles
-// arrive with sharing (ADR-080).
+// the display name of the person it creates and, for an invite minted
+// into an audience (ADR-080 §11), the audience the person joins when
+// they redeem it.
 type InvitePayload struct {
 	DisplayName string `json:"display_name"`
+	AudienceID  string `json:"audience_id,omitempty"`
+}
+
+// Invite is what MintInvite mints: the display name of the person,
+// the audience (by id) they join on redemption, "" for none, and how
+// long the link can be redeemed, DefaultInviteTTL when zero.
+type Invite struct {
+	DisplayName string
+	AudienceID  string
+	TTL         time.Duration
 }
 
 // Issued is a minted ticket: the secret, shown once, and its expiry.
@@ -63,11 +74,23 @@ type Tickets struct {
 	auth     storage.AuthStore
 	sessions *Sessions
 	now      func() time.Time
+	// sharing adds an invited person to the invite's audience; nil
+	// refuses invites that name one.
+	sharing storage.SharingStore
+}
+
+// TicketOption configures NewTickets.
+type TicketOption func(*Tickets)
+
+// WithAudiences lets invites name an audience the redeemed person
+// joins, through the sharing registry in s.
+func WithAudiences(s storage.SharingStore) TicketOption {
+	return func(t *Tickets) { t.sharing = s }
 }
 
 // NewTickets returns Tickets over the registry in auth, minting
 // sessions through sessions. now is the clock; nil means time.Now.
-func NewTickets(auth storage.AuthStore, sessions *Sessions, now func() time.Time) (*Tickets, error) {
+func NewTickets(auth storage.AuthStore, sessions *Sessions, now func() time.Time, opts ...TicketOption) (*Tickets, error) {
 	if auth == nil {
 		return nil, errors.New("auth: tickets need the principal registry")
 	}
@@ -77,38 +100,50 @@ func NewTickets(auth storage.AuthStore, sessions *Sessions, now func() time.Time
 	if now == nil {
 		now = time.Now
 	}
-	return &Tickets{auth: auth, sessions: sessions, now: now}, nil
+	t := &Tickets{auth: auth, sessions: sessions, now: now}
+	for _, opt := range opts {
+		opt(t)
+	}
+	return t, nil
 }
 
-// MintInvite issues an invite for a person to be called displayName,
-// redeemable for ttl (DefaultInviteTTL when zero), on behalf of by. An
-// empty display name or a negative ttl is an error.
-func (t *Tickets) MintInvite(ctx context.Context, by *Principal, displayName string, ttl time.Duration) (Issued, error) {
+// MintInvite issues an invite for inv on behalf of by. An empty display
+// name, a negative TTL, an audience on an instance without a sharing
+// registry, or an unknown audience (storage.ErrNotFound) is an error.
+func (t *Tickets) MintInvite(ctx context.Context, by *Principal, inv Invite) (Issued, error) {
 	if by == nil {
 		return Issued{}, ErrNoCredential
 	}
-	displayName = strings.TrimSpace(displayName)
-	if displayName == "" {
+	inv.DisplayName = strings.TrimSpace(inv.DisplayName)
+	if inv.DisplayName == "" {
 		return Issued{}, errors.New("auth: an invite needs the display name of the person invited")
 	}
-	if ttl < 0 {
+	if inv.TTL < 0 {
 		return Issued{}, errors.New("auth: invite expiry must be positive")
 	}
-	if ttl == 0 {
-		ttl = DefaultInviteTTL
+	if inv.TTL == 0 {
+		inv.TTL = DefaultInviteTTL
 	}
-	payload, err := json.Marshal(InvitePayload{DisplayName: displayName})
+	if inv.AudienceID != "" {
+		if t.sharing == nil {
+			return Issued{}, errors.New("auth: this instance has no sharing registry; an invite cannot name an audience")
+		}
+		if _, err := t.sharing.Audiences().Get(ctx, inv.AudienceID); err != nil {
+			return Issued{}, err
+		}
+	}
+	payload, err := json.Marshal(InvitePayload{DisplayName: inv.DisplayName, AudienceID: inv.AudienceID})
 	if err != nil {
 		return Issued{}, fmt.Errorf("auth: encode invite: %w", err)
 	}
 	now := t.now().UTC()
 	secret, err := t.auth.Tickets().Issue(ctx, storage.TicketIssue{
-		Kind: storage.TicketKindInvite, Payload: payload, TTL: ttl, CreatedBy: by.ID, Now: now,
+		Kind: storage.TicketKindInvite, Payload: payload, TTL: inv.TTL, CreatedBy: by.ID, Now: now,
 	})
 	if err != nil {
 		return Issued{}, err
 	}
-	return Issued{Secret: secret, ExpiresAt: now.Add(ttl)}, nil
+	return Issued{Secret: secret, ExpiresAt: now.Add(inv.TTL)}, nil
 }
 
 // MintLink issues a sign-in link for principalID, redeemable for
@@ -137,9 +172,12 @@ func (t *Tickets) MintLink(ctx context.Context, by *Principal, principalID strin
 }
 
 // RedeemInvite redeems an invite: it creates a person principal with
-// the invite's display name and the default roles, binds a link
-// identity to it and mints a browser session. A secret that is unknown,
-// used or expired is ErrInvalidTicket; the ticket is spent either way.
+// the invite's display name and the default roles, adds it to the
+// invite's audience when one was named (added by the invite's minter,
+// no expiry), binds a link identity to it and mints a browser session.
+// A secret that is unknown, used or expired is ErrInvalidTicket; the
+// ticket is spent either way. An audience that no longer exists spends
+// the ticket and creates nothing: the owner mints a new invite.
 func (t *Tickets) RedeemInvite(ctx context.Context, secret string, ci ClientInfo) (*Minted, error) {
 	tk, err := t.redeem(ctx, storage.TicketKindInvite, secret)
 	if err != nil {
@@ -149,12 +187,26 @@ func (t *Tickets) RedeemInvite(ctx context.Context, secret string, ci ClientInfo
 	if err := json.Unmarshal(tk.Payload, &payload); err != nil {
 		return nil, fmt.Errorf("auth: decode invite: %w", err)
 	}
+	if payload.AudienceID != "" {
+		if t.sharing == nil {
+			return nil, errors.New("auth: invite names an audience but this instance has no sharing registry")
+		}
+		if _, err := t.sharing.Audiences().Get(ctx, payload.AudienceID); err != nil {
+			return nil, fmt.Errorf("auth: invite audience: %w", err)
+		}
+	}
 	now := t.now().UTC()
 	p := &storage.Principal{
 		Kind: storage.PrincipalKindPerson, DisplayName: payload.DisplayName, CreatedAt: now,
 	}
 	if err := t.auth.Principals().Create(ctx, p); err != nil {
 		return nil, fmt.Errorf("auth: create invited principal: %w", err)
+	}
+	if payload.AudienceID != "" {
+		m := &storage.AudienceMember{AudienceID: payload.AudienceID, PrincipalID: p.ID, AddedBy: tk.CreatedBy, AddedAt: now}
+		if err := t.sharing.Audiences().AddMember(ctx, m); err != nil {
+			return nil, fmt.Errorf("auth: add invited principal to audience: %w", err)
+		}
 	}
 	return t.bindAndMint(ctx, p.ID, storage.TicketHash(secret), LinkIdentityInvite, now, ci)
 }
