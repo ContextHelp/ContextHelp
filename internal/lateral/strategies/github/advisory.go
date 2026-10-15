@@ -67,7 +67,7 @@ func isAdvisoryURL(raw string) bool {
 		return false
 	}
 	host := strings.ToLower(u.Hostname())
-	if host != "github.com" && host != "www.github.com" {
+	if host != githubHost && host != githubWWWHost {
 		return false
 	}
 	p := strings.Trim(u.Path, "/")
@@ -76,11 +76,11 @@ func isAdvisoryURL(raw string) bool {
 	}
 	parts := strings.Split(p, "/")
 	// /advisories[/<ghsa>]
-	if parts[0] == "advisories" {
+	if parts[0] == segAdvisories {
 		return true
 	}
 	// /<owner>/<repo>/security/advisories[/<ghsa>]
-	if len(parts) >= 4 && parts[2] == "security" && parts[3] == "advisories" {
+	if len(parts) >= 4 && parts[2] == segSecurity && parts[3] == segAdvisories {
 		return true
 	}
 	return false
@@ -139,7 +139,7 @@ func parseAdvisoryURL(raw string) (advisorySurface, string, string, string) {
 		return advisoryNone, "", "", ""
 	}
 	host := strings.ToLower(u.Hostname())
-	if host != "github.com" && host != "www.github.com" {
+	if host != githubHost && host != githubWWWHost {
 		return advisoryNone, "", "", ""
 	}
 	p := strings.Trim(u.Path, "/")
@@ -147,14 +147,14 @@ func parseAdvisoryURL(raw string) (advisorySurface, string, string, string) {
 		return advisoryNone, "", "", ""
 	}
 	parts := strings.Split(p, "/")
-	if parts[0] == "advisories" {
+	if parts[0] == segAdvisories {
 		ghsa := ""
 		if len(parts) >= 2 {
 			ghsa = parts[1]
 		}
 		return advisoryGlobal, "", "", ghsa
 	}
-	if len(parts) >= 4 && parts[2] == "security" && parts[3] == "advisories" {
+	if len(parts) >= 4 && parts[2] == segSecurity && parts[3] == segAdvisories {
 		ghsa := ""
 		if len(parts) >= 5 {
 			ghsa = parts[4]

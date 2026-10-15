@@ -90,74 +90,45 @@ func enabled(flag *bool) bool {
 // side-effect beyond reg mutation); safe to call once at boot or in
 // tests.
 func Register(reg *lateral.Registry, g Gates, deps Deps) {
-	// Google family.
-	if enabled(g.GoogleStrategy) {
-		reg.Register(google.NewParent(deps.Google))
-	}
-	if enabled(g.GoogleSearchStrategy) {
-		reg.Register(google.NewSearch(deps.Google))
-	}
-	if enabled(g.GoogleScholarStrategy) {
-		reg.Register(google.NewScholar(deps.Google))
-	}
-	if enabled(g.GoogleTrendsStrategy) {
-		reg.Register(google.NewTrends(deps.Google))
-	}
-	if enabled(g.GoogleNewsStrategy) {
-		reg.Register(google.NewNews(deps.Google))
-	}
+	// Each strategy is built only when its gate is on; registration
+	// follows table order.
+	for _, s := range []struct {
+		gate  *bool
+		build func() lateral.LateralStrategy
+	}{
+		// Google family.
+		{g.GoogleStrategy, func() lateral.LateralStrategy { return google.NewParent(deps.Google) }},
+		{g.GoogleSearchStrategy, func() lateral.LateralStrategy { return google.NewSearch(deps.Google) }},
+		{g.GoogleScholarStrategy, func() lateral.LateralStrategy { return google.NewScholar(deps.Google) }},
+		{g.GoogleTrendsStrategy, func() lateral.LateralStrategy { return google.NewTrends(deps.Google) }},
+		{g.GoogleNewsStrategy, func() lateral.LateralStrategy { return google.NewNews(deps.Google) }},
 
-	// Single-strategy platforms.
-	if enabled(g.XStrategy) {
-		reg.Register(x.New())
-	}
-	if enabled(g.LinkedInStrategy) {
-		reg.Register(linkedin.New())
-	}
-	if enabled(g.ArxivStrategy) {
-		reg.Register(arxiv.New(deps.Arxiv))
-	}
-	if enabled(g.WikipediaStrategy) {
-		reg.Register(wikipedia.New(deps.Wikipedia))
-	}
-	if enabled(g.YouTubeStrategy) {
-		reg.Register(youtube.New(deps.YouTube))
-	}
+		// Single-strategy platforms.
+		{g.XStrategy, func() lateral.LateralStrategy { return x.New() }},
+		{g.LinkedInStrategy, func() lateral.LateralStrategy { return linkedin.New() }},
+		{g.ArxivStrategy, func() lateral.LateralStrategy { return arxiv.New(deps.Arxiv) }},
+		{g.WikipediaStrategy, func() lateral.LateralStrategy { return wikipedia.New(deps.Wikipedia) }},
+		{g.YouTubeStrategy, func() lateral.LateralStrategy { return youtube.New(deps.YouTube) }},
 
-	// Medium family.
-	if enabled(g.MediumStrategy) {
-		reg.Register(medium.NewParent(deps.Medium))
-	}
-	if enabled(g.MediumPublicationStrategy) {
-		reg.Register(medium.NewPublication(deps.Medium))
-	}
-	if enabled(g.MediumProfileStrategy) {
-		reg.Register(medium.NewProfile(deps.Medium))
-	}
+		// Medium family.
+		{g.MediumStrategy, func() lateral.LateralStrategy { return medium.NewParent(deps.Medium) }},
+		{g.MediumPublicationStrategy, func() lateral.LateralStrategy { return medium.NewPublication(deps.Medium) }},
+		{g.MediumProfileStrategy, func() lateral.LateralStrategy { return medium.NewProfile(deps.Medium) }},
 
-	// Substack family.
-	if enabled(g.SubstackStrategy) {
-		reg.Register(substack.NewParent(deps.Substack))
-	}
-	if enabled(g.SubstackPublicationStrategy) {
-		reg.Register(substack.NewPublication(deps.Substack))
-	}
-	if enabled(g.SubstackPostStrategy) {
-		reg.Register(substack.NewPost(deps.Substack))
-	}
-	if enabled(g.SubstackNotesStrategy) {
-		reg.Register(substack.NewNotes(deps.Substack))
-	}
+		// Substack family.
+		{g.SubstackStrategy, func() lateral.LateralStrategy { return substack.NewParent(deps.Substack) }},
+		{g.SubstackPublicationStrategy, func() lateral.LateralStrategy { return substack.NewPublication(deps.Substack) }},
+		{g.SubstackPostStrategy, func() lateral.LateralStrategy { return substack.NewPost(deps.Substack) }},
+		{g.SubstackNotesStrategy, func() lateral.LateralStrategy { return substack.NewNotes(deps.Substack) }},
 
-	// Beehiiv family.
-	if enabled(g.BeehiivStrategy) {
-		reg.Register(beehiiv.NewParent(deps.Beehiiv))
-	}
-	if enabled(g.BeehiivPublicationStrategy) {
-		reg.Register(beehiiv.NewPublication(deps.Beehiiv))
-	}
-	if enabled(g.BeehiivPostStrategy) {
-		reg.Register(beehiiv.NewPost(deps.Beehiiv))
+		// Beehiiv family.
+		{g.BeehiivStrategy, func() lateral.LateralStrategy { return beehiiv.NewParent(deps.Beehiiv) }},
+		{g.BeehiivPublicationStrategy, func() lateral.LateralStrategy { return beehiiv.NewPublication(deps.Beehiiv) }},
+		{g.BeehiivPostStrategy, func() lateral.LateralStrategy { return beehiiv.NewPost(deps.Beehiiv) }},
+	} {
+		if enabled(s.gate) {
+			reg.Register(s.build())
+		}
 	}
 }
 

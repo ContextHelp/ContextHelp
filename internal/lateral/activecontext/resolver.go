@@ -1,3 +1,5 @@
+// Package activecontext builds the active context lateral candidates are
+// scored against, from the live session topic and the recent capture window.
 package activecontext
 
 import (

@@ -125,10 +125,12 @@ func TestEmit_PreviewBodySizePreserved(t *testing.T) {
 	}
 }
 
-// Sanity: emitted Candidates compose cleanly with lateral.Candidate (no field
-// drift).
-func TestEmit_TypesCompose(t *testing.T) {
+// Emitted candidates carry the JIT candidate type and strategy ID.
+func TestEmit_StampsTypeAndStrategy(t *testing.T) {
 	results := []jit.FetchResult{{URL: "https://acme.io/x", Body: "y"}}
 	cands, _ := jit.Emit(results, "post")
-	var _ []lateral.Candidate = cands
+	want := lateral.Candidate{URL: "https://acme.io/x", CandidateType: jit.CandidateType, Strategy: jit.StrategyID}
+	if len(cands) != 1 || cands[0].URL != want.URL || cands[0].CandidateType != want.CandidateType || cands[0].Strategy != want.Strategy {
+		t.Fatalf("candidates = %+v, want one %+v", cands, want)
+	}
 }

@@ -1,3 +1,5 @@
+// Package promote turns a probationary lateral candidate into a canonical
+// record once its CEL policy gates allow it.
 package promote
 
 import (

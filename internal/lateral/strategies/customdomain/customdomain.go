@@ -27,6 +27,9 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/lateral"
 )
 
+// mediumHost is Medium's apex host; subdomains match by ".medium.com" suffix.
+const mediumHost = "medium.com"
+
 // Platform identifies the publishing platform a URL belongs to.
 type Platform string
 
@@ -65,7 +68,7 @@ func Detect(rawURL string, hints lateral.Hints) Detection {
 
 	// Layer 1: canonical host suffix.
 	switch {
-	case host == "medium.com" || strings.HasSuffix(host, ".medium.com"):
+	case host == mediumHost || strings.HasSuffix(host, ".medium.com"):
 		d.Platform = PlatformMedium
 		return d
 	case strings.HasSuffix(host, ".substack.com") || host == "substack.com":
@@ -115,7 +118,7 @@ func Detect(rawURL string, hints lateral.Hints) Detection {
 	case strings.HasSuffix(canon, ".beehiiv.com"):
 		d.Platform, d.CustomHost = PlatformBeehiiv, true
 		return d
-	case canon == "medium.com" || strings.HasSuffix(canon, ".medium.com"):
+	case canon == mediumHost || strings.HasSuffix(canon, ".medium.com"):
 		d.Platform, d.CustomHost = PlatformMedium, true
 		return d
 	}
@@ -130,7 +133,7 @@ func IsHostedOn(host string, platform Platform) bool {
 	host = strings.ToLower(host)
 	switch platform {
 	case PlatformMedium:
-		return host == "medium.com" || strings.HasSuffix(host, ".medium.com")
+		return host == mediumHost || strings.HasSuffix(host, ".medium.com")
 	case PlatformSubstack:
 		return host == "substack.com" || strings.HasSuffix(host, ".substack.com")
 	case PlatformBeehiiv:

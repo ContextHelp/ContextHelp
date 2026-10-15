@@ -1,3 +1,5 @@
+// Package materialize writes a resolved lateral candidate to the store as a
+// record plus its edges, or as an edge to an existing canonical record.
 package materialize
 
 import (

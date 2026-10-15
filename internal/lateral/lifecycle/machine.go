@@ -1,3 +1,5 @@
+// Package lifecycle defines the lateral candidate states (probationary,
+// expired, promoted) and the kit state machine that moves between them.
 package lifecycle
 
 import "hop.top/kit/go/runtime/domain"

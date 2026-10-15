@@ -383,12 +383,7 @@ type labelJSON struct {
 }
 
 func (l labelJSON) toSummary() LabelSummary {
-	return LabelSummary{
-		Name:        l.Name,
-		URL:         l.URL,
-		Description: l.Description,
-		Color:       l.Color,
-	}
+	return LabelSummary(l)
 }
 
 // ListIssueLabels: GET /repos/{owner}/{repo}/issues/{n}/labels.

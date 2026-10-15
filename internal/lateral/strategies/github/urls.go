@@ -6,6 +6,16 @@ import (
 	"strings"
 )
 
+// GitHub host and URL path segments the strategies match on.
+const (
+	githubHost    = "github.com"
+	githubWWWHost = "www.github.com"
+	segPulls      = "pulls"
+	segIssues     = "issues"
+	segSecurity   = "security"
+	segAdvisories = "advisories"
+)
+
 // parsedURL captures the structural fields probes need from a github URL.
 // Fields are zero when the URL doesn't carry that signal (e.g. Number is
 // 0 for repo pages).
@@ -61,11 +71,11 @@ func parseGitHubURL(raw string) (parsedURL, bool) {
 
 	// /<owner>/<repo>/<verb>/<number>
 	switch parts[2] {
-	case "pull", "pulls":
+	case "pull", segPulls:
 		if n, err := strconv.Atoi(parts[3]); err == nil {
 			out.Number = n
 		}
-	case "issues":
+	case segIssues:
 		if n, err := strconv.Atoi(parts[3]); err == nil {
 			out.Number = n
 		}
