@@ -9,7 +9,7 @@ import (
 
 func TestGolibParseMarkdown(t *testing.T) {
 	p := NewGolibDocumentProvider()
-	if p.Name() != "golib" {
+	if p.Name() != backendGolib {
 		t.Errorf("Name: got %q", p.Name())
 	}
 
