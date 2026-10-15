@@ -222,7 +222,10 @@ var migrations = []migration{
 	{Version: 40, fn: migrate040ProjectionVersion},
 	// Migration 041: ui_sessions + ui_login_codes for web UI browser
 	// sign-in. New tables only; IF NOT EXISTS guards make it re-runnable.
-	{Version: 41, SQL: migration041},
+	// Originally raw SQL; a Go fn since migration 049 swapped token_hash
+	// for identity_id, so a replay over the swapped tables is a no-op
+	// instead of failing on the token_hash index.
+	{Version: 41, fn: migrate041UISessions},
 	// Migration 042: federation watermarks become change positions —
 	// last_synced_at holds the updated_at and the new last_object_id the
 	// id of the last object a target acknowledged — and objects get an
@@ -1491,6 +1494,26 @@ func legacyEmbeddingModelID(dim int) string {
 // model. Mirrors FTSSignatureID for the FTS path.
 func EmbeddingSignatureID(modelID string) string {
 	return indexsig.EmbeddingSignatureID(modelID)
+}
+
+// migrate041UISessions applies migration041 unless ui_sessions already
+// carries identity_id. Those tables were rebuilt by migration 049 without
+// token_hash, so replaying the file would fail on its token_hash index;
+// every other statement in it is IF NOT EXISTS and would change nothing.
+// A database that has not reached 049 gets the file exactly as before.
+func migrate041UISessions(ctx context.Context, d *Driver) error {
+	var n int
+	if err := d.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM pragma_table_info('ui_sessions') WHERE name = 'identity_id'`).Scan(&n); err != nil {
+		return fmt.Errorf("inspect ui_sessions: %w", err)
+	}
+	if n > 0 {
+		return nil
+	}
+	if _, err := d.db.ExecContext(ctx, migration041); err != nil {
+		return fmt.Errorf("ui sessions: %w", err)
+	}
+	return nil
 }
 
 // migrate049SessionsBoundToIdentities rebuilds ui_sessions and

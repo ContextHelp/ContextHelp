@@ -146,7 +146,10 @@ var pgMigrations = []pgMigration{
 	{Version: 18, Name: "objects.projection_version", fn: migrateProjectionVersion},
 	// Web UI browser sessions and their one-time login codes, mirroring
 	// SQLite migration 041. Only SHA-256 hashes of the cookie secret, the
-	// code and the minting static token are stored.
+	// code and the minting static token are stored. The token_hash index
+	// is guarded on the column: migration 29 drops token_hash, so a replay
+	// over the swapped tables skips it instead of failing; a database that
+	// has not reached 29 gets the index exactly as before.
 	{Version: 19, Name: "ui_sessions + ui_login_codes", Statements: []string{
 		`CREATE TABLE IF NOT EXISTS ui_sessions (
 			id              TEXT PRIMARY KEY,
@@ -163,7 +166,12 @@ var pgMigrations = []pgMigration{
 			revoked_at      TIMESTAMPTZ,
 			revoke_reason   TEXT NOT NULL DEFAULT ''
 		)`,
-		`CREATE INDEX IF NOT EXISTS idx_ui_sessions_token_hash ON ui_sessions (token_hash)`,
+		`DO $$ BEGIN
+			IF EXISTS (SELECT 1 FROM information_schema.columns
+				WHERE table_schema = current_schema() AND table_name = 'ui_sessions' AND column_name = 'token_hash') THEN
+				CREATE INDEX IF NOT EXISTS idx_ui_sessions_token_hash ON ui_sessions (token_hash);
+			END IF;
+		END $$`,
 		`CREATE INDEX IF NOT EXISTS idx_ui_sessions_principal ON ui_sessions (principal_id)`,
 		`CREATE TABLE IF NOT EXISTS ui_login_codes (
 			code_hash    TEXT PRIMARY KEY,
