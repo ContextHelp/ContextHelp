@@ -5,7 +5,7 @@
 > **Author:** jadb
 > **Applies to:** ctxt CLI, new `ctxd` local daemon
 > **Supersedes:** None
-> **References:** ADR-007 (transactional outbox), ADR-053 (KnowledgeObject as pipeline draft), ADR-056 (unified enqueue API), ADR-064 (federation), ADR-065 (pluggable adapters), prior art: OpenChronicle (`~/.p/sandbox/OpenChronicle`)
+> **References:** ADR-007 (transactional outbox), ADR-053 (KnowledgeObject as pipeline draft), ADR-056 (unified enqueue API), ADR-064 (federation), ADR-065 (pluggable adapters), prior art: OpenChronicle
 
 ---
 
@@ -19,7 +19,7 @@ ctxt today ingests knowledge through **explicit, user-initiated** paths:
 
 There is **no ambient/continuous capture**. Everything requires the user (or a cron job they wrote) to remember to run something. This is a real gap — the user's day produces a steady stream of context-worthy signals (clipboard contents, web pages they read, files they save, apps they switch between, screenshots they take) that ctxt currently misses entirely.
 
-OpenChronicle (`~/.p/sandbox/OpenChronicle`) demonstrates a working ambient-capture model: a local daemon subscribes to OS-level signals, runs them through a deterministic compression funnel (S0 → S1 → Timeline → S2 → durable memory), and exposes the result over MCP. Its scope (full screen-context memory via macOS Accessibility tree) is wrong for ctxt — too invasive, too narrow, macOS-only — but the **substrate pattern** (event sources, debounce, dedup, session boundaries, retention tiers, MCP read-surface) is exactly what ctxt is missing.
+OpenChronicle demonstrates a working ambient-capture model: a local daemon subscribes to OS-level signals, runs them through a deterministic compression funnel (S0 → S1 → Timeline → S2 → durable memory), and exposes the result over MCP. Its scope (full screen-context memory via macOS Accessibility tree) is wrong for ctxt — too invasive, too narrow, macOS-only — but the **substrate pattern** (event sources, debounce, dedup, session boundaries, retention tiers, MCP read-surface) is exactly what ctxt is missing.
 
 **Critical deployment constraint:** in the canonical ctxt topology, **dpkms is often deployed remote** (server-side worker process; could be a household NAS, a managed instance, a federated peer per ADR-064). A remote dpkms cannot read the user's clipboard, see their foreground window, or watch `~/Inbox`. Ambient capture **must run locally on the user's machine** and enqueue against whichever dpkms is configured (local or remote) via the existing HTTP API surface.
 
@@ -128,7 +128,7 @@ Privacy enforcement happens **before** the event leaves the user's machine — a
 
 6. **OpenChronicle's 60s LLM timeline aggregator.** Rejected for v1, with caveat (see below).
 
-   **What it does in OpenChronicle** (per `~/.p/sandbox/OpenChronicle/docs/timeline.md` and `timeline/aggregator.py`): a daemon tick fires every 60 seconds, takes the closed wall-clock-aligned 1-minute window of raw S1 captures (focused-element value, visible_text, URL, window metadata — *not* the raw AX tree), and runs an LLM call that emits a normalized JSON array of "what happened" entries — one per distinct conversation/context/tab/file in that minute. The prompt is explicitly **verbatim-preserving, not summarizing**: authored text from editable fields must round-trip in quotes; URLs, titles, file paths, proper nouns must stay exact; passive reads collapse, but in-progress drafts keep their longest version. Output rows look like `[Notes] Shopping list: user drafted a list, latest "milk, eggs, flour, butter".` Stored as `timeline_blocks` rows and consumed by the next stage (the S2 session reducer) instead of feeding it raw captures.
+   **What it does in OpenChronicle** (per `docs/timeline.md` and `timeline/aggregator.py`): a daemon tick fires every 60 seconds, takes the closed wall-clock-aligned 1-minute window of raw S1 captures (focused-element value, visible_text, URL, window metadata — *not* the raw AX tree), and runs an LLM call that emits a normalized JSON array of "what happened" entries — one per distinct conversation/context/tab/file in that minute. The prompt is explicitly **verbatim-preserving, not summarizing**: authored text from editable fields must round-trip in quotes; URLs, titles, file paths, proper nouns must stay exact; passive reads collapse, but in-progress drafts keep their longest version. Output rows look like `[Notes] Shopping list: user drafted a list, latest "milk, eggs, flour, butter".` Stored as `timeline_blocks` rows and consumed by the next stage (the S2 session reducer) instead of feeding it raw captures.
 
    **Why OC needs it:** OC's downstream session reducer takes a *batch* of timeline blocks per flush and produces a single session-summary entry. Feeding the reducer raw S1 captures directly would blow the prompt budget — Electron-app AX trees hit 200–400 KB each. The timeline stage is a **prompt-budget normalization layer** between S1 (per-capture, big) and S2 (per-session, prompt-bounded). It exists because OC compresses many small events into one large session memory, and that compression has a prompt-size ceiling.
 
@@ -349,4 +349,4 @@ Local-filesystem (default, XDG-compliant), S3-compatible (AWS/R2/B2/MinIO), and 
 - ADR-065 — pluggable adapters (sibling substrate; distinct concern)
 - ADR-067 *(planned)* — Session/WorkUnit as a first-class type
 - ADR-068 *(planned)* — dpkms MCP read-surface (and possible local-side mirror)
-- OpenChronicle prior art: `~/.p/sandbox/OpenChronicle` — patterns borrowed: event dispatcher dedup (`capture/event_dispatcher.py`), session cutter (`session/manager.py`), tiered retention (`docs/architecture.md`), MCP-as-read-surface (`mcp/server.py`).
+- OpenChronicle prior art — patterns borrowed: event dispatcher dedup (`capture/event_dispatcher.py`), session cutter (`session/manager.py`), tiered retention (`docs/architecture.md`), MCP-as-read-surface (`mcp/server.py`).

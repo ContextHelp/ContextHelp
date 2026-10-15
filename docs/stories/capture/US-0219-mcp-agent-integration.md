@@ -96,7 +96,7 @@ All wrap existing service-layer queries. Profile defaults to `profile.default`; 
 
 ### Read-only enforcement
 
-- [ ] No tool mutates. Hard guarantee at compile time — server imports only read-side service interfaces; mutation methods are not in scope (matches OpenChronicle's discipline per `~/.p/sandbox/OpenChronicle/docs/mcp.md` line 433)
+- [ ] No tool mutates. Hard guarantee at compile time — server imports only read-side service interfaces; mutation methods are not in scope (matches OpenChronicle's discipline per `docs/mcp.md` line 433)
 
 ---
 
