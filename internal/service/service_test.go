@@ -1009,16 +1009,16 @@ func TestAnalyze_HonorsExplicitMentions(t *testing.T) {
 		Type:     "text",
 		Source:   "test",
 		Raw:      true,
-		Mentions: []string{"@client.acme", "@project.foo"},
+		Mentions: []string{"@client.acme", "@project.foo", "@client.acme"},
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, objID)
 
-	// Object lands with the URI-form Mentions populated.
+	// Object lands with the URI-form Mentions populated, as asserted.
 	obj, err := svc.GetObject(ctx, objID)
 	require.NoError(t, err)
 	require.NotNil(t, obj)
-	assert.Len(t, obj.Mentions, 2,
+	assert.Len(t, obj.Mentions, 3,
 		"caller-asserted mentions must be persisted on the object")
 
 	// Two thin entity rows exist for the asserted slugs.
@@ -1030,24 +1030,37 @@ func TestAnalyze_HonorsExplicitMentions(t *testing.T) {
 			"caller-asserted mentions create thin entities (full record may exist later)")
 	}
 
-	// Two object→entity 'mentions' edges exist, one per slug, each
-	// recording that the raw path knows the mention from the mentions
-	// field only: no pipeline ran, so no entity_mention node holds it.
+	// Two object→entity 'mentions' edges exist, one per entity (the
+	// repeated mention adds none), naming the entity by the mention's
+	// canonical URI as every writer does, each recording that the raw
+	// path knows the mention from the mentions field only: no pipeline
+	// ran, so no entity_mention node holds it.
 	edges, err := svc.store.Edges().ListFrom(ctx, "object", objID)
 	require.NoError(t, err)
-	mentionTargets := map[string]bool{}
+	mentionTargets := map[string]int{}
 	for _, e := range edges {
 		if e.EdgeType == "mentions" && e.ToType == "entity" {
-			mentionTargets[e.ToID] = true
+			mentionTargets[e.ToID]++
 			assert.Equal(t, map[string]any{
 				storage.ProvenanceSourceNode:  "",
 				storage.ProvenanceSourceField: storage.MentionSourceMentions,
 			}, e.Metadata, "provenance of the mention edge to %q", e.ToID)
 		}
 	}
+	assert.Equal(t, map[string]int{
+		"ctxt://entity/client/acme": 1,
+		"ctxt://entity/project/foo": 1,
+	}, mentionTargets, "mentions edges per entity after analyze --mentions")
+
+	// The raw object is a backlink of each entity, listed once.
 	for _, slug := range []string{"client/acme", "project/foo"} {
-		assert.True(t, mentionTargets[slug],
-			"mention edge for %q must exist after analyze --mentions", slug)
+		objs, err := svc.EntityBacklinks(ctx, slug)
+		require.NoError(t, err)
+		ids := make([]string, 0, len(objs))
+		for _, o := range objs {
+			ids = append(ids, o.ID)
+		}
+		assert.Equal(t, []string{objID}, ids, "backlinks of %s", slug)
 	}
 }
 

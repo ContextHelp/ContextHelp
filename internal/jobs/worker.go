@@ -314,28 +314,18 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 	}
 	p.putVectors(ctx, draft.ID, draft)
 
-	// Write edges for mentions (ADR-049), each naming the entity_mention
-	// node of draft.Graph that holds its mention and the field it came from.
-	// Any edge write failure rolls back by failing the job; the object has
-	// already been persisted but no edges exist yet, so the job is retryable
-	// and a subsequent run will re-create the object (content-hash dedup) and
-	// re-attempt edge writes.
-	for _, mention := range draft.Mentions {
-		edge := &storage.Edge{
-			ID:        uuid.New().String(),
-			FromType:  "object",
-			FromID:    draft.ID,
-			ToType:    "entity",
-			ToID:      mention.String(),
-			EdgeType:  "mentions",
-			Weight:    1.0,
-			Metadata:  storage.MentionProvenance(draft.Graph, mention.String()),
-			CreatedAt: time.Now(),
-		}
-		if err := p.store.Edges().Create(ctx, edge); err != nil {
-			p.markFailed(ctx, job.ID, fmt.Sprintf("edge write: mention %s: %s", mention.String(), err), draft.ID)
-			return
-		}
+	// Write the mention edges (ADR-049): one per entity, named by
+	// storage.MentionTarget as every mention-edge writer names it, each
+	// carrying the entity_mention node of draft.Graph that holds its
+	// mention and the field it came from. The store keeps an edge an
+	// earlier run stored for the pair. Any edge write failure fails the
+	// job; the object has already been persisted but no edges exist yet,
+	// so the job is retryable and a subsequent run will re-create the
+	// object (content-hash dedup) and re-attempt edge writes.
+	edges := storage.MentionEdges(draft, draft.Mentions, false, time.Now())
+	if _, err := p.store.Edges().CreateMissing(ctx, edges); err != nil {
+		p.markFailed(ctx, job.ID, fmt.Sprintf("edge write: mentions: %s", err), draft.ID)
+		return
 	}
 
 	durationMs = time.Since(start).Milliseconds()

@@ -17,3 +17,9 @@ func TestConformance_EdgeBatch(t *testing.T) {
 func TestConformance_EdgeMetadata(t *testing.T) {
 	storagetest.EdgeMetadataConformance(t, newTestDriver(t))
 }
+
+// TestConformance_EdgeCreateMissing runs the cross-driver CreateMissing
+// contract against a fresh SQLite database.
+func TestConformance_EdgeCreateMissing(t *testing.T) {
+	storagetest.EdgeCreateMissingConformance(t, newTestDriver(t))
+}

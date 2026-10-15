@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	uri "hop.top/cite/scheme"
@@ -56,10 +55,11 @@ func (r *EntityResolver) Run(ctx context.Context, draft *storage.KnowledgeObject
 	}
 
 	var resolved, placeholder []string
+	// targets are the mentions that resolved to an entity or got a placeholder.
+	targets := make([]uri.URI, 0, len(draft.Mentions))
 
-	for i := range draft.Mentions {
-		u := &draft.Mentions[i]
-		slug := mentionSlug(u)
+	for _, u := range draft.Mentions {
+		slug := storage.MentionSlug(u)
 		if slug == "" {
 			continue
 		}
@@ -69,35 +69,28 @@ func (r *EntityResolver) Run(ctx context.Context, draft *storage.KnowledgeObject
 			// Unresolved: create a local placeholder entity.
 			// Derive namespace from the first path segment of the slug.
 			ns := strings.SplitN(slug, "/", 2)[0]
-			entity, err = r.createPlaceholder(ctx, ns, slug)
-			if err != nil {
+			if _, perr := r.createPlaceholder(ctx, ns, slug); perr != nil {
 				// Non-fatal: log and continue.
-				fmt.Printf("entity_resolver: create placeholder %q: %v\n", slug, err)
+				fmt.Printf("entity_resolver: create placeholder %q: %v\n", slug, perr)
 				continue
 			}
 			placeholder = append(placeholder, slug)
 		} else {
 			resolved = append(resolved, entity.Slug)
 		}
+		targets = append(targets, u)
+	}
 
-		// Inter-object layer only: write backlink edge to the edges table (ADR-049/ADR-063).
-		// Intra-object NodeTypeEntityMention nodes live in ko.Graph and are written by
-		// entity_extractor; the edge names the one holding this mention as its provenance.
-		if draft.ID != "" {
-			edge := &storage.Edge{
-				ID:        uuid.NewString(),
-				FromType:  "object",
-				FromID:    draft.ID,
-				ToType:    "entity",
-				ToID:      entity.Slug,
-				EdgeType:  "mentions",
-				Weight:    1.0,
-				Metadata:  storage.MentionProvenance(draft.Graph, u.String()),
-				CreatedAt: time.Now().UTC(),
-			}
-			if err := r.edges.Create(ctx, edge); err != nil {
-				fmt.Printf("entity_resolver: create edge object→entity %q: %v\n", entity.Slug, err)
-			}
+	// Inter-object layer only: the backlink edges go to the edges table
+	// (ADR-049/ADR-063), one per entity, naming it by storage.MentionTarget
+	// as every mention-edge writer does; the store keeps an edge already
+	// there for the pair. Intra-object NodeTypeEntityMention nodes live in
+	// ko.Graph and are written by entity_extractor; each edge names the one
+	// holding its mention as its provenance.
+	if draft.ID != "" {
+		edges := storage.MentionEdges(draft, targets, false, time.Now().UTC())
+		if _, err := r.edges.CreateMissing(ctx, edges); err != nil {
+			fmt.Printf("entity_resolver: create mention edges of %q: %v\n", draft.ID, err)
 		}
 	}
 
@@ -133,16 +126,4 @@ func (r *EntityResolver) createPlaceholder(ctx context.Context, namespace, slug 
 		return nil, err
 	}
 	return entity, nil
-}
-
-// mentionSlug converts a ctxt entity URI to its slug form used by EntityStore.
-// ctxt://entity/namespace/slug → "namespace/slug"
-// Returns empty string if the URI is not an entity URI.
-func mentionSlug(u *uri.URI) string {
-	s := u.String()
-	const prefix = "ctxt://entity/"
-	if !strings.HasPrefix(s, prefix) {
-		return ""
-	}
-	return strings.TrimPrefix(s, prefix)
 }

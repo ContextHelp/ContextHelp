@@ -133,6 +133,10 @@ func (s *stubEdgeStoreAlt) CreateAll(ctx context.Context, edges []*storage.Edge)
 	return nil
 }
 
+func (s *stubEdgeStoreAlt) CreateMissing(ctx context.Context, edges []*storage.Edge) (int, error) {
+	return len(edges), s.CreateAll(ctx, edges)
+}
+
 func (s *stubEdgeStoreAlt) DeleteMatching(_ context.Context, _ []storage.EdgeMatch) (int, error) {
 	return 0, nil
 }

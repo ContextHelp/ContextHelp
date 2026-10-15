@@ -106,6 +106,29 @@ func (s *stubEdgeStore) CreateAll(ctx context.Context, edges []*storage.Edge) er
 	return nil
 }
 
+// CreateMissing keeps the store's contract: an edge between the same
+// nodes with the same type is stored once.
+func (s *stubEdgeStore) CreateMissing(ctx context.Context, edges []*storage.Edge) (int, error) {
+	n := 0
+	for _, e := range edges {
+		if s.has(e) {
+			continue
+		}
+		_ = s.Create(ctx, e)
+		n++
+	}
+	return n, nil
+}
+
+func (s *stubEdgeStore) has(e *storage.Edge) bool {
+	for _, c := range s.created {
+		if c.FromType == e.FromType && c.FromID == e.FromID && c.ToType == e.ToType && c.ToID == e.ToID && c.EdgeType == e.EdgeType {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *stubEdgeStore) DeleteMatching(_ context.Context, _ []storage.EdgeMatch) (int, error) {
 	return 0, nil
 }
@@ -194,11 +217,41 @@ func TestEntityResolverResolvesKnownEntity(t *testing.T) {
 	if e.FromType != "object" || e.FromID != "obj-1" {
 		t.Errorf("edge from: want object/obj-1, got %s/%s", e.FromType, e.FromID)
 	}
-	if e.ToType != "entity" || e.ToID != "project/alpha" {
-		t.Errorf("edge to: want entity/project/alpha, got %s/%s", e.ToType, e.ToID)
+	// The edge names the entity by the mention's canonical URI, as every
+	// mention-edge writer does, never by the bare slug.
+	if e.ToType != "entity" || e.ToID != "ctxt://entity/project/alpha" {
+		t.Errorf("edge to: want entity/ctxt://entity/project/alpha, got %s/%s", e.ToType, e.ToID)
 	}
 	if e.EdgeType != "mentions" {
 		t.Errorf("edge type: want mentions, got %s", e.EdgeType)
+	}
+}
+
+// TestEntityResolverOneEdgePerEntity pins that a mention repeated on the
+// draft, and a second run over the same draft (a retried job), add no
+// second edge to the entity.
+func TestEntityResolverOneEdgePerEntity(t *testing.T) {
+	entities := newStubEntityStore()
+	edges := &stubEdgeStore{}
+	step := NewEntityResolverWithStores(entities, edges)
+
+	draft := &storage.KnowledgeObject{
+		ID: "obj-dup",
+		Mentions: []uri.URI{
+			mustURI(t, "ctxt://entity/project/alpha"),
+			mustURI(t, "ctxt://entity/project/alpha"),
+		},
+	}
+	for run := 1; run <= 2; run++ {
+		if _, err := step.Run(context.Background(), draft); err != nil {
+			t.Fatalf("run %d: %v", run, err)
+		}
+		if len(edges.created) != 1 {
+			t.Fatalf("run %d: expected 1 edge, got %d", run, len(edges.created))
+		}
+	}
+	if e := edges.created[0]; e.ToID != "ctxt://entity/project/alpha" || e.EdgeType != "mentions" {
+		t.Errorf("edge = %s %s, want a mentions edge to ctxt://entity/project/alpha", e.EdgeType, e.ToID)
 	}
 }
 
@@ -335,29 +388,6 @@ func TestEntityResolverDoesNotWriteIntraObjectGraph(t *testing.T) {
 	// Intra-object graph must remain untouched.
 	if got.Graph != nil {
 		t.Error("entity_resolver must not write to ko.Graph (intra-object layer)")
-	}
-}
-
-func TestMentionSlug(t *testing.T) {
-	cases := []struct {
-		uriStr string
-		want   string
-	}{
-		{"ctxt://entity/project/alpha", "project/alpha"},
-		{"ctxt://entity/person/alice", "person/alice"},
-		{"ctxt://entity/stripe/api/checkout", "stripe/api/checkout"},
-		{"ctxt://object/foo", ""},
-		{"other://entity/bar", ""},
-	}
-	for _, tc := range cases {
-		u, err := uri.Parse(tc.uriStr)
-		if err != nil {
-			t.Fatalf("parse %q: %v", tc.uriStr, err)
-		}
-		got := mentionSlug(u)
-		if got != tc.want {
-			t.Errorf("mentionSlug(%q) = %q, want %q", tc.uriStr, got, tc.want)
-		}
 	}
 }
 

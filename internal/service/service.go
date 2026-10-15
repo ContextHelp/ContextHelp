@@ -36,7 +36,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
-	uri "hop.top/cite/scheme"
 	"hop.top/kit/go/runtime/domain"
 )
 
@@ -384,21 +383,22 @@ func userHintsToTags(hints []string) []storage.Tag {
 	return out
 }
 
-// writeUserMentionEdges persists thin entity rows + object→entity 'mentions'
-// edges for the caller-asserted mentions on obj. Mirrors the entity_resolver
-// pipeline step but runs at analyze-time so even Raw-mode and pipeline-mode
-// captures land partitioning data uniformly. Idempotent: thin upsert on
-// entities + UNIQUE-tolerant edge insert. The raw path runs no pipeline,
-// so obj.Graph holds no entity_mention node and each edge's provenance is
-// the mentions field alone.
+// writeUserMentionEdges persists thin entity rows and the object → entity
+// mentions edges for the caller-asserted mentions on obj. Mirrors the
+// entity_resolver pipeline step but runs at analyze-time so even Raw-mode
+// captures land partitioning data. Idempotent: thin upsert on entities,
+// and the store keeps a mentions edge already there for the pair. The
+// edges name each entity by storage.MentionTarget, as every mention-edge
+// writer does. The raw path runs no pipeline, so obj.Graph holds no
+// entity_mention node and each edge's provenance is the mentions field
+// alone.
 func (s *Service) writeUserMentionEdges(ctx context.Context, obj *storage.KnowledgeObject) error {
 	if obj == nil || len(obj.Mentions) == 0 || obj.ID == "" {
 		return nil
 	}
 	now := time.Now().UTC()
-	for i := range obj.Mentions {
-		mention := &obj.Mentions[i]
-		slug := mentionURISlug(mention)
+	for _, mention := range obj.Mentions {
+		slug := storage.MentionSlug(mention)
 		if slug == "" {
 			continue
 		}
@@ -414,37 +414,12 @@ func (s *Service) writeUserMentionEdges(ctx context.Context, obj *storage.Knowle
 		if err := s.Store(ctx).Entities().UpsertThin(ctx, entity); err != nil {
 			return fmt.Errorf("upsert thin entity %q: %w", slug, err)
 		}
-		edge := &storage.Edge{
-			ID:        uuid.NewString(),
-			FromType:  nodeObject,
-			FromID:    obj.ID,
-			ToType:    "entity",
-			ToID:      slug,
-			EdgeType:  "mentions",
-			Weight:    1.0,
-			Metadata:  storage.MentionProvenance(obj.Graph, mention.String()),
-			CreatedAt: now,
-		}
-		if err := s.Store(ctx).Edges().Create(ctx, edge); err != nil {
-			// UNIQUE collision (parallel worker, retry path): non-fatal.
-			if strings.Contains(err.Error(), "UNIQUE constraint failed") {
-				continue
-			}
-			return fmt.Errorf("create user-mention edge for %q: %w", slug, err)
-		}
+	}
+	edges := storage.MentionEdges(obj, obj.Mentions, false, now)
+	if _, err := s.Store(ctx).Edges().CreateMissing(ctx, edges); err != nil {
+		return fmt.Errorf("create user-mention edges: %w", err)
 	}
 	return nil
-}
-
-// mentionURISlug extracts the entity slug from a ctxt://entity/<slug> URI.
-// Returns "" for non-entity URIs.
-func mentionURISlug(u *uri.URI) string {
-	s := u.String()
-	const prefix = "ctxt://entity/"
-	if !strings.HasPrefix(s, prefix) {
-		return ""
-	}
-	return strings.TrimPrefix(s, prefix)
 }
 
 // humanizeSlug derives a display title from a namespace/slug path: takes the

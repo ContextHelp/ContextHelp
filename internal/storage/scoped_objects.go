@@ -164,6 +164,10 @@ func (v restrictedEdges) CreateAll(ctx context.Context, edges []*Edge) error {
 	return v.inner.CreateAll(ctx, edges)
 }
 
+func (v restrictedEdges) CreateMissing(ctx context.Context, edges []*Edge) (int, error) {
+	return v.inner.CreateMissing(ctx, edges)
+}
+
 func (v restrictedEdges) DeleteMatching(ctx context.Context, matches []EdgeMatch) (int, error) {
 	return v.inner.DeleteMatching(ctx, matches)
 }

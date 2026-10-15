@@ -39,77 +39,23 @@ func (s *Service) FanOut(ctx context.Context, objectID string) (*FanOutResult, e
 		return result, nil
 	}
 
-	// Collect existing outbound edges to avoid duplicates.
-	existing, err := s.Store(ctx).Edges().ListFrom(ctx, nodeObject, objectID)
-	if err != nil {
-		return nil, fmt.Errorf("fanout: list edges: %w", err)
-	}
-	edgeIndex := make(map[string]bool, len(existing))
-	for _, e := range existing {
-		edgeIndex[edgeKey(e.FromType, e.FromID, e.ToType, e.ToID, e.EdgeType)] = true
-	}
-
-	// Collect existing inbound edges for reverse dedup.
-	existingInbound, err := s.Store(ctx).Edges().ListTo(ctx, nodeObject, objectID)
-	if err != nil {
-		return nil, fmt.Errorf("fanout: list inbound edges: %w", err)
-	}
-	for _, e := range existingInbound {
-		edgeIndex[edgeKey(e.FromType, e.FromID, e.ToType, e.ToID, e.EdgeType)] = true
-	}
-
 	now := time.Now()
 
-	for _, mention := range obj.Mentions {
-		slug := mention.String()
-		result.EntitySlugs = append(result.EntitySlugs, slug)
-
-		// Forward edge: object -> entity. Both directions name the
-		// entity_mention node of obj.Graph that holds the mention and the
-		// field it came from.
-		fwdKey := edgeKey(nodeObject, objectID, "entity", slug, "mentions")
-		if !edgeIndex[fwdKey] {
-			edge := &storage.Edge{
-				ID:        uuid.New().String(),
-				FromType:  nodeObject,
-				FromID:    objectID,
-				ToType:    "entity",
-				ToID:      slug,
-				EdgeType:  "mentions",
-				Weight:    1.0,
-				Metadata:  storage.MentionProvenance(obj.Graph, slug),
-				CreatedAt: now,
-			}
-			if err := s.Store(ctx).Edges().Create(ctx, edge); err != nil {
-				return nil, fmt.Errorf("fanout: create fwd edge: %w", err)
-			}
-			edgeIndex[fwdKey] = true
-			result.EdgesCreated++
-		} else {
-			result.EdgesSkipped++
-		}
-
-		// Reverse edge: entity -> object.
-		revKey := edgeKey("entity", slug, nodeObject, objectID, "mentioned_in")
-		if !edgeIndex[revKey] {
-			edge := &storage.Edge{
-				ID:        uuid.New().String(),
-				FromType:  "entity",
-				FromID:    slug,
-				ToType:    nodeObject,
-				ToID:      objectID,
-				EdgeType:  "mentioned_in",
-				Weight:    1.0,
-				Metadata:  storage.MentionProvenance(obj.Graph, slug),
-				CreatedAt: now,
-			}
-			if err := s.Store(ctx).Edges().Create(ctx, edge); err != nil {
-				return nil, fmt.Errorf("fanout: create rev edge: %w", err)
-			}
-			edgeIndex[revKey] = true
-			result.EdgesCreated++
-		} else {
-			result.EdgesSkipped++
+	// Both directions name the entity by storage.MentionTarget, as every
+	// mention-edge writer does, and carry the entity_mention node of
+	// obj.Graph that holds the mention and the field it came from. The
+	// store keeps an edge already there for the pair (the worker wrote
+	// the forward ones), so a rerun creates nothing.
+	edges := storage.MentionEdges(obj, obj.Mentions, true, now)
+	created, err := s.Store(ctx).Edges().CreateMissing(ctx, edges)
+	if err != nil {
+		return nil, fmt.Errorf("fanout: create edges: %w", err)
+	}
+	result.EdgesCreated = created
+	result.EdgesSkipped = len(edges) - created
+	for _, e := range edges {
+		if e.EdgeType == storage.EdgeTypeMentions {
+			result.EntitySlugs = append(result.EntitySlugs, e.ToID)
 		}
 	}
 
@@ -143,8 +89,4 @@ func (s *Service) FanOut(ctx context.Context, objectID string) (*FanOutResult, e
 	}
 
 	return result, nil
-}
-
-func edgeKey(fromType, fromID, toType, toID, edgeType string) string {
-	return fromType + ":" + fromID + "->" + toType + ":" + toID + ":" + edgeType
 }
