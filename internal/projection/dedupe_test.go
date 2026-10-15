@@ -115,6 +115,9 @@ var projectionGolden = map[string]string{
 	// v4 projects as v3 did; it re-runs the re-projection for the
 	// ref-text repair (see indexsig.ProjectionVersion).
 	"v4": "e54352516ce44f81ead09346edfe05c4b0d468353fdbf2642f565a9399aecdc8",
+	// v5 adds the masked shadow projection beside the raw one; the raw
+	// FTS body and embedding text are unchanged, so the digest is v4's.
+	"v5": "e54352516ce44f81ead09346edfe05c4b0d468353fdbf2642f565a9399aecdc8",
 }
 
 var projectionCorpus = []*storage.KnowledgeObject{

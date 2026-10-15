@@ -38,8 +38,12 @@ type KnowledgeObject struct {
 	UpdatedAt          time.Time      `json:"updated_at"`
 	FTSIndexed         bool           `json:"fts_indexed"`
 	ProfileID          string         `json:"profile_id,omitempty"` // owning profile; empty = global
-	AttachmentIDs      []string       `json:"attachment_ids,omitempty"`
-	Graph              *ObjectGraph   `json:"graph,omitempty"`
+	// Classes are the object's content classes (ADR-080 §3), sorted and
+	// unique: set by the class rules at ingest or by hand, read by share
+	// policies (exclude_classes) and principal ceilings (deny_classes).
+	Classes       []string     `json:"classes,omitempty"`
+	AttachmentIDs []string     `json:"attachment_ids,omitempty"`
+	Graph         *ObjectGraph `json:"graph,omitempty"`
 	// ChangeSeq is the object's position in its store's change order:
 	// the store stamps it from a counter on every insert and update, so
 	// a later change always has a greater value whatever the object's
@@ -142,6 +146,13 @@ type IndexProjection struct {
 	Tags          []Tag    `json:"tags,omitempty"`
 	Mentions      []string `json:"mentions,omitempty"`
 	EmbeddingText string   `json:"embedding_text,omitempty"`
+	// MaskedFTSBody and MaskedEmbeddingText are the shadow projection
+	// restricted viewers search (ADR-080 §7): a structured type's
+	// searchable minimum, otherwise the body with every classed part
+	// removed. Equal to FTSBody and EmbeddingText when nothing is
+	// withheld.
+	MaskedFTSBody       string `json:"masked_fts_body,omitempty"`
+	MaskedEmbeddingText string `json:"masked_embedding_text,omitempty"`
 }
 
 // BlobMeta describes metadata for a stored blob.

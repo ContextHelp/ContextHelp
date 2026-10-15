@@ -1,11 +1,13 @@
 // Package corpus builds a deterministic knowledge corpus through the
-// storage API: contacts whose email and phone sit in their metadata and
-// in their text, as contact ingest stores them; notes that mention those
-// contacts, with the mention edges a pipeline run writes; tags; and a few
-// profiles. The auth and sharing work measures against it, the owner's
-// find and list first and then the owner against restricted viewers on
-// one corpus, and any test that needs a graph larger than a handful of
-// objects can seed one with it.
+// storage API: contacts whose email and phone sit in their metadata only,
+// their text being the card the contact renderer builds, and a third of
+// them carrying a personal note as a classed graph node, as contact
+// ingest stores them; notes that mention those contacts, with the
+// mention edges a pipeline run writes; tags; and a few profiles. The
+// auth and sharing work measures against it, the owner's find and list
+// first and then the owner against restricted viewers on one corpus, and
+// any test that needs a graph larger than a handful of objects can seed
+// one with it.
 //
 // Build writes only through storage.StorageDriver, so the corpus is the
 // same on every driver, and one seed always yields the same IDs, text,
@@ -31,6 +33,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	uri "hop.top/cite/scheme"
 )
@@ -119,6 +122,9 @@ type Contact struct {
 	Org, Role, City    string
 	// Profile is the object's ProfileID.
 	Profile string
+	// Note is the personal note the contact carries as a classed graph
+	// node; empty for two contacts in three.
+	Note string
 }
 
 // Corpus is what Build wrote.
@@ -291,8 +297,10 @@ func (g *generator) tags(vocab []string, most int) []storage.Tag {
 }
 
 // contact is the i-th contact and the object that holds its card. The
-// card lists the email and phone that also sit in the metadata, as
-// contact ingest stores them, and mentions its own entity.
+// email and phone sit in the metadata only; the text is the card the
+// contact renderer builds from the identity fields; every third contact
+// carries a personal note as a classed section node, as contact ingest
+// stores them; and the contact mentions its own entity.
 func (g *generator) contact(i int) (Contact, *storage.KnowledgeObject) {
 	first, last := g.pick(firstNames), g.pick(lastNames)
 	org := g.pick(orgs)
@@ -311,13 +319,15 @@ func (g *generator) contact(i int) (Contact, *storage.KnowledgeObject) {
 	ct.Email = fmt.Sprintf("%s.%s%d@%s.example", strings.ToLower(first), strings.ToLower(last), i,
 		strings.ToLower(strings.ReplaceAll(org, " ", "")))
 	ct.Phone = fmt.Sprintf("+1-555-%03d-%04d", g.rng.IntN(1000), i%10_000)
+	if i%3 == 0 {
+		ct.Note = fmt.Sprintf("%s: %s", first, g.pick(contactNotes))
+	}
 
 	at := g.createdAt()
 	obj := &storage.KnowledgeObject{
-		ID:         ct.ID,
-		Type:       TypeContact,
-		RawContent: fmt.Sprintf("%s\n%s @ %s\n%s\nemail: %s\nphone: %s", ct.Name, ct.Role, ct.Org, ct.City, ct.Email, ct.Phone),
-		Summaries:  []string{ct.Name},
+		ID:        ct.ID,
+		Type:      TypeContact,
+		Summaries: []string{ct.Name},
 		Metadata: map[string]any{
 			"type": TypeContact, "name": ct.Name, "email": ct.Email, "phone": ct.Phone,
 			"org": ct.Org, "role": ct.Role, "city": ct.City, "source_type": TypeContact,
@@ -329,6 +339,20 @@ func (g *generator) contact(i int) (Contact, *storage.KnowledgeObject) {
 		Status:    storage.ObjectStatusActive,
 		CreatedAt: at,
 		UpdatedAt: at,
+	}
+	obj.RawContent = projection.RenderContact(obj, projection.ContactCardFields)
+	obj.TextContent = obj.RawContent
+	obj.Graph = &storage.ObjectGraph{Nodes: []storage.GraphNode{{
+		ID: storage.NewNodeID(obj.ID, storage.NodeTypeSection, 0), NodeType: storage.NodeTypeSection,
+		Label: projection.ContactCardLabel, Content: obj.RawContent, Order: 0,
+	}}}
+	if ct.Note != "" {
+		note := storage.GraphNode{
+			ID: storage.NewNodeID(obj.ID, storage.NodeTypeSection, 1), NodeType: storage.NodeTypeSection,
+			Label: projection.ContactNoteLabel, Content: ct.Note, Order: 1,
+		}
+		storage.SetNodeClasses(&note, []string{storage.ClassPersonal})
+		obj.Graph.Nodes = append(obj.Graph.Nodes, note)
 	}
 	obj.ContentHash = contentHash(obj)
 	return ct, obj

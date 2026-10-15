@@ -13,9 +13,10 @@ import (
 var _ storage.EmbeddingReader = (*EmbeddingStore)(nil)
 
 // EmbeddingsByID implements storage.EmbeddingReader: a single
-// `model_id = $1 AND object_id = ANY($2)` query over the canonical
-// embeddings rows modelID's partial index covers. Ids without a row under
-// modelID are absent from the result.
+// `model_id = $1 AND object_id = ANY($2)` query over the canonical raw
+// embeddings rows modelID's partial index covers (masked rows are a
+// restricted viewer's search path, not the owner's). Ids without a row
+// under modelID are absent from the result.
 func (s *EmbeddingStore) EmbeddingsByID(ctx context.Context, modelID string, ids []string) (map[string][]storage.ObjectVector, error) {
 	out := make(map[string][]storage.ObjectVector, len(ids))
 	if len(ids) == 0 {
@@ -23,7 +24,7 @@ func (s *EmbeddingStore) EmbeddingsByID(ctx context.Context, modelID string, ids
 	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT object_id, chunk_idx, vector::text, text FROM embeddings
-		 WHERE model_id = $1 AND object_id = ANY($2)
+		 WHERE model_id = $1 AND variant = 'raw' AND object_id = ANY($2)
 		 ORDER BY object_id, chunk_idx`, modelID, pq.Array(ids))
 	if err != nil {
 		return nil, fmt.Errorf("postgres embeddings by id %s: %w", modelID, err)

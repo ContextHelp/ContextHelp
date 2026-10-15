@@ -20,6 +20,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/safefetch"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -165,6 +166,62 @@ type BuildOpts struct {
 	// External resolves the installed steps pipelines.overrides inserts
 	// (`dpkms pipeline step install`). Nil: no step is installed.
 	External ExternalSteps
+
+	// Access is the instance access class (config.ServerConfig.
+	// EffectiveAccess). On protected and public instances every pipeline
+	// runs the content_classes step and the embedding step writes the
+	// masked variant (ADR-080 §3, §7); private instances share nothing
+	// and skip both.
+	Access string
+	// ClassRules are the class rules content_classes evaluates
+	// (ClassRulesFromConfig).
+	ClassRules []sharing.ClassRule
+}
+
+// SharingEnabled reports whether access shares data with other
+// principals: protected and public instances do, private ones never.
+func SharingEnabled(access string) bool {
+	return access == config.AccessProtected || access == config.AccessPublic
+}
+
+// ClassRulesFromConfig returns the class rules of c: the built-in ones
+// (unless no_defaults) followed by the configured ones.
+func ClassRulesFromConfig(c config.SharingConfig) []sharing.ClassRule {
+	rules := make([]sharing.ClassRule, 0, len(c.Classes.Rules)+2)
+	if !c.Classes.NoDefaults {
+		rules = append(rules, sharing.DefaultClassRules()...)
+	}
+	for _, r := range c.Classes.Rules {
+		rules = append(rules, sharing.ClassRule{
+			Class: r.Class, Type: r.Type, Subtype: r.Subtype, Source: r.Source,
+			Pipeline: r.Pipeline, Tag: r.Tag, Profile: r.Profile, StructuredType: r.StructuredType,
+		})
+	}
+	return rules
+}
+
+// contentClassesStep is the step name InjectClassRulesStep inserts.
+const contentClassesStep = "content_classes"
+
+// InjectClassRulesStep inserts content_classes into stepNames when
+// SharingEnabled(access): right after structured_metadata, whose type
+// the default rules read, else before embedding, else last. A pipeline
+// that already names it is left alone. Pipeline overrides cannot anchor
+// on the injected step: it is added after they are validated.
+func InjectClassRulesStep(stepNames []string, access string) []string {
+	if !SharingEnabled(access) || slices.Contains(stepNames, contentClassesStep) {
+		return stepNames
+	}
+	at := len(stepNames)
+	if i := slices.Index(stepNames, "structured_metadata"); i >= 0 {
+		at = i + 1
+	} else if i := slices.Index(stepNames, "embedding"); i >= 0 {
+		at = i
+	}
+	out := make([]string, 0, len(stepNames)+1)
+	out = append(out, stepNames[:at]...)
+	out = append(out, contentClassesStep)
+	return append(out, stepNames[at:]...)
 }
 
 // ExternalSteps resolves installed (out-of-process, ADR-058) steps by name.
@@ -181,10 +238,15 @@ type ExternalSteps interface {
 // no-ops, so these always resolve.
 var embeddingStepConstructors = map[string]func(BuildOpts) pipeline.PipelineStep{
 	"embedding": func(o BuildOpts) pipeline.PipelineStep {
-		return steps.NewEmbeddingGenerator(o.Models, o.Resolver)
+		return steps.NewEmbeddingGenerator(o.Models, o.Resolver, steps.WithMaskedVariant(SharingEnabled(o.Access)))
 	},
 	"dedup": func(o BuildOpts) pipeline.PipelineStep {
 		return steps.NewDedupStep(o.Models, o.Embeddings, o.Audit, o.Duplicates)
+	},
+	// Content classes at ingest (ADR-080 §3); inserted by
+	// InjectClassRulesStep on sharing instances.
+	contentClassesStep: func(o BuildOpts) pipeline.PipelineStep {
+		return steps.NewContentClasses(o.ClassRules)
 	},
 }
 
@@ -523,7 +585,7 @@ func ConfiguredRegistryWithPipelineOverrides(
 		}
 
 		opts := base
-		d.Steps = InjectDedupStep(d.Steps, base.Duplicates)
+		d.Steps = InjectClassRulesStep(InjectDedupStep(d.Steps, base.Duplicates), base.Access)
 		specs := specsOf(d.Steps)
 
 		if override, ok := pipelinesCfg.Overrides[name]; ok {
@@ -746,7 +808,7 @@ func buildRegistry(opts BuildOpts, strict bool) pipeline.Registry {
 			log.Printf("builtins: skipping pipeline %q (required provider(s) %v not available)", name, d.Providers)
 			continue
 		}
-		d.Steps = InjectDedupStep(d.Steps, opts.Duplicates)
+		d.Steps = InjectClassRulesStep(InjectDedupStep(d.Steps, opts.Duplicates), opts.Access)
 
 		p, err := buildPipeline(name, d, opts, strict)
 		if err != nil {

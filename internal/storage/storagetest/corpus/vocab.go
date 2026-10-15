@@ -52,6 +52,17 @@ var topics = []string{
 // structured_metadata step writes them.
 var noteKinds = []string{"observation", "task", "decision", "meeting"}
 
+// contactNotes are the personal notes a third of the contacts carry,
+// the kind of text a share policy must never let through.
+var contactNotes = []string{
+	"kids Leo and Mia, moving to Lisbon next spring",
+	"going through a divorce, keep the calls short",
+	"allergic to shellfish, book the vegetarian place",
+	"owes us for the April invoice, mention it gently",
+	"prefers texts after 20:00, never calls",
+	"looking for a new job, do not tell the board",
+}
+
 // sourceTypes are the metadata.source_type values notes take.
 var sourceTypes = []string{"text", "slack", "email", "meeting"}
 

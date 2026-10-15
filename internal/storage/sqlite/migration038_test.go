@@ -116,10 +116,11 @@ func seedPre038Database(t *testing.T, path string) {
 	if err := d.Embeddings().EnsureIndex(ctx, spec); err != nil {
 		t.Fatalf("EnsureIndex: %v", err)
 	}
-	if err := d.Embeddings().Put(ctx, "legacy", []storage.ObjectVector{
-		{ModelID: "real@1", Vector: []float32{1, 0, 0, 0}, Text: "body"},
-	}); err != nil {
-		t.Fatalf("Put: %v", err)
+	// By hand: the store writes the variant column 051 adds.
+	if _, err := d.db.Exec(`
+		INSERT INTO embeddings (object_id, model_id, chunk_idx, vector, text, created_at)
+		VALUES ('legacy', 'real@1', 0, ?, 'body', ?)`, vecBlob(t, 1, 0, 0, 0), now); err != nil {
+		t.Fatalf("seed embeddings: %v", err)
 	}
 	if err := d.Close(ctx); err != nil {
 		t.Fatal(err)

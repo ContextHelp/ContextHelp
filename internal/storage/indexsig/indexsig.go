@@ -51,7 +51,11 @@ const FTSSignatureID = "objects_fts"
 // v4 = v3. Bumped so the re-projection runs again and gives text back to
 // rows whose text_content is their blob:// ref (written before v3; see
 // storage.RefTextStore), on databases a v3 run already stamped.
-const ProjectionVersion = "v4"
+// v5 = v4 plus the masked shadow projection (ADR-080 §7): every row also
+// carries projected_fts_body_masked, the body with classed parts removed
+// (a structured type's searchable minimum). Rows stamped v4 have an empty
+// masked body, so the re-projection fills it.
+const ProjectionVersion = "v5"
 
 // SQLiteFTSTokenizer is the tokenizer in use for objects_fts. The DDL does
 // not specify `tokenize=`, so FTS5 falls back to its default ("unicode61"

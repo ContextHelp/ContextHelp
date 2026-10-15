@@ -100,7 +100,9 @@ func TestMigration050_ObjectListIndexes(t *testing.T) {
 			t.Fatalf("schema 48 already has %s: nothing for 050 to create", index)
 		}
 	}
-	if err := d.Objects().Create(ctx, &storage.KnowledgeObject{ID: "m050", Type: "note", RawContent: "before the index", Status: storage.ObjectStatusActive}); err != nil {
+	// By hand: the store writes columns later migrations add (classes, 051).
+	if _, err := d.db.ExecContext(ctx, `INSERT INTO objects (id, type, raw_content, status, created_at, updated_at)
+		VALUES ('m050', 'note', 'before the index', ?, '2026-10-15T00:00:00Z', '2026-10-15T00:00:00Z')`, storage.ObjectStatusActive); err != nil {
 		t.Fatalf("Create at 48: %v", err)
 	}
 

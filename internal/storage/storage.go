@@ -103,6 +103,9 @@ type StorageDriver interface {
 	// Auth is the principal registry (ADR-079): principals, their
 	// identities, sign-in tickets and the API key records.
 	Auth() AuthStore
+	// Sharing is the sharing registry (ADR-080): audiences, share
+	// policies, grants, ceilings, key bindings and the read audit.
+	Sharing() SharingStore
 	Health(ctx context.Context) error
 }
 

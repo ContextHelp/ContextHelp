@@ -68,12 +68,13 @@ func (s *ObjectStore) Reproject(ctx context.Context, id string) (bool, error) {
 		return false, fmt.Errorf("reproject %s: load: %w", id, err)
 	}
 
-	body := projection.ProjectIndex(obj).FTSBody
+	index := projection.ProjectIndex(obj)
 	if _, err := tx.ExecContext(ctx, `UPDATE objects
 		SET projected_fts_body = $1,
+		    projected_fts_body_masked = $4,
 		    fts_indexed = CASE WHEN $1 <> '' THEN TRUE ELSE fts_indexed END,
 		    projection_version = $2
-		WHERE id = $3`, body, indexsig.ProjectionVersion, id); err != nil {
+		WHERE id = $3`, index.FTSBody, indexsig.ProjectionVersion, id, index.MaskedFTSBody); err != nil {
 		return false, fmt.Errorf("reproject %s: write body: %w", id, err)
 	}
 	if err := tx.Commit(); err != nil {

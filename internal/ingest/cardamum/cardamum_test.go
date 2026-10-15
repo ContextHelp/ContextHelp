@@ -1,8 +1,24 @@
 package cardamum
 
 import (
+	"slices"
+	"strings"
 	"testing"
+
+	"github.com/ideacrafterslabs/ctxt/internal/ingest"
+	"github.com/ideacrafterslabs/ctxt/internal/projection"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
+
+// sarahVCard is a full card: identity, details with parameters, a
+// structured address with an escaped comma, and a folded note.
+const sarahVCard = "BEGIN:VCARD\r\nVERSION:3.0\r\n" +
+	"FN:Sarah Lee\r\nORG:Acme\r\nTITLE:Head of Ops\r\n" +
+	"EMAIL;TYPE=INTERNET,WORK:sarah@acme.example\r\n" +
+	"TEL;TYPE=CELL:+351 555 0100\r\n" +
+	"ADR;TYPE=WORK:;;1 Rua Augusta\\, 2nd floor;Lisbon;;1100-048;Portugal\r\n" +
+	"NOTE:kids Leo and Mia\\, \r\n moving to Lisbon.\r\n" +
+	"UID:uid-sarah\r\nEND:VCARD\r\n"
 
 func TestExtractVCardField(t *testing.T) {
 	vcard := "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Jane Doe\r\n" +
@@ -47,108 +63,132 @@ func TestExtractVCardFieldFolded(t *testing.T) {
 	}
 }
 
-func TestTransformCards(t *testing.T) {
-	cards := []card{
-		{
-			ID:            "jane",
-			AddressbookID: "work",
-			VCard: "BEGIN:VCARD\r\nVERSION:3.0\r\n" +
-				"FN:Jane Doe\r\nORG:Acme\r\nTITLE:CTO\r\n" +
-				"EMAIL:jane@acme.com\r\n" +
-				"UID:uid-jane\r\nEND:VCARD\r\n",
-		},
-		{
-			ID:            "bob",
-			AddressbookID: "personal",
-			VCard: "BEGIN:VCARD\r\nVERSION:3.0\r\n" +
-				"FN:Bob\r\nUID:uid-bob\r\nEND:VCARD\r\n",
-		},
+// Field parameters are skipped, TEL and ADR are read, and the address
+// keeps its escaped comma and yields the locality as the city.
+func TestExtractVCardFieldParameters(t *testing.T) {
+	if got := extractVCardField(sarahVCard, "EMAIL"); got != "sarah@acme.example" {
+		t.Errorf("EMAIL = %q", got)
 	}
-
-	objects := TransformCards(cards)
-
-	if len(objects) != 2 {
-		t.Fatalf("got %d objects, want 2", len(objects))
+	if got := extractVCardField(sarahVCard, "TEL"); got != "+351 555 0100" {
+		t.Errorf("TEL = %q", got)
 	}
-
-	// First card: full contact
-	obj := objects[0]
-	if obj.ID != "uid-jane" {
-		t.Errorf("obj[0].ID = %q, want uid-jane", obj.ID)
+	if got := extractVCardField(sarahVCard, "NOTE"); got != "kids Leo and Mia, moving to Lisbon." {
+		t.Errorf("NOTE = %q", got)
 	}
-	if obj.Type != "contact" {
-		t.Errorf("obj[0].Type = %q, want contact", obj.Type)
+	address, city := extractVCardAddress(sarahVCard)
+	if address != "1 Rua Augusta, 2nd floor, Lisbon, 1100-048, Portugal" || city != "Lisbon" {
+		t.Errorf("ADR = %q, city %q", address, city)
 	}
-	if obj.Metadata["name"] != "Jane Doe" {
-		t.Errorf("obj[0].Metadata[name] = %v, want Jane Doe",
-			obj.Metadata["name"])
-	}
-	if obj.Metadata["email"] != "jane@acme.com" {
-		t.Errorf("obj[0].Metadata[email] = %v, want jane@acme.com",
-			obj.Metadata["email"])
-	}
-	if obj.Metadata["org"] != "Acme" {
-		t.Errorf("obj[0].Metadata[org] = %v, want Acme",
-			obj.Metadata["org"])
-	}
-
-	// Check tags include org and role
-	wantTags := map[string]bool{
-		"source:cardamum": true,
-		"org:Acme":        true,
-		"role:CTO":        true,
-	}
-	for _, tag := range obj.Tags {
-		delete(wantTags, tag)
-	}
-	if len(wantTags) > 0 {
-		t.Errorf("missing tags: %v", wantTags)
-	}
-
-	// Second card: minimal contact (uses UID for ID)
-	obj2 := objects[1]
-	if obj2.ID != "uid-bob" {
-		t.Errorf("obj[1].ID = %q, want uid-bob", obj2.ID)
-	}
-	if obj2.Metadata["name"] != "Bob" {
-		t.Errorf("obj[1].Metadata[name] = %v, want Bob",
-			obj2.Metadata["name"])
+	if address, city := extractVCardAddress("BEGIN:VCARD\r\nFN:X\r\nEND:VCARD\r\n"); address != "" || city != "" {
+		t.Errorf("no ADR = %q, %q", address, city)
 	}
 }
 
-func TestTransformCardFallbackID(t *testing.T) {
-	c := card{
-		ID:            "fallback-id",
-		AddressbookID: "test",
-		VCard:         "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:No UID\r\nEND:VCARD\r\n",
+// transformSarah transforms the full card.
+func transformSarah(t *testing.T) ingest.Object {
+	t.Helper()
+	objects := TransformCards([]card{{ID: "sarah", AddressbookID: "work", VCard: sarahVCard}})
+	if len(objects) != 1 {
+		t.Fatalf("got %d objects, want 1", len(objects))
 	}
-	objects := TransformCards([]card{c})
-	if objects[0].ID != "fallback-id" {
-		t.Errorf("expected fallback to card.ID, got %q", objects[0].ID)
-	}
+	return objects[0]
 }
 
-func TestBuildContent(t *testing.T) {
-	got := buildContent("Jane", "Acme", "CTO", "j@a.com", "Note text")
-	if got == "" {
-		t.Fatal("expected non-empty content")
+// The transformed contact keeps email, phone and address in the metadata
+// only; the text is the card.
+func TestTransformCard_DetailsOutOfTheText(t *testing.T) {
+	obj := transformSarah(t)
+	if obj.ID != "uid-sarah" || obj.Type != "contact" {
+		t.Errorf("obj = %s %s", obj.ID, obj.Type)
 	}
-	for _, want := range []string{"Jane", "CTO", "Acme", "j@a.com", "Note text"} {
-		if !contains(got, want) {
-			t.Errorf("content missing %q: %s", want, got)
+	if obj.Content != "Sarah Lee | Head of Ops @ Acme\nLisbon" {
+		t.Errorf("Content = %q", obj.Content)
+	}
+	for _, hidden := range []string{"sarah@acme.example", "555 0100", "Rua Augusta", "Leo"} {
+		if strings.Contains(obj.Content, hidden) {
+			t.Errorf("Content carries %q", hidden)
 		}
 	}
-}
-
-func contains(s, sub string) bool {
-	return len(s) >= len(sub) && (s == sub || len(s) > 0 && containsStr(s, sub))
-}
-
-func containsStr(s, sub string) bool {
-	for i := 0; i <= len(s)-len(sub); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
+	for key, want := range map[string]string{
+		"addressbook": "work", "name": "Sarah Lee", "org": "Acme", "role": "Head of Ops", "city": "Lisbon",
+		"email": "sarah@acme.example", "phone": "+351 555 0100", "address": "1 Rua Augusta, 2nd floor, Lisbon, 1100-048, Portugal",
+	} {
+		if obj.Metadata[key] != want {
+			t.Errorf("Metadata[%s] = %v, want %q", key, obj.Metadata[key], want)
 		}
 	}
-	return false
+	if _, ok := obj.Metadata["title"]; ok {
+		t.Error("the job title is role, not title")
+	}
+	if !slices.Equal(obj.Tags, []string{"source:cardamum", "org:Acme", "role:Head of Ops"}) {
+		t.Errorf("Tags = %v", obj.Tags)
+	}
+}
+
+// The note is a personal section node beside the card node; node ids
+// are left to the runner.
+func TestTransformCard_NoteNode(t *testing.T) {
+	obj := transformSarah(t)
+	if obj.Graph == nil || len(obj.Graph.Nodes) != 2 {
+		t.Fatalf("Graph = %+v, want the card and the note", obj.Graph)
+	}
+	card, note := obj.Graph.Nodes[0], obj.Graph.Nodes[1]
+	if card.NodeType != storage.NodeTypeSection || card.Label != projection.ContactCardLabel || card.Content != obj.Content {
+		t.Errorf("card node = %+v", card)
+	}
+	if storage.NodeClasses(card) != nil {
+		t.Errorf("card classes = %v, want none", storage.NodeClasses(card))
+	}
+	if note.NodeType != storage.NodeTypeSection || note.Label != projection.ContactNoteLabel || note.Order != 1 {
+		t.Errorf("note node = %+v", note)
+	}
+	if note.Content != "kids Leo and Mia, moving to Lisbon." {
+		t.Errorf("note content = %q", note.Content)
+	}
+	if !slices.Equal(storage.NodeClasses(note), []string{storage.ClassPersonal}) {
+		t.Errorf("note classes = %v, want personal", storage.NodeClasses(note))
+	}
+	if card.ID != "" || note.ID != "" {
+		t.Error("node ids are the runner's to assign")
+	}
+}
+
+// Stored, the contact masks to the searchable minimum and the owner's
+// index keeps the note, never the email.
+func TestTransformCard_MaskedProjection(t *testing.T) {
+	obj := transformSarah(t)
+	ko := &storage.KnowledgeObject{Type: obj.Type, RawContent: obj.Content, TextContent: obj.Content, Metadata: obj.Metadata, Graph: obj.Graph}
+	for _, tg := range obj.Tags {
+		ko.Tags = append(ko.Tags, storage.Tag{Label: tg})
+	}
+	idx := projection.ProjectIndex(ko)
+	if idx.MaskedFTSBody != "Sarah Lee | Head of Ops @ Acme\nLisbon\nTags: source:cardamum, org:Acme, role:Head of Ops" {
+		t.Errorf("masked body = %q", idx.MaskedFTSBody)
+	}
+	if !strings.Contains(idx.FTSBody, "kids Leo") || strings.Contains(idx.FTSBody, "sarah@acme.example") {
+		t.Errorf("raw body = %q", idx.FTSBody)
+	}
+}
+
+func TestTransformCards_Minimal(t *testing.T) {
+	objects := TransformCards([]card{
+		{ID: "bob", AddressbookID: "personal", VCard: "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Bob\r\nUID:uid-bob\r\nEND:VCARD\r\n"},
+		{ID: "fallback-id", AddressbookID: "test", VCard: "BEGIN:VCARD\r\nVERSION:3.0\r\nEND:VCARD\r\n"},
+	})
+	bob := objects[0]
+	if bob.ID != "uid-bob" || bob.Content != "Bob" || bob.Metadata["name"] != "Bob" {
+		t.Errorf("bob = %+v", bob)
+	}
+	if bob.Graph == nil || len(bob.Graph.Nodes) != 1 || bob.Graph.Nodes[0].Label != projection.ContactCardLabel {
+		t.Errorf("bob graph = %+v, want the card only", bob.Graph)
+	}
+	for _, key := range []string{"email", "phone", "address", "org", "role", "city"} {
+		if _, ok := bob.Metadata[key]; ok {
+			t.Errorf("bob carries an empty %s", key)
+		}
+	}
+	empty := objects[1]
+	if empty.ID != "fallback-id" || empty.Content != "" || empty.Graph != nil {
+		t.Errorf("empty card = %+v, want the card id, no text and no graph", empty)
+	}
 }

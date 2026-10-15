@@ -32,10 +32,10 @@ func TestMigration043_BackfillsChangeSeqInChangeOrder(t *testing.T) {
 		{"m-first", base},
 		{"m-a", base.Add(time.Second)},
 	} {
-		if err := d.Objects().Create(ctx, &storage.KnowledgeObject{
-			ID: o.id, Type: "note", RawContent: o.id, Status: "active",
-			CreatedAt: o.at, UpdatedAt: o.at,
-		}); err != nil {
+		// By hand, as Create formats its times: the store writes columns
+		// later migrations add (classes, 051).
+		if _, err := d.db.ExecContext(ctx, `INSERT INTO objects (id, type, raw_content, status, created_at, updated_at)
+			VALUES (?, 'note', ?, 'active', ?, ?)`, o.id, o.id, o.at.Format(time.RFC3339), o.at.Format(time.RFC3339)); err != nil {
 			t.Fatalf("create %s at v42: %v", o.id, err)
 		}
 	}

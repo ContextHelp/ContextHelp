@@ -33,6 +33,9 @@ func extIn(exts ...string) func(string) bool {
 	return func(e string) bool { return slices.Contains(exts, e) }
 }
 
+// subtypeUnsupported is the subtype of a draft no handler claims.
+const subtypeUnsupported = "unsupported"
+
 // RegisterContentTypeHandler appends a handler to the global registry.
 // Call from init() to keep each format self-contained and independently extensible.
 func RegisterContentTypeHandler(h Handler) {
@@ -170,6 +173,6 @@ func (s *ContentTypeRouter) Run(_ context.Context, draft *storage.KnowledgeObjec
 	}
 
 	log.Printf("content_type_router: no handler for mime=%q ext=%q source=%s — skipping extraction", mime, ext, src)
-	draft.Subtype = "unsupported"
+	draft.Subtype = subtypeUnsupported
 	return draft, nil
 }

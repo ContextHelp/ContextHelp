@@ -124,6 +124,9 @@ type Config struct {
 	// Embeddings configures the embedding-model lifecycle guards of
 	// `ctxt embeddings set-default` and `purge` (ADR-071).
 	Embeddings EmbeddingsConfig `mapstructure:"embeddings" yaml:"embeddings"`
+
+	// Sharing configures content classes and sharing (ADR-080).
+	Sharing SharingConfig `mapstructure:"sharing" yaml:"sharing"`
 }
 
 // Embedding-model lifecycle defaults (ADR-071 "Default-flip control").

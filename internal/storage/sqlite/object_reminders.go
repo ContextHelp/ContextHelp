@@ -85,7 +85,7 @@ const reminderSelectCols = `SELECT
 	decisions, tasks, pipeline, source,
 	registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 	created_at, updated_at, fts_indexed, status, inbox_note,
-	remind_at, reminded_at, profile_id, graph_json, source_key, change_seq
+	remind_at, reminded_at, profile_id, graph_json, source_key, change_seq, classes
 `
 
 func collectReminderRows(rows *sql.Rows) ([]*storage.KnowledgeObject, error) {

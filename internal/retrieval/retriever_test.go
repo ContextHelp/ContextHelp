@@ -158,6 +158,7 @@ func (n *naStore) SearchHistory() storage.SearchHistoryStore   { return nil }
 func (n *naStore) Watermarks() storage.WatermarkStore          { return nil }
 func (n *naStore) UISessions() storage.UISessionStore          { return nil }
 func (n *naStore) Auth() storage.AuthStore                     { return nil }
+func (n *naStore) Sharing() storage.SharingStore               { return nil }
 func (n *naStore) Health(_ context.Context) error              { return nil }
 
 // TestRagRetrieve_NodeAwareFilterRoutesThroughNodeAwarePath verifies that when a

@@ -41,10 +41,18 @@ func ProjectDocument(ko *storage.KnowledgeObject) storage.DocumentProjection {
 
 // ProjectIndex derives an IndexProjection from a KnowledgeObject.
 // Uses graph nodes when Graph is non-nil and non-empty; falls back to flat fields.
+// The masked fields follow (see masked).
 func ProjectIndex(ko *storage.KnowledgeObject) storage.IndexProjection {
 	if ko == nil {
 		return storage.IndexProjection{}
 	}
+	p := rawIndexProjection(ko)
+	masked(ko, &p)
+	return p
+}
+
+// rawIndexProjection is ProjectIndex without the masked fields.
+func rawIndexProjection(ko *storage.KnowledgeObject) storage.IndexProjection {
 	if ko.Graph == nil || len(ko.Graph.Nodes) == 0 {
 		return flatIndexProjection(ko)
 	}

@@ -272,6 +272,16 @@ var migrations = []migration{
 	// only: no column changes, nothing is an FTS input, so no
 	// re-projection follows. IF NOT EXISTS makes it re-runnable.
 	{Version: 50, fn: migrate050ObjectListIndexes},
+	// Migration 051: the sharing registry (ADR-080): audiences and their
+	// members, share policies, grants and the read audit; the per
+	// principal ceiling (principals.deny_classes), the policy a key
+	// narrows to (principal_identities.share_policy_id); objects.classes
+	// and the masked shadow projection (objects.projected_fts_body_masked
+	// with its objects_fts_masked FTS5 table); and embeddings.variant,
+	// which extends the (object, model, chunk) key. The masked body is
+	// a projection output, so the projection version is bumped with it
+	// (indexsig.ProjectionVersion v5) and the re-projection fills it.
+	{Version: 51, fn: migrate051Sharing},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
@@ -1065,6 +1075,145 @@ func migrate050ObjectListIndexes(ctx context.Context, d *Driver) error {
 		if _, err := d.db.ExecContext(ctx, stmt); err != nil {
 			return fmt.Errorf("object list indexes: %w", err)
 		}
+	}
+	return nil
+}
+
+// sharingRegistryDDL creates the sharing registry tables (migration
+// 051). Times are Unix milliseconds (UTC) like the principal registry.
+// IF NOT EXISTS makes every statement re-runnable.
+var sharingRegistryDDL = []string{
+	`CREATE TABLE IF NOT EXISTS audiences (
+		id         TEXT PRIMARY KEY,
+		name       TEXT NOT NULL UNIQUE,
+		created_at INTEGER NOT NULL
+	)`,
+	`CREATE TABLE IF NOT EXISTS audience_members (
+		audience_id  TEXT NOT NULL REFERENCES audiences(id) ON DELETE CASCADE,
+		principal_id TEXT NOT NULL REFERENCES principals(id),
+		expires_at   INTEGER,
+		added_by     TEXT NOT NULL,
+		added_at     INTEGER NOT NULL,
+		PRIMARY KEY (audience_id, principal_id)
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_audience_members_principal ON audience_members(principal_id)`,
+	`CREATE TABLE IF NOT EXISTS share_policies (
+		id         TEXT PRIMARY KEY,
+		name       TEXT NOT NULL UNIQUE,
+		version    INTEGER NOT NULL,
+		spec       TEXT NOT NULL,
+		updated_at INTEGER NOT NULL
+	)`,
+	`CREATE TABLE IF NOT EXISTS share_grants (
+		id          TEXT PRIMARY KEY,
+		audience_id TEXT NOT NULL REFERENCES audiences(id),
+		policy_id   TEXT NOT NULL REFERENCES share_policies(id),
+		expires_at  INTEGER,
+		created_by  TEXT NOT NULL,
+		created_at  INTEGER NOT NULL,
+		revoked_at  INTEGER
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_share_grants_audience ON share_grants(audience_id)`,
+	`CREATE TABLE IF NOT EXISTS access_log (
+		id              TEXT PRIMARY KEY,
+		at              INTEGER NOT NULL,
+		principal_id    TEXT NOT NULL,
+		identity_id     TEXT,
+		route           TEXT NOT NULL,
+		policy_versions TEXT NOT NULL,
+		object_count    INTEGER NOT NULL,
+		entity_count    INTEGER NOT NULL
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_access_log_principal ON access_log(principal_id, at)`,
+	`CREATE INDEX IF NOT EXISTS idx_access_log_at ON access_log(at)`,
+	`CREATE TABLE IF NOT EXISTS access_log_objects (
+		access_id TEXT NOT NULL REFERENCES access_log(id) ON DELETE CASCADE,
+		object_id TEXT NOT NULL,
+		PRIMARY KEY (access_id, object_id)
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_access_log_objects_object ON access_log_objects(object_id)`,
+	`CREATE VIRTUAL TABLE IF NOT EXISTS objects_fts_masked USING fts5(
+		id UNINDEXED,
+		projected_fts_body_masked,
+		content='objects',
+		content_rowid='rowid'
+	)`,
+}
+
+// sharingColumns are the columns migration 051 adds to existing tables,
+// each guarded by tableHasColumn so a replay is a no-op. A REFERENCES
+// column added by ALTER must default to NULL, which share_policy_id
+// does.
+var sharingColumns = []struct{ table, column, ddl string }{
+	{"principals", "deny_classes", `TEXT NOT NULL DEFAULT '[]'`},
+	{"principal_identities", "share_policy_id", `TEXT REFERENCES share_policies(id)`},
+	{"objects", "classes", `TEXT NOT NULL DEFAULT '[]'`},
+	{"objects", "projected_fts_body_masked", `TEXT NOT NULL DEFAULT ''`},
+}
+
+// migrate051Sharing creates the sharing registry, adds the sharing
+// columns and rebuilds embeddings with variant in its unique key (SQLite
+// cannot alter a table's UNIQUE in place). The rebuild keeps every id,
+// so the per-model vec0 tables, keyed by it, stay valid; dropping the
+// table drops its sync triggers, which ensureEmbeddingIndexes puts back.
+func migrate051Sharing(ctx context.Context, d *Driver) error {
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	for _, stmt := range sharingRegistryDDL {
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("create sharing registry: %w", err)
+		}
+	}
+	for _, c := range sharingColumns {
+		has, err := txTableHasColumn(ctx, tx, c.table, c.column)
+		if err != nil {
+			return fmt.Errorf("inspect %s.%s: %w", c.table, c.column, err)
+		}
+		if has {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `ALTER TABLE `+c.table+` ADD COLUMN `+c.column+` `+c.ddl); err != nil {
+			return fmt.Errorf("add %s.%s: %w", c.table, c.column, err)
+		}
+	}
+
+	hasVariant, err := txTableHasColumn(ctx, tx, "embeddings", "variant")
+	if err != nil {
+		return fmt.Errorf("inspect embeddings.variant: %w", err)
+	}
+	if !hasVariant {
+		for _, stmt := range []string{
+			`CREATE TABLE embeddings_v3 (
+			    id          INTEGER PRIMARY KEY,
+			    object_id   TEXT NOT NULL REFERENCES objects(id) ON DELETE CASCADE,
+			    model_id    TEXT NOT NULL REFERENCES embedding_models(model_id),
+			    chunk_idx   INTEGER NOT NULL DEFAULT 0 CHECK (chunk_idx >= 0),
+			    variant     TEXT NOT NULL DEFAULT 'raw' CHECK (variant IN ('raw', 'masked')),
+			    vector      BLOB NOT NULL,
+			    text        TEXT,
+			    created_at  TEXT NOT NULL,
+			    UNIQUE (object_id, model_id, chunk_idx, variant)
+			)`,
+			`INSERT INTO embeddings_v3 (id, object_id, model_id, chunk_idx, variant, vector, text, created_at)
+			     SELECT id, object_id, model_id, chunk_idx, 'raw', vector, text, created_at FROM embeddings`,
+			`DROP TABLE embeddings`,
+			`ALTER TABLE embeddings_v3 RENAME TO embeddings`,
+			`CREATE INDEX IF NOT EXISTS idx_embeddings_model ON embeddings (model_id, object_id)`,
+		} {
+			if _, err := tx.ExecContext(ctx, stmt); err != nil {
+				return fmt.Errorf("rebuild embeddings with variant: %w", err)
+			}
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+	if !hasVariant {
+		return ensureEmbeddingIndexes(ctx, d)
 	}
 	return nil
 }

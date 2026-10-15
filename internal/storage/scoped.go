@@ -156,6 +156,11 @@ var scopedAccessors = map[string]accessorKind{
 	// policies (ADR-080 §1), and the chain consults it before a viewer
 	// exists, so it passes through for every viewer.
 	"Auth": accessorPassthrough,
+	// Sharing is the sharing registry: scopes govern it like Auth, the
+	// chain reads a principal's grants to compile its viewer before one
+	// exists, and a restricted viewer lists its own audiences and
+	// policies (ADR-080 §8), so it passes through for every viewer.
+	"Sharing": accessorPassthrough,
 
 	"Objects":         accessorScoped,
 	"Entities":        accessorScoped,

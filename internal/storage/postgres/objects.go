@@ -41,10 +41,12 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 	// embedded text agree, as on SQLite.
 	obj.TextContent = projection.BodyText(obj)
 
-	// Derive FTS body from projection — single source of truth for indexed
-	// text. The generated tsvector column tracks projected_fts_body, so no
-	// manual index maintenance is needed beyond writing the body.
-	projectedFTSBody := projection.ProjectIndex(obj).FTSBody
+	// Derive FTS bodies from projection — single source of truth for
+	// indexed text: the raw body and its masked shadow (ADR-080 §7). The
+	// generated tsvector columns track both, so no manual index
+	// maintenance is needed beyond writing the bodies.
+	index := projection.ProjectIndex(obj)
+	projectedFTSBody := index.FTSBody
 	if projectedFTSBody != "" {
 		obj.FTSIndexed = true
 	}
@@ -62,7 +64,7 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
 		remind_at, reminded_at, graph_json, source_key, projected_fts_body,
-		projection_version, profile_id
+		projection_version, profile_id, classes, projected_fts_body_masked
 	) VALUES (
 		$1, $2, $3, $4, $5, $6,
 		$7, $8, $9, $10, $11,
@@ -70,7 +72,7 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		$16, $17, $18, $19,
 		$20, $21, $22, $23, $24,
 		$25, $26, $27, $28, $29,
-		$30, $31
+		$30, $31, $32, $33
 	)`,
 		obj.ID, obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
@@ -78,7 +80,7 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		f.influences, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.CreatedAt.UTC(), obj.UpdatedAt.UTC(), obj.FTSIndexed, obj.Status, obj.InboxNote,
 		f.remindAt, f.remindedAt, graphJSON, obj.SourceKey, projectedFTSBody,
-		indexsig.ProjectionVersion, obj.ProfileID,
+		indexsig.ProjectionVersion, obj.ProfileID, f.classes, index.MaskedFTSBody,
 	)
 	if err != nil {
 		return fmt.Errorf("create object: %w", err)
@@ -251,9 +253,11 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		return fmt.Errorf("update object graph: %w", err)
 	}
 
-	// Derive FTS body from projection — single source of truth for indexed
-	// text; the generated tsvector column tracks the rewritten body.
-	projectedFTSBody := projection.ProjectIndex(obj).FTSBody
+	// Derive FTS bodies from projection — single source of truth for
+	// indexed text; the generated tsvector columns track the rewritten
+	// raw and masked bodies.
+	index := projection.ProjectIndex(obj)
+	projectedFTSBody := index.FTSBody
 	if projectedFTSBody != "" {
 		obj.FTSIndexed = true
 	}
@@ -272,8 +276,8 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		reinforcement_count=$17, last_reinforced_at=$18,
 		updated_at=$19, fts_indexed=$20, status=$21, inbox_note=$22,
 		remind_at=$23, reminded_at=$24, graph_json=$25, projected_fts_body=$26,
-		projection_version=$27, profile_id=$28
-	WHERE id=$29`,
+		projection_version=$27, profile_id=$28, classes=$29, projected_fts_body_masked=$30
+	WHERE id=$31`,
 		obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
 		f.decisions, f.tasks, obj.Pipeline, obj.Source,
@@ -281,7 +285,7 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.UpdatedAt.UTC(), obj.FTSIndexed, obj.Status, obj.InboxNote,
 		f.remindAt, f.remindedAt, graphJSON, projectedFTSBody,
-		indexsig.ProjectionVersion, obj.ProfileID, obj.ID,
+		indexsig.ProjectionVersion, obj.ProfileID, f.classes, index.MaskedFTSBody, obj.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("update object: %w", err)
@@ -884,129 +888,84 @@ const objectSelectCols = `SELECT
 	decisions, tasks, pipeline, source,
 	registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 	created_at, updated_at, fts_indexed, status, inbox_note,
-	remind_at, reminded_at, graph_json, source_key, profile_id, change_seq`
+	remind_at, reminded_at, graph_json, source_key, profile_id, change_seq, classes`
 
 func scanObjectRow(row *sql.Row) (*storage.KnowledgeObject, error) {
-	var obj storage.KnowledgeObject
-	var (
-		metadataJSON, summariesJSON, sectionsJSON, tagsJSON []byte
-		mentionsJSON, decisionsJSON, tasksJSON              []byte
-		influencesJSON                                      []byte
-		lastReinforcedAt, remindAt, remindedAt              sql.NullTime
-		graphJSON                                           []byte
-		sourceKey                                           sql.NullString
-	)
-	err := row.Scan(
-		&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType, &obj.TextContent,
-		&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
-		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
-		&influencesJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
-		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.Status, &obj.InboxNote,
-		&remindAt, &remindedAt, &graphJSON, &sourceKey, &obj.ProfileID, &obj.ChangeSeq,
-	)
+	obj, err := scanObjectColumns(row, nil)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, errObjectNotFound
 		}
 		return nil, fmt.Errorf("scan object: %w", err)
 	}
-	if err := unmarshalObjectFields(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
-		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON,
-		lastReinforcedAt, remindAt, remindedAt); err != nil {
-		return nil, fmt.Errorf("scan object: %w", err)
-	}
-	if len(graphJSON) > 0 {
-		g, err := unmarshalGraph(string(graphJSON))
-		if err != nil {
-			return nil, fmt.Errorf("unmarshal graph: %w", err)
-		}
-		obj.Graph = g
-	}
-	if sourceKey.Valid {
-		obj.SourceKey = sourceKey.String
-	}
-	return &obj, nil
+	return obj, nil
 }
 
 func scanObjectRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
-	var obj storage.KnowledgeObject
-	var (
-		metadataJSON, summariesJSON, sectionsJSON, tagsJSON []byte
-		mentionsJSON, decisionsJSON, tasksJSON              []byte
-		influencesJSON                                      []byte
-		lastReinforcedAt, remindAt, remindedAt              sql.NullTime
-		graphJSON                                           []byte
-		sourceKey                                           sql.NullString
-	)
-	err := rows.Scan(
-		&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType, &obj.TextContent,
-		&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
-		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
-		&influencesJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
-		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.Status, &obj.InboxNote,
-		&remindAt, &remindedAt, &graphJSON, &sourceKey, &obj.ProfileID, &obj.ChangeSeq,
-	)
+	obj, err := scanObjectColumns(rows, nil)
 	if err != nil {
 		return nil, fmt.Errorf("scan object row: %w", err)
 	}
-	if err := unmarshalObjectFields(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
-		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON,
-		lastReinforcedAt, remindAt, remindedAt); err != nil {
-		return nil, fmt.Errorf("scan object row: %w", err)
-	}
-	if len(graphJSON) > 0 {
-		g, err := unmarshalGraph(string(graphJSON))
-		if err != nil {
-			return nil, fmt.Errorf("unmarshal graph: %w", err)
-		}
-		obj.Graph = g
-	}
-	if sourceKey.Valid {
-		obj.SourceKey = sourceKey.String
-	}
-	return &obj, nil
+	return obj, nil
 }
 
 // scanObjectRowWithScore scans base cols + a float64 score appended at the end.
 func scanObjectRowWithScore(rows *sql.Rows) (*storage.KnowledgeObject, float64, error) {
+	var score float64
+	obj, err := scanObjectColumns(rows, &score)
+	if err != nil {
+		return nil, 0, fmt.Errorf("scan object+score: %w", err)
+	}
+	return obj, score, nil
+}
+
+// scanObjectColumns scans objectSelectCols from row, plus the trailing
+// score column when score is non-nil. sql.ErrNoRows passes through for
+// scanObjectRow to map.
+func scanObjectColumns(row interface{ Scan(...any) error }, score *float64) (*storage.KnowledgeObject, error) {
 	var obj storage.KnowledgeObject
 	var (
 		metadataJSON, summariesJSON, sectionsJSON, tagsJSON []byte
 		mentionsJSON, decisionsJSON, tasksJSON              []byte
-		influencesJSON                                      []byte
+		influencesJSON, classesJSON                         []byte
 		lastReinforcedAt, remindAt, remindedAt              sql.NullTime
 		graphJSON                                           []byte
 		sourceKey                                           sql.NullString
-		score                                               float64
 	)
-	err := rows.Scan(
+	dest := []any{
 		&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType, &obj.TextContent,
 		&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.Status, &obj.InboxNote,
-		&remindAt, &remindedAt, &graphJSON, &sourceKey, &obj.ProfileID, &obj.ChangeSeq,
-		&score,
-	)
-	if err != nil {
-		return nil, 0, fmt.Errorf("scan object+score: %w", err)
+		&remindAt, &remindedAt, &graphJSON, &sourceKey, &obj.ProfileID, &obj.ChangeSeq, &classesJSON,
+	}
+	if score != nil {
+		dest = append(dest, score)
+	}
+	if err := row.Scan(dest...); err != nil {
+		return nil, err
 	}
 	if err := unmarshalObjectFields(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
 		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON,
 		lastReinforcedAt, remindAt, remindedAt); err != nil {
-		return nil, 0, fmt.Errorf("scan object+score: %w", err)
+		return nil, err
+	}
+	var err error
+	if obj.Classes, err = storage.ParseClassesJSON(string(classesJSON)); err != nil {
+		return nil, err
 	}
 	if len(graphJSON) > 0 {
 		g, err := unmarshalGraph(string(graphJSON))
 		if err != nil {
-			return nil, 0, fmt.Errorf("unmarshal graph: %w", err)
+			return nil, fmt.Errorf("unmarshal graph: %w", err)
 		}
 		obj.Graph = g
 	}
 	if sourceKey.Valid {
 		obj.SourceKey = sourceKey.String
 	}
-	return &obj, score, nil
+	return &obj, nil
 }
 
 func unmarshalObjectFields(obj *storage.KnowledgeObject,
@@ -1055,7 +1014,7 @@ func unmarshalObjectFields(obj *storage.KnowledgeObject,
 type objectFields struct {
 	metadata, summaries, sections, tags    string
 	mentions, decisions, tasks             string
-	influences                             string
+	influences, classes                    string
 	lastReinforcedAt, remindAt, remindedAt sql.NullTime
 }
 
@@ -1116,6 +1075,11 @@ func marshalObjectFields(obj *storage.KnowledgeObject) (objectFields, error) {
 	f.decisions = marshal("decisions", decisions)
 	f.tasks = marshal("tasks", tasks)
 	f.influences = marshal("influences", influences)
+	classes, err := storage.ClassesJSON(obj.Classes)
+	if err != nil {
+		return f, err
+	}
+	f.classes = classes
 	if obj.LastReinforcedAt != nil {
 		f.lastReinforcedAt = sql.NullTime{Time: *obj.LastReinforcedAt, Valid: true}
 	}
