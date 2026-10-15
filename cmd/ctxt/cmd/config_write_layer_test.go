@@ -229,20 +229,6 @@ func TestConfigWriteCommandsEditOnlyOwnLayer(t *testing.T) {
 			},
 		},
 		{
-			name: "profile default (deprecated) pins",
-			args: []string{"profile", "default", "founder"},
-			want: func(t *testing.T, s string) string {
-				return edit(t, s, "  default: work\n", "  default: founder\n")
-			},
-		},
-		{
-			name: "profile default (deprecated) clears",
-			args: []string{"profile", "default"},
-			want: func(t *testing.T, s string) string {
-				return edit(t, s, "  default: work\n", "  default: \"\"\n")
-			},
-		},
-		{
 			name: "profile schema add-type",
 			args: []string{"profile", "schema", "add-type", "founder", "task"},
 			want: func(t *testing.T, s string) string {

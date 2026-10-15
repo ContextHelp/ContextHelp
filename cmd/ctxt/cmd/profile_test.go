@@ -199,30 +199,3 @@ func TestProfileHelp(t *testing.T) {
 		}
 	}
 }
-
-// TestProfileDefaultDeprecated proves the one pre-rename spelling left
-// still pins and clears. The deprecation banner itself is a cobra
-// concern written to stderr; here we only assert the behavior.
-func TestProfileDefaultDeprecated(t *testing.T) {
-	db := setupTestDB(t)
-
-	if _, err := db.exec("profile", "create", "legacy"); err != nil {
-		t.Fatalf("create should succeed: %v", err)
-	}
-
-	out, err := db.exec("profile", "default", "legacy")
-	if err != nil {
-		t.Fatalf("deprecated 'profile default <name>' should still succeed: %v", err)
-	}
-	if !strings.Contains(out, "Set default profile to: legacy") {
-		t.Errorf("deprecated default should pin the profile, got: %q", out)
-	}
-
-	out, err = db.exec("profile", "default")
-	if err != nil {
-		t.Fatalf("deprecated 'profile default' (clear) should still succeed: %v", err)
-	}
-	if !strings.Contains(out, "Cleared default profile") {
-		t.Errorf("deprecated bare default should clear, got: %q", out)
-	}
-}

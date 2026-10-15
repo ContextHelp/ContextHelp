@@ -106,30 +106,6 @@ cleared. Use 'ctxt profile rm <profile>' to remove the profile.`,
 	RunE: runProfileUnset,
 }
 
-// profileDefaultDeprecatedCmd is the one pre-rename spelling left (the
-// canonical surface is set/unset/view/list/rm: "default" is a noun, not
-// a verb). The recorded profile-idempotency conformance scenario
-// (e2e/conformance) still invokes it, so it goes when that scenario is
-// re-recorded against `profile set`. Cobra writes the Deprecated banner
-// through Command.Print → OutOrStderr(), i.e. stderr, which keeps
-// `--format json` on stdout machine-parseable.
-//
-// It keeps the old dual-purpose semantics: with an argument it pins the
-// default, without one it clears the default. The canonical replacement
-// splits those two jobs across set/unset.
-var profileDefaultDeprecatedCmd = &cobra.Command{
-	Use:   "default [profile]",
-	Short: "[deprecated] use 'ctxt profile set' / 'ctxt profile unset'",
-	Long: `Deprecated spelling that both pins and clears the default
-profile. With an argument it behaves like 'ctxt profile set <profile>';
-with no argument it clears the default like 'ctxt profile unset'.
-Emits a deprecation notice on stderr.`,
-	Deprecated: "use 'ctxt profile set <profile>' to pin, or 'ctxt profile unset <profile>' to clear",
-	Hidden:     true,
-	Args:       cobra.MaximumNArgs(1),
-	RunE:       runProfileDefaultDeprecated,
-}
-
 func init() {
 	rootCmd.AddCommand(profileCmd)
 
@@ -139,8 +115,6 @@ func init() {
 	profileCmd.AddCommand(profileRmCmd)
 	profileCmd.AddCommand(profileSetCmd)
 	profileCmd.AddCommand(profileUnsetCmd)
-
-	profileCmd.AddCommand(profileDefaultDeprecatedCmd)
 
 	cliconv.WithSideEffect(profileListCmd, cliconv.SideEffectRead)
 	cliconv.WithExamples(profileListCmd, []cliconv.Example{
@@ -203,20 +177,6 @@ func init() {
 	cliconv.WithNextSteps(profileUnsetCmd, []cliconv.NextStep{
 		{Suggest: "ctxt profile list", Reason: "confirm no profile carries the default (* prefix) marker"},
 		{Suggest: "ctxt profile set <profile>", Reason: "pin a different profile as the new default"},
-	})
-
-	// The deprecated shim stays in the tree, so the strict 12fcc gates
-	// apply to it too: side-effect and guidance mirror set/unset, and the
-	// examples point at the replacement spelling so `--help` teaches the
-	// new surface.
-	cliconv.WithSideEffect(profileDefaultDeprecatedCmd, cliconv.SideEffectWrite)
-	cliconv.WithExamples(profileDefaultDeprecatedCmd, []cliconv.Example{
-		{Title: "Deprecated; prefer set", Command: "ctxt profile set founder"},
-		{Title: "Deprecated; prefer unset", Command: "ctxt profile unset founder"},
-	})
-	cliconv.WithNextSteps(profileDefaultDeprecatedCmd, []cliconv.NextStep{
-		{When: "to pin a default", Suggest: "ctxt profile set <profile>", Reason: "move scripts to the canonical verb"},
-		{When: "to clear the default", Suggest: "ctxt profile unset <profile>", Reason: "move scripts to the canonical verb"},
 	})
 }
 
@@ -479,15 +439,6 @@ func runProfileUnset(cmd *cobra.Command, args []string) error {
 			name, cfg.Profile.Default)
 	}
 	return writeDefaultProfile("")
-}
-
-// runProfileDefaultDeprecated preserves the pre-rename dual behavior of
-// `ctxt profile default [name]`: pin with an argument, clear without.
-func runProfileDefaultDeprecated(cmd *cobra.Command, args []string) error {
-	if len(args) == 0 {
-		return writeDefaultProfile("")
-	}
-	return runProfileSet(cmd, args)
 }
 
 // writeDefaultProfile persists profile.default and reports the change.
