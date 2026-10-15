@@ -420,14 +420,21 @@ type keyRow struct {
 	Status   string `table:"Status"`
 }
 
+// Credential status labels shared by the key and identity listings.
+const (
+	credentialActive  = "active"
+	credentialRevoked = "revoked"
+	credentialExpired = "expired"
+)
+
 func keyStatus(k authn.KeyInfo, now time.Time) string {
 	switch {
 	case k.RevokedAt != nil:
-		return "revoked"
+		return credentialRevoked
 	case !k.ExpiresAt.IsZero() && !now.Before(k.ExpiresAt):
-		return "expired"
+		return credentialExpired
 	}
-	return "active"
+	return credentialActive
 }
 
 func runAuthKeyList(cmd *cobra.Command, _ []string) error {
@@ -504,9 +511,9 @@ func renderIdentities(cmd *cobra.Command, w io.Writer, idns []storage.Identity) 
 	}
 	rows := make([]identityRow, 0, len(idns))
 	for _, i := range idns {
-		status := "active"
+		status := credentialActive
 		if i.RevokedAt != nil {
-			status = "revoked"
+			status = credentialRevoked
 		}
 		subject := i.Subject
 		if len(subject) > 24 {
