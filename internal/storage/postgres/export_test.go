@@ -12,3 +12,9 @@ func (d *Driver) MigrateThroughForTest(ctx context.Context, version int) error {
 func LatestSchemaVersionForTest() int {
 	return pgMigrations[len(pgMigrations)-1].Version
 }
+
+// ReplayEntitlementKindForTest re-runs migration 32 on a database that
+// already has it, pinning that a replay is a no-op.
+func (d *Driver) ReplayEntitlementKindForTest(ctx context.Context) error {
+	return migrateEntitlementKind(ctx, d)
+}

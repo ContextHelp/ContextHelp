@@ -333,6 +333,70 @@ var pgMigrations = []pgMigration{
 		`CREATE INDEX IF NOT EXISTS idx_objects_created_at ON objects (created_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_objects_updated_at ON objects (updated_at)`,
 	}},
+	// registry_entitlements.kind (outbound | inbound) keyed by (kind,
+	// registry_name), mirroring SQLite migration 051: a remote
+	// registry's synced entitlement and an operator's grant to a
+	// principal of the same name are separate rows.
+	{Version: 32, Name: "registry_entitlements.kind", fn: migrateEntitlementKind},
+}
+
+// entitlementInboundShapeSQL matches a registry_entitlements row whose
+// name is principal-shaped: the owner principal or a minted prn_ ID.
+const entitlementInboundShapeSQL = `(registry_name = 'owner' OR left(registry_name, 4) = 'prn_')`
+
+// migrateEntitlementKind adds registry_entitlements.kind and re-keys
+// the table on (kind, registry_name), in one transaction. Backfill, as
+// SQLite 051: a principal-shaped name (owner, prn_*) becomes one
+// inbound row; any other name stays outbound and gains an inbound copy,
+// because a static-token principal ("phone") cannot be told from a
+// registry name and both readers used to see every row. A table that
+// already has kind is left alone, so a replay is a no-op.
+func migrateEntitlementKind(ctx context.Context, d *Driver) error {
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var has bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS (SELECT 1 FROM information_schema.columns
+		                WHERE table_schema = current_schema()
+		                  AND table_name = 'registry_entitlements' AND column_name = 'kind')`,
+	).Scan(&has); err != nil {
+		return fmt.Errorf("inspect registry_entitlements.kind: %w", err)
+	}
+	if has {
+		return nil
+	}
+
+	var pkey string
+	if err := tx.QueryRowContext(ctx, `
+		SELECT conname FROM pg_constraint
+		 WHERE conrelid = 'registry_entitlements'::regclass AND contype = 'p'`,
+	).Scan(&pkey); err != nil {
+		return fmt.Errorf("inspect registry_entitlements primary key: %w", err)
+	}
+
+	const cols = `registry_name, plan, namespaces, expires_at, fetched_at`
+	for _, stmt := range []string{
+		`ALTER TABLE registry_entitlements ADD COLUMN kind TEXT NOT NULL DEFAULT 'outbound'`,
+		`UPDATE registry_entitlements SET kind = 'inbound' WHERE ` + entitlementInboundShapeSQL,
+		`ALTER TABLE registry_entitlements DROP CONSTRAINT "` + pkey + `"`,
+		`INSERT INTO registry_entitlements (kind, ` + cols + `)
+		 SELECT 'inbound', ` + cols + ` FROM registry_entitlements
+		  WHERE kind = 'outbound' AND NOT ` + entitlementInboundShapeSQL,
+		`ALTER TABLE registry_entitlements ALTER COLUMN kind DROP DEFAULT`,
+		`ALTER TABLE registry_entitlements ADD CONSTRAINT registry_entitlements_kind_check
+			CHECK (kind IN ('outbound', 'inbound'))`,
+		`ALTER TABLE registry_entitlements ADD CONSTRAINT registry_entitlements_pkey
+			PRIMARY KEY (kind, registry_name)`,
+	} {
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("re-key registry_entitlements: %w", err)
+		}
+	}
+	return tx.Commit()
 }
 
 // migrateAliasesObjectFK deletes aliases whose object is gone, then adds

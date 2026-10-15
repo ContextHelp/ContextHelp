@@ -65,6 +65,7 @@ func startGatedGRPC(t *testing.T) gatedGRPC {
 	}
 	for _, principal := range []string{"ops", "owner"} {
 		if err := driver.Entitlements().Upsert(ctx, &storage.RegistryEntitlement{
+			Kind:         storage.EntitlementInbound,
 			RegistryName: principal,
 			Plan:         "inbound",
 			Namespaces:   []string{"ai.*"},

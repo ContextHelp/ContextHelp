@@ -22,25 +22,41 @@ func newStubEntitlementStore() *stubEntitlementStore {
 	return &stubEntitlementStore{records: make(map[string]*storage.RegistryEntitlement)}
 }
 
+// The stub holds outbound rows only, keyed by registry name: the
+// outbound checker never reads another kind.
 func (s *stubEntitlementStore) Upsert(_ context.Context, e *storage.RegistryEntitlement) error {
+	if e.Kind != storage.EntitlementOutbound {
+		return errors.New("stub holds outbound rows only")
+	}
 	s.records[e.RegistryName] = e
 	return nil
 }
 
-func (s *stubEntitlementStore) Get(_ context.Context, name string) (*storage.RegistryEntitlement, error) {
+func (s *stubEntitlementStore) Get(_ context.Context, kind storage.EntitlementKind, name string) (*storage.RegistryEntitlement, error) {
 	e, ok := s.records[name]
-	if !ok {
+	if !ok || kind != storage.EntitlementOutbound {
 		return nil, errors.New("not found")
 	}
 	return e, nil
 }
 
-func (s *stubEntitlementStore) List(_ context.Context) ([]*storage.RegistryEntitlement, error) {
+func (s *stubEntitlementStore) List(_ context.Context, kind storage.EntitlementKind) ([]*storage.RegistryEntitlement, error) {
 	out := make([]*storage.RegistryEntitlement, 0, len(s.records))
+	if kind != storage.EntitlementOutbound {
+		return out, nil
+	}
 	for _, e := range s.records {
 		out = append(out, e)
 	}
 	return out, nil
+}
+
+func (s *stubEntitlementStore) Delete(_ context.Context, kind storage.EntitlementKind, name string) error {
+	if _, ok := s.records[name]; !ok || kind != storage.EntitlementOutbound {
+		return storage.ErrNotFound
+	}
+	delete(s.records, name)
+	return nil
 }
 
 func makeEntitlementServer(plan string, namespaces []string, expiresAt *time.Time) *httptest.Server {
@@ -80,7 +96,7 @@ func TestEntitlementChecker_FetchAndStore(t *testing.T) {
 	}
 
 	// Verify persisted in store.
-	persisted, err := store.Get(context.Background(), "my-reg")
+	persisted, err := store.Get(context.Background(), storage.EntitlementOutbound, "my-reg")
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}

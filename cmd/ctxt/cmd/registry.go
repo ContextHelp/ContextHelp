@@ -1262,7 +1262,7 @@ func runRegistryEntitlements(cmd *cobra.Command, _ []string) error {
 	defer cleanup()
 
 	ctx := asOwner(context.Background())
-	entitlements, err := svc.Store(ctx).Entitlements().List(ctx)
+	entitlements, err := svc.Store(ctx).Entitlements().List(ctx, storage.EntitlementOutbound)
 	if err != nil {
 		return fmt.Errorf("list entitlements: %w", err)
 	}

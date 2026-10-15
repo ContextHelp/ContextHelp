@@ -16,9 +16,16 @@ type entitlementStore struct {
 	db *sql.DB
 }
 
-// Upsert inserts or replaces the entitlement record for the registry.
+// Upsert inserts or replaces the row keyed by (e.Kind, e.RegistryName).
 func (s *entitlementStore) Upsert(ctx context.Context, e *storage.RegistryEntitlement) error {
-	nsJSON, err := json.Marshal(e.Namespaces)
+	if !e.Kind.Valid() {
+		return fmt.Errorf("upsert entitlement %q: invalid kind %q", e.RegistryName, e.Kind)
+	}
+	namespaces := e.Namespaces
+	if namespaces == nil {
+		namespaces = []string{}
+	}
+	nsJSON, err := json.Marshal(namespaces)
 	if err != nil {
 		return fmt.Errorf("marshal namespaces: %w", err)
 	}
@@ -31,9 +38,9 @@ func (s *entitlementStore) Upsert(ctx context.Context, e *storage.RegistryEntitl
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, err = s.db.ExecContext(ctx, `INSERT OR REPLACE INTO registry_entitlements
-		(registry_name, plan, namespaces, expires_at, fetched_at)
-		VALUES (?, ?, ?, ?, ?)`,
-		e.RegistryName, e.Plan, string(nsJSON), expiresAt, now,
+		(kind, registry_name, plan, namespaces, expires_at, fetched_at)
+		VALUES (?, ?, ?, ?, ?, ?)`,
+		string(e.Kind), e.RegistryName, e.Plan, string(nsJSON), expiresAt, now,
 	)
 	if err != nil {
 		return fmt.Errorf("upsert entitlement: %w", err)
@@ -41,20 +48,20 @@ func (s *entitlementStore) Upsert(ctx context.Context, e *storage.RegistryEntitl
 	return nil
 }
 
-// Get returns the entitlement record for the given registry name.
+// Get returns the row keyed by (kind, name).
 // Returns sql.ErrNoRows (wrapped) when not found.
-func (s *entitlementStore) Get(ctx context.Context, registryName string) (*storage.RegistryEntitlement, error) {
+func (s *entitlementStore) Get(ctx context.Context, kind storage.EntitlementKind, name string) (*storage.RegistryEntitlement, error) {
 	row := s.db.QueryRowContext(ctx, `SELECT
-		registry_name, plan, namespaces, expires_at, fetched_at
-	FROM registry_entitlements WHERE registry_name = ?`, registryName)
+		kind, registry_name, plan, namespaces, expires_at, fetched_at
+	FROM registry_entitlements WHERE kind = ? AND registry_name = ?`, string(kind), name)
 	return scanEntitlement(row)
 }
 
-// List returns all entitlement records.
-func (s *entitlementStore) List(ctx context.Context) ([]*storage.RegistryEntitlement, error) {
+// List returns every row of kind, ordered by name.
+func (s *entitlementStore) List(ctx context.Context, kind storage.EntitlementKind) ([]*storage.RegistryEntitlement, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT
-		registry_name, plan, namespaces, expires_at, fetched_at
-	FROM registry_entitlements ORDER BY registry_name`)
+		kind, registry_name, plan, namespaces, expires_at, fetched_at
+	FROM registry_entitlements WHERE kind = ? ORDER BY registry_name`, string(kind))
 	if err != nil {
 		return nil, fmt.Errorf("list entitlements: %w", err)
 	}
@@ -63,15 +70,35 @@ func (s *entitlementStore) List(ctx context.Context) ([]*storage.RegistryEntitle
 	return rowscan.AllScanner(rows, scanEntitlement)
 }
 
+// Delete removes the row keyed by (kind, name); storage.ErrNotFound
+// (wrapped) when there is none.
+func (s *entitlementStore) Delete(ctx context.Context, kind storage.EntitlementKind, name string) error {
+	res, err := s.db.ExecContext(ctx,
+		`DELETE FROM registry_entitlements WHERE kind = ? AND registry_name = ?`, string(kind), name)
+	if err != nil {
+		return fmt.Errorf("delete entitlement: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("delete entitlement: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("entitlement %s %q: %w", kind, name, storage.ErrNotFound)
+	}
+	return nil
+}
+
 func scanEntitlement(row interface{ Scan(...any) error }) (*storage.RegistryEntitlement, error) {
 	var e storage.RegistryEntitlement
+	var kind string
 	var nsJSON string
 	var expiresAt sql.NullString
 	var fetchedAt string
 
-	if err := row.Scan(&e.RegistryName, &e.Plan, &nsJSON, &expiresAt, &fetchedAt); err != nil {
+	if err := row.Scan(&kind, &e.RegistryName, &e.Plan, &nsJSON, &expiresAt, &fetchedAt); err != nil {
 		return nil, fmt.Errorf("scan entitlement: %w", err)
 	}
+	e.Kind = storage.EntitlementKind(kind)
 
 	if err := json.Unmarshal([]byte(nsJSON), &e.Namespaces); err != nil {
 		return nil, fmt.Errorf("unmarshal namespaces: %w", err)
