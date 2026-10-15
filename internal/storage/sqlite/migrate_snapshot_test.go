@@ -69,7 +69,7 @@ func openSnapshot(t *testing.T, path string) *sql.DB {
 
 func TestMigrate_PendingMigrationWritesSnapshot(t *testing.T) {
 	latest := latestMigrationVersion()
-	for _, from := range []int{latest - 1, 20} { // 20: vec0 virtual table present
+	for _, from := range []int{previousMigrationVersion(), 20} { // 20: vec0 virtual table present
 		t.Run("from_v"+strconv.Itoa(from), func(t *testing.T) {
 			dir := t.TempDir()
 			dbPath := filepath.Join(dir, "db.sqlite")
@@ -169,7 +169,7 @@ func TestMigrate_FreshDatabaseWritesNoSnapshot(t *testing.T) {
 func TestMigrate_SnapshotOptOut(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "db.sqlite")
-	old := openAtVersion(t, dbPath, latestMigrationVersion()-1)
+	old := openAtVersion(t, dbPath, previousMigrationVersion())
 	seedEntity(t, old, "marker")
 	if err := old.Close(context.Background()); err != nil {
 		t.Fatal(err)
@@ -200,7 +200,7 @@ func TestMigrate_SnapshotFailureAbortsMigration(t *testing.T) {
 	}
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "db.sqlite")
-	from := latestMigrationVersion() - 1
+	from := previousMigrationVersion()
 	old := openAtVersion(t, dbPath, from)
 	seedEntity(t, old, "marker")
 	if err := old.Close(context.Background()); err != nil {
@@ -234,7 +234,7 @@ func TestMigrate_SnapshotFailureAbortsMigration(t *testing.T) {
 func TestMigrate_SnapshotRetentionKeepsNewestThree(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "db.sqlite")
-	from := latestMigrationVersion() - 1
+	from := previousMigrationVersion()
 	old := openAtVersion(t, dbPath, from)
 	if err := old.Close(context.Background()); err != nil {
 		t.Fatal(err)
@@ -326,7 +326,7 @@ func TestPruneMigrateSnapshots_OrdersByTimestampNotVersion(t *testing.T) {
 func TestMigrate_SnapshotIncludesUncheckpointedWAL(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "db.sqlite")
-	from := latestMigrationVersion() - 1
+	from := previousMigrationVersion()
 	old := openAtVersion(t, dbPath, from)
 	defer old.Close(context.Background())
 	// Pin one connection with checkpointing off so the marker lives only
