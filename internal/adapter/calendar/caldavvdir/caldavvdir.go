@@ -375,7 +375,7 @@ func walkVDir(vdir string) ([]ingest.Object, error) {
 		}
 		return nil, fmt.Errorf("read vdir %s: %w", vdir, err)
 	}
-	var out []ingest.Object
+	out := make([]ingest.Object, 0, len(entries))
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".ics") {
 			continue

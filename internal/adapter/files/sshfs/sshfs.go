@@ -210,7 +210,7 @@ func (a *Adapter) dial(_ context.Context) (*sftp.Client, func(), error) {
 	}
 	host := a.cfg.Host
 	if !strings.Contains(host, ":") {
-		host = host + ":22"
+		host += ":22"
 	}
 	hkCallback, err := a.hostKeyCallback(host)
 	if err != nil {
@@ -241,7 +241,7 @@ func (a *Adapter) dial(_ context.Context) (*sftp.Client, func(), error) {
 // ingest.Object per regular file. Directories are descended into;
 // matches against a.cfg.Ignore (basename-globbed) are skipped.
 func (a *Adapter) walk(client *sftp.Client) ([]ingest.Object, error) {
-	var objs []ingest.Object
+	var objs []ingest.Object //nolint:prealloc // the remote walk's length is unknown until it ends
 	walker := client.Walk(a.cfg.RemotePath)
 	for walker.Step() {
 		if err := walker.Err(); err != nil {
