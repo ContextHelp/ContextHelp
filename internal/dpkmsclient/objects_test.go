@@ -21,7 +21,7 @@ import (
 func startObjects(t *testing.T) *dpkmstest.Server {
 	t.Helper()
 	driver := storageutil.NewTestDriver(t)
-	srv := dpkmstest.Start(t, driver, dpkmstest.WithStaticTokens())
+	srv := dpkmstest.Start(t, driver, dpkmstest.WithKeys())
 	now := time.Date(2026, 1, 10, 9, 0, 0, 0, time.UTC)
 	for i, tag := range []string{"tmp", "tmp", "keep"} {
 		id := []string{"o-1", "o-2", "o-3"}[i]

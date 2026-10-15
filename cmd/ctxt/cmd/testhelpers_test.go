@@ -34,7 +34,7 @@ type testDB struct {
 // server.url (plus server.token for a protected instance) goes into the
 // user-level config, which --config layers over: a test that writes its
 // own server section into ConfigPath still wins. opts configure the
-// instance: dpkmstest.WithStaticTokens() makes it protected and the
+// instance: dpkmstest.WithKeys() makes it protected and the
 // client authenticates as admin (see useRole); dpkmstest.Unreachable()
 // routes the client to a closed port.
 // The config path must be passed as "--config", configPath to executeCommand args.

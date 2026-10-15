@@ -19,7 +19,7 @@ func TestE2ELinkExitCodes(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e: -short")
 	}
-	db := setupTestDB(t, dpkmstest.WithStaticTokens())
+	db := setupTestDB(t, dpkmstest.WithKeys())
 	seedTwoObjects(t, db)
 
 	steps := []struct {

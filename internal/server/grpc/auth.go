@@ -28,22 +28,23 @@ const (
 const healthMethodPrefix = "/grpc.health.v1.Health/"
 
 // authUnaryInterceptor authenticates every unary call through the
-// configured provider, then checks the method's scope (methodScopes).
-// Provider-agnostic: it only lifts credentials out of metadata and
-// forwards them. Authentication failures are recorded on the security
-// emitter (nil-safe), keyed by peer address since no principal exists;
-// scope denials are recorded against the principal.
-func authUnaryInterceptor(provider authn.Provider, sec *security.Emitter) grpc.UnaryServerInterceptor {
+// method chain, then checks the method's scope (methodScopes).
+// Method-agnostic: it only lifts credentials out of metadata and
+// forwards them; gRPC carries no cookie, so only carried methods can
+// match. Authentication failures are recorded on the security emitter
+// (nil-safe), keyed by peer address since no principal exists; scope
+// denials are recorded against the principal.
+func authUnaryInterceptor(chain *authn.Chain, sec *security.Emitter) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		if strings.HasPrefix(info.FullMethod, healthMethodPrefix) {
 			return handler(ctx, req)
 		}
-		princ, err := provider.Authenticate(ctx, credentialFromMD(ctx))
+		res, err := chain.Authenticate(ctx, credentialFromMD(ctx))
 		if err != nil {
 			recordAuthFailure(ctx, sec)
 			return nil, unauthenticatedStatus(err)
 		}
-		ctx = attachCaller(ctx, princ)
+		ctx = attachCaller(ctx, res.Principal)
 		if err := authorizeMethod(ctx, info.FullMethod, sec); err != nil {
 			return nil, err
 		}
@@ -78,17 +79,17 @@ func viewerStreamInterceptor(v sharing.Viewer) grpc.StreamServerInterceptor {
 
 // authStreamInterceptor mirrors authUnaryInterceptor for streaming RPCs
 // (e.g. JobService.WatchJob).
-func authStreamInterceptor(provider authn.Provider, sec *security.Emitter) grpc.StreamServerInterceptor {
+func authStreamInterceptor(chain *authn.Chain, sec *security.Emitter) grpc.StreamServerInterceptor {
 	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		if strings.HasPrefix(info.FullMethod, healthMethodPrefix) {
 			return handler(srv, ss)
 		}
-		princ, err := provider.Authenticate(ss.Context(), credentialFromMD(ss.Context()))
+		res, err := chain.Authenticate(ss.Context(), credentialFromMD(ss.Context()))
 		if err != nil {
 			recordAuthFailure(ss.Context(), sec)
 			return unauthenticatedStatus(err)
 		}
-		ctx := attachCaller(ss.Context(), princ)
+		ctx := attachCaller(ss.Context(), res.Principal)
 		if err := authorizeMethod(ctx, info.FullMethod, sec); err != nil {
 			return err
 		}
@@ -140,8 +141,8 @@ func credentialFromMD(ctx context.Context) authn.Credential {
 	return authn.Credential{}
 }
 
-// unauthenticatedStatus maps provider errors to codes.Unauthenticated
-// without leaking provider internals to the caller.
+// unauthenticatedStatus maps chain errors to codes.Unauthenticated
+// without leaking method internals to the caller.
 func unauthenticatedStatus(err error) error {
 	if errors.Is(err, authn.ErrNoCredential) {
 		return status.Error(codes.Unauthenticated, "authentication required")

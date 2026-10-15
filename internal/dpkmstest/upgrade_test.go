@@ -26,7 +26,7 @@ func upgradeHeader(t *testing.T, srv *dpkmstest.Server, role string) (int, strin
 // once the run completes.
 func TestWithUpgradeSetsHeader(t *testing.T) {
 	m := upgrade.NewManager("")
-	srv := dpkmstest.Start(t, storageutil.NewTestDriver(t), dpkmstest.WithStaticTokens(), dpkmstest.WithUpgrade(m))
+	srv := dpkmstest.Start(t, storageutil.NewTestDriver(t), dpkmstest.WithKeys(), dpkmstest.WithUpgrade(m))
 
 	if _, v, ok := upgradeHeader(t, srv, dpkmstest.RoleReader); ok {
 		t.Fatalf("idle instance sent %s: %q", upgrade.HeaderName, v)

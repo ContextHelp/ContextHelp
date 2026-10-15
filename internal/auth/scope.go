@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 // Scope is one ADR-023 capability in its `verb:resource` grammar. Every
@@ -285,14 +287,16 @@ func (p *Principal) BypassesEntityGate() bool {
 	return p.HasRole(RoleAdmin)
 }
 
-// LocalPrincipal is the identity a private instance (no auth provider,
-// loopback only) reports for its callers. Private instances grant every
-// scope; the principal is never attached to request contexts, so audit
-// and policy records keep treating those callers as anonymous.
+// LocalPrincipal is the identity a private instance (no auth chain,
+// loopback only) reports for its callers: every request there is the
+// owner (ADR-079 §1). Private instances grant every scope; the
+// principal is never attached to request contexts, so audit and policy
+// records keep treating those callers as anonymous.
 func LocalPrincipal() *Principal {
 	return &Principal{
-		ID:       "local",
-		Name:     "local",
+		ID:       storage.OwnerPrincipal,
+		Name:     storage.OwnerPrincipal,
+		Kind:     storage.PrincipalKindOwner,
 		Provider: "none",
 		Roles:    []string{RoleAdmin},
 		Scopes:   slices.Clone(AllScopes),

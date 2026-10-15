@@ -89,7 +89,7 @@ func TestListQueryUnreachableHasNoLocalFallback(t *testing.T) {
 // TestListQueryRejectedTokenHasNoLocalFallback: a 401 exits 5 after one
 // request and searches nothing locally.
 func TestListQueryRejectedTokenHasNoLocalFallback(t *testing.T) {
-	db := setupTestDB(t, dpkmstest.WithStaticTokens())
+	db := setupTestDB(t, dpkmstest.WithKeys())
 	seedObj(t, db, &storage.KnowledgeObject{ID: "o-note", Type: "note"})
 	db.useRole(t, "none")
 	local := pointStorageElsewhere(t, db)

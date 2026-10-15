@@ -12,6 +12,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/safefetch"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // runURLFetcher runs the url.generic pipeline's url_fetcher, as built by
@@ -43,7 +44,7 @@ func TestBuildWiresFetchConfig(t *testing.T) {
 	}))
 	defer target.Close()
 
-	st := build(t, &config.Config{})
+	st := build(t, &config.Config{}, storageutil.NewTestDriver(t))
 	if err := runURLFetcher(t, st, target.URL); !errors.Is(err, safefetch.ErrBlocked) {
 		t.Fatalf("default config: err = %v, want safefetch.ErrBlocked", err)
 	}
@@ -57,7 +58,7 @@ func TestBuildWiresFetchConfig(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			before := hits.Load()
-			st := build(t, &config.Config{Fetch: f})
+			st := build(t, &config.Config{Fetch: f}, storageutil.NewTestDriver(t))
 			if err := runURLFetcher(t, st, target.URL); err != nil {
 				t.Fatalf("url_fetcher: %v", err)
 			}

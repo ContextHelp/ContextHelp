@@ -42,7 +42,7 @@ func inboxFixture(t *testing.T) *dpkmstest.Server {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	return dpkmstest.Start(t, driver, dpkmstest.WithStaticTokens())
+	return dpkmstest.Start(t, driver, dpkmstest.WithKeys())
 }
 
 func roleClient(t *testing.T, srv *dpkmstest.Server, role string) *dpkmsclient.Client {

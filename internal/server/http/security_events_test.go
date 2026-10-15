@@ -43,7 +43,7 @@ func waitAlert(t *testing.T, ch <-chan security.Alert) security.Alert {
 
 func TestRequireAuthRecordsAuthFailure(t *testing.T) {
 	em, ch := newAlertCapture(t)
-	h := RequireAuth(testProvider(t), em)(authedEcho(t))
+	h := RequireAuth(testChain(t), em, false)(authedEcho(t))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/objects", nil)
 	req.Header.Set("Authorization", "Bearer wrong")
@@ -59,7 +59,7 @@ func TestRequireAuthRecordsAuthFailure(t *testing.T) {
 
 func TestRequireAuthSuccessEmitsNoEvent(t *testing.T) {
 	em, ch := newAlertCapture(t)
-	h := RequireAuth(testProvider(t), em)(authedEcho(t))
+	h := RequireAuth(testChain(t), em, false)(authedEcho(t))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/objects", nil)
 	req.Header.Set("Authorization", "Bearer tok-valid-fixture-0123456789abcdef0123456789")

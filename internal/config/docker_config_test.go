@@ -216,8 +216,9 @@ var dockerOperatorSecrets = []struct{ name, file, target string }{
 	{"dpkms-local", "./docker/dpkms-local.yaml", dockerLocalSecretPath},
 }
 
-// The auth example must decode into Config and hold server.auth only:
-// everything else comes from config.docker.yaml.
+// The auth example must decode into Config and hold only what a public
+// instance needs from its operator to start: server.auth and
+// server.public_url. Everything else comes from config.docker.yaml.
 func TestDockerAuthExample_HoldsOnlyServerAuth(t *testing.T) {
 	data, err := os.ReadFile(dockerAuthExamplePath)
 	require.NoError(t, err)
@@ -230,8 +231,9 @@ func TestDockerAuthExample_HoldsOnlyServerAuth(t *testing.T) {
 	require.NoError(t, yaml.Unmarshal(data, &raw))
 	assert.Len(t, raw, 1, "top-level keys")
 	assert.Contains(t, raw, "server")
-	assert.Len(t, raw["server"], 1, "server.* keys")
+	assert.Len(t, raw["server"], 2, "server.* keys")
 	assert.Contains(t, raw["server"], "auth")
+	assert.Contains(t, raw["server"], "public_url")
 }
 
 // Serve reads the operator's secrets: compose mounts each one at its

@@ -74,7 +74,7 @@ func jsonSlugs(t *testing.T, out string) []string {
 // Every entity leaf answers from the in-process dpkms with a reader token
 // and never opens the store the config names.
 func TestEntityCommandsOverAPI(t *testing.T) {
-	db := setupTestDB(t, dpkmstest.WithStaticTokens())
+	db := setupTestDB(t, dpkmstest.WithKeys())
 	seedEntityCommands(t, db)
 	db.useRole(t, dpkmstest.RoleReader)
 	local := detachLocalStore(t, db)
@@ -147,7 +147,7 @@ func TestEntityCommandsOverAPI(t *testing.T) {
 // A slug that names nothing is NOT_FOUND (exit 3); a missing token is
 // UNAUTHORIZED (exit 5); nothing answering is PREREQUISITE (exit 70).
 func TestEntityCommandsErrors(t *testing.T) {
-	db := setupTestDB(t, dpkmstest.WithStaticTokens())
+	db := setupTestDB(t, dpkmstest.WithKeys())
 	seedEntityCommands(t, db)
 
 	_, err := db.exec("entity", "show", "no.such")

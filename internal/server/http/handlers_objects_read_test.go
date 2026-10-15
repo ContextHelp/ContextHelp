@@ -166,7 +166,7 @@ func RunObjectReadSuite(t *testing.T, newDriver func(*testing.T) storage.Storage
 	fresh := func(t *testing.T) objectReadEnv {
 		t.Helper()
 		driver := newDriver(t)
-		srv := dpkmstest.Start(t, driver, dpkmstest.WithStaticTokens())
+		srv := dpkmstest.Start(t, driver, dpkmstest.WithKeys())
 		seedObjectReadCorpus(t, driver)
 		return objectReadEnv{srv: srv}
 	}

@@ -84,7 +84,7 @@ func TestReprocessJSON(t *testing.T) {
 }
 
 func TestReprocessRolesAndErrors(t *testing.T) {
-	db := setupTestDB(t, dpkmstest.WithStaticTokens())
+	db := setupTestDB(t, dpkmstest.WithKeys())
 	seedReprocessObject(t, db)
 
 	db.useRole(t, dpkmstest.RoleWriter)

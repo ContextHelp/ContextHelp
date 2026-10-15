@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
+	"github.com/ideacrafterslabs/ctxt/internal/auth/authtest"
 	"github.com/ideacrafterslabs/ctxt/internal/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/searchgraph"
 	"github.com/ideacrafterslabs/ctxt/internal/service/servicetest"
@@ -49,11 +50,10 @@ func gatedGraphServer(t *testing.T, f *servicetest.HybridFixture) *httptest.Serv
 			FetchedAt: time.Now().Truncate(time.Second),
 		}))
 	}
-	provider, err := authn.NewStatic([]authn.StaticToken{
-		{Token: "tok-valid-fixture-0123456789abcdef0123456789", Principal: "ops", Roles: []string{authn.RoleReader}},
-		{Token: "tok-admin-fixture-0123456789abcdef0123456789", Principal: "owner", Roles: []string{authn.RoleAdmin}},
-	})
-	require.NoError(t, err)
+	provider := authtest.TokenChain(
+		authtest.Token{Token: "tok-valid-fixture-0123456789abcdef0123456789", Principal: "ops", Roles: []string{authn.RoleReader}},
+		authtest.Token{Token: "tok-admin-fixture-0123456789abcdef0123456789", Principal: "owner", Roles: []string{authn.RoleAdmin}},
+	)
 	ts := httptest.NewServer(NewRouterWithConfig(f.Svc, RouterConfig{
 		Semantic:     f.Sem,
 		Auth:         provider,

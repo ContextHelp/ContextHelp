@@ -9,15 +9,15 @@ import (
 	"github.com/stretchr/testify/require"
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
+	"github.com/ideacrafterslabs/ctxt/internal/auth/authtest"
 )
 
-func testProvider(t *testing.T) authn.Provider {
+// testChain is a chain over one carried token for the admin "ops".
+func testChain(t *testing.T) *authn.Chain {
 	t.Helper()
-	p, err := authn.NewStatic([]authn.StaticToken{
-		{Token: "tok-valid-fixture-0123456789abcdef0123456789", Principal: "ops", Roles: []string{"admin"}},
-	})
-	require.NoError(t, err)
-	return p
+	return authtest.TokenChain(
+		authtest.Token{Token: "tok-valid-fixture-0123456789abcdef0123456789", Principal: "ops", Roles: []string{"admin"}},
+	)
 }
 
 func authedEcho(t *testing.T) http.Handler {
@@ -31,7 +31,7 @@ func authedEcho(t *testing.T) http.Handler {
 }
 
 func TestRequireAuthMissingCredential(t *testing.T) {
-	h := RequireAuth(testProvider(t), nil)(authedEcho(t))
+	h := RequireAuth(testChain(t), nil, false)(authedEcho(t))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/search", nil))
 
@@ -40,7 +40,7 @@ func TestRequireAuthMissingCredential(t *testing.T) {
 }
 
 func TestRequireAuthInvalidBearer(t *testing.T) {
-	h := RequireAuth(testProvider(t), nil)(authedEcho(t))
+	h := RequireAuth(testChain(t), nil, false)(authedEcho(t))
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/search", nil)
 	req.Header.Set("Authorization", "Bearer nope")
 	rec := httptest.NewRecorder()
@@ -50,7 +50,7 @@ func TestRequireAuthInvalidBearer(t *testing.T) {
 }
 
 func TestRequireAuthValidBearer(t *testing.T) {
-	h := RequireAuth(testProvider(t), nil)(authedEcho(t))
+	h := RequireAuth(testChain(t), nil, false)(authedEcho(t))
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/search", nil)
 	req.Header.Set("Authorization", "Bearer tok-valid-fixture-0123456789abcdef0123456789")
 	rec := httptest.NewRecorder()
@@ -61,7 +61,7 @@ func TestRequireAuthValidBearer(t *testing.T) {
 }
 
 func TestRequireAuthValidAPIKey(t *testing.T) {
-	h := RequireAuth(testProvider(t), nil)(authedEcho(t))
+	h := RequireAuth(testChain(t), nil, false)(authedEcho(t))
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/search", nil)
 	req.Header.Set("X-API-Key", "tok-valid-fixture-0123456789abcdef0123456789")
 	rec := httptest.NewRecorder()
@@ -77,7 +77,7 @@ func TestSecuredRouterGuardsAPI(t *testing.T) {
 	driverBundle := newTestServerBundle(t)
 	defer driverBundle.Close()
 
-	router := NewRouterWithConfig(driverBundle.svc, RouterConfig{Auth: testProvider(t)})
+	router := NewRouterWithConfig(driverBundle.svc, RouterConfig{Auth: testChain(t)})
 	ts := httptest.NewServer(router)
 	defer ts.Close()
 

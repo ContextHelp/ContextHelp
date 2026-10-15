@@ -12,6 +12,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/federation"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
@@ -22,17 +26,15 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
-// newFedTestBundle creates a test server with optional federation token.
-func newFedTestBundle(t *testing.T, federationToken string) *testServerBundle {
+// newFedTestBundle creates a private test server: no authentication,
+// the push route open.
+func newFedTestBundle(t *testing.T) *testServerBundle {
 	t.Helper()
 	driver := storageutil.NewTestDriver(t)
 	q := jobs.NewQueue(driver.Jobs())
 	pipes := builtins.Registry()
 	engine := search.NewEngine(driver)
-	cfg := config.Config{
-		Federation: config.FederationConfig{Token: federationToken},
-	}
-	svc := service.New(driver, q, pipes, engine, "", nil, cfg)
+	svc := service.New(driver, q, pipes, engine, "", nil, config.Config{})
 	return &testServerBundle{
 		Server: httptest.NewServer(NewRouter(svc, false, nil)),
 		svc:    svc,
@@ -62,7 +64,7 @@ func makeKO(id, hash string) storage.KnowledgeObject {
 
 // TestFederationPush_BasicPush verifies objects are accepted and accepted count returned.
 func TestFederationPush_BasicPush(t *testing.T) {
-	ts := newFedTestBundle(t, "")
+	ts := newFedTestBundle(t)
 	defer ts.Close()
 
 	body := makePushBody(t, []storage.KnowledgeObject{makeKO("o1", "h1"), makeKO("o2", "h2")}, nil)
@@ -88,7 +90,7 @@ func TestFederationPush_BasicPush(t *testing.T) {
 
 // TestFederationPush_Dedup verifies duplicate objects are not counted twice.
 func TestFederationPush_Dedup(t *testing.T) {
-	ts := newFedTestBundle(t, "")
+	ts := newFedTestBundle(t)
 	defer ts.Close()
 
 	obj := makeKO("o-dup", "hash-dup")
@@ -118,57 +120,9 @@ func TestFederationPush_Dedup(t *testing.T) {
 	}
 }
 
-// TestFederationPush_AuthRejection verifies 401 when token is wrong.
-func TestFederationPush_AuthRejection(t *testing.T) {
-	ts := newFedTestBundle(t, "secret")
-	defer ts.Close()
-
-	body := makePushBody(t, []storage.KnowledgeObject{makeKO("o3", "h3")}, nil)
-	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/v1/federation/push", body)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer wrong-token")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("request: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Errorf("status: got %d, want 401", resp.StatusCode)
-	}
-}
-
-// TestFederationPush_AuthSuccess verifies push succeeds with correct token.
-func TestFederationPush_AuthSuccess(t *testing.T) {
-	ts := newFedTestBundle(t, "secret")
-	defer ts.Close()
-
-	body := makePushBody(t, []storage.KnowledgeObject{makeKO("o4", "h4")}, nil)
-	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/v1/federation/push", body)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer secret")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("request: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("status: got %d, want 200", resp.StatusCode)
-	}
-
-	var result map[string]int
-	json.NewDecoder(resp.Body).Decode(&result)
-	if result["accepted"] != 1 {
-		t.Errorf("accepted: got %d, want 1", result["accepted"])
-	}
-}
-
-// TestFederationPush_NoAuthConfigured verifies requests work without any token when not configured.
-func TestFederationPush_NoAuthConfigured(t *testing.T) {
-	ts := newFedTestBundle(t, "") // no token
+// TestFederationPush_PrivateNeedsNoCredential verifies a private instance accepts a push with no credential.
+func TestFederationPush_PrivateNeedsNoCredential(t *testing.T) {
+	ts := newFedTestBundle(t) // no token
 	defer ts.Close()
 
 	body := makePushBody(t, []storage.KnowledgeObject{makeKO("o5", "h5")}, nil)
@@ -187,92 +141,86 @@ func TestFederationPush_NoAuthConfigured(t *testing.T) {
 	}
 }
 
-// newFedCredBundle models a non-private instance: the federation
-// credential is mandatory on the push route.
-func newFedCredBundle(t *testing.T, federationToken string) *testServerBundle {
+// fedKeys are the API keys of a non-private federation bundle: the
+// owner's and a peer principal's.
+type fedKeys struct{ owner, peer string }
+
+// newFedPeerBundle models a non-private instance: the push route takes
+// a peer principal's key and nothing else.
+func newFedPeerBundle(t *testing.T) (*testServerBundle, fedKeys) {
 	t.Helper()
 	driver := storageutil.NewTestDriver(t)
 	q := jobs.NewQueue(driver.Jobs())
 	pipes := builtins.Registry()
 	engine := search.NewEngine(driver)
-	cfg := config.Config{
-		Federation: config.FederationConfig{Token: federationToken},
-	}
-	svc := service.New(driver, q, pipes, engine, "", nil, cfg)
+	svc := service.New(driver, q, pipes, engine, "", nil, config.Config{})
+	ctx := ownerCtx()
+	require.NoError(t, driver.Auth().Principals().Create(ctx, &storage.Principal{
+		ID: "prn_peer", Kind: storage.PrincipalKindPeer, DisplayName: "office", Roles: []string{authn.RoleWriter},
+	}))
+	keys := authn.NewKeysOver(driver.Auth(), nil)
+	var k fedKeys
+	var err error
+	k.owner, _, err = keys.Mint(ctx, authn.MintKey{PrincipalID: storage.OwnerPrincipal})
+	require.NoError(t, err)
+	k.peer, _, err = keys.Mint(ctx, authn.MintKey{PrincipalID: "prn_peer"})
+	require.NoError(t, err)
 	return &testServerBundle{
 		Server: httptest.NewServer(NewRouterWithConfig(svc, RouterConfig{
-			RequireFederationCredential: true,
+			Auth:                 authn.NewChain(authn.NewAPIKeyMethod(keys, nil)),
+			RequirePeerPrincipal: true,
 		})),
 		svc: svc,
-	}
+	}, k
 }
 
-// With a mandatory credential and no federation.token configured, the
-// push route refuses every request — an authenticated principal alone
-// must never be enough to push.
-func TestFederationPush_MandatoryCredentialRefusesRouteWithoutToken(t *testing.T) {
-	ts := newFedCredBundle(t, "")
-	defer ts.Close()
-
-	body := makePushBody(t, []storage.KnowledgeObject{makeKO("o6", "h6")}, nil)
+// pushAs sends one object to the push route with token (none when
+// empty) and returns the response.
+func pushAs(t *testing.T, ts *testServerBundle, token, id string) *http.Response {
+	t.Helper()
+	body := makePushBody(t, []storage.KnowledgeObject{makeKO(id, "h-"+id)}, nil)
 	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/v1/federation/push", body)
 	req.Header.Set("Content-Type", "application/json")
-
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("request: %v", err)
-	}
-	defer resp.Body.Close()
+	require.NoError(t, err)
+	t.Cleanup(func() { resp.Body.Close() })
+	return resp
+}
 
-	if resp.StatusCode != http.StatusForbidden {
-		t.Errorf("status: got %d, want 403", resp.StatusCode)
-	}
+// On a non-private instance the push route refuses a request with no
+// credential (401), one carrying the owner's key (403 PEER_REQUIRED: an
+// authenticated principal alone is never enough) and accepts a peer
+// principal's key.
+func TestFederationPush_NonPrivateNeedsAPeerKey(t *testing.T) {
+	ts, k := newFedPeerBundle(t)
+	defer ts.Close()
+
+	resp := pushAs(t, ts, "", "o6")
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+
+	resp = pushAs(t, ts, "ctxt_wrong", "o6")
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+
+	resp = pushAs(t, ts, k.owner, "o6")
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	var env ErrorEnvelope
-	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
-		t.Fatalf("decode error envelope: %v", err)
-	}
-	if env.Error.Code != "FEDERATION_DISABLED" {
-		t.Errorf("code: got %q, want FEDERATION_DISABLED", env.Error.Code)
-	}
-}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&env))
+	assert.Equal(t, "PEER_REQUIRED", env.Error.Code)
 
-// With a mandatory credential the configured token still gates the
-// push: wrong bearer → 401, correct bearer → 200.
-func TestFederationPush_MandatoryCredentialGatesPerToken(t *testing.T) {
-	ts := newFedCredBundle(t, "fed-secret")
-	defer ts.Close()
-
-	body := makePushBody(t, []storage.KnowledgeObject{makeKO("o7", "h7")}, nil)
-	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/v1/federation/push", body)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer wrong")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("request: %v", err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Errorf("wrong token status: got %d, want 401", resp.StatusCode)
-	}
-
-	body = makePushBody(t, []storage.KnowledgeObject{makeKO("o7", "h7")}, nil)
-	req, _ = http.NewRequest(http.MethodPost, ts.URL+"/api/v1/federation/push", body)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer fed-secret")
-	resp, err = http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("request: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("correct token status: got %d, want 200", resp.StatusCode)
-	}
+	resp = pushAs(t, ts, k.peer, "o7")
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	var result map[string]int
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	assert.Equal(t, 1, result["accepted"])
 }
 
 // An object larger than the pusher's request cap goes out alone, and
 // the receiver takes it: its default body limit is well above the cap.
 func TestFederationPush_AcceptsObjectOverRequestCap(t *testing.T) {
-	ts := newFedTestBundle(t, "")
+	ts := newFedTestBundle(t)
 	defer ts.Close()
 	var mu sync.Mutex
 	var sizes []int

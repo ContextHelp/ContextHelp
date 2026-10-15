@@ -68,7 +68,7 @@ func TestRouterUpgradeHeaderBehindAuth(t *testing.T) {
 	m := upgrade.NewManager("")
 	require.NoError(t, m.Start(upgrade.BucketReindexAuto, 10))
 	r := NewRouterWithConfig(newScopeTestService(t), RouterConfig{
-		Auth:   testProvider(t),
+		Auth:   testChain(t),
 		Probes: HealthzProbes{Upgrade: managerProbe(m)},
 	})
 

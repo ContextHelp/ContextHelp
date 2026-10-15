@@ -333,7 +333,7 @@ func TestObjectReadsExitCodes(t *testing.T) {
 		}
 	}
 
-	locked := setupTestDB(t, dpkmstest.WithStaticTokens())
+	locked := setupTestDB(t, dpkmstest.WithKeys())
 	profile(t, locked)
 	locked.useRole(t, "none")
 	for _, args := range commands {
@@ -342,7 +342,7 @@ func TestObjectReadsExitCodes(t *testing.T) {
 		}
 	}
 
-	open := setupTestDB(t, dpkmstest.WithStaticTokens())
+	open := setupTestDB(t, dpkmstest.WithKeys())
 	open.useRole(t, dpkmstest.RoleReader)
 	for _, args := range [][]string{{"show", "o-x"}, {"export", "o-x"}, {"classify", "o-x"}} {
 		if out, err := open.exec(args...); exitOf(err) != output.ExitNotFound {

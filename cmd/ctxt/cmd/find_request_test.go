@@ -135,7 +135,7 @@ func jsonNumber(t *testing.T, m map[string]any, key string) float64 {
 // the search, its knobs fill the search block, and a flag outranks the
 // profile.
 func TestFindSendsResolvedRequest(t *testing.T) {
-	db := setupTestDB(t, dpkmstest.WithStaticTokens())
+	db := setupTestDB(t, dpkmstest.WithKeys())
 	writeFindProfileConfig(t, db, "search:\n  reranker:\n    hop_backlink_boost: 0.07\n")
 	rec := recordFind(t, db, dpkmstest.RoleReader)
 

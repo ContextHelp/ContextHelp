@@ -94,7 +94,7 @@ func findFixture(t *testing.T) storage.StorageDriver {
 // embedding requests going through embedClient.
 func startFind(t *testing.T, embedClient *http.Client) *dpkmstest.Server {
 	t.Helper()
-	return dpkmstest.Start(t, findFixture(t), dpkmstest.WithStaticTokens(), dpkmstest.WithEmbeddingHTTPClient(embedClient))
+	return dpkmstest.Start(t, findFixture(t), dpkmstest.WithKeys(), dpkmstest.WithEmbeddingHTTPClient(embedClient))
 }
 
 func findIDs(res *dpkmsclient.FindResponse) []string {

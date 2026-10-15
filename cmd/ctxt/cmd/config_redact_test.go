@@ -28,15 +28,12 @@ server:
     - name: home
       url: https://primary.example.net:7700
       token: SERVER-URLS-TOKEN-SECRET-0005
+  public_url: https://dpkms.example.net
   auth:
-    provider: static
-    static:
-      tokens:
-        - token: STATIC-AUTH-TOKEN-0006-abcdefghij
-          principal: alice
-          roles: [admin]
-federation:
-  token: FEDERATION-INBOUND-TOKEN-0007
+    keys:
+      - hash: sha256:3f9c1a7be2d84605a1c7f0e9b8d2c4a63f9c1a7be2d84605a1c7f0e9b8d2c4a6
+        principal: alice
+        roles: [admin]
 federations:
   - name: peer
     url: https://peer.example.net:8080
@@ -55,8 +52,6 @@ var redactFixtureSecrets = []string{
 	"S3-SECRET-KEY-SECRET-0003",
 	"SERVER-CLIENT-TOKEN-SECRET-0004",
 	"SERVER-URLS-TOKEN-SECRET-0005",
-	"STATIC-AUTH-TOKEN-0006-abcdefghij",
-	"FEDERATION-INBOUND-TOKEN-0007",
 	"FEDERATION-PEER-TOKEN-SECRET-0008",
 	"ALERT-CAPABILITY-0012",
 }

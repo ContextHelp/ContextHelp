@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
@@ -66,7 +68,7 @@ func TestKeysVerify(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Verify: %v", err)
 	}
-	if p.ID != storage.OwnerPrincipal || p.Provider != ProviderAPIKey || p.Name == "" || !p.HasRole(RoleAdmin) ||
+	if p.ID != storage.OwnerPrincipal || p.Provider != MethodAPIKey || p.Name == "" || !p.HasRole(RoleAdmin) ||
 		!slices.Equal(p.Scopes, admin) || p.Meta[MetaKeyID] != issued.ID || p.Meta[MetaIdentityID] != issued.IdentityID {
 		t.Errorf("principal = %+v", p)
 	}
@@ -222,30 +224,230 @@ func TestKeysVerifyTouchesAtMostOnceAMinute(t *testing.T) {
 	}
 }
 
-func TestAPIKeyProvider(t *testing.T) {
+// The api_key method is carried: no header is absent, a wrong, revoked
+// or expired key is refused, a valid one matches through either header
+// scheme, and a cookie is not its business.
+func TestAPIKeyMethod(t *testing.T) {
 	f := newKeysFixture(t)
 	ctx := context.Background()
-	secret, _, err := f.keys.Mint(ctx, MintKey{PrincipalID: storage.OwnerPrincipal})
+	secret, issued, err := f.keys.Mint(ctx, MintKey{PrincipalID: storage.OwnerPrincipal})
 	if err != nil {
 		t.Fatal(err)
 	}
-	var provider Provider = NewAPIKeyProvider(f.keys)
-	if provider.Name() != ProviderAPIKey {
-		t.Errorf("Name = %q", provider.Name())
+	var m Method = NewAPIKeyMethod(f.keys, nil)
+	if m.Name() != MethodAPIKey || m.Ambient() {
+		t.Errorf("Name = %q, Ambient = %v; want api_key, carried", m.Name(), m.Ambient())
 	}
-	if _, err := provider.Authenticate(ctx, Credential{}); !errors.Is(err, ErrNoCredential) {
-		t.Errorf("empty: %v, want ErrNoCredential", err)
+	if p, ok, err := m.Authenticate(ctx, Credential{}); p != nil || ok || err != nil {
+		t.Errorf("no credential: %v, %v, %v; want absent", p, ok, err)
 	}
-	if _, err := provider.Authenticate(ctx, Credential{Scheme: SchemeSession, Token: secret}); !errors.Is(err, ErrInvalidCredential) {
-		t.Errorf("session scheme: %v, want ErrInvalidCredential", err)
+	if p, ok, err := m.Authenticate(ctx, Credential{Cookie: secret}); p != nil || ok || err != nil {
+		t.Errorf("a cookie: %v, %v, %v; want absent", p, ok, err)
 	}
-	if _, err := provider.Authenticate(ctx, Credential{Scheme: SchemeBearer, Token: "nope"}); !errors.Is(err, ErrInvalidCredential) {
-		t.Errorf("bad token: %v, want ErrInvalidCredential", err)
+	if _, ok, err := m.Authenticate(ctx, Credential{Scheme: SchemeBearer, Token: "nope"}); ok || !errors.Is(err, ErrInvalidCredential) {
+		t.Errorf("wrong key: %v, %v; want refused", ok, err)
 	}
 	for _, scheme := range []string{SchemeBearer, SchemeAPIKey} {
-		p, err := provider.Authenticate(ctx, Credential{Scheme: scheme, Token: secret})
-		if err != nil || p.ID != storage.OwnerPrincipal || p.Provider != ProviderAPIKey {
-			t.Errorf("%s: %+v, %v; want the owner", scheme, p, err)
+		p, ok, err := m.Authenticate(ctx, Credential{Scheme: scheme, Token: secret})
+		if err != nil || !ok || p.ID != storage.OwnerPrincipal || p.Provider != MethodAPIKey || p.Kind != storage.PrincipalKindOwner ||
+			p.Meta[MetaKeyID] != issued.ID || p.Meta[MetaIdentityID] != issued.IdentityID {
+			t.Errorf("%s: %+v, %v, %v", scheme, p, ok, err)
 		}
+	}
+}
+
+// A revoked registry key is refused by the method, like a wrong one.
+func TestAPIKeyMethodRefusesRevokedKey(t *testing.T) {
+	f := newKeysFixture(t)
+	ctx := context.Background()
+	secret, issued, err := f.keys.Mint(ctx, MintKey{PrincipalID: storage.OwnerPrincipal})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := NewAPIKeyMethod(f.keys, nil)
+	if err := f.keys.Revoke(ctx, issued.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := m.Authenticate(ctx, Credential{Scheme: SchemeBearer, Token: secret}); ok || !errors.Is(err, ErrInvalidCredential) {
+		t.Errorf("revoked key: %v, %v; want refused", ok, err)
+	}
+}
+
+// configKeysFor returns ConfigKeys for the SHA-256 of key.
+func configKeysFor(t *testing.T, key, principal string, roles []string, expires string) []ConfigKey {
+	t.Helper()
+	cfg, err := ConfigKeysFrom([]config.AuthKeyConfig{{Hash: "sha256:" + HashSecret(key), Principal: principal, Roles: roles, Expires: expires}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cfg
+}
+
+// A key declared in server.auth.keys authenticates by hash: it acts as
+// the registry principal it names, narrowed by its roles, never past
+// the principal's, and it has no identity row.
+func TestAPIKeyMethodConfigKeys(t *testing.T) {
+	f := newKeysFixture(t)
+	ctx := context.Background()
+	ownerKey, personKey := cfgOwnerKey, cfgPersonKey
+	cfg := append(configKeysFor(t, ownerKey, storage.OwnerPrincipal, []string{RoleReader}, ""),
+		configKeysFor(t, personKey, f.person.ID, []string{RoleAdmin, RoleReader}, "")...)
+	m := NewAPIKeyMethod(f.keys, cfg)
+
+	p, ok, err := m.Authenticate(ctx, Credential{Scheme: SchemeBearer, Token: ownerKey})
+	if err != nil || !ok {
+		t.Fatalf("owner config key: %v, %v", ok, err)
+	}
+	if p.ID != storage.OwnerPrincipal || p.Kind != storage.PrincipalKindOwner || p.Provider != MethodAPIKey {
+		t.Errorf("principal = %+v", p)
+	}
+	if want, _ := Bundle(RoleReader); !slices.Equal(p.Scopes, want) || !slices.Equal(p.Roles, []string{RoleReader}) {
+		t.Errorf("owner key narrowed to reader: scopes %v roles %v", p.Scopes, p.Roles)
+	}
+	if !strings.HasPrefix(p.Meta[MetaKeyID], "config:") || p.Meta[MetaIdentityID] != "" {
+		t.Errorf("meta = %v; want a config key id and no identity", p.Meta)
+	}
+
+	p, ok, err = m.Authenticate(ctx, Credential{Scheme: SchemeAPIKey, Token: personKey})
+	if err != nil || !ok {
+		t.Fatalf("person config key: %v, %v", ok, err)
+	}
+	if want, _ := Bundle(RoleReader); !slices.Equal(p.Scopes, want) || !slices.Equal(p.Roles, []string{RoleReader}) {
+		t.Errorf("a reader's key asking for admin stays reader: scopes %v roles %v", p.Scopes, p.Roles)
+	}
+
+}
+
+// The config-declared keys of configKeysTest, shared by the refusal
+// cases.
+const (
+	cfgOwnerKey  = "owner-config-key-0123456789abcdef0123456789"
+	cfgPersonKey = "person-config-key-0123456789abcdef0123456789"
+)
+
+// A near miss, the hash itself, an expired entry, an unknown or
+// inactive principal: each is refused, never passed on to the registry.
+func TestAPIKeyMethodConfigKeyRefusals(t *testing.T) {
+	f := newKeysFixture(t)
+	ctx := context.Background()
+	ownerKey, personKey := cfgOwnerKey, cfgPersonKey
+	cfg := append(configKeysFor(t, ownerKey, storage.OwnerPrincipal, []string{RoleReader}, ""),
+		configKeysFor(t, personKey, f.person.ID, []string{RoleAdmin, RoleReader}, "")...)
+	m := NewAPIKeyMethod(f.keys, cfg)
+	if _, ok, err := m.Authenticate(ctx, Credential{Scheme: SchemeBearer, Token: ownerKey + "x"}); ok || !errors.Is(err, ErrInvalidCredential) {
+		t.Errorf("near miss: %v, %v; want refused", ok, err)
+	}
+	if _, ok, err := m.Authenticate(ctx, Credential{Scheme: SchemeBearer, Token: "sha256:" + HashSecret(ownerKey)}); ok || !errors.Is(err, ErrInvalidCredential) {
+		t.Errorf("the hash itself: %v, %v; want refused", ok, err)
+	}
+
+	expired := NewAPIKeyMethod(f.keys, configKeysFor(t, ownerKey, storage.OwnerPrincipal, nil, f.clock.t.Add(-time.Hour).Format(time.RFC3339)))
+	if _, ok, err := expired.Authenticate(ctx, Credential{Scheme: SchemeBearer, Token: ownerKey}); ok || !errors.Is(err, ErrInvalidCredential) {
+		t.Errorf("expired config key: %v, %v; want refused", ok, err)
+	}
+	future := NewAPIKeyMethod(f.keys, configKeysFor(t, ownerKey, storage.OwnerPrincipal, nil, f.clock.t.Add(time.Hour).Format(time.RFC3339)))
+	if p, ok, err := future.Authenticate(ctx, Credential{Scheme: SchemeBearer, Token: ownerKey}); err != nil || !ok {
+		t.Errorf("unexpired config key: %v, %v, %v", p, ok, err)
+	} else if want, _ := Bundle(RoleAdmin); !slices.Equal(p.Scopes, want) {
+		t.Errorf("no roles means the principal's: %v", p.Scopes)
+	}
+
+	ghost := NewAPIKeyMethod(f.keys, configKeysFor(t, ownerKey, "prn_nobody", nil, ""))
+	if _, ok, err := ghost.Authenticate(ctx, Credential{Scheme: SchemeBearer, Token: ownerKey}); ok || !errors.Is(err, ErrInvalidCredential) {
+		t.Errorf("unknown principal: %v, %v; want refused", ok, err)
+	}
+	if err := f.auth.Principals().Suspend(ctx, f.person.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := m.Authenticate(ctx, Credential{Scheme: SchemeBearer, Token: personKey}); ok || !errors.Is(err, ErrInvalidCredential) {
+		t.Errorf("suspended principal: %v, %v; want refused", ok, err)
+	}
+	if _, err := ConfigKeysFrom([]config.AuthKeyConfig{{Hash: "plain", Principal: "owner"}}); err == nil {
+		t.Error("a hash that is not sha256:<hex> must not parse")
+	}
+}
+
+// ScopesOf is what a session inherits: the key's scopes for an api_key
+// identity, the role scopes for any other, nothing for a key whose
+// record is gone.
+func TestKeysScopesOf(t *testing.T) {
+	f := newKeysFixture(t)
+	ctx := context.Background()
+	_, issued, err := f.keys.Mint(ctx, MintKey{PrincipalID: f.person.ID, Scopes: []Scope{ScopeReadObjects}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	idn, err := f.auth.Identities().Get(ctx, issued.IdentityID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := f.person
+	if got, err := f.keys.ScopesOf(ctx, p, idn); err != nil || !slices.Equal(got, []Scope{ScopeReadObjects}) {
+		t.Errorf("api_key identity: %v, %v", got, err)
+	}
+	other := &storage.Identity{PrincipalID: p.ID, Method: storage.IdentityMethodPasskey, Subject: "cred"}
+	if err := f.auth.Identities().Create(ctx, other); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := f.keys.ScopesOf(ctx, p, other); err != nil || !slices.Equal(got, ScopesForRoles(p.Roles)) {
+		t.Errorf("passkey identity: %v, %v", got, err)
+	}
+	gone := &storage.Identity{PrincipalID: p.ID, Method: storage.IdentityMethodAPIKey, Subject: "0123456789abcdef"}
+	if got, err := f.keys.ScopesOf(ctx, p, gone); err != nil || len(got) != 0 {
+		t.Errorf("identity of a vanished key record: %v, %v; want no scopes", got, err)
+	}
+}
+
+// A protected instance needs an active owner credential to start: a
+// registry key that is neither revoked nor expired, or a config key for
+// the owner that has not expired. The refusal names the command.
+func TestRequireOwnerCredential(t *testing.T) {
+	f := newKeysFixture(t)
+	ctx := context.Background()
+	now := f.clock.t
+	err := RequireOwnerCredential(ctx, f.keys, nil, now)
+	if err == nil || !strings.Contains(err.Error(), "dpkms auth key create --principal owner") {
+		t.Fatalf("fresh registry: %v; want a refusal naming the command", err)
+	}
+	if _, _, err := f.keys.Mint(ctx, MintKey{PrincipalID: f.person.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := RequireOwnerCredential(ctx, f.keys, nil, now); err == nil {
+		t.Error("another principal's key is not the owner's")
+	}
+	_, short, err := f.keys.Mint(ctx, MintKey{PrincipalID: storage.OwnerPrincipal, ExpiresAt: now.Add(time.Hour)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := RequireOwnerCredential(ctx, f.keys, nil, now); err != nil {
+		t.Errorf("unexpired owner key: %v", err)
+	}
+	if err := RequireOwnerCredential(ctx, f.keys, nil, now.Add(2*time.Hour)); err == nil {
+		t.Error("an expired owner key is no credential")
+	}
+	_, long, err := f.keys.Mint(ctx, MintKey{PrincipalID: storage.OwnerPrincipal})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.keys.Revoke(ctx, long.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := RequireOwnerCredential(ctx, f.keys, nil, now.Add(2*time.Hour)); err == nil {
+		t.Error("a revoked owner key is no credential")
+	}
+	if err := f.keys.Revoke(ctx, short.ID); err != nil {
+		t.Fatal(err)
+	}
+	cfg := configKeysFor(t, "cfg-owner-key-0123456789abcdef0123456789", storage.OwnerPrincipal, nil, "")
+	if err := RequireOwnerCredential(ctx, f.keys, cfg, now); err != nil {
+		t.Errorf("config key for the owner: %v", err)
+	}
+	stale := configKeysFor(t, "cfg-owner-key-0123456789abcdef0123456789", storage.OwnerPrincipal, nil, "2020-01-01")
+	if err := RequireOwnerCredential(ctx, f.keys, stale, now); err == nil {
+		t.Error("an expired config key is no credential")
+	}
+	person := configKeysFor(t, "cfg-person-key-0123456789abcdef0123456789", f.person.ID, nil, "")
+	if err := RequireOwnerCredential(ctx, f.keys, person, now); err == nil {
+		t.Error("a config key of another principal is not the owner's")
 	}
 }

@@ -229,7 +229,7 @@ func TestHealthzRedactedForAnonymousOnPublic(t *testing.T) {
 	q := jobs.NewQueue(driver.Jobs())
 	svc := service.New(driver, q, builtins.Registry(), search.NewEngine(driver), "", nil)
 	srv := httptest.NewServer(NewRouterWithConfig(svc, RouterConfig{
-		Auth:          testProvider(t),
+		Auth:          testChain(t),
 		RedactHealthz: true,
 		Probes:        HealthzProbes{Version: "9.9.9"},
 	}))

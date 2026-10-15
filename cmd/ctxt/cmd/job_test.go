@@ -113,7 +113,7 @@ func TestJobStatusOverAPI(t *testing.T) {
 }
 
 func TestJobRetryOverAPI(t *testing.T) {
-	db := setupTestDB(t, dpkmstest.WithStaticTokens())
+	db := setupTestDB(t, dpkmstest.WithKeys())
 	seedJobs(t, db)
 
 	db.useRole(t, dpkmstest.RoleReader)
@@ -137,7 +137,7 @@ func TestJobRetryOverAPI(t *testing.T) {
 // TestJobCancelOverAPI: cancel needs the admin role; a finished job is a
 // conflict (exit 4), an unknown one not found (exit 3).
 func TestJobCancelOverAPI(t *testing.T) {
-	db := setupTestDB(t, dpkmstest.WithStaticTokens())
+	db := setupTestDB(t, dpkmstest.WithKeys())
 	seedJobs(t, db)
 
 	db.useRole(t, dpkmstest.RoleWriter)

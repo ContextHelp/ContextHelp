@@ -34,7 +34,7 @@ func RunObjectWriteSuite(t *testing.T, newDriver func(*testing.T) storage.Storag
 	fresh := func(t *testing.T) (*dpkmstest.Server, storage.StorageDriver) {
 		t.Helper()
 		driver := newDriver(t)
-		srv := dpkmstest.Start(t, driver, dpkmstest.WithStaticTokens())
+		srv := dpkmstest.Start(t, driver, dpkmstest.WithKeys())
 		seedWriteObject(t, driver)
 		return srv, driver
 	}

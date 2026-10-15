@@ -37,7 +37,7 @@ func jobsFixture(t *testing.T) *dpkmstest.Server {
 			t.Fatal(err)
 		}
 	}
-	return dpkmstest.Start(t, driver, dpkmstest.WithStaticTokens())
+	return dpkmstest.Start(t, driver, dpkmstest.WithKeys())
 }
 
 func jobStatus(t *testing.T, srv *dpkmstest.Server, id string) storage.JobStatus {

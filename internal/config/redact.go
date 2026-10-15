@@ -138,7 +138,7 @@ func Redacted(cfg *Config) *Config {
 }
 
 // SecretValues returns every non-empty credential cfg carries, keyed by
-// its dot-separated config path (server.auth.static.tokens[0].token).
+// its dot-separated config path (server.urls[0].token).
 // A secret:"dsn" locator is listed only when it embeds a credential,
 // as the whole locator. Use it to check output for leaks.
 func SecretValues(cfg *Config) map[string]string {

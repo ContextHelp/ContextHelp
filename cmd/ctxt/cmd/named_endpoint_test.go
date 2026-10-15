@@ -202,7 +202,7 @@ func TestHTTPCommands_UnreachableExits70(t *testing.T) {
 // and `ctxt log --instance home` reach a protected in-process dpkms with
 // the named entry's token; a wrong token for the same URL exits 5.
 func TestStatus_InstanceAgainstProtectedDpkms(t *testing.T) {
-	db := setupTestDB(t, dpkmstest.WithStaticTokens())
+	db := setupTestDB(t, dpkmstest.WithKeys())
 	appendConfig(t, db, "server:\n  urls:\n"+
 		"    - name: home\n      url: "+db.Server.URL+"\n      token: "+db.Server.Token(dpkmstest.RoleAdmin)+"\n"+
 		"    - name: stale\n      url: "+db.Server.URL+"/\n      token: not-a-token\n")

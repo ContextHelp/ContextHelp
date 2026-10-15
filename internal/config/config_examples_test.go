@@ -21,9 +21,9 @@ import (
 var commentedSetting = regexp.MustCompile(`(?m)^#((?:  )*(?:- |[A-Za-z_][A-Za-z0-9_.-]*:).*)$`)
 
 // placeholderToken is the one Validate error a template may carry once
-// its settings are enabled: a static token still holding REPLACE_ME,
-// which the operator must replace before serve starts.
-var placeholderToken = regexp.MustCompile(`^server\.auth\.static\.tokens\[\d+\]\.token$`)
+// its settings are enabled: a declared key hash still holding
+// REPLACE_ME, which the operator must replace before serve starts.
+var placeholderToken = regexp.MustCompile(`^server\.auth\.keys\[\d+\]\.hash$`)
 
 // The config/*.yaml files are the templates the docs tell readers to copy.
 // Each must hold only keys Config declares and values Validate accepts,

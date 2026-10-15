@@ -258,6 +258,13 @@ var migrations = []migration{
 	// records, seeded with the one owner principal. New tables only,
 	// nothing is an FTS input, so no re-projection follows.
 	{Version: 48, fn: migrate048AuthRegistry},
+	// Migration 049: ui_sessions and ui_login_codes reference the
+	// identity that minted them (ADR-079) instead of the hash of a
+	// static token. Rebuilds both tables (SQLite cannot add a foreign
+	// key in place); the rows, minted by static tokens that no longer
+	// authenticate, are dropped. Nothing is an FTS input, so no
+	// re-projection follows.
+	{Version: 49, fn: migrate049SessionsBoundToIdentities},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
@@ -1288,4 +1295,61 @@ func legacyEmbeddingModelID(dim int) string {
 // model. Mirrors FTSSignatureID for the FTS path.
 func EmbeddingSignatureID(modelID string) string {
 	return indexsig.EmbeddingSignatureID(modelID)
+}
+
+// migrate049SessionsBoundToIdentities rebuilds ui_sessions and
+// ui_login_codes with identity_id REFERENCES principal_identities(id)
+// in place of token_hash. Every existing row was minted by a static
+// token, which no longer authenticates, so none is carried over: the
+// browsers sign in again with a key. Idempotent: a table that already
+// has identity_id is left alone.
+func migrate049SessionsBoundToIdentities(ctx context.Context, d *Driver) error {
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, t := range []struct{ name, create, index string }{
+		{"ui_sessions", `CREATE TABLE ui_sessions (
+			id              TEXT PRIMARY KEY,
+			secret_hash     TEXT NOT NULL UNIQUE,
+			principal_id    TEXT NOT NULL,
+			identity_id     TEXT NOT NULL REFERENCES principal_identities(id),
+			scope           TEXT NOT NULL,
+			user_agent      TEXT NOT NULL DEFAULT '',
+			remote_addr     TEXT NOT NULL DEFAULT '',
+			created_at      INTEGER NOT NULL,
+			last_seen_at    INTEGER NOT NULL,
+			idle_expires_at INTEGER NOT NULL,
+			expires_at      INTEGER NOT NULL,
+			revoked_at      INTEGER,
+			revoke_reason   TEXT NOT NULL DEFAULT ''
+		)`, `CREATE INDEX IF NOT EXISTS idx_ui_sessions_identity ON ui_sessions(identity_id);
+		CREATE INDEX IF NOT EXISTS idx_ui_sessions_principal ON ui_sessions(principal_id)`},
+		{"ui_login_codes", `CREATE TABLE ui_login_codes (
+			code_hash    TEXT PRIMARY KEY,
+			principal_id TEXT NOT NULL,
+			identity_id  TEXT NOT NULL REFERENCES principal_identities(id),
+			scope        TEXT NOT NULL,
+			created_at   INTEGER NOT NULL,
+			expires_at   INTEGER NOT NULL
+		)`, `CREATE INDEX IF NOT EXISTS idx_ui_login_codes_identity ON ui_login_codes(identity_id)`},
+	} {
+		var n int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = 'identity_id'`, t.name).Scan(&n); err != nil {
+			return fmt.Errorf("inspect %s: %w", t.name, err)
+		}
+		if n > 0 {
+			continue
+		}
+		for _, stmt := range []string{`DROP TABLE IF EXISTS ` + t.name, t.create, t.index} {
+			if _, err := tx.ExecContext(ctx, stmt); err != nil {
+				return fmt.Errorf("rebuild %s: %w", t.name, err)
+			}
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+	return nil
 }

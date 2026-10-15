@@ -219,7 +219,7 @@ func TestDeleteRefusalNamesTargets(t *testing.T) {
 // by ID or by filter; a request without a token is exit 5 too; an admin
 // deletes.
 func TestDeleteIsAdminOnly(t *testing.T) {
-	db := setupTestDB(t, dpkmstest.WithStaticTokens())
+	db := setupTestDB(t, dpkmstest.WithKeys())
 	seedDeleteCorpus(t, db)
 
 	db.useRole(t, dpkmstest.RoleWriter)

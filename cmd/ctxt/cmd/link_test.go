@@ -232,7 +232,7 @@ func TestUnlinkNoLinks(t *testing.T) {
 // TestLinkRoles: a writer links but cannot unlink (exit 5, edges stay);
 // no token is exit 5; an admin unlinks.
 func TestLinkRoles(t *testing.T) {
-	db := setupTestDB(t, dpkmstest.WithStaticTokens())
+	db := setupTestDB(t, dpkmstest.WithKeys())
 	seedTwoObjects(t, db)
 
 	db.useRole(t, dpkmstest.RoleWriter)

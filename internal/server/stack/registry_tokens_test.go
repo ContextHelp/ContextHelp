@@ -11,6 +11,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // fakeRegistryToken is a fixed, non-secret value; failures may print it.
@@ -59,7 +60,7 @@ func paidStack(t *testing.T, url string) *Stack {
 		Auth:       config.RegistryAuthConfig{Type: config.RegistryAuthBearer},
 		TrustLevel: config.RegistryTrustLevelTrusted,
 	}}
-	return build(t, cfg)
+	return build(t, cfg, storageutil.NewTestDriver(t))
 }
 
 func post(t *testing.T, st *Stack, path, body string) *httptest.ResponseRecorder {

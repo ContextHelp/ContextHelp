@@ -167,10 +167,6 @@ func (v restrictedUISessions) Revoke(ctx context.Context, id string, at time.Tim
 	return v.inner.Revoke(ctx, id, at, reason)
 }
 
-func (v restrictedUISessions) RevokeByTokenHash(ctx context.Context, tokenHash string, at time.Time, reason string) (int, error) {
-	return v.inner.RevokeByTokenHash(ctx, tokenHash, at, reason)
-}
-
 func (v restrictedUISessions) List(_ context.Context, _ UISessionFilter) ([]*UISession, error) {
 	return nil, restrictedRead("UISessions", "List")
 }

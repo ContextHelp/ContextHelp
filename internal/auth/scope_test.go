@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"context"
 	"os"
 	"slices"
 	"strings"
@@ -178,39 +177,6 @@ func TestScopesForRolesUnion(t *testing.T) {
 	want, _ := Bundle(RoleWriter)
 	if !slices.Equal(got, want) {
 		t.Errorf("reader+writer = %v, want the writer bundle %v", got, want)
-	}
-}
-
-func TestNewStaticRejectsUnknownOrMissingRole(t *testing.T) {
-	if _, err := NewStatic([]StaticToken{{Token: tok1, Principal: "p"}}); err == nil {
-		t.Error("token without a role must be rejected")
-	}
-	if _, err := NewStatic([]StaticToken{{Token: tok1, Principal: "p", Roles: []string{"owner"}}}); err == nil {
-		t.Error("token with an unknown role must be rejected")
-	}
-}
-
-func TestStaticPrincipalCarriesRoleScopes(t *testing.T) {
-	p, err := NewStatic([]StaticToken{
-		{Token: "tok-r-fixture-0123456789abcdef0123456789", Principal: "phone", Roles: []string{RoleReader}},
-		{Token: "tok-w-fixture-0123456789abcdef0123456789", Principal: "laptop", Roles: []string{RoleWriter}},
-	})
-	if err != nil {
-		t.Fatalf("NewStatic: %v", err)
-	}
-	reader, err := p.Authenticate(context.Background(), Credential{Token: "tok-r-fixture-0123456789abcdef0123456789"})
-	if err != nil {
-		t.Fatalf("Authenticate reader: %v", err)
-	}
-	if !reader.HasScope(ScopeReadObjects) || reader.HasScope(ScopeWriteObjects) {
-		t.Errorf("reader scopes = %v", reader.Scopes)
-	}
-	writer, err := p.Authenticate(context.Background(), Credential{Token: "tok-w-fixture-0123456789abcdef0123456789"})
-	if err != nil {
-		t.Fatalf("Authenticate writer: %v", err)
-	}
-	if !writer.HasScope(ScopeWriteObjects) || writer.HasScope(ScopeDeleteObjects) {
-		t.Errorf("writer scopes = %v", writer.Scopes)
 	}
 }
 

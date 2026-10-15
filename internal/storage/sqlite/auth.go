@@ -188,6 +188,13 @@ func (s *principalStore) Revoke(ctx context.Context, id string, at time.Time) er
 		WHERE principal_id = ? AND revoked_at IS NULL`, ms, id); err != nil {
 		return fmt.Errorf("principal revoke %q: identities: %w", id, err)
 	}
+	if _, err := tx.ExecContext(ctx, `UPDATE ui_sessions SET revoked_at = ?, revoke_reason = ?
+		WHERE principal_id = ? AND revoked_at IS NULL`, ms, storage.RevokeReasonPrincipalRevoked, id); err != nil {
+		return fmt.Errorf("principal revoke %q: sessions: %w", id, err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM ui_login_codes WHERE principal_id = ?`, id); err != nil {
+		return fmt.Errorf("principal revoke %q: login codes: %w", id, err)
+	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("principal revoke %q: commit: %w", id, err)
 	}
@@ -287,15 +294,36 @@ func (s *identityStore) exists(ctx context.Context, id string) error {
 }
 
 func (s *identityStore) Revoke(ctx context.Context, id string, at time.Time) error {
-	res, err := s.db.ExecContext(ctx, `UPDATE principal_identities SET revoked_at = ?
-		WHERE id = ? AND revoked_at IS NULL`, toMillis(at), id)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("identity revoke %q: begin: %w", id, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	ms := toMillis(at)
+	res, err := tx.ExecContext(ctx, `UPDATE principal_identities SET revoked_at = ?
+		WHERE id = ? AND revoked_at IS NULL`, ms, id)
 	if err != nil {
 		return fmt.Errorf("identity revoke %q: %w", id, err)
 	}
-	if n, err := res.RowsAffected(); err != nil || n > 0 {
+	n, err := res.RowsAffected()
+	if err != nil {
 		return err
 	}
-	return s.exists(ctx, id)
+	if n == 0 {
+		return s.exists(ctx, id)
+	}
+	// The sessions and login codes this credential minted end with it.
+	if _, err := tx.ExecContext(ctx, `UPDATE ui_sessions SET revoked_at = ?, revoke_reason = ?
+		WHERE identity_id = ? AND revoked_at IS NULL`, ms, storage.RevokeReasonIdentityRevoked, id); err != nil {
+		return fmt.Errorf("identity revoke %q: sessions: %w", id, err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM ui_login_codes WHERE identity_id = ?`, id); err != nil {
+		return fmt.Errorf("identity revoke %q: login codes: %w", id, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("identity revoke %q: commit: %w", id, err)
+	}
+	return nil
 }
 
 func (s *identityStore) Touch(ctx context.Context, id string, at time.Time) error {

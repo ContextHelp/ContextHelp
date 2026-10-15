@@ -10,7 +10,7 @@ import (
 func TestAttachExposesPrincipalToPolicyEngine(t *testing.T) {
 	ctx := Attach(context.Background(), &Principal{
 		ID:       "ops",
-		Provider: ProviderStatic,
+		Provider: MethodAPIKey,
 		Roles:    []string{"admin", "reader"},
 	})
 
@@ -28,8 +28,8 @@ func TestAttachExposesPrincipalToPolicyEngine(t *testing.T) {
 	if kp.Role != "admin" {
 		t.Errorf("policy principal Role = %q, want admin (primary role)", kp.Role)
 	}
-	if kp.Source != ProviderStatic {
-		t.Errorf("policy principal Source = %q, want %q", kp.Source, ProviderStatic)
+	if kp.Source != MethodAPIKey {
+		t.Errorf("policy principal Source = %q, want %q", kp.Source, MethodAPIKey)
 	}
 }
 

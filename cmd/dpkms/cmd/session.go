@@ -23,10 +23,10 @@ var sessionCmd = &cobra.Command{
 
 A browser signs in to a protected or public instance with a link from
 'ctxt ui open'. Each sign-in is a session stored in the database: it acts
-as the principal of the API token that minted the link, ends after
+as the principal of the API key that minted the link, ends after
 server.ui.session.idle_ttl without a request (default 12h) or
 server.ui.session.max_ttl after sign-in (default 168h), and ends at once
-when that token is removed from server.auth.static.tokens.
+when that key, or the principal, is revoked.
 
 These commands read the database directly; a running dpkms sees a
 revocation on the session's next request.
@@ -82,8 +82,10 @@ func init() {
 	cliconv.WithIdempotency(sessionRevokeCmd, cliconv.IdempotencyYes)
 }
 
-// sessionStatus is a session's state as a listing shows it.
-func sessionStatus(s *storage.UISession, now time.Time, resolver authn.TokenHashResolver) string {
+// sessionStatus is a session's state as a listing shows it. A session
+// whose key or principal was revoked is revoked by the store's cascade,
+// so its reason says which.
+func sessionStatus(s *storage.UISession, now time.Time) string {
 	switch {
 	case s.RevokedAt != nil:
 		if s.RevokeReason != "" {
@@ -92,10 +94,6 @@ func sessionStatus(s *storage.UISession, now time.Time, resolver authn.TokenHash
 		return "revoked"
 	case !s.Active(now):
 		return "expired"
-	case resolver != nil:
-		if p, ok := resolver.PrincipalForTokenHash(s.TokenHash); !ok || p.ID != s.PrincipalID {
-			return "token removed"
-		}
 	}
 	return "active"
 }
@@ -139,17 +137,6 @@ func openSessionStore(ctx context.Context) (storage.StorageDriver, error) {
 	return driver, nil
 }
 
-// configuredTokenResolver resolves token hashes against the configured
-// static tokens, or returns nil when no such provider is configured.
-func configuredTokenResolver() authn.TokenHashResolver {
-	p, err := authn.FromConfig(cfg.Server.Auth)
-	if err != nil || p == nil {
-		return nil
-	}
-	r, _ := p.(authn.TokenHashResolver)
-	return r
-}
-
 func runSessionList(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
 	if ctx == nil {
@@ -172,10 +159,9 @@ func runSessionList(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return fmt.Errorf("list sessions: %w", err)
 	}
-	resolver := configuredTokenResolver()
 	views := make([]sessionView, 0, len(sessions))
 	for _, s := range sessions {
-		views = append(views, sessionView{UISession: s, Status: sessionStatus(s, now, resolver)})
+		views = append(views, sessionView{UISession: s, Status: sessionStatus(s, now)})
 	}
 	return renderSessions(cmd, cmd.OutOrStdout(), views)
 }

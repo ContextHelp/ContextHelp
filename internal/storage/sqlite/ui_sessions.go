@@ -11,11 +11,11 @@ import (
 )
 
 // uiSessionStore persists web UI sessions and login codes in the
-// ui_sessions and ui_login_codes tables (migration 041). Times are Unix
-// milliseconds, UTC.
+// ui_sessions and ui_login_codes tables (migration 041, rebuilt by 049
+// to reference principal_identities). Times are Unix milliseconds, UTC.
 type uiSessionStore struct{ db *sql.DB }
 
-const uiSessionColumns = `id, secret_hash, principal_id, token_hash, scope, user_agent, remote_addr,
+const uiSessionColumns = `id, secret_hash, principal_id, identity_id, scope, user_agent, remote_addr,
 	created_at, last_seen_at, idle_expires_at, expires_at, revoked_at, revoke_reason`
 
 func toMillis(t time.Time) int64 { return t.UTC().UnixMilli() }
@@ -24,9 +24,9 @@ func fromMillis(ms int64) time.Time { return time.UnixMilli(ms).UTC() }
 
 func (s *uiSessionStore) CreateLoginCode(ctx context.Context, c *storage.UILoginCode) error {
 	_, err := s.db.ExecContext(ctx, `INSERT INTO ui_login_codes
-		(code_hash, principal_id, token_hash, scope, created_at, expires_at)
+		(code_hash, principal_id, identity_id, scope, created_at, expires_at)
 		VALUES (?, ?, ?, ?, ?, ?)`,
-		c.CodeHash, c.PrincipalID, c.TokenHash, c.Scope, toMillis(c.CreatedAt), toMillis(c.ExpiresAt))
+		c.CodeHash, c.PrincipalID, c.IdentityID, c.Scope, toMillis(c.CreatedAt), toMillis(c.ExpiresAt))
 	if err != nil {
 		return fmt.Errorf("ui login code create: %w", err)
 	}
@@ -37,8 +37,8 @@ func (s *uiSessionStore) ConsumeLoginCode(ctx context.Context, codeHash string, 
 	c := &storage.UILoginCode{CodeHash: codeHash}
 	var created, expires int64
 	err := s.db.QueryRowContext(ctx, `DELETE FROM ui_login_codes WHERE code_hash = ?
-		RETURNING principal_id, token_hash, scope, created_at, expires_at`, codeHash,
-	).Scan(&c.PrincipalID, &c.TokenHash, &c.Scope, &created, &expires)
+		RETURNING principal_id, identity_id, scope, created_at, expires_at`, codeHash,
+	).Scan(&c.PrincipalID, &c.IdentityID, &c.Scope, &created, &expires)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, storage.ErrNotFound
 	}
@@ -59,7 +59,7 @@ func (s *uiSessionStore) Create(ctx context.Context, u *storage.UISession) error
 	}
 	_, err := s.db.ExecContext(ctx, `INSERT INTO ui_sessions (`+uiSessionColumns+`)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		u.ID, u.SecretHash, u.PrincipalID, u.TokenHash, u.Scope, u.UserAgent, u.RemoteAddr,
+		u.ID, u.SecretHash, u.PrincipalID, u.IdentityID, u.Scope, u.UserAgent, u.RemoteAddr,
 		toMillis(u.CreatedAt), toMillis(u.LastSeenAt), toMillis(u.IdleExpiresAt), toMillis(u.ExpiresAt),
 		revoked, u.RevokeReason)
 	if err != nil {
@@ -72,7 +72,7 @@ func scanUISession(row interface{ Scan(...any) error }) (*storage.UISession, err
 	u := &storage.UISession{}
 	var created, seen, idle, expires int64
 	var revoked sql.NullInt64
-	if err := row.Scan(&u.ID, &u.SecretHash, &u.PrincipalID, &u.TokenHash, &u.Scope, &u.UserAgent, &u.RemoteAddr,
+	if err := row.Scan(&u.ID, &u.SecretHash, &u.PrincipalID, &u.IdentityID, &u.Scope, &u.UserAgent, &u.RemoteAddr,
 		&created, &seen, &idle, &expires, &revoked, &u.RevokeReason); err != nil {
 		return nil, err
 	}
@@ -145,16 +145,6 @@ func (s *uiSessionStore) Revoke(ctx context.Context, id string, at time.Time, re
 		return err
 	}
 	return s.exists(ctx, id)
-}
-
-func (s *uiSessionStore) RevokeByTokenHash(ctx context.Context, tokenHash string, at time.Time, reason string) (int, error) {
-	res, err := s.db.ExecContext(ctx, `UPDATE ui_sessions SET revoked_at = ?, revoke_reason = ?
-		WHERE token_hash = ? AND revoked_at IS NULL`, toMillis(at), reason, tokenHash)
-	if err != nil {
-		return 0, fmt.Errorf("ui session revoke by token: %w", err)
-	}
-	n, err := res.RowsAffected()
-	return int(n), err
 }
 
 func (s *uiSessionStore) List(ctx context.Context, f storage.UISessionFilter) ([]*storage.UISession, error) {

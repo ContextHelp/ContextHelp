@@ -41,8 +41,7 @@ func Validate(c *Config) []ValidationError {
 	errs = append(errs, validateServerPorts(&c.Server)...)
 	errs = append(errs, validateBlob(c.Storage.Blob, "storage.blob")...)
 	errs = append(errs, validateAccess(c)...)
-	errs = append(errs, validateAuthRoles(c)...)
-	errs = append(errs, validateAuthTokens(c)...)
+	errs = append(errs, validateAuth(c)...)
 	errs = append(errs, validateQuotas(c)...)
 	errs = append(errs, validateDuplicates(c.Duplicates)...)
 	errs = append(errs, c.Pipelines.Validate()...)
@@ -126,10 +125,11 @@ func validateSecretsBackend(backend string) []ValidationError {
 //   - the class must be one of private | protected | public (empty = unset,
 //     resolved to private by EffectiveAccess);
 //   - an explicit access: private combined with server.public / --public is
-//     a hard error (the two contradict each other);
-//   - a non-private instance must have inbound authentication configured —
-//     an exposed listener with zero auth is exactly the failure mode the
-//     class exists to delete.
+//     a hard error (the two contradict each other).
+//
+// Whether a non-private instance holds a credential is a question for
+// its database, not its config: dpkms serve refuses to start without an
+// active owner credential (ADR-079 §4).
 func validateAccess(c *Config) []ValidationError {
 	var errs []ValidationError
 
@@ -151,82 +151,106 @@ func validateAccess(c *Config) []ValidationError {
 		})
 	}
 
-	if eff := c.Server.EffectiveAccess(); eff != AccessPrivate && !c.Server.Auth.HasInboundAuth() {
-		errs = append(errs, ValidationError{
-			Field:   "server.access",
-			Message: fmt.Sprintf("%s instance requires inbound authentication — set server.auth.provider (e.g. \"static\" with at least one token under server.auth.static.tokens)", eff),
-		})
-	}
-
 	return errs
 }
 
-// validateAuthRoles requires every static token to carry at least one
-// known role. Roles are fixed scope bundles; a token without one could
-// reach no route, and a misspelled role must not silently lock a device
-// out.
-func validateAuthRoles(c *Config) []ValidationError {
+// URL schemes server.public_url accepts.
+const (
+	schemeHTTP  = "http"
+	schemeHTTPS = "https"
+)
+
+// keyHashRe is the only form server.auth.keys[].hash takes: sha256:
+// and 64 lowercase hex digits.
+var keyHashRe = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+
+// keyPlaceholder marks the hashes docker/dpkms-auth.example.yaml ships.
+const keyPlaceholder = "REPLACE_ME"
+
+// validateAuth checks server.auth on every instance, so a private one
+// that will be promoted gets its errors early: the method and sign-in
+// lists hold known names without repeats and api_key is listed; every
+// declared key is a hash with a principal, known roles and a parsable
+// expiry; and a non-private instance whose sign-in list builds links
+// names server.public_url, an absolute http(s) URL.
+func validateAuth(c *Config) []ValidationError {
 	var errs []ValidationError
-	for i, t := range c.Server.Auth.Static.Tokens {
-		field := fmt.Sprintf("server.auth.static.tokens[%d].roles", i)
-		if len(t.Roles) == 0 {
-			errs = append(errs, ValidationError{
-				Field:   field,
-				Message: fmt.Sprintf("at least one role is required; must be one of %s", strings.Join(AuthRoles, ", ")),
-			})
-			continue
+	a := c.Server.Auth
+
+	errs = append(errs, validateNameList("server.auth.methods", a.EffectiveMethods(), AuthMethods, ReservedAuthMethods)...)
+	if !slices.Contains(a.EffectiveMethods(), AuthMethodAPIKey) {
+		errs = append(errs, ValidationError{Field: "server.auth.methods", Message: fmt.Sprintf(
+			"%s is required: it is how the CLI, agents and dpkms auth key create reach the instance", AuthMethodAPIKey)})
+	}
+	errs = append(errs, validateNameList("server.auth.sign_in", a.EffectiveSignIn(), AuthSignIns, ReservedAuthSignIns)...)
+
+	for i, k := range a.Keys {
+		field := fmt.Sprintf("server.auth.keys[%d]", i)
+		switch {
+		case strings.Contains(strings.ToUpper(k.Hash), keyPlaceholder):
+			errs = append(errs, ValidationError{Field: field + ".hash", Message: fmt.Sprintf(
+				"hash is the example placeholder (contains %s); create a key with dpkms auth key create and put its sha256 here", keyPlaceholder)})
+		case !keyHashRe.MatchString(k.Hash):
+			errs = append(errs, ValidationError{Field: field + ".hash", Message: "must be sha256:<64 hex digits> of the key, never the key itself: printf %s \"$KEY\" | sha256sum"})
 		}
-		for _, r := range t.Roles {
+		if strings.TrimSpace(k.Principal) == "" {
+			errs = append(errs, ValidationError{Field: field + ".principal", Message: "principal is required (owner, or a prn_ id)"})
+		}
+		for _, r := range k.Roles {
 			if !slices.Contains(AuthRoles, r) {
-				errs = append(errs, ValidationError{
-					Field:   field,
-					Message: fmt.Sprintf("unknown role %q; must be one of %s", r, strings.Join(AuthRoles, ", ")),
-				})
+				errs = append(errs, ValidationError{Field: field + ".roles", Message: fmt.Sprintf(
+					"unknown role %q; must be one of %s", r, strings.Join(AuthRoles, ", "))})
 			}
 		}
+		if _, err := k.ExpiresAt(); err != nil {
+			errs = append(errs, ValidationError{Field: field + ".expires", Message: err.Error()})
+		}
+	}
+
+	if c.Server.EffectiveAccess() != AccessPrivate && a.NeedsPublicURL() {
+		errs = append(errs, validatePublicURL(c.Server.PublicURL)...)
 	}
 	return errs
 }
 
-// MinStaticTokenLen is the shortest server.auth.static.tokens entry
-// accepted: 32 characters, half of what `openssl rand -hex 32` prints.
-const MinStaticTokenLen = 32
-
-// staticTokenPlaceholder marks the tokens docker/dpkms-auth.example.yaml
-// ships. They are public, so one left in place is no secret at all.
-const staticTokenPlaceholder = "REPLACE_ME"
-
-// CheckStaticToken reports why tok cannot guard a non-private instance:
-// it still holds the example placeholder, or it is short enough to
-// guess. Empty tokens are left to the caller's own required-field check.
-// dpkms serve applies it through the static auth provider; Validate
-// reports it per entry.
-func CheckStaticToken(tok string) error {
-	const generate = "generate one with: openssl rand -hex 32"
-	if strings.Contains(strings.ToUpper(tok), staticTokenPlaceholder) {
-		return fmt.Errorf("token is the example placeholder (contains %s), which anyone can read; %s", staticTokenPlaceholder, generate)
+// validateNameList reports unknown, reserved and repeated names in a
+// server.auth list.
+func validateNameList(field string, got, known, reserved []string) []ValidationError {
+	var errs []ValidationError
+	seen := map[string]bool{}
+	for _, name := range got {
+		switch {
+		case seen[name]:
+			errs = append(errs, ValidationError{Field: field, Message: fmt.Sprintf("%q is listed twice", name)})
+		case slices.Contains(reserved, name):
+			errs = append(errs, ValidationError{Field: field, Message: fmt.Sprintf(
+				"%q is reserved but not yet implemented; valid: %s", name, strings.Join(known, ", "))})
+		case !slices.Contains(known, name):
+			errs = append(errs, ValidationError{Field: field, Message: fmt.Sprintf(
+				"unknown entry %q; valid: %s", name, strings.Join(known, ", "))})
+		}
+		seen[name] = true
 	}
-	if n := len(tok); n < MinStaticTokenLen {
-		return fmt.Errorf("token is %d characters, must be at least %d; %s", n, MinStaticTokenLen, generate)
+	return errs
+}
+
+// validatePublicURL requires server.public_url on an instance that
+// mints links: an absolute http or https URL with a host and nothing
+// after the path.
+func validatePublicURL(raw string) []ValidationError {
+	const field = "server.public_url"
+	if strings.TrimSpace(raw) == "" {
+		return []ValidationError{{Field: field, Message: "required when server.auth.sign_in lists invite or link (the default): " +
+			"the URL people open this instance at, e.g. https://dpkms.example.com; or set sign_in: [] to mint no links"}}
+	}
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != schemeHTTP && u.Scheme != schemeHTTPS) || u.Host == "" {
+		return []ValidationError{{Field: field, Message: fmt.Sprintf("%q must be an absolute http or https URL with a host", raw)}}
+	}
+	if u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+		return []ValidationError{{Field: field, Message: fmt.Sprintf("%q must carry no query, fragment or credentials: it is the base of every link", raw)}}
 	}
 	return nil
-}
-
-// validateAuthTokens applies CheckStaticToken to every static token.
-func validateAuthTokens(c *Config) []ValidationError {
-	var errs []ValidationError
-	for i, t := range c.Server.Auth.Static.Tokens {
-		if t.Token == "" {
-			continue
-		}
-		if err := CheckStaticToken(t.Token); err != nil {
-			errs = append(errs, ValidationError{
-				Field:   fmt.Sprintf("server.auth.static.tokens[%d].token", i),
-				Message: err.Error(),
-			})
-		}
-	}
-	return errs
 }
 
 // validateQuotas enforces server.quotas entry rules: a named principal,
@@ -298,13 +322,13 @@ func validateRegistryAuth(c *Config) []ValidationError {
 	return errs
 }
 
-// ValidateAccess returns the access-class misconfiguration for c, if
-// any, as a single error. dpkms serve calls it (with the --public flag
-// folded into Server.Public) so a protected/public instance with no
-// credentials refuses to start instead of silently exposing 0.0.0.0
-// with zero auth.
+// ValidateAccess returns the access-class and inbound-auth
+// misconfiguration for c, if any, as a single error. dpkms serve calls
+// it (with the --public flag folded into Server.Public) so a
+// protected/public instance with a broken server.auth refuses to start
+// instead of silently exposing 0.0.0.0.
 func (c *Config) ValidateAccess() error {
-	errs := validateAccess(c)
+	errs := append(validateAccess(c), validateAuth(c)...)
 	if len(errs) == 0 {
 		return nil
 	}

@@ -60,7 +60,7 @@ func TestAuthKeyCreate(t *testing.T) {
 	p, idn, err := keys.Verify(ctx, secret)
 	require.NoError(t, err)
 	assert.Equal(t, storage.OwnerPrincipal, p.ID)
-	assert.Equal(t, authn.ProviderAPIKey, p.Provider)
+	assert.Equal(t, authn.MethodAPIKey, p.Provider)
 	assert.True(t, p.HasRole(authn.RoleAdmin))
 	assert.Equal(t, "laptop", idn.Name)
 	assert.Equal(t, storage.IdentityMethodAPIKey, idn.Method)

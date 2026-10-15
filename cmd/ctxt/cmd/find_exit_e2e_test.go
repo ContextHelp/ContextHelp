@@ -17,7 +17,7 @@ func TestE2EFindExitCodes(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e: -short")
 	}
-	db := setupTestDB(t, dpkmstest.WithStaticTokens())
+	db := setupTestDB(t, dpkmstest.WithKeys())
 	seedFindCorpus(t, db)
 	detachLocalStore(t, db)
 

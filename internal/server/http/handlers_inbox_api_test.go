@@ -104,7 +104,7 @@ func RunInboxSuite(t *testing.T, newDriver func(*testing.T) storage.StorageDrive
 	fresh := func(t *testing.T) inboxEnv {
 		t.Helper()
 		driver := newDriver(t)
-		srv := dpkmstest.Start(t, driver, dpkmstest.WithStaticTokens())
+		srv := dpkmstest.Start(t, driver, dpkmstest.WithKeys())
 		seedInboxCorpus(t, driver)
 		return inboxEnv{srv: srv}
 	}
@@ -156,7 +156,7 @@ func testInboxQueueBadParams(t *testing.T, env inboxEnv) {
 }
 
 func testInboxQueueEmpty(t *testing.T, newDriver func(*testing.T) storage.StorageDriver) {
-	env := inboxEnv{srv: dpkmstest.Start(t, newDriver(t), dpkmstest.WithStaticTokens())}
+	env := inboxEnv{srv: dpkmstest.Start(t, newDriver(t), dpkmstest.WithKeys())}
 	ids, total := env.queue(t, "")
 	assert.Empty(t, ids)
 	assert.Zero(t, total)
