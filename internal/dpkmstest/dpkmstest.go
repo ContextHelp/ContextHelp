@@ -40,6 +40,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
 	httpserver "github.com/ideacrafterslabs/ctxt/internal/server/http"
 	"github.com/ideacrafterslabs/ctxt/internal/server/stack"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing/sharingtest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/testguard"
 	"github.com/ideacrafterslabs/ctxt/internal/upgrade"
@@ -254,8 +255,17 @@ func Start(t testing.TB, driver storage.StorageDriver, opts ...Option) *Server {
 	return srv
 }
 
+// EverythingPolicy is the share policy WithKeys grants the writer and
+// reader principals (sharingtest.EverythingPolicy): every object, every
+// capability. A non-owner principal sees nothing without a grant
+// (ADR-080 §2), and tests of the API's shape as a reader or writer want
+// the data, not the sharing rules; tests of the sharing rules build
+// their own principals.
+const EverythingPolicy = sharingtest.EverythingPolicy
+
 // mintKeys creates the writer and reader principals in driver's
-// registry (the owner is seeded) and mints one key per role.
+// registry (the owner is seeded), grants them EverythingPolicy and
+// mints one key per role.
 func mintKeys(t testing.TB, driver storage.StorageDriver) map[string]string {
 	t.Helper()
 	ctx := context.Background()
@@ -267,6 +277,7 @@ func mintKeys(t testing.TB, driver storage.StorageDriver) map[string]string {
 			t.Fatalf("dpkmstest: create principal %s: %v", p.ID, err)
 		}
 	}
+	sharingtest.GrantEverything(t, driver, PrincipalWriter, PrincipalReader)
 	keys := authn.NewKeysOver(driver.Auth(), nil)
 	tokens := map[string]string{}
 	for role, principal := range map[string]string{RoleAdmin: PrincipalAdmin, RoleWriter: PrincipalWriter, RoleReader: PrincipalReader} {

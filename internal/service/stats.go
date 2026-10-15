@@ -46,7 +46,11 @@ type StatsRequest struct {
 }
 
 // Stats counts objects, jobs, entities, feeds, reminders and resurfacing
-// candidates.
+// candidates. A restricted viewer counts what it may see: objects and
+// entities through its scope, its own resurfacing candidates, and
+// nothing of the owner-only stores (jobs, feeds, reminders), which are
+// counted as none rather than refused (ADR-080 §6: stats are computed
+// inside the scoped query).
 func (s *Service) Stats(ctx context.Context, req StatsRequest) (*Stats, error) {
 	byType, err := s.Store(ctx).Objects().CountByType(ctx)
 	if err != nil {
@@ -68,6 +72,9 @@ func (s *Service) Stats(ctx context.Context, req StatsRequest) (*Stats, error) {
 	} {
 		// The total is a COUNT over the status; one row is fetched.
 		_, n, err := s.Store(ctx).Jobs().List(ctx, storage.JobFilter{Status: c.status, Limit: 1})
+		if errors.Is(err, storage.ErrRestrictedViewer) {
+			break
+		}
 		if err != nil {
 			return nil, fmt.Errorf("count %s jobs: %w", c.status, err)
 		}
@@ -86,7 +93,7 @@ func (s *Service) Stats(ctx context.Context, req StatsRequest) (*Stats, error) {
 	}
 
 	feeds, err := s.Store(ctx).Feeds().List(ctx, storage.FeedFilter{})
-	if err != nil {
+	if err != nil && !errors.Is(err, storage.ErrRestrictedViewer) {
 		return nil, fmt.Errorf("count feeds: %w", err)
 	}
 	st.Feeds = len(feeds)
@@ -97,7 +104,7 @@ func (s *Service) Stats(ctx context.Context, req StatsRequest) (*Stats, error) {
 	}
 
 	reminders, err := s.Store(ctx).Objects().ListPendingReminders(ctx)
-	if err != nil {
+	if err != nil && !errors.Is(err, storage.ErrRestrictedViewer) {
 		return nil, fmt.Errorf("count reminders: %w", err)
 	}
 	st.Reminders = len(reminders)
@@ -106,8 +113,9 @@ func (s *Service) Stats(ctx context.Context, req StatsRequest) (*Stats, error) {
 		ProfileID: req.Profile, UnseenOnly: true,
 	})
 	switch {
-	case errors.Is(err, storage.ErrNotImplemented):
-		// No queue on this backend: the count is unknown, not zero.
+	case errors.Is(err, storage.ErrNotImplemented), errors.Is(err, storage.ErrRestrictedViewer):
+		// No queue on this backend, or none the viewer may read: the
+		// count is unknown, not zero.
 	case err != nil:
 		return nil, fmt.Errorf("count resurfacing candidates: %w", err)
 	default:

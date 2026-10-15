@@ -25,6 +25,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmstest"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
 	"github.com/ideacrafterslabs/ctxt/internal/pidfile"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing/sharingtest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/ideacrafterslabs/ctxt/internal/testguard"
@@ -342,6 +343,10 @@ func (d *Dpkms) mintKeys(t testing.TB, cfg map[string]any) error {
 			return fmt.Errorf("mint keys: create %s principal: %w", role, err)
 		}
 	}
+	// A non-owner principal sees nothing without a share grant (ADR-080
+	// §2); the e2e tests exercise the API's shape as a writer and a
+	// reader, so both get everything, as dpkmstest's principals do.
+	sharingtest.GrantEverything(t, drv, dpkmstest.PrincipalWriter, dpkmstest.PrincipalReader)
 	keys := authn.NewKeysOver(drv.Auth(), nil)
 	for role, principal := range map[string]string{
 		dpkmstest.RoleAdmin: dpkmstest.PrincipalAdmin, dpkmstest.RoleWriter: dpkmstest.PrincipalWriter, dpkmstest.RoleReader: dpkmstest.PrincipalReader,

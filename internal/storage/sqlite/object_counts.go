@@ -5,9 +5,15 @@ import (
 	"fmt"
 )
 
-// CountByType counts every object, whatever its status, by type.
+// CountByType counts every object, whatever its status, by type; a
+// scoped store counts the objects its viewer may see.
 func (s *ObjectStore) CountByType(ctx context.Context) (map[string]int, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT type, COUNT(*) FROM objects GROUP BY type")
+	q := "SELECT type, COUNT(*) FROM objects"
+	term, args := scopeTerm(s.scope)
+	if term != "" {
+		q += " WHERE " + term
+	}
+	rows, err := s.db.QueryContext(ctx, q+" GROUP BY type", args...)
 	if err != nil {
 		return nil, fmt.Errorf("count objects by type: %w", err)
 	}

@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"google.golang.org/grpc/codes"
+
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 )
 
 // CallTimeout bounds one case's call, streams included.
@@ -19,14 +21,29 @@ const StreamWindow = 300 * time.Millisecond
 
 // Principal is a fixture identity a case calls its route as.
 type Principal struct {
-	// Name labels the principal in test output ("owner").
+	// Name labels the principal in test output ("owner", "colleague",
+	// "partner").
 	Name string
+	// ID is its registry id.
+	ID string
 	// Token is the bearer token it presents, over HTTP and gRPC alike.
 	Token string
+	// viewer is the viewer the instance compiles for it; the zero
+	// viewer for the owner, whose checks are the no-server-error one.
+	viewer sharing.Viewer
 }
+
+// Restricted reports whether p is a non-owner principal, whose
+// answers the leak checks apply to.
+func (p Principal) Restricted() bool { return p.Name != "owner" }
+
+// Allows reports whether p's policies open capability c.
+func (p Principal) Allows(c string) bool { return p.viewer.Allows(c) }
 
 // Result is what a route answered.
 type Result struct {
+	// route is the case's registry key, recorded by Run for the checks.
+	route string
 	// Status is the HTTP status; zero for an RPC.
 	Status int
 	// Code is the gRPC status code; codes.OK for an HTTP call.
@@ -66,17 +83,24 @@ type Case struct {
 	Route string
 	// Call calls the route as a principal.
 	Call CallFunc
-	// Check asserts over the answer. Nil until restricted viewers
-	// exist: it is where the hidden-ID, masked-value canary and count
-	// assertions of ADR-080 go. Run asserts the route did not fail on
-	// the server whether or not Check is set.
+	// Check asserts over the answer; nil takes DefaultCheck, the
+	// hidden-ID, canary, capability and count assertions of ADR-080.
+	// Run asserts the route did not fail on the server whether or not
+	// Check is set.
 	Check CheckFunc
 }
 
 // Registry returns every registered case: HTTP cases in route-table
-// order (the sharing registry's after the rest), then RPC cases.
+// order (the sharing registry's after the rest), then RPC cases, each
+// with DefaultCheck unless it names its own.
 func Registry() []Case {
-	return append(append(httpCases(), shareCases()...), rpcCases()...)
+	cases := append(append(httpCases(), shareCases()...), rpcCases()...)
+	for i := range cases {
+		if cases[i].Check == nil {
+			cases[i].Check = DefaultCheck
+		}
+	}
+	return cases
 }
 
 // Coverage compares routes with cases. missing names the routes with
@@ -114,6 +138,7 @@ func Run(t testing.TB, f *Fixture, p Principal, c Case) Result {
 	if err != nil {
 		t.Fatalf("%s as %s: %v", c.Route, p.Name, err)
 	}
+	r.route = c.Route
 	if r.ServerError() {
 		t.Errorf("%s as %s: server error (HTTP %d, gRPC %s): %s", c.Route, p.Name, r.Status, r.Code, excerpt(r.Body))
 	}

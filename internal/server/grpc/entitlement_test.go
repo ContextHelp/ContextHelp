@@ -22,6 +22,7 @@ import (
 	grpcserver "github.com/ideacrafterslabs/ctxt/internal/server/grpc"
 	pb "github.com/ideacrafterslabs/ctxt/internal/server/grpc/pb"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing/sharingtest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
@@ -58,12 +59,21 @@ func startGatedGRPC(t *testing.T) gatedGRPC {
 		"ai.bert":    "ai.models",
 		"med.claims": "med.records",
 	} {
+		// Registry-served entities: the gate is about namespace
+		// entitlements to a registry, and a registry entity is what a
+		// granted viewer may see without a mention (ADR-080 §6).
 		if err := driver.Entities().Upsert(ctx, &storage.Entity{
-			Slug: slug, Title: slug, Namespace: ns, CreatedAt: now, UpdatedAt: now,
+			Slug: slug, Title: slug, Namespace: ns, RegistryURL: "https://registry.test",
+			CreatedAt: now, UpdatedAt: now,
 		}); err != nil {
 			t.Fatalf("seed entity %s: %v", slug, err)
 		}
 	}
+	// The reader and the writer are non-owner principals: they see
+	// entities only through a share grant.
+	sharingtest.EnsurePrincipal(t, driver, "ops", storage.PrincipalKindPerson, authn.RoleReader)
+	sharingtest.EnsurePrincipal(t, driver, "phone", storage.PrincipalKindDevice, authn.RoleWriter)
+	sharingtest.GrantEverything(t, driver, "ops", "phone")
 	for _, principal := range []string{"ops", "owner"} {
 		if err := driver.Entitlements().Upsert(ctx, &storage.RegistryEntitlement{
 			RegistryName: principal,

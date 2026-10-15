@@ -30,7 +30,7 @@ func (s *stubObjectStore) Get(_ context.Context, id string) (*storage.KnowledgeO
 	return nil, io.EOF // sentinel: not found
 }
 
-func (s *stubObjectStore) GetByContentHash(_ context.Context, _ string) (*storage.KnowledgeObject, error) {
+func (s *stubObjectStore) GetByContentHash(_ context.Context, _, _ string) (*storage.KnowledgeObject, error) {
 	return nil, io.EOF
 }
 

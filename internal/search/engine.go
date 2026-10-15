@@ -46,6 +46,14 @@ func NewEngine(store storage.StorageDriver) *Engine {
 	return &Engine{dialect: DialectFor(store)}
 }
 
+// dialectName is the storage name of the engine's dialect.
+func (e *Engine) dialectName() string {
+	if e.dialect == DialectPostgres {
+		return storage.SQLDialectPostgres
+	}
+	return storage.SQLDialectSQLite
+}
+
 // NewEngineWithDialect creates an engine with an explicit dialect.
 // Use this in tests or when auto-detection is insufficient.
 func NewEngineWithDialect(d Dialect) *Engine {
@@ -58,12 +66,26 @@ func NewEngineWithDialect(d Dialect) *Engine {
 // for. profileID, when non-empty, restricts results to objects owned by
 // that profile.
 func (e *Engine) Search(ctx context.Context, objects storage.ObjectStore, query string, limit, offset int, profileID ...string) ([]*storage.KnowledgeObject, int, error) {
+	return e.SearchAs(ctx, nil, objects, query, limit, offset, profileID...)
+}
+
+// SearchAs is Search on behalf of viewer v: objects is the viewer's
+// scoped object store, which keeps the rows to what v may see, and the
+// cross-object operators of the query (mention, related) are compiled
+// with v's predicate on both sides of their edge subqueries (ADR-080
+// §7), so a hidden object never selects a visible one. A nil or
+// unrestricted v compiles as Search does.
+func (e *Engine) SearchAs(ctx context.Context, v storage.Viewer, objects storage.ObjectStore, query string, limit, offset int, profileID ...string) ([]*storage.KnowledgeObject, int, error) {
 	ast, err := Parse(query)
 	if err != nil {
 		return nil, 0, &invalidQuery{stage: "parse", cause: err}
 	}
 
-	where, args, err := CompileFor(e.dialect, ast)
+	var scope *storage.Scope
+	if sc, ok := storage.ViewerScope(v, e.dialectName()); ok {
+		scope = &sc
+	}
+	where, args, err := CompileScoped(e.dialect, ast, scope)
 	if err != nil {
 		return nil, 0, &invalidQuery{stage: "compile", cause: err}
 	}

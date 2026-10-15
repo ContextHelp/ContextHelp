@@ -137,7 +137,7 @@ func ids(objs []storage.KnowledgeObject) []string {
 
 func (e objectReadEnv) list(t *testing.T, rawQuery string) listBody {
 	t.Helper()
-	code, body := e.get(t, "/api/v1/objects?"+rawQuery, dpkmstest.RoleReader)
+	code, body := e.get(t, "/api/v1/objects?"+rawQuery, dpkmstest.RoleAdmin)
 	require.Equal(t, http.StatusOK, code, "GET /objects?%s: %s", rawQuery, body)
 	var out listBody
 	require.NoError(t, json.Unmarshal(body, &out))
@@ -261,14 +261,14 @@ func testListRejectsBadParams(t *testing.T, env objectReadEnv) {
 		{"type=", "type"},
 	}
 	for _, tc := range cases {
-		code, body := env.get(t, "/api/v1/objects?"+tc.query, dpkmstest.RoleReader)
+		code, body := env.get(t, "/api/v1/objects?"+tc.query, dpkmstest.RoleAdmin)
 		assertInvalidParam(t, code, body, tc.param)
 	}
 }
 
 func (e objectReadEnv) facets(t *testing.T, rawQuery string) map[string]int {
 	t.Helper()
-	code, body := e.get(t, "/api/v1/objects/facets?"+rawQuery, dpkmstest.RoleReader)
+	code, body := e.get(t, "/api/v1/objects/facets?"+rawQuery, dpkmstest.RoleAdmin)
 	require.Equal(t, http.StatusOK, code, "GET /objects/facets?%s: %s", rawQuery, body)
 	var out struct {
 		Data map[string]int `json:"data"`
@@ -306,14 +306,14 @@ func testFacetsRejectsBadParams(t *testing.T, env objectReadEnv) {
 		{"foo=1", "foo"},
 	}
 	for _, tc := range cases {
-		code, body := env.get(t, "/api/v1/objects/facets?"+tc.query, dpkmstest.RoleReader)
+		code, body := env.get(t, "/api/v1/objects/facets?"+tc.query, dpkmstest.RoleAdmin)
 		assertInvalidParam(t, code, body, tc.param)
 	}
 }
 
 func (e objectReadEnv) related(t *testing.T, id, rawQuery string) []string {
 	t.Helper()
-	code, body := e.get(t, "/api/v1/objects/"+id+"/related?"+rawQuery, dpkmstest.RoleReader)
+	code, body := e.get(t, "/api/v1/objects/"+id+"/related?"+rawQuery, dpkmstest.RoleAdmin)
 	require.Equal(t, http.StatusOK, code, "GET /objects/%s/related?%s: %s", id, rawQuery, body)
 	var out struct {
 		Data []storage.KnowledgeObject `json:"data"`
@@ -332,7 +332,7 @@ func testRelated(t *testing.T, env objectReadEnv) {
 	assert.ElementsMatch(t, []string{"o-a", "o-c"}, env.related(t, "o-b", "depth=1"))
 	assert.Empty(t, env.related(t, "o-i", ""))
 
-	code, body := env.get(t, "/api/v1/objects/o-missing/related", dpkmstest.RoleReader)
+	code, body := env.get(t, "/api/v1/objects/o-missing/related", dpkmstest.RoleAdmin)
 	assert.Equal(t, http.StatusNotFound, code, "%s", body)
 }
 
@@ -348,7 +348,7 @@ func testRelatedRejectsBadParams(t *testing.T, env objectReadEnv) {
 		{"depth=1&depth=2", "depth"},
 	}
 	for _, tc := range cases {
-		code, body := env.get(t, "/api/v1/objects/o-a/related?"+tc.query, dpkmstest.RoleReader)
+		code, body := env.get(t, "/api/v1/objects/o-a/related?"+tc.query, dpkmstest.RoleAdmin)
 		assertInvalidParam(t, code, body, tc.param)
 	}
 }

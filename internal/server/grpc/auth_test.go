@@ -15,13 +15,15 @@ import (
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/auth/authtest"
 	"github.com/ideacrafterslabs/ctxt/internal/security"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
-// newTestChain is a chain over one carried token for the admin "ops".
+// newTestChain is a chain over one carried token for the admin "ops",
+// the instance owner (kind owner, so its viewer is unrestricted).
 func newTestChain(t *testing.T) *authn.Chain {
 	t.Helper()
 	return authtest.TokenChain(
-		authtest.Token{Token: "tok-valid-fixture-0123456789abcdef0123456789", Principal: "ops", Roles: []string{"admin"}},
+		authtest.Token{Token: "tok-valid-fixture-0123456789abcdef0123456789", Principal: "ops", Kind: storage.PrincipalKindOwner, Roles: []string{"admin"}},
 	)
 }
 
@@ -30,7 +32,7 @@ func unaryInfo(method string) *grpc.UnaryServerInfo {
 }
 
 func TestAuthUnaryMissingCredential(t *testing.T) {
-	ic := authUnaryInterceptor(newTestChain(t), nil)
+	ic := authUnaryInterceptor(newTestChain(t), nil, nil)
 	_, err := ic(context.Background(), nil, unaryInfo("/dpkms.v1.QueryService/Search"),
 		func(context.Context, any) (any, error) { return "ok", nil })
 	if status.Code(err) != codes.Unauthenticated {
@@ -39,7 +41,7 @@ func TestAuthUnaryMissingCredential(t *testing.T) {
 }
 
 func TestAuthUnaryInvalidToken(t *testing.T) {
-	ic := authUnaryInterceptor(newTestChain(t), nil)
+	ic := authUnaryInterceptor(newTestChain(t), nil, nil)
 	ctx := metadata.NewIncomingContext(context.Background(),
 		metadata.Pairs("authorization", "Bearer nope"))
 	_, err := ic(ctx, nil, unaryInfo("/dpkms.v1.QueryService/Search"),
@@ -50,7 +52,7 @@ func TestAuthUnaryInvalidToken(t *testing.T) {
 }
 
 func TestAuthUnaryValidTokenSetsPrincipal(t *testing.T) {
-	ic := authUnaryInterceptor(newTestChain(t), nil)
+	ic := authUnaryInterceptor(newTestChain(t), nil, nil)
 	ctx := metadata.NewIncomingContext(context.Background(),
 		metadata.Pairs("authorization", "Bearer tok-valid-fixture-0123456789abcdef0123456789"))
 	var seen *authn.Principal
@@ -71,7 +73,7 @@ func TestAuthUnaryValidTokenSetsPrincipal(t *testing.T) {
 }
 
 func TestAuthUnaryAPIKeyMetadata(t *testing.T) {
-	ic := authUnaryInterceptor(newTestChain(t), nil)
+	ic := authUnaryInterceptor(newTestChain(t), nil, nil)
 	ctx := metadata.NewIncomingContext(context.Background(),
 		metadata.Pairs("x-api-key", "tok-valid-fixture-0123456789abcdef0123456789"))
 	_, err := ic(ctx, nil, unaryInfo("/dpkms.v1.QueryService/Search"),
@@ -82,7 +84,7 @@ func TestAuthUnaryAPIKeyMetadata(t *testing.T) {
 }
 
 func TestAuthUnaryHealthExempt(t *testing.T) {
-	ic := authUnaryInterceptor(newTestChain(t), nil)
+	ic := authUnaryInterceptor(newTestChain(t), nil, nil)
 	// No credentials at all — health checks must still pass.
 	_, err := ic(context.Background(), nil, unaryInfo("/grpc.health.v1.Health/Check"),
 		func(context.Context, any) (any, error) { return "ok", nil })
@@ -99,7 +101,7 @@ type fakeServerStream struct {
 func (f *fakeServerStream) Context() context.Context { return f.ctx }
 
 func TestAuthStreamMissingCredential(t *testing.T) {
-	ic := authStreamInterceptor(newTestChain(t), nil)
+	ic := authStreamInterceptor(newTestChain(t), nil, nil)
 	err := ic(nil, &fakeServerStream{ctx: context.Background()},
 		&grpc.StreamServerInfo{FullMethod: "/dpkms.v1.JobService/WatchJob"},
 		func(any, grpc.ServerStream) error { return nil })
@@ -109,7 +111,7 @@ func TestAuthStreamMissingCredential(t *testing.T) {
 }
 
 func TestAuthStreamValidTokenSetsPrincipal(t *testing.T) {
-	ic := authStreamInterceptor(newTestChain(t), nil)
+	ic := authStreamInterceptor(newTestChain(t), nil, nil)
 	ctx := metadata.NewIncomingContext(context.Background(),
 		metadata.Pairs("authorization", "Bearer tok-valid-fixture-0123456789abcdef0123456789"))
 	var seen *authn.Principal
@@ -136,7 +138,7 @@ func TestAuthUnaryFailureRecordsSecurityEvent(t *testing.T) {
 	ch := make(chan security.Alert, 4)
 	em.AddHandler(func(_ context.Context, a security.Alert) { ch <- a })
 
-	ic := authUnaryInterceptor(newTestChain(t), em)
+	ic := authUnaryInterceptor(newTestChain(t), em, nil)
 	ctx := metadata.NewIncomingContext(context.Background(),
 		metadata.Pairs("authorization", "Bearer wrong"))
 	_, err := ic(ctx, nil, unaryInfo("/dpkms.v1.QueryService/Search"),
@@ -156,7 +158,7 @@ func TestAuthUnaryFailureRecordsSecurityEvent(t *testing.T) {
 }
 
 func TestAuthUnaryValidTokenAttachesPolicyPrincipal(t *testing.T) {
-	ic := authUnaryInterceptor(newTestChain(t), nil)
+	ic := authUnaryInterceptor(newTestChain(t), nil, nil)
 	ctx := metadata.NewIncomingContext(context.Background(),
 		metadata.Pairs("authorization", "Bearer tok-valid-fixture-0123456789abcdef0123456789"))
 	var role string

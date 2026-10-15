@@ -12,6 +12,7 @@ import (
 	sqldriver "database/sql/driver"
 
 	"github.com/ideacrafterslabs/ctxt/internal/search/ftsq"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/indexsig"
 )
 
@@ -1479,10 +1480,23 @@ func migrateGraphCanonical(ctx context.Context, db *sql.DB) error {
 type ObjectStore struct {
 	db   *sql.DB
 	caps *pgCaps
+	// scope, when set, is the restricted viewer's visibility every read
+	// ANDs into its SQL (see scope.go); nil is the driver's own store.
+	scope *storage.Scope
 }
 type (
-	EntityStore   struct{ db *sql.DB }
-	EdgeStore     struct{ db *sql.DB }
+	EntityStore struct {
+		db *sql.DB
+		// scope, when set, keeps every read to the entities the viewer
+		// may see (see scope.go).
+		scope *storage.Scope
+	}
+	EdgeStore struct {
+		db *sql.DB
+		// scope, when set, keeps every read to the edges whose object
+		// ends the viewer may see (see scope.go).
+		scope *storage.Scope
+	}
 	JobStore      struct{ db *sql.DB }
 	PipelineStore struct{ db *sql.DB }
 	StepStore     struct{ db *sql.DB }

@@ -45,7 +45,7 @@ func (s *Service) FederationAccept(
 	for i := range objects {
 		obj := &objects[i]
 		if obj.ContentHash != "" {
-			existing, _ := objs.GetByContentHash(ctx, obj.ContentHash)
+			existing, _ := objs.GetByContentHash(ctx, obj.ContentHash, obj.ProfileID)
 			if existing != nil {
 				continue // dedup — already present
 			}

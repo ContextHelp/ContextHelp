@@ -232,19 +232,22 @@ func TestInboxOverAPIRoles(t *testing.T) {
 	seedInboxItem(t, db, "inbox_role_02", "second")
 	seedRawObject(t, db, "raw_role_01", "raw")
 
-	db.useRole(t, dpkmstest.RoleReader)
+	// The inbox is owner-only (ADR-080 §6): the admin owner lists it;
+	// a writer and a reader are refused its reads and its processing.
+	db.useRole(t, dpkmstest.RoleAdmin)
 	out, err := db.exec("inbox", "list")
 	if err != nil || !strings.Contains(out, "inbox_role_01") || !strings.Contains(out, "2 total") {
-		t.Fatalf("reader inbox list: %v\n%s", err, out)
+		t.Fatalf("admin inbox list: %v\n%s", err, out)
 	}
 	out, err = db.exec("inbox", "list", "--raw")
 	if err != nil || !strings.Contains(out, "raw_role_01") {
-		t.Fatalf("reader inbox list --raw: %v\n%s", err, out)
+		t.Fatalf("admin inbox list --raw: %v\n%s", err, out)
 	}
 
 	for _, role := range []string{dpkmstest.RoleWriter, dpkmstest.RoleReader} {
 		db.useRole(t, role)
 		for _, args := range [][]string{
+			{"inbox", "list"},
 			{"inbox", "triage", "inbox_role_01"},
 			{"inbox", "discard", "--confirm=yes", "inbox_role_01"},
 			{"inbox", "clear", "--confirm=yes"},

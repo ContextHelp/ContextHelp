@@ -51,7 +51,7 @@ func jobStatus(t *testing.T, srv *dpkmstest.Server, id string) storage.JobStatus
 
 func TestListJobs(t *testing.T) {
 	srv := jobsFixture(t)
-	c := roleClient(t, srv, dpkmstest.RoleReader)
+	c := roleClient(t, srv, dpkmstest.RoleAdmin)
 	ctx := context.Background()
 
 	jobs, total, err := c.ListJobs(ctx, dpkmsclient.JobListRequest{})
@@ -81,7 +81,7 @@ func TestListJobs(t *testing.T) {
 
 func TestGetJob(t *testing.T) {
 	srv := jobsFixture(t)
-	c := roleClient(t, srv, dpkmstest.RoleReader)
+	c := roleClient(t, srv, dpkmstest.RoleAdmin)
 	ctx := context.Background()
 
 	job, err := c.GetJob(ctx, "j-failed")
@@ -101,11 +101,16 @@ func TestRetryJob(t *testing.T) {
 	srv := jobsFixture(t)
 	ctx := context.Background()
 
-	_, err := roleClient(t, srv, dpkmstest.RoleReader).RetryJob(ctx, "j-failed")
-	if e := envelope(t, err); e.ExitCode != output.ExitUnauthorized {
-		t.Errorf("reader retry: exit %d", e.ExitCode)
+	// A reader lacks write:jobs; a writer holds it but jobs are
+	// owner-only (ADR-080 §6), so both are refused and only the owner
+	// retries.
+	for _, role := range []string{dpkmstest.RoleReader, dpkmstest.RoleWriter} {
+		_, err := roleClient(t, srv, role).RetryJob(ctx, "j-failed")
+		if e := envelope(t, err); e.ExitCode != output.ExitUnauthorized {
+			t.Errorf("%s retry: exit %d", role, e.ExitCode)
+		}
 	}
-	job, err := roleClient(t, srv, dpkmstest.RoleWriter).RetryJob(ctx, "j-failed")
+	job, err := roleClient(t, srv, dpkmstest.RoleAdmin).RetryJob(ctx, "j-failed")
 	if err != nil {
 		t.Fatal(err)
 	}

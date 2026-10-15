@@ -265,7 +265,9 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 
 	durationMs := time.Since(start).Milliseconds()
 
-	existing, err := p.store.Objects().GetByContentHash(ctx, draft.ContentHash)
+	// Dedup stays inside the draft's profile (ADR-080 §4): the same
+	// content under another profile becomes its own object.
+	existing, err := p.store.Objects().GetByContentHash(ctx, draft.ContentHash, draft.ProfileID)
 	if err == nil && existing != nil {
 		existingID, err := p.store.Objects().Reinforce(ctx, draft.ContentHash, draft)
 		if err != nil {

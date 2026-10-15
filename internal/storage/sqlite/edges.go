@@ -14,6 +14,9 @@ import (
 
 type EdgeStore struct {
 	db *sql.DB
+	// scope, when set, keeps every read to the edges whose object ends
+	// the viewer may see (see scope.go).
+	scope *storage.Scope
 }
 
 // edgeExecer is what an edge write runs on: the database or a
@@ -154,9 +157,11 @@ func insertMissingEdge(ctx context.Context, db edgeExecer, edge *storage.Edge) (
 }
 
 func (s *EdgeStore) ListFrom(ctx context.Context, fromType, fromID string) ([]*storage.Edge, error) {
+	clause, sargs := edgeScope(s.scope)
+	// #nosec G202 -- clause is fixed SQL over compiled predicates; values are bound.
 	rows, err := s.db.QueryContext(ctx, `SELECT
 		id, from_type, from_id, to_type, to_id, edge_type, weight, metadata, created_at
-	FROM edges WHERE from_type = ? AND from_id = ?`, fromType, fromID)
+	FROM edges WHERE from_type = ? AND from_id = ?`+clause, append([]any{fromType, fromID}, sargs...)...)
 	if err != nil {
 		return nil, fmt.Errorf("list edges from: %w", err)
 	}
@@ -165,9 +170,11 @@ func (s *EdgeStore) ListFrom(ctx context.Context, fromType, fromID string) ([]*s
 }
 
 func (s *EdgeStore) ListTo(ctx context.Context, toType, toID string) ([]*storage.Edge, error) {
+	clause, sargs := edgeScope(s.scope)
+	// #nosec G202 -- clause is fixed SQL over compiled predicates; values are bound.
 	rows, err := s.db.QueryContext(ctx, `SELECT
 		id, from_type, from_id, to_type, to_id, edge_type, weight, metadata, created_at
-	FROM edges WHERE to_type = ? AND to_id = ?`, toType, toID)
+	FROM edges WHERE to_type = ? AND to_id = ?`+clause, append([]any{toType, toID}, sargs...)...)
 	if err != nil {
 		return nil, fmt.Errorf("list edges to: %w", err)
 	}
@@ -197,11 +204,15 @@ func (s *EdgeStore) DeleteByObject(ctx context.Context, objectID string) error {
 	return nil
 }
 
-// CountMentionsTo returns the count of edges pointing to the given node (toType, toID).
+// CountMentionsTo returns the count of edges pointing to the given node
+// (toType, toID); a scoped store counts the edges from visible objects
+// (ADR-080 §6: rerank signals over visible objects).
 func (s *EdgeStore) CountMentionsTo(ctx context.Context, toType, toID string) (int, error) {
 	var count int
+	clause, sargs := edgeScope(s.scope)
+	// #nosec G202 -- clause is fixed SQL over compiled predicates; values are bound.
 	err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM edges WHERE to_type = ? AND to_id = ?`, toType, toID).Scan(&count)
+		`SELECT COUNT(*) FROM edges WHERE to_type = ? AND to_id = ?`+clause, append([]any{toType, toID}, sargs...)...).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("count mentions to: %w", err)
 	}
@@ -274,6 +285,13 @@ func (s *EdgeStore) sharedMentionNeighbours(ctx context.Context, frontier map[st
 		  AND e2.edge_type = 'mentions'`,
 		joinPlaceholders(len(frontier)),
 	)
+	// Both sides of the traversal stay among visible objects: the seed
+	// and the neighbour (ADR-080 §6).
+	if s.scope != nil {
+		vis, vargs := visibleObjects(*s.scope)
+		query += " AND e1.from_id IN " + vis + " AND e2.from_id IN " + vis
+		args = append(append(args, vargs...), vargs...)
+	}
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {

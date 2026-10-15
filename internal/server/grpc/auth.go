@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 
 	"google.golang.org/grpc"
@@ -34,7 +35,7 @@ const healthMethodPrefix = "/grpc.health.v1.Health/"
 // match. Authentication failures are recorded on the security emitter
 // (nil-safe), keyed by peer address since no principal exists; scope
 // denials are recorded against the principal.
-func authUnaryInterceptor(chain *authn.Chain, sec *security.Emitter) grpc.UnaryServerInterceptor {
+func authUnaryInterceptor(chain *authn.Chain, sec *security.Emitter, viewers *sharing.Resolver) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		if strings.HasPrefix(info.FullMethod, healthMethodPrefix) {
 			return handler(ctx, req)
@@ -44,8 +45,14 @@ func authUnaryInterceptor(chain *authn.Chain, sec *security.Emitter) grpc.UnaryS
 			recordAuthFailure(ctx, sec)
 			return nil, unauthenticatedStatus(err)
 		}
-		ctx = attachCaller(ctx, res.Principal)
+		ctx, err = attachCaller(ctx, res.Principal, viewers)
+		if err != nil {
+			return nil, err
+		}
 		if err := authorizeMethod(ctx, info.FullMethod, sec); err != nil {
+			return nil, err
+		}
+		if err := authorizeCapability(ctx, info.FullMethod); err != nil {
 			return nil, err
 		}
 		return handler(ctx, req)
@@ -54,10 +61,17 @@ func authUnaryInterceptor(chain *authn.Chain, sec *security.Emitter) grpc.UnaryS
 
 // attachCaller binds an authenticated principal and its viewer to ctx
 // in one step, so no RPC reaches a handler authenticated but unscoped.
-// Every authenticated principal is Unrestricted until share policies
-// resolve a narrower viewer per principal (ADR-080 §4).
-func attachCaller(ctx context.Context, princ *authn.Principal) context.Context {
-	return sharing.WithViewer(authn.Attach(ctx, princ), sharing.Unrestricted)
+// The owner is Unrestricted; anyone else gets the viewer viewers
+// compiles from its grants, under the identity that authenticated it
+// (ADR-080 §4). A resolution failure is Internal and the RPC refused:
+// a caller is never attached unscoped by mistake.
+func attachCaller(ctx context.Context, princ *authn.Principal, viewers *sharing.Resolver) (context.Context, error) {
+	v, err := viewers.Resolve(ctx, princ.ID, princ.Kind, princ.Meta[authn.MetaIdentityID])
+	if err != nil {
+		slog.Error("grpc auth: viewer resolution failed", "principal", princ.ID, "err", err)
+		return nil, status.Error(codes.Internal, "viewer resolution failed")
+	}
+	return sharing.WithViewer(authn.Attach(ctx, princ), v), nil
 }
 
 // viewerUnaryInterceptor attaches v to every unary call. It is the
@@ -79,7 +93,7 @@ func viewerStreamInterceptor(v sharing.Viewer) grpc.StreamServerInterceptor {
 
 // authStreamInterceptor mirrors authUnaryInterceptor for streaming RPCs
 // (e.g. JobService.WatchJob).
-func authStreamInterceptor(chain *authn.Chain, sec *security.Emitter) grpc.StreamServerInterceptor {
+func authStreamInterceptor(chain *authn.Chain, sec *security.Emitter, viewers *sharing.Resolver) grpc.StreamServerInterceptor {
 	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		if strings.HasPrefix(info.FullMethod, healthMethodPrefix) {
 			return handler(srv, ss)
@@ -89,8 +103,14 @@ func authStreamInterceptor(chain *authn.Chain, sec *security.Emitter) grpc.Strea
 			recordAuthFailure(ss.Context(), sec)
 			return unauthenticatedStatus(err)
 		}
-		ctx := attachCaller(ss.Context(), res.Principal)
+		ctx, err := attachCaller(ss.Context(), res.Principal, viewers)
+		if err != nil {
+			return err
+		}
 		if err := authorizeMethod(ctx, info.FullMethod, sec); err != nil {
+			return err
+		}
+		if err := authorizeCapability(ctx, info.FullMethod); err != nil {
 			return err
 		}
 		return handler(srv, &authenticatedStream{ServerStream: ss, ctx: ctx})

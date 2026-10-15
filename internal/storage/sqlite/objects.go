@@ -27,6 +27,9 @@ type ObjectStore struct {
 	db *sql.DB
 	// emb is the per-model embedding store VectorSearch ranks through.
 	emb storage.EmbeddingStore
+	// scope, when set, is the restricted viewer's visibility every read
+	// ANDs into its SQL (see scope.go); nil is the driver's own store.
+	scope *storage.Scope
 }
 
 func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) error {
@@ -117,6 +120,7 @@ func insertObjectFTSTx(ctx context.Context, tx *sql.Tx, id string, index storage
 }
 
 func (s *ObjectStore) Get(ctx context.Context, id string) (*storage.KnowledgeObject, error) {
+	// #nosec G202 -- andScope is the viewer's compiled predicate; its values are bound in scopeArgs.
 	row := s.db.QueryRowContext(ctx, `SELECT
 		id, type, subtype, raw_content, content_type, text_content,
 		metadata, summaries, sections, tags, mentions,
@@ -124,13 +128,29 @@ func (s *ObjectStore) Get(ctx context.Context, id string) (*storage.KnowledgeObj
 		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
 		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq, classes
-	FROM objects WHERE id = ?`, id)
+	FROM objects WHERE id = ?`+s.andScope(), append([]any{id}, s.scopeArgs()...)...)
 	obj, err := scanObject(row)
 	if err != nil {
 		return nil, err
 	}
 	obj.AttachmentIDs, err = s.listAttachmentIDs(ctx, id)
 	return obj, err
+}
+
+// andScope is " AND (<scope>)" for a scoped store, empty otherwise: a
+// hidden row answers exactly as a missing one.
+func (s *ObjectStore) andScope() string {
+	term, _ := scopeTerm(s.scope)
+	if term == "" {
+		return ""
+	}
+	return " AND " + term
+}
+
+// scopeArgs are the scope's bound arguments, none without a scope.
+func (s *ObjectStore) scopeArgs() []any {
+	_, args := scopeTerm(s.scope)
+	return args
 }
 
 // listAttachmentIDs returns the IDs of all attachments for objectID.
@@ -150,10 +170,13 @@ func (s *ObjectStore) listAttachmentIDs(ctx context.Context, objectID string) ([
 	})
 }
 
-func (s *ObjectStore) GetByContentHash(ctx context.Context, hash string) (*storage.KnowledgeObject, error) {
+// GetByContentHash returns the object of profileID with content hash
+// hash: dedup stays inside a profile (ADR-080 §4).
+func (s *ObjectStore) GetByContentHash(ctx context.Context, hash, profileID string) (*storage.KnowledgeObject, error) {
 	if hash == "" {
 		return nil, nil
 	}
+	// #nosec G202 -- andScope is the viewer's compiled predicate; its values are bound in scopeArgs.
 	row := s.db.QueryRowContext(ctx, `SELECT
 		id, type, subtype, raw_content, content_type, text_content,
 		metadata, summaries, sections, tags, mentions,
@@ -161,7 +184,8 @@ func (s *ObjectStore) GetByContentHash(ctx context.Context, hash string) (*stora
 		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
 		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq, classes
-	FROM objects WHERE content_hash = ? LIMIT 1`, hash)
+	FROM objects WHERE content_hash = ? AND profile_id = ?`+s.andScope()+` LIMIT 1`,
+		append([]any{hash, profileID}, s.scopeArgs()...)...)
 	obj, err := scanObject(row)
 	if errors.Is(err, errObjectNotFound) {
 		return nil, nil
@@ -173,6 +197,7 @@ func (s *ObjectStore) GetBySourceKey(ctx context.Context, key string) (*storage.
 	if key == "" {
 		return nil, nil
 	}
+	// #nosec G202 -- andScope is the viewer's compiled predicate; its values are bound in scopeArgs.
 	row := s.db.QueryRowContext(ctx, `SELECT
 		id, type, subtype, raw_content, content_type, text_content,
 		metadata, summaries, sections, tags, mentions,
@@ -180,7 +205,7 @@ func (s *ObjectStore) GetBySourceKey(ctx context.Context, key string) (*storage.
 		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
 		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq, classes
-	FROM objects WHERE source_key = ? LIMIT 1`, key)
+	FROM objects WHERE source_key = ?`+s.andScope()+` LIMIT 1`, append([]any{key}, s.scopeArgs()...)...)
 	obj, err := scanObject(row)
 	if errors.Is(err, errObjectNotFound) {
 		return nil, nil
@@ -189,7 +214,7 @@ func (s *ObjectStore) GetBySourceKey(ctx context.Context, key string) (*storage.
 }
 
 func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, int, error) {
-	countSQL, pageSQL, args := objectListSQL(filter)
+	countSQL, pageSQL, args := objectListSQL(filter, s.scope)
 
 	var total int
 	if err := s.db.QueryRowContext(ctx, countSQL, args...).Scan(&total); err != nil {
@@ -214,11 +239,11 @@ func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]
 // args in order. The count takes the predicates as they are; the page
 // takes them with the default status scope hinted (objectListConditions)
 // so the planner reaches the page through the sort column's index.
-func objectListSQL(filter storage.ObjectFilter) (countSQL, pageSQL string, args []any) {
-	conditions, args := objectListConditions(filter, false)
+func objectListSQL(filter storage.ObjectFilter, scope *storage.Scope) (countSQL, pageSQL string, args []any) {
+	conditions, args := objectListConditions(filter, false, scope)
 	countSQL = "SELECT COUNT(*) FROM objects" + whereClause(conditions)
 
-	pageConditions, _ := objectListConditions(filter, true)
+	pageConditions, _ := objectListConditions(filter, true, scope)
 	// #nosec G201 -- whereClause joins objectListConditions' fixed predicates (values bound in args); the order is a ListOrder literal.
 	pageSQL = fmt.Sprintf(`SELECT
 		id, type, subtype, raw_content, content_type, text_content,
@@ -259,8 +284,9 @@ func whereClause(conditions []string) string {
 // count keeps the plain predicate: with nothing to order, the covering
 // walk of idx_objects_status is its cheapest plan, and with another
 // filter it stays as it was. Any other status is a small set and is
-// never hinted.
-func objectListConditions(filter storage.ObjectFilter, page bool) ([]string, []any) {
+// never hinted. A scope's predicate goes last, so the count and the
+// page of a restricted viewer are computed inside the scoped query.
+func objectListConditions(filter storage.ObjectFilter, page bool, scope *storage.Scope) ([]string, []any) {
 	var conditions []string
 	var args []any
 
@@ -326,6 +352,11 @@ func objectListConditions(filter storage.ObjectFilter, page bool) ([]string, []a
 	mc, ma := metadataFacetConditionsSQLite(filter)
 	conditions = append(conditions, mc...)
 	args = append(args, ma...)
+
+	if term, sargs := scopeTerm(scope); term != "" {
+		conditions = append(conditions, term)
+		args = append(args, sargs...)
+	}
 	return conditions, args
 }
 
@@ -492,11 +523,14 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 	// SQLITE_BUSY immediately, bypassing busy_timeout. Taking the write lock
 	// up front makes concurrent reinforcements queue instead of failing, and
 	// the read below then sees the latest committed tags and mentions.
+	// Dedup stays inside a profile (ADR-080 §4): only the row of
+	// mergeData's profile is reinforced; the same content under another
+	// profile is another object, and no row here is sql.ErrNoRows.
 	now := time.Now().Format(time.RFC3339)
 	res, err := tx.ExecContext(ctx, `UPDATE objects SET
 			reinforcement_count = reinforcement_count + 1,
 			last_reinforced_at = ?
-		WHERE content_hash = ?`, now, hash)
+		WHERE content_hash = ? AND profile_id = ?`, now, hash, mergeData.ProfileID)
 	if err != nil {
 		return "", fmt.Errorf("reinforce: update: %w", err)
 	}
@@ -512,7 +546,7 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 		lastReinforcedAt       sql.NullString
 	)
 	err = tx.QueryRowContext(ctx, `SELECT id, tags, mentions, last_reinforced_at
-		FROM objects WHERE content_hash = ?`, hash).Scan(
+		FROM objects WHERE content_hash = ? AND profile_id = ?`, hash, mergeData.ProfileID).Scan(
 		&obj.ID, &tagsJSON, &mentionsJSON, &lastReinforcedAt,
 	)
 	if err != nil {
@@ -546,7 +580,7 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 		contentUpdate = ", raw_content = ?, text_content = ?"
 		contentArgs = append(contentArgs, mergeData.RawContent, projection.BodyText(mergeData))
 	}
-	contentArgs = append(contentArgs, hash)
+	contentArgs = append(contentArgs, hash, mergeData.ProfileID)
 
 	// fts_indexed is not cleared here: the row is re-indexed below, which
 	// sets it when the new body is non-empty. Clearing it misreported
@@ -558,7 +592,7 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 			mentions = ?,
 			updated_at = ?
 			%s
-		WHERE content_hash = ?
+		WHERE content_hash = ? AND profile_id = ?
 	`, contentUpdate)
 
 	_, err = tx.ExecContext(ctx, query, contentArgs...)
@@ -567,7 +601,7 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 	}
 	// The text, tags and mentions just written feed the FTS body:
 	// re-index the row as Update does, or search keeps matching what
-	// it held before. content_hash is unique: one row.
+	// it held before. (content_hash, profile_id) is unique: one row.
 	if err := reindexRowTx(ctx, tx, obj.ID); err != nil {
 		return "", fmt.Errorf("reinforce: reindex: %w", err)
 	}
@@ -622,8 +656,8 @@ func mentionsToStrings(uris []uri.URI) []string {
 func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, int, error) {
 	// List's predicates (status scope first) follow the caller's so its ?
 	// placeholders keep their positions: SQLite binds args in order.
-	conditions, condArgs := objectListConditions(filter, false)
-	pageConditions, _ := objectListConditions(filter, true)
+	conditions, condArgs := objectListConditions(filter, false, s.scope)
+	pageConditions, _ := objectListConditions(filter, true, s.scope)
 	if where != "" {
 		conditions = append([]string{"(" + where + ")"}, conditions...)
 		pageConditions = append([]string{"(" + where + ")"}, pageConditions...)
@@ -933,6 +967,18 @@ func (s *ObjectStore) VectorSearch(ctx context.Context, q storage.VectorQuery, f
 	if s.emb == nil {
 		return nil, fmt.Errorf("vector search: no embedding store")
 	}
+	// A restricted viewer ranks the masked variant over visible objects
+	// only, through the embedding store bound to its scope (ADR-080
+	// §7); Get below is scoped too, so a hit hidden between the two
+	// reads is skipped like a deleted one.
+	emb := s.emb
+	if s.scope != nil {
+		sc, ok := emb.(storage.EmbeddingScoper)
+		if !ok {
+			return nil, fmt.Errorf("vector search: embedding store %T: %w", emb, storage.ErrNoScopedReads)
+		}
+		emb = sc.Scoped(*s.scope)
+	}
 
 	limit := filter.Limit
 	if limit <= 0 {
@@ -942,10 +988,11 @@ func (s *ObjectStore) VectorSearch(ctx context.Context, q storage.VectorQuery, f
 		limit = 50
 	}
 
-	hits, err := s.emb.Search(ctx, storage.VectorQuery{
+	hits, err := emb.Search(ctx, storage.VectorQuery{
 		ModelID: q.ModelID,
 		Vector:  q.Vector,
 		TopK:    limit * vectorOverfetch,
+		Variant: q.Variant,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("vector search: %w", err)
@@ -1026,18 +1073,36 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 		limit = 50
 	}
 
-	q := `
+	// A restricted viewer searches the masked shadow index (ADR-080
+	// §7): terms a viewer may not see never match, rank or count.
+	fts := "objects_fts"
+	if s.scope != nil {
+		fts = "objects_fts_masked"
+	}
+	// #nosec G201 -- fts is one of two literal table names.
+	q := fmt.Sprintf(`
 		SELECT o.id, o.type, o.subtype, o.raw_content, o.content_type, o.text_content,
 		       o.metadata, o.summaries, o.sections, o.tags, o.mentions,
 		       o.decisions, o.tasks, o.pipeline, o.source,
 		       o.registry_influences, o.content_hash, o.reinforcement_count, o.last_reinforced_at,
 		       o.created_at, o.updated_at, o.fts_indexed, o.status, o.inbox_note,
 		       o.remind_at, o.reminded_at, o.profile_id, o.graph_json,
-		       bm25(objects_fts) AS score
-		FROM objects_fts
-		JOIN objects o ON objects_fts.id = o.id
-		WHERE objects_fts MATCH ?`
+		       bm25(%[1]s) AS score
+		FROM %[1]s
+		JOIN objects o ON %[1]s.id = o.id
+		WHERE %[1]s MATCH ?`, fts)
 	args := []any{query}
+
+	// The scope is evaluated on each matched row: objects_fts exposes
+	// only id and the body, so the predicate's unqualified object
+	// columns (a policy names type, subtype, tag, profile, class,
+	// source, dates and metadata keys, never id) bind to o. Checking
+	// the matches is far cheaper than materializing the visible set.
+	if term, sargs := scopeTerm(s.scope); term != "" {
+		// #nosec G202 -- term is compiled SQL whose values are bound in sargs.
+		q += " AND " + term
+		args = append(args, sargs...)
+	}
 
 	if st, ok := filter.StatusScope(); ok {
 		q += " AND o.status = ?"

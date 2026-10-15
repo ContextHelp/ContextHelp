@@ -121,10 +121,16 @@ func TestJobRetryOverAPI(t *testing.T) {
 		t.Fatalf("reader retry: exit %d (%v)", exitOf(err), err)
 	}
 
+	// A writer holds write:jobs, but jobs are owner-only (ADR-080 §6):
+	// refused like the reader; the admin owner retries.
 	db.useRole(t, dpkmstest.RoleWriter)
+	if _, err := db.exec("job", "retry", "job_fail"); exitOf(err) != output.ExitUnauthorized {
+		t.Fatalf("writer retry: exit %d (%v)", exitOf(err), err)
+	}
+	db.useRole(t, dpkmstest.RoleAdmin)
 	out, err := db.exec("job", "retry", "job_fail")
 	if err != nil {
-		t.Fatalf("writer retry: %v", err)
+		t.Fatalf("admin retry: %v", err)
 	}
 	if !strings.Contains(out, "job_fail") {
 		t.Errorf("output = %q", out)

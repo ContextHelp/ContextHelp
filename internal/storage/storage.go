@@ -189,7 +189,11 @@ type BlobStore interface {
 type ObjectStore interface {
 	Create(ctx context.Context, obj *KnowledgeObject) error
 	Get(ctx context.Context, id string) (*KnowledgeObject, error)
-	GetByContentHash(ctx context.Context, hash string) (*KnowledgeObject, error)
+	// GetByContentHash returns the object of profileID whose content
+	// hash is hash, or (nil, nil) when there is none. Content-hash
+	// dedup stays inside a profile (ADR-080 §4): the same content under
+	// another profile is another object.
+	GetByContentHash(ctx context.Context, hash, profileID string) (*KnowledgeObject, error)
 	GetBySourceKey(ctx context.Context, key string) (*KnowledgeObject, error)
 	List(ctx context.Context, filter ObjectFilter) ([]*KnowledgeObject, int, error)
 	// CountByType counts every stored object, whatever its status, by
@@ -218,6 +222,11 @@ type ObjectStore interface {
 	// profile, paging and order come from filter exactly as for List, so
 	// a query-language search never reaches an object a List would not.
 	ListBySQL(ctx context.Context, where string, args []any, filter ObjectFilter) ([]*KnowledgeObject, int, error)
+	// Reinforce merges mergeData's tags, mentions and content into the
+	// object of mergeData.ProfileID whose content hash is hash, bumps
+	// its reinforcement count and returns its ID. No such object in
+	// that profile is an error wrapping sql.ErrNoRows: the same content
+	// under another profile is never merged into (ADR-080 §4).
 	Reinforce(ctx context.Context, hash string, mergeData *KnowledgeObject) (string, error)
 	// SetReminder sets remind_at on the object identified by id.
 	SetReminder(ctx context.Context, id string, at time.Time) error

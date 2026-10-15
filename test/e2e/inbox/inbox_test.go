@@ -152,12 +152,15 @@ func TestInboxOverAPIAgainstProtectedDpkms(t *testing.T) {
 		return out
 	}
 
-	t.Run("reader lists the inbox and the queue", func(t *testing.T) {
-		out := expect(t, dpkmstest.RoleReader, 0, "inbox", "list")
+	t.Run("admin lists the inbox and the queue", func(t *testing.T) {
+		out := expect(t, dpkmstest.RoleAdmin, 0, "inbox", "list")
 		if !strings.Contains(out, first) || !strings.Contains(out, "2 total") {
 			t.Fatalf("inbox list:\n%s", out)
 		}
-		expect(t, dpkmstest.RoleReader, 0, "inbox", "list", "--pending")
+		expect(t, dpkmstest.RoleAdmin, 0, "inbox", "list", "--pending")
+	})
+	t.Run("the inbox is owner-only: writer and reader are refused the list with exit 5", func(t *testing.T) {
+		assertInboxListNotShared(t, d)
 	})
 	t.Run("writer is refused processing with exit 5", func(t *testing.T) {
 		// Past the confirm gate, so the refusal is the server's 403.
@@ -171,7 +174,7 @@ func TestInboxOverAPIAgainstProtectedDpkms(t *testing.T) {
 				t.Fatalf("ctxt %s: refusal does not name the missing scope:\n%s", strings.Join(args, " "), out)
 			}
 		}
-		out := expect(t, dpkmstest.RoleReader, 0, "inbox", "list")
+		out := expect(t, dpkmstest.RoleAdmin, 0, "inbox", "list")
 		if !strings.Contains(out, "2 total") {
 			t.Fatalf("a refused command changed the inbox:\n%s", out)
 		}
@@ -190,7 +193,7 @@ func TestInboxOverAPIAgainstProtectedDpkms(t *testing.T) {
 				t.Fatalf("ctxt %s: not refused by the confirm gate:\n%s", strings.Join(args, " "), out)
 			}
 		}
-		list := expect(t, dpkmstest.RoleReader, 0, "inbox", "list")
+		list := expect(t, dpkmstest.RoleAdmin, 0, "inbox", "list")
 		if !strings.Contains(list, "2 total") {
 			t.Fatalf("an unconfirmed command changed the inbox:\n%s", list)
 		}
@@ -204,7 +207,7 @@ func TestInboxOverAPIAgainstProtectedDpkms(t *testing.T) {
 		if !strings.Contains(out, "Cleared 1 inbox item(s)") {
 			t.Fatalf("clear:\n%s", out)
 		}
-		out = expect(t, dpkmstest.RoleReader, 0, "inbox", "list")
+		out = expect(t, dpkmstest.RoleAdmin, 0, "inbox", "list")
 		if !strings.Contains(out, "0 total") || strings.Contains(out, second) {
 			t.Fatalf("inbox after clear:\n%s", out)
 		}
@@ -229,14 +232,29 @@ func TestInboxOverAPIAgainstProtectedDpkms(t *testing.T) {
 	})
 }
 
-// objectStatus reads object id's status through the API as a reader.
+// assertInboxListNotShared checks a writer and a reader are refused
+// the inbox listing with exit 5 NOT_SHARED (ADR-080 §6: the inbox is
+// owner-only).
+func assertInboxListNotShared(t *testing.T, d *testutil.Dpkms) {
+	t.Helper()
+	for _, role := range []string{dpkmstest.RoleWriter, dpkmstest.RoleReader} {
+		out, code := ctxtAs(t, d, role, "inbox", "list")
+		if code != 5 || !strings.Contains(out, "NOT_SHARED") {
+			t.Fatalf("%s inbox list: exit %d, want 5 NOT_SHARED:\n%s", role, code, out)
+		}
+	}
+}
+
+// objectStatus reads object id's status through the API as the owner:
+// a restricted principal sees active objects only, and the items here
+// are triaged or discarded.
 func objectStatus(t *testing.T, d *testutil.Dpkms, id string) string {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodGet, d.URL+"/api/v1/objects/"+id, http.NoBody)
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Header.Set("Authorization", "Bearer "+d.Token(dpkmstest.RoleReader))
+	req.Header.Set("Authorization", "Bearer "+d.Token(dpkmstest.RoleAdmin))
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
