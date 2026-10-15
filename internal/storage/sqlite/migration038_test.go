@@ -29,6 +29,13 @@ func latestMigrationVersion() int {
 	return migrations[len(migrations)-1].Version
 }
 
+// previousMigrationVersion is the version the ledger ends at one
+// migration before the latest: the chain's own numbering, which may skip
+// a number, not latest-1.
+func previousMigrationVersion() int {
+	return migrations[len(migrations)-2].Version
+}
+
 // legacyArtifacts lists what migration 038 must remove, as found in
 // sqlite_master and pragma_table_info.
 func legacyArtifacts(t *testing.T, d *Driver) []string {

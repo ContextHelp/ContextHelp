@@ -171,41 +171,14 @@ func (s *ObjectStore) GetBySourceKey(ctx context.Context, key string) (*storage.
 }
 
 func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, int, error) {
-	conditions, args := objectListConditions(filter)
+	countSQL, pageSQL, args := objectListSQL(filter)
 
-	where := ""
-	if len(conditions) > 0 {
-		where = "WHERE " + strings.Join(conditions, " AND ")
-	}
-
-	// Count total.
 	var total int
-	countArgs := make([]any, len(args))
-	copy(countArgs, args)
-	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM objects "+where, countArgs...).Scan(&total); err != nil {
+	if err := s.db.QueryRowContext(ctx, countSQL, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count objects: %w", err)
 	}
 
-	order := filter.ListOrder()
-
-	// #nosec G201 -- where joins objectListConditions' fixed predicates (values bound in args); order is a ListOrder literal.
-	query := fmt.Sprintf(`SELECT
-		id, type, subtype, raw_content, content_type, text_content,
-		metadata, summaries, sections, tags, mentions,
-		decisions, tasks, pipeline, source,
-		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
-		created_at, updated_at, fts_indexed, status, inbox_note,
-		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq
-	FROM objects %s ORDER BY %s`, where, order)
-
-	if filter.Limit > 0 {
-		query += fmt.Sprintf(" LIMIT %d", filter.Limit)
-	}
-	if filter.Offset > 0 {
-		query += fmt.Sprintf(" OFFSET %d", filter.Offset)
-	}
-
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	rows, err := s.db.QueryContext(ctx, pageSQL, args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list objects: %w", err)
 	}
@@ -218,14 +191,67 @@ func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]
 	return objects, total, nil
 }
 
+// objectListSQL is the pair of statements List runs over filter, the exact
+// COUNT(*) of every matching object and the ordered page, both binding
+// args in order. The count takes the predicates as they are; the page
+// takes them with the default status scope hinted (objectListConditions)
+// so the planner reaches the page through the sort column's index.
+func objectListSQL(filter storage.ObjectFilter) (countSQL, pageSQL string, args []any) {
+	conditions, args := objectListConditions(filter, false)
+	countSQL = "SELECT COUNT(*) FROM objects" + whereClause(conditions)
+
+	pageConditions, _ := objectListConditions(filter, true)
+	// #nosec G201 -- whereClause joins objectListConditions' fixed predicates (values bound in args); the order is a ListOrder literal.
+	pageSQL = fmt.Sprintf(`SELECT
+		id, type, subtype, raw_content, content_type, text_content,
+		metadata, summaries, sections, tags, mentions,
+		decisions, tasks, pipeline, source,
+		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
+		created_at, updated_at, fts_indexed, status, inbox_note,
+		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq
+	FROM objects%s ORDER BY %s`, whereClause(pageConditions), filter.ListOrder())
+	if filter.Limit > 0 {
+		pageSQL += fmt.Sprintf(" LIMIT %d", filter.Limit)
+	}
+	if filter.Offset > 0 {
+		pageSQL += fmt.Sprintf(" OFFSET %d", filter.Offset)
+	}
+	return countSQL, pageSQL, args
+}
+
+// whereClause joins conditions into a WHERE clause, leading space
+// included, or is empty when there are none.
+func whereClause(conditions []string) string {
+	if len(conditions) == 0 {
+		return ""
+	}
+	return " WHERE " + strings.Join(conditions, " AND ")
+}
+
 // objectListConditions turns filter into List's WHERE predicates and their
-// bound arguments, in placeholder order.
-func objectListConditions(filter storage.ObjectFilter) ([]string, []any) {
+// bound arguments, in placeholder order. The count and the page take the
+// same predicates except for the default status scope on the page, which
+// is wrapped in likely(): SQLite plans without statistics, so it takes
+// status = 'active', true for nearly every row, as selective, fetches
+// every active row through idx_objects_status and sorts them for one
+// page. The hint says the predicate keeps most rows, and the planner
+// walks the sort column's index (idx_objects_created_at or
+// idx_objects_updated_at) and stops at the page instead, while a
+// selective filter such as profile_id still wins its own index. The
+// count keeps the plain predicate: with nothing to order, the covering
+// walk of idx_objects_status is its cheapest plan, and with another
+// filter it stays as it was. Any other status is a small set and is
+// never hinted.
+func objectListConditions(filter storage.ObjectFilter, page bool) ([]string, []any) {
 	var conditions []string
 	var args []any
 
 	if st, ok := filter.StatusScope(); ok {
-		conditions = append(conditions, "status = ?")
+		term := "status = ?"
+		if page && st == storage.ObjectStatusActive {
+			term = "likely(status = ?)"
+		}
+		conditions = append(conditions, term)
 		args = append(args, st)
 	}
 
@@ -571,25 +597,24 @@ func mentionsToStrings(uris []uri.URI) []string {
 func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, int, error) {
 	// List's predicates (status scope first) follow the caller's so its ?
 	// placeholders keep their positions: SQLite binds args in order.
-	conditions, condArgs := objectListConditions(filter)
+	conditions, condArgs := objectListConditions(filter, false)
+	pageConditions, _ := objectListConditions(filter, true)
 	if where != "" {
 		conditions = append([]string{"(" + where + ")"}, conditions...)
+		pageConditions = append([]string{"(" + where + ")"}, pageConditions...)
 	}
 	args = append(append([]any(nil), args...), condArgs...)
-	clause := ""
-	if len(conditions) > 0 {
-		clause = " WHERE " + strings.Join(conditions, " AND ")
-	}
 
 	var total int
-	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM objects"+clause, args...).Scan(&total); err != nil {
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM objects"+whereClause(conditions), args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count by sql: %w", err)
 	}
 
 	// where is a compiled RSQL predicate (internal/search): literals are
 	// already bound as ? placeholders in args, only operators and column
-	// names reach the SQL text. clause adds objectListConditions' fixed
-	// fragments (values in args), order is a ListOrder literal, and
+	// names reach the SQL text. whereClause adds objectListConditions'
+	// fixed fragments (values in args; the page's default status scope
+	// carries its likely() hint), order is a ListOrder literal, and
 	// LIMIT/OFFSET are bound below.
 	// #nosec G202 -- see above; caller values travel in args, not the string.
 	query := `SELECT
@@ -599,7 +624,7 @@ func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, f
 		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
 		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq
-	FROM objects` + clause + " ORDER BY " + filter.ListOrder()
+	FROM objects` + whereClause(pageConditions) + " ORDER BY " + filter.ListOrder()
 	pageArgs := args
 	if filter.Limit > 0 {
 		query += " LIMIT ?"

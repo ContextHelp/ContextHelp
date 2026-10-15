@@ -322,6 +322,17 @@ var pgMigrations = []pgMigration{
 		 VALUES ('owner', 'owner', 'Owner', '["admin"]', 'active', NOW())
 		 ON CONFLICT (id) DO NOTHING`,
 	}},
+	// The columns ObjectStore.List filters and orders by, mirroring SQLite
+	// migration 050 (status has been indexed there since 009): the exact
+	// COUNT(*) of the default scope can be an index-only walk of
+	// idx_objects_status, and a page streams from its sort column's index
+	// to the first rows instead of sorting every active object. Indexes
+	// only; IF NOT EXISTS makes a replay a no-op.
+	{Version: 30, Name: "object list indexes", Statements: []string{
+		`CREATE INDEX IF NOT EXISTS idx_objects_status ON objects (status)`,
+		`CREATE INDEX IF NOT EXISTS idx_objects_created_at ON objects (created_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_objects_updated_at ON objects (updated_at)`,
+	}},
 }
 
 // migrateAliasesObjectFK deletes aliases whose object is gone, then adds

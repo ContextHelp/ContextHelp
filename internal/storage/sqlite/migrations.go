@@ -258,6 +258,13 @@ var migrations = []migration{
 	// records, seeded with the one owner principal. New tables only,
 	// nothing is an FTS input, so no re-projection follows.
 	{Version: 48, fn: migrate048AuthRegistry},
+	// Migration 050: idx_objects_created_at and idx_objects_updated_at,
+	// the columns ObjectStore.List orders by, so a page streams from its
+	// sort column's index and stops at the page instead of fetching every
+	// active object through idx_objects_status and sorting it. Indexes
+	// only: no column changes, nothing is an FTS input, so no
+	// re-projection follows. IF NOT EXISTS makes it re-runnable.
+	{Version: 50, fn: migrate050ObjectListIndexes},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
@@ -1036,6 +1043,21 @@ func migrate048AuthRegistry(ctx context.Context, d *Driver) error {
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit: %w", err)
+	}
+	return nil
+}
+
+// migrate050ObjectListIndexes indexes objects.created_at and
+// objects.updated_at, the columns List orders by (see the migrations
+// entry and objectListConditions).
+func migrate050ObjectListIndexes(ctx context.Context, d *Driver) error {
+	for _, stmt := range []string{
+		`CREATE INDEX IF NOT EXISTS idx_objects_created_at ON objects(created_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_objects_updated_at ON objects(updated_at)`,
+	} {
+		if _, err := d.db.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("object list indexes: %w", err)
+		}
 	}
 	return nil
 }

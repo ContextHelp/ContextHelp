@@ -50,9 +50,9 @@ func assertFileStateUnchanged(t *testing.T, dbPath string, before fileState) {
 }
 
 func TestCheckSchema_PendingReadsVersionWithoutMigrating(t *testing.T) {
-	latest := LatestSchemaVersion()
+	latest, prev := LatestSchemaVersion(), previousMigrationVersion()
 	dbPath := filepath.Join(t.TempDir(), "db.sqlite")
-	old := openAtVersion(t, dbPath, latest-1)
+	old := openAtVersion(t, dbPath, prev)
 	seedEntity(t, old, "marker")
 	if err := old.Close(context.Background()); err != nil {
 		t.Fatal(err)
@@ -63,8 +63,8 @@ func TestCheckSchema_PendingReadsVersionWithoutMigrating(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CheckSchema: %v", err)
 	}
-	if st.Current != latest-1 || st.Latest != latest || st.Target != latest || st.New || !st.Pending() {
-		t.Errorf("status = %+v, want current %d, latest/target %d, pending, not new", st, latest-1, latest)
+	if st.Current != prev || st.Latest != latest || st.Target != latest || st.New || !st.Pending() {
+		t.Errorf("status = %+v, want current %d, latest/target %d, pending, not new", st, prev, latest)
 	}
 	assertFileStateUnchanged(t, dbPath, before)
 	if _, err := os.Stat(SnapshotDir(dbPath)); !os.IsNotExist(err) {
@@ -92,9 +92,9 @@ func TestCheckSchema_Current(t *testing.T) {
 // A store held open by another connection (dpkms running) is in WAL
 // mode with live -wal/-shm files; the read-only check still reads it.
 func TestCheckSchema_WhileOpenElsewhere(t *testing.T) {
-	latest := LatestSchemaVersion()
+	latest, prev := LatestSchemaVersion(), previousMigrationVersion()
 	dbPath := filepath.Join(t.TempDir(), "db.sqlite")
-	d := openAtVersion(t, dbPath, latest-1)
+	d := openAtVersion(t, dbPath, prev)
 	t.Cleanup(func() { _ = d.Close(context.Background()) })
 	seedEntity(t, d, "in-wal")
 
@@ -102,11 +102,11 @@ func TestCheckSchema_WhileOpenElsewhere(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CheckSchema: %v", err)
 	}
-	if st.Current != latest-1 || st.Target != latest {
-		t.Errorf("status = %+v, want v%d -> v%d", st, latest-1, latest)
+	if st.Current != prev || st.Target != latest {
+		t.Errorf("status = %+v, want v%d -> v%d", st, prev, latest)
 	}
-	if v := schemaVersion(t, d.db); v != latest-1 {
-		t.Errorf("ledger at v%d after CheckSchema, want v%d", v, latest-1)
+	if v := schemaVersion(t, d.db); v != prev {
+		t.Errorf("ledger at v%d after CheckSchema, want v%d", v, prev)
 	}
 }
 
