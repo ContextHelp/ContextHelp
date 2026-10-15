@@ -345,11 +345,19 @@ func (f *Factory) ollamaVisionEndpoint() string {
 func (f *Factory) tryOllamaVision() vision.Provider {
 	endpoint := f.ollamaVisionEndpoint()
 	client := &http.Client{Timeout: 2 * time.Second}
-	resp, err := client.Get(strings.TrimRight(endpoint, "/") + "/api/tags")
-	if err != nil || resp.StatusCode != http.StatusOK {
+	// Vision() takes no context; the client timeout bounds the probe.
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, strings.TrimRight(endpoint, "/")+"/api/tags", http.NoBody)
+	if err != nil {
+		return nil
+	}
+	resp, err := client.Do(req)
+	if err != nil {
 		return nil
 	}
 	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
 	model := f.cfg.Vision.Model
 	if model == "" {
 		model = "llava"
