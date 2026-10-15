@@ -161,9 +161,22 @@ func (c *APIClient) ListPipelines(ctx context.Context, filter storage.PipelineFi
 		return nil, 0, fmt.Errorf("decode pipelines: %w", err)
 	}
 
-	total := int(result["total"].(float64))
+	total, err := listTotal(result)
+	if err != nil {
+		return nil, 0, err
+	}
 
 	return pipelines, total, nil
+}
+
+// listTotal reads a listing response's total, which JSON decodes as a
+// float64.
+func listTotal(result map[string]any) (int, error) {
+	total, ok := result["total"].(float64)
+	if !ok {
+		return 0, fmt.Errorf("decode total: got %T, want a number", result["total"])
+	}
+	return int(total), nil
 }
 
 func (c *APIClient) GetPipeline(ctx context.Context, name string) (*storage.Pipeline, error) {
@@ -274,7 +287,10 @@ func (c *APIClient) ListSteps(ctx context.Context, source string) ([]*storage.Re
 		return nil, 0, fmt.Errorf("decode steps: %w", err)
 	}
 
-	total := int(result["total"].(float64))
+	total, err := listTotal(result)
+	if err != nil {
+		return nil, 0, err
+	}
 
 	return steps, total, nil
 }
@@ -394,7 +410,10 @@ func (c *APIClient) ListRegistries(ctx context.Context) ([]*storage.RegistryCach
 		return nil, 0, fmt.Errorf("decode registries: %w", err)
 	}
 
-	total := int(result["total"].(float64))
+	total, err := listTotal(result)
+	if err != nil {
+		return nil, 0, err
+	}
 
 	return registries, total, nil
 }
