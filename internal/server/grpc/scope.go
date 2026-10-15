@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"fmt"
+	"maps"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -43,6 +44,13 @@ var methodScopes = map[string]authn.Scope{
 
 	reflectionV1Method:      authn.ScopeReadSystem,
 	reflectionV1AlphaMethod: authn.ScopeReadSystem,
+}
+
+// MethodScopes returns a copy of the gRPC method-to-scope table, keyed
+// by full method name. The leak suite (internal/sharing/leaktest)
+// enumerates the RPC surface through it.
+func MethodScopes() map[string]authn.Scope {
+	return maps.Clone(methodScopes)
 }
 
 // authorizeMethod checks that the principal on ctx holds the scope

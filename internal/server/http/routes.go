@@ -23,6 +23,30 @@ type apiRoute struct {
 	Handler http.Handler
 }
 
+// RouteSpec is one apiRoutes entry without its handler: method, pattern
+// and scope. The leak suite (internal/sharing/leaktest) enumerates the
+// table through it.
+type RouteSpec struct {
+	// Method is the HTTP method; "" mounts the handler for every method.
+	Method string
+	// Pattern is the chi pattern relative to /api/v1.
+	Pattern string
+	// Scope is the scope a principal needs to reach the route.
+	Scope authn.Scope
+}
+
+// APIRouteSpecs returns the /api/v1 route-to-scope table as specs, in
+// table order. The table is static: only its handlers depend on the
+// service and router config, and they are left out.
+func APIRouteSpecs() []RouteSpec {
+	routes := apiRoutes(nil, RouterConfig{})
+	out := make([]RouteSpec, len(routes))
+	for i, rt := range routes {
+		out[i] = RouteSpec{Method: rt.Method, Pattern: rt.Pattern, Scope: rt.Scope}
+	}
+	return out
+}
+
 // apiRoutes is the /api/v1 route-to-scope table.
 func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 	mgr := rc.Watcher
