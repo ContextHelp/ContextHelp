@@ -241,7 +241,7 @@ func (a *Adapter) dial(_ context.Context) (*sftp.Client, func(), error) {
 // ingest.Object per regular file. Directories are descended into;
 // matches against a.cfg.Ignore (basename-globbed) are skipped.
 func (a *Adapter) walk(client *sftp.Client) ([]ingest.Object, error) {
-	var objs []ingest.Object //nolint:prealloc // the remote walk's length is unknown until it ends
+	var objs []ingest.Object
 	walker := client.Walk(a.cfg.RemotePath)
 	for walker.Step() {
 		if err := walker.Err(); err != nil {
