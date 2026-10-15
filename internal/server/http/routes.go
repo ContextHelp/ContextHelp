@@ -52,10 +52,11 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 	mgr := rc.Watcher
 	ui := newUISessionRoutes(rc)
 	reg := newRegistryRoutes(rc)
-	get, post, patch, del := http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodDelete
+	sh := newShareRoutes(rc)
+	get, post, put, patch, del := http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete
 	return []apiRoute{
 		// Identity
-		{Method: get, Pattern: "/whoami", Scope: authn.ScopeReadSystem, Handler: Whoami(rc.Auth != nil, rc.Sessions)},
+		{Method: get, Pattern: "/whoami", Scope: authn.ScopeReadSystem, Handler: Whoami(rc.Auth != nil, rc.Sessions, rc.Registry, rc.Sharing)},
 
 		// Objects
 		{Method: get, Pattern: "/objects", Scope: authn.ScopeReadObjects, Handler: ListObjects(svc)},
@@ -240,6 +241,27 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		{Method: del, Pattern: "/principals/{id}/keys/{key}", Scope: authn.ScopeAdminPrincipals, Handler: http.HandlerFunc(reg.RevokePrincipalKey)},
 		{Method: post, Pattern: "/share/invites", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(ui.mintInvite)},
 
+		// Sharing registry (ADR-080 §11): audiences and members, share
+		// policies, the built-in templates, grants, the per-principal
+		// ceiling and the policy a key narrows to, under admin:shares.
+		{Method: get, Pattern: "/share/audiences", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(sh.ListAudiences)},
+		{Method: post, Pattern: "/share/audiences", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(sh.CreateAudience)},
+		{Method: get, Pattern: "/share/audiences/{audience}", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(sh.GetAudience)},
+		{Method: put, Pattern: "/share/audiences/{audience}/members/{principal}", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(sh.AddMember)},
+		{Method: del, Pattern: "/share/audiences/{audience}/members/{principal}", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(sh.RemoveMember)},
+		{Method: get, Pattern: "/share/policies", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(sh.ListPolicies)},
+		{Method: post, Pattern: "/share/policies", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(sh.CreatePolicy)},
+		{Method: get, Pattern: "/share/policies/{policy}", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(sh.GetPolicy)},
+		{Method: put, Pattern: "/share/policies/{policy}", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(sh.UpdatePolicy)},
+		{Method: get, Pattern: "/share/templates", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(sh.ListTemplates)},
+		{Method: post, Pattern: "/share/templates/{name}", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(sh.InstallTemplate)},
+		{Method: get, Pattern: "/share/grants", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(sh.ListGrants)},
+		{Method: post, Pattern: "/share/grants", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(sh.CreateGrant)},
+		{Method: del, Pattern: "/share/grants/{grant}", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(sh.RevokeGrant)},
+		{Method: get, Pattern: "/principals/{id}/ceiling", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(sh.GetCeiling)},
+		{Method: put, Pattern: "/principals/{id}/ceiling", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(sh.SetCeiling)},
+		{Method: put, Pattern: "/share/keys/{key}/policy", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(sh.BindKeyPolicy)},
+
 		// A principal's own credentials and sessions (write:self): the
 		// handlers check the target is the caller's.
 		{Method: get, Pattern: "/self/keys", Scope: authn.ScopeWriteSelf, Handler: http.HandlerFunc(reg.ListOwnKeys)},
@@ -249,5 +271,8 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		{Method: del, Pattern: "/self/identities/{identity}", Scope: authn.ScopeWriteSelf, Handler: http.HandlerFunc(reg.RemoveOwnIdentity)},
 		{Method: get, Pattern: "/self/sessions", Scope: authn.ScopeWriteSelf, Handler: http.HandlerFunc(reg.ListOwnSessions)},
 		{Method: del, Pattern: "/self/sessions/{session}", Scope: authn.ScopeWriteSelf, Handler: http.HandlerFunc(reg.EndOwnSession)},
+		// A key narrows its principal to a share policy (ADR-080 §2);
+		// the caller binds its own keys here.
+		{Method: put, Pattern: "/self/keys/{key}/policy", Scope: authn.ScopeWriteSelf, Handler: http.HandlerFunc(sh.BindOwnKeyPolicy)},
 	}
 }

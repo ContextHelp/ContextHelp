@@ -441,6 +441,7 @@ func Build(in Inputs) (*Stack, error) {
 		// (ADR-079 §5): links are built on server.public_url.
 		Registry:  in.Driver.Auth(),
 		Keys:      s.Keys,
+		Sharing:   in.Driver.Sharing(),
 		Tickets:   s.Tickets,
 		SignIn:    cfg.Server.Auth.EffectiveSignIn(),
 		PublicURL: cfg.Server.PublicURL,

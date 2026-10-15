@@ -455,19 +455,9 @@ type createdKey struct {
 	authn.IssuedKey
 }
 
-// expiry resolves the request's expiry fields.
+// expiry resolves the request's expiry fields (expiryOf).
 func (req createKeyRequest) expiry(now time.Time) (time.Time, error) {
-	switch {
-	case req.ExpiresIn < 0:
-		return time.Time{}, errors.New("expires_in must be positive")
-	case req.ExpiresIn > 0 && !req.ExpiresAt.IsZero():
-		return time.Time{}, errors.New("give expires_in or expires_at, not both")
-	case req.ExpiresIn > 0:
-		return now.Add(time.Duration(req.ExpiresIn) * time.Second), nil
-	case !req.ExpiresAt.IsZero() && !req.ExpiresAt.After(now):
-		return time.Time{}, errors.New("expires_at is not in the future")
-	}
-	return req.ExpiresAt, nil
+	return expiryOf(req.ExpiresIn, req.ExpiresAt, now)
 }
 
 // CreatePrincipalKey handles POST /api/v1/principals/{id}/keys: an

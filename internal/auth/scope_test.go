@@ -94,7 +94,10 @@ func TestUIScopesPlacement(t *testing.T) {
 }
 
 // The web UI session set is pinned: the reads the web UI makes, its own
-// writes (delete an object, retry a job, sign out), nothing else.
+// writes (delete an object, retry a job, sign out) and the Sharing page
+// (admin:shares, ADR-080 §11), nothing else. admin:shares is the one
+// admin scope a session may hold: the role bundles keep it admin-only,
+// so only an admin's session reaches the sharing routes.
 func TestUISessionScopesPinned(t *testing.T) {
 	want := []Scope{
 		ScopeReadObjects, ScopeDeleteObjects,
@@ -102,6 +105,7 @@ func TestUISessionScopesPinned(t *testing.T) {
 		ScopeReadJobs, ScopeWriteJobs,
 		ScopeReadRegistries, ScopeReadSystem,
 		ScopeWriteSelf,
+		ScopeAdminShares,
 		ScopeSignoutUI,
 	}
 	if !slices.Equal(UISessionScopes, want) {
@@ -112,14 +116,18 @@ func TestUISessionScopesPinned(t *testing.T) {
 			t.Errorf("ui set holds unknown scope %q", s)
 		}
 		switch s.Verb() {
-		case "admin", "sync", "process":
+		case "sync", "process":
 			t.Errorf("ui set holds %q", s)
+		case "admin":
+			if s != ScopeAdminShares {
+				t.Errorf("ui set holds %q: admin:shares is the only admin scope a session may hold", s)
+			}
 		}
 	}
 	for _, s := range []Scope{
 		ScopeReadUI, ScopeReadMCP, ScopeWriteObjects, ScopeDeleteEdges, ScopeDeleteAliases, ScopeDeleteSearches,
 		ScopeReadPipelines, ScopeReadWatches, ScopeWriteSystem, ScopeAdminAudit,
-		ScopeAdminPrincipals, ScopeAdminShares,
+		ScopeAdminPrincipals,
 	} {
 		if slices.Contains(UISessionScopes, s) {
 			t.Errorf("ui set must not hold %q", s)

@@ -45,6 +45,7 @@ func (f *uiFixture) startCeremonies(signIn ...string) {
 		SessionRecheck:  20 * time.Millisecond,
 		Registry:        store.Auth(),
 		Keys:            f.keys,
+		Sharing:         store.Sharing(),
 		Tickets:         tickets,
 		SignIn:          signIn,
 		PublicURL:       publicURL,
