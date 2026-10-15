@@ -23,3 +23,9 @@ func TestConformance_EntityQuery(t *testing.T) {
 func TestConformance_PendingEntities(t *testing.T) {
 	storagetest.PendingEntityConformance(t, newTestDriver(t))
 }
+
+// TestConformance_EntityNamespaces runs the cross-driver namespace
+// listing and restriction contract against a fresh SQLite database.
+func TestConformance_EntityNamespaces(t *testing.T) {
+	storagetest.EntityNamespaceConformance(t, newTestDriver(t))
+}

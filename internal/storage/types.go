@@ -297,9 +297,14 @@ type EntityFilter struct {
 	// Query, when non-empty, keeps entities whose slug, title or any
 	// alias contains it, ignoring ASCII case. LIKE metacharacters in it
 	// match literally. Applied before Limit and Offset.
-	Query  string
-	Limit  int
-	Offset int
+	Query string
+	// Namespaces, when non-empty, keeps only entities whose namespace is
+	// one of these. Applied before Limit and Offset, so a page is filled
+	// from the restricted set. Empty means no restriction: a caller that
+	// would restrict to no namespace at all must not call List.
+	Namespaces []string
+	Limit      int
+	Offset     int
 }
 
 // JobStatus represents the state of a job.

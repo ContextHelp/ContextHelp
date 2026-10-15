@@ -135,6 +135,7 @@ func (m *mockEntityStore) Get(ctx context.Context, slug string) (*Entity, error)
 func (m *mockEntityStore) List(ctx context.Context, filter EntityFilter) ([]*Entity, error) {
 	return nil, nil
 }
+func (m *mockEntityStore) Namespaces(ctx context.Context) ([]string, error) { return nil, nil }
 func (m *mockEntityStore) Resolve(ctx context.Context, mention string) (*Entity, error) {
 	return nil, nil
 }

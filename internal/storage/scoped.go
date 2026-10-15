@@ -201,7 +201,7 @@ var restrictedReads = map[string][]string{
 	"Detectors":       {"Get", "List"},
 	"Edges":           {"ListFrom", "ListTo", "CountMentionsTo", "RelatedObjectIDs"},
 	"Embeddings":      {"Get", "Search", "ListMissing"},
-	"Entities":        {"Get", "List", "Resolve"},
+	"Entities":        {"Get", "List", "Namespaces", "Resolve"},
 	"Entitlements":    {"Get", "List"},
 	"FeedItems":       {"ExistsByGUID"},
 	"Feeds":           {"Get", "GetByURL", "List"},

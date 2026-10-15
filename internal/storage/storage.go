@@ -254,6 +254,9 @@ type EntityStore interface {
 	SetContentStatus(ctx context.Context, slug string, status ContentStatus) error
 	Get(ctx context.Context, slug string) (*Entity, error)
 	List(ctx context.Context, filter EntityFilter) ([]*Entity, error)
+	// Namespaces returns each distinct namespace of the stored entities
+	// once, ascending, the empty namespace included.
+	Namespaces(ctx context.Context) ([]string, error)
 	Resolve(ctx context.Context, mention string) (*Entity, error)
 }
 
