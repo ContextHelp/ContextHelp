@@ -23,6 +23,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/searchgraph"
 	"github.com/ideacrafterslabs/ctxt/internal/service/servicetest"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing/sharingtest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
@@ -50,6 +51,10 @@ func gatedGraphServer(t *testing.T, f *servicetest.HybridFixture) *httptest.Serv
 			FetchedAt: time.Now().Truncate(time.Second),
 		}))
 	}
+	// The reader is a non-owner principal: it sees the corpus only
+	// through a share grant; the namespace entitlement narrows further.
+	sharingtest.EnsurePrincipal(t, f.Drv, "ops", storage.PrincipalKindPerson, authn.RoleReader)
+	sharingtest.GrantEverything(t, f.Drv, "ops")
 	provider := authtest.TokenChain(
 		authtest.Token{Token: "tok-valid-fixture-0123456789abcdef0123456789", Principal: "ops", Roles: []string{authn.RoleReader}},
 		authtest.Token{Token: "tok-admin-fixture-0123456789abcdef0123456789", Principal: "owner", Roles: []string{authn.RoleAdmin}},

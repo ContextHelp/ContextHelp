@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net"
 	"net/http"
 	"strings"
@@ -37,7 +38,7 @@ const HeaderAPIKey = "X-API-Key"
 //
 // Failures are recorded on the security emitter (nil-safe), keyed by
 // remote host since no principal exists yet.
-func RequireAuth(chain *authn.Chain, sec *security.Emitter, devCORS bool) func(http.Handler) http.Handler {
+func RequireAuth(chain *authn.Chain, sec *security.Emitter, devCORS bool, viewers *sharing.Resolver) func(http.Handler) http.Handler {
 	cop := newSessionCOP(devCORS)
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -60,7 +61,13 @@ func RequireAuth(chain *authn.Chain, sec *security.Emitter, devCORS bool) func(h
 			if res.Ambient && !browserRulesPass(w, cop, r) {
 				return
 			}
-			next.ServeHTTP(w, r.WithContext(attachCaller(r.Context(), res.Principal)))
+			ctx, err := attachCaller(r.Context(), res.Principal, viewers)
+			if err != nil {
+				slog.Error("auth: viewer resolution failed", "principal", res.Principal.ID, "err", err)
+				WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "viewer resolution failed")
+				return
+			}
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }
@@ -92,10 +99,16 @@ func browserRulesPass(w http.ResponseWriter, cop *http.CrossOriginProtection, r 
 
 // attachCaller binds an authenticated principal and its viewer to ctx
 // in one step, so no request reaches a handler authenticated but
-// unscoped. Every authenticated principal is Unrestricted until share
-// policies resolve a narrower viewer per principal (ADR-080 §4).
-func attachCaller(ctx context.Context, princ *authn.Principal) context.Context {
-	return sharing.WithViewer(authn.Attach(ctx, princ), sharing.Unrestricted)
+// unscoped. The owner is Unrestricted; anyone else gets the viewer
+// viewers compiles from its grants, under the identity that
+// authenticated it (ADR-080 §4). A resolution failure is returned and
+// the request refused: a caller is never attached unscoped by mistake.
+func attachCaller(ctx context.Context, princ *authn.Principal, viewers *sharing.Resolver) (context.Context, error) {
+	v, err := viewers.Resolve(ctx, princ.ID, princ.Kind, princ.Meta[authn.MetaIdentityID])
+	if err != nil {
+		return nil, err
+	}
+	return sharing.WithViewer(authn.Attach(ctx, princ), v), nil
 }
 
 // remoteHost extracts the peer host from RemoteAddr for security-event

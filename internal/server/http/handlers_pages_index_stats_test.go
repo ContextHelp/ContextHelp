@@ -179,7 +179,7 @@ func testStats(t *testing.T, srv *dpkmstest.Server, resurfacing bool) {
 		return intp(n)
 	}
 	var got statsBody
-	require.Equal(t, http.StatusOK, getJSON(t, srv, http.MethodGet, "/api/v1/stats", dpkmstest.RoleReader, &got))
+	require.Equal(t, http.StatusOK, getJSON(t, srv, http.MethodGet, "/api/v1/stats", dpkmstest.RoleAdmin, &got))
 	want := statsBody{
 		KnowledgeObjects: 5,
 		ObjectsByType:    map[string]int{"note": 2, "article": 1, "entity_page": 2},
@@ -193,17 +193,17 @@ func testStats(t *testing.T, srv *dpkmstest.Server, resurfacing bool) {
 	assert.Equal(t, want, got)
 
 	var work statsBody
-	require.Equal(t, http.StatusOK, getJSON(t, srv, http.MethodGet, "/api/v1/stats?profile=work", dpkmstest.RoleReader, &work))
+	require.Equal(t, http.StatusOK, getJSON(t, srv, http.MethodGet, "/api/v1/stats?profile=work", dpkmstest.RoleAdmin, &work))
 	assert.Equal(t, count(2), work.Resurfacing, "work profile: two unseen, one dismissed")
 	var none statsBody
-	require.Equal(t, http.StatusOK, getJSON(t, srv, http.MethodGet, "/api/v1/stats?profile=nobody", dpkmstest.RoleReader, &none))
+	require.Equal(t, http.StatusOK, getJSON(t, srv, http.MethodGet, "/api/v1/stats?profile=nobody", dpkmstest.RoleAdmin, &none))
 	assert.Equal(t, count(0), none.Resurfacing)
 	assert.Equal(t, 5, none.KnowledgeObjects, "the profile scopes resurfacing only")
 }
 
 func testStatsRejectsBadParams(t *testing.T, srv *dpkmstest.Server) {
 	for _, q := range []string{"?limit=5", "?profile=", "?profile=a&profile=b"} {
-		resp := srv.Request(t, http.MethodGet, "/api/v1/stats"+q, dpkmstest.RoleReader, nil)
+		resp := srv.Request(t, http.MethodGet, "/api/v1/stats"+q, dpkmstest.RoleAdmin, nil)
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		assert.Equal(t, http.StatusBadRequest, resp.StatusCode, "%s: %s", q, body)
@@ -228,7 +228,7 @@ func testPagesRead(t *testing.T, srv *dpkmstest.Server) {
 	var list struct {
 		Data []pageBody `json:"data"`
 	}
-	require.Equal(t, http.StatusOK, getJSON(t, srv, http.MethodGet, "/api/v1/pages", dpkmstest.RoleReader, &list))
+	require.Equal(t, http.StatusOK, getJSON(t, srv, http.MethodGet, "/api/v1/pages", dpkmstest.RoleAdmin, &list))
 	slugs := []string{}
 	for _, p := range list.Data {
 		assert.Equal(t, "entity_page", p.Type)
@@ -236,11 +236,11 @@ func testPagesRead(t *testing.T, srv *dpkmstest.Server) {
 	}
 	assert.ElementsMatch(t, []string{"person.alice", "lang.go"}, slugs)
 
-	require.Equal(t, http.StatusOK, getJSON(t, srv, http.MethodGet, "/api/v1/pages?limit=1", dpkmstest.RoleReader, &list))
+	require.Equal(t, http.StatusOK, getJSON(t, srv, http.MethodGet, "/api/v1/pages?limit=1", dpkmstest.RoleAdmin, &list))
 	assert.Len(t, list.Data, 1)
 
 	for _, q := range []string{"?limit=0", "?limit=x", "?offset=1", "?limit="} {
-		resp := srv.Request(t, http.MethodGet, "/api/v1/pages"+q, dpkmstest.RoleReader, nil)
+		resp := srv.Request(t, http.MethodGet, "/api/v1/pages"+q, dpkmstest.RoleAdmin, nil)
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		assert.Equal(t, http.StatusBadRequest, resp.StatusCode, "%s: %s", q, body)
@@ -248,11 +248,11 @@ func testPagesRead(t *testing.T, srv *dpkmstest.Server) {
 	}
 
 	var one pageBody
-	require.Equal(t, http.StatusOK, getJSON(t, srv, http.MethodGet, "/api/v1/pages/person.alice", dpkmstest.RoleReader, &one))
+	require.Equal(t, http.StatusOK, getJSON(t, srv, http.MethodGet, "/api/v1/pages/person.alice", dpkmstest.RoleAdmin, &one))
 	assert.Equal(t, "p-alice", one.ID)
 	assert.Equal(t, "stale alice", one.RawContent)
 
-	resp := srv.Request(t, http.MethodGet, "/api/v1/pages/no.such", dpkmstest.RoleReader, nil)
+	resp := srv.Request(t, http.MethodGet, "/api/v1/pages/no.such", dpkmstest.RoleAdmin, nil)
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode, string(body))
@@ -262,17 +262,17 @@ func testPagesRead(t *testing.T, srv *dpkmstest.Server) {
 // Refresh recompiles the page from its sources and persists it.
 func testPagesRefresh(t *testing.T, srv *dpkmstest.Server) {
 	var got pageBody
-	require.Equal(t, http.StatusOK, getJSON(t, srv, http.MethodPost, "/api/v1/pages/person.alice/refresh", dpkmstest.RoleWriter, &got))
+	require.Equal(t, http.StatusOK, getJSON(t, srv, http.MethodPost, "/api/v1/pages/person.alice/refresh", dpkmstest.RoleAdmin, &got))
 	assert.Equal(t, "p-alice", got.ID)
 	assert.Contains(t, got.RawContent, "# Entity: person.alice")
 	assert.Contains(t, got.RawContent, "Compiled from 2 sources.")
 	assert.Contains(t, got.RawContent, "Alice leads Go")
 
 	var stored pageBody
-	require.Equal(t, http.StatusOK, getJSON(t, srv, http.MethodGet, "/api/v1/pages/person.alice", dpkmstest.RoleReader, &stored))
+	require.Equal(t, http.StatusOK, getJSON(t, srv, http.MethodGet, "/api/v1/pages/person.alice", dpkmstest.RoleAdmin, &stored))
 	assert.Equal(t, got.RawContent, stored.RawContent, "refresh persisted")
 
-	resp := srv.Request(t, http.MethodPost, "/api/v1/pages/no.such/refresh", dpkmstest.RoleWriter, nil)
+	resp := srv.Request(t, http.MethodPost, "/api/v1/pages/no.such/refresh", dpkmstest.RoleAdmin, nil)
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode, string(body))
@@ -294,7 +294,7 @@ type topicIndexBody struct {
 // topic, and a topic lookup matches a case-insensitive prefix.
 func testTopicIndex(t *testing.T, srv *dpkmstest.Server) {
 	for _, p := range []string{"/api/v1/topic-index", "/api/v1/topic-index/go"} {
-		resp := srv.Request(t, http.MethodGet, p, dpkmstest.RoleReader, nil)
+		resp := srv.Request(t, http.MethodGet, p, dpkmstest.RoleAdmin, nil)
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		assert.Equal(t, http.StatusNotFound, resp.StatusCode, "%s: %s", p, body)
@@ -304,11 +304,11 @@ func testTopicIndex(t *testing.T, srv *dpkmstest.Server) {
 	var rebuilt struct {
 		ID string `json:"id"`
 	}
-	require.Equal(t, http.StatusOK, getJSON(t, srv, http.MethodPost, "/api/v1/topic-index", dpkmstest.RoleWriter, &rebuilt))
+	require.Equal(t, http.StatusOK, getJSON(t, srv, http.MethodPost, "/api/v1/topic-index", dpkmstest.RoleAdmin, &rebuilt))
 	assert.NotEmpty(t, rebuilt.ID)
 
 	var idx topicIndexBody
-	require.Equal(t, http.StatusOK, getJSON(t, srv, http.MethodGet, "/api/v1/topic-index", dpkmstest.RoleReader, &idx))
+	require.Equal(t, http.StatusOK, getJSON(t, srv, http.MethodGet, "/api/v1/topic-index", dpkmstest.RoleAdmin, &idx))
 	topics := map[string][]string{}
 	for _, c := range idx.Categories {
 		for _, e := range c.Entries {
@@ -325,29 +325,47 @@ func testTopicIndex(t *testing.T, srv *dpkmstest.Server) {
 			Summary  string `json:"summary"`
 		} `json:"data"`
 	}
-	require.Equal(t, http.StatusOK, getJSON(t, srv, http.MethodGet, "/api/v1/topic-index/TEA", dpkmstest.RoleReader, &entries))
+	require.Equal(t, http.StatusOK, getJSON(t, srv, http.MethodGet, "/api/v1/topic-index/TEA", dpkmstest.RoleAdmin, &entries))
 	require.Len(t, entries.Data, 1)
 	assert.Equal(t, "s-1", entries.Data[0].ObjectID)
 	assert.Equal(t, "Alice leads Go", entries.Data[0].Summary)
 
-	require.Equal(t, http.StatusOK, getJSON(t, srv, http.MethodGet, "/api/v1/topic-index/rust", dpkmstest.RoleReader, &entries))
+	require.Equal(t, http.StatusOK, getJSON(t, srv, http.MethodGet, "/api/v1/topic-index/rust", dpkmstest.RoleAdmin, &entries))
 	assert.NotNil(t, entries.Data)
 	assert.Empty(t, entries.Data)
 
 	// A rebuild replaces the one index object; it never adds another.
 	require.Equal(t, http.StatusOK, getJSON(t, srv, http.MethodPost, "/api/v1/topic-index", dpkmstest.RoleAdmin, &rebuilt))
 	var st statsBody
-	require.Equal(t, http.StatusOK, getJSON(t, srv, http.MethodGet, "/api/v1/stats", dpkmstest.RoleReader, &st))
+	require.Equal(t, http.StatusOK, getJSON(t, srv, http.MethodGet, "/api/v1/stats", dpkmstest.RoleAdmin, &st))
 	assert.Equal(t, 1, st.ObjectsByType["topic_index"])
 }
 
-// Reads need read:objects (every role); refresh and rebuild need
-// write:objects (writer, admin). No token is 401.
+// Stats reads need read:objects (every role). Entity pages and the
+// topic index are owner-only (ADR-080 §6: multi-source derived objects
+// are never served to a restricted viewer as stored): the admin owner
+// reads, refreshes and rebuilds them; a writer passes the scope check
+// and is refused 403 NOT_SHARED; a reader fails the write scope first.
+// No token is 401.
 func testPagesIndexStatsRoles(t *testing.T, srv *dpkmstest.Server) {
-	reads := []string{"/api/v1/stats", "/api/v1/pages", "/api/v1/pages/lang.go"}
+	for _, role := range dpkmstest.Roles {
+		assert.Equal(t, http.StatusOK, getJSON(t, srv, http.MethodGet, "/api/v1/stats", role, nil), "stats as %s", role)
+	}
+	assert.Equal(t, http.StatusUnauthorized, getJSON(t, srv, http.MethodGet, "/api/v1/stats", "none", nil), "stats without a token")
+
+	notShared := func(method, p, role string) {
+		t.Helper()
+		resp := srv.Request(t, method, p, role, nil)
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		assert.Equal(t, http.StatusForbidden, resp.StatusCode, "%s %s as %s: %s", method, p, role, body)
+		assert.Contains(t, string(body), "NOT_SHARED", "%s %s as %s", method, p, role)
+	}
+	reads := []string{"/api/v1/pages", "/api/v1/pages/lang.go"}
 	for _, p := range reads {
-		for _, role := range dpkmstest.Roles {
-			assert.Equal(t, http.StatusOK, getJSON(t, srv, http.MethodGet, p, role, nil), "%s as %s", p, role)
+		assert.Equal(t, http.StatusOK, getJSON(t, srv, http.MethodGet, p, dpkmstest.RoleAdmin, nil), "%s as admin", p)
+		for _, role := range []string{dpkmstest.RoleWriter, dpkmstest.RoleReader} {
+			notShared(http.MethodGet, p, role)
 		}
 		assert.Equal(t, http.StatusUnauthorized, getJSON(t, srv, http.MethodGet, p, "none", nil), "%s without a token", p)
 	}
@@ -362,13 +380,14 @@ func testPagesIndexStatsRoles(t *testing.T, srv *dpkmstest.Server) {
 		assert.True(t, strings.Contains(string(body), "INSUFFICIENT_SCOPE") && strings.Contains(string(body), "write:objects"),
 			"%s as reader: %s", p, body)
 		assert.Equal(t, http.StatusUnauthorized, getJSON(t, srv, http.MethodPost, p, "none", nil), "%s without a token", p)
-		for _, role := range []string{dpkmstest.RoleWriter, dpkmstest.RoleAdmin} {
-			assert.Equal(t, http.StatusOK, getJSON(t, srv, http.MethodPost, p, role, nil), "%s as %s", p, role)
-		}
+		notShared(http.MethodPost, p, dpkmstest.RoleWriter)
+		assert.Equal(t, http.StatusOK, getJSON(t, srv, http.MethodPost, p, dpkmstest.RoleAdmin, nil), "%s as admin", p)
 	}
-	// Once built, the index reads for every role.
-	for _, role := range dpkmstest.Roles {
-		assert.Equal(t, http.StatusOK, getJSON(t, srv, http.MethodGet, "/api/v1/topic-index", role, nil), role)
-		assert.Equal(t, http.StatusOK, getJSON(t, srv, http.MethodGet, "/api/v1/topic-index/go", role, nil), role)
+	// Once built, the index reads for the owner and stays closed to the rest.
+	for _, p := range []string{"/api/v1/topic-index", "/api/v1/topic-index/go"} {
+		assert.Equal(t, http.StatusOK, getJSON(t, srv, http.MethodGet, p, dpkmstest.RoleAdmin, nil), p)
+		for _, role := range []string{dpkmstest.RoleWriter, dpkmstest.RoleReader} {
+			notShared(http.MethodGet, p, role)
+		}
 	}
 }

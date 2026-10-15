@@ -174,7 +174,8 @@ func TestResolveOverAPI(t *testing.T) {
 	seedResolveEntity(t, db)
 	now := time.Now().Truncate(time.Second)
 	if err := db.Driver.Entities().Upsert(context.Background(), &storage.Entity{
-		Slug: "ui.cart", Title: "Shopping Cart", Aliases: []string{"basket"}, CreatedAt: now, UpdatedAt: now,
+		Slug: "ui.cart", Title: "Shopping Cart", Aliases: []string{"basket"}, RegistryURL: "https://registry.test",
+		CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}

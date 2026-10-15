@@ -304,38 +304,59 @@ func policyKey(in Input, grants []Grant) string {
 // the policy identityID is bound to (when identityID is set) from st,
 // and compiles its viewer. An unknown principal is storage.ErrNotFound.
 func CompileFor(ctx context.Context, st storage.SharingStore, principalID, identityID string, now time.Time) (Viewer, error) {
+	in, err := loadInput(ctx, st, principalID, identityID, now)
+	if err != nil {
+		return Viewer{}, err
+	}
+	return Compile(in)
+}
+
+// loadInput reads what Compile needs for principalID at now from st:
+// its ceiling, its active grants with their policies, and the policy
+// identityID is bound to when identityID is set. An unknown principal
+// or identity is storage.ErrNotFound.
+func loadInput(ctx context.Context, st storage.SharingStore, principalID, identityID string, now time.Time) (Input, error) {
 	deny, err := st.DenyClasses(ctx, principalID)
 	if err != nil {
-		return Viewer{}, fmt.Errorf("compile viewer %s: ceiling: %w", principalID, err)
+		return Input{}, fmt.Errorf("compile viewer %s: ceiling: %w", principalID, err)
 	}
 	active, err := st.Grants().ListActiveForPrincipal(ctx, principalID, now)
 	if err != nil {
-		return Viewer{}, fmt.Errorf("compile viewer %s: grants: %w", principalID, err)
+		return Input{}, fmt.Errorf("compile viewer %s: grants: %w", principalID, err)
 	}
 	in := Input{PrincipalID: principalID, IdentityID: identityID, DenyClasses: deny}
 	for _, ag := range active {
 		p, err := PolicyFromSpec(&ag.Policy)
 		if err != nil {
-			return Viewer{}, fmt.Errorf("compile viewer %s: grant %s: %w", principalID, ag.Grant.ID, err)
+			return Input{}, fmt.Errorf("compile viewer %s: grant %s: %w", principalID, ag.Grant.ID, err)
 		}
 		in.Grants = append(in.Grants, Grant{ID: ag.Grant.ID, Audience: ag.Audience.Name, Policy: p})
 	}
 	if identityID != "" {
 		policyID, err := st.IdentityPolicy(ctx, identityID)
 		if err != nil {
-			return Viewer{}, fmt.Errorf("compile viewer %s: identity %s: %w", principalID, identityID, err)
+			return Input{}, fmt.Errorf("compile viewer %s: identity %s: %w", principalID, identityID, err)
 		}
 		if policyID != "" {
 			row, err := st.Policies().Get(ctx, policyID)
 			if err != nil {
-				return Viewer{}, fmt.Errorf("compile viewer %s: key policy %s: %w", principalID, policyID, err)
+				return Input{}, fmt.Errorf("compile viewer %s: key policy %s: %w", principalID, policyID, err)
 			}
 			p, err := PolicyFromSpec(row)
 			if err != nil {
-				return Viewer{}, fmt.Errorf("compile viewer %s: %w", principalID, err)
+				return Input{}, fmt.Errorf("compile viewer %s: %w", principalID, err)
 			}
 			in.KeyPolicy = &p
 		}
 	}
-	return Compile(in)
+	return in, nil
+}
+
+// Key returns the policy key Compile would give in: its principal,
+// ceiling, key policy and every grant with its policy version, in
+// grant order. It is what a cache of compiled viewers keys on.
+func (in Input) Key() string {
+	grants := slices.Clone(in.Grants)
+	sort.SliceStable(grants, func(i, j int) bool { return grants[i].ID < grants[j].ID })
+	return policyKey(in, grants)
 }

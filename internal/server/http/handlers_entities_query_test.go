@@ -14,6 +14,7 @@ import (
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/auth/authtest"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing/sharingtest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
@@ -29,6 +30,9 @@ func seedQueryEntities(t *testing.T, es storage.EntityStore) {
 		{Slug: "zz.late", Title: "Late CHECKOUT page", Namespace: "zz"},
 		{Slug: "resolve", Title: "An entity named like the route", Namespace: "zz"},
 	} {
+		// Registry-served, so a granted non-owner sees them without a
+		// mention (ADR-080 §6).
+		e.RegistryURL = "https://registry.test"
 		e.CreatedAt, e.UpdatedAt = now, now
 		require.NoError(t, es.Upsert(ownerCtx(), e))
 	}
@@ -103,6 +107,10 @@ func TestResolveEntity(t *testing.T) {
 func TestEntityQueryRoutesRequireReadObjects(t *testing.T) {
 	svc := newScopeTestService(t)
 	seedQueryEntities(t, svc.Store(ownerCtx()).Entities())
+	// The reader is a non-owner principal: it sees entities only
+	// through a share grant.
+	sharingtest.EnsurePrincipal(t, svc.Store(ownerCtx()), "tablet", storage.PrincipalKindPerson, authn.RoleReader)
+	sharingtest.GrantEverything(t, svc.Store(ownerCtx()), "tablet")
 	provider := authtest.TokenChain(
 		authtest.Token{Token: "tok-reader-fixture-0123456789abcdef0123456789", Principal: "tablet", Roles: []string{authn.RoleReader}},
 	)

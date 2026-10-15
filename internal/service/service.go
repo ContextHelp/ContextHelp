@@ -75,6 +75,11 @@ type Service struct {
 	// unauthenticated.
 	registryTokens registrysync.TokenSource
 	registryAuth   *registrysync.Credentials
+
+	// viewers resolves each non-owner principal's viewer from the
+	// store's sharing registry (ADR-080 §4); the transports call it
+	// after authentication. nil without a store.
+	viewers *sharing.Resolver
 }
 
 // Option configures a Service at construction time. Existing call
@@ -146,9 +151,17 @@ func NewWithOptions(store storage.StorageDriver, queue *jobs.Queue, pipes pipeli
 	}
 	if store != nil {
 		s.pipelineSvc = newPipelineService(store.Pipelines(), s.policyPub)
+		s.viewers = sharing.NewResolver(store.Sharing())
 	}
 	return s
 }
+
+// Viewers is the resolver the transports give each authenticated
+// principal its viewer through: the owner is unrestricted, anyone else
+// gets the viewer compiled from its grants over this service's store.
+// nil for a service with no store, which resolves every non-owner to
+// the zero viewer.
+func (s *Service) Viewers() *sharing.Resolver { return s.viewers }
 
 // Store returns the storage driver as the caller of ctx may see it:
 // the driver itself for an unrestricted viewer, a driver whose reads
@@ -772,6 +785,13 @@ func (s *Service) dedupeOnIdempotencyKey(ctx context.Context, key string) (jobID
 		return "", false, nil
 	}
 	existing, err := s.Store(ctx).Jobs().GetByIdempotencyKey(ctx, key)
+	if errors.Is(err, storage.ErrRestrictedViewer) && !errors.Is(err, storage.ErrNoViewer) {
+		// Jobs are owner-only (ADR-080 §6), so a restricted caller cannot
+		// look its key up: its submission is enqueued as new, which can
+		// duplicate a replay but never shows it another caller's job.
+		// Idempotency for restricted writers needs per-principal jobs.
+		return "", false, nil
+	}
 	if err != nil {
 		return "", false, fmt.Errorf("idempotency lookup: %w", err)
 	}

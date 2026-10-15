@@ -15,6 +15,8 @@ import (
 type restrictedObjects struct {
 	inner  ObjectStore
 	scoped ObjectStore
+	// refuse is why the scoped reads refuse when scoped is nil.
+	refuse error
 }
 
 var _ ObjectStore = restrictedObjects{}
@@ -25,35 +27,35 @@ func (v restrictedObjects) Create(ctx context.Context, obj *KnowledgeObject) err
 
 func (v restrictedObjects) Get(ctx context.Context, id string) (*KnowledgeObject, error) {
 	if v.scoped == nil {
-		return nil, noScopedReads("Objects", "Get")
+		return nil, refuseRead("Objects", "Get", v.refuse)
 	}
 	return v.scoped.Get(ctx, id)
 }
 
 func (v restrictedObjects) GetByContentHash(ctx context.Context, hash, profileID string) (*KnowledgeObject, error) {
 	if v.scoped == nil {
-		return nil, noScopedReads("Objects", "GetByContentHash")
+		return nil, refuseRead("Objects", "GetByContentHash", v.refuse)
 	}
 	return v.scoped.GetByContentHash(ctx, hash, profileID)
 }
 
 func (v restrictedObjects) GetBySourceKey(ctx context.Context, key string) (*KnowledgeObject, error) {
 	if v.scoped == nil {
-		return nil, noScopedReads("Objects", "GetBySourceKey")
+		return nil, refuseRead("Objects", "GetBySourceKey", v.refuse)
 	}
 	return v.scoped.GetBySourceKey(ctx, key)
 }
 
 func (v restrictedObjects) List(ctx context.Context, filter ObjectFilter) ([]*KnowledgeObject, int, error) {
 	if v.scoped == nil {
-		return nil, 0, noScopedReads("Objects", "List")
+		return nil, 0, refuseRead("Objects", "List", v.refuse)
 	}
 	return v.scoped.List(ctx, filter)
 }
 
 func (v restrictedObjects) CountByType(ctx context.Context) (map[string]int, error) {
 	if v.scoped == nil {
-		return nil, noScopedReads("Objects", "CountByType")
+		return nil, refuseRead("Objects", "CountByType", v.refuse)
 	}
 	return v.scoped.CountByType(ctx)
 }
@@ -76,7 +78,7 @@ func (v restrictedObjects) CountBlobRefs(_ context.Context, _ string) (int, erro
 
 func (v restrictedObjects) ListBySQL(ctx context.Context, where string, args []any, filter ObjectFilter) ([]*KnowledgeObject, int, error) {
 	if v.scoped == nil {
-		return nil, 0, noScopedReads("Objects", "ListBySQL")
+		return nil, 0, refuseRead("Objects", "ListBySQL", v.refuse)
 	}
 	return v.scoped.ListBySQL(ctx, where, args, filter)
 }
@@ -107,28 +109,28 @@ func (v restrictedObjects) ListPendingReminders(_ context.Context) ([]*Knowledge
 
 func (v restrictedObjects) VectorSearch(ctx context.Context, q VectorQuery, filter ObjectFilter) ([]*KnowledgeObject, error) {
 	if v.scoped == nil {
-		return nil, noScopedReads("Objects", "VectorSearch")
+		return nil, refuseRead("Objects", "VectorSearch", v.refuse)
 	}
 	return v.scoped.VectorSearch(ctx, q, filter)
 }
 
 func (v restrictedObjects) FTSSearch(ctx context.Context, query string, filter ObjectFilter) ([]*KnowledgeObject, error) {
 	if v.scoped == nil {
-		return nil, noScopedReads("Objects", "FTSSearch")
+		return nil, refuseRead("Objects", "FTSSearch", v.refuse)
 	}
 	return v.scoped.FTSSearch(ctx, query, filter)
 }
 
 func (v restrictedObjects) FTSSearchNodeAware(ctx context.Context, query string, filter ObjectFilter, naf NodeAwareFilter) ([]*NodeAwareResult, error) {
 	if v.scoped == nil {
-		return nil, noScopedReads("Objects", "FTSSearchNodeAware")
+		return nil, refuseRead("Objects", "FTSSearchNodeAware", v.refuse)
 	}
 	return v.scoped.FTSSearchNodeAware(ctx, query, filter, naf)
 }
 
 func (v restrictedObjects) VectorSearchNodeAware(ctx context.Context, q VectorQuery, filter ObjectFilter, naf NodeAwareFilter) ([]*NodeAwareResult, error) {
 	if v.scoped == nil {
-		return nil, noScopedReads("Objects", "VectorSearchNodeAware")
+		return nil, refuseRead("Objects", "VectorSearchNodeAware", v.refuse)
 	}
 	return v.scoped.VectorSearchNodeAware(ctx, q, filter, naf)
 }
@@ -140,6 +142,8 @@ func (v restrictedObjects) VectorSearchNodeAware(ctx context.Context, q VectorQu
 type restrictedEntities struct {
 	inner  EntityStore
 	scoped EntityStore
+	// refuse is why the scoped reads refuse when scoped is nil.
+	refuse error
 }
 
 var _ EntityStore = restrictedEntities{}
@@ -158,21 +162,21 @@ func (v restrictedEntities) SetContentStatus(ctx context.Context, slug string, s
 
 func (v restrictedEntities) Get(ctx context.Context, slug string) (*Entity, error) {
 	if v.scoped == nil {
-		return nil, noScopedReads("Entities", "Get")
+		return nil, refuseRead("Entities", "Get", v.refuse)
 	}
 	return v.scoped.Get(ctx, slug)
 }
 
 func (v restrictedEntities) List(ctx context.Context, filter EntityFilter) ([]*Entity, error) {
 	if v.scoped == nil {
-		return nil, noScopedReads("Entities", "List")
+		return nil, refuseRead("Entities", "List", v.refuse)
 	}
 	return v.scoped.List(ctx, filter)
 }
 
 func (v restrictedEntities) Resolve(ctx context.Context, mention string) (*Entity, error) {
 	if v.scoped == nil {
-		return nil, noScopedReads("Entities", "Resolve")
+		return nil, refuseRead("Entities", "Resolve", v.refuse)
 	}
 	return v.scoped.Resolve(ctx, mention)
 }
@@ -183,6 +187,8 @@ func (v restrictedEntities) Resolve(ctx context.Context, mention string) (*Entit
 type restrictedEdges struct {
 	inner  EdgeStore
 	scoped EdgeStore
+	// refuse is why the scoped reads refuse when scoped is nil.
+	refuse error
 }
 
 var _ EdgeStore = restrictedEdges{}
@@ -193,14 +199,14 @@ func (v restrictedEdges) Create(ctx context.Context, edge *Edge) error {
 
 func (v restrictedEdges) ListFrom(ctx context.Context, fromType, fromID string) ([]*Edge, error) {
 	if v.scoped == nil {
-		return nil, noScopedReads("Edges", "ListFrom")
+		return nil, refuseRead("Edges", "ListFrom", v.refuse)
 	}
 	return v.scoped.ListFrom(ctx, fromType, fromID)
 }
 
 func (v restrictedEdges) ListTo(ctx context.Context, toType, toID string) ([]*Edge, error) {
 	if v.scoped == nil {
-		return nil, noScopedReads("Edges", "ListTo")
+		return nil, refuseRead("Edges", "ListTo", v.refuse)
 	}
 	return v.scoped.ListTo(ctx, toType, toID)
 }
@@ -215,14 +221,14 @@ func (v restrictedEdges) DeleteByObject(ctx context.Context, objectID string) er
 
 func (v restrictedEdges) CountMentionsTo(ctx context.Context, toType, toID string) (int, error) {
 	if v.scoped == nil {
-		return 0, noScopedReads("Edges", "CountMentionsTo")
+		return 0, refuseRead("Edges", "CountMentionsTo", v.refuse)
 	}
 	return v.scoped.CountMentionsTo(ctx, toType, toID)
 }
 
 func (v restrictedEdges) RelatedObjectIDs(ctx context.Context, objectID string, depth, limit int) ([]string, error) {
 	if v.scoped == nil {
-		return nil, noScopedReads("Edges", "RelatedObjectIDs")
+		return nil, refuseRead("Edges", "RelatedObjectIDs", v.refuse)
 	}
 	return v.scoped.RelatedObjectIDs(ctx, objectID, depth, limit)
 }
@@ -248,6 +254,8 @@ func (v restrictedEdges) DeleteMatching(ctx context.Context, matches []EdgeMatch
 type restrictedEmbeddings struct {
 	inner  EmbeddingStore
 	scoped EmbeddingStore
+	// refuse is why the scoped reads refuse when scoped is nil.
+	refuse error
 }
 
 var _ EmbeddingStore = restrictedEmbeddings{}
@@ -266,7 +274,7 @@ func (v restrictedEmbeddings) Get(_ context.Context, _ string, _ string) ([]Obje
 
 func (v restrictedEmbeddings) Search(ctx context.Context, q VectorQuery) ([]EmbeddingHit, error) {
 	if v.scoped == nil {
-		return nil, noScopedReads("Embeddings", "Search")
+		return nil, refuseRead("Embeddings", "Search", v.refuse)
 	}
 	return v.scoped.Search(ctx, q)
 }
@@ -286,27 +294,29 @@ func (v restrictedEmbeddings) PurgeModel(ctx context.Context, modelID string) er
 type restrictedProximity struct {
 	inner  ProximityStore
 	scoped ProximityStore
+	// refuse is why the scoped reads refuse when scoped is nil.
+	refuse error
 }
 
 var _ ProximityStore = restrictedProximity{}
 
 func (v restrictedProximity) GetNeighbors(ctx context.Context, objectID string, limit int) ([]*ProximityScore, error) {
 	if v.scoped == nil {
-		return nil, noScopedReads("Proximity", "GetNeighbors")
+		return nil, refuseRead("Proximity", "GetNeighbors", v.refuse)
 	}
 	return v.scoped.GetNeighbors(ctx, objectID, limit)
 }
 
 func (v restrictedProximity) GetNeighborsAbove(ctx context.Context, objectID string, threshold float64) ([]*ProximityScore, error) {
 	if v.scoped == nil {
-		return nil, noScopedReads("Proximity", "GetNeighborsAbove")
+		return nil, refuseRead("Proximity", "GetNeighborsAbove", v.refuse)
 	}
 	return v.scoped.GetNeighborsAbove(ctx, objectID, threshold)
 }
 
 func (v restrictedProximity) Get(ctx context.Context, objectA, objectB string) (*ProximityScore, error) {
 	if v.scoped == nil {
-		return nil, noScopedReads("Proximity", "Get")
+		return nil, refuseRead("Proximity", "Get", v.refuse)
 	}
 	return v.scoped.Get(ctx, objectA, objectB)
 }
@@ -337,6 +347,8 @@ func (v restrictedProximity) Stats(_ context.Context) (*ProximityStats, error) {
 type restrictedAliases struct {
 	inner  AliasStore
 	scoped AliasStore
+	// refuse is why the scoped reads refuse when scoped is nil.
+	refuse error
 }
 
 var _ AliasStore = restrictedAliases{}
@@ -347,14 +359,14 @@ func (v restrictedAliases) Create(ctx context.Context, a *Alias) error {
 
 func (v restrictedAliases) Resolve(ctx context.Context, alias, profile string) (string, error) {
 	if v.scoped == nil {
-		return "", noScopedReads("Aliases", "Resolve")
+		return "", refuseRead("Aliases", "Resolve", v.refuse)
 	}
 	return v.scoped.Resolve(ctx, alias, profile)
 }
 
 func (v restrictedAliases) List(ctx context.Context, filter AliasFilter) ([]*Alias, error) {
 	if v.scoped == nil {
-		return nil, noScopedReads("Aliases", "List")
+		return nil, refuseRead("Aliases", "List", v.refuse)
 	}
 	return v.scoped.List(ctx, filter)
 }
@@ -400,8 +412,9 @@ func (v restrictedAttachments) DeleteAttachment(ctx context.Context, attachmentI
 type restrictedBlobs struct {
 	inner BlobStore
 	// refs is the driver's object store bound to the viewer's scope;
-	// nil when there is none.
-	refs ObjectStore
+	// nil when there is none, and refuse says why.
+	refs   ObjectStore
+	refuse error
 }
 
 var _ BlobStore = restrictedBlobs{}
@@ -427,7 +440,7 @@ func (v restrictedBlobs) Put(ctx context.Context, key string, data io.Reader, me
 
 func (v restrictedBlobs) Get(ctx context.Context, key string) (io.ReadCloser, BlobMeta, error) {
 	if v.refs == nil {
-		return nil, BlobMeta{}, noScopedReads("Blobs", "Get")
+		return nil, BlobMeta{}, refuseRead("Blobs", "Get", v.refuse)
 	}
 	ok, err := v.visible(ctx, key)
 	if err != nil {
@@ -445,7 +458,7 @@ func (v restrictedBlobs) Delete(ctx context.Context, key string) error {
 
 func (v restrictedBlobs) Exists(ctx context.Context, key string) (bool, error) {
 	if v.refs == nil {
-		return false, noScopedReads("Blobs", "Exists")
+		return false, refuseRead("Blobs", "Exists", v.refuse)
 	}
 	ok, err := v.visible(ctx, key)
 	if err != nil || !ok {
@@ -456,7 +469,7 @@ func (v restrictedBlobs) Exists(ctx context.Context, key string) (bool, error) {
 
 func (v restrictedBlobs) List(ctx context.Context, prefix string) ([]BlobInfo, error) {
 	if v.refs == nil {
-		return nil, noScopedReads("Blobs", "List")
+		return nil, refuseRead("Blobs", "List", v.refuse)
 	}
 	all, err := v.inner.List(ctx, prefix)
 	if err != nil {
@@ -477,7 +490,7 @@ func (v restrictedBlobs) List(ctx context.Context, prefix string) ([]BlobInfo, e
 
 func (v restrictedBlobs) URL(ctx context.Context, key string) (string, error) {
 	if v.refs == nil {
-		return "", noScopedReads("Blobs", "URL")
+		return "", refuseRead("Blobs", "URL", v.refuse)
 	}
 	ok, err := v.visible(ctx, key)
 	if err != nil {

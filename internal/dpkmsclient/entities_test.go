@@ -27,6 +27,9 @@ func entityFixture(t *testing.T) storage.StorageDriver {
 		{Slug: "zz.late", Title: "Late CHECKOUT page", Namespace: "zz"},
 	} {
 		e.CreatedAt, e.UpdatedAt = now, now
+		// Registry-served, so a granted non-owner sees them without a
+		// mention (ADR-080 §6).
+		e.RegistryURL = "https://registry.test"
 		if err := drv.Entities().Upsert(ctx, e); err != nil {
 			t.Fatal(err)
 		}

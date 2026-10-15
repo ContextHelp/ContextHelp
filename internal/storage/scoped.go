@@ -22,10 +22,19 @@ func restrictedRead(store, method string) error {
 	return fmt.Errorf("%s.%s: %w", store, method, ErrRestrictedViewer)
 }
 
-// noScopedReads is the error a scoped read returns when the driver's
-// store cannot bind to a scope.
-func noScopedReads(store, method string) error {
-	return fmt.Errorf("%s.%s: %w: %w", store, method, ErrNoScopedReads, ErrRestrictedViewer)
+// ErrNoViewer is the cause of every refusal of a ScopedDriver built
+// for a nil viewer: no transport attached a viewer to the request,
+// which is a transport bug, not a visibility answer. It wraps nothing;
+// refuseRead pairs it with ErrRestrictedViewer so existing checks hold,
+// and the transports keep it a server error instead of a capability
+// refusal.
+var ErrNoViewer = errors.New("no viewer attached")
+
+// refuseRead is the error a scoped read returns when it cannot answer
+// through a scope: cause is ErrNoViewer for a nil viewer or
+// ErrNoScopedReads for a driver store that cannot bind to one.
+func refuseRead(store, method string, cause error) error {
+	return fmt.Errorf("%s.%s: %w: %w", store, method, cause, ErrRestrictedViewer)
 }
 
 // ScopedDriver returns d as seen by v. An unrestricted viewer gets d
@@ -130,19 +139,35 @@ func (s scopedDriver) principalOf() string {
 	return s.scope.Principal
 }
 
+// refusal is the cause a wrapper refuses scoped reads with: ErrNoViewer
+// without a scope, ErrNoScopedReads when the driver's store could not
+// bind to it (bound false), nil when the reads can answer.
+func (s scopedDriver) refusal(bound bool) error {
+	switch {
+	case s.scope == nil:
+		return ErrNoViewer
+	case !bound:
+		return ErrNoScopedReads
+	}
+	return nil
+}
+
 func (s scopedDriver) Objects() ObjectStore {
 	st := s.StorageDriver.Objects()
-	return restrictedObjects{inner: st, scoped: scopedObjects(st, s.scope)}
+	bound := scopedObjects(st, s.scope)
+	return restrictedObjects{inner: st, scoped: bound, refuse: s.refusal(bound != nil)}
 }
 
 func (s scopedDriver) Entities() EntityStore {
 	st := s.StorageDriver.Entities()
-	return restrictedEntities{inner: st, scoped: scopedEntities(st, s.scope)}
+	bound := scopedEntities(st, s.scope)
+	return restrictedEntities{inner: st, scoped: bound, refuse: s.refusal(bound != nil)}
 }
 
 func (s scopedDriver) Edges() EdgeStore {
 	st := s.StorageDriver.Edges()
-	return restrictedEdges{inner: st, scoped: scopedEdges(st, s.scope)}
+	bound := scopedEdges(st, s.scope)
+	return restrictedEdges{inner: st, scoped: bound, refuse: s.refusal(bound != nil)}
 }
 func (s scopedDriver) Jobs() JobStore { return restrictedJobs{inner: s.StorageDriver.Jobs()} }
 func (s scopedDriver) Pipelines() PipelineStore {
@@ -166,18 +191,21 @@ func (s scopedDriver) Detectors() DetectorStore {
 	return restrictedDetectors{inner: s.StorageDriver.Detectors()}
 }
 func (s scopedDriver) Blobs() BlobStore {
-	return restrictedBlobs{inner: s.StorageDriver.Blobs(), refs: scopedObjects(s.StorageDriver.Objects(), s.scope)}
+	refs := scopedObjects(s.StorageDriver.Objects(), s.scope)
+	return restrictedBlobs{inner: s.StorageDriver.Blobs(), refs: refs, refuse: s.refusal(refs != nil)}
 }
 func (s scopedDriver) Proximity() ProximityStore {
 	st := s.StorageDriver.Proximity()
-	return restrictedProximity{inner: st, scoped: scopedProximity(st, s.scope)}
+	bound := scopedProximity(st, s.scope)
+	return restrictedProximity{inner: st, scoped: bound, refuse: s.refusal(bound != nil)}
 }
 func (s scopedDriver) Watches() WatchStore {
 	return restrictedWatches{inner: s.StorageDriver.Watches()}
 }
 func (s scopedDriver) Aliases() AliasStore {
 	st := s.StorageDriver.Aliases()
-	return restrictedAliases{inner: st, scoped: scopedAliases(st, s.scope)}
+	bound := scopedAliases(st, s.scope)
+	return restrictedAliases{inner: st, scoped: bound, refuse: s.refusal(bound != nil)}
 }
 func (s scopedDriver) AuditLog() AuditStore {
 	return restrictedAuditLog{inner: s.StorageDriver.AuditLog()}
@@ -186,7 +214,7 @@ func (s scopedDriver) Attachments() AttachmentStore {
 	return restrictedAttachments{inner: s.StorageDriver.Attachments()}
 }
 func (s scopedDriver) Resurfacing() ResurfacingQueueStore {
-	return restrictedResurfacing{inner: s.StorageDriver.Resurfacing(), principal: s.principalOf()}
+	return restrictedResurfacing{inner: s.StorageDriver.Resurfacing(), principal: s.principalOf(), refuse: s.refusal(true)}
 }
 func (s scopedDriver) Entitlements() EntitlementStore {
 	return restrictedEntitlements{inner: s.StorageDriver.Entitlements()}
@@ -199,13 +227,14 @@ func (s scopedDriver) Metering() MeteringStore {
 }
 func (s scopedDriver) Embeddings() EmbeddingStore {
 	st := s.StorageDriver.Embeddings()
-	return restrictedEmbeddings{inner: st, scoped: scopedEmbeddings(st, s.scope)}
+	bound := scopedEmbeddings(st, s.scope)
+	return restrictedEmbeddings{inner: st, scoped: bound, refuse: s.refusal(bound != nil)}
 }
 func (s scopedDriver) SavedSearches() SavedSearchStore {
-	return restrictedSavedSearches{inner: s.StorageDriver.SavedSearches(), principal: s.principalOf()}
+	return restrictedSavedSearches{inner: s.StorageDriver.SavedSearches(), principal: s.principalOf(), refuse: s.refusal(true)}
 }
 func (s scopedDriver) SearchHistory() SearchHistoryStore {
-	return restrictedSearchHistory{inner: s.StorageDriver.SearchHistory(), principal: s.principalOf()}
+	return restrictedSearchHistory{inner: s.StorageDriver.SearchHistory(), principal: s.principalOf(), refuse: s.refusal(true)}
 }
 func (s scopedDriver) Watermarks() WatermarkStore {
 	return restrictedWatermarks{inner: s.StorageDriver.Watermarks()}

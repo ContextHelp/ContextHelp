@@ -29,7 +29,7 @@ func viewerProbe(t *testing.T) (http.Handler, func() (sharing.Viewer, bool)) {
 // unscoped: the viewer is attached in the same step as the principal.
 func TestRequireAuthAttachesUnrestrictedViewer(t *testing.T) {
 	probe, seen := viewerProbe(t)
-	h := RequireAuth(testChain(t), nil, false)(probe)
+	h := RequireAuth(testChain(t), nil, false, nil)(probe)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/search", nil)
 	req.Header.Set("Authorization", "Bearer tok-valid-fixture-0123456789abcdef0123456789")
 	rec := httptest.NewRecorder()
@@ -45,7 +45,7 @@ func TestRequireAuthAttachesUnrestrictedViewer(t *testing.T) {
 // past a failed authentication.
 func TestRequireAuthRejectedAttachesNoViewer(t *testing.T) {
 	probe, seen := viewerProbe(t)
-	h := RequireAuth(testChain(t), nil, false)(probe)
+	h := RequireAuth(testChain(t), nil, false, nil)(probe)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/search", nil))
 

@@ -49,7 +49,7 @@ func pageFixture(t *testing.T) storage.StorageDriver {
 			t.Fatal(err)
 		}
 	}
-	if err := drv.Entities().Upsert(ctx, &storage.Entity{Slug: "ui.cart", Title: "Cart", Namespace: "ui", CreatedAt: now, UpdatedAt: now}); err != nil {
+	if err := drv.Entities().Upsert(ctx, &storage.Entity{Slug: "ui.cart", Title: "Cart", Namespace: "ui", RegistryURL: "https://registry.test", CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
 	if err := drv.Feeds().Create(ctx, &storage.Feed{ID: "f-1", URL: "https://a.example/rss", Status: "active", CreatedAt: now, UpdatedAt: now}); err != nil {
@@ -63,7 +63,7 @@ func pageFixture(t *testing.T) storage.StorageDriver {
 
 func TestPages_Reader(t *testing.T) {
 	srv := dpkmstest.Start(t, pageFixture(t), dpkmstest.WithKeys())
-	c := newClient(t, dpkmsclient.Endpoint{URL: srv.URL, Token: srv.Token(dpkmstest.RoleReader)})
+	c := newClient(t, dpkmsclient.Endpoint{URL: srv.URL, Token: srv.Token(dpkmstest.RoleAdmin)})
 	ctx := context.Background()
 
 	pages, err := c.ListPages(ctx, 10)
@@ -92,7 +92,8 @@ func TestPages_Reader(t *testing.T) {
 	}
 
 	// A reader may not refresh: UNAUTHORIZED (exit 5), nothing written.
-	_, err = c.RefreshPage(ctx, "person.alice")
+	reader := newClient(t, dpkmsclient.Endpoint{URL: srv.URL, Token: srv.Token(dpkmstest.RoleReader)})
+	_, err = reader.RefreshPage(ctx, "person.alice")
 	if e := envelope(t, err); e.ExitCode != 5 || !strings.Contains(err.Error(), "write:objects") {
 		t.Fatalf("RefreshPage as reader: %v", err)
 	}
@@ -103,7 +104,7 @@ func TestPages_Reader(t *testing.T) {
 
 func TestPages_WriterRefreshes(t *testing.T) {
 	srv := dpkmstest.Start(t, pageFixture(t), dpkmstest.WithKeys())
-	c := newClient(t, dpkmsclient.Endpoint{URL: srv.URL, Token: srv.Token(dpkmstest.RoleWriter)})
+	c := newClient(t, dpkmsclient.Endpoint{URL: srv.URL, Token: srv.Token(dpkmstest.RoleAdmin)})
 	ctx := context.Background()
 
 	page, err := c.RefreshPage(ctx, "person.alice")
@@ -121,12 +122,15 @@ func TestPages_WriterRefreshes(t *testing.T) {
 
 func TestTopicIndex(t *testing.T) {
 	srv := dpkmstest.Start(t, pageFixture(t), dpkmstest.WithKeys())
+	// The topic index is owner-only (ADR-080 §6): the admin owner reads
+	// and rebuilds it; a reader is refused on scope, a writer on the
+	// capability, both exit 5.
 	reader := newClient(t, dpkmsclient.Endpoint{URL: srv.URL, Token: srv.Token(dpkmstest.RoleReader)})
-	writer := newClient(t, dpkmsclient.Endpoint{URL: srv.URL, Token: srv.Token(dpkmstest.RoleWriter)})
+	writer := newClient(t, dpkmsclient.Endpoint{URL: srv.URL, Token: srv.Token(dpkmstest.RoleAdmin)})
 	ctx := context.Background()
 
 	// Not built yet: NOT_FOUND (exit 3).
-	_, err := reader.TopicIndex(ctx)
+	_, err := writer.TopicIndex(ctx)
 	if e := envelope(t, err); e.ExitCode != 3 {
 		t.Fatalf("TopicIndex before a rebuild: %v", err)
 	}
@@ -134,12 +138,16 @@ func TestTopicIndex(t *testing.T) {
 	if e := envelope(t, err); e.ExitCode != 5 {
 		t.Fatalf("RebuildTopicIndex as reader: %v", err)
 	}
+	_, err = reader.TopicIndex(ctx)
+	if e := envelope(t, err); e.ExitCode != 5 {
+		t.Fatalf("TopicIndex as reader: %v", err)
+	}
 
 	id, err := writer.RebuildTopicIndex(ctx)
 	if err != nil || id == "" {
 		t.Fatalf("RebuildTopicIndex = %q, %v", id, err)
 	}
-	idx, err := reader.TopicIndex(ctx)
+	idx, err := writer.TopicIndex(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,11 +155,11 @@ func TestTopicIndex(t *testing.T) {
 		idx.GeneratedAt.IsZero() {
 		t.Fatalf("TopicIndex = %+v", idx)
 	}
-	entries, err := reader.TopicEntries(ctx, "G")
+	entries, err := writer.TopicEntries(ctx, "G")
 	if err != nil || len(entries) != 1 || entries[0].ObjectID != "s-1" || entries[0].Summary != "Alice ships Go" {
 		t.Fatalf("TopicEntries(G) = %+v, %v", entries, err)
 	}
-	entries, err = reader.TopicEntries(ctx, "rust")
+	entries, err = writer.TopicEntries(ctx, "rust")
 	if err != nil || entries == nil || len(entries) != 0 {
 		t.Fatalf("TopicEntries(rust) = %#v, %v", entries, err)
 	}
@@ -159,7 +167,7 @@ func TestTopicIndex(t *testing.T) {
 
 func TestStats(t *testing.T) {
 	srv := dpkmstest.Start(t, pageFixture(t), dpkmstest.WithKeys())
-	c := newClient(t, dpkmsclient.Endpoint{URL: srv.URL, Token: srv.Token(dpkmstest.RoleReader)})
+	c := newClient(t, dpkmsclient.Endpoint{URL: srv.URL, Token: srv.Token(dpkmstest.RoleAdmin)})
 	ctx := context.Background()
 
 	st, err := c.Stats(ctx, "")

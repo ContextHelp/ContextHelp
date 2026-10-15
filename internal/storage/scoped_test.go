@@ -302,16 +302,18 @@ func TestRestrictedStoresFailClosedOnReadsAndPassWrites(t *testing.T) {
 func TestNilViewerFailsEveryReadClosed(t *testing.T) {
 	scoped := ScopedDriver(nil, nilDriver{})
 	restrictedStoreMethods(t, scoped, func(accessor string, m reflect.Method, reached bool, err error) {
-		refused := slices.Contains(restrictedReads[accessor], m.Name) ||
-			slices.Contains(scopedReads[accessor], m.Name) ||
+		ownerOnly := slices.Contains(restrictedReads[accessor], m.Name)
+		viewerless := slices.Contains(scopedReads[accessor], m.Name) ||
 			slices.Contains(principalReads[accessor], m.Name) ||
 			slices.Contains(principalWrites[accessor], m.Name)
 		switch {
-		case refused && reached:
+		case (ownerOnly || viewerless) && reached:
 			t.Errorf("%s.%s: reached the store for a nil viewer", accessor, m.Name)
-		case refused && !errors.Is(err, ErrRestrictedViewer):
+		case ownerOnly && !errors.Is(err, ErrRestrictedViewer):
 			t.Errorf("%s.%s: nil viewer got %v, want ErrRestrictedViewer", accessor, m.Name, err)
-		case !refused && !reached:
+		case viewerless && (!errors.Is(err, ErrRestrictedViewer) || !errors.Is(err, ErrNoViewer)):
+			t.Errorf("%s.%s: nil viewer got %v, want ErrNoViewer wrapping ErrRestrictedViewer", accessor, m.Name, err)
+		case !ownerOnly && !viewerless && !reached:
 			t.Errorf("%s.%s: a write never reached the store (err=%v)", accessor, m.Name, err)
 		}
 	})

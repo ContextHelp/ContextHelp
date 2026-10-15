@@ -117,10 +117,11 @@ func edgeScope(sc *storage.Scope) (string, []any) {
 	return " AND " + from + " AND " + to, append(fromArgs, toArgs...)
 }
 
-// mentionTargetExpr is the SQL expression of the node id a mention
-// edge names an entities row by (storage.MentionTarget): its
-// ctxt://entity/<slug> URI.
-const mentionTargetExpr = "'ctxt://entity/' || entities.slug"
+// mentionTargetExpr is the SQL expression of the node ids a mention
+// edge may name an entities row by: its ctxt://entity/<slug> URI
+// (storage.MentionTarget, what every writer stores) or its bare slug,
+// which older rows and fixtures carry.
+const mentionTargetExpr = "('ctxt://entity/' || entities.slug, entities.slug)"
 
 // entityScope is the clause keeping the entities a scoped viewer may
 // see (ADR-080 §6): a registry-sourced entity, or a placeholder at
@@ -133,7 +134,7 @@ func entityScope(sc *storage.Scope) (string, []any) {
 	vis, args := visibleObjects(*sc)
 	return ` AND (entities.registry_url <> '' OR EXISTS (SELECT 1 FROM edges me
 		WHERE me.from_type = 'object' AND me.to_type = 'entity' AND me.edge_type = 'mentions'
-		  AND me.to_id = ` + mentionTargetExpr + ` AND me.from_id IN ` + vis + `))`, args
+		  AND me.to_id IN ` + mentionTargetExpr + ` AND me.from_id IN ` + vis + `))`, args
 }
 
 // filterVisible keeps, in order, the hits whose object the store's

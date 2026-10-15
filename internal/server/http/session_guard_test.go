@@ -138,7 +138,7 @@ func TestUISession_ScopesFollowMintingToken(t *testing.T) {
 		assert.Equal(t, string(tc.scope), decodeBody[ErrorEnvelope](t, resp).Error.Details["required_scope"])
 	}
 	resp = f.do(http.MethodPost, "/api/v1/jobs/x/retry", nil, withCookie(writer), fromUI)
-	assert.NotEqual(t, http.StatusForbidden, resp.StatusCode, "a writer's session retries jobs")
+	assert.NotEqual(t, CodeInsufficientScope, decodeBody[ErrorEnvelope](t, resp).Error.Code, "a writer's session holds write:jobs; only the owner-only capability of jobs refuses it")
 
 	who := decodeBody[whoamiResponse](t, f.do(http.MethodGet, "/api/v1/whoami", nil, withCookie(reader), fromUI))
 	assert.Equal(t, "tablet", who.Principal)

@@ -10,13 +10,14 @@ import (
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/auth/authtest"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 // testChain is a chain over one carried token for the admin "ops".
 func testChain(t *testing.T) *authn.Chain {
 	t.Helper()
 	return authtest.TokenChain(
-		authtest.Token{Token: "tok-valid-fixture-0123456789abcdef0123456789", Principal: "ops", Roles: []string{"admin"}},
+		authtest.Token{Token: "tok-valid-fixture-0123456789abcdef0123456789", Principal: "ops", Kind: storage.PrincipalKindOwner, Roles: []string{"admin"}},
 	)
 }
 
@@ -31,7 +32,7 @@ func authedEcho(t *testing.T) http.Handler {
 }
 
 func TestRequireAuthMissingCredential(t *testing.T) {
-	h := RequireAuth(testChain(t), nil, false)(authedEcho(t))
+	h := RequireAuth(testChain(t), nil, false, nil)(authedEcho(t))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/search", nil))
 
@@ -40,7 +41,7 @@ func TestRequireAuthMissingCredential(t *testing.T) {
 }
 
 func TestRequireAuthInvalidBearer(t *testing.T) {
-	h := RequireAuth(testChain(t), nil, false)(authedEcho(t))
+	h := RequireAuth(testChain(t), nil, false, nil)(authedEcho(t))
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/search", nil)
 	req.Header.Set("Authorization", "Bearer nope")
 	rec := httptest.NewRecorder()
@@ -50,7 +51,7 @@ func TestRequireAuthInvalidBearer(t *testing.T) {
 }
 
 func TestRequireAuthValidBearer(t *testing.T) {
-	h := RequireAuth(testChain(t), nil, false)(authedEcho(t))
+	h := RequireAuth(testChain(t), nil, false, nil)(authedEcho(t))
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/search", nil)
 	req.Header.Set("Authorization", "Bearer tok-valid-fixture-0123456789abcdef0123456789")
 	rec := httptest.NewRecorder()
@@ -61,7 +62,7 @@ func TestRequireAuthValidBearer(t *testing.T) {
 }
 
 func TestRequireAuthValidAPIKey(t *testing.T) {
-	h := RequireAuth(testChain(t), nil, false)(authedEcho(t))
+	h := RequireAuth(testChain(t), nil, false, nil)(authedEcho(t))
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/search", nil)
 	req.Header.Set("X-API-Key", "tok-valid-fixture-0123456789abcdef0123456789")
 	rec := httptest.NewRecorder()

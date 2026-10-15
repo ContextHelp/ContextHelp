@@ -29,6 +29,9 @@ func seedEntityCommands(t *testing.T, db *testDB) {
 		{Slug: "zz.late", Title: "Late CHECKOUT page", Namespace: "zz"},
 	} {
 		e.CreatedAt, e.UpdatedAt = now, now
+		// Registry-served, so a granted non-owner sees them without a
+		// mention (ADR-080 §6).
+		e.RegistryURL = "https://registry.test"
 		if err := db.Driver.Entities().Upsert(ctx, e); err != nil {
 			t.Fatalf("seed %s: %v", e.Slug, err)
 		}

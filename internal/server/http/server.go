@@ -151,7 +151,7 @@ func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
 		// it). Method-agnostic by construction: the middleware
 		// consumes the authn.Chain, never a scheme.
 		if rc.Auth != nil {
-			r.Use(RequireAuth(rc.Auth, rc.Security, rc.DevCORS))
+			r.Use(RequireAuth(rc.Auth, rc.Security, rc.DevCORS, svc.Viewers()))
 			r.Use(SessionGuard(rc.Sessions, rc.SessionRecheck))
 		} else {
 			// Private instance: no principal, but every caller is the
@@ -170,10 +170,13 @@ func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
 // mountAPIRoutes mounts the route-to-scope table. With an auth
 // provider, every route except the federation push (its own credential
 // rule) sits behind RequireScope. A private instance (no provider)
-// grants every scope, so its routes are mounted bare.
+// grants every scope, so its routes are mounted bare. Every route sits
+// behind RequireCapability: a restricted viewer reaches only the routes
+// the capability table opens to it (ADR-080 §4), and an unrestricted
+// viewer passes at no cost.
 func mountAPIRoutes(r chi.Router, routes []apiRoute, rc RouterConfig) {
 	for _, rt := range routes {
-		h := rt.Handler
+		h := RequireCapability(rt.Method, rt.Pattern)(rt.Handler)
 		if rc.Auth != nil {
 			h = RequireScope(rt.Scope, rc.Security)(h)
 		}

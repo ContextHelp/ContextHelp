@@ -77,8 +77,8 @@ func TestMethodCoverageEveryMethodDeclaresAScope(t *testing.T) {
 // scope; the handler never runs.
 func TestMethodCoverageScopelessPrincipalDeniedEverywhere(t *testing.T) {
 	provider := authtest.Fixed(&authn.Principal{ID: "none"})
-	unary := authUnaryInterceptor(provider, nil)
-	stream := authStreamInterceptor(provider, nil)
+	unary := authUnaryInterceptor(provider, nil, nil)
+	stream := authStreamInterceptor(provider, nil, nil)
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer any"))
 
 	for m, isStream := range registeredMethods(t) {
@@ -108,7 +108,7 @@ func TestMethodCoverageScopelessPrincipalDeniedEverywhere(t *testing.T) {
 }
 
 func TestUnknownMethodIsRefused(t *testing.T) {
-	ic := authUnaryInterceptor(newTestChain(t), nil)
+	ic := authUnaryInterceptor(newTestChain(t), nil, nil)
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer tok-valid-fixture-0123456789abcdef0123456789"))
 	_, err := ic(ctx, nil, unaryInfo("/dpkms.v1.Unlisted/Method"),
 		func(context.Context, any) (any, error) { return "ok", nil })

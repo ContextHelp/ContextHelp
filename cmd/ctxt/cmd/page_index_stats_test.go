@@ -48,7 +48,7 @@ func seedPagesIndexStats(t *testing.T, db *testDB) {
 	seedJob(t, db, "j-1", "analyze", "default", storage.JobPending)
 	seedJob(t, db, "j-2", "analyze", "default", storage.JobCompleted)
 	seedJob(t, db, "j-3", "analyze", "default", storage.JobCompleted)
-	if err := db.Driver.Entities().Upsert(ctx, &storage.Entity{Slug: "ui.cart", Title: "Cart", Namespace: "ui", CreatedAt: now, UpdatedAt: now}); err != nil {
+	if err := db.Driver.Entities().Upsert(ctx, &storage.Entity{Slug: "ui.cart", Title: "Cart", Namespace: "ui", RegistryURL: "https://registry.test", CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
 	for id, status := range map[string]string{"f-1": "active", "f-2": "paused"} {
@@ -82,7 +82,7 @@ func assertStoreNotCreated(t *testing.T, path string) {
 func TestPageCommandsOverAPI(t *testing.T) {
 	db := setupTestDB(t, dpkmstest.WithKeys())
 	seedPagesIndexStats(t, db)
-	db.useRole(t, dpkmstest.RoleReader)
+	db.useRole(t, dpkmstest.RoleAdmin)
 	local := detachLocalStore(t, db)
 
 	out, err := db.exec("page", "list")
@@ -114,13 +114,25 @@ func TestPageCommandsOverAPI(t *testing.T) {
 		}
 	}
 
+	// Entity pages are owner-only (ADR-080 §6): a reader is refused the
+	// refresh on scope, a writer on the capability, both the reads; the
+	// admin owner refreshes.
+	db.useRole(t, dpkmstest.RoleReader)
 	_, err = db.exec("page", "refresh", "person.alice")
 	assertExit(t, "page refresh as reader", err, output.ExitUnauthorized)
-
+	for _, role := range []string{dpkmstest.RoleReader, dpkmstest.RoleWriter} {
+		db.useRole(t, role)
+		_, err = db.exec("page", "list")
+		assertExit(t, role+" page list", err, output.ExitUnauthorized)
+	}
 	db.useRole(t, dpkmstest.RoleWriter)
+	_, err = db.exec("page", "refresh", "person.alice")
+	assertExit(t, "page refresh as writer", err, output.ExitUnauthorized)
+
+	db.useRole(t, dpkmstest.RoleAdmin)
 	out, err = db.exec("page", "refresh", "person.alice")
 	if err != nil || !strings.Contains(out, "Refreshed entity page: person.alice (ID: p-alice-0001)") {
-		t.Fatalf("page refresh as writer: %v\n%s", err, out)
+		t.Fatalf("page refresh as admin: %v\n%s", err, out)
 	}
 	out, err = db.exec("page", "show", "person.alice")
 	if err != nil || !strings.Contains(out, "Compiled from 2 sources.") || !strings.Contains(out, "Ops handbook") {
@@ -157,7 +169,7 @@ func TestPageCommandsErrors(t *testing.T) {
 func TestIndexCommandOverAPI(t *testing.T) {
 	db := setupTestDB(t, dpkmstest.WithKeys())
 	seedPagesIndexStats(t, db)
-	db.useRole(t, dpkmstest.RoleReader)
+	db.useRole(t, dpkmstest.RoleAdmin)
 	local := detachLocalStore(t, db)
 
 	_, err := db.exec("index")
@@ -169,10 +181,21 @@ func TestIndexCommandOverAPI(t *testing.T) {
 	_, err = db.exec("index", "go")
 	assertExit(t, "index go before a rebuild", err, output.ExitNotFound)
 
+	// The topic index is owner-only (ADR-080 §6): a reader is refused
+	// the rebuild on scope, a writer on the capability; the admin owner
+	// rebuilds and reads.
+	db.useRole(t, dpkmstest.RoleReader)
 	_, err = db.exec("index", "--refresh")
 	assertExit(t, "index --refresh as reader", err, output.ExitUnauthorized)
-
 	db.useRole(t, dpkmstest.RoleWriter)
+	_, err = db.exec("index", "--refresh")
+	assertExit(t, "index --refresh as writer", err, output.ExitUnauthorized)
+	for _, args := range [][]string{{"index"}, {"index", "go"}} {
+		_, err = db.exec(args...)
+		assertExit(t, "writer "+strings.Join(args, " "), err, output.ExitUnauthorized)
+	}
+
+	db.useRole(t, dpkmstest.RoleAdmin)
 	out, err := db.exec("index", "--refresh")
 	if err != nil {
 		t.Fatalf("index --refresh: %v", err)
@@ -183,7 +206,7 @@ func TestIndexCommandOverAPI(t *testing.T) {
 		}
 	}
 
-	db.useRole(t, dpkmstest.RoleReader)
+	db.useRole(t, dpkmstest.RoleAdmin)
 	out, err = db.exec("index", "OP")
 	if err != nil || !strings.Contains(out, "Topic: OP (1 entries)") || !strings.Contains(out, "s-2") || strings.Contains(out, "s-1") {
 		t.Fatalf("index OP: %v\n%s", err, out)
@@ -223,7 +246,7 @@ func TestIndexCommandOverAPI(t *testing.T) {
 func TestStatsOverAPI(t *testing.T) {
 	db := setupTestDB(t, dpkmstest.WithKeys())
 	seedPagesIndexStats(t, db)
-	db.useRole(t, dpkmstest.RoleReader)
+	db.useRole(t, dpkmstest.RoleAdmin)
 	local := detachLocalStore(t, db)
 	// The client config: the reader's endpoint plus two profiles, home the
 	// default.

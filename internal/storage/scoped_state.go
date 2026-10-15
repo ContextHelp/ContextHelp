@@ -25,8 +25,12 @@ func (v restrictedAuditLog) GetObjectHistory(_ context.Context, _ string) ([]*Au
 }
 
 // principalRead is the error a per-principal read returns for a viewer
-// with no principal (the nil viewer).
-func principalRead(store, method string) error {
+// with no principal: cause is ErrNoViewer for the nil viewer, nil for
+// a viewer compiled without a principal.
+func principalRead(store, method string, cause error) error {
+	if cause != nil {
+		return refuseRead(store, method, cause)
+	}
 	return fmt.Errorf("%s.%s: no principal: %w", store, method, ErrRestrictedViewer)
 }
 
@@ -39,13 +43,15 @@ func principalRead(store, method string) error {
 type restrictedSavedSearches struct {
 	inner     SavedSearchStore
 	principal string
+	// refuse is ErrNoViewer for the nil viewer, nil otherwise.
+	refuse error
 }
 
 var _ SavedSearchStore = restrictedSavedSearches{}
 
 func (v restrictedSavedSearches) Create(ctx context.Context, s *SavedSearch) error {
 	if v.principal == "" {
-		return principalRead("SavedSearches", "Create")
+		return principalRead("SavedSearches", "Create", v.refuse)
 	}
 	s.OwnerPrincipal = v.principal
 	return v.inner.Create(ctx, s)
@@ -66,14 +72,14 @@ func (v restrictedSavedSearches) own(ctx context.Context, name string) (*SavedSe
 
 func (v restrictedSavedSearches) GetByName(ctx context.Context, name string) (*SavedSearch, error) {
 	if v.principal == "" {
-		return nil, principalRead("SavedSearches", "GetByName")
+		return nil, principalRead("SavedSearches", "GetByName", v.refuse)
 	}
 	return v.own(ctx, name)
 }
 
 func (v restrictedSavedSearches) List(ctx context.Context, f SavedSearchFilter) ([]*SavedSearch, error) {
 	if v.principal == "" {
-		return nil, principalRead("SavedSearches", "List")
+		return nil, principalRead("SavedSearches", "List", v.refuse)
 	}
 	f.OwnerPrincipal = v.principal
 	return v.inner.List(ctx, f)
@@ -81,7 +87,7 @@ func (v restrictedSavedSearches) List(ctx context.Context, f SavedSearchFilter) 
 
 func (v restrictedSavedSearches) Update(ctx context.Context, s *SavedSearch) error {
 	if v.principal == "" {
-		return principalRead("SavedSearches", "Update")
+		return principalRead("SavedSearches", "Update", v.refuse)
 	}
 	own, err := v.own(ctx, s.Name)
 	if err != nil {
@@ -96,7 +102,7 @@ func (v restrictedSavedSearches) Update(ctx context.Context, s *SavedSearch) err
 
 func (v restrictedSavedSearches) Delete(ctx context.Context, name string) error {
 	if v.principal == "" {
-		return principalRead("SavedSearches", "Delete")
+		return principalRead("SavedSearches", "Delete", v.refuse)
 	}
 	own, err := v.own(ctx, name)
 	if err != nil {
@@ -115,13 +121,15 @@ func (v restrictedSavedSearches) Delete(ctx context.Context, name string) error 
 type restrictedSearchHistory struct {
 	inner     SearchHistoryStore
 	principal string
+	// refuse is ErrNoViewer for the nil viewer, nil otherwise.
+	refuse error
 }
 
 var _ SearchHistoryStore = restrictedSearchHistory{}
 
 func (v restrictedSearchHistory) Append(ctx context.Context, e *SearchHistoryEntry) error {
 	if v.principal == "" {
-		return principalRead("SearchHistory", "Append")
+		return principalRead("SearchHistory", "Append", v.refuse)
 	}
 	e.OwnerPrincipal = v.principal
 	return v.inner.Append(ctx, e)
@@ -129,7 +137,7 @@ func (v restrictedSearchHistory) Append(ctx context.Context, e *SearchHistoryEnt
 
 func (v restrictedSearchHistory) List(ctx context.Context, f SearchHistoryFilter) ([]*SearchHistoryEntry, error) {
 	if v.principal == "" {
-		return nil, principalRead("SearchHistory", "List")
+		return nil, principalRead("SearchHistory", "List", v.refuse)
 	}
 	f.OwnerPrincipal = v.principal
 	return v.inner.List(ctx, f)
@@ -146,13 +154,15 @@ func (v restrictedSearchHistory) ClearByProfile(_ context.Context, _ string) err
 type restrictedResurfacing struct {
 	inner     ResurfacingQueueStore
 	principal string
+	// refuse is ErrNoViewer for the nil viewer, nil otherwise.
+	refuse error
 }
 
 var _ ResurfacingQueueStore = restrictedResurfacing{}
 
 func (v restrictedResurfacing) Upsert(ctx context.Context, e *ResurfacingEntry) error {
 	if v.principal == "" {
-		return principalRead("Resurfacing", "Upsert")
+		return principalRead("Resurfacing", "Upsert", v.refuse)
 	}
 	e.OwnerPrincipal = v.principal
 	return v.inner.Upsert(ctx, e)
@@ -160,7 +170,7 @@ func (v restrictedResurfacing) Upsert(ctx context.Context, e *ResurfacingEntry) 
 
 func (v restrictedResurfacing) List(ctx context.Context, f ResurfacingFilter) ([]*ResurfacingEntry, error) {
 	if v.principal == "" {
-		return nil, principalRead("Resurfacing", "List")
+		return nil, principalRead("Resurfacing", "List", v.refuse)
 	}
 	f.OwnerPrincipal = v.principal
 	return v.inner.List(ctx, f)

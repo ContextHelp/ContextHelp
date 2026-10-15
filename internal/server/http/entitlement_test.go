@@ -19,6 +19,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/security"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing/sharingtest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
@@ -48,10 +49,18 @@ func newGatedServerWithDriver(t *testing.T, driver storage.StorageDriver) (*http
 		"ai.bert":    "ai.models",
 		"med.claims": "med.records",
 	} {
+		// Registry-served entities: the gate is about namespace
+		// entitlements to a registry, and a registry entity is what a
+		// granted viewer may see without a mention (ADR-080 §6).
 		require.NoError(t, driver.Entities().Upsert(ctx, &storage.Entity{
-			Slug: slug, Title: slug, Namespace: ns, CreatedAt: now, UpdatedAt: now,
+			Slug: slug, Title: slug, Namespace: ns, RegistryURL: "https://registry.test",
+			CreatedAt: now, UpdatedAt: now,
 		}))
 	}
+	// The reader is a non-owner principal: it sees entities only
+	// through a share grant; the namespace entitlement narrows further.
+	sharingtest.EnsurePrincipal(t, driver, "ops", storage.PrincipalKindPerson, authn.RoleReader)
+	sharingtest.GrantEverything(t, driver, "ops")
 	// Both principals hold a grant limited to ai.*: only the admin
 	// bypass lets "owner" past it.
 	for _, principal := range []string{"ops", "owner"} {

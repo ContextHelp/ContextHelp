@@ -17,6 +17,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing/sharingtest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
@@ -33,6 +34,11 @@ func edgeServer(t *testing.T) (*httptest.Server, storage.StorageDriver) {
 		}))
 	}
 	svc := service.New(driver, jobs.NewQueue(driver.Jobs()), builtins.Registry(), search.NewEngine(driver), "", nil)
+	// The writer and the reader are non-owner principals: they see the
+	// objects only through a share grant.
+	sharingtest.EnsurePrincipal(t, driver, "phone", storage.PrincipalKindDevice, authn.RoleWriter)
+	sharingtest.EnsurePrincipal(t, driver, "tablet", storage.PrincipalKindPerson, authn.RoleReader)
+	sharingtest.GrantEverything(t, driver, "phone", "tablet")
 	provider := authtest.TokenChain(
 		authtest.Token{Token: "tok-admin-fixture-0123456789abcdef0123456789", Principal: "owner", Roles: []string{authn.RoleAdmin}},
 		authtest.Token{Token: "tok-writer-fixture-0123456789abcdef0123456789", Principal: "phone", Roles: []string{authn.RoleWriter}},
