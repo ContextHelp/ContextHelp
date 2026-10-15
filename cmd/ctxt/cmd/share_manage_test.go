@@ -72,10 +72,18 @@ func TestShareAudienceGrantLifecycle(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &listed); err != nil {
 		t.Fatalf("decode: %v\n%s", err, out)
 	}
-	if listed.Total != 1 || len(listed.Audiences) != 1 || listed.Audiences[0].ID != audID || len(listed.Audiences[0].Members) != 1 {
+	// The daemon fixture seeds its own audience for the test principals, so
+	// look the new one up by id instead of assuming it is the only row.
+	var partners *audienceReply
+	for i := range listed.Audiences {
+		if listed.Audiences[i].ID == audID {
+			partners = &listed.Audiences[i]
+		}
+	}
+	if partners == nil || listed.Total != len(listed.Audiences) || len(partners.Members) != 1 {
 		t.Fatalf("list = %+v", listed)
 	}
-	if listed.Audiences[0].Members[0].ExpiresAt == nil {
+	if partners.Members[0].ExpiresAt == nil {
 		t.Error("membership has no expiry")
 	}
 	out, err = db.exec("share", "audience", "list")
@@ -241,7 +249,13 @@ func TestSharePolicyCreateShowEdit(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &listed); err != nil {
 		t.Fatalf("decode: %v\n%s", err, out)
 	}
-	if listed.Total != 2 || listed.Policies[0].Name != "colleagues-network" || listed.Policies[0].Version != 2 {
+	// The daemon fixture seeds its own policy, so find ours by name.
+	byName := map[string]storage.SharePolicy{}
+	for _, p := range listed.Policies {
+		byName[p.Name] = p
+	}
+	colleagues, ok := byName["colleagues-network"]
+	if _, stdin := byName["stdin-policy"]; !ok || !stdin || colleagues.Version != 2 || listed.Total != len(listed.Policies) {
 		t.Errorf("list = %+v", listed)
 	}
 	out, err = db.exec("share", "policy", "list")
