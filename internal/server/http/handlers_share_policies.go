@@ -262,7 +262,7 @@ func (s *shareRoutes) ListGrants(w http.ResponseWriter, r *http.Request) {
 		WriteJSON(w, http.StatusOK, listBody(out, len(out)))
 		return
 	}
-	f := storage.GrantFilter{IncludeRevoked: q.Get("include_revoked") == "true"}
+	f := storage.GrantFilter{IncludeRevoked: flagParam(q, "include_revoked")}
 	if ref := q.Get("audience"); ref != "" {
 		a, err := s.resolveAudience(r, ref)
 		if err != nil {
