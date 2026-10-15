@@ -207,7 +207,7 @@ func docProjectionToProto(d storage.DocumentProjection) *pb.DocumentProjection {
 }
 
 // buildNodeHits constructs NodeHit entries for every node in the object graph.
-// Score is 1.0 (presence-based); richer scoring is deferred to T-0180.
+// Score is 1.0 (presence-based); richer scoring is deferred.
 func buildNodeHits(o *storage.KnowledgeObject) []*pb.NodeHit {
 	if o.Graph == nil {
 		return nil

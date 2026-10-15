@@ -2,7 +2,7 @@ package integration
 
 // US-0219: MCP Agent Integration (dpkms-side server).
 //
-// E2E tests for the dpkms-side MCP read-surface (per ADR-068 + T-0533).
+// E2E tests for the dpkms-side MCP read-surface (per ADR-068).
 // Verifies the JSON-RPC 2.0 wire shape, tools/list + tools/call
 // dispatch, and end-to-end happy + failure paths via xrr cassettes.
 //

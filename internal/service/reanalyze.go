@@ -1,6 +1,6 @@
 // Package service: ReanalyzeObject re-runs the active pipeline against an
 // existing object's RawContent and atomically replaces its projection.
-// Used by the reingest_selective worker (ADR-070 §1, T-0581) to upgrade
+// Used by the reingest_selective worker (ADR-070 §1) to upgrade
 // objects whose stored projection was produced by an older pipeline version.
 //
 // Re-analysis is in-process and synchronous: unlike Analyze (which enqueues
@@ -31,7 +31,7 @@ import (
 //   - newPipelineVersion: the versioned name that was stamped, e.g.
 //     "text.short@v1". Always returned with a "@vN" suffix per ADR-070 §2.
 //   - llmCostUSD: the LLM cost incurred during this re-analysis. Pipelines
-//     that don't call LLMs return 0.0. T-0581 always returns 0.0; the
+//     that don't call LLMs return 0.0. Projection-only re-ingests always return 0.0; the
 //     hook is in place so a future LLM-driven re-ingest can wire its
 //     usage tracker through without a worker API change.
 //   - err: any pipeline / storage failure.
@@ -153,7 +153,7 @@ func (s *Service) ReanalyzeObject(ctx context.Context, id string) (newPipelineVe
 		}
 	}
 
-	// LLM cost: T-0581 ships projection-only re-ingests so always 0.0. The
+	// LLM cost: re-ingests are projection-only so always 0.0. The
 	// non-zero return path is reserved for a follow-up that wires the
 	// per-step cost meter through the pipeline.Run call.
 	return versionedName, 0.0, nil

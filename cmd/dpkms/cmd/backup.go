@@ -44,7 +44,7 @@ func init() {
 	rootCmd.AddCommand(backupCmd)
 	backupCmd.Flags().Bool("include-blobs", false, "include local blob files in archive")
 	// --output-dir, not --output: kit/output reserves -o/--output for the
-	// output-path flag globally. T-0465 disambiguates the destination
+	// output-path flag globally. --output-dir disambiguates the destination
 	// directory used by `dpkms backup`.
 	backupCmd.Flags().String("output-dir", "", "override output directory path")
 	backupCmd.Flags().Bool("async", false, "enqueue as background job and exit")

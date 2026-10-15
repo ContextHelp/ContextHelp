@@ -23,7 +23,7 @@ func newTestService(t *testing.T) *Service {
 	driver := storageutil.NewTestDriver(t)
 	q := jobs.NewQueue(driver.Jobs())
 	pipes := pipeline.DefaultRegistry()
-	// T-0562: tests assume the default selector's `text.short` fallback
+	// tests assume the default selector's `text.short` fallback
 	// resolves to a registered pipeline; without this, Analyze now (correctly)
 	// rejects the request with ErrPipelineNotFound. Register a stub so the
 	// existing tests exercise the queue/dedup paths instead of bouncing on
@@ -141,7 +141,7 @@ func TestAnalyze(t *testing.T) {
 	}
 }
 
-// TestAnalyzeUnregisteredPipelineErrors covers T-0562: when the resolved
+// TestAnalyzeUnregisteredPipelineErrors covers the case where the resolved
 // pipeline is not in the registry, Analyze must return ErrPipelineNotFound
 // instead of silently enqueueing a job that the worker would later drop.
 //
@@ -229,7 +229,7 @@ func TestAnalyzeRawFlagSkipsEnrichment(t *testing.T) {
 	assert.Equal(t, id, objs[0].ID)
 }
 
-// T-0573: raw path must persist caller-asserted hints as Tag{Source:"user"}
+// raw path must persist caller-asserted hints as Tag{Source:"user"}
 // directly on the KnowledgeObject (no pipeline runs in --raw mode).
 func TestAnalyzeRawWithHintsPopulatesUserTags(t *testing.T) {
 	svc := newTestService(t)
@@ -256,8 +256,8 @@ func TestAnalyzeRawWithHintsPopulatesUserTags(t *testing.T) {
 	assert.Equal(t, "user", obj.Tags[1].Source)
 }
 
-// T-0588: raw path must persist caller-asserted profile + note directly
-// on the KnowledgeObject. Pre-T-0588 the AnalyzeRequest had no Profile
+// raw path must persist caller-asserted profile + note directly
+// on the KnowledgeObject. Previously the AnalyzeRequest had no Profile
 // or Note fields; CLI flags --profile and --note were silently dropped
 // at the JSON decode boundary.
 func TestAnalyzeRawWithProfileAndNote(t *testing.T) {
@@ -283,7 +283,7 @@ func TestAnalyzeRawWithProfileAndNote(t *testing.T) {
 	assert.Equal(t, "client kickoff 2026-Q2", obj.InboxNote, "raw path must persist Note to InboxNote")
 }
 
-// T-0588: pipeline path must forward Profile + Note onto the Job's
+// pipeline path must forward Profile + Note onto the Job's
 // UserProfile/UserNote so the worker can pre-populate draft.ProfileID
 // and draft.InboxNote before the pipeline runs. Verifies the Job is
 // enqueued with the right values; worker pre-population is exercised
@@ -911,7 +911,7 @@ func TestHybridSearchExplain_PopulatesDocumentView(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// T-0209: source-aware DetectInput for automatic pipeline selection
+// source-aware DetectInput for automatic pipeline selection
 // ---------------------------------------------------------------------------
 
 // newTestServiceWithDetector returns a service whose registry has an extra
@@ -931,7 +931,7 @@ func newTestServiceWithDetector(t *testing.T, sourcePfx, pipelineName string) *S
 
 // TestAnalyzeUsesSourceForPipelineDetection verifies that when a file-backed
 // source is present, Analyze passes it to Detect so extension/URL detectors
-// fire correctly. Regression test for T-0209.
+// fire correctly. Regression test.
 func TestAnalyzeUsesSourceForPipelineDetection(t *testing.T) {
 	svc := newTestServiceWithDetector(t, "/vault/notes/", "watch.file")
 	ctx := context.Background()
@@ -951,7 +951,7 @@ func TestAnalyzeUsesSourceForPipelineDetection(t *testing.T) {
 }
 
 // TestEnqueueUsesSourceForPipelineDetection verifies that Enqueue also passes
-// the real source to Detect. Regression test for T-0209.
+// the real source to Detect. Regression test.
 func TestEnqueueUsesSourceForPipelineDetection(t *testing.T) {
 	svc := newTestServiceWithDetector(t, "https://example.com/", "url.ingest")
 	ctx := context.Background()
@@ -971,7 +971,7 @@ func TestEnqueueUsesSourceForPipelineDetection(t *testing.T) {
 }
 
 // TestTriageInboxUsesSourceForPipelineDetection verifies that inbox triage
-// passes the stored object's Source to Detect. Regression test for T-0209.
+// passes the stored object's Source to Detect. Regression test.
 func TestTriageInboxUsesSourceForPipelineDetection(t *testing.T) {
 	svc := newTestServiceWithDetector(t, "/drop/", "drop.file")
 	ctx := context.Background()
@@ -994,7 +994,7 @@ func TestTriageInboxUsesSourceForPipelineDetection(t *testing.T) {
 		"TriageInbox must route by object.Source, not raw content")
 }
 
-// TestAnalyze_HonorsExplicitMentions verifies T-0190: caller-supplied
+// TestAnalyze_HonorsExplicitMentions verifies that caller-supplied
 // `--mentions "@client.acme @project.foo"` round-trips through analyze and
 // becomes mention edges + thin entity rows, regardless of whether auto
 // extraction would also have surfaced those slugs from text. The Raw path

@@ -67,12 +67,12 @@ var (
 		// Execute() directly and friendlier to mid-sprint fan-out
 		// agents who are still closing 12fcc bucket items.
 		ValidationFailureMode: kitcli.ValidationFailureError,
-		// T-0595 enables full strict-gate enforcement at boot. The
+		// Full strict-gate enforcement at boot. The
 		// 12fcc-conformance track verified every depth-1 and depth-2+
 		// leaf carries kit/side-effect, kit/idempotent, kit/examples
 		// (and kit/next-steps + kit/destructive-token where applicable),
 		// so the live Root now enforces what the build-tagged probe
-		// previewed in T-0592. Removing any of these flags is a
+		// previewed. Removing any of these flags is a
 		// regression: ctxt will refuse to start if a newly added
 		// command leaves an annotation off. See
 		// docs/sprints/12fcc-conformance-baseline.md and the
@@ -307,7 +307,7 @@ func prepareTree() error {
 	// sees the same shape the validator does.
 	applyShapeAnnotations()
 
-	// Boot-time strict validation (T-0593). Kit's Root.Execute() runs
+	// Boot-time strict validation. Kit's Root.Execute() runs
 	// this implicitly; ctxt has to call it explicitly because we use
 	// fang.WithoutVersion(). Per Config.ValidationFailureMode=Error,
 	// failures surface as a returned error rather than os.Exit(2) so

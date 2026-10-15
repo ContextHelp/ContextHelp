@@ -232,7 +232,7 @@ func TestListWithCoverage_EmptyCorpus(t *testing.T) {
 // model, embeds half the objects under the candidate, and verifies the
 // reported coverage matches the fraction. This is the operator-facing
 // recall guard's primary input — getting it wrong means Phase 3
-// (T-0584) ships a guard that lies.
+// ships a guard that lies.
 func TestListWithCoverage_PartialCoverage(t *testing.T) {
 	r, d := newRegistry(t)
 	ctx := context.Background()

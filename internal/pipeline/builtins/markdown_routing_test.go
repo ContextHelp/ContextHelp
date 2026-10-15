@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// TestSelectPipelineMarkdownStructure is the T-0575 regression suite.
+// TestSelectPipelineMarkdownStructure is the markdown-routing regression suite.
 // Structured markdown — bullet lists or headings — must route to a
 // pipeline that includes a sectioner / markdown_parser-style step,
 // even when the length test alone is borderline. These tests exercise

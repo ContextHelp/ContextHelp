@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// CtxtObject is the adapter output format per the T-0381 ingestion
+// CtxtObject is the adapter output format per the ingestion adapter
 // contract. Adapters emit a JSON array of these to stdout; ctxt
 // reads, deduplicates by id+source, and indexes.
 type CtxtObject struct {

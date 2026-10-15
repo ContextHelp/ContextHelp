@@ -272,27 +272,27 @@ type Job struct {
 	// UserMentions are caller-asserted @namespace.slug mentions passed
 	// alongside the analyze request (e.g. `ctxt analyze --mentions
 	// "@client.acme"`). The pipeline merges these with auto-extracted
-	// mentions before writing edges (T-0190). Stored on disk as a
+	// mentions before writing edges. Stored on disk as a
 	// JSON-encoded string array via the user_mentions column.
 	UserMentions []string `json:"user_mentions,omitempty"`
 	// UserHints are caller-asserted hint strings passed alongside the
 	// capture/analyze request (e.g. `ctxt capture --hint research`). The
 	// worker pre-populates draft.Tags with Tag{Source:"user"} entries
 	// before pipeline execution; the auto-tagger merges with these
-	// rather than overwriting (T-0573). Stored as JSON-encoded string
+	// rather than overwriting. Stored as JSON-encoded string
 	// array in the user_hints column.
 	UserHints []string `json:"user_hints,omitempty"`
 	// UserProfile is the focus-profile slug the operator pinned at
 	// capture time (`ctxt capture --profile founder`). The worker
 	// pre-populates draft.ProfileID before pipeline execution so the
-	// persisted KnowledgeObject is correctly partitioned by profile
-	// (T-0588). Empty string = global / no profile.
+	// persisted KnowledgeObject is correctly partitioned by profile.
+	// Empty string = global / no profile.
 	UserProfile string `json:"user_profile,omitempty"`
 	// UserNote is a free-form audit string the operator attached to
 	// the capture (`ctxt capture --note "client kickoff 2026-Q2"`).
 	// The worker pre-populates draft.InboxNote so the note survives
-	// pipeline execution and is queryable from the persisted object
-	// (T-0588). InboxNote is the canonical "operator-attached" field
+	// pipeline execution and is queryable from the persisted object.
+	// InboxNote is the canonical "operator-attached" field
 	// on KnowledgeObject; reusing it here keeps a single field name
 	// across inbox and pipeline paths.
 	UserNote string `json:"user_note,omitempty"`

@@ -22,7 +22,7 @@ func (s *fakeStrategy) Probe(ctx context.Context, ev CapturedEvent, ac ActiveCon
 }
 func (s *fakeStrategy) Preconditions() []string { return nil }
 
-// TestCapturedEvent_HintsZeroValue pins T-0306's backward-compat contract:
+// TestCapturedEvent_HintsZeroValue pins the backward-compat contract:
 // a CapturedEvent without explicit Hints carries the zero Hints, which
 // strategies treat as "no page-side signals available."
 func TestCapturedEvent_HintsZeroValue(t *testing.T) {
@@ -46,7 +46,7 @@ func TestCapturedEvent_HintsRoundTrip(t *testing.T) {
 	}
 }
 
-// TestActiveContext_AuthorHintsZeroValue pins T-0308's contract:
+// TestActiveContext_AuthorHintsZeroValue pins the contract:
 // nil AuthorHints means "no author hints" — strategies must treat
 // it as skip-author-scoped-probes.
 func TestActiveContext_AuthorHintsZeroValue(t *testing.T) {

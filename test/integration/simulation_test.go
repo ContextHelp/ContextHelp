@@ -1,6 +1,6 @@
 //go:build integration
 
-// Package integration holds the 100k object stress test + search benchmarks for T-0103.
+// Package integration holds the 100k object stress test + search benchmarks.
 //
 // Run the full simulation (slow, ~minutes):
 //

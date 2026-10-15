@@ -139,7 +139,7 @@ func NewWithOptions(store storage.StorageDriver, queue *jobs.Queue, pipes pipeli
 // ErrPipelineNotFound is returned by Analyze/Enqueue when the resolved
 // pipeline name does not exist in the registry. Callers (HTTP handler,
 // CLI) surface this as a 422 / non-zero exit rather than silently
-// dropping the job. T-0562: previously a job was enqueued referencing a
+// dropping the job. Previously a job was enqueued referencing a
 // non-existent pipeline name (e.g. when --type document picked up the
 // fallback "text.short" or any other path) — the worker would then fail
 // to dispatch silently and the data would be lost without any signal to
@@ -202,11 +202,11 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 			CreatedAt:   now,
 			UpdatedAt:   now,
 			Mentions:    mentions.ParseSlice(req.Mentions),
-			// T-0573: caller-asserted hints become Tag{Source:"user"} on the
+			// caller-asserted hints become Tag{Source:"user"} on the
 			// raw path too, so capture-with-hints partitioning works without
 			// the pipeline running.
 			Tags: userHintsToTags(req.Hints),
-			// T-0588: caller-asserted profile and note flow directly onto
+			// caller-asserted profile and note flow directly onto
 			// the KnowledgeObject so partitioning + audit-note capture
 			// work even on the raw path (no pipeline to plumb through).
 			ProfileID: req.Profile,
@@ -215,7 +215,7 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 		if err := s.Store.Objects().Create(ctx, obj); err != nil {
 			return "", fmt.Errorf("analyze raw: store: %w", err)
 		}
-		// T-0190: caller-asserted mentions become thin entity rows + mention
+		// caller-asserted mentions become thin entity rows + mention
 		// edges even on the raw path so partitioning by @client/@project
 		// works without the pipeline running.
 		if err := s.writeUserMentionEdges(ctx, obj.ID, obj.Mentions); err != nil {
@@ -241,7 +241,7 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 		pipelineName = s.detectPipeline(jobSource, req.Type, req.Content)
 	}
 
-	// T-0562: validate the resolved pipeline exists in the registry. Without
+	// validate the resolved pipeline exists in the registry. Without
 	// this, a job referencing a non-existent pipeline (e.g. `--type document`
 	// when no document.* pipeline is registered) would be enqueued and the
 	// worker would silently fail to dispatch — data lost, no signal.
@@ -289,10 +289,10 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 		MaxRetries:   3,
 		CreatedAt:    now,
 		UpdatedAt:    now,
-		UserMentions: req.Mentions, // T-0190: forwarded to draft.Mentions in worker.
-		UserHints:    req.Hints,    // T-0573: forwarded to draft.Tags (Source:"user") in worker.
-		UserProfile:  req.Profile,  // T-0588: forwarded to draft.ProfileID in worker.
-		UserNote:     req.Note,     // T-0588: forwarded to draft.InboxNote in worker.
+		UserMentions: req.Mentions, // forwarded to draft.Mentions in worker.
+		UserHints:    req.Hints,    // forwarded to draft.Tags (Source:"user") in worker.
+		UserProfile:  req.Profile,  // forwarded to draft.ProfileID in worker.
+		UserNote:     req.Note,     // forwarded to draft.InboxNote in worker.
 
 		IdempotencyKey: req.IdempotencyKey,
 	}
@@ -312,7 +312,7 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 	return job.ID, nil
 }
 
-// userHintsToTags converts caller-asserted hint strings (T-0573) to the
+// userHintsToTags converts caller-asserted hint strings to the
 // Tag form KnowledgeObject.Tags expects, with Source:"user" so the
 // auto-tagger merge step can identify and preserve them. Empty / blank
 // hints are dropped — `--hint ""` shouldn't store a blank Tag.
@@ -339,7 +339,7 @@ func userHintsToTags(hints []string) []storage.Tag {
 }
 
 // writeUserMentionEdges persists thin entity rows + object→entity 'mentions'
-// edges for caller-asserted mentions (T-0190). Mirrors the entity_resolver
+// edges for caller-asserted mentions. Mirrors the entity_resolver
 // pipeline step but runs at analyze-time so even Raw-mode and pipeline-mode
 // captures land partitioning data uniformly. Idempotent: thin upsert on
 // entities + UNIQUE-tolerant edge insert.
@@ -1276,7 +1276,7 @@ func (s *Service) SearchObjectsNodeAware(ctx context.Context, query string, limi
 	fetchOffset := offset
 	nodeFilter := filter != nil && (len(filter.NodeTypes) > 0 || len(filter.EdgeTypes) > 0)
 	if nodeFilter {
-		// TODO(T-0177): push NodeTypes/EdgeTypes into storage query when
+		// TODO: push NodeTypes/EdgeTypes into storage query when
 		// storage exposes node-index filtering.
 		fetchLimit = limit*10 + 200
 		fetchOffset = 0
@@ -1791,7 +1791,7 @@ func (s *Service) HybridSearchFiltered(ctx context.Context, query string, filter
 
 // HybridSearchFilteredWithDiagnostics is like HybridSearchFiltered but also
 // returns SearchDiagnostics describing candidates that surfaced from the FTS
-// or vector legs and were dropped by the reranker MinScore threshold (T-0574).
+// or vector legs and were dropped by the reranker MinScore threshold.
 func (s *Service) HybridSearchFilteredWithDiagnostics(ctx context.Context, query string, filter storage.ObjectFilter, sem retrieval.SemanticSource, cfg config.SearchConfig) ([]*storage.KnowledgeObject, SearchDiagnostics, error) {
 	envelope, err := s.HybridSearchExplainFilteredWithDiagnostics(ctx, query, filter, sem, cfg)
 	if err != nil {
@@ -1830,7 +1830,7 @@ func (s *Service) HybridSearchExplainFiltered(ctx context.Context, query string,
 // HybridSearchExplainFilteredWithDiagnostics runs the full hybrid search
 // pipeline and returns a HybridSearchResult envelope containing both the
 // post-threshold result list and a SearchDiagnostics block describing
-// candidates dropped by the reranker MinScore threshold (T-0574).
+// candidates dropped by the reranker MinScore threshold.
 //
 // Diagnostics let callers distinguish two visually identical "no results"
 // cases at the CLI: (a) zero candidates from any retrieval leg vs. (b)
@@ -1946,7 +1946,7 @@ func (s *Service) hybridSearch(ctx context.Context, query string, filter storage
 	reranker := ranking.New(s.Store.Edges(), weights)
 	// Run the reranker with minScore=0 so we receive every scored candidate.
 	// Diagnostics need to know which candidates fell below cfg.MinScore — that
-	// information is lost if we let Rerank filter early (T-0574).
+	// information is lost if we let Rerank filter early.
 	scored, err := reranker.Rerank(ctx, query, candidates, 0)
 	if err != nil {
 		return nil, fmt.Errorf("hybrid search rerank: %w", err)
@@ -1958,7 +1958,7 @@ func (s *Service) hybridSearch(ctx context.Context, query string, filter storage
 	semantic := vecRes.report
 	diagnostics.Semantic = &semantic
 
-	// T-0581: count candidates whose pipeline stamp is older than the
+	// count candidates whose pipeline stamp is older than the
 	// registry's installed version for the same family. Surface the count
 	// as a soft warning so callers can prompt operators toward
 	// `ctxt upgrade plan`. Computed once per family for cheap repeat lookups.

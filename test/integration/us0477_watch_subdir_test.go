@@ -1,6 +1,6 @@
 package integration
 
-// T-0477: filesystem watcher must ingest files dropped into a subdirectory
+// filesystem watcher must ingest files dropped into a subdirectory
 // that did not exist when the watcher was registered.
 //
 // This integration test wires a real watcher.Manager to the in-process dpkms

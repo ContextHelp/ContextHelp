@@ -1,6 +1,6 @@
 package integration
 
-// US-0221: Meeting Auto-Detect Prompt (per ADR-069 + T-0517).
+// US-0221: Meeting Auto-Detect Prompt (per ADR-069).
 //
 // E2E acceptance criteria from docs/stories/capture/US-0221-meeting-auto-detect-prompt.md.
 // Verifies: foreground source feeds AutoDetect.OnForegroundChange; known
@@ -9,8 +9,8 @@ package integration
 // suppresses entirely; OS-native notification UI shown; per-app
 // remember-my-choice persisted.
 //
-// **Status: skeleton.** AutoDetect logic is implemented + unit-tested
-// (T-0517). E2E needs the daemon-driver wiring (cmd/ctxd connecting
+// **Status: skeleton.** AutoDetect logic is implemented + unit-tested.
+// E2E needs the daemon-driver wiring (cmd/ctxd connecting
 // foreground events to AutoDetect.OnForegroundChange and AutoDetect's
 // PromptRequest to OS notification UI per OS).
 

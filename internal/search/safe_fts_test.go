@@ -23,7 +23,7 @@ func TestSafeFTSQuery(t *testing.T) {
 			want: `"kubernetes" "deployment"`,
 		},
 		{
-			// T-0565 — the original repro. `credit-eligible` previously
+			// The original repro. `credit-eligible` previously
 			// crashed with "no such column: eligible" because `-` was
 			// read as FTS5 NOT / column qualifier.
 			name: "hyphenated term splits into two phrases",

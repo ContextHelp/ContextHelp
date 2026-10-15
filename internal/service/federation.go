@@ -15,7 +15,7 @@ import (
 //
 // Returns count of newly created objects (skipped dupes not counted).
 //
-// T-0175: entities are upserted thin so a 'full' record at the receiver
+// entities are upserted thin so a 'full' record at the receiver
 // is preserved (ADR-049 + EntityStore.UpsertThin), while mention edges
 // (object→entity) gain valid targets.
 func (s *Service) FederationAccept(

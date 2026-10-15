@@ -1,4 +1,4 @@
-// Package cmd: T-0592 baseline probe.
+// Package cmd: 12fcc baseline probe.
 //
 // Build-tag gated so the file is invisible to the normal `go test ./...`
 // run. Invoke explicitly:
@@ -6,11 +6,11 @@
 //	go test -tags=ctxtbaselineprobe -run TestBaselineProbe -v ./cmd/ctxt/cmd
 //
 // The probe walks the constructed root command tree and dumps the
-// kit/cli ValidationError + SignatureReport in JSON so T-0592 can
+// kit/cli ValidationError + SignatureReport in JSON so conformance work can
 // bucket failures. It also re-runs Validate against a copy of the
 // kit Config with EnforceGuidance / EnforceDryRunRationale /
 // EnforceDestructiveToken / SignatureStrictness=reject enabled so
-// the baseline captures the post-T-0595 strict-gate picture.
+// the baseline captures the full strict-gate picture.
 //
 //go:build ctxtbaselineprobe
 
@@ -53,7 +53,7 @@ func TestBaselineProbe(t *testing.T) {
 	fmt.Fprintln(os.Stderr, "=== ValidateSignature() default-gates ===")
 	_ = report.RenderText(os.Stderr)
 
-	// JSON dump of the full validation-error struct so T-0592 can
+	// JSON dump of the full validation-error struct so conformance work can
 	// bucket each missing item.
 	if ve, ok := verr.(*kitcli.ValidationError); ok && ve != nil {
 		dumpStruct(t, "validation-error.default-gates", ve)

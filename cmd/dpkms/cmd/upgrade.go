@@ -11,7 +11,7 @@ import (
 	kitupgrade "hop.top/kit/go/core/upgrade"
 )
 
-// upgrade is grouped under MANAGEMENT in root.go's commandGroups map (T-0467)
+// upgrade is grouped under MANAGEMENT in root.go's commandGroups map
 
 const (
 	upgradeBinaryName = "dpkms"

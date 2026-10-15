@@ -11,7 +11,7 @@
 #                       │              \──Complete──▶ idle
 #                       └─────Fail──────▶ failed ──Start──▶ in_progress
 #
-# `awaiting_consent` is reserved for bucket-3 (T-0581+); included in the
+# `awaiting_consent` is reserved for bucket-3 flows; included in the
 # enum for forward compatibility.
 #
 # Pass condition: input MUST be a JSON object whose `state` is one of the

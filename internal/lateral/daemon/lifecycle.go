@@ -39,12 +39,12 @@ type Lifecycle struct {
 	pollIntv time.Duration
 
 	// gate is the runtime per-strategy enable filter. Mutated by
-	// SIGHUP-driven config reloads (T-0328); consulted on the hot
+	// SIGHUP-driven config reloads; consulted on the hot
 	// dispatch path before invoking Probe. Nil in tests that don't
 	// care about runtime gating; filtering becomes a no-op.
 	gate *rollout.StrategyGate
 
-	// sampler is the per-strategy traffic-shaping filter (T-0329).
+	// sampler is the per-strategy traffic-shaping filter.
 	// Held via atomic.Pointer so SIGHUP reloads swap atomically
 	// with hot-path readers. Nil pointer = full traffic to every
 	// strategy.
@@ -62,7 +62,7 @@ type Lifecycle struct {
 // publishes reaper completion events through it.
 // Registry is required: dispatch routes captured events through it.
 // Publisher (kitdomain.EventPublisher) is the same bus wrapped via
-// the T-0318 adapter; passed separately because domain.EventPublisher
+// the bus adapter; passed separately because domain.EventPublisher
 // is the kit-side type the cold-cycle handler consumes.
 //
 // JobService is optional. Nil falls back to job/mock.New() (in-process,
@@ -82,14 +82,14 @@ type LifecycleOptions struct {
 	WorkerID     string
 	PollInterval time.Duration
 
-	// Gate is the runtime per-strategy enable filter (T-0328). Nil
+	// Gate is the runtime per-strategy enable filter. Nil
 	// is a no-op — Lifecycle constructs an empty gate so callers can
 	// later flip strategies via Lifecycle.Gate().Set without
 	// re-creating the lifecycle. Pass a pre-populated gate when the
 	// daemon already owns it (e.g. config-reload pipeline).
 	Gate *rollout.StrategyGate
 
-	// Sampler is the per-strategy traffic-shaping filter (T-0329).
+	// Sampler is the per-strategy traffic-shaping filter.
 	// Nil falls back to full traffic.
 	Sampler *rollout.Sampler
 }
@@ -221,7 +221,7 @@ func (l *Lifecycle) ScanCount() int64 { return l.scanCount.Load() }
 // owns the actual sweep (see internal/lateral/lifecycle/ttl.go for
 // the TTL boundary check); this closure just observes the boundary
 // once per cycle for the rolled-up CycleStats. The substrate-side
-// reaper integration is a follow-on slice — T-0321 ships the wiring
+// reaper integration is a follow-on slice — this file ships the wiring
 // shape; the closure is intentionally minimal so the substrate's
 // own reaper closure can plug in directly when it lands.
 func (l *Lifecycle) makeScanFunc() jobs.ScanFunc {
@@ -266,14 +266,14 @@ func (l *Lifecycle) handleCaptureEvent(ctx context.Context, e bus.Event) error {
 	chosen := l.registry.Dispatch(ctx, ev)
 	candidates := 0
 	for _, s := range chosen {
-		// Per-strategy runtime gate (T-0328). Operators flip via
+		// Per-strategy runtime gate. Operators flip via
 		// SIGHUP-driven config reload; the gate sees the new flag
 		// atomically. Skip silently — a disabled strategy is not
 		// a failure.
 		if !l.gate.Allowed(s.ID()) {
 			continue
 		}
-		// Per-strategy percentage traffic shaping (T-0329). Hash
+		// Per-strategy percentage traffic shaping. Hash
 		// stable across reloads so the same event consistently
 		// routes to the same strategy fraction.
 		if sm := l.sampler.Load(); sm != nil && !sm.Allow(s.ID(), ev.ObjectID) {

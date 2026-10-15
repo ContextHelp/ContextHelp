@@ -40,7 +40,7 @@ type Options struct {
 
 // NewREST constructs a github.APIClient backed by the package's
 // HTTPAPIClient (REST-only). f is the http.Fetcher the daemon wires
-// (typically the fetcher.HTTPFetcher from T-0315). Returns the
+// (typically the fetcher.HTTPFetcher adapter). Returns the
 // concrete *github.HTTPAPIClient as the github.APIClient interface.
 //
 // Caller is responsible for wrapping the result with

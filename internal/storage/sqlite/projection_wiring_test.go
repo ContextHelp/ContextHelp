@@ -1,6 +1,6 @@
 package sqlite
 
-// projection_wiring_test.go — T-0195
+// projection_wiring_test.go — graph-canonical FTS projection
 // Validates:
 //  1. FTS body is derived from projection.ProjectIndex (graph-canonical path).
 //  2. Embedding text source is projection.ProjectIndex.EmbeddingText.

@@ -9,13 +9,13 @@ import (
 // Fetcher is the lateral-side abstraction for the host's web fetcher (the
 // production wiring is an ibr adapter; tests use a fake). Decoupled from the
 // concrete ibr client so the jit package stays domain-focused — the daemon
-// (T-0252) wires the real adapter at registration time.
+// wires the real adapter at registration time.
 //
 // Fetch returns the body of urlStr (or whatever extracted form ibr produces;
 // the executor treats it as opaque) and an error. A non-nil error MUST mean
 // the resource is unfetchable; an empty body with nil error means "fetched
 // but empty" and is a valid candidate-emission signal (executor preserves it
-// so downstream T-0247 can decide what to do).
+// so downstream candidate emission can decide what to do).
 type Fetcher interface {
 	Fetch(ctx context.Context, urlStr string) (body string, err error)
 }
@@ -26,12 +26,12 @@ type Fetcher interface {
 // absolutes proposed by the LLM are dropped before fetch (see Execute) so
 // they don't appear here.
 //
-// Executor never aborts the whole batch on a single Fetch error. T-0248
-// (failure handling) consumes the per-path Err to emit
+// Executor never aborts the whole batch on a single Fetch error. Failure handling
+// consumes the per-path Err to emit
 // ctxt.lateral.subpath.failed (one event per failed sub-path);
 // ctxt.lateral.scan.failed with Mechanism=jit_proposal is reserved for
-// proposer/pipeline-level failures, not per-path fetches. T-0247
-// (candidate emission) reads Body for success cases.
+// proposer/pipeline-level failures, not per-path fetches. Candidate emission
+// reads Body for success cases.
 type FetchResult struct {
 	URL  string
 	Body string
@@ -40,7 +40,7 @@ type FetchResult struct {
 
 // Executor sequentially dispatches a slice of proposed sub-paths through a
 // Fetcher, scoped to the source domain. Sequential by default; a bounded
-// parallel variant is a follow-on once T-0248's failure semantics are pinned.
+// parallel variant is a follow-on once the failure semantics are pinned.
 //
 // Path semantics:
 //   - relative paths ("/about", "team", "../foo") are resolved against the

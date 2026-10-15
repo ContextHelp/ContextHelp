@@ -1,4 +1,4 @@
--- T-0126: attachment store for binary content linked to knowledge objects
+-- attachment store for binary content linked to knowledge objects
 CREATE TABLE attachments (
     id          TEXT PRIMARY KEY,
     object_id   TEXT NOT NULL REFERENCES objects(id),

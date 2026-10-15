@@ -29,7 +29,7 @@ const defaultKeychainService = "ctxt"
 // CanonicalBackendName returns the kit-canonical backend name for the
 // dpkms-/ctxt-facing alias, or the input unchanged when no alias matches.
 //
-// The aliases are kept for backwards compatibility — pre-T-0469 configs
+// The aliases are kept for backwards compatibility — older configs
 // referenced backends by these names. New code should always use the
 // canonical kit names directly.
 //

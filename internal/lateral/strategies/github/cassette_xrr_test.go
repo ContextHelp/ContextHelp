@@ -1,6 +1,6 @@
 package github
 
-// This file holds the migration target shape for T-0334 — when xrr
+// This file holds the migration target shape for the xrr cassette migration — when xrr
 // lands the existing fixtureFetcher in cassette_test.go gets replaced
 // with xrr-driven cassette replay. See docs/lateral/xrr-cassette-
 // migration.md for the migration plan.

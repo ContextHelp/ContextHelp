@@ -1,6 +1,6 @@
 package integration
 
-// US-0213: File-Watch / Drop-Folder Source (per ADR-066 + T-0501).
+// US-0213: File-Watch / Drop-Folder Source (per ADR-066).
 //
 // E2E acceptance criteria from docs/stories/capture/US-0213-file-watch-source.md.
 // Verifies: fsnotify-driven watcher emits RawEvents for new files dropped
@@ -9,7 +9,7 @@ package integration
 // hidden/system files, supports profile-scoped directories, moves processed
 // files to <watch_dir>/processed/<YYYY-MM>/.
 //
-// **Status: skeleton.** Substrate (T-0501) is implemented + unit-tested.
+// **Status: skeleton.** Substrate is implemented + unit-tested.
 // E2E harness needs a running dpkms to verify pipeline-side routing
 // assertions.
 

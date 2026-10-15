@@ -1,5 +1,5 @@
 // Package cmd: ctxt upgrade {status,plan,run} — operator-facing surface
-// for ADR-070 dpkms bucket upgrades (T-0580, ADR-070 Phase 2).
+// for ADR-070 dpkms bucket upgrades (ADR-070 Phase 2).
 //
 // These subcommands are SEPARATE from `ctxt upgrade {check,install,snooze,
 // notes}` (defined in upgrade.go) which handle binary self-update via
@@ -266,7 +266,7 @@ func upgradeStatusOnce(cmd *cobra.Command, client *dpkmsclient.Client) error {
 	return nil
 }
 
-// renderUpgradeStatus prints the human-readable view per the T-0580 spec.
+// renderUpgradeStatus prints the human-readable view per the upgrade-status spec.
 func renderUpgradeStatus(w io.Writer, up *upgradeEnvelope) {
 	if up == nil || up.State == "idle" || up.State == "" {
 		fmt.Fprintln(w, "Upgrade state: idle")
@@ -299,7 +299,7 @@ func renderUpgradeStatus(w io.Writer, up *upgradeEnvelope) {
 }
 
 // runUpgradePlan implements `ctxt upgrade plan` — the predicate-driven
-// preview of pending work (ADR-070 §1, T-0581).
+// preview of pending work (ADR-070 §1).
 //
 // For each pipeline registered in the in-process registry, plan parses every
 // `pipeline` value in the `objects` table and counts rows whose version is
@@ -308,9 +308,9 @@ func renderUpgradeStatus(w io.Writer, up *upgradeEnvelope) {
 // concrete `ctxt upgrade run --filter` invocation that would clear it.
 //
 // reindex_auto and reingest_all are summarised at a glance: reindex_auto is
-// driven by signature comparison (handled out-of-band in T-0579 and the
+// driven by signature comparison (handled out-of-band by signature detection and the
 // daemon's startup path); reingest_all is reserved for embedding-model
-// swaps and out of scope for T-0581.
+// swaps and out of scope here.
 func runUpgradePlan(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
 	if ctx == nil {
@@ -530,7 +530,7 @@ func upgradeServiceDB(svc *service.Service) (*sql.DB, error) {
 }
 
 // runUpgradeRun executes the reingest_selective worker against a parsed
-// selector (ADR-070 §1, T-0581). The bucket-3 (`--all`) form is reserved
+// selector (ADR-070 §1). The bucket-3 (`--all`) form is reserved
 // for an embedding-model-swap worker that lands in a future task; for now
 // this command refuses with a pointer to ADR-070.
 //

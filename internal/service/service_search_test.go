@@ -73,7 +73,7 @@ func TestFindByText_UsesFTS(t *testing.T) {
 	assert.Equal(t, "fbt-1", results[0].ID)
 }
 
-// TestFindByText_HyphenatedQueryDoesNotCrash is the T-0565 service-level
+// TestFindByText_HyphenatedQueryDoesNotCrash is the service-level
 // regression test: `ctxt find credit-eligible` previously surfaced
 // "no such column: eligible" because the hyphen was passed unsanitised
 // into FTS5 MATCH. With SafeFTSQuery wired into FindByTextFiltered, the
@@ -93,7 +93,7 @@ func TestFindByText_HyphenatedQueryDoesNotCrash(t *testing.T) {
 }
 
 // TestFindByText_GraphWithoutSummaryIndexesListItems is the second half of
-// the T-0565 fix: a KO whose graph has only Tag / EntityMention nodes
+// the hyphen/list fix: a KO whose graph has only Tag / EntityMention nodes
 // (e.g. a doc routed through text.short, which runs no markdown_parser /
 // sectioner) used to produce an empty projected_fts_body — so
 // `ctxt find SageMaker` against a 250-line bullet list returned 0 hits
@@ -143,7 +143,7 @@ func TestFindByText_GraphWithoutSummaryIndexesListItems(t *testing.T) {
 		results, err := svc.FindByText(ctx, term, 10)
 		require.NoError(t, err, "FindByText(%q)", term)
 		require.NotEmpty(t, results,
-			"FindByText(%q) returned 0 results — list item not indexed (T-0565 regression)", term)
+			"FindByText(%q) returned 0 results — list item not indexed (regression)", term)
 		assert.Equal(t, "fbt-list-1", results[0].ID, "term=%q", term)
 	}
 }
@@ -202,7 +202,7 @@ func TestHybridSearchExplain_ErrorWhenNoProvider_FallbackDisabled(t *testing.T) 
 }
 
 // TestHybridSearchExplainFilteredWithDiagnostics_BelowThresholdPopulated is the
-// T-0574 regression test: when candidates surface from FTS but their total
+// regression test: when candidates surface from FTS but their total
 // scores all fall below cfg.MinScore, the result envelope must report
 // CandidateCount > 0, BelowThresholdCount == CandidateCount, and a
 // non-zero TopBelowThresholdScore — letting the CLI distinguish "nothing
@@ -308,7 +308,7 @@ func TestHybridSearchExplain_TotalMatchesHybridSearchRRFScore(t *testing.T) {
 // stamp parses to a version older than the registry's current version
 // for the same family, SearchDiagnostics.StalenessWarning is populated
 // with the stale count and a reason that points operators at
-// `ctxt upgrade plan` (T-0581, ADR-070 §6).
+// `ctxt upgrade plan` (ADR-070 §6).
 func TestHybridSearch_StalenessWarning_PopulatedWhenStaleVersionPresent(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()

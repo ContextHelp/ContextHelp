@@ -1,6 +1,6 @@
 package integration
 
-// T-0191: Agent API returns graph and projection results.
+// Agent API returns graph and projection results.
 // Surfaces: REST (GET /objects/{id}, GET /search), gRPC (GetObject, NodeAwareSearch).
 
 import (

@@ -1,4 +1,4 @@
--- T-0130: resurfacing queue for active profile
+-- resurfacing queue for active profile
 CREATE TABLE IF NOT EXISTS resurfacing_queue (
     id           TEXT PRIMARY KEY,
     object_id    TEXT NOT NULL REFERENCES objects(id) ON DELETE CASCADE,

@@ -78,7 +78,7 @@ func TestResolver_IdentityKeyFromPreview(t *testing.T) {
 	}
 }
 
-// TestResolver_IdentityKeyFromTypedField pins T-0307: the typed
+// TestResolver_IdentityKeyFromTypedField pins that the typed
 // Candidate.IdentityKey reaches FindByIdentityKey just like the legacy
 // Preview-map form.
 func TestResolver_IdentityKeyFromTypedField(t *testing.T) {
@@ -121,7 +121,7 @@ func TestResolver_TypedFieldWinsOverPreview(t *testing.T) {
 
 // TestResolver_TypedFieldMissingFallsBackToPreview pins that an empty
 // typed field doesn't short-circuit the Preview-map fallback during
-// the T-0309 migration window.
+// the typed-field migration window.
 func TestResolver_TypedFieldMissingFallsBackToPreview(t *testing.T) {
 	g := &fakeGraph{byKey: map[string]string{"github/owner/foo": "o-foo"}}
 	r := NewResolver(g)
@@ -138,7 +138,7 @@ func TestResolver_TypedFieldMissingFallsBackToPreview(t *testing.T) {
 	}
 }
 
-// TestResolver_TypedAndPreviewProduceIdenticalResults pins T-0309's
+// TestResolver_TypedAndPreviewProduceIdenticalResults pins the typed-field
 // migration safety net: any candidate that sets either form (typed or
 // Preview-map) must produce identical resolver output. Strategies can
 // migrate one at a time without breaking dedup.

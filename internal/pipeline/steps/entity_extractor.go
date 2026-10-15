@@ -47,7 +47,7 @@ func (e *EntityExtractor) Run(ctx context.Context, draft *storage.KnowledgeObjec
 	seen := make(map[string]bool)
 	var slugs []string
 
-	// 0. T-0190: caller-asserted mentions (e.g. `ctxt analyze --mentions
+	// 0. Caller-asserted mentions (e.g. `ctxt analyze --mentions
 	//    "@client.acme"`) are pre-populated on draft.Mentions by the worker
 	//    before the pipeline runs. Seed `seen` with their slugs so steps 1+2
 	//    don't double-insert when the same slug is also detected from text.

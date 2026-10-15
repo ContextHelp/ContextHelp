@@ -17,7 +17,7 @@
 // The Source emits a RawEvent with the captured image file path (not the
 // image bytes themselves) so the substrate's image.ocr pipeline can read
 // from disk. Files land under <media_dir>/screenshots/ and are evicted
-// per the meeting-style retention tier (T-0506) once that ships.
+// per the meeting-style retention tier once that ships.
 package screenshot
 
 import (

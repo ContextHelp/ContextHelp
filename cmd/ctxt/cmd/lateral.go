@@ -230,8 +230,8 @@ func runLateralStart(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("lateral start: lifecycle: %w", err)
 	}
 
-	// Apply per-strategy gate + sampler from initial config (T-0328 +
-	// T-0329). Operators flip strategies live by editing the YAML
+	// Apply per-strategy gate + sampler from initial config.
+	// Operators flip strategies live by editing the YAML
 	// and sending SIGHUP; the goroutine below re-reads + re-applies
 	// on each signal.
 	lc.ApplyGate(cfg)

@@ -10,8 +10,8 @@ import (
 
 // Pipeline composes the JIT collaborators (proposer, executor) with the
 // failure + outage emitters into one runnable unit. RunOnce is what the
-// strategy's Probe will call (T-0251); the helper exists in its own type
-// so T-0298 can integration-test the failure paths and T-0249 has a stable
+// strategy's Probe will call; the helper exists in its own type
+// so integration tests can cover the failure paths and outage handling has a stable
 // seam to hook recipe-served-during-outage events.
 //
 // Pipeline calls ProposeWithOutageFallback on the proposer, so the proposer

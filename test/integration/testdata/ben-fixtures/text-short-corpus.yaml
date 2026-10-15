@@ -4,7 +4,7 @@
 # Each object is < 500 chars (the text.short ContentTest cutoff). The
 # corpus is intentionally varied: prose, bullet lists with hyphenated
 # compound terms, code-adjacent text. Bullets + hyphens specifically cover
-# the regression class T-0565 surfaced (FTS invisibility for bullet items
+# the regression class this guards (FTS invisibility for bullet items
 # and hyphen-crashing queries).
 #
 # To add or remove objects, also update text-short-queries.yaml so every
@@ -20,7 +20,7 @@ objects:
     text: "OIDC ID-token claims: sub, aud, iss, exp, iat, nonce."
     tags: [security, oidc, identity]
   - id: doc-search-001
-    text: "FTS5 tokenizer: porter unicode61. Hyphens now treated as word-internal characters per T-0565."
+    text: "FTS5 tokenizer: porter unicode61. Hyphens now treated as word-internal characters."
     tags: [search, fts, tokenizer]
   - id: doc-search-002
     text: |
@@ -38,7 +38,7 @@ objects:
     tags: [search, recall, regression]
   - id: doc-pipeline-001
     text: |
-      text.short pipeline (post-T-0575): markdown with structure routes to
+      text.short pipeline: markdown with structure routes to
       text.long instead. Bare prose under 500 chars stays on text.short.
     tags: [pipeline, routing, text-short]
   - id: doc-pipeline-002
@@ -82,7 +82,7 @@ objects:
     text: "Entity resolver merges mentions with existing entities by canonical slug."
     tags: [graph, entity, resolver]
   - id: doc-config-001
-    text: "Per-binary config files live under contexthelp/ namespace (ctxt.yaml, dpkms.yaml). T-0576."
+    text: "Per-binary config files live under contexthelp/ namespace (ctxt.yaml, dpkms.yaml)."
     tags: [config, contexthelp]
   - id: doc-config-002
     text: "Search strategy resolution order: CLI flags → active profile → global config."

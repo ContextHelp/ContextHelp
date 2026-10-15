@@ -1,6 +1,6 @@
 package integration
 
-// US-0215: Foreground Window / App Source (per ADR-066 + ADR-067 + T-0503).
+// US-0215: Foreground Window / App Source (per ADR-066 + ADR-067).
 //
 // E2E acceptance criteria from docs/stories/capture/US-0215-foreground-window-source.md.
 // Verifies: macOS AX-event subscription (AXFocusedWindowChanged,
@@ -9,7 +9,7 @@ package integration
 // of rapid focus-change bursts, ExcludeBundles deny-list. Linux X11/Wayland
 // + Windows return ErrNotSupported (build-tagged).
 //
-// **Status: skeleton.** Substrate (T-0503) is implemented + unit-tested
+// **Status: skeleton.** Substrate is implemented + unit-tested
 // with a fakeReader. The Reader interface implementation for macOS lives
 // behind GOOS=darwin in a follow-up commit (Swift bridge for AX events).
 

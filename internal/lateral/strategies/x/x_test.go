@@ -87,7 +87,7 @@ func TestProbe_HasIdentityKey(t *testing.T) {
 		SourceURL: "https://x.com/jadb/status/1",
 	}, lateral.ActiveContext{})
 	for _, c := range cands {
-		// Post-T-0309 strategies emit the typed field; the legacy
+		// Migrated strategies emit the typed field; the legacy
 		// Preview-map form is acceptable too during the migration
 		// window but x.Strategy now sets the typed field directly.
 		key := c.IdentityKey

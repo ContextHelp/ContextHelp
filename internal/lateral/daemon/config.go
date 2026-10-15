@@ -74,8 +74,8 @@ type Config struct {
 	// every strategy enabled (matches the spec's v1 posture).
 	Roster roster.Gates
 
-	// SamplePercent is the per-strategy traffic-shaping percent
-	// (T-0329). Keys are strategy IDs as exported by each strategy
+	// SamplePercent is the per-strategy traffic-shaping percent.
+	// Keys are strategy IDs as exported by each strategy
 	// package: "jit"; "github", "github.gist", "github.advisory";
 	// "GoogleSearchStrategy", "WikipediaStrategy", "XStrategy", and
 	// other roster IDs (see internal/lateral/strategies/<name>/ for
@@ -284,7 +284,7 @@ func mergeStrategies(cfg *Config, s strategiesFile) {
 	apply(&cfg.Roster.BeehiivPostStrategy, s.BeehiivPost)
 	apply(&cfg.Roster.YouTubeStrategy, s.YouTube)
 
-	// Sample-percent overlay (T-0329). Mapping: strategy ID → percent.
+	// Sample-percent overlay. Mapping: strategy ID → percent.
 	// Key names mirror the IDs the gate consumes (Roster IDs come
 	// from each platform package's exported const; jit/github use
 	// their own).

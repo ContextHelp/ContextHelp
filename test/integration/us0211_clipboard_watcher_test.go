@@ -34,16 +34,16 @@ func skipUnlessE2E(t *testing.T) {
 // pipeline with ambient_source=clipboard and a populated Fingerprint.
 func TestClipboardWatcher_CapturesPlainText(t *testing.T) {
 	skipUnlessE2E(t)
-	t.Skip("pending implementation: substrate ready (T-0500); E2E harness " +
+	t.Skip("pending implementation: substrate ready; E2E harness " +
 		"(start dpkms + ctxd, drive OS clipboard, assert KnowledgeObject) not built")
 }
 
 // TestClipboardWatcher_DedupeRapidUpdates verifies the substrate's
-// fingerprint dedup at the enqueue boundary (T-0499) drops repeat copies
+// fingerprint dedup at the enqueue boundary drops repeat copies
 // of identical content within the configurable window.
 func TestClipboardWatcher_DedupeRapidUpdates(t *testing.T) {
 	skipUnlessE2E(t)
-	t.Skip("pending implementation: substrate ready (T-0499 + T-0500); E2E " +
+	t.Skip("pending implementation: substrate ready; E2E " +
 		"harness not built")
 }
 
@@ -71,6 +71,6 @@ func TestClipboardWatcher_PauseResume(t *testing.T) {
 // (code subtype), long text → text.short.
 func TestClipboardWatcher_RoutesToTextPipeline(t *testing.T) {
 	skipUnlessE2E(t)
-	t.Skip("pending implementation: substrate ready (T-0500); E2E harness " +
+	t.Skip("pending implementation: substrate ready; E2E harness " +
 		"+ dpkms-side type-routing assertions not built")
 }

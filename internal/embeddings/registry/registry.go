@@ -32,7 +32,7 @@ const (
 //
 // Field names are stable JSON identifiers used by the registry layer.
 // The CLI surface for `ctxt embeddings list` is pinned by the eva contract
-// at `contracts/embeddings-list.eva.yaml` (T-0586) and is constructed from
+// at `contracts/embeddings-list.eva.yaml` and is constructed from
 // ListWithCoverage rather than this struct directly — `coverage` is a
 // computed value, not a column.
 type Model struct {

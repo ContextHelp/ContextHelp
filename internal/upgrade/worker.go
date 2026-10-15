@@ -1,5 +1,5 @@
 // Package upgrade: Worker — selective re-ingest worker for ADR-070
-// reingest_selective upgrades (T-0581).
+// reingest_selective upgrades.
 //
 // Lifecycle:
 //

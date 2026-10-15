@@ -18,8 +18,8 @@ import (
 //
 // Entities is the set of entity rows referenced by mention edges in this
 // batch (ADR-049: object→entity, edge_type='mentions'). Receivers upsert
-// them so the mention edges they accompany do not dangle. T-0175 added
-// Entities for US-0319 AC #6.
+// them so the mention edges they accompany do not dangle. Entities satisfy
+// US-0319 AC #6.
 type FederationPushRequest struct {
 	Objects  []storage.KnowledgeObject `json:"objects"`
 	Edges    []storage.Edge            `json:"edges"`

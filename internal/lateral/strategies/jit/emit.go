@@ -9,7 +9,7 @@ import lateral "github.com/ideacrafterslabs/ctxt/internal/lateral"
 const CandidateType = "jit_subpath"
 
 // Emit converts a slice of FetchResult into lateral.Candidate values, dropping
-// failed fetches into a separate failures slice for T-0248 to consume.
+// failed fetches into a separate failures slice for failure handling to consume.
 //
 // Emission rules:
 //   - results with non-nil Err → failures slice (NOT a candidate)

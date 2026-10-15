@@ -21,7 +21,7 @@ const ConversionWindow = 14 * 24 * time.Hour
 // dispatch correctness against a labelled set; conversion measures
 // production effectiveness — what fraction of candidates a strategy
 // emits go on to become Promoted entities. The two together drive
-// the per-strategy quality score (T-0333).
+// the per-strategy quality score.
 //
 // ConversionAggregator is safe for concurrent Subscribe / Snapshot.
 // Subscribe is intended to be called once at boot; Snapshot is

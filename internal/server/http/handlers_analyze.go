@@ -28,7 +28,7 @@ func Analyze(svc *service.Service) http.HandlerFunc {
 
 		jobID, err := svc.Analyze(r.Context(), req)
 		if err != nil {
-			// T-0562: surface unsupported types as 422 so callers see a
+			// surface unsupported types as 422 so callers see a
 			// clear, actionable error instead of a generic 500. Previously
 			// this path silently enqueued a job referencing a non-existent
 			// pipeline and the worker dropped the job.

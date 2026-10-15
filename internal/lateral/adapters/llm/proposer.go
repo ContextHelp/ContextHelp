@@ -9,7 +9,7 @@
 //     stay colocated with the strategy that owns the contract.
 //   - jit.PageTypeClassifier: maps a source URL to a single page-type
 //     string. The pageshape package owns the multi-label classifier;
-//     T-0317 wraps that for jit. This package's PageTypeClassifier is
+//     the pageshape adapter wraps that for jit. This package's PageTypeClassifier is
 //     a fallback when the daemon doesn't wire pageshape (small CLI
 //     runs, smoke tests).
 //
@@ -140,7 +140,7 @@ func (p *Proposer) Propose(ctx context.Context, domain string, pageType string) 
 // returns the trimmed first line.
 //
 // This is the fallback adapter — production deployments wire the
-// pageshape adapter (T-0317) which composes a heuristic + recipe-cache
+// pageshape adapter which composes a heuristic + recipe-cache
 // stack. Use this when you want jit to have *some* page-type signal
 // in environments where the heuristic stack isn't available.
 type PageTypeClassifier struct {

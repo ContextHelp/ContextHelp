@@ -77,7 +77,7 @@ var migration025 string
 var migration026 string
 
 // Migrations 027 and 028 are now Go fns (migrate027JobsUserMentions /
-// migrate028JobsUserHints) — see T-0186. The raw ALTER SQL was vulnerable
+// migrate028JobsUserHints). The raw ALTER SQL was vulnerable
 // to "duplicate column" errors when a test setup keeps one driver handle
 // open while another driver Init runs against the same DB path. The Go
 // fns check pragma_table_info before each ALTER, mirroring 014/022/031.
@@ -143,7 +143,7 @@ var migrations = []migration{
 	// Uses a Go fn so the backfill (graph_json = '{}' for legacy rows) runs
 	// atomically after the DDL.
 	{Version: 22, fn: migrate022GraphCanonical},
-	// Migration 023: projected_fts_body column + FTS rebuild (T-0195).
+	// Migration 023: projected_fts_body column + FTS rebuild.
 	// Uses a Go fn for idempotency: checks for column before ALTER TABLE.
 	{Version: 23, fn: migrate023ProjectedFTSBody},
 	// Migration 024: rename mention_uris → mentions on objects table.
@@ -153,25 +153,25 @@ var migrations = []migration{
 	{Version: 25, SQL: migration025},
 	// Migration 026: source_key column for external dedup key (Slack ts, tweet ID, etc.).
 	{Version: 26, SQL: migration026},
-	// Migration 027: user_mentions column on jobs for `ctxt analyze --mentions` (T-0190).
-	// Idempotent Go fn (T-0186) — pragma_table_info check before ALTER.
+	// Migration 027: user_mentions column on jobs for `ctxt analyze --mentions`.
+	// Idempotent Go fn — pragma_table_info check before ALTER.
 	{Version: 27, fn: migrate027JobsUserMentions},
-	// Migration 028: user_hints column on jobs for `ctxt capture --hint` (T-0573).
-	// Idempotent Go fn (T-0186).
+	// Migration 028: user_hints column on jobs for `ctxt capture --hint`.
+	// Idempotent Go fn.
 	{Version: 28, fn: migrate028JobsUserHints},
 	// Migration 029: index_signatures table for ADR-070 bucket-1 (reindex_auto)
-	// detection (T-0579). Detection-only; reindex worker lands in T-0581.
+	// detection. Detection-only; reindex worker lives elsewhere.
 	{Version: 29, SQL: migration029},
-	// Migration 030: stamp existing objects.pipeline rows with @v0 so post-T-0579
+	// Migration 030: stamp existing objects.pipeline rows with @v0 so
 	// pipeline versioning has a baseline (ADR-070 §2). Idempotent.
 	{Version: 30, SQL: migration030},
 	// Migration 031: user_profile + user_note columns on jobs for
-	// `ctxt capture --profile` and `--note` (T-0588). Idempotent Go fn
+	// `ctxt capture --profile` and `--note`. Idempotent Go fn
 	// (mirrors migrate014RemindAt) so re-init on a partially-migrated
 	// DB doesn't trip duplicate-column errors.
 	{Version: 31, fn: migrate031JobsUserProfileNote},
 	// Migration 032: embedding_models registry + embeddings composite-key
-	// table for ADR-071 Phase 1 (T-0582). Plain SQL — DDL is fresh; the
+	// table for ADR-071 Phase 1. Plain SQL — DDL is fresh; the
 	// CREATE TABLE IF NOT EXISTS / CREATE UNIQUE INDEX IF NOT EXISTS
 	// guards make it safe to re-run.
 	{Version: 32, SQL: migration032},
@@ -451,7 +451,7 @@ func migrate022GraphCanonical(ctx context.Context, d *Driver) error {
 }
 
 // migrate023ProjectedFTSBody adds projected_fts_body to objects and rebuilds the
-// FTS virtual table to index it instead of raw summaries/raw_content (T-0195).
+// FTS virtual table to index it instead of raw summaries/raw_content.
 // Idempotent: checks pragma_table_info before ALTER TABLE.
 func migrate023ProjectedFTSBody(ctx context.Context, d *Driver) error {
 	existing := map[string]bool{}
@@ -618,7 +618,7 @@ func migrate020VecObjects(ctx context.Context, d *Driver) error {
 }
 
 // addJobsColumnIfMissing adds a single TEXT column to the jobs table if
-// it doesn't already exist (T-0186). The check uses pragma_table_info so
+// it doesn't already exist. The check uses pragma_table_info so
 // re-running on a partially-migrated DB (e.g. test setups that double-open
 // the same path) is a no-op rather than a duplicate-column error.
 func addJobsColumnIfMissing(ctx context.Context, d *Driver, name, def string) error {
@@ -645,21 +645,21 @@ func addJobsColumnIfMissing(ctx context.Context, d *Driver, name, def string) er
 	return err
 }
 
-// migrate027JobsUserMentions adds user_mentions TEXT column to jobs
-// (T-0190). Originally raw ALTER SQL; converted to idempotent Go fn in
-// T-0186 to match the pattern of 014/022/031.
+// migrate027JobsUserMentions adds user_mentions TEXT column to jobs.
+// Originally raw ALTER SQL; converted to idempotent Go fn in
+// to match the pattern of 014/022/031.
 func migrate027JobsUserMentions(ctx context.Context, d *Driver) error {
 	return addJobsColumnIfMissing(ctx, d, "user_mentions", "TEXT DEFAULT ''")
 }
 
-// migrate028JobsUserHints adds user_hints TEXT column to jobs (T-0573).
-// Originally raw ALTER SQL; converted to idempotent Go fn in T-0186.
+// migrate028JobsUserHints adds user_hints TEXT column to jobs.
+// Originally raw ALTER SQL; converted to idempotent Go fn.
 func migrate028JobsUserHints(ctx context.Context, d *Driver) error {
 	return addJobsColumnIfMissing(ctx, d, "user_hints", "TEXT DEFAULT ''")
 }
 
 // migrate031JobsUserProfileNote adds user_profile + user_note TEXT columns to
-// jobs (T-0588). Idempotent — checks pragma_table_info before each ALTER so
+// jobs. Idempotent — checks pragma_table_info before each ALTER so
 // repeated Init calls on a partially-migrated DB (e.g. tests that hold a
 // driver handle open while a second handle reads pre-WAL-checkpoint state)
 // don't trip "duplicate column name" errors.
@@ -1003,7 +1003,7 @@ func tableHasColumn(ctx context.Context, d *Driver, table, column string) (bool,
 // composite-key embeddings table under a synthetic model_id, seeds the
 // matching embedding_models row (marked is_default = 1 per ADR-071 §"Backward
 // compatibility"), and stamps the embeddings_<model_id> row in
-// index_signatures so ADR-070's auto-rebuild semantics apply (T-0582).
+// index_signatures so ADR-070's auto-rebuild semantics apply.
 //
 // The synthetic model_id rule is "legacy-blob-<dim>@<schema-date>", where:
 //   - "legacy-blob" identifies these rows as predating the registry (no
@@ -1070,7 +1070,7 @@ func migrate033EmbeddingsBackfill(ctx context.Context, d *Driver) error {
 	//
 	// Defensive CREATE: production DBs that ran migration 029 already
 	// have the table, but in-development DBs upgraded across the
-	// T-0579 / T-0582 boundary may have schema_version recording 029
+	// index-signature / embedding-model boundary may have schema_version recording 029
 	// without the table actually present (a known dev-pollution mode).
 	// A no-op CREATE TABLE IF NOT EXISTS keeps this migration robust
 	// without re-recording the version.

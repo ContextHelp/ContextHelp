@@ -22,7 +22,7 @@ func seedJob(t *testing.T, ts *testServerBundle, id string) {
 	})
 }
 
-// TestListJobsEmptyCollection ensures empty DB returns [] not null (T-0219).
+// TestListJobsEmptyCollection ensures empty DB returns [] not null.
 func TestListJobsEmptyCollection(t *testing.T) {
 	ts := newTestServerBundle(t)
 	defer ts.Close()

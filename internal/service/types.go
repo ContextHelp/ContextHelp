@@ -22,20 +22,20 @@ type AnalyzeRequest struct {
 	NoFanout    bool   `json:"no_fanout,omitempty"`    // skip post-ingest fan-out enrichment
 	SourceKey   string `json:"source_key,omitempty"`   // external dedup key (Slack ts, tweet ID, etc.)
 	Force       bool   `json:"force,omitempty"`        // bypass duplicate detection
-	// Mentions are caller-asserted @namespace.slug strings (T-0190). They
+	// Mentions are caller-asserted @namespace.slug strings. They
 	// are merged with auto-extracted mentions during pipeline execution and
 	// become real mention edges + thin entity rows. Caller-supplied wins on
 	// conflict — the merge step dedupes by slug.
 	Mentions []string `json:"mentions,omitempty"`
 	// Hints are caller-asserted hint strings (`ctxt capture --hint research`).
 	// They become Tag{Source:"user"} entries on the persisted KnowledgeObject
-	// after the auto-tagger merges (T-0573). Stored on the Job as UserHints
+	// after the auto-tagger merges. Stored on the Job as UserHints
 	// for the worker to read at pipeline-start time.
 	Hints []string `json:"hints,omitempty"`
 	// Profile is the focus-profile slug the operator pinned at capture
 	// time (`ctxt capture --profile founder`). Populates the
 	// KnowledgeObject.ProfileID so the persisted object is partitioned
-	// to that profile (T-0588). Empty = global / no profile.
+	// to that profile. Empty = global / no profile.
 	Profile string `json:"profile,omitempty"`
 	// IdempotencyKey identifies one logical submission (client-generated,
 	// e.g. a UUID minted once per `ctxt analyze` invocation). The enqueue
@@ -49,7 +49,7 @@ type AnalyzeRequest struct {
 	// Note is a free-form audit string the operator attached to the
 	// capture (`ctxt capture --note "client kickoff 2026-Q2"`).
 	// Populates KnowledgeObject.InboxNote so the note survives both
-	// raw and pipeline paths (T-0588). InboxNote is the canonical
+	// raw and pipeline paths. InboxNote is the canonical
 	// "operator-attached" field on KnowledgeObject; reusing it here
 	// keeps a single field name across capture, inbox, and pipeline.
 	Note string `json:"note,omitempty"`
@@ -72,13 +72,13 @@ type InboxCaptureRequest struct {
 	Type      string
 	Source    string
 	InboxNote string
-	// Hints are caller-asserted hint strings (T-0573). On the inbox path
+	// Hints are caller-asserted hint strings. On the inbox path
 	// they land directly on KnowledgeObject.Tags with Source:"user" — no
 	// pipeline runs at capture time, only at triage.
 	Hints    []string
 	Mentions []uri.URI
 	// Profile is the focus-profile slug the operator pinned at capture
-	// time (T-0588). Populates KnowledgeObject.ProfileID so the inbox
+	// time. Populates KnowledgeObject.ProfileID so the inbox
 	// item is partitioned to that profile from the start.
 	Profile string
 }
@@ -94,7 +94,7 @@ type InboxFilter struct {
 // TriageRequest carries parameters to promote an inbox object into the pipeline.
 type TriageRequest struct {
 	Pipeline string
-	// Hints are caller-asserted hint strings (T-0573); forwarded to
+	// Hints are caller-asserted hint strings; forwarded to
 	// Job.UserHints when triage enqueues the pipeline job.
 	Hints    []string
 	Mentions []string
@@ -134,8 +134,8 @@ type HybridResult struct {
 }
 
 // SearchDiagnostics captures information about candidates that surfaced from
-// the FTS or vector legs but were dropped by the reranker's MinScore threshold
-// (T-0574). It lets callers distinguish "no docs matched any token" from
+// the FTS or vector legs but were dropped by the reranker's MinScore threshold.
+// It lets callers distinguish "no docs matched any token" from
 // "matches existed but all fell below threshold".
 //
 // All fields are populated on every search call (zero values are valid).
@@ -153,7 +153,7 @@ type SearchDiagnostics struct {
 	Threshold float64 `json:"threshold"`
 	// StalenessWarning is populated when one or more candidates in the
 	// pre-filter set are stamped with a pipeline version older than the
-	// registry's currently-installed version (ADR-070 §6, T-0581). Soft
+	// registry's currently-installed version (ADR-070 §6). Soft
 	// signal: search still returns the stale results, but the caller knows
 	// to suggest `ctxt upgrade plan` to the operator.
 	StalenessWarning *StalenessWarning `json:"staleness_warning,omitempty"`
@@ -166,7 +166,7 @@ type SearchDiagnostics struct {
 // StalenessWarning summarises pipeline-version drift in a search result set.
 // Populated by HybridSearch* when at least one candidate's `pipeline` field
 // parses to an older version than the registry's currently-installed version
-// for the same family (ADR-070 §6, T-0581).
+// for the same family (ADR-070 §6).
 type StalenessWarning struct {
 	Count  int    `json:"count"`
 	Reason string `json:"reason"`
@@ -174,7 +174,7 @@ type StalenessWarning struct {
 
 // HybridSearchResult is the wrapper envelope for HybridSearchExplain calls.
 // It pairs the post-threshold result list with diagnostics covering candidates
-// that surfaced from retrieval but were dropped by the reranker (T-0574).
+// that surfaced from retrieval but were dropped by the reranker.
 type HybridSearchResult struct {
 	Results     []HybridResult    `json:"results"`
 	Diagnostics SearchDiagnostics `json:"diagnostics"`

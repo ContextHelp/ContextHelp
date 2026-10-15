@@ -222,7 +222,7 @@ func captureOnce(ctx context.Context, cmd *cobra.Command, args []string) error {
 	wait, _ := cmd.Flags().GetBool("wait")
 	inbox, _ := cmd.Flags().GetBool("inbox")
 
-	// Build request body. Server-side JSON contract uses `hints` (T-0573)
+	// Build request body. Server-side JSON contract uses `hints`
 	// and `mentions` arrays — both are caller-asserted user inputs that
 	// merge with auto-extracted entries during pipeline execution.
 	reqBody := map[string]any{
@@ -292,7 +292,7 @@ func postInboxCapture(
 	if len(hints) > 0 {
 		body["hints"] = hints
 	}
-	// T-0588: --profile partitions the inbox item to a focus profile.
+	// --profile partitions the inbox item to a focus profile.
 	if profile := activeProfileName(cmd); profile != "" {
 		body["profile"] = profile
 	}
@@ -342,7 +342,7 @@ func resolveCaptureInput(cmd *cobra.Command, args []string) (content, source str
 			// Send the absolute path as `source` so the server's
 			// pipeline detector chain can fire both extension-based
 			// detectors (foo.png → image.ocr) AND prefix-based ones
-			// (/vault/notes/... → watch.file, T-0209). The earlier
+			// (/vault/notes/... → watch.file). The earlier
 			// "file:<path>" prefix broke the latter. Resolution
 			// failure falls back to the raw path the operator typed.
 			abs, absErr := filepath.Abs(raw)

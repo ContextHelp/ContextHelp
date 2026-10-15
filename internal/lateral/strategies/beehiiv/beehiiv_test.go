@@ -50,7 +50,7 @@ func TestPublication_AboutMatches(t *testing.T) {
 	}
 }
 
-// TestHintsRoundTrip_BeehiivCustomDomain pins T-0310 for beehiiv:
+// TestHintsRoundTrip_BeehiivCustomDomain pins hint round-tripping for beehiiv:
 // MetaPlatform=beehiiv on a non-beehiiv host unlocks the parent
 // strategy's custom-domain branch.
 func TestHintsRoundTrip_BeehiivCustomDomain(t *testing.T) {

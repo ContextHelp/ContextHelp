@@ -1,4 +1,4 @@
--- T-0140: metering events for paid registry access tracking
+-- metering events for paid registry access tracking
 CREATE TABLE IF NOT EXISTS metering_events (
     id            TEXT PRIMARY KEY,
     registry_name TEXT NOT NULL,

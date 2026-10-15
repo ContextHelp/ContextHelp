@@ -1,6 +1,6 @@
 package integration
 
-// US-0216: Work Sessions (per ADR-067 + T-0505).
+// US-0216: Work Sessions (per ADR-067).
 //
 // E2E acceptance criteria from docs/stories/capture/US-0216-work-sessions.md.
 // Verifies: client-side three-rule cutter cuts sessions correctly under
@@ -9,7 +9,7 @@ package integration
 // ctxt session list/show CLI works, ctxt compose --session scopes
 // correctly.
 //
-// **Status: skeleton.** Cutter (T-0505) is implemented + unit-tested
+// **Status: skeleton.** Cutter is implemented + unit-tested
 // (94% coverage) with a fakeClock. dpkms-side schema migration
 // (sessions table + objects.session_id soft-FK) is tracked separately;
 // E2E harness needs both pieces to verify full round-trip.
@@ -66,7 +66,7 @@ func TestSession_PutIdempotent(t *testing.T) {
 func TestComposeBySession(t *testing.T) {
 	skipUnlessE2E(t)
 	t.Skip("pending: dpkms-side ObjectFilter.SessionID field. CLI flag " +
-		"ctxt compose --session is plumbed (T-0508) as forward-compat no-op; " +
+		"ctxt compose --session is plumbed as forward-compat no-op; " +
 		"activates when storage migration ships")
 }
 

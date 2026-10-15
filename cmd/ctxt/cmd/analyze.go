@@ -175,7 +175,7 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 
 	sourceKey := flagString(cmd, "source-key", "analyze.source_key")
 
-	// T-0190: ship `--mention "@client.acme @project.foo"` through to the
+	// ship `--mention "@client.acme @project.foo"` through to the
 	// server so user-asserted mentions become real edges + entity rows
 	// (handled by service.Analyze + jobs/worker.go). The CLI flag is
 	// --mention; the server-side JSON field is still `mentions`.
@@ -185,7 +185,7 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 		userMentions = strings.Fields(mentionsFlag)
 	}
 
-	// T-0573: ship `--hint research,ux` (repeatable, CSV) through to the
+	// ship `--hint research,ux` (repeatable, CSV) through to the
 	// server as a JSON array. service.Analyze pre-populates draft.Tags
 	// with Source:"user"; the auto-tagger merges with these rather
 	// than overwriting.
@@ -237,7 +237,7 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// T-0562: --wait was previously a no-op. The CLI returned the job ID
+	// --wait was previously a no-op. The CLI returned the job ID
 	// from POST /analyze and exited even when the job was never persisted,
 	// so the user never learned the work was dropped. Poll GET /jobs/{id}
 	// on the instance that accepted the enqueue and fail loudly if the ID

@@ -141,7 +141,7 @@ func hostOf(raw string) (string, bool) {
 }
 
 // Probe implements lateral.LateralStrategy. The skeleton returns an empty
-// candidate set; sub-path probes (T-0255..T-0259) fan out the real work
+// candidate set; sub-path probes fan out the real work
 // through the package-internal pipeline.
 func (s *GitHubStrategy) Probe(ctx context.Context, ev lateral.CapturedEvent, ac lateral.ActiveContext) ([]lateral.Candidate, error) {
 	pt := classifyPath(ev.SourceURL)

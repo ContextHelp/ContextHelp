@@ -45,7 +45,7 @@ func TestTagger_Deterministic(t *testing.T) {
 	assert.Equal(t, 1, len(results), "Expected deterministic tagging, but got multiple variations: %v", results)
 }
 
-// T-0573: tagger must merge with pre-existing user-source tags rather than
+// tagger must merge with pre-existing user-source tags rather than
 // overwriting them. User-asserted hints land on draft.Tags before this
 // step runs (jobs.worker.parseUserHints / Service.Analyze raw path); they
 // must survive the heuristic auto-extraction and win on lowercase-label
