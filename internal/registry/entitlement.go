@@ -39,16 +39,25 @@ type entitlementResponse struct {
 }
 
 // EntitlementChecker fetches and stores registry entitlement records.
+// FetchAndStore always writes outbound rows; CheckNamespace reads rows
+// of the checker's kind (outbound unless built by the inbound gate).
 type EntitlementChecker struct {
 	store  storage.EntitlementStore
+	kind   storage.EntitlementKind
 	client *http.Client
 	creds  *Credentials
 }
 
-// NewEntitlementChecker creates an EntitlementChecker backed by the given store.
+// NewEntitlementChecker creates an EntitlementChecker over the outbound
+// rows of the given store.
 func NewEntitlementChecker(store storage.EntitlementStore) *EntitlementChecker {
+	return newEntitlementChecker(store, storage.EntitlementOutbound)
+}
+
+func newEntitlementChecker(store storage.EntitlementStore, kind storage.EntitlementKind) *EntitlementChecker {
 	return &EntitlementChecker{
 		store:  store,
+		kind:   kind,
 		client: &http.Client{Timeout: 15 * time.Second},
 	}
 }
@@ -104,6 +113,7 @@ func (c *EntitlementChecker) FetchAndStore(
 	}
 
 	ent := &storage.RegistryEntitlement{
+		Kind:         storage.EntitlementOutbound,
 		RegistryName: registryName,
 		Plan:         payload.Plan,
 		Namespaces:   payload.Namespaces,
@@ -127,7 +137,7 @@ func (c *EntitlementChecker) CheckNamespace(
 	namespace string,
 	upgradeURL string,
 ) error {
-	ent, err := c.store.Get(ctx, registryName)
+	ent, err := c.store.Get(ctx, c.kind, registryName)
 	if err != nil {
 		// Documented fail-open (see the doc comment): with no stored
 		// entitlement the registry is treated as unrestricted.

@@ -29,31 +29,30 @@ func newEntityHandler(svc *service.Service, gate *registry.InboundGate, sec *sec
 // ListEntities returns a paginated entity listing. With an inbound gate
 // wired (non-private instances), the listing is filtered to the
 // namespaces the authenticated principal is entitled to — an index
-// browse, so no metering charge. Admin principals see every entity.
-// Mirrors the HTTP handler exactly.
+// browse, so no metering charge. The filter runs in the store ahead of
+// limit and offset, so a page holds only entitled entities and is never
+// short while more remain. Admin principals see every entity. Mirrors
+// the HTTP handler exactly.
 func (h *entityHandler) ListEntities(ctx context.Context, req *pb.ListEntitiesRequest) (*pb.ListEntitiesResponse, error) {
 	limit := int(req.Limit)
 	if limit <= 0 {
 		limit = 50
 	}
 
-	entities, err := h.svc.ListEntities(ctx, storage.EntityFilter{
+	var entitled func(namespace string) bool
+	if gate := entityGateFor(ctx, h.gate); gate != nil {
+		principal := principalID(ctx)
+		entitled = func(namespace string) bool {
+			return gate.Check(ctx, principal, namespace) == nil
+		}
+	}
+	entities, err := h.svc.ListVisibleEntities(ctx, storage.EntityFilter{
 		Namespace: req.Namespace,
 		Limit:     limit,
 		Offset:    int(req.Offset),
-	})
+	}, entitled)
 	if err != nil {
 		return nil, toStatus(ctx, "entities", err)
-	}
-	if gate := entityGateFor(ctx, h.gate); gate != nil {
-		principal := principalID(ctx)
-		entitled := make([]*storage.Entity, 0, len(entities))
-		for _, e := range entities {
-			if gate.Check(ctx, principal, e.Namespace) == nil {
-				entitled = append(entitled, e)
-			}
-		}
-		entities = entitled
 	}
 
 	out := make([]*pb.Entity, 0, len(entities))

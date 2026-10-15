@@ -91,6 +91,9 @@ func seedRestricted(t *testing.T, drv storage.StorageDriver) *restrictedFixture 
 	}
 	f.mentioned = mention("person/mentioned")
 	f.secret = mention("person/secret")
+	// The secret entity's namespace is its own, so a namespace listing
+	// that leaked hidden entities would show it.
+	f.secret.Namespace = "secret"
 	f.registry = &storage.Entity{
 		Slug: "org/registry", Title: "Registry org", Namespace: "org",
 		RegistryURL: "https://registry.example", CreatedAt: now, UpdatedAt: now,
@@ -387,6 +390,13 @@ func restrictedConfEntities(t *testing.T, scoped storage.StorageDriver, f *restr
 	if want := []string{f.registry.Slug, f.mentioned.Slug}; !slices.Equal(slugs, want) {
 		t.Errorf("List = %v, want %v", slugs, want)
 	}
+	namespaces, err := entities.Namespaces(ctx)
+	if err != nil {
+		t.Fatalf("Namespaces: %v", err)
+	}
+	if want := []string{f.registry.Namespace, f.mentioned.Namespace}; !slices.Equal(namespaces, want) {
+		t.Errorf("Namespaces = %v, want %v: the secret entity's namespace must not show", namespaces, want)
+	}
 }
 
 func restrictedConfNoEntities(t *testing.T, scoped storage.StorageDriver, f *restrictedFixture) {
@@ -398,6 +408,9 @@ func restrictedConfNoEntities(t *testing.T, scoped storage.StorageDriver, f *res
 	}
 	if list, err := scoped.Entities().List(ctx, storage.EntityFilter{}); err != nil || len(list) != 0 {
 		t.Errorf("List without the entities capability = %d entities, %v, want none", len(list), err)
+	}
+	if namespaces, err := scoped.Entities().Namespaces(ctx); err != nil || len(namespaces) != 0 {
+		t.Errorf("Namespaces without the entities capability = %v, %v, want none", namespaces, err)
 	}
 }
 

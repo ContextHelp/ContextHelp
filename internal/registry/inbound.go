@@ -15,8 +15,10 @@ import (
 //
 // Data model reuse is deliberate (same substrate, same stores):
 //
-//   - an EntitlementStore row whose RegistryName is the principal ID
-//     lists the namespace globs that principal is entitled to;
+//   - an inbound EntitlementStore row whose RegistryName is the
+//     principal ID lists the namespace globs that principal is entitled
+//     to (outbound rows, keyed by remote registry name, are never read
+//     here);
 //   - MeteringStore events accumulate under the principal ID, and
 //     per-principal QuotaConfig limits enforce hard caps per billing
 //     period.
@@ -40,7 +42,7 @@ func NewInboundGate(ents storage.EntitlementStore, met storage.MeteringStore) *I
 	meter := NewMeter(met)
 	meter.SetFailClosed(true)
 	return &InboundGate{
-		checker: NewEntitlementChecker(ents),
+		checker: newEntitlementChecker(ents, storage.EntitlementInbound),
 		meter:   meter,
 	}
 }

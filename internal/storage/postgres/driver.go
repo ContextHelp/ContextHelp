@@ -86,7 +86,7 @@ func New(connStr string, blobs storage.BlobStore) (*Driver, error) {
 	d.attachments = &AttachmentStore{}
 	d.resurfacing = &ResurfacingQueueStore{}
 	d.entitlements = &EntitlementStore{db: db}
-	d.metering = &MeteringStore{}
+	d.metering = &MeteringStore{db: db}
 	d.savedSearches = &SavedSearchStore{}
 	d.searchHistory = &SearchHistoryStore{}
 	return d, nil

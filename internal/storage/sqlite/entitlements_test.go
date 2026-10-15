@@ -29,6 +29,7 @@ func TestEntitlementStore_UpsertAndGet(t *testing.T) {
 
 	expiry := time.Now().Add(24 * time.Hour).UTC().Truncate(time.Second)
 	ent := &storage.RegistryEntitlement{
+		Kind:         storage.EntitlementOutbound,
 		RegistryName: "test-reg",
 		Plan:         "pro",
 		Namespaces:   []string{"ai.*", "devops.*"},
@@ -40,7 +41,7 @@ func TestEntitlementStore_UpsertAndGet(t *testing.T) {
 		t.Fatalf("Upsert: %v", err)
 	}
 
-	got, err := drv.Entitlements().Get(ctx, "test-reg")
+	got, err := drv.Entitlements().Get(ctx, storage.EntitlementOutbound, "test-reg")
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -64,6 +65,7 @@ func TestEntitlementStore_Upsert_Overwrite(t *testing.T) {
 	ctx := context.Background()
 
 	first := &storage.RegistryEntitlement{
+		Kind:         storage.EntitlementOutbound,
 		RegistryName: "reg",
 		Plan:         "free",
 		Namespaces:   []string{"public.*"},
@@ -73,6 +75,7 @@ func TestEntitlementStore_Upsert_Overwrite(t *testing.T) {
 	}
 
 	second := &storage.RegistryEntitlement{
+		Kind:         storage.EntitlementOutbound,
 		RegistryName: "reg",
 		Plan:         "pro",
 		Namespaces:   []string{"ai.*", "devops.*"},
@@ -81,7 +84,7 @@ func TestEntitlementStore_Upsert_Overwrite(t *testing.T) {
 		t.Fatalf("second Upsert: %v", err)
 	}
 
-	got, err := drv.Entitlements().Get(ctx, "reg")
+	got, err := drv.Entitlements().Get(ctx, storage.EntitlementOutbound, "reg")
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -99,6 +102,7 @@ func TestEntitlementStore_List(t *testing.T) {
 
 	for _, name := range []string{"alpha", "beta", "gamma"} {
 		e := &storage.RegistryEntitlement{
+			Kind:         storage.EntitlementOutbound,
 			RegistryName: name,
 			Plan:         "basic",
 			Namespaces:   []string{"*"},
@@ -108,7 +112,7 @@ func TestEntitlementStore_List(t *testing.T) {
 		}
 	}
 
-	list, err := drv.Entitlements().List(ctx)
+	list, err := drv.Entitlements().List(ctx, storage.EntitlementOutbound)
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -121,7 +125,7 @@ func TestEntitlementStore_Get_NoRecord(t *testing.T) {
 	drv := newTestDriver(t)
 	ctx := context.Background()
 
-	_, err := drv.Entitlements().Get(ctx, "nonexistent")
+	_, err := drv.Entitlements().Get(ctx, storage.EntitlementOutbound, "nonexistent")
 	if err == nil {
 		t.Error("expected error for nonexistent registry, got nil")
 	}

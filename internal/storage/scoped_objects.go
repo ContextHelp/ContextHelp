@@ -174,6 +174,13 @@ func (v restrictedEntities) List(ctx context.Context, filter EntityFilter) ([]*E
 	return v.scoped.List(ctx, filter)
 }
 
+func (v restrictedEntities) Namespaces(ctx context.Context) ([]string, error) {
+	if v.scoped == nil {
+		return nil, refuseRead("Entities", "Namespaces", v.refuse)
+	}
+	return v.scoped.Namespaces(ctx)
+}
+
 func (v restrictedEntities) Resolve(ctx context.Context, mention string) (*Entity, error) {
 	if v.scoped == nil {
 		return nil, refuseRead("Entities", "Resolve", v.refuse)

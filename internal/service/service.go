@@ -603,6 +603,40 @@ func (s *Service) ListEntities(ctx context.Context, filter storage.EntityFilter)
 	return s.Store(ctx).Entities().List(ctx, filter)
 }
 
+// ListVisibleEntities lists the entities matching filter whose namespace
+// visible accepts. The restriction runs in the store ahead of
+// filter.Limit and filter.Offset, so a page is filled from the visible
+// entities alone and walking the offsets visits each of them exactly
+// once. visible is asked once per candidate namespace: filter.Namespaces
+// when set, else every namespace the store holds. A nil visible lists
+// exactly like ListEntities.
+func (s *Service) ListVisibleEntities(ctx context.Context, filter storage.EntityFilter, visible func(namespace string) bool) ([]*storage.Entity, error) {
+	if visible == nil {
+		return s.ListEntities(ctx, filter)
+	}
+	es := s.Store(ctx).Entities()
+	candidates := filter.Namespaces
+	if len(candidates) == 0 {
+		var err error
+		if candidates, err = es.Namespaces(ctx); err != nil {
+			return nil, fmt.Errorf("list entities: %w", err)
+		}
+	}
+	allowed := make([]string, 0, len(candidates))
+	for _, ns := range candidates {
+		if visible(ns) {
+			allowed = append(allowed, ns)
+		}
+	}
+	if len(allowed) == 0 {
+		// An empty EntityFilter.Namespaces means no restriction, so
+		// nothing visible must not reach the store.
+		return nil, nil
+	}
+	filter.Namespaces = allowed
+	return es.List(ctx, filter)
+}
+
 // RelatedObjects returns objects related to objectID by traversing shared
 // mention-target edges up to depth hops (capped at 3). Results are limited to
 // limit items (0 = default of 10). The seed object is never included.

@@ -20,6 +20,7 @@ func newInboundGate(t *testing.T) (*registry.InboundGate, storage.StorageDriver)
 func grantNamespaces(t *testing.T, driver storage.StorageDriver, principal string, namespaces ...string) {
 	t.Helper()
 	err := driver.Entitlements().Upsert(context.Background(), &storage.RegistryEntitlement{
+		Kind:         storage.EntitlementInbound,
 		RegistryName: principal,
 		Plan:         "inbound",
 		Namespaces:   namespaces,
@@ -184,4 +185,39 @@ func (e *erroringMeteringStore) List(
 	_ context.Context, _ storage.MeteringFilter,
 ) ([]*storage.MeteringEvent, error) {
 	return nil, errors.New("metering store down")
+}
+
+// The gate reads inbound grants only: an outbound row (a remote
+// registry's entitlement) named like the principal neither restricts
+// it nor widens an inbound grant of the same name.
+func TestInboundGateIgnoresOutboundRows(t *testing.T) {
+	gate, driver := newInboundGate(t)
+	ctx := context.Background()
+	if err := driver.Entitlements().Upsert(ctx, &storage.RegistryEntitlement{
+		Kind: storage.EntitlementOutbound, RegistryName: "partner", Plan: "remote", Namespaces: []string{"ai.*"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := gate.Check(ctx, "partner", "med.records"); err != nil {
+		t.Fatalf("outbound row gated the principal: %v", err)
+	}
+
+	grantNamespaces(t, driver, "partner", "ops.*")
+	if err := driver.Entitlements().Upsert(ctx, &storage.RegistryEntitlement{
+		Kind: storage.EntitlementOutbound, RegistryName: "partner", Plan: "remote", Namespaces: []string{"*"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := gate.Check(ctx, "partner", "med.records"); !registry.IsEntitlementRequired(err) {
+		t.Fatalf("outbound * row widened the inbound grant: %v", err)
+	}
+}
+
+// An inbound row with no namespaces denies every gated read.
+func TestInboundGateEmptyGrantDeniesAll(t *testing.T) {
+	gate, driver := newInboundGate(t)
+	grantNamespaces(t, driver, "partner")
+	if err := gate.Check(context.Background(), "partner", "ai.models"); !registry.IsEntitlementRequired(err) {
+		t.Fatalf("empty grant: %v, want ErrEntitlementRequired", err)
+	}
 }

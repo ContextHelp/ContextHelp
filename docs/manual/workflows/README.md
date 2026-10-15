@@ -20,6 +20,7 @@ Use this section when you want task-oriented execution, regardless of persona.
 | See what a search considered, and why results were cut | [`search-graph.md`](./search-graph.md) |
 | Open the web UI of a protected or public instance in a browser | [`web-ui-sign-in.md`](./web-ui-sign-in.md) |
 | Share a contact network with colleagues and partners: audiences, share policies, grants | [`sharing.md`](./sharing.md) |
+| Restrict which namespaces a caller may read from a protected or public instance | [`namespace-grants.md`](./namespace-grants.md) |
 | Produce briefs, plans, and summaries | [`composition-reporting.md`](./composition-reporting.md) |
 
 ## Recommended execution order

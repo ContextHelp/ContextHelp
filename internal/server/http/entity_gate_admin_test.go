@@ -13,18 +13,18 @@ import (
 )
 
 func TestAdminBypassesEntityGate(t *testing.T) {
-	runAdminEntityGateBypass(t, storageutil.NewTestDriver(t), true)
+	runAdminEntityGateBypass(t, storageutil.NewTestDriver(t))
+}
+
+func TestEntityGateMetersNonAdmin(t *testing.T) {
+	runNonAdminEntityGateMetering(t, storageutil.NewTestDriver(t))
 }
 
 // runAdminEntityGateBypass drives the entity surface as the admin owner
 // and as a gated writer over driver. The admin ignores its restrictive
 // grant and a one-read quota and records no metering event; the writer
-// stays gated and metered. Shared with the Postgres parity test, which
-// passes readMetering false while the Postgres metering store is a
-// stub: there, any metering call errors and the fail-closed gate turns
-// it into a 500, so the admin's successful reads alone prove the meter
-// was never reached.
-func runAdminEntityGateBypass(t *testing.T, driver storage.StorageDriver, readMetering bool) {
+// stays gated and metered. Shared with the Postgres parity test.
+func runAdminEntityGateBypass(t *testing.T, driver storage.StorageDriver) {
 	t.Helper()
 	ts, gate, _, driver := newGatedServerWithDriver(t, driver)
 	gate.SetQuota("owner", storage.MeteringEventEntityResolve, storage.QuotaConfig{Limit: 1})
@@ -66,9 +66,6 @@ func runAdminEntityGateBypass(t *testing.T, driver storage.StorageDriver, readMe
 		assert.NotEqual(t, http.StatusTooManyRequests, resp.StatusCode, string(body))
 	}
 
-	if !readMetering {
-		return
-	}
 	ownerEvents, err := driver.Metering().List(ownerCtx(), storage.MeteringFilter{RegistryName: "owner"})
 	require.NoError(t, err)
 	assert.Empty(t, ownerEvents, "admin entity reads must not be metered")
@@ -85,4 +82,43 @@ func runAdminEntityGateBypass(t *testing.T, driver storage.StorageDriver, readMe
 	resp, body = gatedDoAs(t, "tok-valid-fixture-0123456789abcdef0123456789", http.MethodGet, ts.URL+"/api/v1/entities/med.claims")
 	assert.Equal(t, http.StatusForbidden, resp.StatusCode, string(body))
 	assert.Equal(t, "ENTITLEMENT_REQUIRED", errorCode(t, body))
+}
+
+// runNonAdminEntityGateMetering drives the metered entity reads as a
+// gated writer over driver: show and pull inside the grant are charged
+// to the writer's quota (entity_resolve and content_pull) and refused
+// with 429 once it is spent. The gate fails closed, so a driver whose
+// metering store errors turns every one of these reads into a 500.
+// Shared with the Postgres parity test.
+func runNonAdminEntityGateMetering(t *testing.T, driver storage.StorageDriver) {
+	t.Helper()
+	ts, gate, _, driver := newGatedServerWithDriver(t, driver)
+	gate.SetQuota("ops", storage.MeteringEventEntityResolve, storage.QuotaConfig{Limit: 1})
+	gate.SetQuota("ops", storage.MeteringEventContentPull, storage.QuotaConfig{Limit: 1})
+
+	resp, body := gatedDo(t, http.MethodGet, ts.URL+"/api/v1/entities/ai.bert")
+	require.Equal(t, http.StatusOK, resp.StatusCode, string(body))
+	resp, body = gatedDo(t, http.MethodGet, ts.URL+"/api/v1/entities/ai.bert")
+	require.Equal(t, http.StatusTooManyRequests, resp.StatusCode, string(body))
+	assert.Equal(t, "QUOTA_EXHAUSTED", errorCode(t, body))
+
+	// The pull passes the gate and is charged; the fixture entity is
+	// already full, so it is served as stored.
+	resp, body = gatedDo(t, http.MethodPost, ts.URL+"/api/v1/entities/ai.bert/pull")
+	require.Equal(t, http.StatusOK, resp.StatusCode, string(body))
+	resp, body = gatedDo(t, http.MethodPost, ts.URL+"/api/v1/entities/ai.bert/pull")
+	require.Equal(t, http.StatusTooManyRequests, resp.StatusCode, string(body))
+	assert.Equal(t, "QUOTA_EXHAUSTED", errorCode(t, body))
+
+	events, err := driver.Metering().List(ownerCtx(), storage.MeteringFilter{RegistryName: "ops"})
+	require.NoError(t, err)
+	got := map[storage.MeteringEventType]int{}
+	for _, e := range events {
+		assert.Equal(t, "ai.models", e.Namespace)
+		got[e.EventType] += e.Count
+	}
+	assert.Equal(t, map[storage.MeteringEventType]int{
+		storage.MeteringEventEntityResolve: 1,
+		storage.MeteringEventContentPull:   1,
+	}, got, "only the admitted reads are metered")
 }

@@ -207,7 +207,7 @@ func seedGraphStore(t *testing.T, typ, path string, withModel bool) *graphStore 
 	}
 
 	if err := drv.Entitlements().Upsert(ctx, &storage.RegistryEntitlement{
-		RegistryName: gatedPrincipal, Plan: "inbound", Namespaces: gatedNamespaces, FetchedAt: now,
+		Kind: storage.EntitlementInbound, RegistryName: gatedPrincipal, Plan: "inbound", Namespaces: gatedNamespaces, FetchedAt: now,
 	}); err != nil {
 		t.Fatalf("grant %s: %v", gatedPrincipal, err)
 	}

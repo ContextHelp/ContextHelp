@@ -350,7 +350,7 @@ var scopedReads = map[string][]string{
 	"Blobs":      {"Get", "Exists", "List", "URL"},
 	"Edges":      {"ListFrom", "ListTo", "CountMentionsTo", "RelatedObjectIDs"},
 	"Embeddings": {"Search"},
-	"Entities":   {"Get", "List", "Resolve"},
+	"Entities":   {"Get", "List", "Namespaces", "Resolve"},
 	"Objects":    {"Get", "GetByContentHash", "GetBySourceKey", "List", "CountByType", "ListBySQL", "VectorSearch", "FTSSearch", "FTSSearchNodeAware", "VectorSearchNodeAware"},
 	"Proximity":  {"GetNeighbors", "GetNeighborsAbove", "Get"},
 }

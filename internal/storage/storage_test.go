@@ -136,6 +136,7 @@ func (m *mockEntityStore) Get(ctx context.Context, slug string) (*Entity, error)
 func (m *mockEntityStore) List(ctx context.Context, filter EntityFilter) ([]*Entity, error) {
 	return nil, nil
 }
+func (m *mockEntityStore) Namespaces(ctx context.Context) ([]string, error) { return nil, nil }
 func (m *mockEntityStore) Resolve(ctx context.Context, mention string) (*Entity, error) {
 	return nil, nil
 }
@@ -387,11 +388,14 @@ func (m *mockResurfacingQueueStore) DeleteByObject(_ context.Context, _ string) 
 type mockEntitlementStore struct{}
 
 func (m *mockEntitlementStore) Upsert(_ context.Context, _ *RegistryEntitlement) error { return nil }
-func (m *mockEntitlementStore) Get(_ context.Context, _ string) (*RegistryEntitlement, error) {
+func (m *mockEntitlementStore) Get(_ context.Context, _ EntitlementKind, _ string) (*RegistryEntitlement, error) {
 	return nil, nil
 }
-func (m *mockEntitlementStore) List(_ context.Context) ([]*RegistryEntitlement, error) {
+func (m *mockEntitlementStore) List(_ context.Context, _ EntitlementKind) ([]*RegistryEntitlement, error) {
 	return nil, nil
+}
+func (m *mockEntitlementStore) Delete(_ context.Context, _ EntitlementKind, _ string) error {
+	return nil
 }
 
 type mockMeteringStore struct{}

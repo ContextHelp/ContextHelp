@@ -291,6 +291,12 @@ var migrations = []migration{
 	// INDEX IF EXISTS make it re-runnable. (052 is taken by the
 	// principal link identities.)
 	{Version: 52, fn: migrate052ContentHashPerProfile},
+	// Migration 053: registry_entitlements.kind (outbound | inbound),
+	// keyed by (kind, registry_name), so a remote registry's synced
+	// entitlement and an operator's grant to a principal of the same
+	// name are separate rows. Rebuilds the table (SQLite cannot change
+	// a primary key in place) and backfills the kind of existing rows.
+	{Version: 53, fn: migrate053EntitlementKind},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
@@ -1066,6 +1072,63 @@ func migrate048AuthRegistry(ctx context.Context, d *Driver) error {
 		VALUES (?, ?, 'Owner', '["admin"]', ?, ?) ON CONFLICT(id) DO NOTHING`,
 		storage.OwnerPrincipal, storage.PrincipalKindOwner, storage.PrincipalActive, toMillis(time.Now())); err != nil {
 		return fmt.Errorf("seed owner principal: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+	return nil
+}
+
+// entitlementInboundShapeSQL matches a registry_entitlements row whose
+// name is principal-shaped: the owner principal or a minted prn_ ID.
+const entitlementInboundShapeSQL = `(registry_name = 'owner' OR substr(registry_name, 1, 4) = 'prn_')`
+
+// migrate053EntitlementKind rebuilds registry_entitlements with a kind
+// column and a (kind, registry_name) primary key. Backfill: a
+// principal-shaped name (owner, prn_*) becomes one inbound row; any
+// other name becomes an outbound row plus an inbound copy. Before this
+// migration the inbound gate and outbound sync read the same rows, and
+// a static-token principal ("phone") is indistinguishable from a
+// registry name, so the copy keeps every principal's gating exactly as
+// it was; an operator removes a stray inbound copy with
+// 'dpkms entitlement ungate'. A table that already has kind is left
+// alone, so a replay is a no-op.
+func migrate053EntitlementKind(ctx context.Context, d *Driver) error {
+	has, err := tableHasColumn(ctx, d, "registry_entitlements", "kind")
+	if err != nil {
+		return err
+	}
+	if has {
+		return nil
+	}
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	const cols = `registry_name, plan, namespaces, expires_at, fetched_at`
+	for _, stmt := range []string{
+		`CREATE TABLE registry_entitlements_kind (
+			kind           TEXT NOT NULL CHECK (kind IN ('outbound', 'inbound')),
+			registry_name  TEXT NOT NULL,
+			plan           TEXT NOT NULL,
+			namespaces     TEXT NOT NULL,
+			expires_at     TEXT,
+			fetched_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+			PRIMARY KEY (kind, registry_name)
+		)`,
+		`INSERT INTO registry_entitlements_kind (kind, ` + cols + `)
+		 SELECT 'inbound', ` + cols + ` FROM registry_entitlements WHERE ` + entitlementInboundShapeSQL,
+		`INSERT INTO registry_entitlements_kind (kind, ` + cols + `)
+		 SELECT 'outbound', ` + cols + ` FROM registry_entitlements WHERE NOT ` + entitlementInboundShapeSQL,
+		`INSERT INTO registry_entitlements_kind (kind, ` + cols + `)
+		 SELECT 'inbound', ` + cols + ` FROM registry_entitlements WHERE NOT ` + entitlementInboundShapeSQL,
+		`DROP TABLE registry_entitlements`,
+		`ALTER TABLE registry_entitlements_kind RENAME TO registry_entitlements`,
+	} {
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("rebuild registry_entitlements: %w", err)
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit: %w", err)

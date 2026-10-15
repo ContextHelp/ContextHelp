@@ -76,6 +76,7 @@ func startGatedGRPC(t *testing.T) gatedGRPC {
 	sharingtest.GrantEverything(t, driver, "ops", "phone")
 	for _, principal := range []string{"ops", "owner"} {
 		if err := driver.Entitlements().Upsert(ctx, &storage.RegistryEntitlement{
+			Kind:         storage.EntitlementInbound,
 			RegistryName: principal,
 			Plan:         "inbound",
 			Namespaces:   []string{"ai.*"},

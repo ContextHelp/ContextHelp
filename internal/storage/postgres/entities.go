@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/lib/pq"
+
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
@@ -123,6 +125,11 @@ func (s *EntityStore) List(ctx context.Context, filter storage.EntityFilter) ([]
 		args = append(args, filter.Namespace)
 		argIdx++
 	}
+	if len(filter.Namespaces) > 0 {
+		query += fmt.Sprintf(" AND namespace = ANY($%d)", argIdx)
+		args = append(args, pq.Array(filter.Namespaces))
+		argIdx++
+	}
 	if filter.ContentStatus != "" {
 		query += fmt.Sprintf(" AND content_status = $%d", argIdx)
 		args = append(args, string(filter.ContentStatus))
@@ -159,6 +166,32 @@ func (s *EntityStore) List(ctx context.Context, filter storage.EntityFilter) ([]
 	defer rows.Close()
 
 	return rowscan.All(rows, scanEntityRow)
+}
+
+// Namespaces returns each distinct namespace of the stored entities
+// once, ascending in byte order, as on every driver. A scoped store
+// lists the namespaces of the entities its scope shows only, as List
+// does.
+func (s *EntityStore) Namespaces(ctx context.Context) ([]string, error) {
+	if s.noEntities() {
+		return []string{}, nil
+	}
+	idx := 1
+	clause, sargs := entityScope(s.scope, &idx)
+	// #nosec G202 -- clause is fixed SQL over compiled predicates; values are bound.
+	rows, err := s.db.QueryContext(ctx, `SELECT namespace FROM entities WHERE 1=1`+clause+
+		` GROUP BY namespace ORDER BY namespace COLLATE "C"`, sargs...)
+	if err != nil {
+		return nil, fmt.Errorf("list entity namespaces: %w", err)
+	}
+	defer rows.Close()
+	return rowscan.All(rows, scanNamespace)
+}
+
+func scanNamespace(rows *sql.Rows) (string, error) {
+	var ns string
+	err := rows.Scan(&ns)
+	return ns, err
 }
 
 func (s *EntityStore) Resolve(ctx context.Context, mention string) (*storage.Entity, error) {

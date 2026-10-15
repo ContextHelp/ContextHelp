@@ -155,12 +155,16 @@ func (v restrictedEntitlements) Upsert(ctx context.Context, e *RegistryEntitleme
 	return v.inner.Upsert(ctx, e)
 }
 
-func (v restrictedEntitlements) Get(_ context.Context, _ string) (*RegistryEntitlement, error) {
+func (v restrictedEntitlements) Get(_ context.Context, _ EntitlementKind, _ string) (*RegistryEntitlement, error) {
 	return nil, restrictedRead("Entitlements", "Get")
 }
 
-func (v restrictedEntitlements) List(_ context.Context) ([]*RegistryEntitlement, error) {
+func (v restrictedEntitlements) List(_ context.Context, _ EntitlementKind) ([]*RegistryEntitlement, error) {
 	return nil, restrictedRead("Entitlements", "List")
+}
+
+func (v restrictedEntitlements) Delete(ctx context.Context, kind EntitlementKind, name string) error {
+	return v.inner.Delete(ctx, kind, name)
 }
 
 // restrictedMetering is the MeteringStore of a restricted viewer: every read fails closed

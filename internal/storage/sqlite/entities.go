@@ -134,6 +134,16 @@ func (s *EntityStore) List(ctx context.Context, filter storage.EntityFilter) ([]
 		query += " AND namespace = ?"
 		args = append(args, filter.Namespace)
 	}
+	if len(filter.Namespaces) > 0 {
+		// One JSON array parameter, however many namespaces: no
+		// variable-count limit to hit.
+		set, err := json.Marshal(filter.Namespaces)
+		if err != nil {
+			return nil, fmt.Errorf("list entities: encode namespaces: %w", err)
+		}
+		query += " AND namespace IN (SELECT value FROM json_each(?))"
+		args = append(args, string(set))
+	}
 	if filter.ContentStatus != "" {
 		query += " AND content_status = ?"
 		args = append(args, string(filter.ContentStatus))
@@ -161,6 +171,29 @@ func (s *EntityStore) List(ctx context.Context, filter storage.EntityFilter) ([]
 	defer rows.Close()
 
 	return rowscan.All(rows, scanEntityFromRows)
+}
+
+// Namespaces returns each distinct namespace of the stored entities
+// once, ascending. A scoped store lists the namespaces of the entities
+// its scope shows only, as List does.
+func (s *EntityStore) Namespaces(ctx context.Context) ([]string, error) {
+	if s.noEntities() {
+		return []string{}, nil
+	}
+	clause, sargs := entityScope(s.scope)
+	// #nosec G202 -- clause is fixed SQL over compiled predicates; values are bound.
+	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT namespace FROM entities WHERE 1=1`+clause+` ORDER BY namespace`, sargs...)
+	if err != nil {
+		return nil, fmt.Errorf("list entity namespaces: %w", err)
+	}
+	defer rows.Close()
+	return rowscan.All(rows, scanNamespace)
+}
+
+func scanNamespace(rows *sql.Rows) (string, error) {
+	var ns string
+	err := rows.Scan(&ns)
+	return ns, err
 }
 
 func (s *EntityStore) Resolve(ctx context.Context, mention string) (*storage.Entity, error) {
