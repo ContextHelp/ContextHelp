@@ -116,14 +116,7 @@ func TestUS0113_AnalyzeAPI_IngestsMultipleFiles(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		resp, err := gohttp.Post(env.URL+"/api/v1/analyze", "application/json", bytes.NewReader(body))
-		require.NoError(t, err)
-		defer resp.Body.Close()
-		require.Equal(t, gohttp.StatusAccepted, resp.StatusCode)
-
-		var result map[string]string
-		require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
-		jobID := result["job_id"]
+		jobID := postForJobID(t, env.URL+"/api/v1/analyze", body)
 		require.NotEmpty(t, jobID)
 
 		job := waitForJob(t, env.URL, jobID, storage.JobCompleted)

@@ -128,7 +128,7 @@ func TestUS0036_BurstJobsAllComplete(t *testing.T) {
 }
 
 // TestUS0036_MaxWorkersHonored verifies that all jobs complete even with a
-// deliberatley low worker count, ensuring the pool queues and processes all.
+// deliberately low worker count, ensuring the pool queues and processes all.
 func TestUS0036_MaxWorkersHonored(t *testing.T) {
 	driver := newWorkerTestDriver(t)
 	queue := jobs.NewQueue(driver.Jobs())

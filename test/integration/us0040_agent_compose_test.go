@@ -336,10 +336,3 @@ func TestUS0040_HTTPComposeMissingTemplateReturns400(t *testing.T) {
 	assert.Equal(t, gohttp.StatusBadRequest, resp.StatusCode,
 		"POST /api/v1/compose with missing template must return 400")
 }
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}

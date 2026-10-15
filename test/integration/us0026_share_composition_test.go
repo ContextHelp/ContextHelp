@@ -173,12 +173,7 @@ func TestUS0026_MultipleObjectsComposedAndAccessible(t *testing.T) {
 		job := waitForJob(t, env.URL, jobID, storage.JobCompleted)
 		require.NotEmpty(t, job.ResultID)
 
-		resp, err := gohttp.Get(fmt.Sprintf("%s/api/v1/objects/%s", env.URL, job.ResultID))
-		require.NoError(t, err)
-		defer resp.Body.Close()
-
-		var obj storage.KnowledgeObject
-		require.NoError(t, json.NewDecoder(resp.Body).Decode(&obj))
+		obj := getObject(t, env.URL, job.ResultID)
 		objects = append(objects, &obj)
 	}
 
