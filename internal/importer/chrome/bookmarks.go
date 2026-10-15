@@ -1,3 +1,4 @@
+// Package chrome imports Chrome bookmark HTML exports.
 package chrome
 
 import (

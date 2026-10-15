@@ -204,3 +204,41 @@ func writeRaindropJSON(t *testing.T, w http.ResponseWriter, status int, v any) {
 		t.Fatalf("encode response: %v", err)
 	}
 }
+
+func TestItemPassesFilters(t *testing.T) {
+	t.Parallel()
+	cut := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
+	item := Item{
+		Title:      "Go Concurrency Patterns",
+		Tags:       []string{" Golang ", "talks"},
+		LastUpdate: cut.Add(24 * time.Hour),
+	}
+	old := item
+	old.LastUpdate = cut.Add(-24 * time.Hour)
+	undated := item
+	undated.LastUpdate = time.Time{}
+
+	tests := []struct {
+		name       string
+		item       Item
+		since      *time.Time
+		tag, query string
+		want       bool
+	}{
+		{"no filters", item, nil, "", "", true},
+		{"updated after since", item, &cut, "", "", true},
+		{"updated before since", old, &cut, "", "", false},
+		{"no update time passes since", undated, &cut, "", "", true},
+		{"tag matches trimmed, any case", item, nil, "golang", "", true},
+		{"tag missing", item, nil, "rust", "", false},
+		{"query matches title", item, nil, "", "concurrency", true},
+		{"query misses", item, nil, "", "kubernetes", false},
+		{"all match", item, &cut, "talks", "patterns", true},
+		{"one of three fails", old, &cut, "talks", "patterns", false},
+	}
+	for _, tt := range tests {
+		if got := itemPassesFilters(tt.item, tt.since, tt.tag, tt.query); got != tt.want {
+			t.Errorf("%s: itemPassesFilters = %v, want %v", tt.name, got, tt.want)
+		}
+	}
+}

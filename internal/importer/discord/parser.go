@@ -1,3 +1,4 @@
+// Package discord parses DiscordChatExporter JSON exports into messages.
 package discord
 
 import (

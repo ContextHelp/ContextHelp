@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"slices"
 	"testing"
 )
 
@@ -78,11 +79,9 @@ func TestDeduplication(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/users/testuser/starred":
-			combined := append(shared, starredOnly...)
-			serveJSON(w, combined)
+			serveJSON(w, slices.Concat(shared, starredOnly))
 		case "/users/testuser/subscriptions":
-			combined := append(shared, watchedOnly...)
-			serveJSON(w, combined)
+			serveJSON(w, slices.Concat(shared, watchedOnly))
 		default:
 			http.NotFound(w, r)
 		}

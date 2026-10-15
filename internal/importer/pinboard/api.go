@@ -1,3 +1,4 @@
+// Package pinboard is a minimal Pinboard API client for bookmark imports.
 package pinboard
 
 import (
