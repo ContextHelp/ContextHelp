@@ -41,7 +41,8 @@ func runConfigValidate(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("open store to list installed steps: %w", err)
 	}
 	defer cleanup()
-	catalog, err := steps.LoadCatalog(context.Background(), svc.Store, steps.Runners{})
+	ctx := asSystem(context.Background())
+	catalog, err := steps.LoadCatalog(ctx, svc.Store(ctx), steps.Runners{})
 	if err != nil {
 		return err
 	}

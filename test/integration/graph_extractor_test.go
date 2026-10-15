@@ -56,7 +56,7 @@ func TestGraphExtractor_EmitsNodes(t *testing.T) {
 	step := steps.NewGraphExtractorWithLLM(llm)
 
 	ko := newMockKO("obj-ge-001", "Project architecture document with decisions and questions.")
-	out, err := step.Run(context.Background(), ko)
+	out, err := step.Run(ownerCtx(), ko)
 	require.NoError(t, err)
 	require.NotNil(t, out.Graph, "ko.Graph must be non-nil after step runs")
 	require.NotEmpty(t, out.Graph.Nodes, "ko.Graph.Nodes must not be empty")
@@ -108,7 +108,7 @@ func TestGraphExtractor_EmitsNodes_Counts(t *testing.T) {
 	step := steps.NewGraphExtractorWithLLM(llm)
 
 	ko := newMockKO("obj-ge-002", "Content for count verification.")
-	out, err := step.Run(context.Background(), ko)
+	out, err := step.Run(ownerCtx(), ko)
 	require.NoError(t, err)
 	require.NotNil(t, out.Graph)
 
@@ -136,7 +136,7 @@ func TestGraphExtractor_ProjectionSurfaces(t *testing.T) {
 	step := steps.NewGraphExtractorWithLLM(llm)
 
 	ko := newMockKO("obj-ge-003", "Architecture and decision record for the project.")
-	out, err := step.Run(context.Background(), ko)
+	out, err := step.Run(ownerCtx(), ko)
 	require.NoError(t, err)
 	require.NotNil(t, out.Graph)
 
@@ -181,7 +181,7 @@ func TestGraphExtractor_ProjectionSurfaces_FTSBody(t *testing.T) {
 	step := steps.NewGraphExtractorWithLLM(llm)
 
 	ko := newMockKO("obj-ge-004", "Sentinel content for FTS body projection test.")
-	out, err := step.Run(context.Background(), ko)
+	out, err := step.Run(ownerCtx(), ko)
 	require.NoError(t, err)
 	require.NotNil(t, out.Graph)
 
@@ -203,7 +203,7 @@ func TestGraphExtractor_NilLLM_NoOp(t *testing.T) {
 	ko := newMockKO("obj-ge-005", "Some content that would normally be enriched.")
 	original := ko.Graph // nil
 
-	out, err := step.Run(context.Background(), ko)
+	out, err := step.Run(ownerCtx(), ko)
 	require.NoError(t, err, "nil LLM must not return an error")
 	assert.Equal(t, original, out.Graph,
 		"ko.Graph must be unchanged (nil) when LLM is nil")
@@ -228,7 +228,7 @@ func TestGraphExtractor_NilLLM_ExistingGraph(t *testing.T) {
 		},
 	}
 
-	out, err := step.Run(context.Background(), ko)
+	out, err := step.Run(ownerCtx(), ko)
 	require.NoError(t, err)
 	require.NotNil(t, out.Graph)
 	require.Len(t, out.Graph.Nodes, 1, "existing graph node must be preserved")
@@ -249,7 +249,7 @@ func TestGraphExtractor_EmptyContent_NoOp(t *testing.T) {
 		RawContent: "", // empty
 	}
 
-	out, err := step.Run(context.Background(), ko)
+	out, err := step.Run(ownerCtx(), ko)
 	require.NoError(t, err, "empty content must not return an error")
 	assert.Nil(t, out.Graph,
 		"ko.Graph must remain nil for empty RawContent")
@@ -267,7 +267,7 @@ func TestGraphExtractor_WhitespaceContent_NoOp(t *testing.T) {
 		RawContent: "   \t\n  ",
 	}
 
-	out, err := step.Run(context.Background(), ko)
+	out, err := step.Run(ownerCtx(), ko)
 	require.NoError(t, err)
 	assert.Nil(t, out.Graph,
 		"ko.Graph must remain nil for whitespace-only RawContent")
@@ -290,7 +290,7 @@ func TestGraphExtractor_MalformedLLMResponse_NoOp(t *testing.T) {
 	step := steps.NewGraphExtractorWithLLM(llm)
 
 	ko := newMockKO("obj-ge-009", "Content that triggers malformed LLM response.")
-	out, err := step.Run(context.Background(), ko)
+	out, err := step.Run(ownerCtx(), ko)
 	require.NoError(t, err, "malformed LLM response must degrade gracefully")
 	assert.Nil(t, out.Graph,
 		"ko.Graph must remain nil when LLM response is unparseable")

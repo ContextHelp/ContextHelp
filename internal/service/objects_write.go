@@ -63,7 +63,7 @@ func (s *Service) PatchObject(ctx context.Context, id string, p ObjectPatch) (*s
 	}
 
 	// The stored row, refs and all: the patch touches no content.
-	obj, err := s.Store.Objects().Get(ctx, id)
+	obj, err := s.Store(ctx).Objects().Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +113,7 @@ func (s *Service) ReprocessObject(ctx context.Context, id, step string) (*storag
 	if !slices.Contains(jobs.ReprocessSteps, step) {
 		return nil, fmt.Errorf("step %q: %w", step, jobs.ErrUnknownReprocessStep)
 	}
-	if _, err := s.Store.Objects().Get(ctx, id); err != nil {
+	if _, err := s.Store(ctx).Objects().Get(ctx, id); err != nil {
 		return nil, err
 	}
 	return s.Queue.EnqueueReprocess(ctx, id, step)

@@ -55,17 +55,30 @@ linters:
         - os.RemoveAll
     forbidigo:
       # ADR-080 §4: request handlers read through the viewer-scoped
-      # driver; only the pipeline, jobs and housekeeping may name the
-      # raw driver, and they do so through storage.System. The pattern
-      # is type-aware and package-qualified so an import alias or an
-      # unrelated package with a System function cannot dodge or trip
-      # it. Scoped to internal/server and internal/mcp by the
-      # path-except exclusion below.
+      # driver (Service.Store(ctx)); only the pipeline, jobs and
+      # housekeeping may name the raw driver, and they do so through
+      # storage.System. The patterns are type-aware and
+      # package-qualified so an import alias or an unrelated package
+      # with a System function cannot dodge or trip them. Scoped to
+      # internal/server, internal/mcp and internal/service by the
+      # path-except exclusion below; the three ways left to read past
+      # the scoped driver from those packages are each banned.
       analyze-types: true
       forbid:
         - pattern: ^storage\.System$
           pkg: ^github\.com/ideacrafterslabs/ctxt/internal/storage$
           msg: handlers take the viewer-scoped driver; storage.System is for pipeline, jobs and housekeeping (ADR-080 §4)
+        # jobs.Queue holds the raw job store; its reads bypass the
+        # scoped driver. Reads go through Service.GetJob / ListJobs.
+        - pattern: ^jobs\.Queue\.(Get|List)$
+          pkg: ^github\.com/ideacrafterslabs/ctxt/internal/jobs$
+          msg: job reads go through the viewer-scoped driver (Service.GetJob, ListJobs), never the queue (ADR-080 §4)
+        # A handler that attaches Unrestricted itself grants every
+        # caller the owner's view. Only the transports' attach sites
+        # (excluded below) may name it.
+        - pattern: ^sharing\.Unrestricted$
+          pkg: ^github\.com/ideacrafterslabs/ctxt/internal/sharing$
+          msg: handlers never choose a viewer; the transport attaches it after authentication (ADR-080 §4)
     goconst:
       min-len: 3
       min-occurrences: 3
@@ -202,13 +215,26 @@ linters:
       - linters:
           - all
         path: (.*)/generated/(.*)\.go
-      # ADR-080 §4: the raw-driver ban applies to request handlers
-      # only. Everywhere else storage.System is the sanctioned way to
-      # name the unscoped driver, so its findings are dropped outside
-      # internal/server and internal/mcp.
+      # ADR-080 §4: the raw-driver ban applies to request handlers and
+      # the service they read through. Everywhere else storage.System
+      # is the sanctioned way to name the unscoped driver, so its
+      # findings are dropped outside internal/server, internal/mcp and
+      # internal/service.
       - linters:
           - forbidigo
-        path-except: ^internal/(server|mcp)/
+        path-except: ^internal/(server|mcp|service)/
+      # The transports attach the viewer after authentication, and the
+      # private access class and the watch ingester act as the owner by
+      # design: those files are the only places sharing.Unrestricted is
+      # named under the banned paths. Tests act as the owner freely.
+      - linters:
+          - forbidigo
+        path: ^internal/server/(http/(server|middleware_auth)|grpc/(server|auth)|stack/watch_ingest)\.go$
+        text: sharing\.Unrestricted
+      - linters:
+          - forbidigo
+        path: (_test\.go|^internal/service/servicetest/)
+        text: (sharing\.Unrestricted|\.Queue\.(Get|List))
       - linters:
           - gocyclo
         path: cmd/

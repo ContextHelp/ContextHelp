@@ -2,7 +2,6 @@ package http
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -95,7 +94,7 @@ func TestFederationPush_Dedup(t *testing.T) {
 	obj := makeKO("o-dup", "hash-dup")
 
 	// Pre-insert object directly.
-	ts.svc.Store.Objects().Create(context.Background(), &obj)
+	ts.svc.Store(ownerCtx()).Objects().Create(ownerCtx(), &obj)
 
 	// Push same object — should be skipped.
 	body := makePushBody(t, []storage.KnowledgeObject{obj}, nil)
@@ -292,7 +291,7 @@ func TestFederationPush_AcceptsObjectOverRequestCap(t *testing.T) {
 	objects := []storage.KnowledgeObject{makeKO("o-small", "h-small"), big}
 	src := storageutil.NewTestDriver(t)
 	p := federation.NewRemotePusherWithWatermarks("big", counting.URL, "", src.Watermarks(), src.Blobs())
-	if err := p.Push(context.Background(), objects, nil, nil); err != nil {
+	if err := p.Push(ownerCtx(), objects, nil, nil); err != nil {
 		t.Fatalf("Push of an object over the request cap: %v", err)
 	}
 	mu.Lock()
@@ -301,7 +300,7 @@ func TestFederationPush_AcceptsObjectOverRequestCap(t *testing.T) {
 		t.Errorf("request sizes = %v, want the big object alone in a second request over %d bytes",
 			sizes, federation.DefaultMaxRequestBytes)
 	}
-	if got, err := ts.svc.Store.Objects().Get(context.Background(), "o-big"); err != nil || got == nil {
+	if got, err := ts.svc.Store(ownerCtx()).Objects().Get(ownerCtx(), "o-big"); err != nil || got == nil {
 		t.Errorf("o-big not stored at the receiver: %v", err)
 	}
 }
@@ -343,7 +342,7 @@ func TestFederationPush_RefusesBodyOverLimit(t *testing.T) {
 		!strings.Contains(env.Error.Message, "65536") {
 		t.Errorf("error = %+v, want PAYLOAD_TOO_LARGE naming federation.max_request_bytes and 65536", env.Error)
 	}
-	if got, _ := ts.svc.Store.Objects().Get(context.Background(), "o-over"); got != nil {
+	if got, _ := ts.svc.Store(ownerCtx()).Objects().Get(ownerCtx(), "o-over"); got != nil {
 		t.Error("o-over stored from a refused body")
 	}
 
@@ -370,12 +369,12 @@ func TestFederationPush_PusherSeesLimitAsObjectFailure(t *testing.T) {
 	big.RawContent = strings.Repeat("x", 8<<20)
 	src := storageutil.NewTestDriver(t)
 	p := federation.NewRemotePusherWithWatermarks("limited", ts.URL, "", src.Watermarks(), src.Blobs())
-	err := p.Push(context.Background(), []storage.KnowledgeObject{makeKO("o-first", "h-first"), big}, nil, nil)
+	err := p.Push(ownerCtx(), []storage.KnowledgeObject{makeKO("o-first", "h-first"), big}, nil, nil)
 	var oe *federation.ObjectError
 	if !errors.As(err, &oe) || oe.ID != "o-big" || !strings.Contains(err.Error(), "413") {
 		t.Fatalf("Push err = %v, want an ObjectError for o-big naming HTTP 413", err)
 	}
-	if got, _ := ts.svc.Store.Objects().Get(context.Background(), "o-first"); got == nil {
+	if got, _ := ts.svc.Store(ownerCtx()).Objects().Get(ownerCtx(), "o-first"); got == nil {
 		t.Error("o-first, in the request before o-big, not stored")
 	}
 }

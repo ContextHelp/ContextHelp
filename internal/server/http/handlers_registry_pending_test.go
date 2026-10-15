@@ -68,7 +68,8 @@ func TestPendingEntityRoutesFlow(t *testing.T) {
 
 	do := func(h http.HandlerFunc, method, target, body string) (int, map[string]any) {
 		rec := httptest.NewRecorder()
-		h(rec, httptest.NewRequest(method, target, strings.NewReader(body)))
+		// Called without the router, so the owner's viewer is attached by hand.
+		h(rec, httptest.NewRequest(method, target, strings.NewReader(body)).WithContext(ownerCtx()))
 		var out map[string]any
 		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out), rec.Body.String())
 		return rec.Code, out

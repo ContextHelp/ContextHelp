@@ -247,7 +247,7 @@ func TestUS0206_MergedProfileFromMultipleSources(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  slug,
 		Type:     "entity",
 		Pipeline: "osint.aggregate",
@@ -300,7 +300,7 @@ func TestUS0206_SingleSourceAggregation(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  slug,
 		Type:     "entity",
 		Pipeline: "osint.aggregate",

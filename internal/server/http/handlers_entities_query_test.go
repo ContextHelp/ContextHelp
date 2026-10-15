@@ -1,7 +1,6 @@
 package http
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -30,7 +29,7 @@ func seedQueryEntities(t *testing.T, es storage.EntityStore) {
 		{Slug: "resolve", Title: "An entity named like the route", Namespace: "zz"},
 	} {
 		e.CreatedAt, e.UpdatedAt = now, now
-		require.NoError(t, es.Upsert(context.Background(), e))
+		require.NoError(t, es.Upsert(ownerCtx(), e))
 	}
 }
 
@@ -50,7 +49,7 @@ func entitySlugs(t *testing.T, body []byte) []string {
 func TestSearchEntities(t *testing.T) {
 	ts := newTestServerBundle(t)
 	defer ts.Close()
-	seedQueryEntities(t, ts.svc.Store.Entities())
+	seedQueryEntities(t, ts.svc.Store(ownerCtx()).Entities())
 
 	cases := []struct {
 		query string
@@ -72,7 +71,7 @@ func TestSearchEntities(t *testing.T) {
 func TestResolveEntity(t *testing.T) {
 	ts := newTestServerBundle(t)
 	defer ts.Close()
-	seedQueryEntities(t, ts.svc.Store.Entities())
+	seedQueryEntities(t, ts.svc.Store(ownerCtx()).Entities())
 
 	for mention, want := range map[string]string{
 		"ui.cart": "ui.cart", // slug
@@ -102,7 +101,7 @@ func TestResolveEntity(t *testing.T) {
 // a principal without read:objects gets 403 naming it.
 func TestEntityQueryRoutesRequireReadObjects(t *testing.T) {
 	svc := newScopeTestService(t)
-	seedQueryEntities(t, svc.Store.Entities())
+	seedQueryEntities(t, svc.Store(ownerCtx()).Entities())
 	provider, err := authn.NewStatic([]authn.StaticToken{
 		{Token: "tok-reader-fixture-0123456789abcdef0123456789", Principal: "tablet", Roles: []string{authn.RoleReader}},
 	})
@@ -141,7 +140,7 @@ func TestEntityQueryRoutesGateNonAdmin(t *testing.T) {
 
 	resp, body = gatedDo(t, http.MethodGet, ts.URL+"/api/v1/entities/resolve?mention=ai.bert")
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(body))
-	events, err := driver.Metering().List(context.Background(), storage.MeteringFilter{RegistryName: "ops"})
+	events, err := driver.Metering().List(ownerCtx(), storage.MeteringFilter{RegistryName: "ops"})
 	require.NoError(t, err)
 	require.Len(t, events, 1, "a resolve is a metered entity read")
 	assert.Equal(t, storage.MeteringEventEntityResolve, events[0].EventType)

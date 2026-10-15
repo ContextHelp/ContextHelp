@@ -1,7 +1,6 @@
 package service
 
 import (
-	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -60,7 +59,7 @@ func newPrincipalPolicyService(t *testing.T) (*Service, func()) {
 	)
 	cleanup := func() {
 		pol.Close()
-		_ = b.Close(context.Background())
+		_ = b.Close(ownerCtx())
 	}
 	return svc, cleanup
 }
@@ -69,7 +68,7 @@ func TestPolicy_PrincipalPropagatesIntoCEL(t *testing.T) {
 	svc, cleanup := newPrincipalPolicyService(t)
 	defer cleanup()
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	_, err := svc.CreatePipeline(ctx, CreatePipelineRequest{
 		Name:  "principal-gated",
 		Steps: `[{"name":"text_summary"}]`,

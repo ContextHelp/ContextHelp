@@ -1,7 +1,6 @@
 package integration
 
 import (
-	"context"
 	"encoding/json"
 	gohttp "net/http"
 	"testing"
@@ -25,7 +24,7 @@ func TestUS0029_StepStoredAndRetrievable(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now()
 	step := &storage.RegisteredStep{
 		Name:   "extract-entities",
@@ -39,7 +38,7 @@ func TestUS0029_StepStoredAndRetrievable(t *testing.T) {
 		InstalledAt: now,
 		UpdatedAt:   now,
 	}
-	err := env.svc.Store.Steps().Create(ctx, step)
+	err := env.driver.Steps().Create(ctx, step)
 	require.NoError(t, err)
 
 	resp, err := gohttp.Get(env.URL + "/api/v1/steps/extract-entities")
@@ -61,7 +60,7 @@ func TestUS0029_InstalledStepAppearsInList(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now()
 	step := &storage.RegisteredStep{
 		Name:   "list-test-step",
@@ -73,7 +72,7 @@ func TestUS0029_InstalledStepAppearsInList(t *testing.T) {
 		InstalledAt: now,
 		UpdatedAt:   now,
 	}
-	require.NoError(t, env.svc.Store.Steps().Create(ctx, step))
+	require.NoError(t, env.driver.Steps().Create(ctx, step))
 
 	respList, err := gohttp.Get(env.URL + "/api/v1/steps")
 	require.NoError(t, err)
@@ -102,7 +101,7 @@ func TestUS0029_UninstallStepRemovesIt(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now()
 	step := &storage.RegisteredStep{
 		Name:        "delete-test-step",
@@ -110,7 +109,7 @@ func TestUS0029_UninstallStepRemovesIt(t *testing.T) {
 		InstalledAt: now,
 		UpdatedAt:   now,
 	}
-	require.NoError(t, env.svc.Store.Steps().Create(ctx, step))
+	require.NoError(t, env.driver.Steps().Create(ctx, step))
 
 	req, _ := gohttp.NewRequest(gohttp.MethodDelete, env.URL+"/api/v1/steps/delete-test-step", nil)
 	respDel, err := gohttp.DefaultClient.Do(req)

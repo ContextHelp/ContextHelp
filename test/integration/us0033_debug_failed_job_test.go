@@ -67,7 +67,7 @@ func TestUS0033_MisconfiguredPipelineJobFails(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "test content for misconfigured pipeline",
 		Type:     "text",
 		Pipeline: "us0033.misconfigured",
@@ -94,7 +94,7 @@ func TestUS0033_FailedJobErrorDetailRetrievableViaAPI(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "content that triggers misconfiguration error",
 		Type:     "text",
 		Pipeline: "us0033.detail",
@@ -131,7 +131,7 @@ func TestUS0033_FailedJobListedInFailedFilter(t *testing.T) {
 		Steps:        []pipeline.PipelineStep{&misconfiguredStep{missingKey: "api_token"}},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "content triggering list-fail pipeline",
 		Type:     "text",
 		Pipeline: "us0033.list-fail",
@@ -170,7 +170,7 @@ func TestUS0033_UnknownPipelineJobFails(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	_, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	_, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "content for unknown pipeline",
 		Type:     "text",
 		Pipeline: "us0033.does-not-exist",
@@ -193,7 +193,7 @@ func TestUS0033_FailedJobHasTimestamps(t *testing.T) {
 		Steps:        []pipeline.PipelineStep{&misconfiguredStep{missingKey: "ts_key"}},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "timestamp check content",
 		Type:     "text",
 		Pipeline: "us0033.ts-check",

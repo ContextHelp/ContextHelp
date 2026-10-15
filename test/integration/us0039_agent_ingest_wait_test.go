@@ -13,7 +13,6 @@ package integration
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	gohttp "net/http"
@@ -332,8 +331,8 @@ func TestUS0039_ConcurrentAgentIngests(t *testing.T) {
 
 	// Verify each object is retrievable.
 	for i := 0; i < n; i++ {
-		ctx := context.Background()
-		obj, err := env.svc.Store.Objects().Get(ctx, results[i].resultID)
+		ctx := ownerCtx()
+		obj, err := env.driver.Objects().Get(ctx, results[i].resultID)
 		require.NoError(t, err)
 		assert.Equal(t, results[i].resultID, obj.ID)
 	}

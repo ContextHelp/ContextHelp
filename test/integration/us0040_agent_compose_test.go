@@ -63,7 +63,7 @@ func ingestObjectForCompose(t *testing.T, env *testEnv, content, summary, objTyp
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  content,
 		Type:     objType,
 		Pipeline: pipeName,
@@ -74,7 +74,7 @@ func ingestObjectForCompose(t *testing.T, env *testEnv, content, summary, objTyp
 	job := waitForJob(t, env.URL, jobID, storage.JobCompleted)
 	require.NotEmpty(t, job.ResultID)
 
-	obj, err := env.svc.Store.Objects().Get(context.Background(), job.ResultID)
+	obj, err := env.driver.Objects().Get(ownerCtx(), job.ResultID)
 	require.NoError(t, err)
 	return obj
 }
@@ -99,7 +99,7 @@ func TestUS0040_ComposeReturnsBriefWithObjectContent(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	obj1 := ingestObjectForCompose(t, env,
 		"Backend architecture decision notes",
 		"We decided to adopt event-driven microservices.",
@@ -129,7 +129,7 @@ func TestUS0040_ComposeBriefIsMarkdown(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	obj := ingestObjectForCompose(t, env,
 		"Security audit findings",
 		"TLS 1.3 adoption confirmed across all services.",
@@ -153,7 +153,7 @@ func TestUS0040_ComposeWithCitationsIncludesSourceIDs(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	obj1 := ingestObjectForCompose(t, env, "Auth service decision", "SSO via OIDC selected.", "decision")
 	obj2 := ingestObjectForCompose(t, env, "Auth service plan", "Rollout in two phases.", "article")
 
@@ -177,7 +177,7 @@ func TestUS0040_ComposeWithCitationsStructuredNotMarkdownBlob(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	obj := ingestObjectForCompose(t, env, "Platform decision", "Docker Compose for local dev.", "decision")
 
 	result, err := env.svc.ComposeWithCitations(ctx, []*storage.KnowledgeObject{obj}, "brief")
@@ -198,7 +198,7 @@ func TestUS0040_ComposeQueryMatchTemplate(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	obj := ingestObjectForCompose(t, env, "Release plan", "Ship v2 by end of quarter.", "article")
 
 	result, err := env.svc.ComposeWithCitations(ctx, []*storage.KnowledgeObject{obj}, "plan")
@@ -218,7 +218,7 @@ func TestUS0040_ComposeEmptyObjectsReturnsEmptyBrief(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	brief, err := env.svc.Compose(context.Background(), []*storage.KnowledgeObject{}, "brief")
+	brief, err := env.svc.Compose(ownerCtx(), []*storage.KnowledgeObject{}, "brief")
 	require.NoError(t, err)
 
 	// Must be informative — not a silent empty string.
@@ -235,7 +235,7 @@ func TestUS0040_ComposeObjectsQueryableAfterCompose(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	obj := ingestObjectForCompose(t, env,
 		"Compose side-effect test content",
 		"No mutation expected after composition.",

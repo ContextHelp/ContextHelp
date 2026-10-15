@@ -249,7 +249,7 @@ func waitForPidfiles(t *testing.T, runDir string, n int, timeout time.Duration) 
 // waitHTTPHealthy polls /health until HTTP 200 or timeout.
 func waitHTTPHealthy(t *testing.T, port int, timeout time.Duration) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(ownerCtx(), timeout)
 	defer cancel()
 	url := fmt.Sprintf("http://127.0.0.1:%d/health", port)
 	for {

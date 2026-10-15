@@ -57,7 +57,7 @@ func TestUS0111_AutoUpdate_SkipWhenETagUnchanged(t *testing.T) {
 		ETag:        "etag-v1",
 		AutoUpdate:  true,
 	}
-	err := env.svc.Store.Registries().CacheManifest(t.Context(), cache)
+	err := env.driver.Registries().CacheManifest(t.Context(), cache)
 	require.NoError(t, err)
 
 	// Trigger update check — discovery.CheckRegistryUpdates is called via FetchRegistry path.
@@ -66,7 +66,7 @@ func TestUS0111_AutoUpdate_SkipWhenETagUnchanged(t *testing.T) {
 
 	// The server was hit but returned 304 because ETag matches.
 	// Registry cache should still show the original manifest.
-	caches, total, err := env.svc.Store.Registries().List(t.Context())
+	caches, total, err := env.driver.Registries().List(t.Context())
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, total, 1)
 
@@ -111,14 +111,14 @@ func TestUS0111_AutoUpdate_UpgradeWhenETagChanges(t *testing.T) {
 		ETag:        "etag-v1", // stale
 		AutoUpdate:  true,
 	}
-	err := env.svc.Store.Registries().CacheManifest(t.Context(), cache)
+	err := env.driver.Registries().CacheManifest(t.Context(), cache)
 	require.NoError(t, err)
 
 	err = env.svc.Discovery.CheckRegistryUpdates(t.Context())
 	require.NoError(t, err)
 
 	// With AutoUpdate=true the manifest should be refreshed to v2.
-	caches, _, err := env.svc.Store.Registries().List(t.Context())
+	caches, _, err := env.driver.Registries().List(t.Context())
 	require.NoError(t, err)
 
 	var found *storage.RegistryCache
@@ -157,11 +157,11 @@ func TestUS0111_AutoUpdate_NotifyWhenNotAutoUpdate(t *testing.T) {
 		ETag:        "etag-old",
 		AutoUpdate:  false, // no auto-update
 	}
-	err := env.svc.Store.Registries().CacheManifest(t.Context(), cache)
+	err := env.driver.Registries().CacheManifest(t.Context(), cache)
 	require.NoError(t, err)
 
 	// Before check: record current reminder count.
-	remindersBefore, _, err := env.svc.Store.Reminders().List(t.Context(), false)
+	remindersBefore, _, err := env.driver.Reminders().List(t.Context(), false)
 	require.NoError(t, err)
 	countBefore := len(remindersBefore)
 
@@ -169,7 +169,7 @@ func TestUS0111_AutoUpdate_NotifyWhenNotAutoUpdate(t *testing.T) {
 	require.NoError(t, err)
 
 	// A "update available" reminder must have been created.
-	remindersAfter, _, err2 := env.svc.Store.Reminders().List(t.Context(), false)
+	remindersAfter, _, err2 := env.driver.Reminders().List(t.Context(), false)
 	require.NoError(t, err2)
 	assert.Greater(t, len(remindersAfter), countBefore, "update-available reminder should be created")
 

@@ -45,7 +45,7 @@ func TestUS0057_StakeholderMentionsPreservedAfterIngestion(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	stakeholders := []uri.URI{
 		{Scheme: "ctxt", Namespace: "entity", ID: "person/alice-smith"},
@@ -91,7 +91,7 @@ func TestUS0057_StakeholderEdgesCreatedFromMentions(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	env.svc.Pipes.Upsert("stakeholder.edges", &pipeline.Pipeline{
 		PipelineName: "stakeholder.edges",
@@ -115,7 +115,7 @@ func TestUS0057_StakeholderEdgesCreatedFromMentions(t *testing.T) {
 	require.NotEmpty(t, job.ResultID)
 
 	// Verify edges exist for each stakeholder mention.
-	edges, err := env.svc.Store.Edges().ListFrom(ctx, "object", job.ResultID)
+	edges, err := env.driver.Edges().ListFrom(ctx, "object", job.ResultID)
 	require.NoError(t, err)
 	assert.Len(t, edges, 2,
 		"should have 2 edges, one per stakeholder mention")
@@ -127,7 +127,7 @@ func TestUS0057_StakeholderAnalysisCompositionIncludesMentions(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	env.svc.Pipes.Upsert("stakeholder.compose", &pipeline.Pipeline{
 		PipelineName: "stakeholder.compose",
@@ -177,7 +177,7 @@ func TestUS0057_MultipleObjectsStakeholderSurfaced(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	sharedStakeholder := uri.URI{Scheme: "ctxt", Namespace: "entity", ID: "person/frank-lee"}
 	var objects []*storage.KnowledgeObject

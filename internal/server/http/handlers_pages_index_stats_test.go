@@ -1,7 +1,6 @@
 package http_test
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -64,7 +63,7 @@ func RunPagesIndexStatsSuite(t *testing.T, newDriver func(*testing.T) storage.St
 // none yet), in which case the queue stays empty.
 func seedPagesIndexStatsCorpus(t *testing.T, driver storage.StorageDriver) (resurfacing bool) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now().UTC().Truncate(time.Second)
 	topics := func(ts ...string) map[string]any {
 		list := make([]any, 0, len(ts))

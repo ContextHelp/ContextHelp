@@ -42,7 +42,7 @@ import (
 //   - the registry has no pipeline that resolves to the object's family;
 //   - the pipeline run itself fails.
 func (s *Service) ReanalyzeObject(ctx context.Context, id string) (newPipelineVersion string, llmCostUSD float64, err error) {
-	obj, err := s.Store.Objects().Get(ctx, id)
+	obj, err := s.Store(ctx).Objects().Get(ctx, id)
 	if err != nil {
 		return "", 0, fmt.Errorf("reanalyze: load %q: %w", id, err)
 	}
@@ -140,7 +140,7 @@ func (s *Service) ReanalyzeObject(ctx context.Context, id string) (newPipelineVe
 		return "", 0, fmt.Errorf("reanalyze: persist %q: %w", id, err)
 	}
 	// The blob of content the pipeline replaced goes with it.
-	orphans, err := blob.UpdateObject(ctx, s.Store, row)
+	orphans, err := blob.UpdateObject(ctx, s.Store(ctx), row)
 	if err != nil {
 		return "", 0, fmt.Errorf("reanalyze: persist %q: %w", id, err)
 	}
@@ -149,7 +149,7 @@ func (s *Service) ReanalyzeObject(ctx context.Context, id string) (newPipelineVe
 	// produced; other models' rows stay. Vectors are additive: a failed
 	// write is logged, never fails the re-analysis.
 	if len(draft.Vectors) > 0 {
-		if err := s.Store.Embeddings().Put(ctx, id, draft.Vectors); err != nil {
+		if err := s.Store(ctx).Embeddings().Put(ctx, id, draft.Vectors); err != nil {
 			slog.Warn("reanalyze: embeddings not stored", "object", id, "err", err)
 		}
 	}

@@ -600,13 +600,13 @@ func openEmbeddingsBackend() (*registry.Store, storage.StorageDriver, func(), er
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	switch d := svc.Store.(type) {
+	switch d := svc.Store(asOwner(context.Background())).(type) {
 	case *sqlite.Driver:
 		return registry.NewFor(d.DB(), storageTypeSQLite), d, cleanup, nil
 	case *postgres.Driver:
 		return registry.NewFor(d.DB(), d.SQLDialect()), d, cleanup, nil
 	default:
 		cleanup()
-		return nil, nil, nil, fmt.Errorf("ctxt embeddings: unsupported storage backend %T", svc.Store)
+		return nil, nil, nil, fmt.Errorf("ctxt embeddings: unsupported storage backend %T", svc.Store(asOwner(context.Background())))
 	}
 }

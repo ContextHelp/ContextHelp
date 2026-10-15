@@ -58,7 +58,7 @@ func newPipelineExistsService(t *testing.T, driver storage.StorageDriver) *Servi
 func storePipeline(t *testing.T, driver storage.StorageDriver, name string) {
 	t.Helper()
 	now := time.Now().Truncate(time.Second)
-	require.NoError(t, driver.Pipelines().Create(context.Background(), &storage.Pipeline{
+	require.NoError(t, driver.Pipelines().Create(ownerCtx(), &storage.Pipeline{
 		ID:        "pipeline-" + name,
 		Name:      name,
 		CreatedAt: now,
@@ -120,7 +120,7 @@ func TestPipelineExists(t *testing.T) {
 			driver := storageutil.NewTestDriver(t)
 			svc := newPipelineExistsService(t, driver)
 			tt.setup(t, svc, driver)
-			got := svc.pipelineExists(context.Background(), tt.pipeName)
+			got := svc.pipelineExists(ownerCtx(), tt.pipeName)
 			require.Equal(t, tt.want, got)
 		})
 	}
@@ -136,13 +136,13 @@ func TestPipelineExists_StoreError(t *testing.T) {
 	}
 	svc := newPipelineExistsService(t, driver)
 
-	require.False(t, svc.pipelineExists(context.Background(), "user.custom"),
+	require.False(t, svc.pipelineExists(ownerCtx(), "user.custom"),
 		"store error must not resolve as found")
 
 	// A registry hit short-circuits before the store is consulted, so a
 	// broken store cannot mask a built-in.
 	svc.Pipes.Upsert("text.short", &pipeline.Pipeline{PipelineName: "text.short"})
-	require.True(t, svc.pipelineExists(context.Background(), "text.short"),
+	require.True(t, svc.pipelineExists(ownerCtx(), "text.short"),
 		"registry hit must not depend on the store")
 }
 
@@ -152,7 +152,7 @@ func TestPipelineExists_StoreReturnsNil(t *testing.T) {
 	driver := pipelineStoreDriver{StorageDriver: base, pipelines: nilPipelineStore{}}
 	svc := newPipelineExistsService(t, driver)
 
-	require.False(t, svc.pipelineExists(context.Background(), "user.custom"),
+	require.False(t, svc.pipelineExists(ownerCtx(), "user.custom"),
 		"nil pipeline with nil error must not resolve as found")
 }
 
@@ -164,7 +164,7 @@ func TestEnqueueAcceptsStoreBackedPipeline(t *testing.T) {
 	svc := newPipelineExistsService(t, driver)
 	storePipeline(t, driver, "user.custom")
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	jobID, err := svc.Enqueue(ctx, AnalyzeRequest{
 		Content:  "hello store-backed pipeline",
 		Type:     "text",
@@ -185,7 +185,7 @@ func TestAnalyzeAcceptsStoreBackedPipeline(t *testing.T) {
 	svc := newPipelineExistsService(t, driver)
 	storePipeline(t, driver, "user.custom")
 
-	jobID, err := svc.Analyze(context.Background(), AnalyzeRequest{
+	jobID, err := svc.Analyze(ownerCtx(), AnalyzeRequest{
 		Content:  "hello store-backed pipeline",
 		Type:     "text",
 		Pipeline: "user.custom",
@@ -200,7 +200,7 @@ func TestEnqueueRejectsUnknownPipeline(t *testing.T) {
 	driver := storageutil.NewTestDriver(t)
 	svc := newPipelineExistsService(t, driver)
 
-	_, err := svc.Enqueue(context.Background(), AnalyzeRequest{
+	_, err := svc.Enqueue(ownerCtx(), AnalyzeRequest{
 		Content:  "hello",
 		Type:     "text",
 		Pipeline: "does.not.exist",

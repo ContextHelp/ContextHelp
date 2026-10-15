@@ -1,7 +1,6 @@
 package service
 
 import (
-	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -14,10 +13,10 @@ import (
 
 // A step pipelines.overrides still inserts cannot be uninstalled.
 func TestUninstallStepRefusesStepInUse(t *testing.T) {
-	ctx := context.Background()
+	ctx := ownerCtx()
 	svc := newTestService(t)
 	now := time.Now()
-	if err := svc.Store.Steps().Create(ctx, &storage.RegisteredStep{
+	if err := svc.store.Steps().Create(ctx, &storage.RegisteredStep{
 		Name: "pii-mask", Source: "local", InstalledAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
@@ -30,7 +29,7 @@ func TestUninstallStepRefusesStepInUse(t *testing.T) {
 	if !errors.Is(err, ErrStepInUse) || !strings.Contains(err.Error(), "pipelines.overrides.text.short.insert_steps[0]") {
 		t.Fatalf("UninstallStep: %v; want ErrStepInUse naming the override", err)
 	}
-	if _, err := svc.Store.Steps().Get(ctx, "pii-mask"); err != nil {
+	if _, err := svc.store.Steps().Get(ctx, "pii-mask"); err != nil {
 		t.Errorf("step record gone after a refused uninstall: %v", err)
 	}
 
@@ -49,7 +48,7 @@ func TestInstallStepNeedsOneSource(t *testing.T) {
 		{Name: "x"},
 		{Name: "x", FromRegistry: "http://127.0.0.1:1", Archive: []byte("a")},
 	} {
-		if _, err := svc.InstallStep(context.Background(), req); !errors.Is(err, steps.ErrInvalidStep) {
+		if _, err := svc.InstallStep(ownerCtx(), req); !errors.Is(err, steps.ErrInvalidStep) {
 			t.Errorf("InstallStep(%+v): %v; want ErrInvalidStep", req, err)
 		}
 	}

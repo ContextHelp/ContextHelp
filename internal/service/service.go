@@ -31,6 +31,7 @@ import (
 	registrysync "github.com/ideacrafterslabs/ctxt/internal/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/retrieval"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
@@ -41,7 +42,12 @@ import (
 
 // Service coordinates all business operations.
 type Service struct {
-	Store     storage.StorageDriver
+	// store is the unscoped driver. Nothing reads it directly: request
+	// paths go through Store(ctx), which scopes it to the caller's
+	// viewer, and the constructor hands it to the components that run
+	// as the system (step discovery and install, the pipeline domain
+	// service).
+	store     storage.StorageDriver
 	Queue     *jobs.Queue
 	Pipes     pipeline.Registry
 	Search    *search.Engine
@@ -121,7 +127,7 @@ func NewWithOptions(store storage.StorageDriver, queue *jobs.Queue, pipes pipeli
 	}
 
 	s := &Service{
-		Store:     store,
+		store:     store,
 		Queue:     queue,
 		Pipes:     pipes,
 		Search:    engine,
@@ -143,6 +149,18 @@ func NewWithOptions(store storage.StorageDriver, queue *jobs.Queue, pipes pipeli
 		s.pipelineSvc = newPipelineService(store.Pipelines(), s.policyPub)
 	}
 	return s
+}
+
+// Store returns the storage driver as the caller of ctx may see it:
+// the driver itself for an unrestricted viewer, a driver whose every
+// read fails closed for any other viewer, including a context no
+// transport attached a viewer to (ADR-080 §4). Every read the service
+// performs on a caller's behalf goes through it; callers that act as
+// the system (pipeline, jobs, housekeeping, the CLI at the owner's
+// terminal) attach sharing.Unrestricted to their context, and say so.
+func (s *Service) Store(ctx context.Context) storage.StorageDriver {
+	v, _ := sharing.FromContext(ctx)
+	return storage.ScopedDriver(v, s.store)
 }
 
 // ErrPipelineNotFound is returned by Analyze/Enqueue when the resolved
@@ -168,10 +186,10 @@ func (s *Service) pipelineExists(ctx context.Context, name string) bool {
 	if _, err := s.Pipes.Get(name); err == nil {
 		return true
 	}
-	if s.Store == nil {
+	if s.store == nil {
 		return false
 	}
-	p, err := s.Store.Pipelines().Get(ctx, name)
+	p, err := s.Store(ctx).Pipelines().Get(ctx, name)
 	return err == nil && p != nil
 }
 
@@ -297,7 +315,7 @@ func (s *Service) analyzeRaw(ctx context.Context, req AnalyzeRequest, detectedTy
 		ProfileID: req.Profile,
 		InboxNote: req.Note,
 	}
-	if err := s.Store.Objects().Create(ctx, obj); err != nil {
+	if err := s.Store(ctx).Objects().Create(ctx, obj); err != nil {
 		return "", fmt.Errorf("analyze raw: store: %w", err)
 	}
 	// caller-asserted mentions become thin entity rows + mention
@@ -393,7 +411,7 @@ func (s *Service) writeUserMentionEdges(ctx context.Context, obj *storage.Knowle
 			CreatedAt:     now,
 			UpdatedAt:     now,
 		}
-		if err := s.Store.Entities().UpsertThin(ctx, entity); err != nil {
+		if err := s.Store(ctx).Entities().UpsertThin(ctx, entity); err != nil {
 			return fmt.Errorf("upsert thin entity %q: %w", slug, err)
 		}
 		edge := &storage.Edge{
@@ -407,7 +425,7 @@ func (s *Service) writeUserMentionEdges(ctx context.Context, obj *storage.Knowle
 			Metadata:  storage.MentionProvenance(obj.Graph, mention.String()),
 			CreatedAt: now,
 		}
-		if err := s.Store.Edges().Create(ctx, edge); err != nil {
+		if err := s.Store(ctx).Edges().Create(ctx, edge); err != nil {
 			// UNIQUE collision (parallel worker, retry path): non-fatal.
 			if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 				continue
@@ -442,7 +460,7 @@ func humanizeSlug(slug string) string {
 // GetObject retrieves a knowledge object by ID.
 // Externalized content comes back whole (see resolveContent).
 func (s *Service) GetObject(ctx context.Context, id string) (*storage.KnowledgeObject, error) {
-	obj, err := s.Store.Objects().Get(ctx, id)
+	obj, err := s.Store(ctx).Objects().Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -455,7 +473,7 @@ func (s *Service) GetObject(ctx context.Context, id string) (*storage.KnowledgeO
 // ListObjects lists knowledge objects matching the filter. Externalized
 // content comes back as a preview (see previewContent).
 func (s *Service) ListObjects(ctx context.Context, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, int, error) {
-	objs, total, err := s.Store.Objects().List(ctx, filter)
+	objs, total, err := s.Store(ctx).Objects().List(ctx, filter)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -472,7 +490,7 @@ func (s *Service) FacetCounts(ctx context.Context, filter storage.ObjectFilter) 
 	facetFilter := filter
 	facetFilter.Limit = 0
 	facetFilter.Offset = 0
-	objects, _, err := s.Store.Objects().List(ctx, facetFilter)
+	objects, _, err := s.Store(ctx).Objects().List(ctx, facetFilter)
 	if err != nil {
 		return nil, err
 	}
@@ -509,7 +527,7 @@ func (s *Service) UpdateObject(ctx context.Context, obj *storage.KnowledgeObject
 	if err != nil {
 		return err
 	}
-	orphans, err := blob.UpdateObject(ctx, s.Store, row)
+	orphans, err := blob.UpdateObject(ctx, s.Store(ctx), row)
 	if err != nil {
 		return err
 	}
@@ -527,7 +545,7 @@ func (s *Service) UpdateObject(ctx context.Context, obj *storage.KnowledgeObject
 // content is externalized to (see blob.DeleteObject). A blob that could
 // not be deleted is logged as an orphan; the object is gone either way.
 func (s *Service) DeleteObject(ctx context.Context, id string) error {
-	orphans, err := blob.DeleteObject(ctx, s.Store, id)
+	orphans, err := blob.DeleteObject(ctx, s.Store(ctx), id)
 	if err != nil {
 		return err
 	}
@@ -541,7 +559,7 @@ func (s *Service) DeleteObject(ctx context.Context, id string) error {
 // SearchObjects executes an RSQL query and returns matching objects.
 // profileID, when non-empty, restricts results to the named profile's objects.
 func (s *Service) SearchObjects(ctx context.Context, query string, limit, offset int, profileID ...string) ([]*storage.KnowledgeObject, int, error) {
-	objs, total, err := s.Search.Search(ctx, query, limit, offset, profileID...)
+	objs, total, err := s.Search.Search(ctx, s.Store(ctx).Objects(), query, limit, offset, profileID...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -553,12 +571,12 @@ func (s *Service) SearchObjects(ctx context.Context, query string, limit, offset
 
 // GetJob retrieves a job by ID.
 func (s *Service) GetJob(ctx context.Context, id string) (*storage.Job, error) {
-	return s.Queue.Get(ctx, id)
+	return s.Store(ctx).Jobs().Get(ctx, id)
 }
 
 // ListJobs lists jobs matching the filter.
 func (s *Service) ListJobs(ctx context.Context, filter storage.JobFilter) ([]*storage.Job, int, error) {
-	return s.Queue.List(ctx, filter)
+	return s.Store(ctx).Jobs().List(ctx, filter)
 }
 
 // RetryJob retries a failed job.
@@ -568,18 +586,18 @@ func (s *Service) RetryJob(ctx context.Context, id string) error {
 
 // GetEntity retrieves an entity by slug.
 func (s *Service) GetEntity(ctx context.Context, slug string) (*storage.Entity, error) {
-	return s.Store.Entities().Get(ctx, slug)
+	return s.Store(ctx).Entities().Get(ctx, slug)
 }
 
 // ResolveEntity returns the entity whose slug, else one of whose
 // aliases, equals mention exactly. A miss wraps storage.ErrNotFound.
 func (s *Service) ResolveEntity(ctx context.Context, mention string) (*storage.Entity, error) {
-	return s.Store.Entities().Resolve(ctx, mention)
+	return s.Store(ctx).Entities().Resolve(ctx, mention)
 }
 
 // ListEntities lists entities matching the filter.
 func (s *Service) ListEntities(ctx context.Context, filter storage.EntityFilter) ([]*storage.Entity, error) {
-	return s.Store.Entities().List(ctx, filter)
+	return s.Store(ctx).Entities().List(ctx, filter)
 }
 
 // RelatedObjects returns objects related to objectID by traversing shared
@@ -589,14 +607,14 @@ func (s *Service) RelatedObjects(ctx context.Context, objectID string, depth, li
 	if limit <= 0 {
 		limit = 10
 	}
-	ids, err := s.Store.Edges().RelatedObjectIDs(ctx, objectID, depth, limit)
+	ids, err := s.Store(ctx).Edges().RelatedObjectIDs(ctx, objectID, depth, limit)
 	if err != nil {
 		return nil, fmt.Errorf("related objects: %w", err)
 	}
 
 	objs := make([]*storage.KnowledgeObject, 0, len(ids))
 	for _, id := range ids {
-		obj, err := s.Store.Objects().Get(ctx, id)
+		obj, err := s.Store(ctx).Objects().Get(ctx, id)
 		if err != nil {
 			continue // skip missing/deleted objects
 		}
@@ -615,7 +633,7 @@ func (s *Service) EntityBacklinks(ctx context.Context, slug string) ([]*storage.
 	if u, ok := mentions.Parse(slug); ok {
 		slug = u.String()
 	}
-	edges, err := s.Store.Edges().ListTo(ctx, "entity", slug)
+	edges, err := s.Store(ctx).Edges().ListTo(ctx, "entity", slug)
 	if err != nil {
 		return nil, err
 	}
@@ -623,7 +641,7 @@ func (s *Service) EntityBacklinks(ctx context.Context, slug string) ([]*storage.
 	var objs []*storage.KnowledgeObject
 	for _, edge := range edges {
 		if edge.FromType == nodeObject {
-			obj, err := s.Store.Objects().Get(ctx, edge.FromID)
+			obj, err := s.Store(ctx).Objects().Get(ctx, edge.FromID)
 			if err != nil {
 				continue
 			}
@@ -667,7 +685,7 @@ func (s *Service) CreatePipeline(ctx context.Context, req CreatePipelineRequest)
 			return "", fmt.Errorf("create pipeline: %w", err)
 		}
 	} else {
-		if err := s.Store.Pipelines().Create(ctx, pipeline); err != nil {
+		if err := s.Store(ctx).Pipelines().Create(ctx, pipeline); err != nil {
 			return "", fmt.Errorf("create pipeline: %w", err)
 		}
 	}
@@ -676,11 +694,11 @@ func (s *Service) CreatePipeline(ctx context.Context, req CreatePipelineRequest)
 }
 
 func (s *Service) GetPipeline(ctx context.Context, name string) (*storage.Pipeline, error) {
-	return s.Store.Pipelines().Get(ctx, name)
+	return s.Store(ctx).Pipelines().Get(ctx, name)
 }
 
 func (s *Service) ListPipelines(ctx context.Context, filter storage.PipelineFilter) ([]*storage.Pipeline, int, error) {
-	return s.Store.Pipelines().List(ctx, filter)
+	return s.Store(ctx).Pipelines().List(ctx, filter)
 }
 
 // DeletePipeline removes a custom pipeline. Built-in protection runs
@@ -693,14 +711,14 @@ func (s *Service) DeletePipeline(ctx context.Context, name string) error {
 		return fmt.Errorf("PROTECTED: cannot delete built-in pipeline")
 	}
 
-	if _, err := s.Store.Pipelines().Get(ctx, name); err != nil {
+	if _, err := s.Store(ctx).Pipelines().Get(ctx, name); err != nil {
 		return err
 	}
 
 	if s.pipelineSvc != nil {
 		return s.pipelineSvc.Delete(ctx, name)
 	}
-	return s.Store.Pipelines().Delete(ctx, name)
+	return s.Store(ctx).Pipelines().Delete(ctx, name)
 }
 
 // ArchivePipeline flips the Archived flag and persists via domain.Service.Update
@@ -709,9 +727,9 @@ func (s *Service) DeletePipeline(ctx context.Context, name string) error {
 // flip and can't infer prior state.
 func (s *Service) ArchivePipeline(ctx context.Context, name string) error {
 	if s.pipelineSvc == nil {
-		return s.Store.Pipelines().Archive(ctx, name)
+		return s.Store(ctx).Pipelines().Archive(ctx, name)
 	}
-	p, err := s.Store.Pipelines().Get(ctx, name)
+	p, err := s.Store(ctx).Pipelines().Get(ctx, name)
 	if err != nil {
 		return err
 	}
@@ -735,9 +753,9 @@ func (s *Service) ArchivePipeline(ctx context.Context, name string) error {
 // symmetrically.
 func (s *Service) UnarchivePipeline(ctx context.Context, name string) error {
 	if s.pipelineSvc == nil {
-		return s.Store.Pipelines().Unarchive(ctx, name)
+		return s.Store(ctx).Pipelines().Unarchive(ctx, name)
 	}
-	p, err := s.Store.Pipelines().Get(ctx, name)
+	p, err := s.Store(ctx).Pipelines().Get(ctx, name)
 	if err != nil {
 		return err
 	}
@@ -763,7 +781,7 @@ func (s *Service) dedupeOnIdempotencyKey(ctx context.Context, key string) (jobID
 	if key == "" {
 		return "", false, nil
 	}
-	existing, err := s.Store.Jobs().GetByIdempotencyKey(ctx, key)
+	existing, err := s.Store(ctx).Jobs().GetByIdempotencyKey(ctx, key)
 	if err != nil {
 		return "", false, fmt.Errorf("idempotency lookup: %w", err)
 	}
@@ -822,11 +840,11 @@ func (s *Service) Enqueue(ctx context.Context, req AnalyzeRequest) (string, erro
 }
 
 func (s *Service) ListSteps(ctx context.Context, source string) ([]*storage.RegisteredStep, int, error) {
-	return s.Store.Steps().List(ctx, source)
+	return s.Store(ctx).Steps().List(ctx, source)
 }
 
 func (s *Service) GetStep(ctx context.Context, name string) (*storage.RegisteredStep, error) {
-	return s.Store.Steps().Get(ctx, name)
+	return s.Store(ctx).Steps().Get(ctx, name)
 }
 
 // StepInstallRequest is one step install: from a registry configured
@@ -937,11 +955,11 @@ func (s *Service) SyncRegistry(ctx context.Context, url string) (RegistrySyncRes
 }
 
 func (s *Service) ListRegistries(ctx context.Context) ([]*storage.RegistryCache, int, error) {
-	return s.Store.Registries().List(ctx)
+	return s.Store(ctx).Registries().List(ctx)
 }
 
 func (s *Service) RemoveRegistry(ctx context.Context, url string) error {
-	return s.Store.Registries().Delete(ctx, url)
+	return s.Store(ctx).Registries().Delete(ctx, url)
 }
 
 // RegistryDiffEntry describes a single would-be change from a registry sync.
@@ -965,7 +983,7 @@ func (s *Service) DiffRegistrySync(ctx context.Context, url string) ([]RegistryD
 
 	// Load local cached manifest (may not exist yet).
 	var localSteps map[string]string // name → version
-	cache, err := s.Store.Registries().GetCachedManifest(ctx, url)
+	cache, err := s.Store(ctx).Registries().GetCachedManifest(ctx, url)
 	if err == nil && cache != nil && cache.Manifest != nil {
 		localSteps = make(map[string]string, len(cache.Manifest.Steps))
 		for _, step := range cache.Manifest.Steps {
@@ -1045,11 +1063,11 @@ func classifyStepKind(name string) string {
 }
 
 func (s *Service) ListReminders(ctx context.Context, activeOnly bool) ([]*storage.SystemReminder, int, error) {
-	return s.Store.Reminders().List(ctx, activeOnly)
+	return s.Store(ctx).Reminders().List(ctx, activeOnly)
 }
 
 func (s *Service) DismissReminder(ctx context.Context, id string) error {
-	return s.Store.Reminders().Dismiss(ctx, id)
+	return s.Store(ctx).Reminders().Dismiss(ctx, id)
 }
 
 // ─── Resurfacing queue ────────────────────────────────────────────────────────
@@ -1059,7 +1077,7 @@ func (s *Service) DismissReminder(ctx context.Context, id string) error {
 func (s *Service) ListResurfacing(
 	ctx context.Context, profileID string, limit int, minScore float64,
 ) ([]*storage.ResurfacingEntry, error) {
-	return s.Store.Resurfacing().List(ctx, storage.ResurfacingFilter{
+	return s.Store(ctx).Resurfacing().List(ctx, storage.ResurfacingFilter{
 		ProfileID:  profileID,
 		UnseenOnly: true,
 		MinScore:   minScore,
@@ -1069,12 +1087,12 @@ func (s *Service) ListResurfacing(
 
 // MarkResurfaced marks an entry as shown to the user.
 func (s *Service) MarkResurfaced(ctx context.Context, id string) error {
-	return s.Store.Resurfacing().MarkSurfaced(ctx, id, time.Now())
+	return s.Store(ctx).Resurfacing().MarkSurfaced(ctx, id, time.Now())
 }
 
 // DismissResurfacing dismisses an entry so it no longer appears.
 func (s *Service) DismissResurfacing(ctx context.Context, id string) error {
-	return s.Store.Resurfacing().Dismiss(ctx, id, time.Now())
+	return s.Store(ctx).Resurfacing().Dismiss(ctx, id, time.Now())
 }
 
 // FindByText searches knowledge objects using FTS5 full-text search.
@@ -1087,7 +1105,7 @@ func (s *Service) FindByText(ctx context.Context, query string, limit int) ([]*s
 // each driver applies its own dialect's FTS quoting at the boundary
 // (search.SanitizeFTSQueryFor), so no dialect's rules are baked in here.
 func (s *Service) FindByTextFiltered(ctx context.Context, query string, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
-	objs, err := s.Store.Objects().FTSSearch(ctx, query, filter)
+	objs, err := s.Store(ctx).Objects().FTSSearch(ctx, query, filter)
 	if err != nil {
 		return nil, err
 	}
@@ -1099,7 +1117,7 @@ func (s *Service) FindByTextFiltered(ctx context.Context, query string, filter s
 
 // CancelJob cancels a pending or running job.
 func (s *Service) CancelJob(ctx context.Context, id string) error {
-	return s.Store.Jobs().Cancel(ctx, id)
+	return s.Store(ctx).Jobs().Cancel(ctx, id)
 }
 
 // SyncRegistryEntities syncs entity index from a configured registry.
@@ -1122,18 +1140,18 @@ func (s *Service) SyncRegistryEntities(ctx context.Context, registryURL string) 
 
 	// Populate EntitlementURL from cached manifest if not already set.
 	if cfg.EntitlementURL == "" {
-		if cache, err := s.Store.Registries().GetCachedManifest(ctx, registryURL); err == nil &&
+		if cache, err := s.Store(ctx).Registries().GetCachedManifest(ctx, registryURL); err == nil &&
 			cache != nil && cache.Manifest != nil && cache.Manifest.EntitlementURL != "" {
 			cfg.EntitlementURL = cache.Manifest.EntitlementURL
 		}
 	}
 
-	syncer := registrysync.New(s.Store.Entities()).
-		WithEntitlements(s.Store.Entitlements()).
-		WithRegistryStore(s.Store.Registries()).
+	syncer := registrysync.New(s.Store(ctx).Entities()).
+		WithEntitlements(s.Store(ctx).Entitlements()).
+		WithRegistryStore(s.Store(ctx).Registries()).
 		WithRequireSignatures(s.Cfg.RegistriesGlobal.RequireSignatures).
 		WithCredentials(s.registryAuth).
-		WithPendingQueue(s.Store.PendingEntities())
+		WithPendingQueue(s.Store(ctx).PendingEntities())
 	result, err := syncer.Sync(ctx, cfg)
 	if err != nil {
 		return RegistryEntityCounts{}, fmt.Errorf("sync registry entities: %w", err)
@@ -1190,11 +1208,11 @@ func (s *Service) SyncAllRegistriesWithReconciliation(
 		strategy = registrysync.MergeLastWriteWins
 	}
 
-	syncer := registrysync.New(s.Store.Entities()).
-		WithRegistryStore(s.Store.Registries()).
+	syncer := registrysync.New(s.Store(ctx).Entities()).
+		WithRegistryStore(s.Store(ctx).Registries()).
 		WithRequireSignatures(s.Cfg.RegistriesGlobal.RequireSignatures).
 		WithCredentials(s.registryAuth).
-		WithPendingQueue(s.Store.PendingEntities())
+		WithPendingQueue(s.Store(ctx).PendingEntities())
 	multi := registrysync.MultiSyncConfig{
 		Registries:  s.Cfg.Registries,
 		Strategy:    strategy,
@@ -1238,7 +1256,7 @@ func (s *Service) registryByURL(url string) config.RegistryConfig {
 // PullEntity promotes a thin entity to full by fetching its complete definition
 // from its source registry. Returns ErrEntityDefinitionUnavailable if not thin.
 func (s *Service) PullEntity(ctx context.Context, slug string) (*storage.Entity, error) {
-	entity, err := s.Store.Entities().Get(ctx, slug)
+	entity, err := s.Store(ctx).Entities().Get(ctx, slug)
 	if err != nil {
 		return nil, fmt.Errorf("get entity: %w", err)
 	}
@@ -1253,7 +1271,7 @@ func (s *Service) PullEntity(ctx context.Context, slug string) (*storage.Entity,
 	}
 
 	// Mark as pending so concurrent callers can detect an in-progress pull.
-	if err := s.Store.Entities().SetContentStatus(ctx, slug, storage.ContentStatusPendingPull); err != nil {
+	if err := s.Store(ctx).Entities().SetContentStatus(ctx, slug, storage.ContentStatusPendingPull); err != nil {
 		return nil, fmt.Errorf("set pending_pull: %w", err)
 	}
 
@@ -1261,7 +1279,7 @@ func (s *Service) PullEntity(ctx context.Context, slug string) (*storage.Entity,
 	fullEntity, err := s.fetchRemoteEntityDefinition(ctx, entity.RegistryURL, slug)
 	if err != nil {
 		// Restore thin status on failure so the entity remains usable.
-		_ = s.Store.Entities().SetContentStatus(ctx, slug, storage.ContentStatusThin)
+		_ = s.Store(ctx).Entities().SetContentStatus(ctx, slug, storage.ContentStatusThin)
 		return nil, fmt.Errorf("fetch entity definition: %w", err)
 	}
 
@@ -1272,8 +1290,8 @@ func (s *Service) PullEntity(ctx context.Context, slug string) (*storage.Entity,
 	fullEntity.CreatedAt = entity.CreatedAt
 	fullEntity.UpdatedAt = time.Now().Truncate(time.Second)
 
-	if err := s.Store.Entities().Upsert(ctx, fullEntity); err != nil {
-		_ = s.Store.Entities().SetContentStatus(ctx, slug, storage.ContentStatusThin)
+	if err := s.Store(ctx).Entities().Upsert(ctx, fullEntity); err != nil {
+		_ = s.Store(ctx).Entities().SetContentStatus(ctx, slug, storage.ContentStatusThin)
 		return nil, fmt.Errorf("store full entity: %w", err)
 	}
 
@@ -1349,7 +1367,7 @@ func (s *Service) SearchObjectsNodeAware(ctx context.Context, query string, limi
 		fetchOffset = 0
 	}
 
-	all, _, err := s.Search.Search(ctx, query, fetchLimit, fetchOffset, profileID...)
+	all, _, err := s.Search.Search(ctx, s.Store(ctx).Objects(), query, fetchLimit, fetchOffset, profileID...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -1421,7 +1439,7 @@ func (s *Service) CreateFeed(ctx context.Context, url, format string) (*storage.
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
-	if err := s.Store.Feeds().Create(ctx, feed); err != nil {
+	if err := s.Store(ctx).Feeds().Create(ctx, feed); err != nil {
 		return nil, fmt.Errorf("create feed: %w", err)
 	}
 	return feed, nil
@@ -1429,13 +1447,13 @@ func (s *Service) CreateFeed(ctx context.Context, url, format string) (*storage.
 
 // ListFeeds returns all feed subscriptions matching the filter.
 func (s *Service) ListFeeds(ctx context.Context, filter storage.FeedFilter) ([]*storage.Feed, error) {
-	return s.Store.Feeds().List(ctx, filter)
+	return s.Store(ctx).Feeds().List(ctx, filter)
 }
 
 // SyncFeed enqueues a feed.sync pipeline job to fetch and process feed items.
 // Deduplication and item enqueueing are handled by the pipeline steps.
 func (s *Service) SyncFeed(ctx context.Context, id string) (string, error) {
-	feed, err := s.Store.Feeds().Get(ctx, id)
+	feed, err := s.Store(ctx).Feeds().Get(ctx, id)
 	if err != nil {
 		return "", fmt.Errorf("feed not found: %w", err)
 	}
@@ -1454,7 +1472,7 @@ func (s *Service) SyncFeed(ctx context.Context, id string) (string, error) {
 
 // SyncAllFeeds enqueues sync jobs for all active feeds.
 func (s *Service) SyncAllFeeds(ctx context.Context) ([]string, error) {
-	feeds, err := s.Store.Feeds().List(ctx, storage.FeedFilter{Status: "active"})
+	feeds, err := s.Store(ctx).Feeds().List(ctx, storage.FeedFilter{Status: "active"})
 	if err != nil {
 		return nil, fmt.Errorf("list feeds: %w", err)
 	}
@@ -1472,10 +1490,10 @@ func (s *Service) SyncAllFeeds(ctx context.Context) ([]string, error) {
 
 // DeleteFeed removes a feed subscription.
 func (s *Service) DeleteFeed(ctx context.Context, id string) error {
-	if _, err := s.Store.Feeds().Get(ctx, id); err != nil {
+	if _, err := s.Store(ctx).Feeds().Get(ctx, id); err != nil {
 		return fmt.Errorf("feed not found: %w", err)
 	}
-	return s.Store.Feeds().Delete(ctx, id)
+	return s.Store(ctx).Feeds().Delete(ctx, id)
 }
 
 // --- Batch import methods ---
@@ -1504,7 +1522,7 @@ func (s *Service) CreateBatch(ctx context.Context, content, format string) (*sto
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
-	if err := s.Store.Batches().Create(ctx, batch); err != nil {
+	if err := s.Store(ctx).Batches().Create(ctx, batch); err != nil {
 		return nil, fmt.Errorf("create batch: %w", err)
 	}
 
@@ -1526,7 +1544,7 @@ func (s *Service) CreateBatch(ctx context.Context, content, format string) (*sto
 			batch.Errors = append(batch.Errors, storage.BatchError{Error: err.Error()})
 			continue
 		}
-		_ = s.Store.Edges().Create(ctx, &storage.Edge{
+		_ = s.Store(ctx).Edges().Create(ctx, &storage.Edge{
 			ID:        uuid.New().String(),
 			FromType:  "batch",
 			FromID:    batch.ID,
@@ -1547,7 +1565,7 @@ func (s *Service) CreateBatch(ctx context.Context, content, format string) (*sto
 	}
 	batch.Completed = batch.TotalRecords - batch.Failed
 	batch.UpdatedAt = time.Now()
-	_ = s.Store.Batches().Update(ctx, batch)
+	_ = s.Store(ctx).Batches().Update(ctx, batch)
 
 	return batch, nil
 }
@@ -1656,7 +1674,7 @@ func (s *Service) createBatchFromOPML(ctx context.Context, content string) (*sto
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
-	if err := s.Store.Batches().Create(ctx, batch); err != nil {
+	if err := s.Store(ctx).Batches().Create(ctx, batch); err != nil {
 		return nil, fmt.Errorf("create batch: %w", err)
 	}
 
@@ -1673,14 +1691,14 @@ func (s *Service) createBatchFromOPML(ctx context.Context, content string) (*sto
 		batch.Status = "partial"
 	}
 	batch.UpdatedAt = time.Now()
-	_ = s.Store.Batches().Update(ctx, batch)
+	_ = s.Store(ctx).Batches().Update(ctx, batch)
 
 	return batch, nil
 }
 
 // GetBatch retrieves a batch import operation by ID.
 func (s *Service) GetBatch(ctx context.Context, id string) (*storage.Batch, error) {
-	return s.Store.Batches().Get(ctx, id)
+	return s.Store(ctx).Batches().Get(ctx, id)
 }
 
 // --- Detector methods ---
@@ -1707,7 +1725,7 @@ func (s *Service) CreateDetector(ctx context.Context, req DetectorCreateRequest)
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
-	if err := s.Store.Detectors().Create(ctx, d); err != nil {
+	if err := s.Store(ctx).Detectors().Create(ctx, d); err != nil {
 		return nil, fmt.Errorf("create detector: %w", err)
 	}
 	return d, nil
@@ -1715,23 +1733,23 @@ func (s *Service) CreateDetector(ctx context.Context, req DetectorCreateRequest)
 
 // ListDetectors returns all detectors matching the filter.
 func (s *Service) ListDetectors(ctx context.Context, filter storage.DetectorFilter) ([]*storage.DetectorRecord, error) {
-	detectors, _, err := s.Store.Detectors().List(ctx, filter)
+	detectors, _, err := s.Store(ctx).Detectors().List(ctx, filter)
 	return detectors, err
 }
 
 // DeleteDetector removes a detector.
 func (s *Service) DeleteDetector(ctx context.Context, id string) error {
-	return s.Store.Detectors().Delete(ctx, id)
+	return s.Store(ctx).Detectors().Delete(ctx, id)
 }
 
 // EnableDetector enables a detector.
 func (s *Service) EnableDetector(ctx context.Context, id string) error {
-	return s.Store.Detectors().Enable(ctx, id)
+	return s.Store(ctx).Detectors().Enable(ctx, id)
 }
 
 // DisableDetector disables a detector.
 func (s *Service) DisableDetector(ctx context.Context, id string) error {
-	return s.Store.Detectors().Disable(ctx, id)
+	return s.Store(ctx).Detectors().Disable(ctx, id)
 }
 
 // --- Saved Search (US-0054) ---
@@ -1759,7 +1777,7 @@ func (s *Service) CreateSavedSearch(ctx context.Context, req SavedSearchCreateRe
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	if err := s.Store.SavedSearches().Create(ctx, ss); err != nil {
+	if err := s.Store(ctx).SavedSearches().Create(ctx, ss); err != nil {
 		return nil, fmt.Errorf("create saved search: %w", err)
 	}
 	return ss, nil
@@ -1767,23 +1785,23 @@ func (s *Service) CreateSavedSearch(ctx context.Context, req SavedSearchCreateRe
 
 // GetSavedSearch returns a saved search by name, or nil if not found.
 func (s *Service) GetSavedSearch(ctx context.Context, name string) (*storage.SavedSearch, error) {
-	return s.Store.SavedSearches().GetByName(ctx, name)
+	return s.Store(ctx).SavedSearches().GetByName(ctx, name)
 }
 
 // ListSavedSearches returns saved searches matching the filter.
 func (s *Service) ListSavedSearches(ctx context.Context, filter storage.SavedSearchFilter) ([]*storage.SavedSearch, error) {
-	return s.Store.SavedSearches().List(ctx, filter)
+	return s.Store(ctx).SavedSearches().List(ctx, filter)
 }
 
 // UpdateSavedSearch persists field changes to an existing saved search.
 func (s *Service) UpdateSavedSearch(ctx context.Context, ss *storage.SavedSearch) error {
 	ss.UpdatedAt = time.Now().Truncate(time.Second)
-	return s.Store.SavedSearches().Update(ctx, ss)
+	return s.Store(ctx).SavedSearches().Update(ctx, ss)
 }
 
 // DeleteSavedSearch removes a saved search by name.
 func (s *Service) DeleteSavedSearch(ctx context.Context, name string) error {
-	return s.Store.SavedSearches().Delete(ctx, name)
+	return s.Store(ctx).SavedSearches().Delete(ctx, name)
 }
 
 // --- Search History (US-0055) ---
@@ -1798,17 +1816,17 @@ func (s *Service) AppendSearchHistory(ctx context.Context, query, profileID, str
 		ResultCount:    resultCount,
 		SearchedAt:     time.Now().Truncate(time.Second),
 	}
-	return s.Store.SearchHistory().Append(ctx, e)
+	return s.Store(ctx).SearchHistory().Append(ctx, e)
 }
 
 // ListSearchHistory returns search history entries matching the filter.
 func (s *Service) ListSearchHistory(ctx context.Context, filter storage.SearchHistoryFilter) ([]*storage.SearchHistoryEntry, error) {
-	return s.Store.SearchHistory().List(ctx, filter)
+	return s.Store(ctx).SearchHistory().List(ctx, filter)
 }
 
 // ClearSearchHistory removes all history entries for a profile.
 func (s *Service) ClearSearchHistory(ctx context.Context, profileID string) error {
-	return s.Store.SearchHistory().ClearByProfile(ctx, profileID)
+	return s.Store(ctx).SearchHistory().ClearByProfile(ctx, profileID)
 }
 
 // --- Semantic search ---
@@ -1820,7 +1838,7 @@ func (s *Service) ClearSearchHistory(ctx context.Context, profileID string) erro
 // cfg.FallbackToFTS is set and fails otherwise; either way the reason is in
 // the returned diagnostics' Semantic report, so the degradation is visible.
 func (s *Service) SemanticSearchFiltered(ctx context.Context, query string, filter storage.ObjectFilter, sem retrieval.SemanticSource, cfg config.SearchConfig) ([]*storage.KnowledgeObject, SearchDiagnostics, error) {
-	objs, rep, err := sem.Search(ctx, s.Store, search.DecomposeQuery(query, 2), filter)
+	objs, rep, err := sem.Search(ctx, s.Store(ctx), search.DecomposeQuery(query, 2), filter)
 	if err != nil {
 		return nil, SearchDiagnostics{}, fmt.Errorf("semantic search: %w", err)
 	}
@@ -1835,7 +1853,7 @@ func (s *Service) SemanticSearchFiltered(ctx context.Context, query string, filt
 	if !cfg.FallbackToFTS {
 		return nil, diagnostics, &SemanticUnavailableError{Report: rep}
 	}
-	objs, err = s.Store.Objects().FTSSearch(ctx, query, filter)
+	objs, err = s.Store(ctx).Objects().FTSSearch(ctx, query, filter)
 	if err != nil {
 		return nil, diagnostics, fmt.Errorf("semantic search fts fallback: %w", err)
 	}
@@ -1938,7 +1956,7 @@ func (s *Service) hybridSearch(ctx context.Context, query string, filter storage
 	// query. The expanded text stays raw here: each driver applies its own
 	// dialect's FTS quoting at the boundary (search.SanitizeFTSQueryFor),
 	// covering user input and alias-injected punctuation alike.
-	ftsQuery, err := search.ExpandQuery(ctx, query, newStorageAliasResolver(s.Store.Aliases(), ""))
+	ftsQuery, err := search.ExpandQuery(ctx, query, newStorageAliasResolver(s.Store(ctx).Aliases(), ""))
 	if err != nil {
 		return nil, fmt.Errorf("hybrid search: %w", err)
 	}
@@ -1954,7 +1972,7 @@ func (s *Service) hybridSearch(ctx context.Context, query string, filter storage
 
 	ftsCh := make(chan legResult, 1)
 	go func() {
-		res, err := s.Store.Objects().FTSSearch(ctx, ftsQuery, ftsFilter)
+		res, err := s.Store(ctx).Objects().FTSSearch(ctx, ftsQuery, ftsFilter)
 		ftsCh <- legResult{res, err}
 	}()
 
@@ -2016,7 +2034,7 @@ func (s *Service) hybridSearch(ctx context.Context, query string, filter storage
 		weights = ranking.DefaultWeights()
 	}
 
-	reranker := ranking.New(s.Store.Edges(), weights)
+	reranker := ranking.New(s.Store(ctx).Edges(), weights)
 	// Run the reranker with minScore=0 so we receive every scored candidate.
 	// Diagnostics need to know which candidates fell below cfg.MinScore — that
 	// information is lost if we let Rerank filter early.
@@ -2116,7 +2134,7 @@ func partitionByThreshold(scored []ranking.Result, threshold float64) ([]ranking
 func (s *Service) hybridVectorLeg(ctx context.Context, query string, filter storage.ObjectFilter, sem retrieval.SemanticSource, cfg config.SearchConfig) ([]*storage.KnowledgeObject, retrieval.SemanticReport, error) {
 	vecFilter := filter
 	vecFilter.Limit = vectorPool(cfg)
-	res, rep, err := sem.Search(ctx, s.Store, search.DecomposeQuery(query, 2), vecFilter)
+	res, rep, err := sem.Search(ctx, s.Store(ctx), search.DecomposeQuery(query, 2), vecFilter)
 	if err != nil {
 		return nil, rep, fmt.Errorf("hybrid search vector leg: %w", err)
 	}
@@ -2137,7 +2155,7 @@ func vectorPool(cfg config.SearchConfig) int {
 // EnsureDefaultRegistry caches the bundled default registry manifest if no cache entry
 // exists for DefaultRegistryURL yet. Safe to call on every startup; idempotent.
 func (s *Service) EnsureDefaultRegistry(ctx context.Context) error {
-	_, err := s.Store.Registries().GetCachedManifest(ctx, registrysync.DefaultRegistryURL)
+	_, err := s.Store(ctx).Registries().GetCachedManifest(ctx, registrysync.DefaultRegistryURL)
 	if err == nil {
 		return nil // already cached
 	}
@@ -2146,7 +2164,7 @@ func (s *Service) EnsureDefaultRegistry(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("load default registry: %w", err)
 	}
-	if err := s.Store.Registries().CacheManifest(ctx, cache); err != nil {
+	if err := s.Store(ctx).Registries().CacheManifest(ctx, cache); err != nil {
 		return fmt.Errorf("cache default registry: %w", err)
 	}
 	return nil
@@ -2161,7 +2179,7 @@ func (s *Service) CheckRegistryCapabilities(
 	clientVersion string,
 	requiredFeatures ...string,
 ) ([]registrysync.CapabilityWarning, error) {
-	cache, err := s.Store.Registries().GetCachedManifest(ctx, registryURL)
+	cache, err := s.Store(ctx).Registries().GetCachedManifest(ctx, registryURL)
 	if err != nil {
 		return nil, fmt.Errorf("get registry manifest: %w", err)
 	}
@@ -2216,7 +2234,7 @@ func (s *Service) RecordMeteringEvent(
 		Count:        1,
 		OccurredAt:   time.Now().UTC(),
 	}
-	return s.Store.Metering().Record(ctx, event)
+	return s.Store(ctx).Metering().Record(ctx, event)
 }
 
 // RegistryUsageSummary returns aggregated metering counts per event type for
@@ -2231,7 +2249,7 @@ func (s *Service) RegistryUsageSummary(
 		RegistryName: registryName,
 		After:        periodStart,
 	}
-	return s.Store.Metering().Aggregate(ctx, f)
+	return s.Store(ctx).Metering().Aggregate(ctx, f)
 }
 
 // AllRegistriesUsageSummary returns aggregated metering counts for all registries.
@@ -2240,7 +2258,7 @@ func (s *Service) AllRegistriesUsageSummary(
 	periodStart time.Time,
 ) ([]*storage.MeteringAggregate, error) {
 	f := storage.MeteringFilter{After: periodStart}
-	return s.Store.Metering().Aggregate(ctx, f)
+	return s.Store(ctx).Metering().Aggregate(ctx, f)
 }
 
 func (s *Service) parsePipelineSteps(stepsJSON string) ([]storage.StepRef, error) {

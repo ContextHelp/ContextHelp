@@ -3,7 +3,6 @@ package integration
 // US-0314: Pinboard import (API client + JSON export fixture).
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -73,7 +72,7 @@ func TestUS0314_PinboardFetchPosts(t *testing.T) {
 	defer srv.Close()
 
 	client := pinboard.NewClient(nil, srv.URL, "user:test-token")
-	bmarks, err := client.FetchPosts(context.Background(), pinboard.FetchOptions{})
+	bmarks, err := client.FetchPosts(ownerCtx(), pinboard.FetchOptions{})
 	require.NoError(t, err)
 	require.Len(t, bmarks, 2)
 
@@ -95,7 +94,7 @@ func TestUS0314_PinboardTagsExtracted(t *testing.T) {
 	defer srv.Close()
 
 	client := pinboard.NewClient(nil, srv.URL, "user:tok")
-	bmarks, err := client.FetchPosts(context.Background(), pinboard.FetchOptions{})
+	bmarks, err := client.FetchPosts(ownerCtx(), pinboard.FetchOptions{})
 	require.NoError(t, err)
 	require.Len(t, bmarks, 1)
 
@@ -118,7 +117,7 @@ func TestUS0314_PinboardToReadFlagPreserved(t *testing.T) {
 	defer srv.Close()
 
 	client := pinboard.NewClient(nil, srv.URL, "user:tok")
-	bmarks, err := client.FetchPosts(context.Background(), pinboard.FetchOptions{})
+	bmarks, err := client.FetchPosts(ownerCtx(), pinboard.FetchOptions{})
 	require.NoError(t, err)
 	require.Len(t, bmarks, 2)
 

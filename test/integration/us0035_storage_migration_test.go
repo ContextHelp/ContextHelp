@@ -1,7 +1,6 @@
 package integration
 
 import (
-	"context"
 	"fmt"
 	"path/filepath"
 	"testing"
@@ -33,10 +32,10 @@ func TestUS0035_ObjectCountIdenticalAfterMigration(t *testing.T) {
 	// Populate source driver.
 	srcDriver, err := sqlite.New(srcPath, storageutil.NewTestBlobStore(t))
 	require.NoError(t, err)
-	require.NoError(t, srcDriver.Init(context.Background()))
-	defer srcDriver.Close(context.Background()) //nolint:errcheck
+	require.NoError(t, srcDriver.Init(ownerCtx()))
+	defer srcDriver.Close(ownerCtx()) //nolint:errcheck
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	const nObjects = 10
 	now := time.Now().Truncate(time.Second)
 
@@ -57,13 +56,13 @@ func TestUS0035_ObjectCountIdenticalAfterMigration(t *testing.T) {
 	// Open destination driver using the snapshot as the source DB.
 	dstDriver, err := sqlite.New(dstPath, storageutil.NewTestBlobStore(t))
 	require.NoError(t, err)
-	require.NoError(t, dstDriver.Init(context.Background()))
-	defer dstDriver.Close(context.Background()) //nolint:errcheck
+	require.NoError(t, dstDriver.Init(ownerCtx()))
+	defer dstDriver.Close(ownerCtx()) //nolint:errcheck
 
 	// Open a fresh driver on the snapshot to verify counts.
 	snapDriver, err := sqlite.New(snapPath, storageutil.NewTestBlobStore(t))
 	require.NoError(t, err)
-	defer snapDriver.Close(context.Background()) //nolint:errcheck
+	defer snapDriver.Close(ownerCtx()) //nolint:errcheck
 
 	srcObjs, srcTotal, err := srcDriver.Objects().List(ctx, storage.ObjectFilter{Limit: 1000, Status: "all"})
 	require.NoError(t, err)
@@ -86,10 +85,10 @@ func TestUS0035_ObjectContentIdenticalAfterMigration(t *testing.T) {
 
 	srcDriver, err := sqlite.New(srcPath, storageutil.NewTestBlobStore(t))
 	require.NoError(t, err)
-	require.NoError(t, srcDriver.Init(context.Background()))
-	defer srcDriver.Close(context.Background()) //nolint:errcheck
+	require.NoError(t, srcDriver.Init(ownerCtx()))
+	defer srcDriver.Close(ownerCtx()) //nolint:errcheck
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now().Truncate(time.Second)
 
 	wantContents := map[string]string{
@@ -109,7 +108,7 @@ func TestUS0035_ObjectContentIdenticalAfterMigration(t *testing.T) {
 
 	snapDriver, err := sqlite.New(snapPath, storageutil.NewTestBlobStore(t))
 	require.NoError(t, err)
-	defer snapDriver.Close(context.Background()) //nolint:errcheck
+	defer snapDriver.Close(ownerCtx()) //nolint:errcheck
 
 	for id, wantContent := range wantContents {
 		obj, err := snapDriver.Objects().Get(ctx, id)
@@ -130,10 +129,10 @@ func TestUS0035_EdgeCountIdenticalAfterMigration(t *testing.T) {
 
 	srcDriver, err := sqlite.New(srcPath, storageutil.NewTestBlobStore(t))
 	require.NoError(t, err)
-	require.NoError(t, srcDriver.Init(context.Background()))
-	defer srcDriver.Close(context.Background()) //nolint:errcheck
+	require.NoError(t, srcDriver.Init(ownerCtx()))
+	defer srcDriver.Close(ownerCtx()) //nolint:errcheck
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now().Truncate(time.Second)
 
 	// Seed objects and edges.
@@ -158,7 +157,7 @@ func TestUS0035_EdgeCountIdenticalAfterMigration(t *testing.T) {
 
 	snapDriver, err := sqlite.New(snapPath, storageutil.NewTestBlobStore(t))
 	require.NoError(t, err)
-	defer snapDriver.Close(context.Background()) //nolint:errcheck
+	defer snapDriver.Close(ownerCtx()) //nolint:errcheck
 
 	// Verify each object's edges are present in the snapshot.
 	for i := 0; i < 3; i++ {
@@ -185,10 +184,10 @@ func TestUS0035_MigrationWithSecondSQLiteDestination(t *testing.T) {
 	// Populate source.
 	srcDriver, err := sqlite.New(srcPath, storageutil.NewTestBlobStore(t))
 	require.NoError(t, err)
-	require.NoError(t, srcDriver.Init(context.Background()))
-	defer srcDriver.Close(context.Background()) //nolint:errcheck
+	require.NoError(t, srcDriver.Init(ownerCtx()))
+	defer srcDriver.Close(ownerCtx()) //nolint:errcheck
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now().Truncate(time.Second)
 
 	objects := storageutil.SeedObjects(t, srcDriver, 7)
@@ -196,8 +195,8 @@ func TestUS0035_MigrationWithSecondSQLiteDestination(t *testing.T) {
 	// Migrate: open destination, enumerate source, insert into destination.
 	dstDriver, err := sqlite.New(dstPath, storageutil.NewTestBlobStore(t))
 	require.NoError(t, err)
-	require.NoError(t, dstDriver.Init(context.Background()))
-	defer dstDriver.Close(context.Background()) //nolint:errcheck
+	require.NoError(t, dstDriver.Init(ownerCtx()))
+	defer dstDriver.Close(ownerCtx()) //nolint:errcheck
 
 	for _, obj := range objects {
 		migrated := &storage.KnowledgeObject{

@@ -33,7 +33,7 @@ func TestTriageInboxAtomic(t *testing.T) {
 	engine := search.NewEngine(driver)
 	svc := New(driver, q, pipes, engine, "", nil)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	// 1. Capture an item.
 	obj, err := svc.CaptureToInbox(ctx, InboxCaptureRequest{
@@ -50,7 +50,7 @@ func TestTriageInboxAtomic(t *testing.T) {
 	assert.Empty(t, jobID)
 
 	// 3. Verify the object is still in "inbox" status (compensating logic fired).
-	got, err := svc.Store.Objects().Get(ctx, obj.ID)
+	got, err := svc.store.Objects().Get(ctx, obj.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "inbox", got.Status, "object status should have been reverted to inbox")
 }
@@ -64,7 +64,7 @@ func TestClearInboxClearsEveryPageAndOnlyInbox(t *testing.T) {
 
 	driver := storageutil.NewTestDriver(t)
 	svc := New(driver, jobs.NewQueue(driver.Jobs()), pipeline.DefaultRegistry(), search.NewEngine(driver), "", nil)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	var inbox []string
 	for i := range 5 {
@@ -103,15 +103,15 @@ func TestClearInboxClearsEveryPageAndOnlyInbox(t *testing.T) {
 // written or enqueued.
 func TestTriageDiscardRefuseNonInboxObjects(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	created := time.Date(2026, 4, 1, 9, 0, 0, 0, time.UTC)
 	for id, status := range map[string]string{"o-active": "active", "o-discarded": "discarded", "o-raw": "raw"} {
-		require.NoError(t, svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+		require.NoError(t, svc.store.Objects().Create(ctx, &storage.KnowledgeObject{
 			ID: id, Type: "text", Status: status, RawContent: id, CreatedAt: created, UpdatedAt: created,
 		}))
 	}
 	jobCount := func() int {
-		_, n, err := svc.Store.Jobs().List(ctx, storage.JobFilter{Limit: 100})
+		_, n, err := svc.store.Jobs().List(ctx, storage.JobFilter{Limit: 100})
 		require.NoError(t, err)
 		return n
 	}
@@ -125,7 +125,7 @@ func TestTriageDiscardRefuseNonInboxObjects(t *testing.T) {
 		if status == "" {
 			continue
 		}
-		got, err := svc.Store.Objects().Get(ctx, id)
+		got, err := svc.store.Objects().Get(ctx, id)
 		require.NoError(t, err)
 		assert.Equal(t, status, got.Status, id)
 		assert.True(t, got.UpdatedAt.Equal(created), "%s updated_at moved to %s", id, got.UpdatedAt)
@@ -136,7 +136,7 @@ func TestTriageDiscardRefuseNonInboxObjects(t *testing.T) {
 // A real inbox item still triages (active, one job) and discards.
 func TestTriageDiscardInboxItems(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	a, err := svc.CaptureToInbox(ctx, InboxCaptureRequest{Content: "to triage", Type: "text"})
 	require.NoError(t, err)
 	b, err := svc.CaptureToInbox(ctx, InboxCaptureRequest{Content: "to discard", Type: "text"})
@@ -145,15 +145,15 @@ func TestTriageDiscardInboxItems(t *testing.T) {
 	jobID, err := svc.TriageInbox(ctx, a.ID, TriageRequest{})
 	require.NoError(t, err)
 	require.NotEmpty(t, jobID)
-	job, err := svc.Store.Jobs().Get(ctx, jobID)
+	job, err := svc.store.Jobs().Get(ctx, jobID)
 	require.NoError(t, err)
 	assert.Equal(t, "to triage", job.Payload)
 	require.NoError(t, svc.DiscardInbox(ctx, b.ID))
 
-	got, err := svc.Store.Objects().Get(ctx, a.ID)
+	got, err := svc.store.Objects().Get(ctx, a.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "active", got.Status)
-	got, err = svc.Store.Objects().Get(ctx, b.ID)
+	got, err = svc.store.Objects().Get(ctx, b.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "discarded", got.Status)
 

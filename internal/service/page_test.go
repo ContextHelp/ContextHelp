@@ -1,7 +1,6 @@
 package service
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -13,7 +12,7 @@ import (
 
 func seedSourceObject(t *testing.T, svc *Service, id, content string) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := ownerCtx()
 	obj := &storage.KnowledgeObject{
 		ID:         id,
 		Type:       "text",
@@ -22,12 +21,12 @@ func seedSourceObject(t *testing.T, svc *Service, id, content string) {
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
 	}
-	require.NoError(t, svc.Store.Objects().Create(ctx, obj))
+	require.NoError(t, svc.store.Objects().Create(ctx, obj))
 }
 
 func TestPageUpsert_CreatesNewPage(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	seedSourceObject(t, svc, "src-1", "Alice is a key engineer")
 
@@ -54,7 +53,7 @@ func TestPageUpsert_CreatesNewPage(t *testing.T) {
 
 func TestPageUpsert_IncrementsRevision(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	seedSourceObject(t, svc, "src-a", "First mention of Go")
 	seedSourceObject(t, svc, "src-b", "Second mention of Go in prod")
@@ -82,7 +81,7 @@ func TestPageUpsert_IncrementsRevision(t *testing.T) {
 
 func TestPageUpsert_Idempotent(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	seedSourceObject(t, svc, "src-idem", "Idempotent source")
 
@@ -98,7 +97,7 @@ func TestPageUpsert_Idempotent(t *testing.T) {
 
 func TestListEntityPages(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	seedSourceObject(t, svc, "src-list-1", "content 1")
 	seedSourceObject(t, svc, "src-list-2", "content 2")
@@ -115,7 +114,7 @@ func TestListEntityPages(t *testing.T) {
 
 func TestRefreshEntityPage(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	seedSourceObject(t, svc, "src-ref-1", "Original content")
 
@@ -123,9 +122,9 @@ func TestRefreshEntityPage(t *testing.T) {
 	require.NoError(t, err)
 
 	// Modify source content.
-	src, _ := svc.Store.Objects().Get(ctx, "src-ref-1")
+	src, _ := svc.store.Objects().Get(ctx, "src-ref-1")
 	src.RawContent = "Updated content after edit"
-	require.NoError(t, svc.Store.Objects().Update(ctx, src))
+	require.NoError(t, svc.store.Objects().Update(ctx, src))
 
 	page, err := svc.RefreshEntityPage(ctx, "project.refresh")
 	require.NoError(t, err)
@@ -134,7 +133,7 @@ func TestRefreshEntityPage(t *testing.T) {
 
 func TestRefreshEntityPage_NotFound(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	_, err := svc.RefreshEntityPage(ctx, "nonexistent.page")
 	require.ErrorIs(t, err, storage.ErrNotFound)
@@ -142,7 +141,7 @@ func TestRefreshEntityPage_NotFound(t *testing.T) {
 
 func TestGetEntityPage_NotFound(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	page, err := svc.GetEntityPage(ctx, "no.such.page")
 	require.NoError(t, err)
@@ -151,7 +150,7 @@ func TestGetEntityPage_NotFound(t *testing.T) {
 
 func TestPageUpsert_SourceNotFound(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	_, err := svc.PageUpsert(ctx, "broken.ref", "nonexistent-src")
 	require.Error(t, err)

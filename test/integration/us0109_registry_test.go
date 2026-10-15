@@ -51,7 +51,7 @@ func TestUS0109_CacheThenList(t *testing.T) {
 		ETag:        "etag-123",
 		AutoUpdate:  false,
 	}
-	err := env.svc.Store.Registries().CacheManifest(t.Context(), cache)
+	err := env.driver.Registries().CacheManifest(t.Context(), cache)
 	require.NoError(t, err)
 
 	resp, err := gohttp.Get(env.URL + "/api/v1/steps/registries")
@@ -100,7 +100,7 @@ func TestUS0109_CacheManifestFieldsPreserved(t *testing.T) {
 		ETag:        "etag-fields",
 		AutoUpdate:  true,
 	}
-	err := env.svc.Store.Registries().CacheManifest(t.Context(), cache)
+	err := env.driver.Registries().CacheManifest(t.Context(), cache)
 	require.NoError(t, err)
 
 	resp, err := gohttp.Get(env.URL + "/api/v1/steps/registries")
@@ -166,8 +166,8 @@ func TestUS0109_MultipleCaches(t *testing.T) {
 	}
 
 	ctx := t.Context()
-	require.NoError(t, env.svc.Store.Registries().CacheManifest(ctx, cache1))
-	require.NoError(t, env.svc.Store.Registries().CacheManifest(ctx, cache2))
+	require.NoError(t, env.driver.Registries().CacheManifest(ctx, cache1))
+	require.NoError(t, env.driver.Registries().CacheManifest(ctx, cache2))
 
 	resp, err := gohttp.Get(env.URL + "/api/v1/steps/registries")
 	require.NoError(t, err)

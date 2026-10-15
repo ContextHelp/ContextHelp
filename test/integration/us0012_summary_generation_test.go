@@ -73,7 +73,7 @@ After extensive research, the team decided to adopt a micro-frontend approach.
 This will improve scalability and allow independent deployment of features.
 Next steps include drafting a migration plan by Q2 and piloting with the settings module.`
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  longContent,
 		Type:     "text",
 		Pipeline: "text.summarize",
@@ -125,7 +125,7 @@ func TestUS0012_SectionCountMatchesStructure(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "A long technical document with five major sections covering introduction through conclusion.",
 		Type:     "text",
 		Pipeline: "text.section-count",
@@ -170,7 +170,7 @@ func TestUS0012_SectionsHaveTitleAndContent(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "Background section covers history. Goals section covers objectives.",
 		Type:     "text",
 		Pipeline: "text.section-fields",
@@ -211,7 +211,7 @@ func TestUS0012_SummarizationMethodRecordedInMetadata(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "Content to summarize with method tracking",
 		Type:     "text",
 		Pipeline: "text.summarize-method",

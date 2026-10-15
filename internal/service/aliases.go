@@ -27,11 +27,11 @@ var ErrInvalidAlias = errors.New("invalid alias request")
 
 // aliasStore returns the backend's alias store, or storage.ErrNotImplemented
 // when the backend has none.
-func (s *Service) aliasStore() (storage.AliasStore, error) {
-	if s.Store == nil {
+func (s *Service) aliasStore(ctx context.Context) (storage.AliasStore, error) {
+	if s.store == nil {
 		return nil, fmt.Errorf("aliases: %w", storage.ErrNotImplemented)
 	}
-	st := s.Store.Aliases()
+	st := s.Store(ctx).Aliases()
 	if st == nil {
 		return nil, fmt.Errorf("aliases: %w", storage.ErrNotImplemented)
 	}
@@ -63,7 +63,7 @@ func NormalizeAliasScope(scope, profile string) (string, error) {
 // storage.ErrNotFound) and the (alias, scope, profile) key must be free
 // (ErrAliasExists).
 func (s *Service) CreateAlias(ctx context.Context, alias, objectID, scope, profile string) (*storage.Alias, error) {
-	st, err := s.aliasStore()
+	st, err := s.aliasStore(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +74,7 @@ func (s *Service) CreateAlias(ctx context.Context, alias, objectID, scope, profi
 	if err != nil {
 		return nil, err
 	}
-	if _, err := s.Store.Objects().Get(ctx, objectID); err != nil {
+	if _, err := s.Store(ctx).Objects().Get(ctx, objectID); err != nil {
 		return nil, fmt.Errorf("alias target %s: %w", objectID, err)
 	}
 	existing, err := st.List(ctx, storage.AliasFilter{Scope: scope, Profile: profile})
@@ -100,7 +100,7 @@ func (s *Service) CreateAlias(ctx context.Context, alias, objectID, scope, profi
 
 // ListAliases lists aliases, all of them or those pointing at objectID.
 func (s *Service) ListAliases(ctx context.Context, objectID string) ([]*storage.Alias, error) {
-	st, err := s.aliasStore()
+	st, err := s.aliasStore(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +110,7 @@ func (s *Service) ListAliases(ctx context.Context, objectID string) ([]*storage.
 // ResolveAlias returns the object ID an alias names: the profile alias for
 // profile first, then the global one. A miss wraps storage.ErrNotFound.
 func (s *Service) ResolveAlias(ctx context.Context, alias, profile string) (string, error) {
-	st, err := s.aliasStore()
+	st, err := s.aliasStore(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -120,7 +120,7 @@ func (s *Service) ResolveAlias(ctx context.Context, alias, profile string) (stri
 // DeleteAlias removes the alias with the exact (alias, scope, profile) key.
 // A miss wraps storage.ErrNotFound.
 func (s *Service) DeleteAlias(ctx context.Context, alias, scope, profile string) error {
-	st, err := s.aliasStore()
+	st, err := s.aliasStore(ctx)
 	if err != nil {
 		return err
 	}

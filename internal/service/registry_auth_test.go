@@ -1,7 +1,6 @@
 package service
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -103,7 +102,7 @@ func newAuthSvc(t *testing.T, regURL string, tokens registrysync.TokenSource) *S
 func TestService_RegistryRequestsCarryStoredToken(t *testing.T) {
 	reg := newPaidRegistry(t)
 	svc := newAuthSvc(t, reg.URL, mapTokens{"paid": fakeRegistryToken}.bind(reg.URL))
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	if err := svc.FetchRegistry(ctx, reg.URL); err != nil {
 		t.Errorf("FetchRegistry: %v", err)
@@ -117,7 +116,7 @@ func TestService_RegistryRequestsCarryStoredToken(t *testing.T) {
 	if _, err := svc.SyncAllRegistriesWithReconciliation(ctx, "", nil); err != nil {
 		t.Errorf("SyncAllRegistriesWithReconciliation: %v", err)
 	}
-	if err := svc.Store.Entities().SetContentStatus(ctx, "ai.bert", storage.ContentStatusThin); err != nil {
+	if err := svc.store.Entities().SetContentStatus(ctx, "ai.bert", storage.ContentStatusThin); err != nil {
 		t.Fatalf("mark thin: %v", err)
 	}
 	if _, err := svc.PullEntity(ctx, "ai.bert"); err != nil {
@@ -138,7 +137,7 @@ func TestService_RegistryRequestsCarryStoredToken(t *testing.T) {
 func TestService_RegistryNoToken_LoginHint(t *testing.T) {
 	reg := newPaidRegistry(t)
 	svc := newAuthSvc(t, reg.URL, mapTokens{}.bind(reg.URL))
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	_, err := svc.SyncRegistryEntities(ctx, reg.URL)
 	if err == nil || !strings.Contains(err.Error(), "ctxt registry login paid") {

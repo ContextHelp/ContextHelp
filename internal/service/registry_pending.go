@@ -22,7 +22,7 @@ var ErrPendingSelection = errors.New("invalid pending entity selection")
 // ListPendingEntities returns the entities untrusted registries served
 // that wait for approval; registry, when set, keeps that registry's.
 func (s *Service) ListPendingEntities(ctx context.Context, registry string) ([]*storage.PendingEntity, error) {
-	return s.Store.PendingEntities().List(ctx, storage.PendingEntityFilter{RegistryName: registry})
+	return s.Store(ctx).PendingEntities().List(ctx, storage.PendingEntityFilter{RegistryName: registry})
 }
 
 // PendingSelection picks queued entities: IDs, or every one a registry
@@ -48,7 +48,7 @@ func (s *Service) SelectPendingEntities(ctx context.Context, sel PendingSelectio
 	if sel.All {
 		return s.ListPendingEntities(ctx, sel.Registry)
 	}
-	q := s.Store.PendingEntities()
+	q := s.Store(ctx).PendingEntities()
 	out := make([]*storage.PendingEntity, 0, len(sel.IDs))
 	for _, id := range dedupe(sel.IDs) {
 		p, err := q.Get(ctx, id)
@@ -84,7 +84,7 @@ func (s *Service) ApprovePendingEntities(ctx context.Context, sel PendingSelecti
 		}
 	}
 
-	syncer := registrysync.New(s.Store.Entities()).WithPendingQueue(s.Store.PendingEntities())
+	syncer := registrysync.New(s.Store(ctx).Entities()).WithPendingQueue(s.Store(ctx).PendingEntities())
 	done := make([]*storage.PendingEntity, 0, len(pending))
 	for i, p := range pending {
 		if err := syncer.Approve(ctx, p, modes[i]); err != nil {
@@ -104,7 +104,7 @@ func (s *Service) RejectPendingEntities(ctx context.Context, sel PendingSelectio
 	if err != nil {
 		return nil, err
 	}
-	q := s.Store.PendingEntities()
+	q := s.Store(ctx).PendingEntities()
 	done := make([]*storage.PendingEntity, 0, len(pending))
 	for _, p := range pending {
 		if err := q.Delete(ctx, p.ID); err != nil {

@@ -66,7 +66,7 @@ func (s *Service) CreateLink(ctx context.Context, req LinkRequest) ([]*storage.E
 		return nil, err
 	}
 	for _, end := range [][2]string{{"source", req.Source}, {"target", req.Target}} {
-		if _, err := s.Store.Objects().Get(ctx, end[1]); err != nil {
+		if _, err := s.Store(ctx).Objects().Get(ctx, end[1]); err != nil {
 			return nil, fmt.Errorf("%s object %q: %w", end[0], end[1], err)
 		}
 	}
@@ -87,7 +87,7 @@ func (s *Service) CreateLink(ctx context.Context, req LinkRequest) ([]*storage.E
 		inv, _ := graph.InverseLinkType(lt)
 		edges = append(edges, edge(req.Target, string(inv), req.Source))
 	}
-	if err := s.Store.Edges().CreateAll(ctx, edges); err != nil {
+	if err := s.Store(ctx).Edges().CreateAll(ctx, edges); err != nil {
 		return nil, fmt.Errorf("create link: %w", err)
 	}
 	return edges, nil
@@ -123,7 +123,7 @@ func (s *Service) DeleteLinks(ctx context.Context, source, target, typ string) (
 		inv, _ := graph.InverseLinkType(lt)
 		forward, reverse = []string{string(lt)}, []string{string(inv)}
 	}
-	n, err := s.Store.Edges().DeleteMatching(ctx, []storage.EdgeMatch{
+	n, err := s.Store(ctx).Edges().DeleteMatching(ctx, []storage.EdgeMatch{
 		{FromType: nodeObject, FromID: source, ToType: nodeObject, ToID: target, EdgeTypes: forward},
 		{FromType: nodeObject, FromID: target, ToType: nodeObject, ToID: source, EdgeTypes: reverse},
 	})
@@ -174,7 +174,7 @@ func (s *Service) ListLinks(ctx context.Context, q LinkQuery) ([]LinkHop, error)
 	if q.Depth < 0 || q.Depth > MaxLinkDepth {
 		return nil, invalidLink("depth %d: want 1 to %d", q.Depth, MaxLinkDepth)
 	}
-	if _, err := s.Store.Objects().Get(ctx, q.ObjectID); err != nil {
+	if _, err := s.Store(ctx).Objects().Get(ctx, q.ObjectID); err != nil {
 		return nil, err
 	}
 	if q.Depth == 0 {
@@ -213,7 +213,7 @@ func (s *Service) linkHops(ctx context.Context, q LinkQuery, id string, depth in
 	var out []LinkHop
 	keep := func(e *storage.Edge) bool { return q.Type == "" || e.EdgeType == q.Type }
 	if q.Direction != LinkIn {
-		edges, err := s.Store.Edges().ListFrom(ctx, nodeObject, id)
+		edges, err := s.Store(ctx).Edges().ListFrom(ctx, nodeObject, id)
 		if err != nil {
 			return nil, fmt.Errorf("list outbound links of %s: %w", id, err)
 		}
@@ -224,7 +224,7 @@ func (s *Service) linkHops(ctx context.Context, q LinkQuery, id string, depth in
 		}
 	}
 	if q.Direction != LinkOut {
-		edges, err := s.Store.Edges().ListTo(ctx, nodeObject, id)
+		edges, err := s.Store(ctx).Edges().ListTo(ctx, nodeObject, id)
 		if err != nil {
 			return nil, fmt.Errorf("list inbound links of %s: %w", id, err)
 		}

@@ -36,7 +36,7 @@ func newTestService(t *testing.T) *Service {
 
 func TestAnalyzeDuplicateDrop(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	// First ingestion.
 	req := AnalyzeRequest{Content: "hello duplicate world", Type: "text"}
@@ -54,7 +54,7 @@ func TestAnalyzeDuplicateDrop(t *testing.T) {
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	}
-	require.NoError(t, svc.Store.Objects().Create(ctx, obj))
+	require.NoError(t, svc.store.Objects().Create(ctx, obj))
 
 	// Override config to use drop policy and point hash at known object.
 	svc.Cfg.Duplicates = config.DuplicatesConfig{
@@ -70,7 +70,7 @@ func TestAnalyzeDuplicateDrop(t *testing.T) {
 	assert.Equal(t, "obj-drop-1", result, "drop policy should return existing object ID")
 
 	// Confirm only one object exists.
-	objs, total, err := svc.Store.Objects().List(ctx, storage.ObjectFilter{})
+	objs, total, err := svc.store.Objects().List(ctx, storage.ObjectFilter{})
 	require.NoError(t, err)
 	assert.Equal(t, 1, total, "only one object should exist after drop dedup")
 	assert.Equal(t, "obj-drop-1", objs[0].ID)
@@ -81,7 +81,7 @@ func TestAnalyzeDuplicateDrop(t *testing.T) {
 // pre-compute the hash. This validates the auto-hash wiring added to the Analyze path.
 func TestAnalyzeDuplicateDropAutoHash(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	const content = "auto hash dedup test content"
 	const source = ""
@@ -98,7 +98,7 @@ func TestAnalyzeDuplicateDropAutoHash(t *testing.T) {
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	}
-	require.NoError(t, svc.Store.Objects().Create(ctx, obj))
+	require.NoError(t, svc.store.Objects().Create(ctx, obj))
 
 	// Enable exact dedup with drop policy.
 	svc.Cfg.Duplicates = config.DuplicatesConfig{
@@ -114,7 +114,7 @@ func TestAnalyzeDuplicateDropAutoHash(t *testing.T) {
 
 func TestAnalyze(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	jobID, err := svc.Analyze(ctx, AnalyzeRequest{
 		Content: "hello world",
@@ -156,7 +156,7 @@ func TestAnalyzeUnregisteredPipelineErrors(t *testing.T) {
 	engine := search.NewEngine(driver)
 	svc := New(driver, q, pipes, engine, "", nil)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	_, err := svc.Analyze(ctx, AnalyzeRequest{
 		Content: "%PDF-1.4 stub bytes",
 		Type:    "document",
@@ -183,7 +183,7 @@ func TestEnqueueUnregisteredPipelineErrors(t *testing.T) {
 	engine := search.NewEngine(driver)
 	svc := New(driver, q, pipes, engine, "", nil)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	_, err := svc.Enqueue(ctx, AnalyzeRequest{
 		Content: "%PDF-1.4 stub bytes",
 		Type:    "document",
@@ -195,7 +195,7 @@ func TestEnqueueUnregisteredPipelineErrors(t *testing.T) {
 
 func TestAnalyzeRawFlagSkipsEnrichment(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	id, err := svc.Analyze(ctx, AnalyzeRequest{
 		Content: "raw content no AI",
@@ -207,7 +207,7 @@ func TestAnalyzeRawFlagSkipsEnrichment(t *testing.T) {
 	require.NotEmpty(t, id)
 
 	// Must be stored as a KnowledgeObject directly, not as a job.
-	obj, err := svc.Store.Objects().Get(ctx, id)
+	obj, err := svc.store.Objects().Get(ctx, id)
 	require.NoError(t, err)
 	require.NotNil(t, obj)
 
@@ -223,7 +223,7 @@ func TestAnalyzeRawFlagSkipsEnrichment(t *testing.T) {
 	assert.Empty(t, jobs)
 
 	// Object must appear in status=raw filter.
-	objs, count, err := svc.Store.Objects().List(ctx, storage.ObjectFilter{Status: "raw"})
+	objs, count, err := svc.store.Objects().List(ctx, storage.ObjectFilter{Status: "raw"})
 	require.NoError(t, err)
 	assert.Equal(t, 1, count)
 	assert.Equal(t, id, objs[0].ID)
@@ -233,7 +233,7 @@ func TestAnalyzeRawFlagSkipsEnrichment(t *testing.T) {
 // directly on the KnowledgeObject (no pipeline runs in --raw mode).
 func TestAnalyzeRawWithHintsPopulatesUserTags(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	id, err := svc.Analyze(ctx, AnalyzeRequest{
 		Content: "raw with hints",
@@ -245,7 +245,7 @@ func TestAnalyzeRawWithHintsPopulatesUserTags(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, id)
 
-	obj, err := svc.Store.Objects().Get(ctx, id)
+	obj, err := svc.store.Objects().Get(ctx, id)
 	require.NoError(t, err)
 	require.NotNil(t, obj)
 
@@ -262,7 +262,7 @@ func TestAnalyzeRawWithHintsPopulatesUserTags(t *testing.T) {
 // at the JSON decode boundary.
 func TestAnalyzeRawWithProfileAndNote(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	id, err := svc.Analyze(ctx, AnalyzeRequest{
 		Content: "raw with profile + note",
@@ -275,7 +275,7 @@ func TestAnalyzeRawWithProfileAndNote(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, id)
 
-	obj, err := svc.Store.Objects().Get(ctx, id)
+	obj, err := svc.store.Objects().Get(ctx, id)
 	require.NoError(t, err)
 	require.NotNil(t, obj)
 
@@ -290,7 +290,7 @@ func TestAnalyzeRawWithProfileAndNote(t *testing.T) {
 // in the worker package's own tests.
 func TestAnalyzePipelineForwardsProfileAndNoteToJob(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	jobID, err := svc.Analyze(ctx, AnalyzeRequest{
 		Content: "pipeline path with profile + note",
@@ -302,7 +302,7 @@ func TestAnalyzePipelineForwardsProfileAndNoteToJob(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, jobID)
 
-	job, err := svc.Store.Jobs().Get(ctx, jobID)
+	job, err := svc.store.Jobs().Get(ctx, jobID)
 	require.NoError(t, err)
 	require.NotNil(t, job)
 	assert.Equal(t, "founder", job.UserProfile)
@@ -311,7 +311,7 @@ func TestAnalyzePipelineForwardsProfileAndNoteToJob(t *testing.T) {
 
 func TestGetObject(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	now := time.Now().Truncate(time.Second)
 	obj := &storage.KnowledgeObject{
@@ -320,7 +320,7 @@ func TestGetObject(t *testing.T) {
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	svc.Store.Objects().Create(ctx, obj)
+	svc.store.Objects().Create(ctx, obj)
 
 	got, err := svc.GetObject(ctx, "obj-1")
 	if err != nil {
@@ -333,7 +333,7 @@ func TestGetObject(t *testing.T) {
 
 func TestListObjects(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	now := time.Now().Truncate(time.Second)
 	for i := 0; i < 3; i++ {
@@ -343,7 +343,7 @@ func TestListObjects(t *testing.T) {
 			CreatedAt: now,
 			UpdatedAt: now,
 		}
-		svc.Store.Objects().Create(ctx, obj)
+		svc.store.Objects().Create(ctx, obj)
 	}
 
 	objs, total, err := svc.ListObjects(ctx, storage.ObjectFilter{Type: "article", Limit: 10})
@@ -360,7 +360,7 @@ func TestListObjects(t *testing.T) {
 
 func TestUpdateObject(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	now := time.Now().Truncate(time.Second)
 	obj := &storage.KnowledgeObject{
@@ -369,7 +369,7 @@ func TestUpdateObject(t *testing.T) {
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	svc.Store.Objects().Create(ctx, obj)
+	svc.store.Objects().Create(ctx, obj)
 
 	obj.Type = "note"
 	obj.UpdatedAt = time.Now().Truncate(time.Second)
@@ -385,7 +385,7 @@ func TestUpdateObject(t *testing.T) {
 
 func TestDeleteObject(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	now := time.Now().Truncate(time.Second)
 	obj := &storage.KnowledgeObject{
@@ -394,7 +394,7 @@ func TestDeleteObject(t *testing.T) {
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	svc.Store.Objects().Create(ctx, obj)
+	svc.store.Objects().Create(ctx, obj)
 
 	if err := svc.DeleteObject(ctx, "obj-1"); err != nil {
 		t.Fatalf("delete: %v", err)
@@ -408,13 +408,13 @@ func TestDeleteObject(t *testing.T) {
 
 func TestSearchObjects(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	now := time.Now().Truncate(time.Second)
-	svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+	svc.store.Objects().Create(ctx, &storage.KnowledgeObject{
 		ID: "obj-1", Type: "article", CreatedAt: now, UpdatedAt: now,
 	})
-	svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+	svc.store.Objects().Create(ctx, &storage.KnowledgeObject{
 		ID: "obj-2", Type: "note", CreatedAt: now, UpdatedAt: now,
 	})
 
@@ -432,7 +432,7 @@ func TestSearchObjects(t *testing.T) {
 
 func TestGetJob(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	jobID, _ := svc.Analyze(ctx, AnalyzeRequest{Content: "test", Type: "text", Source: "cli"})
 
@@ -447,7 +447,7 @@ func TestGetJob(t *testing.T) {
 
 func TestListJobs(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	svc.Analyze(ctx, AnalyzeRequest{Content: "a", Type: "text", Source: "cli"})
 	svc.Analyze(ctx, AnalyzeRequest{Content: "b", Type: "text", Source: "cli"})
@@ -467,7 +467,7 @@ func TestListJobs(t *testing.T) {
 
 func TestRetryJob(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	jobID, _ := svc.Analyze(ctx, AnalyzeRequest{Content: "test", Type: "text", Source: "cli"})
 
@@ -487,10 +487,10 @@ func TestRetryJob(t *testing.T) {
 
 func TestGetEntity(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	now := time.Now().Truncate(time.Second)
-	svc.Store.Entities().Upsert(ctx, &storage.Entity{
+	svc.store.Entities().Upsert(ctx, &storage.Entity{
 		Slug: "@ui.layout", Title: "UI Layout", CreatedAt: now, UpdatedAt: now,
 	})
 
@@ -505,14 +505,14 @@ func TestGetEntity(t *testing.T) {
 
 func TestEntityBacklinks(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	now := time.Now().Truncate(time.Second)
-	svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+	svc.store.Objects().Create(ctx, &storage.KnowledgeObject{
 		ID: "obj-1", Type: "article", CreatedAt: now, UpdatedAt: now,
 	})
 
-	svc.Store.Edges().Create(ctx, &storage.Edge{
+	svc.store.Edges().Create(ctx, &storage.Edge{
 		ID:       "edge-1",
 		FromType: "object", FromID: "obj-1",
 		ToType: "entity", ToID: "ctxt://entity/ui/layout",
@@ -540,13 +540,13 @@ func seedEntities(ctx context.Context, t *testing.T, svc *Service) {
 		{Slug: "@api.auth", Title: "API Auth", Namespace: "api", CreatedAt: now, UpdatedAt: now},
 	}
 	for _, e := range entities {
-		require.NoError(t, svc.Store.Entities().Upsert(ctx, e))
+		require.NoError(t, svc.store.Entities().Upsert(ctx, e))
 	}
 }
 
 func TestListEntities(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	seedEntities(ctx, t, svc)
 
 	got, err := svc.ListEntities(ctx, storage.EntityFilter{})
@@ -563,7 +563,7 @@ func TestListEntities(t *testing.T) {
 
 func TestListEntitiesFilterByNamespace(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	seedEntities(ctx, t, svc)
 
 	got, err := svc.ListEntities(ctx, storage.EntityFilter{Namespace: "ui"})
@@ -577,7 +577,7 @@ func TestListEntitiesFilterByNamespace(t *testing.T) {
 
 func TestListEntitiesWithLimit(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	seedEntities(ctx, t, svc)
 
 	got, err := svc.ListEntities(ctx, storage.EntityFilter{Limit: 1})
@@ -589,7 +589,7 @@ func TestListEntitiesWithLimit(t *testing.T) {
 
 func TestListEntitiesEmpty(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	got, err := svc.ListEntities(ctx, storage.EntityFilter{})
 	require.NoError(t, err)
@@ -618,14 +618,14 @@ func seedObjectsForCompose(ctx context.Context, t *testing.T, svc *Service) []*s
 
 	objs := []*storage.KnowledgeObject{obj1, obj2}
 	for _, obj := range objs {
-		require.NoError(t, svc.Store.Objects().Create(ctx, obj))
+		require.NoError(t, svc.store.Objects().Create(ctx, obj))
 	}
 	return objs
 }
 
 func TestCompose_BasicOutput(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	objs := seedObjectsForCompose(ctx, t, svc)
 
 	result, err := svc.Compose(ctx, objs, "brief")
@@ -637,7 +637,7 @@ func TestCompose_BasicOutput(t *testing.T) {
 
 func TestCompose_EmptyObjects(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	result, err := svc.Compose(ctx, nil, "brief")
 	require.NoError(t, err)
@@ -646,7 +646,7 @@ func TestCompose_EmptyObjects(t *testing.T) {
 
 func TestComposeWithCitations_ReturnsCitationResult(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	objs := seedObjectsForCompose(ctx, t, svc)
 
 	result, err := svc.ComposeWithCitations(ctx, objs, "brief")
@@ -659,7 +659,7 @@ func TestComposeWithCitations_ReturnsCitationResult(t *testing.T) {
 
 func TestComposeWithCitations_IncludesReferenceTable(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	objs := seedObjectsForCompose(ctx, t, svc)
 
 	result, err := svc.ComposeWithCitations(ctx, objs, "brief")
@@ -671,7 +671,7 @@ func TestComposeWithCitations_IncludesReferenceTable(t *testing.T) {
 
 func TestComposeWithCitations_CitationsSlice(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	objs := seedObjectsForCompose(ctx, t, svc)
 
 	result, err := svc.ComposeWithCitations(ctx, objs, "brief")
@@ -682,7 +682,7 @@ func TestComposeWithCitations_CitationsSlice(t *testing.T) {
 
 func TestComposeWithCitations_EntitiesEnriched(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	objs := seedObjectsForCompose(ctx, t, svc)
 
 	result, err := svc.ComposeWithCitations(ctx, objs, "brief")
@@ -701,7 +701,7 @@ func TestComposeWithCitations_EntitiesEnriched(t *testing.T) {
 
 func TestComposeWithCitations_SourceIDs(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	objs := seedObjectsForCompose(ctx, t, svc)
 
 	result, err := svc.ComposeWithCitations(ctx, objs, "brief")
@@ -712,7 +712,7 @@ func TestComposeWithCitations_SourceIDs(t *testing.T) {
 
 func TestComposeWithCitations_CompositionType(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	objs := seedObjectsForCompose(ctx, t, svc)
 
 	result, err := svc.ComposeWithCitations(ctx, objs, "plan")
@@ -722,12 +722,12 @@ func TestComposeWithCitations_CompositionType(t *testing.T) {
 
 func TestRelatedObjects(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now().Truncate(time.Second)
 
 	// Seed three objects.
 	for _, id := range []string{"ro-1", "ro-2", "ro-3"} {
-		require.NoError(t, svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+		require.NoError(t, svc.store.Objects().Create(ctx, &storage.KnowledgeObject{
 			ID: id, Type: "note", CreatedAt: now, UpdatedAt: now,
 		}))
 	}
@@ -740,9 +740,9 @@ func TestRelatedObjects(t *testing.T) {
 			Weight: 1.0, CreatedAt: now,
 		}
 	}
-	require.NoError(t, svc.Store.Edges().Create(ctx, mkEdge("re1", "ro-1", "entity-X")))
-	require.NoError(t, svc.Store.Edges().Create(ctx, mkEdge("re2", "ro-2", "entity-X")))
-	require.NoError(t, svc.Store.Edges().Create(ctx, mkEdge("re3", "ro-3", "entity-Y")))
+	require.NoError(t, svc.store.Edges().Create(ctx, mkEdge("re1", "ro-1", "entity-X")))
+	require.NoError(t, svc.store.Edges().Create(ctx, mkEdge("re2", "ro-2", "entity-X")))
+	require.NoError(t, svc.store.Edges().Create(ctx, mkEdge("re3", "ro-3", "entity-Y")))
 
 	related, err := svc.RelatedObjects(ctx, "ro-1", 1, 0)
 	require.NoError(t, err)
@@ -753,25 +753,25 @@ func TestRelatedObjects(t *testing.T) {
 
 func TestRelatedObjectsDefaultLimit(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now().Truncate(time.Second)
 
 	// Seed seed + 12 related objects sharing entity-X.
-	require.NoError(t, svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+	require.NoError(t, svc.store.Objects().Create(ctx, &storage.KnowledgeObject{
 		ID: "seed", Type: "note", CreatedAt: now, UpdatedAt: now,
 	}))
 	for i := 0; i < 12; i++ {
 		id := fmt.Sprintf("peer-%02d", i)
-		require.NoError(t, svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+		require.NoError(t, svc.store.Objects().Create(ctx, &storage.KnowledgeObject{
 			ID: id, Type: "note", CreatedAt: now, UpdatedAt: now,
 		}))
-		require.NoError(t, svc.Store.Edges().Create(ctx, &storage.Edge{
+		require.NoError(t, svc.store.Edges().Create(ctx, &storage.Edge{
 			ID: "e-" + id, FromType: "object", FromID: id,
 			ToType: "entity", ToID: "entity-X", EdgeType: "mentions",
 			Weight: 1.0, CreatedAt: now,
 		}))
 	}
-	require.NoError(t, svc.Store.Edges().Create(ctx, &storage.Edge{
+	require.NoError(t, svc.store.Edges().Create(ctx, &storage.Edge{
 		ID: "e-seed", FromType: "object", FromID: "seed",
 		ToType: "entity", ToID: "entity-X", EdgeType: "mentions",
 		Weight: 1.0, CreatedAt: now,
@@ -834,13 +834,13 @@ func TestObjectSnippet_Empty(t *testing.T) {
 
 func TestSearchObjectsNodeAware_NoFilter(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	now := time.Now().Truncate(time.Second)
-	require.NoError(t, svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+	require.NoError(t, svc.store.Objects().Create(ctx, &storage.KnowledgeObject{
 		ID: "na-1", Type: "note", CreatedAt: now, UpdatedAt: now,
 	}))
-	require.NoError(t, svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+	require.NoError(t, svc.store.Objects().Create(ctx, &storage.KnowledgeObject{
 		ID: "na-2", Type: "note", CreatedAt: now, UpdatedAt: now,
 	}))
 
@@ -852,19 +852,19 @@ func TestSearchObjectsNodeAware_NoFilter(t *testing.T) {
 
 func TestSearchObjectsNodeAware_NodeTypeFilter(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	graphObj := storageutil.BuildGraphKO("graph-obj", "note", "hello graph world", "tag1")
 	now := time.Now().Truncate(time.Second)
 	graphObj.CreatedAt = now
 	graphObj.UpdatedAt = now
-	require.NoError(t, svc.Store.Objects().Create(ctx, graphObj))
+	require.NoError(t, svc.store.Objects().Create(ctx, graphObj))
 
 	flatObj := &storage.KnowledgeObject{
 		ID: "flat-obj", Type: "note", TextContent: "hello flat world",
 		CreatedAt: now, UpdatedAt: now,
 	}
-	require.NoError(t, svc.Store.Objects().Create(ctx, flatObj))
+	require.NoError(t, svc.store.Objects().Create(ctx, flatObj))
 
 	filter := &storage.NodeAwareFilter{
 		NodeTypes: []string{string(storage.NodeTypeSummary)},
@@ -883,10 +883,10 @@ func TestSearchObjectsNodeAware_NodeTypeFilter(t *testing.T) {
 
 func TestHybridSearchExplain_PopulatesDocumentView(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	obj := makeSearchObject("dv-1", []string{"document view test content"}, "")
-	require.NoError(t, svc.Store.Objects().Create(ctx, obj))
+	require.NoError(t, svc.store.Objects().Create(ctx, obj))
 
 	// Rebuild FTS index so the object is findable.
 	rebuildFTS(t, svc)
@@ -934,7 +934,7 @@ func newTestServiceWithDetector(t *testing.T, sourcePfx, pipelineName string) *S
 // fire correctly. Regression test.
 func TestAnalyzeUsesSourceForPipelineDetection(t *testing.T) {
 	svc := newTestServiceWithDetector(t, "/vault/notes/", "watch.file")
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	jobID, err := svc.Analyze(ctx, AnalyzeRequest{
 		Content: "some text that would normally resolve to text.short",
@@ -954,7 +954,7 @@ func TestAnalyzeUsesSourceForPipelineDetection(t *testing.T) {
 // the real source to Detect. Regression test.
 func TestEnqueueUsesSourceForPipelineDetection(t *testing.T) {
 	svc := newTestServiceWithDetector(t, "https://example.com/", "url.ingest")
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	jobID, err := svc.Enqueue(ctx, AnalyzeRequest{
 		Content: "page body text",
@@ -974,7 +974,7 @@ func TestEnqueueUsesSourceForPipelineDetection(t *testing.T) {
 // passes the stored object's Source to Detect. Regression test.
 func TestTriageInboxUsesSourceForPipelineDetection(t *testing.T) {
 	svc := newTestServiceWithDetector(t, "/drop/", "drop.file")
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	// Capture an inbox item with a file source.
 	obj, err := svc.CaptureToInbox(ctx, InboxCaptureRequest{
@@ -1002,7 +1002,7 @@ func TestTriageInboxUsesSourceForPipelineDetection(t *testing.T) {
 // the worker pool), so we drive that path here.
 func TestAnalyze_HonorsExplicitMentions(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	objID, err := svc.Analyze(ctx, AnalyzeRequest{
 		Content:  "this is plain content with no @-mentions inline",
@@ -1023,7 +1023,7 @@ func TestAnalyze_HonorsExplicitMentions(t *testing.T) {
 
 	// Two thin entity rows exist for the asserted slugs.
 	for _, slug := range []string{"client/acme", "project/foo"} {
-		ent, err := svc.Store.Entities().Get(ctx, slug)
+		ent, err := svc.store.Entities().Get(ctx, slug)
 		require.NoError(t, err, "Entities.Get(%q)", slug)
 		require.NotNil(t, ent, "entity %q must exist after analyze --mentions", slug)
 		assert.Equal(t, storage.ContentStatusThin, ent.ContentStatus,
@@ -1033,7 +1033,7 @@ func TestAnalyze_HonorsExplicitMentions(t *testing.T) {
 	// Two object→entity 'mentions' edges exist, one per slug, each
 	// recording that the raw path knows the mention from the mentions
 	// field only: no pipeline ran, so no entity_mention node holds it.
-	edges, err := svc.Store.Edges().ListFrom(ctx, "object", objID)
+	edges, err := svc.store.Edges().ListFrom(ctx, "object", objID)
 	require.NoError(t, err)
 	mentionTargets := map[string]bool{}
 	for _, e := range edges {
@@ -1056,7 +1056,7 @@ func TestAnalyze_HonorsExplicitMentions(t *testing.T) {
 // so the worker can pre-populate draft.Mentions before entity_extractor runs.
 func TestAnalyze_PipelineModePersistsUserMentions(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	jobID, err := svc.Analyze(ctx, AnalyzeRequest{
 		Content:  "no inline @mentions here either",
@@ -1078,7 +1078,7 @@ func TestAnalyze_PipelineModePersistsUserMentions(t *testing.T) {
 // enqueued — response loss after enqueue must not duplicate the payload.
 func TestAnalyzeIdempotencyKeyDedupes(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	req := AnalyzeRequest{
 		Content: "submit once", Type: "text", Source: "cli",
@@ -1102,7 +1102,7 @@ func TestAnalyzeIdempotencyKeyDedupes(t *testing.T) {
 // submissions — both enqueue.
 func TestAnalyzeIdempotencyKeyDistinctKeys(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	id1, err := svc.Analyze(ctx, AnalyzeRequest{
 		Content: "same payload", Type: "text", Source: "cli",
@@ -1121,7 +1121,7 @@ func TestAnalyzeIdempotencyKeyDistinctKeys(t *testing.T) {
 // semantics — every call enqueues.
 func TestAnalyzeNoIdempotencyKeyNoDedupe(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	id1, err := svc.Analyze(ctx, AnalyzeRequest{Content: "legacy", Type: "text", Source: "cli", Force: true})
 	require.NoError(t, err)
@@ -1134,7 +1134,7 @@ func TestAnalyzeNoIdempotencyKeyNoDedupe(t *testing.T) {
 // the same way Analyze does.
 func TestEnqueueIdempotencyKeyDedupes(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	req := AnalyzeRequest{
 		Content: "enqueue once", Type: "text", Source: "cli",
@@ -1155,7 +1155,7 @@ func TestEnqueueIdempotencyKeyDedupes(t *testing.T) {
 // second daemon over the same database can honor the dedupe.
 func TestAnalyzeIdempotencyKeyPersistedOnJob(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	id, err := svc.Analyze(ctx, AnalyzeRequest{
 		Content: "keyed", Type: "text", Source: "cli",
@@ -1163,7 +1163,7 @@ func TestAnalyzeIdempotencyKeyPersistedOnJob(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	job, err := svc.Store.Jobs().Get(ctx, id)
+	job, err := svc.store.Jobs().Get(ctx, id)
 	require.NoError(t, err)
 	assert.Equal(t, "idem-persist", job.IdempotencyKey)
 }

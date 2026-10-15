@@ -43,7 +43,7 @@ func TestServicePublishesKitTopics(t *testing.T) {
 	svc := newTestService(t)
 	rec := &recordingBus{}
 	svc.Bus = rec
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	steps := []struct {
 		name string

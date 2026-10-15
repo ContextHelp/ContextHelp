@@ -53,11 +53,11 @@ func (o blobLostOnWriteObjects) Update(ctx context.Context, obj *storage.Knowled
 // requireContent fails unless object id's content resolves to want.
 func requireContent(t *testing.T, svc *Service, id, want string) {
 	t.Helper()
-	ctx := context.Background()
-	obj, err := svc.Store.Objects().Get(ctx, id)
+	ctx := ownerCtx()
+	obj, err := svc.store.Objects().Get(ctx, id)
 	require.NoError(t, err)
 	require.True(t, blob.IsBlobRef(obj.RawContent), "content not externalized")
-	got, err := blob.Content(ctx, svc.Store.Blobs(), obj.RawContent)
+	got, err := blob.Content(ctx, svc.store.Blobs(), obj.RawContent)
 	require.NoError(t, err, "the written row names a deleted blob")
 	require.Equal(t, want, got)
 }
@@ -66,11 +66,11 @@ func requireContent(t *testing.T, svc *Service, id, want string) {
 // puts the blob back once the row is written: federation receive and
 // object updates (re-analysis goes through the same blob.UpdateObject).
 func TestBlobDeletedBeforeRowLandsIsPutBack(t *testing.T) {
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	t.Run("federation accept", func(t *testing.T) {
 		svc := blobTestService(t)
-		svc.Store = blobLostOnWriteDriver{StorageDriver: svc.Store}
+		svc.store = blobLostOnWriteDriver{StorageDriver: svc.store}
 		body := bigBody(4 * testBlobThreshold)
 		now := time.Now().UTC().Truncate(time.Second)
 		n, err := svc.FederationAccept(ctx, []storage.KnowledgeObject{{
@@ -85,8 +85,8 @@ func TestBlobDeletedBeforeRowLandsIsPutBack(t *testing.T) {
 	t.Run("update", func(t *testing.T) {
 		svc := blobTestService(t)
 		seedBlobObject(t, svc, "upd-race", bigBody(2*testBlobThreshold))
-		svc.Store = blobLostOnWriteDriver{StorageDriver: svc.Store}
-		obj, err := svc.Store.Objects().Get(ctx, "upd-race")
+		svc.store = blobLostOnWriteDriver{StorageDriver: svc.store}
+		obj, err := svc.store.Objects().Get(ctx, "upd-race")
 		require.NoError(t, err)
 		body := "replaced " + bigBody(3*testBlobThreshold)
 		obj.RawContent, obj.TextContent = body, ""

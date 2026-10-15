@@ -10,7 +10,6 @@ package integration
 // Gate: INTEGRATION=1 env var required to run.
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	gohttp "net/http"
@@ -273,7 +272,7 @@ func TestUS0037_SearchEndpointAcceptsRSQLQuery(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 
 	// Seed objects of different types so the agent can discover what's queryable.
@@ -282,7 +281,7 @@ func TestUS0037_SearchEndpointAcceptsRSQLQuery(t *testing.T) {
 		{"schema-obj-2", "decision"},
 		{"schema-obj-3", "note"},
 	} {
-		require.NoError(t, env.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+		require.NoError(t, env.driver.Objects().Create(ctx, &storage.KnowledgeObject{
 			ID:        tc.id,
 			Type:      tc.typ,
 			CreatedAt: now,

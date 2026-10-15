@@ -1,11 +1,20 @@
 package service_test
 
 import (
+	"context"
 	"os"
 	"testing"
 
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/testguard"
 )
+
+// ownerCtx is the context the external tests act under: the owner's,
+// unrestricted. A bare context carries no viewer and fails every read
+// closed.
+func ownerCtx() context.Context {
+	return sharing.WithViewer(context.Background(), sharing.Unrestricted)
+}
 
 // TestMain isolates the package from the developer's machine and swaps
 // the OS keychain for go-keyring's in-memory mock: with HOME sandboxed,

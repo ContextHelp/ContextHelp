@@ -150,7 +150,7 @@ func (s *Service) UpdateTopicIndexIncremental(
 
 // buildIndex scans all objects and groups by topic.
 func (s *Service) buildIndex(ctx context.Context) (*TopicIndex, error) {
-	objects, _, err := s.Store.Objects().List(ctx, storage.ObjectFilter{
+	objects, _, err := s.Store(ctx).Objects().List(ctx, storage.ObjectFilter{
 		Limit:  10000,
 		Status: "all",
 	})
@@ -215,7 +215,7 @@ func (s *Service) storeIndex(
 	if existing != nil {
 		existing.RawContent = string(data)
 		existing.UpdatedAt = now
-		if err := s.Store.Objects().Update(ctx, existing); err != nil {
+		if err := s.Store(ctx).Objects().Update(ctx, existing); err != nil {
 			return "", fmt.Errorf("update topic index: %w", err)
 		}
 		return existing.ID, nil
@@ -229,7 +229,7 @@ func (s *Service) storeIndex(
 		CreatedAt:  now,
 		UpdatedAt:  now,
 	}
-	if err := s.Store.Objects().Create(ctx, obj); err != nil {
+	if err := s.Store(ctx).Objects().Create(ctx, obj); err != nil {
 		return "", fmt.Errorf("create topic index: %w", err)
 	}
 	return obj.ID, nil
@@ -239,7 +239,7 @@ func (s *Service) storeIndex(
 func (s *Service) getIndexObject(
 	ctx context.Context,
 ) (*storage.KnowledgeObject, error) {
-	objects, _, err := s.Store.Objects().List(ctx, storage.ObjectFilter{
+	objects, _, err := s.Store(ctx).Objects().List(ctx, storage.ObjectFilter{
 		Type:   TopicIndexType,
 		Limit:  1,
 		Status: "all",

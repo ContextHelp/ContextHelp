@@ -5,7 +5,6 @@ package integration
 // results from all profiles are present.
 
 import (
-	"context"
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -19,12 +18,12 @@ func TestUS0053_GlobalSearchIncludesAllProfiles(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 
 	profiles := []string{"alpha", "beta", "gamma"}
 	for i, p := range profiles {
-		require.NoError(t, env.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+		require.NoError(t, env.driver.Objects().Create(ctx, &storage.KnowledgeObject{
 			ID:        "cp-obj-" + string(rune('a'+i)),
 			Type:      "text",
 			ProfileID: p,
@@ -33,7 +32,7 @@ func TestUS0053_GlobalSearchIncludesAllProfiles(t *testing.T) {
 		}))
 	}
 	// Also add a global (no profile) object.
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+	require.NoError(t, env.driver.Objects().Create(ctx, &storage.KnowledgeObject{
 		ID: "cp-global", Type: "text", CreatedAt: now, UpdatedAt: now,
 	}))
 
@@ -52,7 +51,7 @@ func TestUS0053_PerProfileSearchReturnsIsolatedResults(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 
 	for _, tc := range []struct{ id, profile string }{
@@ -60,7 +59,7 @@ func TestUS0053_PerProfileSearchReturnsIsolatedResults(t *testing.T) {
 		{"cp-iso-eng-2", "engineering"},
 		{"cp-iso-sec-1", "security"},
 	} {
-		require.NoError(t, env.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+		require.NoError(t, env.driver.Objects().Create(ctx, &storage.KnowledgeObject{
 			ID:        tc.id,
 			Type:      "note",
 			ProfileID: tc.profile,
@@ -89,14 +88,14 @@ func TestUS0053_AggregatedSearchViaHTTP(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 
 	for _, tc := range []struct{ id, profile string }{
 		{"cp-http-a", "p1"},
 		{"cp-http-b", "p2"},
 	} {
-		require.NoError(t, env.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+		require.NoError(t, env.driver.Objects().Create(ctx, &storage.KnowledgeObject{
 			ID:        tc.id,
 			Type:      "article",
 			ProfileID: tc.profile,

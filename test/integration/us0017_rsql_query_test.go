@@ -5,7 +5,6 @@ package integration
 // exact result sets.
 
 import (
-	"context"
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -18,7 +17,7 @@ func TestUS0017_RSQLTypeFilter(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 
 	for _, tc := range []struct{ id, typ string }{
@@ -26,7 +25,7 @@ func TestUS0017_RSQLTypeFilter(t *testing.T) {
 		{"rsql-dec-2", "decision"},
 		{"rsql-note-1", "note"},
 	} {
-		require.NoError(t, env.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+		require.NoError(t, env.driver.Objects().Create(ctx, &storage.KnowledgeObject{
 			ID:        tc.id,
 			Type:      tc.typ,
 			CreatedAt: now,
@@ -48,7 +47,7 @@ func TestUS0017_RSQLMultipleTypes(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 
 	for _, tc := range []struct{ id, typ string }{
@@ -56,7 +55,7 @@ func TestUS0017_RSQLMultipleTypes(t *testing.T) {
 		{"rsql-multi-b", "note"},
 		{"rsql-multi-c", "decision"},
 	} {
-		require.NoError(t, env.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+		require.NoError(t, env.driver.Objects().Create(ctx, &storage.KnowledgeObject{
 			ID:        tc.id,
 			Type:      tc.typ,
 			CreatedAt: now,
@@ -79,7 +78,7 @@ func TestUS0017_RSQLInvalidExpressionReturnsError(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	_, _, err := env.svc.SearchObjects(ctx, "!!invalid!!", 20, 0)
 	require.Error(t, err, "malformed RSQL must return an error")
 }
@@ -90,13 +89,13 @@ func TestUS0017_RSQLViaHTTPEndpoint(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+	require.NoError(t, env.driver.Objects().Create(ctx, &storage.KnowledgeObject{
 		ID: "rsql-http-1", Type: "article", CreatedAt: now, UpdatedAt: now,
 	}))
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+	require.NoError(t, env.driver.Objects().Create(ctx, &storage.KnowledgeObject{
 		ID: "rsql-http-2", Type: "note", CreatedAt: now, UpdatedAt: now,
 	}))
 
@@ -116,13 +115,13 @@ func TestUS0017_RSQLProfileScopeRestrictsResults(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+	require.NoError(t, env.driver.Objects().Create(ctx, &storage.KnowledgeObject{
 		ID: "rsql-prof-a", Type: "note", ProfileID: "alpha", CreatedAt: now, UpdatedAt: now,
 	}))
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+	require.NoError(t, env.driver.Objects().Create(ctx, &storage.KnowledgeObject{
 		ID: "rsql-prof-b", Type: "note", ProfileID: "beta", CreatedAt: now, UpdatedAt: now,
 	}))
 

@@ -2,7 +2,6 @@ package service
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -64,7 +63,7 @@ func reanalyzeService(t *testing.T, driver storage.StorageDriver, models embeddi
 func seedReanalyzeObject(t *testing.T, driver storage.StorageDriver, id string) {
 	t.Helper()
 	now := time.Now().Truncate(time.Second)
-	if err := driver.Objects().Create(context.Background(), &storage.KnowledgeObject{
+	if err := driver.Objects().Create(ownerCtx(), &storage.KnowledgeObject{
 		ID:         id,
 		Type:       "text",
 		RawContent: "numbat sightings near the dryandra woodland",
@@ -86,7 +85,7 @@ func constVector(dim int, v float32) []float32 {
 
 func putStale(t *testing.T, store storage.EmbeddingStore, id string) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := ownerCtx()
 	for _, m := range []registry.Model{reDefault, reOther} {
 		if err := store.Put(ctx, id, []storage.ObjectVector{{ModelID: m.ModelID, Vector: constVector(m.Dimension, 0.5)}}); err != nil {
 			t.Fatalf("seed stale %s: %v", m.ModelID, err)
@@ -96,7 +95,7 @@ func putStale(t *testing.T, store storage.EmbeddingStore, id string) {
 
 func rowsFor(t *testing.T, store storage.EmbeddingStore, id, modelID string) []storage.ObjectVector {
 	t.Helper()
-	rows, err := store.Get(context.Background(), id, modelID)
+	rows, err := store.Get(ownerCtx(), id, modelID)
 	if err != nil {
 		t.Fatalf("Get(%s, %s): %v", id, modelID, err)
 	}
@@ -132,7 +131,7 @@ func TestReanalyzeObject_ReplacesVectors(t *testing.T) {
 	driver := storageutil.NewTestDriver(t)
 	store := embeddingtest.NewMemStore()
 	for _, m := range []registry.Model{reDefault, reCandidate, reOther} {
-		if err := store.EnsureIndex(context.Background(), embeddings.SpecFor(m)); err != nil {
+		if err := store.EnsureIndex(ownerCtx(), embeddings.SpecFor(m)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -140,7 +139,7 @@ func TestReanalyzeObject_ReplacesVectors(t *testing.T) {
 	putStale(t, store, "re-1")
 
 	svc := reanalyzeService(t, driver, embeddingtest.Models{reDefault, reCandidate}, store)
-	if _, _, err := svc.ReanalyzeObject(context.Background(), "re-1"); err != nil {
+	if _, _, err := svc.ReanalyzeObject(ownerCtx(), "re-1"); err != nil {
 		t.Fatalf("reanalyze: %v", err)
 	}
 	assertReplaced(t, store, "re-1")
@@ -158,7 +157,7 @@ func TestReanalyzeObject_PutFailureIsNotAnError(t *testing.T) {
 	seedReanalyzeObject(t, driver, "re-2")
 
 	svc := reanalyzeService(t, driver, embeddingtest.Models{reDefault}, store)
-	if _, _, err := svc.ReanalyzeObject(context.Background(), "re-2"); err != nil {
+	if _, _, err := svc.ReanalyzeObject(ownerCtx(), "re-2"); err != nil {
 		t.Fatalf("a failed vector write failed reanalyze: %v", err)
 	}
 	if store.Puts() != 1 {
@@ -177,7 +176,7 @@ func TestReanalyzeObject_ReplacesVectorsSQLite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx := context.Background()
+	ctx := ownerCtx()
 	for _, m := range []registry.Model{reDefault, reCandidate, reOther} {
 		if err := reg.Register(ctx, m, m.IsDefault); err != nil {
 			t.Fatalf("register %s: %v", m.ModelID, err)

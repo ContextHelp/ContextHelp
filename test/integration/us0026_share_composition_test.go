@@ -44,7 +44,7 @@ func TestUS0026_ShareEventRecordedOnBus(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	// Register a subscriber for composition share events.
 	received := make(chan events.Event, 1)
@@ -105,7 +105,7 @@ func TestUS0026_CompositionObjectAccessibleAfterIngest(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	env.svc.Pipes.Upsert("share.accessible", &pipeline.Pipeline{
 		PipelineName: "share.accessible",
@@ -144,7 +144,7 @@ func TestUS0026_MultipleObjectsComposedAndAccessible(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	summaries := []string{
 		"Backend team completed API redesign.",
@@ -199,7 +199,7 @@ func TestUS0026_ShareLinkContainsObjectReference(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	env.svc.Pipes.Upsert("share.link", &pipeline.Pipeline{
 		PipelineName: "share.link",

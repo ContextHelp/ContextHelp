@@ -68,8 +68,8 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	lcfg.StaleDays = staleDays
 	lcfg.DuplicateThresh = dupThresh
 
-	linter := lint.New(svc.Store, lcfg)
-	ctx := context.Background()
+	ctx := asOwner(context.Background())
+	linter := lint.New(svc.Store(ctx), lcfg)
 
 	report, err := linter.Run(ctx)
 	if err != nil {
@@ -77,7 +77,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Log report to audit.
-	logLintReport(ctx, svc.Store, report)
+	logLintReport(ctx, svc.Store(ctx), report)
 
 	if isJSONOutput() {
 		return outputJSON(os.Stdout, report)

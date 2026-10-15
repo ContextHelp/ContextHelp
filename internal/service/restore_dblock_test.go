@@ -1,7 +1,6 @@
 package service_test
 
 import (
-	"context"
 	"errors"
 	"io"
 	"os"
@@ -28,7 +27,7 @@ func TestRestoreRefusesWhileDatabaseLocked(t *testing.T) {
 	opts := l.opts(t, archive)
 	opts.RunDir = filepath.Join(l.base, "run") // no pidfiles: the lock alone refuses
 
-	_, err = service.Restore(context.Background(), opts)
+	_, err = service.Restore(ownerCtx(), opts)
 	if !errors.Is(err, dblock.ErrHeld) {
 		_ = held.Release()
 		t.Fatalf("restore with the database locked = %v; want ErrHeld", err)
@@ -38,14 +37,14 @@ func TestRestoreRefusesWhileDatabaseLocked(t *testing.T) {
 	}
 	dry := opts
 	dry.DryRun = true
-	if _, err := service.Restore(context.Background(), dry); !errors.Is(err, dblock.ErrHeld) {
+	if _, err := service.Restore(ownerCtx(), dry); !errors.Is(err, dblock.ErrHeld) {
 		t.Errorf("dry run with the database locked = %v; want the same refusal", err)
 	}
 
 	if err := held.Release(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Restore(context.Background(), opts); err != nil {
+	if _, err := service.Restore(ownerCtx(), opts); err != nil {
 		t.Fatalf("restore after release: %v", err)
 	}
 	if got := targetFiles(t, l); got["db.sqlite"] != "restored" {
@@ -65,7 +64,7 @@ func TestRestoreHoldsDatabaseLockWhileWriting(t *testing.T) {
 		during = dblock.Check(l.dbPath)
 		return r
 	})
-	if _, err := service.Restore(context.Background(), l.opts(t, archive)); err != nil {
+	if _, err := service.Restore(ownerCtx(), l.opts(t, archive)); err != nil {
 		t.Fatalf("Restore: %v", err)
 	}
 	if !errors.Is(during, dblock.ErrHeld) {
@@ -85,7 +84,7 @@ func TestRestoreDryRunCreatesNoLockFile(t *testing.T) {
 	writeTarGz(t, archive, []tarEntry{{name: "ctxt-backup/ctxt.db", body: "restored"}})
 	opts := l.opts(t, archive)
 	opts.DryRun = true
-	if _, err := service.Restore(context.Background(), opts); err != nil {
+	if _, err := service.Restore(ownerCtx(), opts); err != nil {
 		t.Fatalf("dry run: %v", err)
 	}
 	if _, err := os.Stat(dblock.Path(l.dbPath)); !os.IsNotExist(err) {

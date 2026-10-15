@@ -67,7 +67,7 @@ func TestUS0010_DecisionObjectsExtractedWithCorrectFields(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "We decided to use PostgreSQL as the primary datastore (HIGH impact). We resolved to adopt micro-frontend architecture.",
 		Type:     "text",
 		Pipeline: "text.decision-extract",
@@ -113,7 +113,7 @@ func TestUS0010_DecisionImpactConstrainedToValidEnums(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "Various decisions with different impact levels",
 		Type:     "text",
 		Pipeline: "text.decision-impact",
@@ -156,7 +156,7 @@ func TestUS0010_DecisionStatusConstrainedToValidEnums(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "Various decisions with different statuses",
 		Type:     "text",
 		Pipeline: "text.decision-status",
@@ -193,7 +193,7 @@ func TestUS0010_NoDecisionsReturnsEmptySlice(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "Plain content with no decisions or action items",
 		Type:     "text",
 		Pipeline: "text.decision-empty",
@@ -232,7 +232,7 @@ func TestUS0010_DecisionCountStoredInMetadata(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "We decided to use Redis for caching",
 		Type:     "text",
 		Pipeline: "text.decision-count",

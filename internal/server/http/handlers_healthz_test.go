@@ -79,7 +79,7 @@ func TestHealthzReturns503WhenDBClosed(t *testing.T) {
 	ts := httptest.NewServer(NewRouter(svc, false, nil))
 	defer ts.Close()
 
-	require.NoError(t, svc.Store.Close(context.Background()))
+	require.NoError(t, svc.Store(ownerCtx()).Close(ownerCtx()))
 
 	resp, err := http.Get(ts.URL + "/healthz")
 	require.NoError(t, err)
@@ -102,7 +102,7 @@ func TestHealthzDegradedWhenQueueHasFailures(t *testing.T) {
 	defer ts.Close()
 
 	now := time.Now().Truncate(time.Second)
-	require.NoError(t, ts.svc.Store.Jobs().Create(context.Background(), &storage.Job{
+	require.NoError(t, ts.svc.Store(ownerCtx()).Jobs().Create(ownerCtx(), &storage.Job{
 		ID: "job_failed_1", Type: "ingest:text", Status: storage.JobFailed,
 		Payload: "x", Pipeline: "text.short", Source: "test",
 		MaxRetries: 3, CreatedAt: now, UpdatedAt: now,

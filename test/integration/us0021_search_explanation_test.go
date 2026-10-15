@@ -5,7 +5,6 @@ package integration
 // has a score breakdown with non-zero total and per-signal fields.
 
 import (
-	"context"
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
@@ -21,7 +20,7 @@ func TestUS0021_ExplainReturnsScoreBreakdownPerResult(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 
 	for _, tc := range []struct{ id, summary string }{
@@ -29,7 +28,7 @@ func TestUS0021_ExplainReturnsScoreBreakdownPerResult(t *testing.T) {
 		{"exp-02", "structured logging contextual metadata"},
 		{"exp-03", "metrics alerting prometheus grafana"},
 	} {
-		require.NoError(t, env.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+		require.NoError(t, env.driver.Objects().Create(ctx, &storage.KnowledgeObject{
 			ID:        tc.id,
 			Type:      "text",
 			Summaries: []string{tc.summary},
@@ -67,10 +66,10 @@ func TestUS0021_ExplainFTSContributesWhenNoEmbeddingProvider(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+	require.NoError(t, env.driver.Objects().Create(ctx, &storage.KnowledgeObject{
 		ID:        "exp-fts-01",
 		Type:      "text",
 		Summaries: []string{"rate limiting throttling token bucket"},
@@ -101,10 +100,10 @@ func TestUS0021_ExplainTotalMatchesHybridSearchRRFScore(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+	require.NoError(t, env.driver.Objects().Create(ctx, &storage.KnowledgeObject{
 		ID:        "exp-cmp-01",
 		Type:      "text",
 		Summaries: []string{"zero-downtime deployment blue green canary"},
@@ -140,7 +139,7 @@ func TestUS0021_ExplainNoMatchReturnsEmptyList(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	cfg := config.SearchConfig{
 		DefaultMode:   "hybrid",
 		FallbackToFTS: true,

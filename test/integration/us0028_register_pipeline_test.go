@@ -167,7 +167,7 @@ func TestUS0028_IngestWithCustomPipelineNameExecutesSteps(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "content for custom pipeline",
 		Type:     "text",
 		Pipeline: "custom.exec",

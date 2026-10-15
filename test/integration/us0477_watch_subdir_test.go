@@ -12,7 +12,6 @@ package integration
 // Gate: INTEGRATION=1.
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	gohttp "net/http"
@@ -40,7 +39,7 @@ func TestUS0477_WatchPicksUpFileInNewSubdir(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ws := env.svc.Store.Watches()
+	ws := env.driver.Watches()
 	mgr := watcher.NewManager(ws, watcher.StoreRecords(ws), stack.ServiceIngester(env.svc))
 	t.Cleanup(mgr.Stop)
 
@@ -54,7 +53,7 @@ func TestUS0477_WatchPicksUpFileInNewSubdir(t *testing.T) {
 		CreatedAt:       time.Now(),
 		UpdatedAt:       time.Now(),
 	}
-	require.NoError(t, mgr.AddWatch(context.Background(), cfg))
+	require.NoError(t, mgr.AddWatch(ownerCtx(), cfg))
 
 	// Allow fsnotify to register on the root.
 	time.Sleep(200 * time.Millisecond)

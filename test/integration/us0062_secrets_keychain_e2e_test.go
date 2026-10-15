@@ -1,7 +1,6 @@
 package integration
 
 import (
-	"context"
 	"errors"
 	"runtime"
 	"testing"
@@ -30,10 +29,10 @@ func keychainAvailable(t *testing.T) bool {
 		return false
 	}
 	probeKey := "__keychain_probe__"
-	if err := r.Set(context.Background(), probeKey, []byte("probe")); err != nil {
+	if err := r.Set(ownerCtx(), probeKey, []byte("probe")); err != nil {
 		return false
 	}
-	_ = r.Delete(context.Background(), probeKey)
+	_ = r.Delete(ownerCtx(), probeKey)
 	return true
 }
 
@@ -51,7 +50,7 @@ func TestUS0062_KeychainBackendRoundTrip(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	key := "round-trip-key"
 	want := "round-trip-value"
 
@@ -85,7 +84,7 @@ func TestUS0062_KeychainBackendOverwrite(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	key := "overwrite-key"
 	t.Cleanup(func() { _ = r.Delete(ctx, key) })
 

@@ -103,11 +103,16 @@ func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
 		r.Use(WithSecurityEvents(rc.Security))
 	}
 
-	r.Get("/health", Health(svc))
+	// The probes sit outside the authenticated table and report the
+	// instance's own state (storage health, queue depth, watchers),
+	// never a principal's rows, so they read as the owner, as every
+	// caller did before reads were scoped; RedactHealthz still keeps
+	// the envelope from anonymous callers on public instances.
+	r.With(WithViewer(sharing.Unrestricted)).Get("/health", Health(svc))
 	if rc.RedactHealthz {
-		r.Get("/healthz", RedactedHealthz(svc, probes, rc.Auth))
+		r.With(WithViewer(sharing.Unrestricted)).Get("/healthz", RedactedHealthz(svc, probes, rc.Auth))
 	} else {
-		r.Get("/healthz", Healthz(svc, probes))
+		r.With(WithViewer(sharing.Unrestricted)).Get("/healthz", Healthz(svc, probes))
 	}
 	r.Get("/manifest.json", ManifestJSON())
 
@@ -202,7 +207,7 @@ func mountMCP(svc *service.Service, sem retrieval.SemanticSource) http.Handler {
 // Health returns the health check handler.
 func Health(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := svc.Store.Health(r.Context()); err != nil {
+		if err := svc.Store(r.Context()).Health(r.Context()); err != nil {
 			WriteError(w, http.StatusServiceUnavailable, "UNHEALTHY", err.Error())
 			return
 		}

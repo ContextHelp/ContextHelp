@@ -1,7 +1,6 @@
 package http
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -106,7 +105,7 @@ func TestHealthEndpointUnhealthy(t *testing.T) {
 	defer ts.Close()
 
 	// Close the storage driver so that Health() returns an error.
-	err := svc.Store.Close(context.Background())
+	err := svc.Store(ownerCtx()).Close(ownerCtx())
 	require.NoError(t, err)
 
 	resp, err := http.Get(ts.URL + "/health")

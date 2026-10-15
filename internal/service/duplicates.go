@@ -35,7 +35,7 @@ type DuplicateResult struct {
 func (s *Service) checkDuplicates(ctx context.Context, hash, sourceKey string, q storage.VectorQuery, cfg config.DuplicatesConfig) (*DuplicateResult, error) {
 	// 1. Exact match via content_hash.
 	if cfg.CheckExact && hash != "" {
-		existing, err := s.Store.Objects().GetByContentHash(ctx, hash)
+		existing, err := s.Store(ctx).Objects().GetByContentHash(ctx, hash)
 		if err != nil {
 			return nil, err
 		}
@@ -50,7 +50,7 @@ func (s *Service) checkDuplicates(ctx context.Context, hash, sourceKey string, q
 
 	// 2. Source-key match.
 	if sourceKey != "" {
-		existing, err := s.Store.Objects().GetBySourceKey(ctx, sourceKey)
+		existing, err := s.Store(ctx).Objects().GetBySourceKey(ctx, sourceKey)
 		if err != nil {
 			return nil, err
 		}
@@ -68,7 +68,7 @@ func (s *Service) checkDuplicates(ctx context.Context, hash, sourceKey string, q
 	// object whatever its status: an inbox or discarded twin is still a
 	// duplicate.
 	if cfg.CheckSimilar && len(q.Vector) > 0 {
-		candidates, err := s.Store.Objects().VectorSearch(ctx, q,
+		candidates, err := s.Store(ctx).Objects().VectorSearch(ctx, q,
 			storage.ObjectFilter{Limit: 1, Status: storage.ObjectStatusAll})
 		if err != nil {
 			return nil, err
@@ -91,7 +91,7 @@ func (s *Service) checkDuplicates(ctx context.Context, hash, sourceKey string, q
 // logDedupDecision writes an audit entry recording the dedup outcome. The
 // incoming content has no object yet, so the entry names the existing one.
 func (s *Service) logDedupDecision(ctx context.Context, dup *DuplicateResult, policy string) {
-	if s.Store.AuditLog() == nil {
+	if s.Store(ctx).AuditLog() == nil {
 		return
 	}
 	entry := audit.DedupEntry(audit.DedupDecision{
@@ -101,7 +101,7 @@ func (s *Service) logDedupDecision(ctx context.Context, dup *DuplicateResult, po
 		Kind:        string(dup.Kind),
 		Policy:      policy,
 	})
-	if err := s.Store.AuditLog().Append(ctx, entry); err != nil {
+	if err := s.Store(ctx).AuditLog().Append(ctx, entry); err != nil {
 		slog.Warn("dedup: audit append (non-fatal)", "duplicate_of", dup.Existing.ID, "err", err)
 	}
 }

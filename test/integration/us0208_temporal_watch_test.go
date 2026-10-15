@@ -116,7 +116,7 @@ func TestUS0208_InitialSnapshotIngested(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  srv.URL,
 		Type:     "url",
 		Pipeline: "web.watch",
@@ -183,7 +183,7 @@ func TestUS0208_ChangeDetectedOnNewVersion(t *testing.T) {
 		},
 	})
 
-	jobID1, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID1, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  srvV1.URL,
 		Type:     "url",
 		Pipeline: "web.watch",
@@ -202,7 +202,7 @@ func TestUS0208_ChangeDetectedOnNewVersion(t *testing.T) {
 		},
 	})
 
-	jobID2, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID2, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  srvV2.URL,
 		Type:     "url",
 		Pipeline: "web.watch.v2",
@@ -258,7 +258,7 @@ func TestUS0208_NoChangeWhenContentIdentical(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  srv.URL,
 		Type:     "url",
 		Pipeline: "web.watch.stable",

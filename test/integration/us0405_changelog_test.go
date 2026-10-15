@@ -1,7 +1,6 @@
 package integration
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	gohttp "net/http"
@@ -42,9 +41,9 @@ func TestUS0405_AppendAndQuery(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now().UTC().Truncate(time.Second)
-	require.NoError(t, env.svc.Store.AuditLog().Append(ctx,
+	require.NoError(t, env.driver.AuditLog().Append(ctx,
 		&storage.AuditEntry{
 			ID: uuid.NewString(), EventType: "object.created",
 			ObjectID: "obj_roundtrip", Actor: "system",
@@ -63,12 +62,12 @@ func TestUS0405_FilterByType(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now().UTC().Truncate(time.Second)
 	for i, et := range []string{
 		"object.created", "fanout.completed", "object.created",
 	} {
-		require.NoError(t, env.svc.Store.AuditLog().Append(ctx,
+		require.NoError(t, env.driver.AuditLog().Append(ctx,
 			&storage.AuditEntry{
 				ID: uuid.NewString(), EventType: et,
 				ObjectID: "obj_0405a", Actor: "system",
@@ -89,17 +88,17 @@ func TestUS0405_FilterBySince(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	old := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	recent := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
 
-	require.NoError(t, env.svc.Store.AuditLog().Append(ctx,
+	require.NoError(t, env.driver.AuditLog().Append(ctx,
 		&storage.AuditEntry{
 			ID: uuid.NewString(), EventType: "object.created",
 			ObjectID: "obj_old", Actor: "system",
 			Payload: map[string]any{}, CreatedAt: old,
 		}))
-	require.NoError(t, env.svc.Store.AuditLog().Append(ctx,
+	require.NoError(t, env.driver.AuditLog().Append(ctx,
 		&storage.AuditEntry{
 			ID: uuid.NewString(), EventType: "object.created",
 			ObjectID: "obj_recent", Actor: "system",
@@ -116,12 +115,12 @@ func TestUS0405_FilterByObject(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now().UTC().Truncate(time.Second)
 
 	target := "obj_0405_hist"
 	for i, et := range []string{"object.created", "fanout.completed"} {
-		require.NoError(t, env.svc.Store.AuditLog().Append(ctx,
+		require.NoError(t, env.driver.AuditLog().Append(ctx,
 			&storage.AuditEntry{
 				ID: uuid.NewString(), EventType: et,
 				ObjectID: target, Actor: "system",
@@ -130,7 +129,7 @@ func TestUS0405_FilterByObject(t *testing.T) {
 			}))
 	}
 	// Unrelated object.
-	require.NoError(t, env.svc.Store.AuditLog().Append(ctx,
+	require.NoError(t, env.driver.AuditLog().Append(ctx,
 		&storage.AuditEntry{
 			ID: uuid.NewString(), EventType: "object.created",
 			ObjectID: "obj_other", Actor: "system",

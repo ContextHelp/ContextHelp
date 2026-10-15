@@ -1,7 +1,6 @@
 package http
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -42,7 +41,7 @@ func newGatedServerWithDriver(t *testing.T, driver storage.StorageDriver) (*http
 	q := jobs.NewQueue(driver.Jobs())
 	svc := service.New(driver, q, builtins.Registry(), search.NewEngine(driver), "", nil)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now().Truncate(time.Second)
 	for slug, ns := range map[string]string{
 		"ai.bert":    "ai.models",

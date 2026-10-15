@@ -15,6 +15,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob/local"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
@@ -149,7 +150,7 @@ func corpusBlobs(c *corpus) storage.BlobStore {
 // with its --mention value split as the CLI splits it, then each fixture
 // link through the service's link path.
 func storeObjects(c *corpus) error {
-	ctx := context.Background()
+	ctx := sharing.WithViewer(context.Background(), sharing.Unrestricted)
 	if err := os.MkdirAll(filepath.Dir(c.db), 0o700); err != nil {
 		return err
 	}
@@ -183,7 +184,7 @@ func storeObjects(c *corpus) error {
 // storeEmbeddings registers fixtureModel as the default, builds its index
 // and writes each fixture embedding as its object's single chunk.
 func storeEmbeddings(c *corpus) error {
-	ctx := context.Background()
+	ctx := sharing.WithViewer(context.Background(), sharing.Unrestricted)
 	d, err := storageutil.NewDriver("sqlite", c.db, corpusBlobs(c))
 	if err != nil {
 		return err

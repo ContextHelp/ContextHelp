@@ -106,7 +106,7 @@ func TestUS0200_CookieBridgeHandshake(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "https://example.com/private",
 		Type:     "url",
 		Pipeline: "web.cookie-bridge",
@@ -159,7 +159,7 @@ func TestUS0200_AuthenticatedFetchUsesCookies(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  srv.URL + "/private",
 		Type:     "url",
 		Pipeline: "web.authenticated",
@@ -206,7 +206,7 @@ func TestUS0200_CookieStoredWithDomainScope(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "https://github.com/private-repo",
 		Type:     "url",
 		Pipeline: "web.cookie-bridge",

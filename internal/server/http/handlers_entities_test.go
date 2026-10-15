@@ -1,7 +1,6 @@
 package http
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"testing"
@@ -15,11 +14,11 @@ func TestListEntities(t *testing.T) {
 	defer ts.Close()
 
 	now := time.Now().Truncate(time.Second)
-	ctx := context.Background()
-	ts.svc.Store.Entities().Upsert(ctx, &storage.Entity{
+	ctx := ownerCtx()
+	ts.svc.Store(ownerCtx()).Entities().Upsert(ctx, &storage.Entity{
 		Slug: "@ui.layout", Title: "UI Layout", CreatedAt: now, UpdatedAt: now,
 	})
-	ts.svc.Store.Entities().Upsert(ctx, &storage.Entity{
+	ts.svc.Store(ownerCtx()).Entities().Upsert(ctx, &storage.Entity{
 		Slug: "@ui.button", Title: "UI Button", CreatedAt: now, UpdatedAt: now,
 	})
 
@@ -47,7 +46,7 @@ func TestGetEntity(t *testing.T) {
 	defer ts.Close()
 
 	now := time.Now().Truncate(time.Second)
-	ts.svc.Store.Entities().Upsert(context.Background(), &storage.Entity{
+	ts.svc.Store(ownerCtx()).Entities().Upsert(ownerCtx(), &storage.Entity{
 		Slug: "@ui.layout", Title: "UI Layout", CreatedAt: now, UpdatedAt: now,
 	})
 
@@ -73,12 +72,12 @@ func TestEntityBacklinks(t *testing.T) {
 	defer ts.Close()
 
 	now := time.Now().Truncate(time.Second)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
-	ts.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+	ts.svc.Store(ownerCtx()).Objects().Create(ctx, &storage.KnowledgeObject{
 		ID: "obj-1", Type: "article", CreatedAt: now, UpdatedAt: now,
 	})
-	ts.svc.Store.Edges().Create(ctx, &storage.Edge{
+	ts.svc.Store(ownerCtx()).Edges().Create(ctx, &storage.Edge{
 		ID:       "edge-1",
 		FromType: "object", FromID: "obj-1",
 		ToType: "entity", ToID: "ctxt://entity/ui/layout",

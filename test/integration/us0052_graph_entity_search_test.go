@@ -46,7 +46,7 @@ func TestUS0052_EntityBacklinksReturnDirectMentions(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "authentication flow using auth-service token exchange",
 		Type:     "text",
 		Pipeline: "test.entity.mention",
@@ -56,7 +56,7 @@ func TestUS0052_EntityBacklinksReturnDirectMentions(t *testing.T) {
 	job := waitForJob(t, env.URL, jobID, storage.JobCompleted)
 	require.NotEmpty(t, job.ResultID)
 
-	backlinks, err := env.svc.EntityBacklinks(context.Background(), entitySlug)
+	backlinks, err := env.svc.EntityBacklinks(ownerCtx(), entitySlug)
 	require.NoError(t, err)
 	require.NotEmpty(t, backlinks, "entity backlinks must contain the ingested object")
 	assert.True(t, containsIDPtr(backlinks, job.ResultID),
@@ -75,7 +75,7 @@ func TestUS0052_GraphEdgeCreatedAfterIngestion(t *testing.T) {
 		Steps:        []pipeline.PipelineStep{&entityMentionStep{mentions: []uri.URI{entityURI}}},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "payment gateway integration charge flow",
 		Type:     "text",
 		Pipeline: "test.edge.check",
@@ -85,7 +85,7 @@ func TestUS0052_GraphEdgeCreatedAfterIngestion(t *testing.T) {
 	job := waitForJob(t, env.URL, jobID, storage.JobCompleted)
 	require.NotEmpty(t, job.ResultID)
 
-	edges, err := env.svc.Store.Edges().ListFrom(context.Background(), "object", job.ResultID)
+	edges, err := env.driver.Edges().ListFrom(ownerCtx(), "object", job.ResultID)
 	require.NoError(t, err)
 	assert.Greater(t, len(edges), 0, "edge must exist after ingestion with entity mention")
 }
@@ -104,7 +104,7 @@ func TestUS0052_RelatedObjectsViaSharedEntityMention(t *testing.T) {
 
 	var resultIDs []string
 	for i := 0; i < 2; i++ {
-		jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+		jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 			Content:  fmt.Sprintf("kafka consumer group partition rebalance doc %d", i),
 			Type:     "text",
 			Pipeline: "test.related",
@@ -118,7 +118,7 @@ func TestUS0052_RelatedObjectsViaSharedEntityMention(t *testing.T) {
 
 	require.Len(t, resultIDs, 2)
 	// RelatedObjects from obj[0] must include obj[1] (linked via shared entity edge).
-	related, err := env.svc.RelatedObjects(context.Background(), resultIDs[0], 2, 10)
+	related, err := env.svc.RelatedObjects(ownerCtx(), resultIDs[0], 2, 10)
 	require.NoError(t, err)
 	assert.True(t, containsIDPtr(related, resultIDs[1]),
 		"objects sharing the same entity mention must be related via graph traversal")
@@ -130,7 +130,7 @@ func TestUS0052_EntityWithNoConnectionsReturnsEmptyNotError(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	backlinks, err := env.svc.EntityBacklinks(context.Background(), "nonexistent-entity-slug")
+	backlinks, err := env.svc.EntityBacklinks(ownerCtx(), "nonexistent-entity-slug")
 	require.NoError(t, err)
 	assert.Empty(t, backlinks)
 }

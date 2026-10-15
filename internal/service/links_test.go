@@ -14,7 +14,7 @@ func seedLinkObjects(t *testing.T, svc *Service, ids ...string) {
 	t.Helper()
 	now := time.Now().Truncate(time.Second)
 	for _, id := range ids {
-		if err := svc.Store.Objects().Create(context.Background(), &storage.KnowledgeObject{
+		if err := svc.store.Objects().Create(ownerCtx(), &storage.KnowledgeObject{
 			ID: id, Type: "text", CreatedAt: now, UpdatedAt: now,
 		}); err != nil {
 			t.Fatal(err)
@@ -28,7 +28,7 @@ func linkTriples(t *testing.T, svc *Service, ids ...string) []string {
 	t.Helper()
 	var out []string
 	for _, id := range ids {
-		edges, err := svc.Store.Edges().ListFrom(context.Background(), "object", id)
+		edges, err := svc.store.Edges().ListFrom(ownerCtx(), "object", id)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -44,7 +44,7 @@ func linkTriples(t *testing.T, svc *Service, ids ...string) []string {
 
 func TestCreateLinkStoresInverse(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	seedLinkObjects(t, svc, "a", "b")
 
 	edges, err := svc.CreateLink(ctx, LinkRequest{Source: "a", Target: "b", Type: "extends", Context: "why"})
@@ -79,7 +79,7 @@ func TestCreateLinkStoresInverse(t *testing.T) {
 
 func TestCreateLinkRefusals(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	seedLinkObjects(t, svc, "a", "b")
 
 	for _, req := range []LinkRequest{
@@ -109,10 +109,10 @@ func TestCreateLinkRefusals(t *testing.T) {
 // neither edge is.
 func TestCreateLinkPairIsAtomic(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	seedLinkObjects(t, svc, "a", "b")
 
-	svc.Store = failingPairStore{StorageDriver: svc.Store}
+	svc.store = failingPairStore{StorageDriver: svc.store}
 	if _, err := svc.CreateLink(ctx, LinkRequest{Source: "a", Target: "b", Type: "extends"}); err == nil {
 		t.Fatal("CreateLink succeeded over a failing store")
 	}
@@ -151,7 +151,7 @@ func (f failingPairEdges) CreateAll(ctx context.Context, edges []*storage.Edge) 
 
 func TestDeleteLinksRemovesBothDirections(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	seedLinkObjects(t, svc, "a", "b", "c")
 	for _, r := range []LinkRequest{
 		{Source: "a", Target: "b", Type: "extends"},
@@ -164,7 +164,7 @@ func TestDeleteLinksRemovesBothDirections(t *testing.T) {
 		}
 	}
 	// A non-link object edge between the pair is not a link.
-	if err := svc.Store.Edges().Create(ctx, &storage.Edge{
+	if err := svc.store.Edges().Create(ctx, &storage.Edge{
 		ID: "alt", FromType: "object", FromID: "a", ToType: "object", ToID: "b", EdgeType: "alternative", CreatedAt: time.Now(),
 	}); err != nil {
 		t.Fatal(err)
@@ -210,7 +210,7 @@ func hopStrings(hops []LinkHop) []string {
 
 func TestListLinks(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	seedLinkObjects(t, svc, "a", "b", "c", "d", "e")
 	for _, r := range []LinkRequest{
 		{Source: "a", Target: "b", Type: "extends"},

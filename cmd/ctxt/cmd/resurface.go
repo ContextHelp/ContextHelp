@@ -114,7 +114,7 @@ func runResurfaceShow(cmd *cobra.Command, _ []string) error {
 	}
 	defer cleanup()
 
-	ctx := context.Background()
+	ctx := asOwner(context.Background())
 	rcfg := resurfacingCfg()
 
 	limit, _ := cmd.Flags().GetInt("limit")
@@ -181,7 +181,7 @@ func runResurfaceRefresh(cmd *cobra.Command, _ []string) error {
 	}
 	defer cleanup()
 
-	ctx := context.Background()
+	ctx := asOwner(context.Background())
 	rcfg := resurfacingCfg()
 
 	profileName, profile, ok := activeProfile(cmd)
@@ -189,7 +189,7 @@ func runResurfaceRefresh(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("active profile %q not found in config", profileName)
 	}
 
-	job := resurfacing.NewJob(svc.Store, rcfg)
+	job := resurfacing.NewJob(svc.Store(ctx), rcfg)
 	if err := job.RunOnce(ctx, profileName, profile); err != nil {
 		return fmt.Errorf("resurfacing refresh: %w", err)
 	}
@@ -205,7 +205,7 @@ func runResurfaceDismiss(_ *cobra.Command, args []string) error {
 	}
 	defer cleanup()
 
-	ctx := context.Background()
+	ctx := asOwner(context.Background())
 	if err := svc.DismissResurfacing(ctx, args[0]); err != nil {
 		return fmt.Errorf("dismiss: %w", err)
 	}

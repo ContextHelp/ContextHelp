@@ -40,7 +40,7 @@ func newPolicyTestService(t *testing.T) (*Service, func()) {
 	)
 	cleanup := func() {
 		pol.Close()
-		_ = b.Close(context.Background())
+		_ = b.Close(ownerCtx())
 	}
 	return svc, cleanup
 }
@@ -52,7 +52,7 @@ func TestPolicy_DeletePipeline_DeniesWithoutNote(t *testing.T) {
 	svc, cleanup := newPolicyTestService(t)
 	defer cleanup()
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	_, err := svc.CreatePipeline(ctx, CreatePipelineRequest{
 		Name:  "to-delete",
 		Steps: `[{"name":"text_summary"}]`,
@@ -77,7 +77,7 @@ func TestPolicy_DeletePipeline_AllowsWithNote(t *testing.T) {
 	svc, cleanup := newPolicyTestService(t)
 	defer cleanup()
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	_, err := svc.CreatePipeline(ctx, CreatePipelineRequest{
 		Name:  "to-delete",
 		Steps: `[{"name":"text_summary"}]`,
@@ -101,7 +101,7 @@ func TestPolicy_ArchivePipeline_DeniesWithoutNote_PassesUnarchive(t *testing.T) 
 	svc, cleanup := newPolicyTestService(t)
 	defer cleanup()
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	_, err := svc.CreatePipeline(ctx, CreatePipelineRequest{
 		Name:  "to-archive",
 		Steps: `[{"name":"text_summary"}]`,

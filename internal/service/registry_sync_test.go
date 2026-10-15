@@ -1,7 +1,6 @@
 package service
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -73,7 +72,7 @@ func newSyncSvcTrust(t *testing.T, regURL string, trust config.RegistryTrustLeve
 func TestSyncRegistry_EntitySyncAdvertised(t *testing.T) {
 	srv, paths := syncRegistry(t, true)
 	svc := newSyncSvc(t, srv.URL)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	res, err := svc.SyncRegistry(ctx, srv.URL)
 	if err != nil {
@@ -82,10 +81,10 @@ func TestSyncRegistry_EntitySyncAdvertised(t *testing.T) {
 	if !res.EntitySync || res.Upserted != 1 {
 		t.Errorf("SyncRegistry = %+v, want EntitySync and 1 entity", res)
 	}
-	if _, err := svc.Store.Entities().Get(ctx, "ai.bert"); err != nil {
+	if _, err := svc.store.Entities().Get(ctx, "ai.bert"); err != nil {
 		t.Errorf("entity ai.bert not stored: %v", err)
 	}
-	if cache, err := svc.Store.Registries().GetCachedManifest(ctx, srv.URL); err != nil || cache == nil {
+	if cache, err := svc.store.Registries().GetCachedManifest(ctx, srv.URL); err != nil || cache == nil {
 		t.Errorf("manifest not cached: %v", err)
 	}
 	if got := paths(); !contains(got, "/entities/index") {
@@ -99,7 +98,7 @@ func TestSyncRegistry_StepsOnlyRegistry(t *testing.T) {
 	srv, paths := syncRegistry(t, false)
 	svc := newSyncSvc(t, srv.URL)
 
-	res, err := svc.SyncRegistry(context.Background(), srv.URL)
+	res, err := svc.SyncRegistry(ownerCtx(), srv.URL)
 	if err != nil {
 		t.Fatalf("SyncRegistry: %v", err)
 	}
@@ -128,7 +127,7 @@ func TestSyncRegistry_NotTrustedReportsHeldEntities(t *testing.T) {
 		t.Run(string(tc.wantLevel)+"/"+string(tc.trust), func(t *testing.T) {
 			srv, _ := syncRegistry(t, true)
 			svc := newSyncSvcTrust(t, srv.URL, tc.trust)
-			ctx := context.Background()
+			ctx := ownerCtx()
 
 			res, err := svc.SyncRegistry(ctx, srv.URL)
 			if err != nil {
@@ -139,7 +138,7 @@ func TestSyncRegistry_NotTrustedReportsHeldEntities(t *testing.T) {
 				t.Errorf("SyncRegistry = %+v, want 0 upserted, %d pending, %d blocked, trust %q",
 					res, tc.pending, tc.block, tc.wantLevel)
 			}
-			if e, err := svc.Store.Entities().Get(ctx, "ai.bert"); err == nil && e != nil {
+			if e, err := svc.store.Entities().Get(ctx, "ai.bert"); err == nil && e != nil {
 				t.Errorf("entity from a %q registry was written: %+v", tc.wantLevel, e)
 			}
 		})
@@ -176,7 +175,7 @@ func TestSyncAllRegistriesWithReconciliation_TrustGate(t *testing.T) {
 	}}
 	svc := NewWithOptions(driver, jobs.NewQueue(driver.Jobs()), pipeline.DefaultRegistry(),
 		search.NewEngine(driver), "", nil, nil, cfg)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	res, err := svc.SyncAllRegistriesWithReconciliation(ctx, "", nil)
 	if err != nil {
@@ -199,11 +198,11 @@ func TestSyncAllRegistriesWithReconciliation_TrustGate(t *testing.T) {
 			t.Errorf("Registries[%d] = %+v, want %+v", i, res.Registries[i], want[i])
 		}
 	}
-	if _, err := svc.Store.Entities().Get(ctx, "ai.bert"); err != nil {
+	if _, err := svc.store.Entities().Get(ctx, "ai.bert"); err != nil {
 		t.Errorf("trusted entity ai.bert not written: %v", err)
 	}
 	for _, slug := range []string{"ai.gpt", "ai.t5"} {
-		if e, err := svc.Store.Entities().Get(ctx, slug); err == nil && e != nil {
+		if e, err := svc.store.Entities().Get(ctx, slug); err == nil && e != nil {
 			t.Errorf("held entity %s was written: %+v", slug, e)
 		}
 	}

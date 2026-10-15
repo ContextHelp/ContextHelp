@@ -1,7 +1,6 @@
 package service
 
 import (
-	"context"
 	"errors"
 	"testing"
 
@@ -20,7 +19,7 @@ func ptr[T any](v T) *T { return &v }
 // only, hybrid fuses both legs. An empty mode is hybrid.
 func TestFind_ModeSelection(t *testing.T) {
 	f := newSemanticFixture(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	for _, tc := range []struct {
 		mode, want string
@@ -68,7 +67,7 @@ func TestFind_ModeSelection(t *testing.T) {
 // Explain applies to hybrid only: one breakdown per object, in order.
 func TestFind_ExplainHybridOnly(t *testing.T) {
 	f := newSemanticFixture(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	res, err := f.svc.Find(ctx, FindRequest{Query: semanticQuery, Explain: true}, f.sem)
 	require.NoError(t, err)
@@ -92,7 +91,7 @@ func TestFind_ExplainHybridOnly(t *testing.T) {
 // drops all candidates, reported as below-threshold, with no suggestions.
 func TestFind_ThresholdDiagnostics(t *testing.T) {
 	f := newSemanticFixture(t)
-	res, err := f.svc.Find(context.Background(), FindRequest{
+	res, err := f.svc.Find(ownerCtx(), FindRequest{
 		Query: semanticQuery, Search: FindSearch{MinScore: ptr(5.0)},
 	}, f.sem)
 	require.NoError(t, err)
@@ -109,7 +108,7 @@ func TestFind_ThresholdDiagnostics(t *testing.T) {
 // diagnostics; with fallback_to_fts off it is a SemanticUnavailableError.
 func TestFind_SemanticUnavailable(t *testing.T) {
 	f := newSemanticFixture(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	_, err := f.db.Exec(`UPDATE embedding_models SET is_default = 0`)
 	require.NoError(t, err)
 
@@ -131,7 +130,7 @@ func TestFind_SemanticUnavailable(t *testing.T) {
 // Facets count the objects the filter matches, independent of the limit.
 func TestFind_Facets(t *testing.T) {
 	f := newSemanticFixture(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	res, err := f.svc.Find(ctx, FindRequest{Query: semanticQuery, Mode: FindModeFTS, Facets: true}, f.sem)
 	require.NoError(t, err)
@@ -171,7 +170,7 @@ func TestFind_Invalid(t *testing.T) {
 		"negative boost":    {Query: "q", Search: FindSearch{HopBacklinkBoost: ptr(-1.0)}},
 		"negative minscore": {Query: "q", Search: FindSearch{MinScore: ptr(-1.0)}},
 	} {
-		_, err := f.svc.Find(context.Background(), req, f.sem)
+		_, err := f.svc.Find(ownerCtx(), req, f.sem)
 		assert.True(t, errors.Is(err, ErrInvalidFind), "%s: %v", name, err)
 	}
 }

@@ -1,7 +1,6 @@
 package http
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"testing"
@@ -70,7 +69,7 @@ func runAdminEntityGateBypass(t *testing.T, driver storage.StorageDriver, readMe
 	if !readMetering {
 		return
 	}
-	ownerEvents, err := driver.Metering().List(context.Background(), storage.MeteringFilter{RegistryName: "owner"})
+	ownerEvents, err := driver.Metering().List(ownerCtx(), storage.MeteringFilter{RegistryName: "owner"})
 	require.NoError(t, err)
 	assert.Empty(t, ownerEvents, "admin entity reads must not be metered")
 
@@ -78,7 +77,7 @@ func runAdminEntityGateBypass(t *testing.T, driver storage.StorageDriver, readMe
 	// refused outside it.
 	resp, body = gatedDoAs(t, "tok-valid-fixture-0123456789abcdef0123456789", http.MethodGet, ts.URL+"/api/v1/entities/ai.bert")
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(body))
-	opsEvents, err := driver.Metering().List(context.Background(), storage.MeteringFilter{RegistryName: "ops"})
+	opsEvents, err := driver.Metering().List(ownerCtx(), storage.MeteringFilter{RegistryName: "ops"})
 	require.NoError(t, err)
 	require.Len(t, opsEvents, 1, "non-admin read must be metered")
 	assert.Equal(t, storage.MeteringEventEntityResolve, opsEvents[0].EventType)

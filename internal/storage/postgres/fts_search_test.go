@@ -315,7 +315,7 @@ func TestPostgresSimilarQueryEndToEnd(t *testing.T) {
 		t.Fatalf("create inbox match: %v", err)
 	}
 
-	results, total, err := search.NewEngine(drv).Search(ctx, "similar==canary", 10, 0)
+	results, total, err := search.NewEngine(drv).Search(ctx, drv.Objects(), "similar==canary", 10, 0)
 	if err != nil {
 		t.Fatalf("engine search similar==: %v", err)
 	}

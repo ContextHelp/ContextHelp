@@ -1,7 +1,6 @@
 package service_test
 
 import (
-	"context"
 	"errors"
 	"io"
 	"os"
@@ -31,7 +30,7 @@ func TestBackupRestoreActiveConfigFile(t *testing.T) {
 	if err := os.WriteFile(srcCfg, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	bResult, err := service.Backup(context.Background(), service.BackupOpts{
+	bResult, err := service.Backup(ownerCtx(), service.BackupOpts{
 		DBPath:     srcDB,
 		OutputDir:  filepath.Join(src, "backup"),
 		ConfigPath: srcCfg,
@@ -51,7 +50,7 @@ func TestBackupRestoreActiveConfigFile(t *testing.T) {
 			l := newRestoreLayout(t)
 			opts := l.opts(t, tc.source(t))
 			opts.ConfigFile = "dpkms.yaml"
-			res, err := service.Restore(context.Background(), opts)
+			res, err := service.Restore(ownerCtx(), opts)
 			if err != nil {
 				t.Fatalf("Restore: %v", err)
 			}
@@ -71,7 +70,7 @@ func TestBackupRestoreActiveConfigFile(t *testing.T) {
 			opts := l.opts(t, tc.source(t))
 			opts.ConfigFile = "dpkms.yaml"
 			opts.SkipConfigs = true
-			res, err := service.Restore(context.Background(), opts)
+			res, err := service.Restore(ownerCtx(), opts)
 			if err != nil {
 				t.Fatalf("Restore: %v", err)
 			}
@@ -94,7 +93,7 @@ func TestRestoreActiveConfigWithoutTargetFails(t *testing.T) {
 		{name: "ctxt-backup/ctxt.db", body: "new db"},
 		{name: "ctxt-backup/config.yaml", body: "port: 1\n"},
 	})
-	if _, err := service.Restore(context.Background(), l.opts(t, archive)); err == nil ||
+	if _, err := service.Restore(ownerCtx(), l.opts(t, archive)); err == nil ||
 		!strings.Contains(err.Error(), "config file") {
 		t.Fatalf("want missing config file error, got %v", err)
 	}
@@ -170,7 +169,7 @@ func TestRestoreInterruptedKeepsOriginalDB(t *testing.T) {
 	})
 	service.SetDBSourceHook(t, func(r io.Reader) io.Reader { return &failAfter{r: r, n: 10} })
 
-	if _, err := service.Restore(context.Background(), l.opts(t, archive)); err == nil ||
+	if _, err := service.Restore(ownerCtx(), l.opts(t, archive)); err == nil ||
 		!strings.Contains(err.Error(), "injected write failure") {
 		t.Fatalf("want the injected failure, got %v", err)
 	}
@@ -198,7 +197,7 @@ func TestRestoreRemovesStaleWAL(t *testing.T) {
 	archive := filepath.Join(l.base, "b.tar.gz")
 	writeTarGz(t, archive, []tarEntry{{name: "ctxt-backup/ctxt.db", body: "restored"}})
 
-	if _, err := service.Restore(context.Background(), l.opts(t, archive)); err != nil {
+	if _, err := service.Restore(ownerCtx(), l.opts(t, archive)); err != nil {
 		t.Fatalf("Restore: %v", err)
 	}
 	got := targetFiles(t, l)
@@ -244,7 +243,7 @@ func TestRestoreRefusesWhileInstanceServesDB(t *testing.T) {
 	opts := l.opts(t, archive)
 	opts.RunDir = runDir
 
-	_, err := service.Restore(context.Background(), opts)
+	_, err := service.Restore(ownerCtx(), opts)
 	if err == nil || !strings.Contains(err.Error(), "running") {
 		t.Fatalf("want refusal naming the running instance, got %v", err)
 	}
@@ -253,7 +252,7 @@ func TestRestoreRefusesWhileInstanceServesDB(t *testing.T) {
 	}
 	dry := opts
 	dry.DryRun = true
-	if _, err := service.Restore(context.Background(), dry); err == nil {
+	if _, err := service.Restore(ownerCtx(), dry); err == nil {
 		t.Error("dry run: want the same refusal")
 	}
 
@@ -264,7 +263,7 @@ func TestRestoreRefusesWhileInstanceServesDB(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Restore(context.Background(), opts); err == nil {
+	if _, err := service.Restore(ownerCtx(), opts); err == nil {
 		t.Fatal("instance with a relative db_path did not block restore")
 	}
 	if got := targetFiles(t, l); got["db.sqlite"] != "live database" {
@@ -277,7 +276,7 @@ func TestRestoreRefusesWhileInstanceServesDB(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Restore(context.Background(), opts); err != nil {
+	if _, err := service.Restore(ownerCtx(), opts); err != nil {
 		t.Fatalf("instance serving another database blocked restore: %v", err)
 	}
 	if got := targetFiles(t, l); got["db.sqlite"] != "restored" {

@@ -41,7 +41,7 @@ func TestSearchByType(t *testing.T) {
 	seedObject(t, driver, "obj-1", "article", nil)
 	seedObject(t, driver, "obj-2", "note", nil)
 
-	results, total, err := engine.Search(ctx, "type==article", 10, 0)
+	results, total, err := engine.Search(ctx, driver.Objects(), "type==article", 10, 0)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestSearchByTag(t *testing.T) {
 	seedObject(t, driver, "obj-1", "article", []storage.Tag{{Label: "design", Weight: 1.0}})
 	seedObject(t, driver, "obj-2", "article", []storage.Tag{{Label: "code", Weight: 1.0}})
 
-	results, _, err := engine.Search(ctx, "tag==design", 10, 0)
+	results, _, err := engine.Search(ctx, driver.Objects(), "tag==design", 10, 0)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestSearchAnd(t *testing.T) {
 	seedObject(t, driver, "obj-2", "note", []storage.Tag{{Label: "design"}})
 	seedObject(t, driver, "obj-3", "article", []storage.Tag{{Label: "code"}})
 
-	results, _, err := engine.Search(ctx, "type==article;tag==design", 10, 0)
+	results, _, err := engine.Search(ctx, driver.Objects(), "type==article;tag==design", 10, 0)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestSearchOr(t *testing.T) {
 	seedObject(t, driver, "obj-2", "note", nil)
 	seedObject(t, driver, "obj-3", "draft", nil)
 
-	results, _, err := engine.Search(ctx, "type==article,type==note", 10, 0)
+	results, _, err := engine.Search(ctx, driver.Objects(), "type==article,type==note", 10, 0)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -127,7 +127,7 @@ func TestSearchByMention(t *testing.T) {
 	}
 	driver.Edges().Create(ctx, edge)
 
-	results, _, err := engine.Search(ctx, "mention==@ui.layout", 10, 0)
+	results, _, err := engine.Search(ctx, driver.Objects(), "mention==@ui.layout", 10, 0)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestSearchPagination(t *testing.T) {
 		seedObject(t, driver, fmt.Sprintf("obj-%d", i), "article", nil)
 	}
 
-	results, total, err := engine.Search(ctx, "type==article", 2, 2)
+	results, total, err := engine.Search(ctx, driver.Objects(), "type==article", 2, 2)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -162,7 +162,7 @@ func TestSearchEmpty(t *testing.T) {
 	engine := NewEngine(driver)
 	ctx := context.Background()
 
-	results, total, err := engine.Search(ctx, "type==article", 10, 0)
+	results, total, err := engine.Search(ctx, driver.Objects(), "type==article", 10, 0)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -179,7 +179,7 @@ func TestSearchInvalidQuery(t *testing.T) {
 	engine := NewEngine(driver)
 	ctx := context.Background()
 
-	_, _, err := engine.Search(ctx, "==bad", 10, 0)
+	_, _, err := engine.Search(ctx, driver.Objects(), "==bad", 10, 0)
 	if err == nil {
 		t.Error("expected error for invalid query")
 	}
@@ -197,7 +197,7 @@ func TestProfileIsolation(t *testing.T) {
 	seedObjectWithProfile(t, driver, "obj-g", "note", nil, "")
 
 	// Alice's scoped search should return only obj-a.
-	results, total, err := engine.Search(ctx, "type==note", 10, 0, "alice")
+	results, total, err := engine.Search(ctx, driver.Objects(), "type==note", 10, 0, "alice")
 	if err != nil {
 		t.Fatalf("search alice: %v", err)
 	}
@@ -209,7 +209,7 @@ func TestProfileIsolation(t *testing.T) {
 	}
 
 	// Bob's scoped search should return only obj-b.
-	results, total, err = engine.Search(ctx, "type==note", 10, 0, "bob")
+	results, total, err = engine.Search(ctx, driver.Objects(), "type==note", 10, 0, "bob")
 	if err != nil {
 		t.Fatalf("search bob: %v", err)
 	}
@@ -221,7 +221,7 @@ func TestProfileIsolation(t *testing.T) {
 	}
 
 	// Unscoped search returns all three.
-	results, total, err = engine.Search(ctx, "type==note", 10, 0)
+	results, total, err = engine.Search(ctx, driver.Objects(), "type==note", 10, 0)
 	if err != nil {
 		t.Fatalf("search global: %v", err)
 	}
@@ -248,7 +248,7 @@ func TestSearchStatusScope(t *testing.T) {
 		}
 	}
 
-	results, total, err := engine.Search(ctx, "type==note", 10, 0)
+	results, total, err := engine.Search(ctx, driver.Objects(), "type==note", 10, 0)
 	require.NoError(t, err)
 	assert.Equal(t, 1, total, "total counts active objects only")
 	if assert.Len(t, results, 1) {
@@ -284,7 +284,7 @@ func TestSearchRelated(t *testing.T) {
 	driver.Edges().Create(ctx, mkEdge("e3", "obj-3", "@other.thing"))
 
 	// related:@arch.decision should return obj-2 (related to obj-1 via shared target).
-	results, _, err := engine.Search(ctx, "related==@arch.decision", 10, 0)
+	results, _, err := engine.Search(ctx, driver.Objects(), "related==@arch.decision", 10, 0)
 	if err != nil {
 		t.Fatalf("search related: %v", err)
 	}

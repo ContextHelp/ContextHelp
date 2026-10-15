@@ -1,7 +1,6 @@
 package integration
 
 import (
-	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -41,8 +40,8 @@ func seedIndexObject(
 			},
 		},
 	}
-	require.NoError(t, svc.Store.Objects().Create(
-		context.Background(), obj,
+	require.NoError(t, svc.Store(ownerCtx()).Objects().Create(
+		ownerCtx(), obj,
 	))
 }
 
@@ -52,7 +51,7 @@ func TestUS0408_IndexShowsThreeCategories(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	// auth: 4 objects, caching: 3 objects, observability: 3 objects
 	topicGroups := map[string]int{
@@ -98,7 +97,7 @@ func TestUS0408_IncrementalUpdate(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	for i := 0; i < 10; i++ {
 		topic := "auth"
@@ -135,7 +134,7 @@ func TestUS0408_IncrementalUpdate(t *testing.T) {
 			},
 		},
 	}
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, newObj))
+	require.NoError(t, env.driver.Objects().Create(ctx, newObj))
 	require.NoError(t, env.svc.UpdateTopicIndexIncremental(ctx, newObj))
 
 	idx, err = env.svc.GetTopicIndex(ctx)
@@ -150,7 +149,7 @@ func TestUS0408_FilterByTopic(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	seedIndexObject(t, env.svc, "ft-1", []string{"auth"}, "OAuth")
 	seedIndexObject(t, env.svc, "ft-2", []string{"auth"}, "JWT")
@@ -178,7 +177,7 @@ func TestUS0408_RefreshRegenerates(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	seedIndexObject(t, env.svc, "ref-1", []string{"auth"}, "OAuth")
 	id1, err := env.svc.BuildTopicIndex(ctx)

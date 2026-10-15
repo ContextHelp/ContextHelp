@@ -75,7 +75,7 @@ func TestUS0009_EntityMentionsExtracted(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "Alice Smith discussed the mobile redesign project with the backend API team",
 		Type:     "text",
 		Pipeline: "text.entity-extract",
@@ -115,7 +115,7 @@ func TestUS0009_MentionEdgesCreated(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "Bob Jones introduced event sourcing patterns to the team",
 		Type:     "text",
 		Pipeline: "text.entity-edges",
@@ -126,7 +126,7 @@ func TestUS0009_MentionEdgesCreated(t *testing.T) {
 	job := waitForJob(t, env.URL, jobID, storage.JobCompleted)
 	require.NotEmpty(t, job.ResultID)
 
-	edges, err := env.svc.Store.Edges().ListFrom(context.Background(), "object", job.ResultID)
+	edges, err := env.driver.Edges().ListFrom(ownerCtx(), "object", job.ResultID)
 	require.NoError(t, err)
 	assert.Len(t, edges, 2, "one edge per extracted entity mention")
 }
@@ -150,7 +150,7 @@ func TestUS0009_MentionFormatIsNamespaceSlug(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "Carol White at Acme Corp launched Super Widget",
 		Type:     "text",
 		Pipeline: "text.entity-format",
@@ -195,7 +195,7 @@ func TestUS0009_EntityObjectsCreatedForMentions(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "Dave Kim reviewed the proposal",
 		Type:     "text",
 		Pipeline: "text.entity-objects",

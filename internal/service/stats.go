@@ -48,7 +48,7 @@ type StatsRequest struct {
 // Stats counts objects, jobs, entities, feeds, reminders and resurfacing
 // candidates.
 func (s *Service) Stats(ctx context.Context, req StatsRequest) (*Stats, error) {
-	byType, err := s.Store.Objects().CountByType(ctx)
+	byType, err := s.Store(ctx).Objects().CountByType(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +67,7 @@ func (s *Service) Stats(ctx context.Context, req StatsRequest) (*Stats, error) {
 		{storage.JobFailed, &st.Jobs.Failed},
 	} {
 		// The total is a COUNT over the status; one row is fetched.
-		_, n, err := s.Queue.List(ctx, storage.JobFilter{Status: c.status, Limit: 1})
+		_, n, err := s.Store(ctx).Jobs().List(ctx, storage.JobFilter{Status: c.status, Limit: 1})
 		if err != nil {
 			return nil, fmt.Errorf("count %s jobs: %w", c.status, err)
 		}
@@ -75,7 +75,7 @@ func (s *Service) Stats(ctx context.Context, req StatsRequest) (*Stats, error) {
 		st.Jobs.Total += n
 	}
 
-	entities, err := s.Store.Entities().List(ctx, storage.EntityFilter{})
+	entities, err := s.Store(ctx).Entities().List(ctx, storage.EntityFilter{})
 	if err != nil {
 		return nil, fmt.Errorf("count entities: %w", err)
 	}
@@ -85,7 +85,7 @@ func (s *Service) Stats(ctx context.Context, req StatsRequest) (*Stats, error) {
 		}
 	}
 
-	feeds, err := s.Store.Feeds().List(ctx, storage.FeedFilter{})
+	feeds, err := s.Store(ctx).Feeds().List(ctx, storage.FeedFilter{})
 	if err != nil {
 		return nil, fmt.Errorf("count feeds: %w", err)
 	}
@@ -96,13 +96,13 @@ func (s *Service) Stats(ctx context.Context, req StatsRequest) (*Stats, error) {
 		}
 	}
 
-	reminders, err := s.Store.Objects().ListPendingReminders(ctx)
+	reminders, err := s.Store(ctx).Objects().ListPendingReminders(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("count reminders: %w", err)
 	}
 	st.Reminders = len(reminders)
 
-	candidates, err := s.Store.Resurfacing().List(ctx, storage.ResurfacingFilter{
+	candidates, err := s.Store(ctx).Resurfacing().List(ctx, storage.ResurfacingFilter{
 		ProfileID: req.Profile, UnseenOnly: true,
 	})
 	switch {

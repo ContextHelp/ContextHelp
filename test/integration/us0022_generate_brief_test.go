@@ -49,7 +49,7 @@ func TestUS0022_BriefContainsObjectSummaries(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	// Ingest two objects with known summaries.
 	titles := []string{"Project Alpha Kickoff", "Architecture Decision Record"}
@@ -103,7 +103,7 @@ func TestUS0022_BriefContainsObjectTitles(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	env.svc.Pipes.Upsert("brief.titled", &pipeline.Pipeline{
 		PipelineName: "brief.titled",
@@ -148,7 +148,7 @@ func TestUS0022_BriefWithCitationsIncludesRefTable(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	env.svc.Pipes.Upsert("brief.citations", &pipeline.Pipeline{
 		PipelineName: "brief.citations",
@@ -202,7 +202,7 @@ func TestUS0022_EmptyObjectListProducesEmptyBrief(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	brief, err := env.svc.Compose(context.Background(), []*storage.KnowledgeObject{}, "brief")
+	brief, err := env.svc.Compose(ownerCtx(), []*storage.KnowledgeObject{}, "brief")
 	require.NoError(t, err)
 	assert.Contains(t, brief, "0 knowledge objects",
 		"empty brief should note zero objects")

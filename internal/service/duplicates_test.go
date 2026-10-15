@@ -140,9 +140,9 @@ func TestCheckDuplicates(t *testing.T) {
 					similar:     tt.similar,
 				},
 			}
-			svc.Store = stub
+			svc.store = stub
 
-			result, err := svc.checkDuplicates(context.Background(), tt.hash, tt.sourceKey, tt.query, tt.cfg)
+			result, err := svc.checkDuplicates(ownerCtx(), tt.hash, tt.sourceKey, tt.query, tt.cfg)
 			require.NoError(t, err)
 			if tt.wantNil {
 				assert.Nil(t, result)
@@ -158,7 +158,7 @@ func TestCheckDuplicates(t *testing.T) {
 // similarity (1 - cosine distance): identical vectors under another model
 // are not candidates, and a distant neighbour is not a duplicate.
 func TestCheckDuplicates_SearchesQueryModelBySimilarity(t *testing.T) {
-	ctx := context.Background()
+	ctx := ownerCtx()
 	emb := storagetest.NewMemEmbeddingStore()
 	drv := storagetest.WithEmbeddings(storageutil.NewTestDriver(t), emb)
 	for _, id := range []string{"m-query", "m-other"} {
@@ -171,7 +171,7 @@ func TestCheckDuplicates_SearchesQueryModelBySimilarity(t *testing.T) {
 		require.NoError(t, drv.Objects().Create(ctx, &storage.KnowledgeObject{ID: id, Type: "text", RawContent: id}))
 		require.NoError(t, emb.Put(ctx, id, vs))
 	}
-	svc := &Service{Store: drv}
+	svc := &Service{store: drv}
 	cfg := config.DuplicatesConfig{CheckSimilar: true, SimilarityThreshold: 0.95}
 
 	dup, err := svc.checkDuplicates(ctx, "", "", storage.VectorQuery{ModelID: "m-query", Vector: []float32{1, 0, 0}}, cfg)

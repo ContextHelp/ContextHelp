@@ -24,6 +24,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/spf13/cobra"
@@ -46,6 +47,14 @@ const (
 // When non-nil, newService() returns it directly, avoiding ~50ms SQLite reinit per command.
 // Set by shell.go; cleared when the shell exits.
 var sessionSvc *service.Service
+
+// asOwner returns ctx carrying the unrestricted viewer: a ctxt command
+// that opens the store directly runs at the owner's terminal and reads
+// it unscoped (ADR-080 §4). Everything else reaches dpkms over the API,
+// where the transport attaches the caller's viewer.
+func asOwner(ctx context.Context) context.Context {
+	return sharing.WithViewer(ctx, sharing.Unrestricted)
+}
 
 // newService creates a Service wired to the configured storage backend.
 // Returns the service and a cleanup function that must be deferred.
@@ -108,7 +117,7 @@ func newService() (*service.Service, func(), error) {
 	}
 
 	// Ensure bundled default registry is always present in the cache.
-	if err := svc.EnsureDefaultRegistry(ctx); err != nil {
+	if err := svc.EnsureDefaultRegistry(asOwner(ctx)); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to load default registry: %v\n", err)
 	}
 

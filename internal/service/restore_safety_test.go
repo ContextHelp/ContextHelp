@@ -3,7 +3,6 @@ package service_test
 import (
 	"archive/tar"
 	"compress/gzip"
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -178,7 +177,7 @@ func TestRestoreArchiveRefusesUnsafeEntries(t *testing.T) {
 				// classic link-then-write escape.
 				{name: "ctxt-backup/config/keys/evil", body: "through the link"},
 			})
-			if _, err := service.Restore(context.Background(), l.opts(t, archive)); err == nil {
+			if _, err := service.Restore(ownerCtx(), l.opts(t, archive)); err == nil {
 				t.Error("restore of an archive with an unsafe entry: want error")
 			}
 			l.assertNothingWritten(t)
@@ -198,7 +197,7 @@ func TestRestoreArchiveRefusesTargetSymlinkEscape(t *testing.T) {
 	}
 	archive := filepath.Join(l.base, "a.tar.gz")
 	writeTarGz(t, archive, []tarEntry{{name: "ctxt-backup/config/keys/evil", body: "x"}})
-	if _, err := service.Restore(context.Background(), l.opts(t, archive)); err == nil {
+	if _, err := service.Restore(ownerCtx(), l.opts(t, archive)); err == nil {
 		t.Error("config entry through a symlink out of the config dir: want error")
 	}
 	if _, err := os.Stat(filepath.Join(l.outside, "evil")); !os.IsNotExist(err) {
@@ -232,7 +231,7 @@ func TestRestoreDirRefusesSymlinks(t *testing.T) {
 			if err := os.Symlink(filepath.Join(l.outside, "secret"), link); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := service.Restore(context.Background(), l.opts(t, src)); err == nil {
+			if _, err := service.Restore(ownerCtx(), l.opts(t, src)); err == nil {
 				t.Error("restore of a backup dir holding a symlink: want error")
 			}
 			l.assertNothingWritten(t)
@@ -250,7 +249,7 @@ func TestRestoreDirIgnoresSymlinkedConfigDir(t *testing.T) {
 	if err := os.Symlink(l.outside, filepath.Join(src, "config")); err != nil {
 		t.Fatal(err)
 	}
-	res, err := service.Restore(context.Background(), l.opts(t, src))
+	res, err := service.Restore(ownerCtx(), l.opts(t, src))
 	if err != nil {
 		t.Fatalf("Restore: %v", err)
 	}
@@ -270,14 +269,14 @@ func TestRestoreRefusesNewerSchemaBeforeWriting(t *testing.T) {
 		{name: "ctxt-backup/config/config.yaml", body: "x: 1\n"},
 		{name: "ctxt-backup/manifest.json", body: `{"schema_version": 99}`},
 	})
-	if _, err := service.Restore(context.Background(), l.opts(t, archive)); err == nil ||
+	if _, err := service.Restore(ownerCtx(), l.opts(t, archive)); err == nil ||
 		!strings.Contains(err.Error(), "schema version") {
 		t.Fatalf("archive: want schema version error, got %v", err)
 	}
 	l.assertNothingWritten(t)
 
 	src := extractArchive(t, archive)
-	if _, err := service.Restore(context.Background(), l.opts(t, src)); err == nil ||
+	if _, err := service.Restore(ownerCtx(), l.opts(t, src)); err == nil ||
 		!strings.Contains(err.Error(), "schema version") {
 		t.Fatalf("directory: want schema version error, got %v", err)
 	}
@@ -305,7 +304,7 @@ func TestBackupRestoreConfigsLandInConfigDir(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	bResult, err := service.Backup(context.Background(), service.BackupOpts{
+	bResult, err := service.Backup(ownerCtx(), service.BackupOpts{
 		DBPath:         srcDB,
 		OutputDir:      filepath.Join(src, "backup"),
 		IncludeConfigs: true,
@@ -324,7 +323,7 @@ func TestBackupRestoreConfigsLandInConfigDir(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			l := newRestoreLayout(t)
-			res, err := service.Restore(context.Background(), l.opts(t, tc.source(t)))
+			res, err := service.Restore(ownerCtx(), l.opts(t, tc.source(t)))
 			if err != nil {
 				t.Fatalf("Restore: %v", err)
 			}

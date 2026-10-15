@@ -1,7 +1,6 @@
 package http
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -15,13 +14,13 @@ import (
 // store, as externalize_content leaves it.
 func seedBlobRefObject(t *testing.T, ts *testServerBundle, id, content string) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := ownerCtx()
 	key := "k" + id
-	if err := ts.svc.Store.Blobs().Put(ctx, key, strings.NewReader(content), storage.BlobMeta{Size: int64(len(content))}); err != nil {
+	if err := ts.svc.Store(ownerCtx()).Blobs().Put(ctx, key, strings.NewReader(content), storage.BlobMeta{Size: int64(len(content))}); err != nil {
 		t.Fatalf("put blob: %v", err)
 	}
 	now := time.Now().Truncate(time.Second)
-	if err := ts.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+	if err := ts.svc.Store(ownerCtx()).Objects().Create(ctx, &storage.KnowledgeObject{
 		ID: id, Type: "text", RawContent: "blob://" + key, CreatedAt: now, UpdatedAt: now,
 		Metadata: map[string]any{"blob_key": key},
 	}); err != nil {
@@ -73,7 +72,7 @@ func TestGetObjectLostBlobIs500(t *testing.T) {
 	ts := newTestServerBundle(t)
 	defer ts.Close()
 	seedBlobRefObject(t, ts, "obj-lost", "gone soon")
-	if err := ts.svc.Store.Blobs().Delete(context.Background(), "kobj-lost"); err != nil {
+	if err := ts.svc.Store(ownerCtx()).Blobs().Delete(ownerCtx(), "kobj-lost"); err != nil {
 		t.Fatalf("delete blob: %v", err)
 	}
 

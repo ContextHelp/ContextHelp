@@ -28,7 +28,7 @@ type FanOutResult struct {
 func (s *Service) FanOut(ctx context.Context, objectID string) (*FanOutResult, error) {
 	cfg := s.Cfg.FanOut
 
-	obj, err := s.Store.Objects().Get(ctx, objectID)
+	obj, err := s.Store(ctx).Objects().Get(ctx, objectID)
 	if err != nil {
 		return nil, fmt.Errorf("fanout: get object: %w", err)
 	}
@@ -40,7 +40,7 @@ func (s *Service) FanOut(ctx context.Context, objectID string) (*FanOutResult, e
 	}
 
 	// Collect existing outbound edges to avoid duplicates.
-	existing, err := s.Store.Edges().ListFrom(ctx, nodeObject, objectID)
+	existing, err := s.Store(ctx).Edges().ListFrom(ctx, nodeObject, objectID)
 	if err != nil {
 		return nil, fmt.Errorf("fanout: list edges: %w", err)
 	}
@@ -50,7 +50,7 @@ func (s *Service) FanOut(ctx context.Context, objectID string) (*FanOutResult, e
 	}
 
 	// Collect existing inbound edges for reverse dedup.
-	existingInbound, err := s.Store.Edges().ListTo(ctx, nodeObject, objectID)
+	existingInbound, err := s.Store(ctx).Edges().ListTo(ctx, nodeObject, objectID)
 	if err != nil {
 		return nil, fmt.Errorf("fanout: list inbound edges: %w", err)
 	}
@@ -80,7 +80,7 @@ func (s *Service) FanOut(ctx context.Context, objectID string) (*FanOutResult, e
 				Metadata:  storage.MentionProvenance(obj.Graph, slug),
 				CreatedAt: now,
 			}
-			if err := s.Store.Edges().Create(ctx, edge); err != nil {
+			if err := s.Store(ctx).Edges().Create(ctx, edge); err != nil {
 				return nil, fmt.Errorf("fanout: create fwd edge: %w", err)
 			}
 			edgeIndex[fwdKey] = true
@@ -103,7 +103,7 @@ func (s *Service) FanOut(ctx context.Context, objectID string) (*FanOutResult, e
 				Metadata:  storage.MentionProvenance(obj.Graph, slug),
 				CreatedAt: now,
 			}
-			if err := s.Store.Edges().Create(ctx, edge); err != nil {
+			if err := s.Store(ctx).Edges().Create(ctx, edge); err != nil {
 				return nil, fmt.Errorf("fanout: create rev edge: %w", err)
 			}
 			edgeIndex[revKey] = true
@@ -136,7 +136,7 @@ func (s *Service) FanOut(ctx context.Context, objectID string) (*FanOutResult, e
 			},
 			CreatedAt: now,
 		}
-		if err := s.Store.AuditLog().Append(ctx, entry); err != nil {
+		if err := s.Store(ctx).AuditLog().Append(ctx, entry); err != nil {
 			return nil, fmt.Errorf("fanout: audit log: %w", err)
 		}
 		result.AuditEntries++

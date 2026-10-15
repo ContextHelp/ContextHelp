@@ -22,7 +22,7 @@ func (s *Service) SuggestSchemaEvolution(
 	profileName string,
 	schema config.ProfileSchema,
 ) (*SchemaEvolutionResult, error) {
-	objects, _, err := s.Store.Objects().List(ctx, storage.ObjectFilter{
+	objects, _, err := s.Store(ctx).Objects().List(ctx, storage.ObjectFilter{
 		Limit: schemaevolution.ScanLimit,
 		Sort:  "created_at",
 		Dir:   "desc",

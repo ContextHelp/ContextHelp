@@ -46,7 +46,7 @@ func TestUS0059_RecommendationCompositionHasCorrectHeader(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	env.svc.Pipes.Upsert("rec.header", &pipeline.Pipeline{
 		PipelineName: "rec.header",
@@ -92,7 +92,7 @@ func TestUS0059_RecommendationContainsSourceObjectReference(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	env.svc.Pipes.Upsert("rec.reference", &pipeline.Pipeline{
 		PipelineName: "rec.reference",
@@ -145,7 +145,7 @@ func TestUS0059_MultipleSourcesProduceSingleRecommendation(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	summaries := []string{
 		"Security audit found 5 vulnerabilities in auth layer.",
@@ -198,7 +198,7 @@ func TestUS0059_OpenDecisionsGenerateActionableRecommendations(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	env.svc.Pipes.Upsert("rec.open", &pipeline.Pipeline{
 		PipelineName: "rec.open",

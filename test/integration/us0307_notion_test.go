@@ -3,7 +3,6 @@ package integration
 // US-0307: Notion import via mocked API.
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -68,7 +67,7 @@ func TestUS0307_NotionSearchPages(t *testing.T) {
 	defer srv.Close()
 
 	client := notion.NewClient(nil, srv.URL, "test-token")
-	got, err := client.SearchPages(context.Background(), "", nil, 0)
+	got, err := client.SearchPages(ownerCtx(), "", nil, 0)
 	require.NoError(t, err)
 	require.Len(t, got, 2)
 
@@ -85,7 +84,7 @@ func TestUS0307_NotionRequiresToken(t *testing.T) {
 	defer srv.Close()
 
 	client := notion.NewClient(nil, srv.URL, "")
-	_, err := client.SearchPages(context.Background(), "", nil, 0)
+	_, err := client.SearchPages(ownerCtx(), "", nil, 0)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "token")
 }
@@ -105,7 +104,7 @@ func TestUS0307_NotionMaxItemsRespected(t *testing.T) {
 	defer srv.Close()
 
 	client := notion.NewClient(nil, srv.URL, "tok")
-	got, err := client.SearchPages(context.Background(), "", nil, 2)
+	got, err := client.SearchPages(ownerCtx(), "", nil, 2)
 	require.NoError(t, err)
 	assert.LessOrEqual(t, len(got), 2, "MaxItems=2 must be respected")
 }
@@ -123,7 +122,7 @@ func TestUS0307_NotionLastEditedTimeParsed(t *testing.T) {
 	defer srv.Close()
 
 	client := notion.NewClient(nil, srv.URL, "tok")
-	got, err := client.SearchPages(context.Background(), "", nil, 0)
+	got, err := client.SearchPages(ownerCtx(), "", nil, 0)
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	assert.Equal(t, fixed, got[0].LastEditedTime)

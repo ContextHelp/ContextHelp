@@ -520,10 +520,10 @@ func computeReingestSelectivePlan(ctx context.Context, db *sql.DB, reg pipeline.
 // not the SQLite driver — the in-process upgrade flow only supports SQLite
 // (S3 / future remote backends will go through the daemon's gRPC endpoint).
 func upgradeServiceDB(svc *service.Service) (*sql.DB, error) {
-	if svc == nil || svc.Store == nil {
+	if svc == nil {
 		return nil, errors.New("upgrade: service has no storage")
 	}
-	d, ok := svc.Store.(*sqlite.Driver)
+	d, ok := svc.Store(asOwner(context.Background())).(*sqlite.Driver)
 	if !ok {
 		return nil, errors.New("upgrade: only SQLite storage supports in-process upgrade run")
 	}

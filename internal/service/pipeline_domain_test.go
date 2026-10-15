@@ -1,7 +1,6 @@
 package service
 
 import (
-	"context"
 	"errors"
 	"testing"
 
@@ -27,7 +26,7 @@ func TestPipelineGetID(t *testing.T) {
 // pre_validated → validator → pre_persisted → repo.Create chain.
 func TestCreatePipelineThroughDomainService(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	require.NotNil(t, svc.pipelineSvc, "pipelineSvc should be wired in New()")
 
@@ -52,7 +51,7 @@ func TestCreatePipelineThroughDomainService(t *testing.T) {
 // the "create pipeline" prefix.
 func TestCreatePipelineRejectsEmptyName(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	_, err := svc.CreatePipeline(ctx, CreatePipelineRequest{
 		Name:  "",
@@ -69,7 +68,7 @@ func TestCreatePipelineRejectsEmptyName(t *testing.T) {
 // without needing a publisher attached.
 func TestArchiveUnarchivePipelineUsesUpdate(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	_, err := svc.CreatePipeline(ctx, CreatePipelineRequest{
 		Name:  "lifecycle-pipeline",
@@ -93,7 +92,7 @@ func TestArchiveUnarchivePipelineUsesUpdate(t *testing.T) {
 // shape ("PROTECTED" substring stays for HTTP layer matching).
 func TestDeletePipelineThroughDomainService(t *testing.T) {
 	svc := newTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	_, err := svc.CreatePipeline(ctx, CreatePipelineRequest{
 		Name:  "delete-target",

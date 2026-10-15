@@ -10,7 +10,6 @@ package http
 //	  go test -tags integration,fts5 -count=1 -run 'Postgres' ./internal/server/http/
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"math/rand"
@@ -74,8 +73,8 @@ func freshPostgres(t *testing.T) storage.StorageDriver {
 	u.Path = "/" + name
 	d, err := postgres.New(u.String(), storageutil.NewTestBlobStore(t))
 	require.NoError(t, err)
-	require.NoError(t, d.Init(context.Background()))
-	t.Cleanup(func() { _ = d.Close(context.Background()) })
+	require.NoError(t, d.Init(ownerCtx()))
+	t.Cleanup(func() { _ = d.Close(ownerCtx()) })
 	return d
 }
 
