@@ -17,6 +17,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"hop.top/kit/go/console/output"
 )
@@ -97,17 +98,30 @@ var stepListCmd = &cobra.Command{
 }
 
 var stepInstallCmd = &cobra.Command{
-	Use:   "install <name> --registry <url>",
-	Short: "Install step from registry",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runStepInstall,
+	Use:   "install <name> (--path <dir> | --registry <url>)",
+	Short: "Install a step from a local directory or a registry",
+	Long: `Install a step the pipelines can insert (pipelines.overrides.<pipeline>.insert_steps).
+
+--path packs a local step directory (SKILL.md at its root, plus the
+executable it names) and sends it to the server, which copies it into
+its steps directory. --registry installs from a registry listed under
+registries in dpkms.yaml: an untrusted registry (the default) is
+refused, a sandboxed one installs the step for container isolation only,
+and the archive must match the sha256 the registry manifest declares.
+
+Restart dpkms serve after adding the step to pipelines.overrides.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runStepInstall,
 }
 
 var stepUninstallCmd = &cobra.Command{
 	Use:   "uninstall <name>",
-	Short: "Uninstall step",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runStepUninstall,
+	Short: "Uninstall a step and delete its files",
+	Long: `Uninstall a step: its directory under the server's steps directory and
+its record are deleted. A step pipelines.overrides still inserts is
+refused; remove it from dpkms.yaml first.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runStepUninstall,
 }
 
 var stepRegistryCmd = &cobra.Command{
@@ -167,6 +181,7 @@ var (
 var (
 	stepSource   string
 	stepRegistry string
+	stepPath     string
 )
 
 var (
@@ -215,7 +230,8 @@ func init() {
 
 	stepListCmd.Flags().StringVar(&stepSource, "source", "", "filter by source")
 
-	stepInstallCmd.Flags().StringVar(&stepRegistry, "registry", "", "registry URL")
+	stepInstallCmd.Flags().StringVar(&stepRegistry, "registry", "", "install from this registry URL (listed under registries in dpkms.yaml)")
+	stepInstallCmd.Flags().StringVar(&stepPath, "path", "", "install from this local step directory")
 
 	stepRegistryAutoUpdateCmd.Flags().BoolVar(&registryAutoUpdateEnable, "enable", false, "enable auto-update")
 	stepRegistryAutoUpdateCmd.Flags().BoolVar(&registryAutoUpdateDisable, "disable", false, "disable auto-update")
@@ -411,10 +427,20 @@ func runStepList(cmd *cobra.Command, _ []string) error {
 
 func runStepInstall(cmd *cobra.Command, args []string) error {
 	name := args[0]
-	if stepRegistry == "" {
-		return fmt.Errorf("--registry is required")
+	switch {
+	case stepRegistry != "" && stepPath != "":
+		return fmt.Errorf("give --path or --registry, not both")
+	case stepRegistry != "":
+		return apiClient.InstallStep(cmd.Context(), name, stepRegistry, nil)
+	case stepPath != "":
+		archive, err := steps.PackDir(stepPath)
+		if err != nil {
+			return fmt.Errorf("pack %s: %w", stepPath, err)
+		}
+		return apiClient.InstallStep(cmd.Context(), name, "", archive)
+	default:
+		return fmt.Errorf("--path or --registry is required")
 	}
-	return apiClient.InstallStep(cmd.Context(), name, stepRegistry)
 }
 
 func runStepUninstall(cmd *cobra.Command, args []string) error {

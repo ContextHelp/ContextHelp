@@ -287,6 +287,23 @@ dpkms pipeline step list
 dpkms pipeline step registry list
 ```
 
+### Pipeline overrides
+
+`pipelines.overrides.<pipeline>` in `dpkms.yaml` changes one built-in pipeline. `dpkms config validate` checks every override against the pipelines and the installed steps, and `dpkms serve` refuses to start on the same errors.
+
+| Key | Value |
+|---|---|
+| `providers.<role>` | Backend for this pipeline only: `llm`, `ocr`, `vision`, `transcription`, `diarization`, `video`, `document`. `embedding` is ignored: each embedding model's registry entry decides its provider. |
+| `skip_steps` | Step names to drop. Each must be in the pipeline (`dedup` counts when `duplicates.check_similar` adds it). |
+| `insert_steps[].step` | Step to insert: a built-in step, or one installed with `dpkms pipeline step install`. |
+| `insert_steps[].before`, `insert_steps[].after` | A step in the pipeline once `skip_steps` and earlier inserts apply, named exactly once. Set one or neither; neither appends. |
+| `insert_steps[].on_error` | `fail` (default): the object fails and nothing is stored. `continue`: log the failure and pass the object on unchanged. Installed steps only. |
+| `insert_steps[].timeout` | Duration that overrides the step's SKILL.md timeout (default 30s). Installed steps only. |
+| `insert_steps[].isolation` | `container` runs the step in a container. It never lowers what the step or its registry requires. Installed steps only. |
+| `insert_steps[].config` | Map written to the file `DPKMS_STEP_CONFIG_PATH` names and checked against the step's `config_schema`. `config show` prints it, so keep credentials out. Installed steps only. |
+
+Install a step before you name it here, then restart `dpkms serve`. Walkthrough: [Add a custom step (PII masking)](../admin-extensibility/custom-steps.md).
+
 ### Registry update policy
 
 ```bash
@@ -297,10 +314,11 @@ dpkms pipeline step registry autoupdate <registry-url> --disable
 ## Permission and isolation policy references
 
 - No plugin system: [`docs/decisions/ADR-078-no-plugin-system.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/decisions/ADR-078-no-plugin-system.md)
+- External step protocol and isolation: [`docs/decisions/ADR-058-external-step-execution-protocol.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/decisions/ADR-058-external-step-execution-protocol.md)
 
 ## Operational safeguards
 
-1. Always run `ctxt config validate` before rollout.
+1. Always run `ctxt config validate` (and `dpkms config validate` for `dpkms.yaml`) before rollout.
 2. Use explicit registry auto-update policies.
 3. Prefer staged pipeline changes plus test enqueue runs.
 4. Track runtime flags used in production for reproducibility.

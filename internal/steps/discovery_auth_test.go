@@ -43,10 +43,11 @@ func (b boundTokens) Get(name string) (registry.StoredToken, error) {
 	return registry.StoredToken{Origin: origin, Token: tok}, nil
 }
 
-// stepRegistry serves a manifest with one step and that step's SKILL.md,
+// stepRegistry serves a manifest with one step and that step's archive,
 // both only to requests carrying the bearer token.
 func stepRegistry(t *testing.T) *httptest.Server {
 	t.Helper()
+	archive := packed(skill("paid_step"), "true")(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer "+fakeToken {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -57,10 +58,13 @@ func stepRegistry(t *testing.T) *httptest.Server {
 			_ = json.NewEncoder(w).Encode(storage.RegistryManifest{
 				Name:    "paid",
 				Version: "1.0.0",
-				Steps:   []storage.ManifestStep{{Name: "paid_step", Version: "1.0.0", Path: "steps/paid_step/SKILL.md"}},
+				Steps: []storage.ManifestStep{{
+					Name: "paid_step", Version: "1.0.0",
+					Archive: "steps/paid_step.tar.gz", SHA256: digest(archive),
+				}},
 			})
-		case "/steps/paid_step/SKILL.md":
-			_, _ = w.Write([]byte("---\nname: paid_step\nversion: 1.0.0\n---\nbody\n"))
+		case "/steps/paid_step.tar.gz":
+			_, _ = w.Write(archive)
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -69,43 +73,45 @@ func stepRegistry(t *testing.T) *httptest.Server {
 	return srv
 }
 
-func newDiscovery(t *testing.T, srvURL string, tokens registry.TokenSource) *steps.StepDiscovery {
+func newInstaller(t *testing.T, srvURL string, tokens registry.TokenSource) (*steps.Installer, config.RegistryConfig) {
 	t.Helper()
-	regs := []config.RegistryConfig{{
+	reg := config.RegistryConfig{
 		Name: "paid", URL: srvURL,
-		Auth: config.RegistryAuthConfig{Type: config.RegistryAuthBearer},
-	}}
-	return steps.NewStepDiscovery(storageutil.NewTestDriver(t), t.TempDir()).
-		WithCredentials(registry.NewCredentials(regs, tokens))
+		Auth:       config.RegistryAuthConfig{Type: config.RegistryAuthBearer},
+		TrustLevel: config.RegistryTrustLevelTrusted,
+	}
+	store := storageutil.NewTestDriver(t)
+	sd := steps.NewStepDiscovery(store).WithCredentials(registry.NewCredentials([]config.RegistryConfig{reg}, tokens))
+	return &steps.Installer{Dir: t.TempDir(), Store: store, Discovery: sd}, reg
 }
 
 func TestDiscovery_ManifestAndStepDownloadCarryToken(t *testing.T) {
 	srv := stepRegistry(t)
-	sd := newDiscovery(t, srv.URL, mapTokens{"paid": fakeToken}.bind(srv.URL))
+	in, reg := newInstaller(t, srv.URL, mapTokens{"paid": fakeToken}.bind(srv.URL))
 	ctx := context.Background()
 
-	if _, err := sd.FetchRemoteManifest(ctx, srv.URL); err != nil {
+	if _, err := in.Discovery.FetchRemoteManifest(ctx, srv.URL); err != nil {
 		t.Fatalf("FetchRemoteManifest: %v", err)
 	}
-	if _, err := sd.FetchRegistryManifest(ctx, srv.URL); err != nil {
+	if _, err := in.Discovery.FetchRegistryManifest(ctx, srv.URL); err != nil {
 		t.Fatalf("FetchRegistryManifest: %v", err)
 	}
-	if err := sd.InstallStep(ctx, "paid_step", srv.URL); err != nil {
-		t.Fatalf("InstallStep: %v", err)
+	if _, err := in.InstallFromRegistry(ctx, "paid_step", reg); err != nil {
+		t.Fatalf("InstallFromRegistry: %v", err)
 	}
 }
 
 func TestDiscovery_NoToken_LoginHint(t *testing.T) {
 	srv := stepRegistry(t)
-	sd := newDiscovery(t, srv.URL, mapTokens{}.bind(srv.URL))
+	in, reg := newInstaller(t, srv.URL, mapTokens{}.bind(srv.URL))
 	ctx := context.Background()
 
-	_, err := sd.FetchRemoteManifest(ctx, srv.URL)
+	_, err := in.Discovery.FetchRemoteManifest(ctx, srv.URL)
 	if err == nil || !strings.Contains(err.Error(), "ctxt registry login paid") {
 		t.Errorf("FetchRemoteManifest without token: err = %v", err)
 	}
-	err = sd.InstallStep(ctx, "paid_step", srv.URL)
+	_, err = in.InstallFromRegistry(ctx, "paid_step", reg)
 	if err == nil || !strings.Contains(err.Error(), "ctxt registry login paid") {
-		t.Errorf("InstallStep without token: err = %v", err)
+		t.Errorf("InstallFromRegistry without token: err = %v", err)
 	}
 }

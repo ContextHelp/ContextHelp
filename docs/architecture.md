@@ -1001,9 +1001,9 @@ There is no plugin system: ctxt and dpkms load no third-party code in process
 
 | Surface | How |
 |---|---|
-| Pipeline overrides | `pipelines.overrides.<pipeline>`: `providers`, `skip_steps`, `extra_steps` |
+| Pipeline overrides | `pipelines.overrides.<pipeline>`: `providers`, `skip_steps`, `insert_steps` |
 | Custom pipelines | `dpkms pipeline create <file>`, `POST /api/v1/pipelines` |
-| Installed steps | `dpkms pipeline step install <name> --registry <url>`; designed to run out of process ([ADR-058](decisions/ADR-058-external-step-execution-protocol.md)), not executed by pipelines yet |
+| Installed steps | `dpkms pipeline step install <name> --path <dir>` or `--registry <url>`; run out of process where `insert_steps` places them ([ADR-058](decisions/ADR-058-external-step-execution-protocol.md)) |
 | Registries | entity, taxonomy and step registries (`registries:`, `dpkms pipeline step registry`) |
 | Hooks | pre and post hooks on ctxt and dpkms events ([ADR-075](decisions/ADR-075-external-hook-surface.md)), accepted, not implemented yet |
 | Auth | a trusted proxy or OIDC in front of dpkms, to be designed under ADR-023 |
@@ -1063,8 +1063,8 @@ execution guarantees, entity resolution or the registry protocol.
 - Reversible writes
 - User confirmation for destructive ops
 
-**Third-party code:** none runs in process. Installed steps are designed to
-run out of process under the ADR-058 protocol (no pipeline executes them yet);
+**Third-party code:** none runs in process. Installed steps run out of process
+under the ADR-058 protocol, as a child process or in a container;
 hooks (ADR-075) will run in other applications.
 
 **Input Validation:**

@@ -587,10 +587,9 @@ ADR-027).
 ## What exists
 
 - **Pipelines:** `pipelines.overrides.<pipeline>` (`providers`, `skip_steps`,
-  `extra_steps`) and custom pipelines (`dpkms pipeline create`).
-- **Steps:** built-in steps, plus steps installed from a step registry
-  (`dpkms pipeline step install`); out-of-process execution (ADR-058) is not
-  wired into pipelines yet.
+  `insert_steps`) and custom pipelines (`dpkms pipeline create`).
+- **Steps:** built-in steps, plus installed steps (`dpkms pipeline step
+  install`), run out of process (ADR-058) where `insert_steps` places them.
 - **Registries:** entity, taxonomy and step registries.
 - **Hooks:** pre and post hooks on ctxt and dpkms events (ADR-075, not implemented yet).
 

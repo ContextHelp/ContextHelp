@@ -1776,8 +1776,42 @@ type PipelineOverride struct {
 	// "dedup" removes the near-duplicate check that duplicates.check_similar
 	// inserts.
 	SkipSteps []string `mapstructure:"skip_steps" yaml:"skip_steps"`
-	// ExtraSteps is an ordered list of step names appended after existing steps.
-	ExtraSteps []string `mapstructure:"extra_steps" yaml:"extra_steps"`
+	// InsertSteps adds steps to the pipeline, in order, each before or
+	// after a named step (or appended when it names neither). A step is
+	// a built-in step or one installed with `dpkms pipeline step install`.
+	InsertSteps []StepInsert `mapstructure:"insert_steps" yaml:"insert_steps"`
+}
+
+// Step failure policies for an inserted step (StepInsert.OnError).
+const (
+	StepOnErrorFail     = "fail"
+	StepOnErrorContinue = "continue"
+)
+
+// StepInsert places one step in a pipeline. Before and After name a step
+// already in the pipeline (after skip_steps and earlier inserts apply);
+// at most one is set. OnError, Timeout, Isolation and Config apply to
+// installed steps only.
+type StepInsert struct {
+	// Step is the step's name.
+	Step string `mapstructure:"step" yaml:"step"`
+	// Before inserts the step right before the named step.
+	Before string `mapstructure:"before" yaml:"before,omitempty"`
+	// After inserts the step right after the named step.
+	After string `mapstructure:"after" yaml:"after,omitempty"`
+	// OnError is what a failed run does: "fail" (default) fails the
+	// object's job, nothing stored; "continue" logs the failure and
+	// passes the object on unchanged.
+	OnError string `mapstructure:"on_error" yaml:"on_error,omitempty"`
+	// Timeout overrides the step's own resource_requirements.timeout.
+	Timeout time.Duration `mapstructure:"timeout" yaml:"timeout,omitempty"`
+	// Isolation raises the step's isolation to "container"; it never
+	// lowers what the step or its registry requires.
+	Isolation string `mapstructure:"isolation" yaml:"isolation,omitempty"`
+	// Config is written to the file DPKMS_STEP_CONFIG_PATH names, after
+	// a check against the step's config_schema. config show prints it
+	// as is: it is not a place for credentials.
+	Config map[string]any `mapstructure:"config" yaml:"config,omitempty" secret:"false"`
 }
 
 // ConventionsConfig enforces naming rules across the system.

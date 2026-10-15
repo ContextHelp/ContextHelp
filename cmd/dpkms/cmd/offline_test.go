@@ -100,7 +100,7 @@ func TestAPIClient_RequestsCarryContext(t *testing.T) {
 			_, err := c.GetStep(ctx, "s")
 			return err
 		},
-		"InstallStep":    func(ctx context.Context, c *APIClient) error { return c.InstallStep(ctx, "s", "r") },
+		"InstallStep":    func(ctx context.Context, c *APIClient) error { return c.InstallStep(ctx, "s", "r", nil) },
 		"UninstallStep":  func(ctx context.Context, c *APIClient) error { return c.UninstallStep(ctx, "s") },
 		"FetchRegistry":  func(ctx context.Context, c *APIClient) error { return c.FetchRegistry(ctx, "r") },
 		"UpdateRegistry": func(ctx context.Context, c *APIClient) error { return c.UpdateRegistry(ctx, "r") },

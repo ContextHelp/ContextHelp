@@ -43,7 +43,8 @@ type Service struct {
 	Pipes     pipeline.Registry
 	Search    *search.Engine
 	Discovery *steps.StepDiscovery
-	Executor  *steps.StepExecutor
+	// Installer installs and removes steps under steps.path.
+	Installer *steps.Installer
 	Bus       events.Bus
 	Cfg       config.Config
 
@@ -82,6 +83,12 @@ func WithPolicyPublisher(p domain.EventPublisher) Option {
 	return func(s *Service) { s.policyPub = p }
 }
 
+// WithReservedStepNames refuses step installs under names reserved
+// reports (the built-in steps: builtins.IsStepName).
+func WithReservedStepNames(reserved func(string) bool) Option {
+	return func(s *Service) { s.Installer.Reserved = reserved }
+}
+
 // WithRegistryTokens makes every request to a configured registry
 // (manifest fetch, entity sync, entitlements, entity pull, step download,
 // bookmark search) carry that registry's stored token per its auth
@@ -99,8 +106,7 @@ func New(store storage.StorageDriver, queue *jobs.Queue, pipes pipeline.Registry
 // to wire optional behaviors (e.g. policy publisher). Existing callers
 // of New continue to work unchanged.
 func NewWithOptions(store storage.StorageDriver, queue *jobs.Queue, pipes pipeline.Registry, engine *search.Engine, stepsPath string, bus events.Bus, opts []Option, cfg ...config.Config) *Service {
-	discovery := steps.NewStepDiscovery(store, stepsPath)
-	executor := steps.NewStepExecutor(store, stepsPath)
+	discovery := steps.NewStepDiscovery(store)
 
 	if bus == nil {
 		bus = events.NewLocalBus()
@@ -117,7 +123,7 @@ func NewWithOptions(store storage.StorageDriver, queue *jobs.Queue, pipes pipeli
 		Pipes:     pipes,
 		Search:    engine,
 		Discovery: discovery,
-		Executor:  executor,
+		Installer: &steps.Installer{Dir: stepsPath, Store: store, Discovery: discovery},
 		Bus:       bus,
 		Cfg:       c,
 	}
@@ -801,12 +807,51 @@ func (s *Service) GetStep(ctx context.Context, name string) (*storage.Registered
 	return s.Store.Steps().Get(ctx, name)
 }
 
-func (s *Service) InstallStep(ctx context.Context, name, fromRegistry string) error {
-	return s.Discovery.InstallStep(ctx, name, fromRegistry)
+// StepInstallRequest is one step install: from a registry configured
+// under registries (FromRegistry, its URL) or from a packaged local
+// directory (Archive, as steps.PackDir builds it). Exactly one is set.
+type StepInstallRequest struct {
+	Name         string `json:"name"`
+	FromRegistry string `json:"from_registry,omitempty"`
+	Archive      []byte `json:"archive,omitempty"`
 }
 
+// ErrStepInUse is an uninstall of a step pipelines.overrides still inserts.
+var ErrStepInUse = errors.New("step in use")
+
+// InstallStep installs a step into steps.path and records it. A registry
+// install is gated by the registry's trust_level and the archive digest
+// its manifest declares (steps.Installer.InstallFromRegistry).
+func (s *Service) InstallStep(ctx context.Context, req StepInstallRequest) (*storage.RegisteredStep, error) {
+	switch {
+	case req.FromRegistry != "" && len(req.Archive) > 0:
+		return nil, fmt.Errorf("%w: give from_registry or archive, not both", steps.ErrInvalidStep)
+	case req.FromRegistry != "":
+		return s.Installer.InstallFromRegistry(ctx, req.Name, s.registryByURL(req.FromRegistry))
+	case len(req.Archive) > 0:
+		return s.Installer.InstallArchive(ctx, req.Name, req.Archive, "local", "")
+	default:
+		return nil, fmt.Errorf("%w: from_registry or archive is required", steps.ErrInvalidStep)
+	}
+}
+
+// UninstallStep removes an installed step's files and record. A step
+// that pipelines.overrides still inserts is refused: remove it from the
+// config first, or the next dpkms serve start fails on it.
 func (s *Service) UninstallStep(ctx context.Context, name string) error {
-	return s.Store.Steps().Unregister(ctx, name)
+	var users []string
+	for pipe, o := range s.Cfg.Pipelines.Overrides {
+		for i, ins := range o.InsertSteps {
+			if ins.Step == name {
+				users = append(users, fmt.Sprintf("pipelines.overrides.%s.insert_steps[%d]", pipe, i))
+			}
+		}
+	}
+	if len(users) > 0 {
+		sort.Strings(users)
+		return fmt.Errorf("%w: %q is inserted by %s; remove it from dpkms.yaml first", ErrStepInUse, name, strings.Join(users, ", "))
+	}
+	return s.Installer.Uninstall(ctx, name)
 }
 
 // FetchRegistry fetches the registry manifest at url and caches it.

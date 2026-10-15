@@ -558,11 +558,12 @@ type PipelineStep interface {
 2. Add its constructor to the step tables in
    `internal/pipeline/builtins/builtins.go` so pipeline definitions can name it.
 3. Reference it from a pipeline definition, or from
-   `pipelines.overrides.<pipeline>.extra_steps`.
+   `pipelines.overrides.<pipeline>.insert_steps`.
 
 A step that ships outside ctxt is an external step: a directory with a
-`SKILL.md` that reads `{"config": ..., "object": ...}` on stdin and writes the
-object on stdout, installed with `dpkms pipeline step install`.
+`SKILL.md` and an executable that reads the knowledge object on stdin and
+writes `{"object": ...}` (the fields it changed) on stdout, installed with
+`dpkms pipeline step install` (ADR-058; example in `examples/steps/pii-mask`).
 
 ---
 

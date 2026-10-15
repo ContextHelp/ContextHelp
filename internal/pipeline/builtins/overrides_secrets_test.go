@@ -57,11 +57,12 @@ func TestPipelineProviderOverrideUsesSecretsStore(t *testing.T) {
 	baseCfg := config.ProvidersConfig{LLM: config.ProviderBackendConfig{Backend: "stub"}}
 	base := providers.NewFactory(baseCfg, store).WithHTTPClient(client)
 
-	reg := builtins.ConfiguredRegistryWithPipelineOverrides(builtins.BuildOpts{Factory: base}, baseCfg, config.PipelinesConfig{
+	reg, err := builtins.ConfiguredRegistryWithPipelineOverrides(builtins.BuildOpts{Factory: base}, baseCfg, config.PipelinesConfig{
 		Overrides: map[string]config.PipelineOverride{
 			"text.short": {Providers: map[string]config.ProviderBackendConfig{"llm": {Backend: "openai"}}},
 		},
 	})
+	require.NoError(t, err)
 	pipe, err := reg.Get("text.short")
 	require.NoError(t, err)
 

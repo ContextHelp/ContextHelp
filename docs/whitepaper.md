@@ -264,7 +264,7 @@ Trust is also semantic. Registry influence should be inspectable. If an entity l
 ContextHelp is intended to outlive its initial assumptions without loading third-party code into the daemon. There is no plugin system ([ADR-078](decisions/ADR-078-no-plugin-system.md)). Extension happens through:
 
 - pipeline overrides and custom pipelines
-- steps installed from step registries, designed to run out of process (ADR-058)
+- installed steps, run out of process (ADR-058)
 - entity, taxonomy and step registries
 - pre and post hooks that other applications subscribe to (designed, ADR-075)
 

@@ -56,7 +56,11 @@ Threats to ctxt and dpkms, what mitigates each one today, and what does not.
 
 **Vectors**: installed pipeline steps.
 
-**State**: there is no plugin system ([ADR-078](../../decisions/ADR-078-no-plugin-system.md)). `dpkms pipeline step install` records steps from a step registry; no pipeline executes installed external steps today. When that lands, a step runs as a plain subprocess: there is no sandbox ([ADR-055](../../decisions/ADR-055-sandbox-isolation-levels.md) is design).
+**State**: there is no plugin system ([ADR-078](../../decisions/ADR-078-no-plugin-system.md)). Installed steps run out of process where `pipelines.overrides.<pipeline>.insert_steps` places them ([ADR-058](../../decisions/ADR-058-external-step-execution-protocol.md)).
+
+**Mitigations**: only an admin installs a step; a registry install needs a `trusted` or `sandboxed` registry and a matching archive sha256; the executable's sha256 is checked before every run; the step gets a minimal environment, never dpkms's. A `sandboxed` registry's step runs only in a container with no network.
+
+**Gap**: process isolation, the default, confines neither the filesystem nor the network: the step can do what the dpkms user can.
 
 ### 6. Data exfiltration
 

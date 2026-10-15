@@ -1,6 +1,7 @@
 package builtins
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"path/filepath"
@@ -157,6 +158,19 @@ type BuildOpts struct {
 	// Duplicates configures near-duplicate detection. With CheckSimilar
 	// set, every pipeline that embeds runs dedup right after embedding.
 	Duplicates config.DuplicatesConfig
+
+	// External resolves the installed steps pipelines.overrides inserts
+	// (`dpkms pipeline step install`). Nil: no step is installed.
+	External ExternalSteps
+}
+
+// ExternalSteps resolves installed (out-of-process, ADR-058) steps by name.
+type ExternalSteps interface {
+	// Has reports whether a step of that name is installed.
+	Has(name string) bool
+	// Step builds the installed step ins names for pipelineName, with
+	// the run options ins sets.
+	Step(pipelineName string, ins config.StepInsert) (pipeline.PipelineStep, error)
 }
 
 // embeddingStepConstructors maps step names to constructors that take the
@@ -271,12 +285,44 @@ func resolveStep(name string, opts BuildOpts) (pipeline.PipelineStep, error) {
 	return nil, fmt.Errorf("builtins: unknown step %q", name)
 }
 
+// stepSpec is one step of a pipeline being built: its name and, for a
+// step pipelines.overrides inserted, the insert entry.
+type stepSpec struct {
+	name   string
+	insert *config.StepInsert
+}
+
+func specsOf(names []string) []stepSpec {
+	out := make([]stepSpec, len(names))
+	for i, n := range names {
+		out[i] = stepSpec{name: n}
+	}
+	return out
+}
+
 // buildPipeline constructs a Pipeline from a Def, optionally injecting providers.
 // If strict is true, unsatisfied capabilities cause an error; otherwise they are pruned.
 func buildPipeline(name string, d Def, opts BuildOpts, strict bool) (*pipeline.Pipeline, error) {
-	pipelineSteps := make([]pipeline.PipelineStep, 0, len(d.Steps))
-	for _, stepName := range d.Steps {
-		s, err := resolveStep(stepName, opts)
+	return buildPipelineSpecs(name, d, specsOf(d.Steps), opts, strict)
+}
+
+// buildPipelineSpecs is buildPipeline over an explicit step list: a
+// built-in step resolves through the constructor tables, an installed
+// one through opts.External.
+func buildPipelineSpecs(name string, d Def, specs []stepSpec, opts BuildOpts, strict bool) (*pipeline.Pipeline, error) {
+	pipelineSteps := make([]pipeline.PipelineStep, 0, len(specs))
+	for _, spec := range specs {
+		var s pipeline.PipelineStep
+		var err error
+		if !IsStepName(spec.name) && opts.External != nil && opts.External.Has(spec.name) {
+			ins := config.StepInsert{Step: spec.name}
+			if spec.insert != nil {
+				ins = *spec.insert
+			}
+			s, err = opts.External.Step(name, ins)
+		} else {
+			s, err = resolveStep(spec.name, opts)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("pipeline %q: %w", name, err)
 		}
@@ -438,13 +484,29 @@ func ConfiguredRegistryStrict(f *providers.Factory) pipeline.Registry {
 
 // ConfiguredRegistryWithPipelineOverrides builds a registry from base where
 // each pipeline can override individual provider backends via
-// PipelinesConfig.Overrides (base.Factory is built from baseCfg). It also
-// honors SkipSteps and ExtraSteps structural overrides.
+// PipelinesConfig.Overrides (base.Factory is built from baseCfg), drop
+// steps (skip_steps) and insert steps, built-in or installed
+// (insert_steps). An override that names an unknown pipeline, step or
+// anchor fails the build with one line per problem; nothing panics and
+// nothing is ignored.
 func ConfiguredRegistryWithPipelineOverrides(
 	base BuildOpts,
 	baseCfg config.ProvidersConfig,
 	pipelinesCfg config.PipelinesConfig,
-) pipeline.Registry {
+) (pipeline.Registry, error) {
+	has := func(string) bool { return false }
+	if base.External != nil {
+		has = base.External.Has
+	}
+	verrs := append(pipelinesCfg.Validate(), ValidateOverrides(pipelinesCfg, base.Duplicates, has)...)
+	if len(verrs) > 0 {
+		lines := make([]string, len(verrs))
+		for i, e := range verrs {
+			lines[i] = e.Error()
+		}
+		return nil, fmt.Errorf("invalid pipelines config:\n  %s", strings.Join(lines, "\n  "))
+	}
+
 	r := pipeline.NewRegistry()
 	selectors := buildSelectors()
 
@@ -459,11 +521,14 @@ func ConfiguredRegistryWithPipelineOverrides(
 
 		opts := base
 		d.Steps = InjectDedupStep(d.Steps, base.Duplicates)
+		specs := specsOf(d.Steps)
 
 		if override, ok := pipelinesCfg.Overrides[name]; ok {
-			// 1. Handle structural overrides (SkipSteps, ExtraSteps).
-			if len(override.SkipSteps) > 0 || len(override.ExtraSteps) > 0 {
-				d.Steps = applyStructuralOverrides(d.Steps, override.SkipSteps, override.ExtraSteps)
+			// 1. Structural overrides: skip_steps, then insert_steps.
+			var problems []config.ValidationError
+			specs, problems = applyStructuralOverrides(name, specs, override, nil)
+			if len(problems) > 0 {
+				return nil, errors.New("invalid pipelines config: " + problems[0].Error())
 			}
 
 			// 2. Handle provider overrides.
@@ -498,18 +563,163 @@ func ConfiguredRegistryWithPipelineOverrides(
 			}
 		}
 
-		p, err := buildPipeline(name, d, opts, false)
+		p, err := buildPipelineSpecs(name, d, specs, opts, false)
 		if err != nil {
-			panic(fmt.Sprintf("builtins: %v", err))
+			return nil, err
 		}
 		if err := r.Register(name, p); err != nil {
-			panic(fmt.Sprintf("builtins: %v", err))
+			return nil, err
 		}
 	}
 
 	r.SetSelectors(builtinSelectors(selectors))
 
-	return r
+	return r, nil
+}
+
+// ValidateOverrides checks every pipelines.overrides entry against the
+// registered pipelines: the pipeline exists, each skip_steps name is one
+// of its steps, each inserted step is built in or installed (installed
+// reports which names are; nil means none), and each before/after anchor
+// is in the pipeline once skip_steps and the earlier inserts apply.
+// dedup counts as a pipeline step when dups.CheckSimilar inserts it.
+// Problems come back one per field, sorted by pipeline.
+func ValidateOverrides(p config.PipelinesConfig, dups config.DuplicatesConfig, installed func(string) bool) []config.ValidationError {
+	names := make([]string, 0, len(p.Overrides))
+	for name := range p.Overrides {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	var errs []config.ValidationError
+	for _, name := range names {
+		d, ok := defs[name]
+		if !ok {
+			errs = append(errs, config.ValidationError{
+				Field:   "pipelines.overrides." + name,
+				Message: fmt.Sprintf("unknown pipeline %q (dpkms pipeline list)", name),
+			})
+			continue
+		}
+		_, problems := applyStructuralOverrides(name, specsOf(InjectDedupStep(d.Steps, dups)), p.Overrides[name], installed)
+		errs = append(errs, problems...)
+	}
+	return errs
+}
+
+// applyStructuralOverrides drops o.SkipSteps from specs, then applies
+// o.InsertSteps in order. Every name that does not resolve is a problem;
+// installed nil skips the inserted-step name check (the step builder
+// reports it).
+func applyStructuralOverrides(pipelineName string, specs []stepSpec, o config.PipelineOverride, installed func(string) bool) ([]stepSpec, []config.ValidationError) {
+	ov := overrideApplier{pipeline: pipelineName, base: "pipelines.overrides." + pipelineName, installed: installed}
+	out := slices.Clone(specs)
+	for i, skip := range o.SkipSteps {
+		if _, n := indexOfStep(out, skip); n == 0 {
+			if _, inOrig := indexOfStep(specs, skip); inOrig == 0 {
+				ov.notIn(fmt.Sprintf("%s.skip_steps[%d]", ov.base, i), skip, specs)
+			}
+			continue
+		}
+		out = slices.DeleteFunc(out, func(s stepSpec) bool { return s.name == skip })
+	}
+	for i := range o.InsertSteps {
+		out = ov.insert(out, i, &o.InsertSteps[i])
+	}
+	return out, ov.problems
+}
+
+// overrideApplier collects the problems one pipeline's override has.
+type overrideApplier struct {
+	pipeline  string
+	base      string
+	installed func(string) bool
+	problems  []config.ValidationError
+}
+
+func (ov *overrideApplier) problem(field, format string, args ...any) {
+	ov.problems = append(ov.problems, config.ValidationError{Field: field, Message: fmt.Sprintf(format, args...)})
+}
+
+func (ov *overrideApplier) notIn(field, step string, in []stepSpec) {
+	names := make([]string, len(in))
+	for i, s := range in {
+		names[i] = s.name
+	}
+	ov.problem(field, "step %q is not in pipeline %s (steps: %s)", step, ov.pipeline, strings.Join(names, ", "))
+}
+
+// insert places insert_steps[i] in out, or records why it cannot.
+func (ov *overrideApplier) insert(out []stepSpec, i int, ins *config.StepInsert) []stepSpec {
+	field := fmt.Sprintf("%s.insert_steps[%d]", ov.base, i)
+	builtin := IsStepName(ins.Step)
+	if !builtin && ov.installed != nil && !ov.installed(ins.Step) {
+		ov.problem(field+".step", "unknown step %q: not a built-in step and not installed (dpkms pipeline step list)", ins.Step)
+	}
+	if builtin && (ins.OnError != "" || ins.Timeout != 0 || ins.Isolation != "" || len(ins.Config) > 0) {
+		ov.problem(field, "on_error, timeout, isolation and config apply to installed steps only; %q is built in", ins.Step)
+	}
+	anchorField, anchor := "", ""
+	switch {
+	case ins.Before != "" && ins.After != "":
+		return out // PipelinesConfig.Validate reports it
+	case ins.Before != "":
+		anchorField, anchor = field+".before", ins.Before
+	case ins.After != "":
+		anchorField, anchor = field+".after", ins.After
+	default:
+		return append(out, stepSpec{name: ins.Step, insert: ins})
+	}
+	idx, n := indexOfStep(out, anchor)
+	switch {
+	case n == 0:
+		ov.notIn(anchorField, anchor, out)
+		return out
+	case n > 1:
+		ov.problem(anchorField, "step %q appears %d times in pipeline %s; the anchor must be unique", anchor, n, ov.pipeline)
+		return out
+	}
+	if ins.After != "" {
+		idx++
+	}
+	return slices.Insert(out, idx, stepSpec{name: ins.Step, insert: ins})
+}
+
+// indexOfStep is the first index of step in specs and how often it occurs.
+func indexOfStep(specs []stepSpec, step string) (idx, count int) {
+	idx = -1
+	for i, s := range specs {
+		if s.name == step {
+			if idx < 0 {
+				idx = i
+			}
+			count++
+		}
+	}
+	return idx, count
+}
+
+// IsStepName reports whether name is a built-in step.
+func IsStepName(name string) bool {
+	if _, ok := stepConstructors[name]; ok {
+		return true
+	}
+	if _, ok := providerStepConstructors[name]; ok {
+		return true
+	}
+	if _, ok := embeddingStepConstructors[name]; ok {
+		return true
+	}
+	if _, ok := blobStepConstructors[name]; ok {
+		return true
+	}
+	if _, ok := fetchStepConstructors[name]; ok {
+		return true
+	}
+	if _, ok := browserStepConstructors[name]; ok {
+		return true
+	}
+	return false
 }
 
 // defProvidersSatisfied returns true if all providers listed in d.Providers
@@ -521,28 +731,6 @@ func defProvidersSatisfied(d Def, caps pipeline.CapabilitySet) bool {
 		}
 	}
 	return true
-}
-
-func applyStructuralOverrides(steps []string, skip []string, extra []string) []string {
-	out := make([]string, 0, len(steps)+len(extra))
-	out = append(out, steps...)
-
-	if len(skip) > 0 {
-		skipMap := make(map[string]bool)
-		for _, s := range skip {
-			skipMap[s] = true
-		}
-		filtered := make([]string, 0, len(out))
-		for _, s := range out {
-			if !skipMap[s] {
-				filtered = append(filtered, s)
-			}
-		}
-		out = filtered
-	}
-
-	out = append(out, extra...)
-	return out
 }
 
 func buildRegistry(opts BuildOpts, strict bool) pipeline.Registry {

@@ -30,7 +30,7 @@ Related:
 
 - **Logs are not sanitized.** `slog` output, including `-V` / `--verbose`, is written as-is; no config key or env var redacts it. Check logs before sharing them.
 - **`ctxt config show --format json|yaml`** prints the effective config unredacted, tokens included.
-- **No sandbox for installed steps.** There is no plugin system ([ADR-078](../decisions/ADR-078-no-plugin-system.md)), and no pipeline executes installed external steps yet; when one does, nothing sandboxes it ([ADR-055](../decisions/ADR-055-sandbox-isolation-levels.md) is design).
+- **Installed steps run as the dpkms user.** There is no plugin system ([ADR-078](../decisions/ADR-078-no-plugin-system.md)). Under process isolation, the default, an installed step can read and write what the dpkms user can and reach the network; only container isolation confines it ([Add a custom step](../manual/admin-extensibility/custom-steps.md#isolation)).
 
 Details: [What output shows secrets](./secrets-validation-and-log-sanitization.md#what-output-shows-secrets).
 

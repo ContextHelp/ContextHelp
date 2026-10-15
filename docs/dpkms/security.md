@@ -38,10 +38,7 @@ Pipeline execution must respect clear isolation:
 
 - Pipelines cannot write outside their assigned working directory.
 - External calls (LLM providers, metadata fetchers) must be opt-in and explicitly configured.
-- Installed steps (designed to run out of process, ADR-058; not executed yet) must run in a restricted context with:
-  - No access to OS-level exec without permission
-  - Limited filesystem access
-  - Strict sanitization of inputs and outputs
+- Installed steps run out of process (ADR-058). Process isolation gives a step a minimal environment and a private working directory but not filesystem or network isolation; container isolation adds both. Output is validated: a step may change only its writable fields. See [Add a custom step](../manual/admin-extensibility/custom-steps.md#isolation).
 
 Agents consuming ContextHelp data must operate within defined scopes and may not directly mutate stored data unless explicitly allowed.
 

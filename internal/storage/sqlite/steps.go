@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -123,6 +124,9 @@ func scanStep(row interface{ Scan(...any) error }) (*storage.RegisteredStep, err
 		&s.Name, &s.Source, &s.Path, &metadataJSON,
 		&installedAt, &updatedAt,
 	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("step: %w", storage.ErrNotFound)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("scan step: %w", err)
 	}

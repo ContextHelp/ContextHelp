@@ -117,12 +117,12 @@ ContextHelp protects the following critical assets:
 - Steps modify protected data
 
 **Mitigations**:
-- Steps are designed to run out of process (ADR-058), never inside dpkms; no pipeline executes installed steps yet
-- Step install and uninstall need the `admin:steps` scope (admin role)
-- Sandbox isolation levels per pipeline (ADR-055)
-- Restricted file system access
-- No direct network access without permission
-- Memory limits and execution timeouts
+- Steps run out of process (ADR-058), never inside dpkms
+- Step install and uninstall need the `admin:steps` scope (admin role); a registry install needs a `trusted` or `sandboxed` registry and a matching archive sha256
+- The executable's sha256 is recorded at install and checked before every run
+- Process isolation: minimal environment, private working directory, timeout, CPU-time and stdout limits; no filesystem or network isolation
+- Container isolation (required for `sandboxed` registries): no network, read-only root, no capabilities, memory and CPU limits
+- A step may change only its writable object fields; a failing step fails its object
 
 #### 5. Data Exfiltration
 

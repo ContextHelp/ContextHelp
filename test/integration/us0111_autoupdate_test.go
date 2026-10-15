@@ -44,7 +44,7 @@ func TestUS0111_AutoUpdate_SkipWhenETagUnchanged(t *testing.T) {
 	manifest := storage.RegistryManifest{
 		Name:    "autoupdate-registry",
 		Version: "1.0",
-		Steps:   []storage.ManifestStep{{Name: "step-a", Path: "step-a", License: "MIT", Version: "1.0.0"}},
+		Steps:   []storage.ManifestStep{{Name: "step-a", Archive: "step-a", License: "MIT", Version: "1.0.0"}},
 	}
 	srv := versionedRegistryServer(t, manifest, "etag-v1", &hitCount)
 	defer srv.Close()
@@ -90,8 +90,8 @@ func TestUS0111_AutoUpdate_UpgradeWhenETagChanges(t *testing.T) {
 		Name:    "autoupdate-registry",
 		Version: "2.0",
 		Steps: []storage.ManifestStep{
-			{Name: "step-a", Path: "step-a", License: "MIT", Version: "2.0.0"},
-			{Name: "step-b", Path: "step-b", License: "MIT", Version: "1.0.0"},
+			{Name: "step-a", Archive: "step-a", License: "MIT", Version: "2.0.0"},
+			{Name: "step-b", Archive: "step-b", License: "MIT", Version: "1.0.0"},
 		},
 	}
 	// Server now returns etag-v2 unconditionally.
@@ -102,7 +102,7 @@ func TestUS0111_AutoUpdate_UpgradeWhenETagChanges(t *testing.T) {
 	oldManifest := storage.RegistryManifest{
 		Name:    "autoupdate-registry",
 		Version: "1.0",
-		Steps:   []storage.ManifestStep{{Name: "step-a", Path: "step-a", License: "MIT", Version: "1.0.0"}},
+		Steps:   []storage.ManifestStep{{Name: "step-a", Archive: "step-a", License: "MIT", Version: "1.0.0"}},
 	}
 	cache := &storage.RegistryCache{
 		RegistryURL: srv.URL,
@@ -143,7 +143,7 @@ func TestUS0111_AutoUpdate_NotifyWhenNotAutoUpdate(t *testing.T) {
 	manifest := storage.RegistryManifest{
 		Name:    "notify-registry",
 		Version: "2.0",
-		Steps:   []storage.ManifestStep{{Name: "step-z", Path: "step-z", License: "MIT", Version: "2.0.0"}},
+		Steps:   []storage.ManifestStep{{Name: "step-z", Archive: "step-z", License: "MIT", Version: "2.0.0"}},
 	}
 	srv := versionedRegistryServer(t, manifest, "etag-new", &hitCount)
 	defer srv.Close()

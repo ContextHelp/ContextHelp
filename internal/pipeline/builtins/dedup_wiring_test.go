@@ -404,9 +404,12 @@ func TestPipelineOverridesInjectDedupAndHonourSkip(t *testing.T) {
 		Embeddings: embeddingtest.NewMemStore(),
 		Duplicates: dupCfg("warn", dedupBelowNear),
 	}
-	reg := ConfiguredRegistryWithPipelineOverrides(opts, config.ProvidersConfig{}, config.PipelinesConfig{
+	reg, err := ConfiguredRegistryWithPipelineOverrides(opts, config.ProvidersConfig{}, config.PipelinesConfig{
 		Overrides: map[string]config.PipelineOverride{"text.short": {SkipSteps: []string{"dedup"}}},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if names := stepNames(t, reg, "text.long"); !slices.Contains(names, "dedup") {
 		t.Errorf("text.long: dedup not injected: %v", names)
 	}
