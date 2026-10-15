@@ -3,6 +3,7 @@ package search
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -31,6 +32,31 @@ func seedObjectWithProfile(t *testing.T, driver storage.StorageDriver, id, typ s
 	if err := driver.Objects().Create(context.Background(), obj); err != nil {
 		t.Fatalf("seed object %s: %v", id, err)
 	}
+}
+
+// A query the engine refuses before reading the store is ErrInvalidQuery,
+// parse and compile failures alike, with the stage named in the text as
+// before; a query that reads the store is not.
+func TestSearchRefusedQueryIsInvalidQuery(t *testing.T) {
+	driver := storageutil.NewTestDriver(t)
+	engine := NewEngine(driver)
+	ctx := context.Background()
+
+	for _, tc := range []struct{ name, query, prefix string }{
+		{"parse", "((type==note", "parse error: "},
+		{"compile", "nosuchfield==x", "compile error: "},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, err := engine.Search(ctx, driver.Objects(), tc.query, 10, 0)
+			require.Error(t, err)
+			assert.ErrorIs(t, err, ErrInvalidQuery)
+			assert.True(t, strings.HasPrefix(err.Error(), tc.prefix), err.Error())
+		})
+	}
+
+	_, _, err := engine.Search(ctx, driver.Objects(), "type==note", 10, 0)
+	require.NoError(t, err)
+	assert.NotErrorIs(t, fmt.Errorf("store: %w", context.Canceled), ErrInvalidQuery)
 }
 
 func TestSearchByType(t *testing.T) {
