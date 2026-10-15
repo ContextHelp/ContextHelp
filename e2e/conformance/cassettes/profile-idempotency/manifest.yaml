@@ -1,15 +1,15 @@
 schema_version: "1"
 binary: ctxt
-binary_version: 8913416d
+binary_version: 0c46abe0
 recorder: xrr
 recorder_version: 0.1.0-alpha.3
-recorded_at: 2026-10-14T03:14:05Z
+recorded_at: 2026-10-15T00:21:56Z
 scenario_id: ctxt/profile-idempotency
 scenario_version: 1.0.0
 story_ref:
   story_id: ctxt.conformance.profile-idempotency
   story_path: story.yaml
-  content_hash: sha256:1736200bb681777e1780b160c6e86910fd7ce75cc9aad7c226ccde9146dc54b4
+  content_hash: sha256:831c6b579ef106b90e667be7d185ee81dda8f93f44f92b9007733fc58a765078
 steps:
   - id: create
     cassette_dir: steps/create/cassette

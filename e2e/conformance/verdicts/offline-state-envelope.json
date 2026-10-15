@@ -2,7 +2,7 @@
   "scenario_id": "offline-state-envelope",
   "schema_version": "1",
   "verdict": "pass",
-  "scored_at": "2026-10-14T03:14:46.409083Z",
+  "scored_at": "2026-10-15T00:21:59.534254Z",
   "grader_version": "1.0.0",
   "rules_version": "2026.05.12.1",
   "tier": 3,
