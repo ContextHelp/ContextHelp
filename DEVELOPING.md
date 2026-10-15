@@ -8,10 +8,48 @@ see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 | You want to... | Read |
 |---|---|
+| Know what to run before you push | [Before you push](#before-you-push) |
 | Build the binaries and run the tests | this file |
 | Know which test tier needs Docker | this file |
 | Propose a feature, file an issue, open a PR | [CONTRIBUTING.md](CONTRIBUTING.md) |
 | Install a released binary as a user | [INSTALL.md](INSTALL.md) |
+
+---
+
+## Before you push
+
+```bash
+make ci
+```
+
+`make ci` runs every job of `.github/workflows/ci.yml` on your machine:
+the same make targets each CI step calls, in the same order, with the
+`mise.toml` tool versions. Jobs keep going after a failure, as in CI, and a
+summary lists each job as PASS, FAIL or SKIP. A green `make ci` means CI
+goes green, apart from the platform gaps listed below.
+
+One job at a time: `make ci-<job>`, for example `make ci-lint` or
+`make ci-test`. The job names are the ones in `ci.yml`.
+
+A job that needs something a CI runner provides and your machine lacks is
+SKIPPED, with the command that provides it. Skips never count as a pass:
+the run ends `INCOMPLETE`, and `CI_STRICT=1 make ci` exits non-zero on
+one. What cannot match CI locally, and what the runner does about it:
+
+| Gap | Local run |
+|---|---|
+| `test` runs on Linux **and** macOS runners | runs once, on your OS |
+| `integration` needs the job's Postgres service | SKIP unless Postgres is reachable; the skip prints the `docker run` for CI's image and credentials |
+| `windows` cross-compiles with mingw-w64 | SKIP without `x86_64-w64-mingw32-gcc` (`brew install mingw-w64`) |
+| e2e headless viewer checks need Chrome | run when Chrome is found, else a PARTIAL notice (the tests skip themselves) |
+| Trivy scan, SARIF and Codecov uploads, build artifact | CI only; they report and never block |
+| `go.mod` local-path `replace` for `hop.top/kit` or `hop.top/c12n` | CI drops it; `make ci` fails until you remove it |
+| a local `go.work` | ignored (`GOWORK=off`), as CI has none |
+| secrets | none needed: CI uses none |
+
+The lint job's new-findings gate compares against the merge base with
+`origin/next` (CI uses the PR base). Override with `LINT_BASE=<commit>` or
+`LINT_BASE_REF=<branch>`.
 
 ---
 
@@ -30,6 +68,11 @@ the Node version that builds the embedded web bundles (`web/ui`,
 ```bash
 go version   # must match the `go` pin in mise.toml
 ```
+
+Every `make ci-*`, lint and pre-commit path runs its tools through
+`scripts/ci/tools.sh`, which picks mise's install of the pin and fails when
+the tool is missing or another version is first on `PATH`. It never falls
+back to whatever is installed. In a fresh worktree, run `mise trust` once.
 
 `mise.toml` is the single source of truth for tool versions. CI reads its
 `go`, `golangci-lint` and `node` pins at run time, and `make toolchain-check`
@@ -86,7 +129,7 @@ Docker.
 |---|---|---|
 | `make test-unit` | `./cmd/...`, `./internal/...` | nothing |
 | `make test-integration` | `./test/integration/...` without the `integration` tag | nothing |
-| `make test-integration-services` | the `integration`-tagged suites CI's integration job runs | Postgres |
+| `make test-integration-services` | CI's integration job (alias of `make ci-integration`) | Postgres |
 | `make test-smoke` | `./test/smoke/...` | nothing |
 | `make test-e2e` | `./test/e2e/...` against a built binary | Chrome/Chromium for the headless checks (optional) |
 | `make test` | everything, with coverage | as above |
@@ -246,9 +289,11 @@ That is only the first tree CI covers. The Postgres driver, storage factory
 and embeddings-registry suites live next to their code, carry the same
 `integration` tag and read the same `POSTGRES_*` block, and the job-queue,
 HTTP handler, embeddings journey and search-graph Postgres tests run by name.
-`make test-integration-services` runs exactly the commands of CI's
-integration job; export the `POSTGRES_*` block above and run it before
-pushing if you touched storage, jobs, the HTTP server or embeddings.
+`make ci-integration` runs exactly the commands of CI's integration job.
+Its `POSTGRES_*` defaults are the CI service's (`contexthelp` /
+`test_password` / `contexthelp_test` on `localhost:5432`); export the block
+above to use the compose Postgres instead. Run it before pushing if you
+touched storage, jobs, the HTTP server or embeddings.
 
 Tear down with `docker compose -f docker-compose.dev.yml down`.
 
@@ -265,29 +310,23 @@ make test-docker
 
 ## Lint and formatting
 
-CI gates on three things, in this order:
-
 ```bash
-golangci-lint run --timeout=5m   # pinned to v2.1.6 in CI
-gofmt -l .                       # must print nothing
-go vet -tags fts5 ./...
+make ci-lint
 ```
 
-**Pin your local golangci-lint to the CI version.** Findings differ between
-minor releases, so a newer local binary will disagree with CI in both
-directions:
-
-```bash
-go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6
-```
+That is CI's lint job: golangci-lint on findings new since the merge base
+(blocking), the full-repo scan (advisory, as in CI), `gofmt -l .` and
+`go vet -tags fts5 ./...`. golangci-lint is the `mise.toml` pin;
+findings differ between releases, so no other version is accepted.
 
 Formatting is fixed with `gofmt -w .` (or `make fmt`).
 
-> **Heads up:** the tree currently carries a large pre-existing lint and
-> formatting backlog, so a full-repo `golangci-lint run` or `gofmt -l .` will
-> report findings that predate your change. Judge your own diff, not the
-> repo-wide total. The pre-commit hooks below are scoped to changed files for
-> exactly this reason.
+> **Heads up:** the tree carries a large pre-existing lint backlog, so the
+> full scan (`make ci-lint-full`, `make lint`) reports findings that predate
+> your change and fails. CI runs it as advisory for that reason, and
+> `make ci-lint` carries on past it the same way. Judge your own diff: the
+> blocking gate is `make ci-lint-new`. The pre-commit hooks below are
+> scoped to changed files for the same reason.
 
 ### Pre-commit hooks
 
@@ -303,12 +342,15 @@ You do **not** run `pre-commit install`. That command refuses to run while
 `core.hooksPath` is set — and this repo sets it to `.githooks` for the gitleaks
 scan below. Instead, `.githooks/pre-commit` chains to `pre-commit hook-impl`
 after the secret scan, so both gates run from one hook. If `pre-commit` is not
-on your `PATH`, the lint gate is skipped and only the secret scan runs.
+on your `PATH`, the lint gate does not run and every commit prints a warning
+saying so.
 
 The hooks are scoped so the tree's pre-existing backlog does not block you:
 `gofmt` and `go vet` see only the staged files, and `golangci-lint` runs with
 `--new-from-rev=HEAD`, so only findings *your* diff introduces fail the commit.
-Editing a file that already has findings is fine.
+Editing a file that already has findings is fine. All three use the pinned
+tools: a missing or different golangci-lint fails the commit instead of
+being skipped.
 
 Run the hooks manually against your staged diff with `pre-commit run`, or
 against everything with `pre-commit run --all-files` (expect a lot of
@@ -334,7 +376,8 @@ the baseline.
 ## Other gates
 
 ```bash
-make gosec        # static security analysis, fails on medium+ severity
+make gosec        # static security analysis, fails on medium+ severity (CI security job)
+make govulncheck  # known vulnerabilities in reachable code (CI security job)
 make vuln-scan    # govulncheck + nancy
 make eva          # JSON-shape contract tests (contracts/*.eva.yaml)
 make check        # the pre-merge gate: test + eva

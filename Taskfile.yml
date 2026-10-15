@@ -155,14 +155,14 @@ tasks:
 
   # Code quality tasks
   lint:
-    desc: Run linters
+    desc: Run golangci-lint (pinned version) over the whole repo
     cmds:
-      - golangci-lint run --timeout=5m
+      - scripts/ci/tools.sh golangci-lint,go -- golangci-lint run --timeout=10m
 
   lint:fix:
     desc: Run linters and auto-fix issues
     cmds:
-      - golangci-lint run --fix --timeout=5m
+      - scripts/ci/tools.sh golangci-lint,go -- golangci-lint run --fix --timeout=10m
 
   fmt:
     desc: Format code
@@ -171,43 +171,42 @@ tasks:
       - goimports -w -local github.com/ideacrafterslabs/contexthelp .
 
   vet:
-    desc: Run go vet
+    desc: Run go vet as CI does
     cmds:
-      - go vet ./...
+      - make ci-vet
 
   security:
-    desc: Run security scans
+    desc: Run security scans as CI does (gosec, govulncheck)
     cmds:
-      - govulncheck ./...
-      - gosec -quiet ./...
+      - make gosec govulncheck
 
-  # CI tasks (match GitHub Actions)
+  # CI tasks: the Makefile's ci-<job> targets run exactly what each job of
+  # .github/workflows/ci.yml runs (scripts/check-ci-parity.sh holds them
+  # together), so these delegate rather than keep a copy.
   ci:
-    desc: Run all CI checks locally
-    deps: [ci:lint, ci:security, ci:test, ci:build]
+    desc: Run every CI job locally (make ci)
+    cmds:
+      - make ci
 
   ci:lint:
-    desc: CI lint checks
+    desc: CI lint job (make ci-lint)
     cmds:
-      - task: lint
-      - task: fmt
-      - task: vet
+      - make ci-lint
 
   ci:security:
-    desc: CI security checks
+    desc: CI security job (make ci-security)
     cmds:
-      - task: security
+      - make ci-security
 
   ci:test:
-    desc: CI test suite
+    desc: CI test job (make ci-test)
     cmds:
-      - task: test:unit
-      - task: test:coverage
+      - make ci-test
 
   ci:build:
-    desc: CI build check
+    desc: CI build job (make ci-build)
     cmds:
-      - task: build
+      - make ci-build
 
   # Database: no tasks. Schema lives in migrations embedded in the
   # binaries (internal/storage/sqlite/migrations, internal/storage/postgres)

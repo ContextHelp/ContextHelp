@@ -22,10 +22,12 @@ fi
 #
 # pre-commit refuses to `install` while core.hooksPath is set, and this repo
 # needs that setting for the scan above — so it is chained here instead.
-# Skipped silently when pre-commit is not installed.
+# Without pre-commit the lint gate cannot run; say so on every commit.
 if command -v pre-commit >/dev/null 2>&1; then
 	exec pre-commit hook-impl \
 		--hook-type=pre-commit \
 		--hook-dir "$(dirname "$0")" \
 		-- "$@"
 fi
+echo "WARNING: pre-commit not installed; lint gate (gofmt, go vet, golangci-lint) NOT run." >&2
+echo "         Install https://pre-commit.com, or run 'make ci-lint' before pushing." >&2

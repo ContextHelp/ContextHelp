@@ -123,6 +123,8 @@ coverage.txt
 coverage.html
 *.cover
 .coverage/
+# SARIF reports gosec and Trivy write (make gosec; CI uploads them)
+*.sarif
 
 # Test databases
 test.db

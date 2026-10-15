@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Run `go vet` over the packages containing the staged Go files.
 #
-# Mirrors the CI step `go vet -tags fts5 ./...`. Vet analyses whole packages,
-# not single files, so the staged file list is mapped to its directories.
+# Mirrors the CI step `make ci-vet` (`go vet -tags fts5 ./...`) with the
+# pinned Go (scripts/ci/tools.sh; fails when it is missing). Vet analyses
+# whole packages, not single files, so the staged file list is mapped to its
+# directories.
 #
 # The fts5 tag is mandatory: without it the build fails on a deliberate
 # tripwire in internal/storage/sqlite. See DEVELOPING.md.
@@ -18,6 +20,7 @@ set -euo pipefail
 # default tag set cannot load. Walk up to the nearest go.mod and keep only
 # the paths this module actually owns.
 root_mod=$(cd "$(git rev-parse --show-toplevel)" && pwd)
+tools="$root_mod/scripts/ci/tools.sh"
 owned=""
 for f in "$@"; do
 	d=$(dirname "$f")
@@ -46,9 +49,9 @@ tags=fts5,e2e,watch_e2e
 # carries only federation_e2e). `go vet ./...` skips them the same way;
 # naming one fails with "build constraints exclude all Go files".
 # shellcheck disable=SC2086 # deliberate word-splitting of the package list
-pkgs=$(CGO_ENABLED=1 go list -e -tags "$tags" \
+pkgs=$(CGO_ENABLED=1 "$tools" go -- go list -e -tags "$tags" \
 	-f '{{if or .GoFiles .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' $pkgs)
 [ -z "$pkgs" ] && exit 0
 
 # shellcheck disable=SC2086 # deliberate word-splitting of the package list
-CGO_ENABLED=1 go vet -tags "$tags" $pkgs
+CGO_ENABLED=1 "$tools" go -- go vet -tags "$tags" $pkgs
