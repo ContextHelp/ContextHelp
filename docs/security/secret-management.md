@@ -703,25 +703,24 @@ tail -f ~/.local/share/contexthelp/logs/contexthelp.log | grep "secret.*rotated"
 
 ### Audit Logging
 
-Configure comprehensive audit logging:
+The audit log is a table in the dpkms database, not a file (no path or
+format to configure; `fanout.audit_log: false` drops fan-out entries). It
+records security alerts (`security.auth_failure` and
+`security.acl_denial` past the `security.alerts` thresholds, quota
+exhaustion, signing failures), duplicate detection, fan-out enrichment and
+`ctxt doctor` runs. Secret reads, rotations and config changes are not
+recorded.
 
-```yaml
-logging:
-  audit:
-    enabled: true
-    level: all
-    events:
-      - authentication_attempt
-      - secret_access
-      - secret_rotation
-      - permission_check
-      - configuration_change
-      - registry_access
-    output:
-      file: /var/log/contexthelp/audit.log
-      syslog: true
-      format: json
+```bash
+# Recent entries
+ctxt audit list --since 24h
+
+# NDJSON for a SIEM (also cef, syslog); schedule it to ship the log
+ctxt audit export --format json --since 24h > audit.ndjson
 ```
+
+Over HTTP both need the `admin:audit` scope. See
+[SIEM integration](../operations/siem-integration.md).
 
 ### Metrics & Alerts
 
