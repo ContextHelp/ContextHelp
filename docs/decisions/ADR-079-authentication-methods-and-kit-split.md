@@ -58,7 +58,7 @@ A principal is a row in the instance database, never just a config entry.
 
 On a `private` instance every request is the owner (today's `LocalPrincipal`, whose ID `local` becomes `owner`). On `protected` and `public` instances an unauthenticated request is anonymous and reaches only the routes that are already open.
 
-A principal can have several **identities**, one per credential: a passkey, a proxy login, an OIDC `(issuer, subject)`, a client certificate, or an API key. Every identity, keys included, is a row in `principal_identities`, so revoking a principal cascades to all of its credentials and sessions in one place. An identity is bound to a principal only by an explicit act: the owner creates it, the principal adds it to itself under `write:self` (§5), or the invitee accepts an invite. dpkms never links identities by matching email addresses across methods, because a claimed email is not proof of the same person.
+A principal can have several **identities**, one per credential: a passkey, a proxy login, an OIDC `(issuer, subject)`, a client certificate, an API key, or a redeemed invite or sign-in link (method `link`, subject = the ticket hash: the session minted by the redemption binds to it, and revoking it ends that session). Every identity, keys included, is a row in `principal_identities`, so revoking a principal cascades to all of its credentials and sessions in one place. An identity is bound to a principal only by an explicit act: the owner creates it, the principal adds it to itself under `write:self` (§5), or the invitee accepts an invite. dpkms never links identities by matching email addresses across methods, because a claimed email is not proof of the same person.
 
 ### 2. Methods
 
@@ -121,7 +121,7 @@ Proxy headers are read only when the TCP peer is in `trusted_proxies`. They are 
 
 `tailscale serve` forwards from loopback, so with the `tailscale` preset every local process on the dpkms host can also set the header, and so claim any bound login, the owner's included. On a single-user host that is the same trust the `private` access class already gives loopback. On a host shared with other users, use a sign-in proxy that authenticates to dpkms with an API key of its own, or (later) a `tailscale` preset that asks the local Tailscale API who the peer is (WhoIs) instead of trusting a header.
 
-**Ceremonies.** Redeeming an invite or magic link, exchanging a login code and finishing a passkey ceremony are the only ways to mint a session. Each is rate limited per client address. A redemption that arrives on a request already carrying a session is refused: the caller signs out first, so a ticket can never bind to a principal other than the one it was issued for.
+**Ceremonies.** Redeeming an invite or magic link, exchanging a login code and finishing a passkey ceremony are the only ways to mint a session. Each is rate limited per client address (the TCP peer until kit's `ClientAddress` with `trusted_proxies` lands with K2, so every client behind one proxy shares a bucket until then). A redemption that arrives on a request already carrying a session is refused: the caller signs out first, so a ticket can never bind to a principal other than the one it was issued for.
 
 ### 4. Bootstrap and owner recovery
 
@@ -138,6 +138,8 @@ Authentication produces a principal. Authorization is decided afterwards and unc
 
 - `admin:principals` lets a principal manage principals, identities, keys and invites. `admin:shares` lets it manage audiences, share policies and ceilings (ADR-080). Both sit in the `admin` bundle, which only `owner` holds by default.
 - `write:self` lets a principal manage its own credentials and sessions: create and revoke its own API keys, register and remove its own passkeys, list and end its own sessions. Every role bundle includes it, and a route under it checks that the target belongs to the caller. Without it a `person` could never register the passkey the invite flow asks for.
+- **No route yields more than the caller holds.** Every credential-producing path (creating a principal, minting a key or a sign-in link, binding an identity) refuses with 403 when the result's effective scopes would exceed the caller's own, so an `admin:principals` holder with reader-level scopes cannot create a writer or hand a key to one. One helper implements the ceiling for all of them.
+- **The owner is protected.** Only the owner mints owner credentials, binds or removes owner identities, or suspends and revokes the owner; any other caller gets 403 whatever its scopes. Host-side `dpkms auth key create --principal owner` stays the bootstrap and recovery path.
 - A browser session's scopes are `UISessionScopes ∩ principal scopes`, as today, whichever method signed the browser in. Proxy-identified requests get the same intersection (§3).
 
 ### 6. kit/ctxt split
@@ -228,9 +230,9 @@ CREATE TABLE principals (
 CREATE TABLE principal_identities (         -- one row per credential, API keys included
   id            TEXT PRIMARY KEY,
   principal_id  TEXT NOT NULL REFERENCES principals(id),
-  method        TEXT NOT NULL,              -- api_key|passkey|proxy|oidc|mtls
+  method        TEXT NOT NULL,              -- api_key|link|passkey|proxy|oidc|mtls
   issuer        TEXT NOT NULL DEFAULT '',   -- proxy preset, OIDC issuer, CA fingerprint
-  subject       TEXT NOT NULL,              -- kit key id, passkey credential id, tailscale login, OIDC sub, cert SAN
+  subject       TEXT NOT NULL,              -- kit key id, ticket hash, passkey credential id, tailscale login, OIDC sub, cert SAN
   name          TEXT NOT NULL DEFAULT '',   -- "laptop CLI", "assistant bot", "phone passkey"
   created_at    TIMESTAMP NOT NULL,
   revoked_at    TIMESTAMP,                  -- set together with the kit key record for api_key rows
