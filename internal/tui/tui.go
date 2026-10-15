@@ -1,3 +1,4 @@
+// Package tui is the Bubble Tea terminal interface behind `ctxt tui`.
 package tui
 
 import (

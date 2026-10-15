@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"fmt"
+
 	"charm.land/bubbles/v2/help"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -111,12 +113,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case types.SearchResultsMsg:
 		p, cmd := m.search.Update(msg)
-		m.search = p.(*panes.SearchPane)
+		m.search = asPane[*panes.SearchPane](p)
 		return m, cmd
 
 	case types.ObjectLoadedMsg:
 		p, cmd := m.preview.Update(msg)
-		m.preview = p.(*panes.PreviewPane)
+		m.preview = asPane[*panes.PreviewPane](p)
 		return m, cmd
 
 	case types.CaptureSubmittedMsg:
@@ -136,48 +138,68 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	k := msg.Key()
+	if next, cmd, ok := m.handleAppKey(k); ok {
+		return next, cmd
+	}
+	if next, cmd, ok := m.handleNavKey(k); ok {
+		return next, cmd
+	}
+	return m.updateFocusedPane(msg)
+}
+
+// handleAppKey handles the app-wide bindings: quit, help, and the capture
+// and compose modals. ok is false when k is none of them.
+func (m Model) handleAppKey(k tea.Key) (next tea.Model, cmd tea.Cmd, ok bool) {
 	ctrl := k.Mod&tea.ModCtrl != 0
 	shift := k.Mod&tea.ModShift != 0
 	switch {
 	case m.keys.Quit.Enabled() && (k.Code == 'q' || (k.Code == 'c' && ctrl)):
-		return m, tea.Quit
+		return m, tea.Quit, true
 
 	case m.keys.Help.Enabled() && k.Code == '?':
 		m.showHelp = !m.showHelp
-		return m, nil
+		return m, nil, true
 
 	case m.keys.Capture.Enabled() && k.Code == 'n' && ctrl && !shift:
 		m.captureModal.Open()
-		return m, nil
+		return m, nil, true
 
 	case m.keys.Compose.Enabled() && k.Code == 'n' && ctrl && shift:
 		m.composeModal.Open()
-		return m, nil
+		return m, nil, true
+	}
+	return m, nil, false
+}
 
+// handleNavKey handles pane navigation, search focus and refresh. ok is
+// false when k is none of them.
+func (m Model) handleNavKey(k tea.Key) (next tea.Model, cmd tea.Cmd, ok bool) {
+	ctrl := k.Mod&tea.ModCtrl != 0
+	shift := k.Mod&tea.ModShift != 0
+	switch {
 	case m.keys.NextPane.Enabled() && k.Code == tea.KeyTab && !shift:
 		m.cyclePaneForward()
-		return m, nil
+		return m, nil, true
 
 	case m.keys.PrevPane.Enabled() && k.Code == tea.KeyTab && shift:
 		m.cyclePaneBackward()
-		return m, nil
+		return m, nil, true
 
 	case m.keys.Search.Enabled() && k.Code == '/':
 		m.setActivePane(PaneSearch)
-		return m, nil
+		return m, nil, true
 
 	case m.keys.Refresh.Enabled() && k.Code == 'r' && ctrl:
-		return m, PollJobsCmd(m.adapter)
+		return m, PollJobsCmd(m.adapter), true
 	}
-
-	return m.updateFocusedPane(msg)
+	return m, nil, false
 }
 
 func (m Model) updateFocusedPane(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m.activePane {
 	case PaneSearch:
 		updated, cmd := m.search.Update(msg)
-		m.search = updated.(*panes.SearchPane)
+		m.search = asPane[*panes.SearchPane](updated)
 
 		if km, ok := msg.(tea.KeyMsg); ok {
 			c := km.Key().Code
@@ -191,15 +213,25 @@ func (m Model) updateFocusedPane(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case PanePreview:
 		updated, cmd := m.preview.Update(msg)
-		m.preview = updated.(*panes.PreviewPane)
+		m.preview = asPane[*panes.PreviewPane](updated)
 		return m, cmd
 
 	case PaneGraph:
 		updated, cmd := m.graph.Update(msg)
-		m.graph = updated.(*panes.GraphPane)
+		m.graph = asPane[*panes.GraphPane](updated)
 		return m, cmd
 	}
 	return m, nil
+}
+
+// asPane narrows the Pane a pane's Update returned back to its concrete
+// type. Every pane returns itself, so a mismatch is a programming error.
+func asPane[T panes.Pane](p panes.Pane) T {
+	t, ok := p.(T)
+	if !ok {
+		panic(fmt.Sprintf("tui: pane Update returned %T, want %T", p, t))
+	}
+	return t
 }
 
 func (m *Model) setActivePane(id PaneID) {

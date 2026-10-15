@@ -45,7 +45,7 @@ func (r resultItem) Title() string {
 
 func (r resultItem) Description() string {
 	ip := projection.ProjectIndex(r.obj)
-	var parts []string
+	parts := make([]string, 0, 4) // type + up to 3 tags
 	if r.obj.Type != "" {
 		parts = append(parts, r.obj.Type)
 	}
