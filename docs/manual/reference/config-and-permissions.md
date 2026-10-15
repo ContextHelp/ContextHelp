@@ -114,6 +114,7 @@ A token needs at least one known role; an unknown or missing role fails `ctxt co
 | `delete:searches` | admin | `DELETE /saved-searches/{name}`, `DELETE /search-history` |
 | `delete:feeds` | admin | `DELETE /feeds/{id}` |
 | `process:inbox` | admin | `POST /inbox/{id}/triage`, `inbox/{id}/discard`, `inbox/clear` |
+| `cancel:jobs` | admin | `POST /jobs/{id}/cancel` (`ctxt job cancel`) |
 | `sync:registries` | admin | `POST /steps/registries/fetch`, `steps/registries/{url}/update`, `entities/registry-sync` |
 | `admin:pipelines` | admin | `POST /pipelines`, `pipelines/{name}/archive`, `pipelines/{name}/unarchive`; `DELETE /pipelines/{name}` |
 | `admin:steps` | admin | `POST /steps/install`; `DELETE /steps/{name}` |

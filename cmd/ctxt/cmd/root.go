@@ -205,7 +205,7 @@ var commandGroups = map[string]string{
 	// CAPTURE — get content into ctxt
 	"analyze": "capture", "capture": "capture", "import": "capture",
 	"ingest": "capture", "inbox": "capture", "feed": "capture",
-	"watch": "capture",
+	"watch": "capture", "job": "capture",
 
 	// KNOWLEDGE — read & navigate the graph
 	"find": "knowledge", "list": "knowledge", "show": "knowledge",

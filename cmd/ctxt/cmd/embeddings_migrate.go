@@ -42,7 +42,7 @@ Flags:
   --dry-run           count the missing objects; queue nothing
 
 Progress: ctxt upgrade status (bucket embeddings_migrate); coverage:
-ctxt embeddings list. Stop a run with dpkms job cancel <job-id>; re-run
+ctxt embeddings list. Stop a run with ctxt job cancel <job-id>; re-run
 migrate to continue.`,
 	Args: cobra.NoArgs,
 	RunE: runEmbeddingsMigrate,

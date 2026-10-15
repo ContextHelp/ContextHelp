@@ -114,6 +114,7 @@ Core endpoints:
 - `GET /jobs`
 - `GET /jobs/{id}`
 - `POST /jobs/{id}/retry`
+- `POST /jobs/{id}/cancel`
 - `GET /objects`
 - `GET /objects/facets`
 - `GET /objects/{id}`
@@ -224,38 +225,51 @@ Notes:
 
 ### `GET /jobs`
 
+Lists jobs, newest first. Scope: `read:jobs`. CLI: `ctxt job list`.
+
 Query Parameters:
 
-- `status`
-- `type`
-- `limit`
+- `status`: `pending`, `running`, `completed`, `failed` or `cancelled`
+- `limit` (default 20)
 - `offset`
 
 #### Response
 
 ```json
 {
-  "jobs": [
+  "data": [
     {
       "id": "job_123",
-      "type": "analyze",
-      "status": "completed",
-      "createdAt": "2025-01-01T12:00:00Z",
-      "updatedAt": "2025-01-01T12:00:02Z",
-      "input": {
-        "type": "text",
-        "hints": ["#ux", "#bad"],
-        "mentions": ["@ui.best-practice"]
-      },
-      "mention_uris": ["ctxt://entity/ui/best-practice"],
-      "resultObjectId": "obj_abc"
+      "type": "ingest:text",
+      "status": "failed",
+      "payload": "...",
+      "pipeline": "text.short",
+      "source": "cli",
+      "result_id": "",
+      "error": "provider timeout",
+      "retry_count": 1,
+      "max_retries": 3,
+      "created_at": "2026-10-01T12:00:00Z",
+      "updated_at": "2026-10-01T12:00:09Z",
+      "started_at": "2026-10-01T12:00:01Z",
+      "completed_at": "2026-10-01T12:00:09Z"
     }
   ],
-  "limit": 50,
-  "offset": 0,
   "total": 1
 }
 ```
+
+### `GET /jobs/{id}`
+
+Returns one job in the same shape. Scope: `read:jobs`. An unknown ID is 404 `NOT_FOUND`. CLI: `ctxt job status`.
+
+### `POST /jobs/{id}/retry`
+
+Puts the job back in the queue as `pending`, spends one retry and returns the job. Scope: `write:jobs`. An unknown job, or one whose `retry_count` reached `max_retries`, is 400 `INVALID_REQUEST`. CLI: `ctxt job retry`.
+
+### `POST /jobs/{id}/cancel`
+
+Cancels a `pending` or `running` job and returns it as `cancelled`. Scope: `cancel:jobs`, which only `admin` holds. An unknown ID is 404 `NOT_FOUND`; a job that already finished (`completed`, `failed`, `cancelled`) is 409 `CONFLICT` and is left as it is. CLI: `ctxt job cancel`.
 
 ---
 

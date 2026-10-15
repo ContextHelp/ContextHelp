@@ -45,9 +45,8 @@ dpkms pipeline enqueue --pipeline <name> --type text "pipeline smoke test"
 Check job outcomes with `ctxt`:
 
 ```bash
-dpkms job list --limit 20
-dpkms job status <job_id>
-dpkms job log <job_id>
+ctxt job list --limit 20
+ctxt job status <job_id>
 ```
 
 ### 4. Step management

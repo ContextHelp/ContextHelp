@@ -1,6 +1,7 @@
 package http
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -56,6 +57,37 @@ func RetryJob(svc *service.Service) http.HandlerFunc {
 		}
 
 		job, err := svc.GetJob(r.Context(), id)
+		if err != nil {
+			WriteError(w, http.StatusNotFound, "NOT_FOUND", "job not found")
+			return
+		}
+		WriteJSON(w, http.StatusOK, job)
+	}
+}
+
+// CancelJob cancels a pending or running job and returns it. An unknown
+// job is 404; a job that already finished (completed, failed,
+// cancelled) is 409 and stays as it is.
+func CancelJob(svc *service.Service) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+		job, err := svc.GetJob(r.Context(), id)
+		if err != nil {
+			WriteError(w, http.StatusNotFound, "NOT_FOUND", "job not found")
+			return
+		}
+		if job.Status != storage.JobPending && job.Status != storage.JobRunning {
+			WriteError(w, http.StatusConflict, "CONFLICT",
+				fmt.Sprintf("job %s is %s; only pending or running jobs can be cancelled", id, job.Status))
+			return
+		}
+		// The job may finish between the read and the cancel: the store
+		// then refuses, and the answer is the same conflict.
+		if err := svc.CancelJob(r.Context(), id); err != nil {
+			WriteError(w, http.StatusConflict, "CONFLICT", err.Error())
+			return
+		}
+		job, err = svc.GetJob(r.Context(), id)
 		if err != nil {
 			WriteError(w, http.StatusNotFound, "NOT_FOUND", "job not found")
 			return

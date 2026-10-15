@@ -283,6 +283,7 @@ const (
 	JobRunning   JobStatus = "running"
 	JobCompleted JobStatus = "completed"
 	JobFailed    JobStatus = "failed"
+	JobCancelled JobStatus = "cancelled"
 )
 
 // Job represents an ingestion job.

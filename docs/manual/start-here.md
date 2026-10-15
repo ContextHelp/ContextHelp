@@ -45,7 +45,7 @@ Example:
 ```bash
 echo "Checkout drop-off increased after pricing change" | ctxt analyze --type text --hints "#checkout #pricing"
 ctxt analyze https://example.com/pricing-analysis --type url
-dpkms job list
+ctxt job list
 ctxt find "pricing and checkout decisions" --limit 5
 ctxt make brief --tag pricing,checkout --since 2026-02-01 --output-file first-brief.md
 ```
@@ -53,8 +53,7 @@ ctxt make brief --tag pricing,checkout --since 2026-02-01 --output-file first-br
 If ingestion is still running, inspect:
 
 ```bash
-dpkms job status <job_id>
-dpkms job log <job_id>
+ctxt job status <job_id>
 ```
 
 Optional importer smoke test:

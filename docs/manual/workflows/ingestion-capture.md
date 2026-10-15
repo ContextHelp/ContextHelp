@@ -96,30 +96,37 @@ ctxt analyze "Action for checkout redesign" --type text --mention "@project.chec
 
 ### Step 3: Track job execution
 
+Jobs run on the dpkms instance, local or remote. `ctxt job` reads them over its API with the token `ctxt` already uses, so you don't need a shell on the dpkms host.
+
 List recent jobs:
 
 ```bash
-dpkms job list --limit 20
+ctxt job list --limit 20
 ```
 
 Filter by state:
 
 ```bash
-dpkms job list --state pending --limit 20
-dpkms job list --state failed --limit 20
+ctxt job list --state pending --limit 20
+ctxt job list --state failed --limit 20
 ```
 
 Inspect one job:
 
 ```bash
-dpkms job status <job_id>
-dpkms job log <job_id>
+ctxt job status <job_id>
 ```
 
 Retry failures:
 
 ```bash
-dpkms job retry <job_id>
+ctxt job retry <job_id>
+```
+
+Cancel a pending or running job. Cancel needs an `admin` token, and the first run without `--confirm-token` prints the token to pass back:
+
+```bash
+ctxt job cancel <job_id> --confirm-token=<token>
 ```
 
 ### Step 4: Verify resulting objects
@@ -175,7 +182,7 @@ find ./imports -type f -name "*.md" -print0 | xargs -0 -I{} ctxt analyze --file 
 ### Jobs remain pending too long
 
 - Confirm `dpkms serve` is running.
-- Check worker load via `dpkms job list --state running`.
+- Check worker load via `ctxt job list --state running`.
 - Reduce ingest volume and retry failed jobs.
 
 ### Wrong pipeline/type detected

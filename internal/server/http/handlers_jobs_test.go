@@ -1,6 +1,7 @@
 package http
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -205,4 +206,75 @@ func TestRetryJobReturnsUpdatedJob(t *testing.T) {
 	assert.Equal(t, "job-updated", job.ID)
 	assert.Equal(t, storage.JobPending, job.Status)
 	assert.Equal(t, 1, job.RetryCount, "retry count should be incremented to 1")
+}
+
+func postCancel(t *testing.T, ts *testServerBundle, id string) (*http.Response, []byte) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, ts.URL+"/api/v1/jobs/"+id+"/cancel", nil)
+	require.NoError(t, err)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	var buf bytes.Buffer
+	_, err = buf.ReadFrom(resp.Body)
+	require.NoError(t, err)
+	return resp, buf.Bytes()
+}
+
+// A pending or running job is cancelled and the cancelled job returned.
+func TestCancelJob(t *testing.T) {
+	ts := newTestServerBundle(t)
+	defer ts.Close()
+
+	seedJob(t, ts, "job-pending")
+	seedJob(t, ts, "job-running")
+	_, err := ts.svc.Store.Jobs().AcquireNext(context.Background())
+	require.NoError(t, err)
+
+	for _, id := range []string{"job-pending", "job-running"} {
+		resp, body := postCancel(t, ts, id)
+		require.Equal(t, http.StatusOK, resp.StatusCode, string(body))
+		var job storage.Job
+		require.NoError(t, json.Unmarshal(body, &job))
+		assert.Equal(t, id, job.ID)
+		assert.Equal(t, storage.JobCancelled, job.Status)
+
+		stored, err := ts.svc.GetJob(context.Background(), id)
+		require.NoError(t, err)
+		assert.Equal(t, storage.JobCancelled, stored.Status)
+	}
+}
+
+// A finished job cannot be cancelled: 409 CONFLICT, the job untouched.
+func TestCancelJobFinished(t *testing.T) {
+	ts := newTestServerBundle(t)
+	defer ts.Close()
+
+	ctx := context.Background()
+	seedJob(t, ts, "job-done")
+	_, err := ts.svc.Store.Jobs().AcquireNext(ctx)
+	require.NoError(t, err)
+	require.NoError(t, ts.svc.Store.Jobs().Complete(ctx, "job-done", "obj-1"))
+
+	resp, body := postCancel(t, ts, "job-done")
+	assert.Equal(t, http.StatusConflict, resp.StatusCode, string(body))
+	var env ErrorEnvelope
+	require.NoError(t, json.Unmarshal(body, &env))
+	assert.Equal(t, "CONFLICT", env.Error.Code)
+	assert.Contains(t, env.Error.Message, "completed")
+
+	stored, err := ts.svc.GetJob(ctx, "job-done")
+	require.NoError(t, err)
+	assert.Equal(t, storage.JobCompleted, stored.Status)
+}
+
+func TestCancelJobNotFound(t *testing.T) {
+	ts := newTestServerBundle(t)
+	defer ts.Close()
+
+	resp, body := postCancel(t, ts, "nonexistent-job")
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode, string(body))
+	var env ErrorEnvelope
+	require.NoError(t, json.Unmarshal(body, &env))
+	assert.Equal(t, "NOT_FOUND", env.Error.Code)
 }

@@ -54,6 +54,7 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		{Method: get, Pattern: "/jobs", Scope: authn.ScopeReadJobs, Handler: ListJobs(svc)},
 		{Method: get, Pattern: "/jobs/{id}", Scope: authn.ScopeReadJobs, Handler: GetJob(svc)},
 		{Method: post, Pattern: "/jobs/{id}/retry", Scope: authn.ScopeWriteJobs, Handler: RetryJob(svc)},
+		{Method: post, Pattern: "/jobs/{id}/cancel", Scope: authn.ScopeCancelJobs, Handler: CancelJob(svc)},
 
 		// Search
 		{Method: get, Pattern: "/search", Scope: authn.ScopeReadObjects, Handler: Search(svc)},

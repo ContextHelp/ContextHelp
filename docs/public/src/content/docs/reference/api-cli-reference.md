@@ -17,11 +17,12 @@ ctxt import pinboard [--token <token>] [--file <pinboard.json>] [--since <RFC333
 ctxt import raindrop --collection-id <id>|--all [--token <token>] [--since <RFC3339|YYYY-MM-DD>] [--tag <tag>] [--query <text>] [--max-items N] [--dry-run]
 # Story-target importer surface (US-0300 to US-0317):
 # ctxt import <source> [source-specific flags]
-dpkms job list [--state pending|running|completed|failed|cancelled] [--limit N]
-dpkms job status <job_id>
-dpkms job log <job_id>
-dpkms job retry <job_id>
-dpkms job cancel <job_id>
+ctxt job list [--state pending|running|completed|failed|cancelled] [--limit N] [--offset N]
+ctxt job status <job_id>
+ctxt job retry <job_id>
+ctxt job cancel <job_id> --confirm-token=<token>
+# On the dpkms host, against its local store:
+dpkms job list|status|log|retry|cancel
 ```
 
 ### Retrieval and inspection
@@ -96,6 +97,7 @@ Core routes:
 - `GET /jobs`
 - `GET /jobs/{id}`
 - `POST /jobs/{id}/retry`
+- `POST /jobs/{id}/cancel`
 - `GET /objects`
 - `GET /objects/{id}`
 - `PATCH /objects/{id}`

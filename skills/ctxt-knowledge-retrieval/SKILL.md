@@ -35,7 +35,7 @@ curl http://127.0.0.1:8080/health
 Run this loop in order for reliable retrieval:
 
 1. Ingest (`ctxt analyze`).
-2. Poll jobs to completion (`dpkms job status` / `dpkms job list`).
+2. Poll jobs to completion (`ctxt job status` / `ctxt job list`).
 3. Retrieve with deterministic filters first (`ctxt list`, `ctxt list --q`).
 4. Use semantic search only as fallback (`ctxt find`).
 5. Inspect top objects (`ctxt open`) before composing.
@@ -49,10 +49,9 @@ Run this loop in order for reliable retrieval:
 ```bash
 ctxt analyze "Investigate checkout funnel anomalies" --type text --hints "#checkout #funnel"
 ctxt analyze https://example.com/incident-postmortem --type url
-dpkms job list --limit 20
-dpkms job status <job_id>
-dpkms job log <job_id>
-dpkms job retry <job_id>
+ctxt job list --limit 20
+ctxt job status <job_id>
+ctxt job retry <job_id>
 ```
 
 ### Deterministic retrieval first

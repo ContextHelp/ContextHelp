@@ -185,15 +185,14 @@ find ./imports -name "*.md" -print0 | xargs -0 -I{} ctxt analyze --file "{}" --t
 
 ## Track Jobs
 
-Job commands live on `dpkms` and read the local data directory, so run them on the dpkms host:
+`ctxt job` reads the jobs of the instance ctxt talks to, remote ones included. Cancel needs an admin token:
 
 ```bash
-dpkms job list                       # recent jobs
-dpkms job list --state failed        # failed only
-dpkms job status <job_id>            # single job state
-dpkms job log    <job_id>            # execution log
-dpkms job retry  <job_id>            # re-queue failed job
-dpkms job cancel <job_id>
+ctxt job list                        # recent jobs
+ctxt job list --state failed         # failed only
+ctxt job status <job_id>             # state, retries, error
+ctxt job retry  <job_id>             # re-queue failed job
+ctxt job cancel <job_id> --confirm-token=<token>
 ```
 
 States: `pending` → `running` → `completed` / `failed` / `cancelled`
