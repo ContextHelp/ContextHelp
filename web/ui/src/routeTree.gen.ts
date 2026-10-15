@@ -9,14 +9,21 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SigninRouteImport } from './routes/signin'
 import { Route as SearchRouteImport } from './routes/search'
 import { Route as RegistryRouteImport } from './routes/registry'
+import { Route as InviteRouteImport } from './routes/invite'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ObjectsIndexRouteImport } from './routes/objects/index'
 import { Route as JobsIndexRouteImport } from './routes/jobs/index'
 import { Route as ObjectsIdRouteImport } from './routes/objects/$id'
 
+const SigninRoute = SigninRouteImport.update({
+  id: '/signin',
+  path: '/signin',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SearchRoute = SearchRouteImport.update({
   id: '/search',
   path: '/search',
@@ -25,6 +32,11 @@ const SearchRoute = SearchRouteImport.update({
 const RegistryRoute = RegistryRouteImport.update({
   id: '/registry',
   path: '/registry',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InviteRoute = InviteRouteImport.update({
+  id: '/invite',
+  path: '/invite',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthRoute = AuthRouteImport.update({
@@ -56,8 +68,10 @@ const ObjectsIdRoute = ObjectsIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/invite': typeof InviteRoute
   '/registry': typeof RegistryRoute
   '/search': typeof SearchRoute
+  '/signin': typeof SigninRoute
   '/objects/$id': typeof ObjectsIdRoute
   '/jobs/': typeof JobsIndexRoute
   '/objects/': typeof ObjectsIndexRoute
@@ -65,8 +79,10 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/invite': typeof InviteRoute
   '/registry': typeof RegistryRoute
   '/search': typeof SearchRoute
+  '/signin': typeof SigninRoute
   '/objects/$id': typeof ObjectsIdRoute
   '/jobs': typeof JobsIndexRoute
   '/objects': typeof ObjectsIndexRoute
@@ -75,8 +91,10 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/invite': typeof InviteRoute
   '/registry': typeof RegistryRoute
   '/search': typeof SearchRoute
+  '/signin': typeof SigninRoute
   '/objects/$id': typeof ObjectsIdRoute
   '/jobs/': typeof JobsIndexRoute
   '/objects/': typeof ObjectsIndexRoute
@@ -86,8 +104,10 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/invite'
     | '/registry'
     | '/search'
+    | '/signin'
     | '/objects/$id'
     | '/jobs/'
     | '/objects/'
@@ -95,8 +115,10 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth'
+    | '/invite'
     | '/registry'
     | '/search'
+    | '/signin'
     | '/objects/$id'
     | '/jobs'
     | '/objects'
@@ -104,8 +126,10 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/auth'
+    | '/invite'
     | '/registry'
     | '/search'
+    | '/signin'
     | '/objects/$id'
     | '/jobs/'
     | '/objects/'
@@ -114,8 +138,10 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthRoute: typeof AuthRoute
+  InviteRoute: typeof InviteRoute
   RegistryRoute: typeof RegistryRoute
   SearchRoute: typeof SearchRoute
+  SigninRoute: typeof SigninRoute
   ObjectsIdRoute: typeof ObjectsIdRoute
   JobsIndexRoute: typeof JobsIndexRoute
   ObjectsIndexRoute: typeof ObjectsIndexRoute
@@ -123,6 +149,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/signin': {
+      id: '/signin'
+      path: '/signin'
+      fullPath: '/signin'
+      preLoaderRoute: typeof SigninRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/search': {
       id: '/search'
       path: '/search'
@@ -135,6 +168,13 @@ declare module '@tanstack/react-router' {
       path: '/registry'
       fullPath: '/registry'
       preLoaderRoute: typeof RegistryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/invite': {
+      id: '/invite'
+      path: '/invite'
+      fullPath: '/invite'
+      preLoaderRoute: typeof InviteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth': {
@@ -178,8 +218,10 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthRoute: AuthRoute,
+  InviteRoute: InviteRoute,
   RegistryRoute: RegistryRoute,
   SearchRoute: SearchRoute,
+  SigninRoute: SigninRoute,
   ObjectsIdRoute: ObjectsIdRoute,
   JobsIndexRoute: JobsIndexRoute,
   ObjectsIndexRoute: ObjectsIndexRoute,
