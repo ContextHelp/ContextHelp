@@ -32,7 +32,7 @@ func CreateImport(svc *service.Service) http.HandlerFunc {
 			return
 		}
 		if req.Format == "" {
-			req.Format = "jsonl"
+			req.Format = service.ImportFormatJSONL
 		}
 
 		if req.DryRun {
@@ -65,7 +65,7 @@ func GetImport(svc *service.Service) http.HandlerFunc {
 		id := chi.URLParam(r, "id")
 		batch, err := svc.GetBatch(r.Context(), id)
 		if err != nil {
-			WriteError(w, http.StatusNotFound, "NOT_FOUND", "batch not found")
+			WriteError(w, http.StatusNotFound, CodeNotFound, "batch not found")
 			return
 		}
 		WriteJSON(w, http.StatusOK, batch)

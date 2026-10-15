@@ -1,3 +1,6 @@
+// Package ws serves the cookie bridge: a WebSocket endpoint the browser
+// extension pushes session cookies to, cached per domain with a one-hour
+// TTL.
 package ws
 
 import (
@@ -165,7 +168,9 @@ func (s *CookieBridgeServer) handleWS(w http.ResponseWriter, r *http.Request) {
 		log.Printf("ws: upgrade error: %v", err)
 		return
 	}
-	defer conn.Close()
+	// The read loop ends on a read error, so the socket is already dead
+	// or closing; a close error tells the bridge nothing new.
+	defer func() { _ = conn.Close() }()
 
 	for {
 		_, msg, err := conn.ReadMessage()

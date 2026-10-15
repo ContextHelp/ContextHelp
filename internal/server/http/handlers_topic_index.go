@@ -22,7 +22,7 @@ func GetTopicIndex(svc *service.Service) http.HandlerFunc {
 			return
 		}
 		if idx == nil {
-			WriteError(w, http.StatusNotFound, "NOT_FOUND", topicIndexNotBuilt)
+			WriteError(w, http.StatusNotFound, CodeNotFound, topicIndexNotBuilt)
 			return
 		}
 		WriteJSON(w, http.StatusOK, idx)
@@ -40,7 +40,7 @@ func GetTopicEntries(svc *service.Service) http.HandlerFunc {
 			return
 		}
 		if idx == nil {
-			WriteError(w, http.StatusNotFound, "NOT_FOUND", topicIndexNotBuilt)
+			WriteError(w, http.StatusNotFound, CodeNotFound, topicIndexNotBuilt)
 			return
 		}
 		entries := idx.Entries(chi.URLParam(r, "topic"))

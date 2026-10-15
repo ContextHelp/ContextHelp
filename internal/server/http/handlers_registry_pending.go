@@ -65,7 +65,7 @@ func pendingAction(
 		case errors.Is(err, service.ErrPendingSelection):
 			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
 		case errors.Is(err, storage.ErrNotFound):
-			WriteError(w, http.StatusNotFound, "NOT_FOUND", err.Error())
+			WriteError(w, http.StatusNotFound, CodeNotFound, err.Error())
 		case errors.Is(err, service.ErrPendingSandboxed):
 			WriteError(w, http.StatusConflict, "REGISTRY_SANDBOXED", err.Error())
 		case err != nil:

@@ -31,7 +31,7 @@ func PullEntity(svc *service.Service, gate *registry.InboundGate) http.HandlerFu
 		if g := entityGate(r, gate); g != nil {
 			existing, err := svc.GetEntity(r.Context(), slug)
 			if err != nil || existing == nil {
-				WriteError(w, http.StatusNotFound, "NOT_FOUND", "entity not found")
+				WriteError(w, http.StatusNotFound, CodeNotFound, "entity not found")
 				return
 			}
 			if aerr := g.Authorize(r.Context(), gatePrincipal(r), existing.Namespace,

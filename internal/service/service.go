@@ -1528,13 +1528,17 @@ func (s *Service) CreateBatch(ctx context.Context, content, format string) (*sto
 	return batch, nil
 }
 
+// ImportFormatJSONL is the batch import format: one JSON ImportRecord per
+// line. CreateBatch assumes it when no format is given.
+const ImportFormatJSONL = "jsonl"
+
 // parseBatchRecords parses JSONL, CSV, or TSV content into ImportRecords.
 func (s *Service) parseBatchRecords(content, format string) ([]storage.ImportRecord, []storage.BatchError) {
 	var records []storage.ImportRecord
 	var errs []storage.BatchError
 
 	switch format {
-	case "jsonl", "":
+	case ImportFormatJSONL, "":
 		for i, line := range strings.Split(strings.TrimSpace(content), "\n") {
 			if strings.TrimSpace(line) == "" {
 				continue

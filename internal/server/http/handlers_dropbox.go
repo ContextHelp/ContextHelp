@@ -101,7 +101,7 @@ func GetImporterRun(svc *service.Service) http.HandlerFunc {
 		id := chi.URLParam(r, "id")
 		job, err := svc.Store.Jobs().Get(r.Context(), id)
 		if err != nil {
-			WriteError(w, http.StatusNotFound, "NOT_FOUND", "run not found")
+			WriteError(w, http.StatusNotFound, CodeNotFound, "run not found")
 			return
 		}
 		WriteJSON(w, http.StatusOK, map[string]any{

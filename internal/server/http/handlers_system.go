@@ -9,7 +9,7 @@ import (
 // ListReminders handles system reminder listing.
 func ListReminders(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		activeOnly := r.URL.Query().Get("active_only") == "true"
+		activeOnly := flagParam(r.URL.Query(), "active_only")
 
 		reminders, total, err := svc.ListReminders(r.Context(), activeOnly)
 		if err != nil {

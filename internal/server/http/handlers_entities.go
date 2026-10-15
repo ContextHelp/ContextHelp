@@ -56,7 +56,7 @@ func GetEntity(svc *service.Service, gate *registry.InboundGate) http.HandlerFun
 		slug := chi.URLParam(r, "slug")
 		entity, err := svc.GetEntity(r.Context(), slug)
 		if err != nil || entity == nil {
-			WriteError(w, http.StatusNotFound, "NOT_FOUND", "entity not found")
+			WriteError(w, http.StatusNotFound, CodeNotFound, "entity not found")
 			return
 		}
 		if err := entityGate(r, gate).Authorize(r.Context(), gatePrincipal(r), entity.Namespace,
@@ -85,7 +85,7 @@ func ResolveEntity(svc *service.Service, gate *registry.InboundGate) http.Handle
 		}
 		entity, err := svc.ResolveEntity(r.Context(), mention)
 		if errors.Is(err, storage.ErrNotFound) {
-			WriteError(w, http.StatusNotFound, "NOT_FOUND", "no entity matches the mention")
+			WriteError(w, http.StatusNotFound, CodeNotFound, "no entity matches the mention")
 			return
 		}
 		if err != nil {
@@ -115,7 +115,7 @@ func EntityBacklinks(svc *service.Service, gate *registry.InboundGate) http.Hand
 		if g := entityGate(r, gate); g != nil {
 			entity, err := svc.GetEntity(r.Context(), slug)
 			if err != nil || entity == nil {
-				WriteError(w, http.StatusNotFound, "NOT_FOUND", "entity not found")
+				WriteError(w, http.StatusNotFound, CodeNotFound, "entity not found")
 				return
 			}
 			if cerr := g.Check(r.Context(), gatePrincipal(r), entity.Namespace); cerr != nil {

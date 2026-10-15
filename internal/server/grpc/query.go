@@ -43,10 +43,7 @@ func (h *queryHandler) Search(ctx context.Context, req *pb.SearchRequest) (*pb.S
 		out = append(out, koToProto(o))
 	}
 
-	if total > math.MaxInt32 {
-		total = math.MaxInt32
-	}
-	return &pb.SearchResponse{Objects: out, Total: int32(total)}, nil
+	return &pb.SearchResponse{Objects: out, Total: clampInt32(total)}, nil
 }
 
 func (h *queryHandler) ListObjects(ctx context.Context, req *pb.ListObjectsRequest) (*pb.ListObjectsResponse, error) {
@@ -73,10 +70,7 @@ func (h *queryHandler) ListObjects(ctx context.Context, req *pb.ListObjectsReque
 		out = append(out, koToProto(o))
 	}
 
-	if total > math.MaxInt32 {
-		total = math.MaxInt32
-	}
-	return &pb.ListObjectsResponse{Objects: out, Total: int32(total)}, nil
+	return &pb.ListObjectsResponse{Objects: out, Total: clampInt32(total)}, nil
 }
 
 func (h *queryHandler) GetObject(ctx context.Context, req *pb.GetObjectRequest) (*pb.KnowledgeObject, error) {
@@ -136,13 +130,22 @@ func (h *queryHandler) NodeAwareSearch(
 		results = append(results, r)
 	}
 
-	if total > math.MaxInt32 {
-		total = math.MaxInt32
-	}
-	return &pb.NodeAwareSearchResponse{Results: results, Total: int32(total)}, nil
+	return &pb.NodeAwareSearchResponse{Results: results, Total: clampInt32(total)}, nil
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
+
+// clampInt32 narrows a count to the proto's int32 Total, saturating
+// instead of wrapping when the store holds more rows than int32 counts.
+func clampInt32(n int) int32 {
+	switch {
+	case n > math.MaxInt32:
+		return math.MaxInt32
+	case n < math.MinInt32:
+		return math.MinInt32
+	}
+	return int32(n)
+}
 
 func koToProto(o *storage.KnowledgeObject) *pb.KnowledgeObject {
 	p := &pb.KnowledgeObject{

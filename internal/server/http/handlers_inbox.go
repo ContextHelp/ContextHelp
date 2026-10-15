@@ -173,7 +173,7 @@ func ClearInbox(svc *service.Service) http.HandlerFunc {
 // otherwise.
 func writeInboxItemError(w http.ResponseWriter, id string, err error) {
 	if errors.Is(err, storage.ErrNotFound) {
-		WriteError(w, http.StatusNotFound, "NOT_FOUND", "no inbox item "+id)
+		WriteError(w, http.StatusNotFound, CodeNotFound, "no inbox item "+id)
 		return
 	}
 	WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
