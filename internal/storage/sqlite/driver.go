@@ -147,6 +147,7 @@ func (d *Driver) SearchHistory() storage.SearchHistoryStore   { return d.searchH
 func (d *Driver) Watermarks() storage.WatermarkStore          { return &watermarkStore{db: d.db} }
 func (d *Driver) PendingEntities() storage.PendingEntityStore { return &pendingEntityStore{db: d.db} }
 func (d *Driver) UISessions() storage.UISessionStore          { return &uiSessionStore{db: d.db} }
+func (d *Driver) Auth() storage.AuthStore                     { return &authStore{db: d.db} }
 
 func (d *Driver) Health(ctx context.Context) error {
 	return d.db.PingContext(ctx)

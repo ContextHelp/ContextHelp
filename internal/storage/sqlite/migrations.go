@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/indexsig"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
@@ -252,6 +253,11 @@ var migrations = []migration{
 	// the instance owner so every existing row stays the owner's. Column
 	// add only; nothing is an FTS input, so no re-projection follows.
 	{Version: 47, fn: migrate047OwnerPrincipal},
+	// Migration 048: the principal registry (ADR-079): principals,
+	// principal_identities, auth_tickets and the kv table for API key
+	// records, seeded with the one owner principal. New tables only,
+	// nothing is an FTS input, so no re-projection follows.
+	{Version: 48, fn: migrate048AuthRegistry},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
@@ -962,6 +968,74 @@ func migrate047OwnerPrincipal(ctx context.Context, d *Driver) error {
 		if _, err := d.db.ExecContext(ctx, add.ddl); err != nil {
 			return fmt.Errorf("add %s.owner_principal: %w", add.table, err)
 		}
+	}
+	return nil
+}
+
+// migrate048AuthRegistry creates the principal registry (ADR-079):
+// principals, principal_identities, auth_tickets and the kv table that
+// holds API key records, and seeds the one owner principal. Times are
+// Unix milliseconds (UTC) like ui_sessions. The instance name lives in
+// config, not the database, so the owner's display name is "Owner".
+// One transaction; IF NOT EXISTS and ON CONFLICT DO NOTHING make a
+// replay a no-op.
+func migrate048AuthRegistry(ctx context.Context, d *Driver) error {
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, stmt := range []string{
+		`CREATE TABLE IF NOT EXISTS principals (
+			id           TEXT PRIMARY KEY,
+			kind         TEXT NOT NULL,
+			display_name TEXT NOT NULL,
+			roles        TEXT NOT NULL DEFAULT '["reader"]',
+			status       TEXT NOT NULL DEFAULT 'active',
+			created_at   INTEGER NOT NULL,
+			revoked_at   INTEGER
+		)`,
+		`CREATE TABLE IF NOT EXISTS principal_identities (
+			id           TEXT PRIMARY KEY,
+			principal_id TEXT NOT NULL REFERENCES principals(id),
+			method       TEXT NOT NULL,
+			issuer       TEXT NOT NULL DEFAULT '',
+			subject      TEXT NOT NULL,
+			name         TEXT NOT NULL DEFAULT '',
+			created_at   INTEGER NOT NULL,
+			revoked_at   INTEGER,
+			last_used_at INTEGER,
+			UNIQUE (method, issuer, subject)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_principal_identities_principal ON principal_identities(principal_id)`,
+		`CREATE TABLE IF NOT EXISTS auth_tickets (
+			hash         TEXT PRIMARY KEY,
+			kind         TEXT NOT NULL,
+			principal_id TEXT REFERENCES principals(id),
+			grants       TEXT NOT NULL DEFAULT '{}',
+			created_by   TEXT NOT NULL REFERENCES principals(id),
+			created_at   INTEGER NOT NULL,
+			expires_at   INTEGER NOT NULL,
+			redeemed_at  INTEGER
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_auth_tickets_expires ON auth_tickets(expires_at)`,
+		`CREATE TABLE IF NOT EXISTS kv (
+			key        TEXT PRIMARY KEY,
+			value      BLOB NOT NULL,
+			updated_at INTEGER NOT NULL
+		)`,
+	} {
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("create principal registry: %w", err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO principals (id, kind, display_name, roles, status, created_at)
+		VALUES (?, ?, 'Owner', '["admin"]', ?, ?) ON CONFLICT(id) DO NOTHING`,
+		storage.OwnerPrincipal, storage.PrincipalKindOwner, storage.PrincipalActive, toMillis(time.Now())); err != nil {
+		return fmt.Errorf("seed owner principal: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
 	}
 	return nil
 }
