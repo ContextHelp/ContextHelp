@@ -38,6 +38,7 @@ func (m *mockDriver) SavedSearches() SavedSearchStore     { return &mockSavedSea
 func (m *mockDriver) SearchHistory() SearchHistoryStore   { return &mockSearchHistoryStore{} }
 func (m *mockDriver) Watermarks() WatermarkStore          { return &mockWatermarkStore{} }
 func (m *mockDriver) UISessions() UISessionStore          { return nil }
+func (m *mockDriver) Auth() AuthStore                     { return nil }
 func (m *mockDriver) Health(ctx context.Context) error    { return nil }
 
 type mockWatermarkStore struct{}

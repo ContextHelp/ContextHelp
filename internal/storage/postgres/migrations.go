@@ -273,6 +273,55 @@ var pgMigrations = []pgMigration{
 		`ALTER TABLE search_history ADD COLUMN IF NOT EXISTS owner_principal TEXT NOT NULL DEFAULT 'owner'`,
 		`ALTER TABLE resurfacing_queue ADD COLUMN IF NOT EXISTS owner_principal TEXT NOT NULL DEFAULT 'owner'`,
 	}},
+	// The principal registry (ADR-079), mirroring SQLite migration 048:
+	// principals, principal_identities, auth_tickets and the kv table
+	// for API key records, seeded with the one owner principal. The
+	// instance name lives in config, not the database, so the owner's
+	// display name is "Owner". IF NOT EXISTS and ON CONFLICT DO NOTHING
+	// make a replay a no-op.
+	{Version: 28, Name: "principal registry", Statements: []string{
+		`CREATE TABLE IF NOT EXISTS principals (
+			id           TEXT PRIMARY KEY,
+			kind         TEXT NOT NULL,
+			display_name TEXT NOT NULL,
+			roles        TEXT NOT NULL DEFAULT '["reader"]',
+			status       TEXT NOT NULL DEFAULT 'active',
+			created_at   TIMESTAMPTZ NOT NULL,
+			revoked_at   TIMESTAMPTZ
+		)`,
+		`CREATE TABLE IF NOT EXISTS principal_identities (
+			id           TEXT PRIMARY KEY,
+			principal_id TEXT NOT NULL REFERENCES principals(id),
+			method       TEXT NOT NULL,
+			issuer       TEXT NOT NULL DEFAULT '',
+			subject      TEXT NOT NULL,
+			name         TEXT NOT NULL DEFAULT '',
+			created_at   TIMESTAMPTZ NOT NULL,
+			revoked_at   TIMESTAMPTZ,
+			last_used_at TIMESTAMPTZ,
+			UNIQUE (method, issuer, subject)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_principal_identities_principal ON principal_identities (principal_id)`,
+		`CREATE TABLE IF NOT EXISTS auth_tickets (
+			hash         TEXT PRIMARY KEY,
+			kind         TEXT NOT NULL,
+			principal_id TEXT REFERENCES principals(id),
+			grants       TEXT NOT NULL DEFAULT '{}',
+			created_by   TEXT NOT NULL REFERENCES principals(id),
+			created_at   TIMESTAMPTZ NOT NULL,
+			expires_at   TIMESTAMPTZ NOT NULL,
+			redeemed_at  TIMESTAMPTZ
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_auth_tickets_expires ON auth_tickets (expires_at)`,
+		`CREATE TABLE IF NOT EXISTS kv (
+			key        TEXT PRIMARY KEY,
+			value      BYTEA NOT NULL,
+			updated_at TIMESTAMPTZ NOT NULL
+		)`,
+		`INSERT INTO principals (id, kind, display_name, roles, status, created_at)
+		 VALUES ('owner', 'owner', 'Owner', '["admin"]', 'active', NOW())
+		 ON CONFLICT (id) DO NOTHING`,
+	}},
 }
 
 // migrateAliasesObjectFK deletes aliases whose object is gone, then adds

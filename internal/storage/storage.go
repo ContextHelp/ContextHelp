@@ -100,6 +100,9 @@ type StorageDriver interface {
 	SearchHistory() SearchHistoryStore
 	Watermarks() WatermarkStore
 	UISessions() UISessionStore
+	// Auth is the principal registry (ADR-079): principals, their
+	// identities, sign-in tickets and the API key records.
+	Auth() AuthStore
 	Health(ctx context.Context) error
 }
 
