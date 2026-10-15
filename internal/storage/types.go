@@ -768,38 +768,63 @@ type QuotaConfig struct {
 	ResetsAt time.Time `json:"resets_at" yaml:"resets_at"`
 }
 
+// OwnerPrincipal is the principal id of the instance owner (ADR-079).
+// Per-principal rows (search history, saved searches, the resurfacing
+// queue) written without a principal belong to it: stores substitute it
+// for an empty OwnerPrincipal, and the columns default to it.
+const OwnerPrincipal = "owner"
+
+// PrincipalOrOwner returns p, or OwnerPrincipal when p is empty: the
+// value a store writes to an owner_principal column.
+func PrincipalOrOwner(p string) string {
+	if p == "" {
+		return OwnerPrincipal
+	}
+	return p
+}
+
 // SavedSearch is a persisted named search query with optional alert config (US-0054).
 type SavedSearch struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`       // unique human-readable identifier
-	Query     string    `json:"query"`      // RSQL or NLQ query text
-	ProfileID string    `json:"profile_id"` // optional focus profile
-	AlertOn   string    `json:"alert_on"`   // "" | "new-results"
-	Notify    string    `json:"notify"`     // notification channel: "" | "email" | ...
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`       // unique human-readable identifier
+	Query     string `json:"query"`      // RSQL or NLQ query text
+	ProfileID string `json:"profile_id"` // optional focus profile
+	AlertOn   string `json:"alert_on"`   // "" | "new-results"
+	Notify    string `json:"notify"`     // notification channel: "" | "email" | ...
+	// OwnerPrincipal is the principal the search belongs to; empty on
+	// write means OwnerPrincipal (the instance owner).
+	OwnerPrincipal string    `json:"owner_principal"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 // SavedSearchFilter restricts saved search listing.
 type SavedSearchFilter struct {
 	ProfileID string
-	Limit     int
-	Offset    int
+	// OwnerPrincipal, when set, keeps that principal's searches only.
+	OwnerPrincipal string
+	Limit          int
+	Offset         int
 }
 
 // SearchHistoryEntry is one record in the search history log (US-0055).
 type SearchHistoryEntry struct {
-	ID             string    `json:"id"`
-	Query          string    `json:"query"`
-	ProfileID      string    `json:"profile_id"`
-	StrategiesUsed string    `json:"strategies_used"` // comma-separated strategy names
-	ResultCount    int       `json:"result_count"`
+	ID             string `json:"id"`
+	Query          string `json:"query"`
+	ProfileID      string `json:"profile_id"`
+	StrategiesUsed string `json:"strategies_used"` // comma-separated strategy names
+	ResultCount    int    `json:"result_count"`
+	// OwnerPrincipal is the principal that ran the search; empty on
+	// write means OwnerPrincipal (the instance owner).
+	OwnerPrincipal string    `json:"owner_principal"`
 	SearchedAt     time.Time `json:"searched_at"`
 }
 
 // SearchHistoryFilter restricts search history queries.
 type SearchHistoryFilter struct {
 	ProfileID string
-	Limit     int
-	Offset    int
+	// OwnerPrincipal, when set, keeps that principal's entries only.
+	OwnerPrincipal string
+	Limit          int
+	Offset         int
 }

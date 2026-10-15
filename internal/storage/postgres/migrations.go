@@ -226,6 +226,53 @@ var pgMigrations = []pgMigration{
 	// CASCADE, mirroring SQLite migration 046: deleting an object drops
 	// its proximity pairs. Pairs whose object is already gone go first.
 	{Version: 26, Name: "object_proximity object FKs with cascade", fn: migrateProximityObjectFK},
+	// owner_principal on the per-principal tables, mirroring SQLite
+	// migration 047. Postgres had no search_history, saved_searches or
+	// resurfacing_queue (their stores are placeholders), so the tables
+	// are created here, after SQLite's 017 / 021 DDL, with the column in
+	// place; the ALTERs cover a table that already exists without it.
+	{Version: 27, Name: "owner_principal on per-principal tables", Statements: []string{
+		`CREATE TABLE IF NOT EXISTS saved_searches (
+			id              TEXT PRIMARY KEY,
+			name            TEXT NOT NULL UNIQUE,
+			query           TEXT NOT NULL,
+			profile_id      TEXT NOT NULL DEFAULT '',
+			alert_on        TEXT NOT NULL DEFAULT '',
+			notify          TEXT NOT NULL DEFAULT '',
+			owner_principal TEXT NOT NULL DEFAULT 'owner',
+			created_at      TIMESTAMPTZ NOT NULL,
+			updated_at      TIMESTAMPTZ NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS search_history (
+			id              TEXT PRIMARY KEY,
+			query           TEXT NOT NULL,
+			profile_id      TEXT NOT NULL DEFAULT '',
+			strategies_used TEXT NOT NULL DEFAULT '',
+			result_count    INTEGER NOT NULL DEFAULT 0,
+			owner_principal TEXT NOT NULL DEFAULT 'owner',
+			searched_at     TIMESTAMPTZ NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_search_history_profile_id ON search_history (profile_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_search_history_searched_at ON search_history (searched_at DESC)`,
+		`CREATE TABLE IF NOT EXISTS resurfacing_queue (
+			id              TEXT PRIMARY KEY,
+			object_id       TEXT NOT NULL REFERENCES objects(id) ON DELETE CASCADE,
+			profile_id      TEXT NOT NULL,
+			score           DOUBLE PRECISION NOT NULL,
+			reason          TEXT NOT NULL,
+			owner_principal TEXT NOT NULL DEFAULT 'owner',
+			surfaced_at     TIMESTAMPTZ,
+			dismissed_at    TIMESTAMPTZ,
+			created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_resurfacing_queue_profile_id ON resurfacing_queue (profile_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_resurfacing_queue_object_id ON resurfacing_queue (object_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_resurfacing_queue_unseen ON resurfacing_queue (profile_id, score)
+			WHERE surfaced_at IS NULL AND dismissed_at IS NULL`,
+		`ALTER TABLE saved_searches ADD COLUMN IF NOT EXISTS owner_principal TEXT NOT NULL DEFAULT 'owner'`,
+		`ALTER TABLE search_history ADD COLUMN IF NOT EXISTS owner_principal TEXT NOT NULL DEFAULT 'owner'`,
+		`ALTER TABLE resurfacing_queue ADD COLUMN IF NOT EXISTS owner_principal TEXT NOT NULL DEFAULT 'owner'`,
+	}},
 }
 
 // migrateAliasesObjectFK deletes aliases whose object is gone, then adds
