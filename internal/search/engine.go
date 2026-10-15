@@ -1,3 +1,6 @@
+// Package search parses RSQL queries, compiles them to the storage driver's
+// SQL dialect, and runs them; it also holds the query-mode, decomposition and
+// alias-expansion rules applied before a query reaches the store.
 package search
 
 import (

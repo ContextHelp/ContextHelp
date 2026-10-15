@@ -96,7 +96,7 @@ func (l *Lexer) lastTokenIsSetOp() bool {
 		return false
 	}
 	last := l.tokens[len(l.tokens)-1]
-	return last.Type == TokenOp && (last.Value == "=in=" || last.Value == "=out=")
+	return last.Type == TokenOp && (last.Value == opInText || last.Value == opOutText)
 }
 
 func (l *Lexer) lexField() {
@@ -118,7 +118,7 @@ func (l *Lexer) lexOperatorAndValue() error {
 	l.tokens = append(l.tokens, Token{Type: TokenOp, Value: op, Pos: start})
 
 	// For =in= and =out=, value list comes in parens — handled by main loop.
-	if op == "=in=" || op == "=out=" {
+	if op == opInText || op == opOutText {
 		return l.lex()
 	}
 
@@ -167,7 +167,7 @@ func (l *Lexer) readOperator() (string, error) {
 
 	// Named operators: =in=, =out=
 	if ch == '=' {
-		for _, named := range []string{"=in=", "=out="} {
+		for _, named := range []string{opInText, opOutText} {
 			if strings.HasPrefix(l.input[l.pos:], named) {
 				l.pos += len(named)
 				return named, nil
