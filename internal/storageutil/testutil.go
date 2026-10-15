@@ -38,7 +38,11 @@ func NewTestDriver(t *testing.T) storage.StorageDriver {
 	if err := driver.Init(context.Background()); err != nil {
 		t.Fatalf("init test driver: %v", err)
 	}
-	t.Cleanup(func() { driver.Close(context.Background()) })
+	t.Cleanup(func() {
+		if err := driver.Close(context.Background()); err != nil {
+			t.Errorf("close test driver: %v", err)
+		}
+	})
 	return driver
 }
 

@@ -1,3 +1,6 @@
+// Package storageutil opens the configured storage driver and blob store,
+// and carries shared storage helpers: content hashing, SQLite snapshots and
+// test fixtures.
 package storageutil
 
 import (
