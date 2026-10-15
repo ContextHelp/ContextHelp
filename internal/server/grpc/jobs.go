@@ -31,10 +31,10 @@ func (h *jobHandler) GetJob(ctx context.Context, req *pb.GetJobRequest) (*pb.Job
 
 	j, err := h.svc.GetJob(ctx, req.Id)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "get job: %v", err)
+		return nil, toStatus(ctx, "job", err)
 	}
 	if j == nil {
-		return nil, status.Errorf(codes.NotFound, "job %s not found", req.Id)
+		return nil, notFound("job")
 	}
 
 	return jobToProto(j), nil
@@ -52,7 +52,7 @@ func (h *jobHandler) ListJobs(ctx context.Context, req *pb.ListJobsRequest) (*pb
 
 	jobs, total, err := h.svc.ListJobs(ctx, filter)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "list jobs: %v", err)
+		return nil, toStatus(ctx, "jobs", err)
 	}
 
 	out := make([]*pb.Job, 0, len(jobs))
@@ -76,10 +76,10 @@ func (h *jobHandler) WatchJob(req *pb.WatchJobRequest, stream pb.JobService_Watc
 	// Send current state immediately.
 	j, err := h.svc.GetJob(ctx, req.Id)
 	if err != nil {
-		return status.Errorf(codes.Internal, "get job: %v", err)
+		return toStatus(ctx, "job", err)
 	}
 	if j == nil {
-		return status.Errorf(codes.NotFound, "job %s not found", req.Id)
+		return notFound("job")
 	}
 
 	if err := stream.Send(jobToStatusUpdate(j)); err != nil {
@@ -119,7 +119,7 @@ func (h *jobHandler) WatchJob(req *pb.WatchJobRequest, stream pb.JobService_Watc
 		case <-ticker.C:
 			j, err := h.svc.GetJob(ctx, req.Id)
 			if err != nil {
-				return status.Errorf(codes.Internal, "poll job: %v", err)
+				return toStatus(ctx, "job", err)
 			}
 			if j == nil {
 				return nil

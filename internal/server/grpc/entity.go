@@ -43,7 +43,7 @@ func (h *entityHandler) ListEntities(ctx context.Context, req *pb.ListEntitiesRe
 		Offset:    int(req.Offset),
 	})
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "list entities: %v", err)
+		return nil, toStatus(ctx, "entities", err)
 	}
 	if gate := entityGateFor(ctx, h.gate); gate != nil {
 		principal := principalID(ctx)
@@ -75,10 +75,10 @@ func (h *entityHandler) GetEntity(ctx context.Context, req *pb.GetEntityRequest)
 
 	e, err := h.svc.GetEntity(ctx, req.Slug)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "get entity: %v", err)
+		return nil, toStatus(ctx, "entity", err)
 	}
 	if e == nil {
-		return nil, status.Errorf(codes.NotFound, "entity %s not found", req.Slug)
+		return nil, notFound("entity")
 	}
 	if gate := entityGateFor(ctx, h.gate); gate != nil {
 		if gerr := gate.Authorize(ctx, principalID(ctx), e.Namespace,
@@ -105,8 +105,11 @@ func (h *entityHandler) GetEntityBacklinks(
 
 	if gate := entityGateFor(ctx, h.gate); gate != nil {
 		e, err := h.svc.GetEntity(ctx, req.Slug)
-		if err != nil || e == nil {
-			return nil, status.Errorf(codes.NotFound, "entity %s not found", req.Slug)
+		if err != nil {
+			return nil, toStatus(ctx, "entity", err)
+		}
+		if e == nil {
+			return nil, notFound("entity")
 		}
 		if gerr := gate.Check(ctx, principalID(ctx), e.Namespace); gerr != nil {
 			return nil, h.gateStatus(ctx, gerr)
@@ -115,7 +118,7 @@ func (h *entityHandler) GetEntityBacklinks(
 
 	objs, err := h.svc.EntityBacklinks(ctx, req.Slug)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "entity backlinks: %v", err)
+		return nil, toStatus(ctx, "entity", err)
 	}
 
 	out := make([]*pb.KnowledgeObject, 0, len(objs))

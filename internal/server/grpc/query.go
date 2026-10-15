@@ -35,7 +35,7 @@ func (h *queryHandler) Search(ctx context.Context, req *pb.SearchRequest) (*pb.S
 
 	objs, total, err := h.svc.SearchObjects(ctx, req.Query, limit, int(req.Offset), req.ProfileId)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "search: %v", err)
+		return nil, toStatus(ctx, "objects", err)
 	}
 
 	out := make([]*pb.KnowledgeObject, 0, len(objs))
@@ -62,7 +62,7 @@ func (h *queryHandler) ListObjects(ctx context.Context, req *pb.ListObjectsReque
 
 	objs, total, err := h.svc.ListObjects(ctx, filter)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "list objects: %v", err)
+		return nil, toStatus(ctx, "objects", err)
 	}
 
 	out := make([]*pb.KnowledgeObject, 0, len(objs))
@@ -80,10 +80,10 @@ func (h *queryHandler) GetObject(ctx context.Context, req *pb.GetObjectRequest) 
 
 	o, err := h.svc.GetObject(ctx, req.Id)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "get object: %v", err)
+		return nil, toStatus(ctx, "object", err)
 	}
 	if o == nil {
-		return nil, status.Errorf(codes.NotFound, "object %s not found", req.Id)
+		return nil, notFound("object")
 	}
 
 	return koToProto(o), nil
@@ -115,7 +115,7 @@ func (h *queryHandler) NodeAwareSearch(
 	profileID := req.ProfileId
 	objs, total, err := h.svc.SearchObjectsNodeAware(ctx, req.Query, limit, int(req.Offset), apiFilter, profileID)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "node-aware search: %v", err)
+		return nil, toStatus(ctx, "objects", err)
 	}
 
 	results := make([]*pb.NodeAwareResult, 0, len(objs))
