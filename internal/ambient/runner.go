@@ -194,7 +194,7 @@ func (r *Runner) Start(ctx context.Context) error {
 		))
 
 		wg.Add(1)
-		go func(n string, ch <-chan RawEvent) {
+		go func(ch <-chan RawEvent) {
 			defer wg.Done()
 			for ev := range ch {
 				select {
@@ -203,7 +203,7 @@ func (r *Runner) Start(ctx context.Context) error {
 					return
 				}
 			}
-		}(name, src.Events())
+		}(src.Events())
 	}
 
 	r.mu.Lock()

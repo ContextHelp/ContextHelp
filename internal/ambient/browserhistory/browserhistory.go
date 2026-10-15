@@ -268,16 +268,13 @@ func (s *Source) toRawEvent(v Visit) ambient.RawEvent {
 // routePipeline picks url.repo for known code-host domains, url.generic
 // otherwise.
 func routePipeline(rawURL string) string {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return "url.generic"
-	}
-	host := strings.ToLower(u.Host)
-	switch {
-	case strings.HasSuffix(host, "github.com"),
-		strings.HasSuffix(host, "gitlab.com"),
-		strings.HasSuffix(host, "bitbucket.org"):
-		return "url.repo"
+	if u, err := url.Parse(rawURL); err == nil {
+		host := strings.ToLower(u.Host)
+		if strings.HasSuffix(host, "github.com") ||
+			strings.HasSuffix(host, "gitlab.com") ||
+			strings.HasSuffix(host, "bitbucket.org") {
+			return "url.repo"
+		}
 	}
 	return "url.generic"
 }

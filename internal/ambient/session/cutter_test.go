@@ -53,7 +53,7 @@ func (r *recordingHooks) wire(c *Cutter) {
 	}
 }
 
-func (r *recordingHooks) starts_count() int {
+func (r *recordingHooks) startsCount() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return len(r.starts)
@@ -90,8 +90,8 @@ func TestCutter_StartsSessionOnFirstEvent(t *testing.T) {
 	if c.ActiveID() == "" {
 		t.Fatal("ActiveID empty after first event; expected session opened")
 	}
-	if r.starts_count() != 1 {
-		t.Errorf("OnStart called %d times, want 1", r.starts_count())
+	if r.startsCount() != 1 {
+		t.Errorf("OnStart called %d times, want 1", r.startsCount())
 	}
 }
 
@@ -273,8 +273,8 @@ func TestCutter_NewSessionAfterCut(t *testing.T) {
 	if first == second {
 		t.Errorf("after cut, new session id should differ; got %q == %q", first, second)
 	}
-	if r.starts_count() != 2 {
-		t.Errorf("OnStart called %d times, want 2", r.starts_count())
+	if r.startsCount() != 2 {
+		t.Errorf("OnStart called %d times, want 2", r.startsCount())
 	}
 }
 
