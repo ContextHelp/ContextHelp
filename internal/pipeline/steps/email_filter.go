@@ -200,29 +200,47 @@ func (s *EmailFilter) matchPredicate(p FilterPredicate, msg map[string]any) ([]s
 		return []string{"always"}, true
 	}
 
-	var explain []string
-
 	// Handle OR block first.
 	if len(p.Any) > 0 {
 		for _, sub := range p.Any {
 			subExplain, matched := s.matchPredicate(sub, msg)
 			if matched {
-				explain = append(explain, "any: "+strings.Join(subExplain, ", "))
-				return explain, true
+				return []string{"any: " + strings.Join(subExplain, ", ")}, true
 			}
 		}
 		return nil, false
 	}
 
-	// All remaining predicates are AND'd together.
+	// All remaining predicates are AND'd together, explained in field
+	// order.
+	explain, ok := s.matchSenderAndText(p, msg)
+	if !ok {
+		return nil, false
+	}
+	explain, ok = matchEnvelope(p, msg, explain)
+	if !ok {
+		return nil, false
+	}
+
+	if len(explain) == 0 {
+		// No predicates specified → no match (prevents accidental wildcard rules
+		// from matching unless always:true is set).
+		return nil, false
+	}
+
+	return explain, true
+}
+
+// matchSenderAndText checks p's from_regex, from_domain_in,
+// subject_regex, subject_contains and body_contains, those set, and
+// explains each that holds; false as soon as one does not.
+func (s *EmailFilter) matchSenderAndText(p FilterPredicate, msg map[string]any) ([]string, bool) {
+	var explain []string
 	from, _ := msg["from"].(string)
 	fromDomain, _ := msg["from_domain"].(string)
 	subject, _ := msg["subject"].(string)
 	textBody, _ := msg["text_body"].(string)
 	htmlBody, _ := msg["html_body"].(string)
-	listID, _ := msg["list_id"].(string)
-	attachmentsRaw, _ := msg["attachments"].([]map[string]any)
-	headersRaw, _ := msg["headers"].(map[string]any)
 
 	if p.FromRegex != "" {
 		re, _ := s.getRegex(p.FromRegex)
@@ -233,14 +251,7 @@ func (s *EmailFilter) matchPredicate(p FilterPredicate, msg map[string]any) ([]s
 	}
 
 	if len(p.FromDomainIn) > 0 {
-		matched := false
-		for _, d := range p.FromDomainIn {
-			if strings.EqualFold(fromDomain, d) {
-				matched = true
-				break
-			}
-		}
-		if !matched {
+		if !equalFoldAny(fromDomain, p.FromDomainIn) {
 			return nil, false
 		}
 		explain = append(explain, fmt.Sprintf("from_domain_in:[%s]", strings.Join(p.FromDomainIn, ",")))
@@ -269,6 +280,18 @@ func (s *EmailFilter) matchPredicate(p FilterPredicate, msg map[string]any) ([]s
 		explain = append(explain, fmt.Sprintf("body_contains:%q", p.BodyContains))
 	}
 
+	return explain, true
+}
+
+// matchEnvelope checks p's header_exists, has_attachment, sender_in and
+// folder, those set, appending to explain for each that holds; false as
+// soon as one does not.
+func matchEnvelope(p FilterPredicate, msg map[string]any, explain []string) ([]string, bool) {
+	from, _ := msg["from"].(string)
+	listID, _ := msg["list_id"].(string)
+	attachmentsRaw, _ := msg["attachments"].([]map[string]any)
+	headersRaw, _ := msg["headers"].(map[string]any)
+
 	if p.HeaderExists != "" {
 		key := strings.ToLower(p.HeaderExists)
 		// Check headers map and also list_id for List-Id.
@@ -296,14 +319,7 @@ func (s *EmailFilter) matchPredicate(p FilterPredicate, msg map[string]any) ([]s
 	}
 
 	if len(p.SenderIn) > 0 {
-		matched := false
-		for _, addr := range p.SenderIn {
-			if strings.EqualFold(from, addr) {
-				matched = true
-				break
-			}
-		}
-		if !matched {
+		if !equalFoldAny(from, p.SenderIn) {
 			return nil, false
 		}
 		explain = append(explain, fmt.Sprintf("sender_in:[%s]", strings.Join(p.SenderIn, ",")))
@@ -317,13 +333,17 @@ func (s *EmailFilter) matchPredicate(p FilterPredicate, msg map[string]any) ([]s
 		explain = append(explain, fmt.Sprintf("folder:%q", p.Folder))
 	}
 
-	if len(explain) == 0 {
-		// No predicates specified → no match (prevents accidental wildcard rules
-		// from matching unless always:true is set).
-		return nil, false
-	}
-
 	return explain, true
+}
+
+// equalFoldAny reports whether v equals any of list, ignoring case.
+func equalFoldAny(v string, list []string) bool {
+	for _, x := range list {
+		if strings.EqualFold(v, x) {
+			return true
+		}
+	}
+	return false
 }
 
 // EvaluateMessage evaluates a single message map against the ruleset (used for dry-run explain).

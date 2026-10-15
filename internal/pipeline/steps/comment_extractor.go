@@ -36,7 +36,8 @@ func (s *CommentExtractor) Run(ctx context.Context, draft *storage.KnowledgeObje
 	}
 
 	lines := strings.Split(draft.RawContent, "\n")
-	var annotations []map[string]string
+	// nil until a line matches: no annotations stores annotations: null.
+	var annotations []map[string]string //nolint:prealloc // see above; preallocating would store []
 
 	for i, line := range lines {
 		m := annotationRe.FindStringSubmatch(line)

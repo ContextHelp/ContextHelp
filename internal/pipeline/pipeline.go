@@ -1,3 +1,6 @@
+// Package pipeline defines the step and pipeline contracts dpkms runs
+// ingests through: PipelineStep, step contracts and their validation,
+// the pipeline registry, overrides and content detectors.
 package pipeline
 
 import (

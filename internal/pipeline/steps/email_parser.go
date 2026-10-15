@@ -95,7 +95,7 @@ func (s *EmailParser) Run(_ context.Context, draft *storage.KnowledgeObject) (*s
 	// Detect mbox format: starts with "From " envelope line.
 	trimmed := strings.TrimLeft(raw, "\r\n")
 	if strings.HasPrefix(trimmed, "From ") {
-		msgs, parseErr = parseMbox(trimmed, s.maxBodyBytes)
+		msgs = parseMbox(trimmed, s.maxBodyBytes)
 	} else {
 		var msg EmailMessage
 		msg, parseErr = parseEML(raw, s.maxBodyBytes)
@@ -117,8 +117,9 @@ func (s *EmailParser) Run(_ context.Context, draft *storage.KnowledgeObject) (*s
 	return draft, nil
 }
 
-// parseMbox splits mbox content and parses each RFC 5322 message.
-func parseMbox(content string, maxBodyBytes int) ([]EmailMessage, error) {
+// parseMbox splits mbox content and parses each RFC 5322 message; one
+// that does not parse is skipped.
+func parseMbox(content string, maxBodyBytes int) []EmailMessage {
 	var messages []EmailMessage
 	var current strings.Builder
 	inMsg := false
@@ -151,7 +152,7 @@ func parseMbox(content string, maxBodyBytes int) ([]EmailMessage, error) {
 			messages = append(messages, msg)
 		}
 	}
-	return messages, nil
+	return messages
 }
 
 // parseEML parses a single RFC 5322 message.
@@ -215,11 +216,11 @@ func parseEML(raw string, maxBodyBytes int) (EmailMessage, error) {
 	// Parse body.
 	ct := h.Get("Content-Type")
 	if ct == "" {
-		ct = "text/plain"
+		ct = mediaTextPlain
 	}
 	mediaType, params, err := mime.ParseMediaType(ct)
 	if err != nil {
-		mediaType = "text/plain"
+		mediaType = mediaTextPlain
 		params = map[string]string{}
 	}
 
@@ -252,17 +253,19 @@ func extractEmailBodies(mediaType string, params map[string]string, bodyBytes []
 				break
 			}
 			partBytes, err := io.ReadAll(part)
+			// ReadAll drained the part, so Close has nothing left to read
+			// or report; the header stays readable after it.
+			_ = part.Close()
 			if err != nil {
-				part.Close()
 				continue
 			}
 			partCT := part.Header.Get("Content-Type")
 			if partCT == "" {
-				partCT = "text/plain"
+				partCT = mediaTextPlain
 			}
 			partMedia, partParams, err := mime.ParseMediaType(partCT)
 			if err != nil {
-				partMedia = "text/plain"
+				partMedia = mediaTextPlain
 				partParams = map[string]string{}
 			}
 
@@ -284,16 +287,14 @@ func extractEmailBodies(mediaType string, params map[string]string, bodyBytes []
 						ContentType: partMedia,
 						SizeBytes:   len(partBytes),
 					})
-					part.Close()
 					continue
 				}
 			}
 
 			extractEmailBodies(partMedia, partParams, decoded, msg)
-			part.Close()
 		}
 
-	case strings.HasPrefix(mediaType, "text/html"):
+	case strings.HasPrefix(mediaType, mediaTextHTML):
 		if msg.HTMLBody == "" {
 			msg.HTMLBody = emailSafeString(bodyBytes)
 		}

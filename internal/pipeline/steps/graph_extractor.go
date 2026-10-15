@@ -62,6 +62,20 @@ func NewGraphExtractorWithLLM(llm providers.LLMProvider) *GraphExtractor {
 	return g
 }
 
+// trimToJSONObject strips what an LLM wraps around a JSON object
+// (markdown code fences, prose): everything before the first '{' and
+// after the last '}'.
+func trimToJSONObject(raw string) string {
+	cleaned := strings.TrimSpace(raw)
+	if idx := strings.Index(cleaned, "{"); idx > 0 {
+		cleaned = cleaned[idx:]
+	}
+	if end := strings.LastIndex(cleaned, "}"); end >= 0 && end < len(cleaned)-1 {
+		cleaned = cleaned[:end+1]
+	}
+	return cleaned
+}
+
 // Name returns the step identifier.
 func (g *GraphExtractor) Name() string { return "graph_extractor" }
 
@@ -89,15 +103,7 @@ func (g *GraphExtractor) Run(ctx context.Context, ko *storage.KnowledgeObject) (
 	}
 
 	var resp graphExtractResponse
-	// Strip markdown code fences if the LLM wrapped the JSON.
-	cleaned := strings.TrimSpace(raw)
-	if idx := strings.Index(cleaned, "{"); idx > 0 {
-		cleaned = cleaned[idx:]
-	}
-	if end := strings.LastIndex(cleaned, "}"); end >= 0 && end < len(cleaned)-1 {
-		cleaned = cleaned[:end+1]
-	}
-	if err := json.Unmarshal([]byte(cleaned), &resp); err != nil {
+	if err := json.Unmarshal([]byte(trimToJSONObject(raw)), &resp); err != nil {
 		// LLMs do not reliably emit valid JSON; an unparseable response is
 		// an expected outcome, not a pipeline fault. Same degradation as
 		// an outright generation failure.
