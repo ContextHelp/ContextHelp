@@ -21,6 +21,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	httpserver "github.com/ideacrafterslabs/ctxt/internal/server/http"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
@@ -50,7 +51,7 @@ func startFanOutEnv(t *testing.T) *testEnv {
 			MaxHops:      5,
 		})
 	pool.SetFanOut(func(ctx context.Context, objectID string) error {
-		_, err := svc.FanOut(ctx, objectID)
+		_, err := svc.FanOut(sharing.WithViewer(ctx, sharing.Unrestricted), objectID)
 		return err
 	})
 
@@ -82,6 +83,7 @@ func startFanOutEnv(t *testing.T) *testEnv {
 	go func() { done <- g.Wait() }()
 
 	return &testEnv{
+		driver: driver,
 		URL:    "http://" + addr,
 		svc:    svc,
 		cancel: cancel,
