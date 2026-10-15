@@ -152,6 +152,10 @@ var scopedAccessors = map[string]accessorKind{
 	"Init":   accessorPassthrough,
 	"Close":  accessorPassthrough,
 	"Health": accessorPassthrough,
+	// Auth is the principal registry: scopes govern it, not share
+	// policies (ADR-080 §1), and the chain consults it before a viewer
+	// exists, so it passes through for every viewer.
+	"Auth": accessorPassthrough,
 
 	"Objects":         accessorScoped,
 	"Entities":        accessorScoped,
