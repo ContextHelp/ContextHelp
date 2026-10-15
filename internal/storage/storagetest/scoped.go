@@ -206,6 +206,27 @@ func scopedOwnerOnlyWritesRefused(t *testing.T, drv storage.StorageDriver, now t
 			},
 		},
 		{
+			// Runs on the grant the owner's Upsert above left: a
+			// restricted Delete must leave it, the owner's removes it.
+			name: "Entitlements.Delete",
+			write: func(d storage.StorageDriver) error {
+				return d.Entitlements().Delete(ctx, storage.EntitlementInbound, viewerNothing.principal)
+			},
+			landed: func() bool {
+				// A Get miss is driver-specific; the inbound list is not.
+				grants, err := drv.Entitlements().List(ctx, storage.EntitlementInbound)
+				if err != nil {
+					t.Fatalf("list inbound grants: %v", err)
+				}
+				for _, g := range grants {
+					if g.RegistryName == viewerNothing.principal {
+						return false
+					}
+				}
+				return true
+			},
+		},
+		{
 			name: "Pipelines.Create",
 			write: func(d storage.StorageDriver) error {
 				return d.Pipelines().Create(ctx, &storage.Pipeline{

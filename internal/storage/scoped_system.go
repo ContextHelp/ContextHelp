@@ -175,8 +175,8 @@ func (v restrictedEntitlements) List(_ context.Context, _ EntitlementKind) ([]*R
 	return nil, restrictedRead("Entitlements", "List")
 }
 
-func (v restrictedEntitlements) Delete(ctx context.Context, kind EntitlementKind, name string) error {
-	return v.inner.Delete(ctx, kind, name)
+func (v restrictedEntitlements) Delete(_ context.Context, _ EntitlementKind, _ string) error {
+	return restrictedWrite("Entitlements", "Delete")
 }
 
 // restrictedMetering is the MeteringStore of a restricted viewer: every read and every write

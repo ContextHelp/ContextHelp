@@ -368,7 +368,7 @@ var restrictedReads = map[string][]string{
 var restrictedWrites = map[string][]string{
 	"Batches":      {"Create", "Update"},
 	"Detectors":    {"Create", "Update", "Delete", "Enable", "Disable"},
-	"Entitlements": {"Upsert"},
+	"Entitlements": {"Upsert", "Delete"},
 	"FeedItems":    {"Create"},
 	"Feeds":        {"Create", "Update", "Delete"},
 	"Jobs":         {"Create", "AcquireNext", "Complete", "Fail", "Retry", "Cancel", "RecoverStale", "ExtendLease", "ReleaseLease"},
