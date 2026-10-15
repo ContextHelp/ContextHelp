@@ -127,9 +127,6 @@ func TestGate4_E2E_ClipboardAdapterMutationVetoedByPolicy(t *testing.T) {
 		ID:      "clipboard:abc123",
 		Type:    "text",
 		Content: "secret token from pasteboard",
-		Metadata: map[string]any{
-			"source": "clipboard",
-		},
 	}
 	entity := &capturedObject{
 		ID:      captured.ID,

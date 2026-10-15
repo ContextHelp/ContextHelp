@@ -74,7 +74,7 @@ func scan(dir string, self int) ([]Info, error) {
 		return nil, err
 	}
 
-	var live []Info
+	live := make([]Info, 0, len(entries))
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".pid") {
 			continue
