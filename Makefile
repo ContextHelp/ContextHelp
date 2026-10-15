@@ -645,8 +645,11 @@ ci-test:
 	$(CI_STEP) ci-test-unit
 	$(CI_STEP) ci-test-e2e
 
+# -timeout 30m: cmd/ctxt/cmd alone runs ~5 min under -race on a laptop and
+# runners are slower; the default 10 min per package is too close.
+
 ci-test-unit:
-	$(GO) test -v -short -race -tags fts5 -coverprofile=coverage.out -covermode=atomic ./...
+	$(GO) test -v -short -race -timeout 30m -tags fts5 -coverprofile=coverage.out -covermode=atomic ./...
 
 # Black-box suites under test/e2e/ tagged e2e: each builds ctxt, seeds a
 # throwaway store through the binary and asserts exit codes, output and
