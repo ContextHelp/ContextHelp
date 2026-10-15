@@ -5,6 +5,8 @@ package ingest
 import (
 	"context"
 	"time"
+
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 // Object is the adapter-output contract. Adapters emit a slice of
@@ -15,6 +17,10 @@ type Object struct {
 	Content  string         `json:"content"`
 	Tags     []string       `json:"tags,omitempty"`
 	Metadata map[string]any `json:"metadata,omitempty"`
+	// Graph carries the parts an adapter keeps out of Content (a
+	// contact's note, classed personal). Node IDs are assigned by the
+	// runner from the object ID it mints; an adapter leaves them empty.
+	Graph *storage.ObjectGraph `json:"graph,omitempty"`
 }
 
 // Adapter is the contract external ingestion adapters implement.

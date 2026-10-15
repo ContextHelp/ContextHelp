@@ -86,8 +86,9 @@ func TestBuild_Deterministic(t *testing.T) {
 
 // A tenth of the corpus is contacts and the rest notes, spread over the
 // profiles and tags. A contact's card carries its email and phone in the
-// metadata and in the text, as contact ingest stores them, names its
-// entity, and that entity exists.
+// metadata only, its text is the rendered card, a third carry a personal
+// note as a classed section node, as contact ingest stores them; each
+// names its entity, and that entity exists.
 func TestBuild_Shape(t *testing.T) {
 	ctx := context.Background()
 	d, c := build(t, corpus.Spec{Objects: 500, Seed: 1})
@@ -120,6 +121,7 @@ func TestBuild_Shape(t *testing.T) {
 	}
 	assert.GreaterOrEqual(t, len(tags), 4)
 
+	notes := 0
 	for _, ct := range c.Contacts {
 		o := byID[ct.ID]
 		require.NotNil(t, o, ct.ID)
@@ -129,8 +131,27 @@ func TestBuild_Shape(t *testing.T) {
 		} {
 			assert.Equal(t, want, o.Metadata[k], "%s %s", ct.ID, k)
 		}
-		for _, s := range []string{ct.Name, ct.Email, ct.Phone, ct.Org} {
+		for _, s := range []string{ct.Name, ct.Role, ct.Org, ct.City} {
 			assert.Contains(t, o.RawContent, s, ct.ID)
+		}
+		for _, s := range []string{ct.Email, ct.Phone, ct.Note} {
+			if s != "" {
+				assert.NotContains(t, o.RawContent, s, ct.ID)
+			}
+		}
+		assert.Equal(t, o.RawContent, o.TextContent, ct.ID)
+		require.NotNil(t, o.Graph, ct.ID)
+		require.Equal(t, storage.NodeTypeSection, o.Graph.Nodes[0].NodeType, ct.ID)
+		assert.Equal(t, o.RawContent, o.Graph.Nodes[0].Content, ct.ID)
+		assert.Nil(t, storage.NodeClasses(o.Graph.Nodes[0]), ct.ID)
+		if ct.Note == "" {
+			assert.Len(t, o.Graph.Nodes, 1, ct.ID)
+		} else {
+			notes++
+			require.Len(t, o.Graph.Nodes, 2, ct.ID)
+			assert.Equal(t, ct.Note, o.Graph.Nodes[1].Content, ct.ID)
+			assert.Equal(t, []string{storage.ClassPersonal}, storage.NodeClasses(o.Graph.Nodes[1]), ct.ID)
+			assert.True(t, strings.HasPrefix(o.Graph.Nodes[1].ID, ct.ID+"/"), ct.ID)
 		}
 		assert.Equal(t, []string{ct.Name}, o.Summaries)
 		assert.Equal(t, ct.Profile, o.ProfileID)
@@ -146,6 +167,7 @@ func TestBuild_Shape(t *testing.T) {
 		assert.Equal(t, ct.Name, ent.Title)
 		assert.Equal(t, corpus.Namespace, ent.Namespace)
 	}
+	assert.Equal(t, 17, notes, "every third contact carries a note")
 }
 
 func assertEdge(t *testing.T, d storage.StorageDriver, fromType, fromID, toType, toID, edgeType string) {

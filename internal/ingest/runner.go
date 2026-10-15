@@ -14,12 +14,30 @@ import (
 
 // Runner executes an adapter and persists results.
 type Runner struct {
-	store storage.ObjectStore
+	store    storage.ObjectStore
+	classify Classifier
+}
+
+// Classifier returns the content classes of an object about to be
+// stored (ADR-080 §3); nil means none.
+type Classifier func(*storage.KnowledgeObject) []string
+
+// RunnerOption configures NewRunner.
+type RunnerOption func(*Runner)
+
+// WithClassifier sets the classifier every stored object goes through:
+// the class rules on a sharing instance.
+func WithClassifier(c Classifier) RunnerOption {
+	return func(r *Runner) { r.classify = c }
 }
 
 // NewRunner creates a runner wired to the given object store.
-func NewRunner(store storage.ObjectStore) *Runner {
-	return &Runner{store: store}
+func NewRunner(store storage.ObjectStore, opts ...RunnerOption) *Runner {
+	r := &Runner{store: store}
+	for _, o := range opts {
+		o(r)
+	}
+	return r
 }
 
 // Run executes the adapter once, deduplicates by source_key
@@ -98,8 +116,9 @@ func (r *Runner) upsert(
 		tags = append(tags, storage.Tag{Label: t})
 	}
 
+	id := uuid.New().String()
 	ko := &storage.KnowledgeObject{
-		ID:          uuid.New().String(),
+		ID:          id,
 		Type:        obj.Type,
 		RawContent:  obj.Content,
 		TextContent: obj.Content,
@@ -111,7 +130,27 @@ func (r *Runner) upsert(
 		Status:      "raw",
 		CreatedAt:   now,
 		UpdatedAt:   now,
+		Graph:       graphFor(id, obj.Graph),
+	}
+	if r.classify != nil {
+		ko.Classes = storage.NormalizeClasses(r.classify(ko))
 	}
 
 	return r.store.Create(ctx, ko)
+}
+
+// graphFor returns g with every node id assigned from objectID (nodes
+// an adapter left without one), nil when g holds no node.
+func graphFor(objectID string, g *storage.ObjectGraph) *storage.ObjectGraph {
+	if g == nil || len(g.Nodes) == 0 {
+		return nil
+	}
+	out := &storage.ObjectGraph{Nodes: make([]storage.GraphNode, len(g.Nodes)), Edges: g.Edges}
+	for i, n := range g.Nodes {
+		if n.ID == "" {
+			n.ID = storage.NewNodeID(objectID, n.NodeType, n.Order)
+		}
+		out.Nodes[i] = n
+	}
+	return out
 }
