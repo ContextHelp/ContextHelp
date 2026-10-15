@@ -1093,11 +1093,14 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 		WHERE %[1]s MATCH ?`, fts)
 	args := []any{query}
 
-	// The scope joins through the objects table, so its unqualified
-	// columns never collide with the index's.
-	if clause, sargs := andObjectIn("o.id", s.scope); clause != "" {
-		// #nosec G202 -- the clause is compiled SQL whose values are bound in sargs.
-		q += clause
+	// The scope is evaluated on each matched row: objects_fts exposes
+	// only id and the body, so the predicate's unqualified object
+	// columns (a policy names type, subtype, tag, profile, class,
+	// source, dates and metadata keys, never id) bind to o. Checking
+	// the matches is far cheaper than materializing the visible set.
+	if term, sargs := scopeTerm(s.scope); term != "" {
+		// #nosec G202 -- term is compiled SQL whose values are bound in sargs.
+		q += " AND " + term
 		args = append(args, sargs...)
 	}
 
