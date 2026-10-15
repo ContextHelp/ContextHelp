@@ -20,7 +20,7 @@ func (v restrictedObjects) Get(_ context.Context, _ string) (*KnowledgeObject, e
 	return nil, restrictedRead("Objects", "Get")
 }
 
-func (v restrictedObjects) GetByContentHash(_ context.Context, _ string) (*KnowledgeObject, error) {
+func (v restrictedObjects) GetByContentHash(_ context.Context, _, _ string) (*KnowledgeObject, error) {
 	return nil, restrictedRead("Objects", "GetByContentHash")
 }
 

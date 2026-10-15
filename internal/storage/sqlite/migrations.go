@@ -282,6 +282,15 @@ var migrations = []migration{
 	// a projection output, so the projection version is bumped with it
 	// (indexsig.ProjectionVersion v5) and the re-projection fills it.
 	{Version: 51, fn: migrate051Sharing},
+	// Migration 053: content-hash dedup stays inside a profile (ADR-080
+	// §4): the unique index on objects.content_hash becomes unique on
+	// (content_hash, profile_id), so the same content captured under
+	// another profile is its own object instead of a merge into one a
+	// viewer of the first profile may see. Index only: nothing is an
+	// FTS input, so no re-projection follows. IF NOT EXISTS and DROP
+	// INDEX IF EXISTS make it re-runnable. (052 is taken by the
+	// principal link identities.)
+	{Version: 53, fn: migrate053ContentHashPerProfile},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
@@ -1074,6 +1083,22 @@ func migrate050ObjectListIndexes(ctx context.Context, d *Driver) error {
 	} {
 		if _, err := d.db.ExecContext(ctx, stmt); err != nil {
 			return fmt.Errorf("object list indexes: %w", err)
+		}
+	}
+	return nil
+}
+
+// migrate053ContentHashPerProfile replaces the unique index on
+// content_hash with one on (content_hash, profile_id), still partial
+// over non-empty hashes (see the migrations entry).
+func migrate053ContentHashPerProfile(ctx context.Context, d *Driver) error {
+	for _, stmt := range []string{
+		`DROP INDEX IF EXISTS idx_objects_content_hash`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_objects_content_hash_profile
+			ON objects(content_hash, profile_id) WHERE content_hash != ''`,
+	} {
+		if _, err := d.db.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("content hash per profile: %w", err)
 		}
 	}
 	return nil

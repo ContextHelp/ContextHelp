@@ -99,11 +99,13 @@ func (s *ObjectStore) Get(ctx context.Context, id string) (*storage.KnowledgeObj
 	return scanObjectRow(row)
 }
 
-func (s *ObjectStore) GetByContentHash(ctx context.Context, hash string) (*storage.KnowledgeObject, error) {
+// GetByContentHash returns the object of profileID with content hash
+// hash: dedup stays inside a profile (ADR-080 §4).
+func (s *ObjectStore) GetByContentHash(ctx context.Context, hash, profileID string) (*storage.KnowledgeObject, error) {
 	if hash == "" {
 		return nil, nil
 	}
-	row := s.db.QueryRowContext(ctx, objectSelectCols+` FROM objects WHERE content_hash = $1 LIMIT 1`, hash)
+	row := s.db.QueryRowContext(ctx, objectSelectCols+` FROM objects WHERE content_hash = $1 AND profile_id = $2 LIMIT 1`, hash, profileID)
 	obj, err := scanObjectRow(row)
 	if errors.Is(err, errObjectNotFound) {
 		return nil, nil
@@ -345,9 +347,12 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 	}
 	defer tx.Rollback()
 
+	// Dedup stays inside a profile (ADR-080 §4): only the row of
+	// mergeData's profile is reinforced; the same content under another
+	// profile is another object, and no row here is sql.ErrNoRows.
 	var obj storage.KnowledgeObject
 	var tagsJSON, mentionsJSON []byte
-	err = tx.QueryRowContext(ctx, `SELECT id, tags, mentions FROM objects WHERE content_hash = $1`, hash).
+	err = tx.QueryRowContext(ctx, `SELECT id, tags, mentions FROM objects WHERE content_hash = $1 AND profile_id = $2`, hash, mergeData.ProfileID).
 		Scan(&obj.ID, &tagsJSON, &mentionsJSON)
 	if err != nil {
 		return "", fmt.Errorf("reinforce: lookup: %w", err)
@@ -386,9 +391,9 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 			updated_at = $4,
 			raw_content = $5,
 			text_content = $6
-		WHERE content_hash = $7`,
+		WHERE content_hash = $7 AND profile_id = $8`,
 			now, mergedTagsJSON, mergedMentionsJSON, now,
-			mergeData.RawContent, projection.BodyText(mergeData), hash,
+			mergeData.RawContent, projection.BodyText(mergeData), hash, mergeData.ProfileID,
 		)
 	} else {
 		_, err = tx.ExecContext(ctx, `UPDATE objects SET
@@ -397,18 +402,17 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 			tags = $2,
 			mentions = $3,
 			updated_at = $4
-		WHERE content_hash = $5`,
-			now, mergedTagsJSON, mergedMentionsJSON, now, hash,
+		WHERE content_hash = $5 AND profile_id = $6`,
+			now, mergedTagsJSON, mergedMentionsJSON, now, hash, mergeData.ProfileID,
 		)
 	}
 	if err != nil {
 		return "", fmt.Errorf("reinforce: update: %w", err)
 	}
 	// The text, tags and mentions just written feed the FTS body:
-	// re-index every row the update touched (content_hash is not
-	// unique here) as Update does, or search keeps matching what they
+	// re-index the row as Update does, or search keeps matching what it
 	// held before.
-	if err := reindexByHashTx(ctx, tx, hash); err != nil {
+	if err := reindexByHashTx(ctx, tx, hash, mergeData.ProfileID); err != nil {
 		return "", fmt.Errorf("reinforce: reindex: %w", err)
 	}
 
@@ -418,11 +422,12 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 	return obj.ID, nil
 }
 
-// reindexByHashTx re-derives the FTS body of every object with content
-// hash from its stored fields (projection.ProjectIndex) and stamps the
-// current projection version: what Update stores, for rows a narrower
-// write (Reinforce) changed. The generated tsvector follows the body.
-func reindexByHashTx(ctx context.Context, tx *sql.Tx, hash string) error {
+// reindexByHashTx re-derives the FTS body of every object of profileID
+// with content hash from its stored fields (projection.ProjectIndex)
+// and stamps the current projection version: what Update stores, for
+// rows a narrower write (Reinforce) changed. The generated tsvector
+// follows the body.
+func reindexByHashTx(ctx context.Context, tx *sql.Tx, hash, profileID string) error {
 	var objs []*storage.KnowledgeObject
 	err := scanTxRows(ctx, tx, func(rows *sql.Rows) error {
 		for rows.Next() {
@@ -433,7 +438,7 @@ func reindexByHashTx(ctx context.Context, tx *sql.Tx, hash string) error {
 			objs = append(objs, obj)
 		}
 		return nil
-	}, objectSelectCols+` FROM objects WHERE content_hash = $1`, hash)
+	}, objectSelectCols+` FROM objects WHERE content_hash = $1 AND profile_id = $2`, hash, profileID)
 	if err != nil {
 		return fmt.Errorf("load: %w", err)
 	}

@@ -75,7 +75,7 @@ func (m *mockObjectStore2) Get(_ context.Context, id string) (*storage.Knowledge
 	}
 	return nil, nil
 }
-func (m *mockObjectStore2) GetByContentHash(_ context.Context, _ string) (*storage.KnowledgeObject, error) {
+func (m *mockObjectStore2) GetByContentHash(_ context.Context, _, _ string) (*storage.KnowledgeObject, error) {
 	return nil, nil
 }
 func (m *mockObjectStore2) GetBySourceKey(_ context.Context, _ string) (*storage.KnowledgeObject, error) {

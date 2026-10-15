@@ -338,7 +338,7 @@ func (s *Service) analyzeDuplicate(ctx context.Context, req AnalyzeRequest, jobS
 	if hashForDedup == "" && s.Cfg.Duplicates.CheckExact {
 		hashForDedup = storageutil.ContentHash(req.Content, jobSource)
 	}
-	dup, err := s.checkDuplicates(ctx, hashForDedup, req.SourceKey, storage.VectorQuery{}, s.Cfg.Duplicates)
+	dup, err := s.checkDuplicates(ctx, hashForDedup, req.SourceKey, req.Profile, storage.VectorQuery{}, s.Cfg.Duplicates)
 	if err != nil {
 		return "", false, fmt.Errorf("analyze: duplicate check: %w", err)
 	}

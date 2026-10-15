@@ -575,7 +575,7 @@ func (s *raceObjectStore) Reinforce(ctx context.Context, hash string, mergeData 
 	return s.ObjectStore.Reinforce(ctx, hash, mergeData)
 }
 
-func (s *raceObjectStore) GetByContentHash(_ context.Context, _ string) (*storage.KnowledgeObject, error) {
+func (s *raceObjectStore) GetByContentHash(_ context.Context, _, _ string) (*storage.KnowledgeObject, error) {
 	// Return not-found so the worker takes the Create path.
 	return nil, nil
 }

@@ -318,7 +318,7 @@ func TestGetByContentHashEmptyStore(t *testing.T) {
 	d := newTestDriver(t)
 	ctx := context.Background()
 
-	got, err := d.Objects().GetByContentHash(ctx, "any-hash")
+	got, err := d.Objects().GetByContentHash(ctx, "any-hash", "")
 	assert.NoError(t, err)
 	assert.Nil(t, got, "empty store must return nil, nil — not an error")
 }
@@ -332,20 +332,20 @@ func TestGetByContentHash(t *testing.T) {
 	require.NoError(t, d.Objects().Create(ctx, obj))
 
 	t.Run("found", func(t *testing.T) {
-		got, err := d.Objects().GetByContentHash(ctx, "abc123")
+		got, err := d.Objects().GetByContentHash(ctx, "abc123", "")
 		require.NoError(t, err)
 		require.NotNil(t, got)
 		assert.Equal(t, "hash-1", got.ID)
 	})
 
 	t.Run("not found returns nil nil", func(t *testing.T) {
-		got, err := d.Objects().GetByContentHash(ctx, "nonexistent")
+		got, err := d.Objects().GetByContentHash(ctx, "nonexistent", "")
 		assert.NoError(t, err)
 		assert.Nil(t, got)
 	})
 
 	t.Run("empty hash returns nil", func(t *testing.T) {
-		got, err := d.Objects().GetByContentHash(ctx, "")
+		got, err := d.Objects().GetByContentHash(ctx, "", "")
 		assert.NoError(t, err)
 		assert.Nil(t, got)
 	})

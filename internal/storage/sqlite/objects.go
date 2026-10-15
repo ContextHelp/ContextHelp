@@ -150,7 +150,9 @@ func (s *ObjectStore) listAttachmentIDs(ctx context.Context, objectID string) ([
 	})
 }
 
-func (s *ObjectStore) GetByContentHash(ctx context.Context, hash string) (*storage.KnowledgeObject, error) {
+// GetByContentHash returns the object of profileID with content hash
+// hash: dedup stays inside a profile (ADR-080 §4).
+func (s *ObjectStore) GetByContentHash(ctx context.Context, hash, profileID string) (*storage.KnowledgeObject, error) {
 	if hash == "" {
 		return nil, nil
 	}
@@ -161,7 +163,7 @@ func (s *ObjectStore) GetByContentHash(ctx context.Context, hash string) (*stora
 		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
 		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq, classes
-	FROM objects WHERE content_hash = ? LIMIT 1`, hash)
+	FROM objects WHERE content_hash = ? AND profile_id = ? LIMIT 1`, hash, profileID)
 	obj, err := scanObject(row)
 	if errors.Is(err, errObjectNotFound) {
 		return nil, nil
@@ -492,11 +494,14 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 	// SQLITE_BUSY immediately, bypassing busy_timeout. Taking the write lock
 	// up front makes concurrent reinforcements queue instead of failing, and
 	// the read below then sees the latest committed tags and mentions.
+	// Dedup stays inside a profile (ADR-080 §4): only the row of
+	// mergeData's profile is reinforced; the same content under another
+	// profile is another object, and no row here is sql.ErrNoRows.
 	now := time.Now().Format(time.RFC3339)
 	res, err := tx.ExecContext(ctx, `UPDATE objects SET
 			reinforcement_count = reinforcement_count + 1,
 			last_reinforced_at = ?
-		WHERE content_hash = ?`, now, hash)
+		WHERE content_hash = ? AND profile_id = ?`, now, hash, mergeData.ProfileID)
 	if err != nil {
 		return "", fmt.Errorf("reinforce: update: %w", err)
 	}
@@ -512,7 +517,7 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 		lastReinforcedAt       sql.NullString
 	)
 	err = tx.QueryRowContext(ctx, `SELECT id, tags, mentions, last_reinforced_at
-		FROM objects WHERE content_hash = ?`, hash).Scan(
+		FROM objects WHERE content_hash = ? AND profile_id = ?`, hash, mergeData.ProfileID).Scan(
 		&obj.ID, &tagsJSON, &mentionsJSON, &lastReinforcedAt,
 	)
 	if err != nil {
@@ -546,7 +551,7 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 		contentUpdate = ", raw_content = ?, text_content = ?"
 		contentArgs = append(contentArgs, mergeData.RawContent, projection.BodyText(mergeData))
 	}
-	contentArgs = append(contentArgs, hash)
+	contentArgs = append(contentArgs, hash, mergeData.ProfileID)
 
 	// fts_indexed is not cleared here: the row is re-indexed below, which
 	// sets it when the new body is non-empty. Clearing it misreported
@@ -558,7 +563,7 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 			mentions = ?,
 			updated_at = ?
 			%s
-		WHERE content_hash = ?
+		WHERE content_hash = ? AND profile_id = ?
 	`, contentUpdate)
 
 	_, err = tx.ExecContext(ctx, query, contentArgs...)
@@ -567,7 +572,7 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 	}
 	// The text, tags and mentions just written feed the FTS body:
 	// re-index the row as Update does, or search keeps matching what
-	// it held before. content_hash is unique: one row.
+	// it held before. (content_hash, profile_id) is unique: one row.
 	if err := reindexRowTx(ctx, tx, obj.ID); err != nil {
 		return "", fmt.Errorf("reinforce: reindex: %w", err)
 	}

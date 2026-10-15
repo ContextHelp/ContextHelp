@@ -32,7 +32,7 @@ func (m *testStore) Get(_ context.Context, id string) (*storage.KnowledgeObject,
 	return m.objects[id], nil
 }
 
-func (m *testStore) GetByContentHash(_ context.Context, _ string) (*storage.KnowledgeObject, error) {
+func (m *testStore) GetByContentHash(_ context.Context, _, _ string) (*storage.KnowledgeObject, error) {
 	return nil, nil
 }
 

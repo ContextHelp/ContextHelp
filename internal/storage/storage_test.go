@@ -75,7 +75,7 @@ func (m *mockObjectStore) Create(ctx context.Context, obj *KnowledgeObject) erro
 func (m *mockObjectStore) Get(ctx context.Context, id string) (*KnowledgeObject, error) {
 	return nil, nil
 }
-func (m *mockObjectStore) GetByContentHash(ctx context.Context, hash string) (*KnowledgeObject, error) {
+func (m *mockObjectStore) GetByContentHash(ctx context.Context, hash, profileID string) (*KnowledgeObject, error) {
 	return nil, nil
 }
 func (m *mockObjectStore) GetBySourceKey(ctx context.Context, key string) (*KnowledgeObject, error) {

@@ -46,7 +46,7 @@ func (m *memObjectStore) Get(_ context.Context, id string) (*storage.KnowledgeOb
 	return m.objects[id], nil
 }
 
-func (m *memObjectStore) GetByContentHash(_ context.Context, _ string) (*storage.KnowledgeObject, error) {
+func (m *memObjectStore) GetByContentHash(_ context.Context, _, _ string) (*storage.KnowledgeObject, error) {
 	return nil, nil
 }
 

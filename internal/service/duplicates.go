@@ -30,12 +30,14 @@ type DuplicateResult struct {
 
 // checkDuplicates inspects the store for an exact, source-key, or
 // near-duplicate of the given content, applying the caller's DuplicatesConfig.
-// The near-duplicate check searches q.ModelID's index with q.Vector; an empty
-// q skips it. Returns nil, nil when no duplicate is found.
-func (s *Service) checkDuplicates(ctx context.Context, hash, sourceKey string, q storage.VectorQuery, cfg config.DuplicatesConfig) (*DuplicateResult, error) {
+// The exact match is looked up in profileID: the same content under
+// another profile is its own object (ADR-080 §4). The near-duplicate
+// check searches q.ModelID's index with q.Vector; an empty q skips it.
+// Returns nil, nil when no duplicate is found.
+func (s *Service) checkDuplicates(ctx context.Context, hash, sourceKey, profileID string, q storage.VectorQuery, cfg config.DuplicatesConfig) (*DuplicateResult, error) {
 	// 1. Exact match via content_hash.
 	if cfg.CheckExact && hash != "" {
-		existing, err := s.Store(ctx).Objects().GetByContentHash(ctx, hash)
+		existing, err := s.Store(ctx).Objects().GetByContentHash(ctx, hash, profileID)
 		if err != nil {
 			return nil, err
 		}
