@@ -602,7 +602,7 @@ func openEmbeddingsBackend() (*registry.Store, storage.StorageDriver, func(), er
 	}
 	switch d := svc.Store.(type) {
 	case *sqlite.Driver:
-		return registry.NewFor(d.DB(), "sqlite"), d, cleanup, nil
+		return registry.NewFor(d.DB(), storageTypeSQLite), d, cleanup, nil
 	case *postgres.Driver:
 		return registry.NewFor(d.DB(), d.SQLDialect()), d, cleanup, nil
 	default:

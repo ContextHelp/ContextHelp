@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	discordimporter "github.com/ideacrafterslabs/ctxt/internal/importer/discord"
 	"github.com/spf13/cobra"
 )
@@ -52,25 +51,9 @@ func init() {
 	importDiscordCmd.Flags().String("server", "", serverFlagUsage)
 	importDiscordCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 
-	importDiscordCmd.MarkFlagRequired("file")
+	markFlagsRequired(importDiscordCmd, "file")
 
-	cliconv.WithSideEffect(importDiscordCmd, cliconv.SideEffectWrite)
-	cliconv.WithIdempotency(importDiscordCmd, cliconv.IdempotencyConditional)
-
-	cliconv.WithExamples(importDiscordCmd, []cliconv.Example{
-		{
-			Title:   "Import from default source",
-			Command: "ctxt import discord --file ./export.json",
-		},
-		{
-			Title:   "Dry-run preview",
-			Command: "ctxt import discord --file ./export.json --confirm=no --dry-run",
-		},
-	})
-	cliconv.WithNextSteps(importDiscordCmd, []cliconv.NextStep{
-		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
-		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
-	})
+	markImportCmd(importDiscordCmd, "ctxt import discord --file ./export.json")
 }
 
 func runImportDiscord(cmd *cobra.Command, args []string) error {
@@ -157,7 +140,7 @@ func runImportDiscord(cmd *cobra.Command, args []string) error {
 			source = "import:discord"
 		}
 
-		_, err := enqueueContent(dc, content, "text", pipelineName, source)
+		_, err := enqueueContent(dc, content, objectTypeText, pipelineName, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {

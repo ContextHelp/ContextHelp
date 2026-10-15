@@ -141,7 +141,7 @@ func init() {
 
 	cursorSetCmd.Flags().String("to", "",
 		"target timestamp: RFC3339 (2026-04-28T14:22:11Z) or signed duration (-7d, +1h)")
-	_ = cursorSetCmd.MarkFlagRequired("to")
+	markFlagsRequired(cursorSetCmd, "to")
 }
 
 func newCursorManager() (*cursor.Manager, error) {
@@ -165,7 +165,7 @@ func runCursorList(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	headers := []string{"Name", "LastSeenAt", "LastObjectID", "Updated"}
-	var rows [][]string
+	rows := make([][]string, 0, len(cs))
 	for _, c := range cs {
 		rows = append(rows, []string{
 			c.Name,

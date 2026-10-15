@@ -97,7 +97,7 @@ func printLintReport(r *lint.Report) {
 	}
 
 	headers := []string{"Severity", "Check", "Object", "Message"}
-	var rows [][]string
+	rows := make([][]string, 0, len(r.Issues))
 	for _, iss := range r.Issues {
 		rows = append(rows, []string{
 			string(iss.Severity),

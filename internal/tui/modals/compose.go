@@ -112,15 +112,15 @@ func (m *ComposeModal) Update(msg tea.Msg) (*ComposeModal, tea.Cmd) {
 		return m, nil
 	}
 
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		k := msg.Key()
+	if km, ok := msg.(tea.KeyMsg); ok {
+		k := km.Key()
 		switch {
 		case k.Code == tea.KeyEsc:
 			m.active = false
 			return m, nil
 		case k.Code == 's' && k.Mod&tea.ModCtrl != 0:
-			return m, m.Submit()
+			cmd := m.Submit()
+			return m, cmd
 		case k.Code == tea.KeyTab:
 			m.activeField = (m.activeField + 1) % 2
 			if m.activeField == 1 {

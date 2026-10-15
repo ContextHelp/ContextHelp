@@ -89,7 +89,7 @@ func detectFormat(path string) string {
 	case ".tsv":
 		return "tsv"
 	case ".md", ".markdown":
-		return "markdown"
+		return formatMarkdown
 	default:
 		return ""
 	}
@@ -220,7 +220,7 @@ func runImportDir(dc *dpkmsclient.Client, dirPath string, dryRun bool) error {
 
 		payload := map[string]any{
 			"content":  string(data),
-			"format":   "markdown",
+			"format":   formatMarkdown,
 			"filename": filepath.Base(f),
 			"dry_run":  false,
 		}

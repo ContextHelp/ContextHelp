@@ -295,7 +295,7 @@ func prepareTree() error {
 	applyCommandGroups()
 	root.ApplyGroupVisibility()
 	for _, c := range rootCmd.Commands() {
-		if c.Name() == "completion" {
+		if c.Name() == completionCmdName {
 			c.GroupID = "management"
 			break
 		}
@@ -369,7 +369,7 @@ func applyShapeAnnotations() {
 	for _, c := range rootCmd.Commands() {
 		// Skip built-ins; kit exempts them from shape validation.
 		switch c.Name() {
-		case "completion", helpWord:
+		case completionCmdName, helpWord:
 			continue
 		}
 		// Depth-1 runnable nodes: stamp top-level-verb. Kit's shape
@@ -397,7 +397,7 @@ func markHierarchicalAncestors(cmd *cobra.Command, depth int) {
 		return
 	}
 	switch cmd.Name() {
-	case "completion", helpWord:
+	case completionCmdName, helpWord:
 		return
 	}
 	if cmd.Runnable() && !hasSubcommands(cmd) && depth >= 3 {
@@ -417,7 +417,7 @@ func markHierarchicalAncestors(cmd *cobra.Command, depth int) {
 func hasSubcommands(cmd *cobra.Command) bool {
 	for _, c := range cmd.Commands() {
 		switch c.Name() {
-		case "completion", helpWord:
+		case completionCmdName, helpWord:
 			continue
 		}
 		return true
@@ -428,7 +428,7 @@ func hasSubcommands(cmd *cobra.Command) bool {
 func printVersion(cmd *cobra.Command) {
 	date := strings.SplitN(buildTime, "_", 2)[0]
 
-	if viper.GetString("output.format") == "json" {
+	if viper.GetString("output.format") == formatJSON {
 		payload := map[string]string{
 			"name":       "ctxt",
 			"version":    version,

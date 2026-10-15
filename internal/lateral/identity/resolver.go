@@ -1,3 +1,5 @@
+// Package identity resolves a lateral candidate to an existing canonical
+// record by source URL or identity key, so URL variants of one item collapse.
 package identity
 
 import (

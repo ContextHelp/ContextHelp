@@ -30,7 +30,7 @@ func (*SearchStrategy) Applies(_ context.Context, ev lateral.CapturedEvent) late
 	if err != nil {
 		return lateral.AppliesResult{}
 	}
-	if (host == "google.com" || strings.HasSuffix(host, ".google.com")) && strings.HasPrefix(u.Path, "/search") {
+	if (host == googleHost || strings.HasSuffix(host, ".google.com")) && strings.HasPrefix(u.Path, "/search") {
 		return lateral.AppliesResult{Matches: true, Specificity: 3}
 	}
 	return lateral.AppliesResult{}

@@ -445,13 +445,14 @@ type composedFetcher struct {
 }
 
 func (c *composedFetcher) Get(ctx context.Context, url string) (FetchResult, error) {
-	if strings.HasPrefix(url, "https://github.com/sponsors/") {
+	switch {
+	case strings.HasPrefix(url, "https://github.com/sponsors/"):
 		url = strings.Replace(url, "https://github.com", c.baseSponsor, 1)
-	} else if strings.HasPrefix(url, "https://api.github.com") {
+	case strings.HasPrefix(url, "https://api.github.com"):
 		url = strings.Replace(url, "https://api.github.com", c.baseAPI, 1)
-	} else if strings.HasPrefix(url, c.baseAPI) {
+	case strings.HasPrefix(url, c.baseAPI):
 		// already targeted
-	} else if strings.HasPrefix(url, "https://github.com") {
+	case strings.HasPrefix(url, "https://github.com"):
 		url = strings.Replace(url, "https://github.com", c.baseAPI, 1)
 	}
 	return c.inner.Get(ctx, url)

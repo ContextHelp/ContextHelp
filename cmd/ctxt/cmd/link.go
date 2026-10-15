@@ -54,7 +54,7 @@ func init() {
 		strings.Join(graph.UserLinkTypeStrings(), ", "))
 	linkCreateCmd.Flags().String("context", "", "optional reason for the link")
 	linkCreateCmd.Flags().String("server", "", serverFlagUsage)
-	_ = linkCreateCmd.MarkFlagRequired("type")
+	markFlagsRequired(linkCreateCmd, "type")
 
 	// 12fcc conformance: side-effect annotation for create.
 	// list and delete are wired in their own init() blocks below; the

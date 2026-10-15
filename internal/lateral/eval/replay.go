@@ -205,7 +205,7 @@ func DecodeFixtures(rd io.Reader) ([]Fixture, error) {
 	// Allow long lines (multi-kilobyte event payloads).
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
-	var out []Fixture
+	var out []Fixture //nolint:prealloc // fixture count unknown until the scanner is drained
 	lineNum := 0
 	for scanner.Scan() {
 		lineNum++

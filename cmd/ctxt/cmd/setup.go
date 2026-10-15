@@ -53,6 +53,13 @@ func init() {
 	setupCmd.Flags().Bool("non-interactive", false, "skip all prompts and write defaults (also triggered by CI=true)")
 }
 
+// Wizard answers: no AI provider yet, and automatic pipeline detection
+// (also the inbox pipeline that choice writes).
+const (
+	providerSkip = "skip"
+	pipelineAuto = "auto"
+)
+
 // wizardAnswers holds the values collected (or defaulted) by the wizard.
 type wizardAnswers struct {
 	Provider    string // "openai" | "anthropic" | "skip"
@@ -83,11 +90,7 @@ func runSetup(cmd *cobra.Command, args []string) error {
 	if nonInteractive {
 		answers = defaultAnswers()
 	} else {
-		var err error
-		answers, err = runWizard(cmd)
-		if err != nil {
-			return err
-		}
+		answers = runWizard(cmd)
 	}
 
 	err := config.EditLayer(cfgPath, func(l *config.Layer) error {
@@ -110,15 +113,15 @@ func runSetup(cmd *cobra.Command, args []string) error {
 func defaultAnswers() wizardAnswers {
 	home, _ := os.UserHomeDir()
 	return wizardAnswers{
-		Provider:    "skip",
+		Provider:    providerSkip,
 		APIKey:      "",
 		StoragePath: filepath.Join(home, ".local", "share", "ctxt"),
-		Pipeline:    "auto",
+		Pipeline:    pipelineAuto,
 	}
 }
 
 // runWizard interactively collects answers from the user.
-func runWizard(cmd *cobra.Command) (wizardAnswers, error) {
+func runWizard(cmd *cobra.Command) wizardAnswers {
 	out := cmd.OutOrStdout()
 	defaults := defaultAnswers()
 
@@ -147,7 +150,7 @@ func runWizard(cmd *cobra.Command) (wizardAnswers, error) {
 		fmt.Fprint(out, "Anthropic API key: ")
 		apiKey = prompt(os.Stdin)
 	default:
-		provider = "skip"
+		provider = providerSkip
 	}
 
 	fmt.Fprintln(out)
@@ -176,11 +179,11 @@ func runWizard(cmd *cobra.Command) (wizardAnswers, error) {
 	var pipeline string
 	switch pipelineChoice {
 	case "1":
-		pipeline = "text"
+		pipeline = objectTypeText
 	case "2":
-		pipeline = "url"
+		pipeline = objectTypeURL
 	default:
-		pipeline = "auto"
+		pipeline = pipelineAuto
 	}
 
 	fmt.Fprintln(out)
@@ -190,7 +193,7 @@ func runWizard(cmd *cobra.Command) (wizardAnswers, error) {
 		APIKey:      apiKey,
 		StoragePath: storagePath,
 		Pipeline:    pipeline,
-	}, nil
+	}
 }
 
 // setupEdit is one key the wizard writes.
@@ -205,7 +208,7 @@ type setupEdit struct {
 // load.
 func setupEdits(a wizardAnswers) []setupEdit {
 	edits := []setupEdit{
-		{[]string{"storage", "type"}, "sqlite"},
+		{[]string{"storage", "type"}, storageTypeSQLite},
 		{[]string{"storage", "path"}, filepath.Join(a.StoragePath, "db.sqlite")},
 		{[]string{"storage", "blob", "backend"}, "local"},
 		{[]string{"storage", "blob", "local", "path"}, filepath.Join(a.StoragePath, "blobs")},
@@ -223,12 +226,12 @@ func setupEdits(a wizardAnswers) []setupEdit {
 // pipelineToInboxValue maps wizard choice to an inbox pipeline name.
 func pipelineToInboxValue(p string) string {
 	switch p {
-	case "text":
-		return "text.short"
-	case "url":
+	case objectTypeText:
+		return pipelineTextShort
+	case objectTypeURL:
 		return "url.basic"
 	default:
-		return "auto"
+		return pipelineAuto
 	}
 }
 
@@ -241,7 +244,7 @@ func printSummary(cmd *cobra.Command, cfgPath string, a wizardAnswers) {
 	fmt.Fprintf(out, "  Storage path: %s\n", a.StoragePath)
 	fmt.Fprintf(out, "  Pipeline:     %s\n", a.Pipeline)
 	providerLine := a.Provider
-	if a.Provider == "skip" {
+	if a.Provider == providerSkip {
 		providerLine = "none (configure later)"
 	}
 	fmt.Fprintf(out, "  AI provider:  %s\n", providerLine)

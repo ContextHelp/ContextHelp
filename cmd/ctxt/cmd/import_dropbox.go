@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	dropboximporter "github.com/ideacrafterslabs/ctxt/internal/importer/dropbox"
 	"github.com/spf13/cobra"
 )
@@ -56,23 +55,7 @@ func init() {
 	importDropboxCmd.Flags().String("server", "", serverFlagUsage)
 	importDropboxCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 
-	cliconv.WithSideEffect(importDropboxCmd, cliconv.SideEffectWrite)
-	cliconv.WithIdempotency(importDropboxCmd, cliconv.IdempotencyConditional)
-
-	cliconv.WithExamples(importDropboxCmd, []cliconv.Example{
-		{
-			Title:   "Import from default source",
-			Command: "ctxt import dropbox --access-token $DROPBOX_ACCESS_TOKEN",
-		},
-		{
-			Title:   "Dry-run preview",
-			Command: "ctxt import dropbox --access-token $DROPBOX_ACCESS_TOKEN --confirm=no --dry-run",
-		},
-	})
-	cliconv.WithNextSteps(importDropboxCmd, []cliconv.NextStep{
-		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
-		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
-	})
+	markImportCmd(importDropboxCmd, "ctxt import dropbox --access-token $DROPBOX_ACCESS_TOKEN")
 }
 
 func runImportDropbox(cmd *cobra.Command, args []string) error {
@@ -174,7 +157,7 @@ func runImportDropbox(cmd *cobra.Command, args []string) error {
 		}
 
 		payload := renderDropboxText(f)
-		_, err = enqueueContent(dc, payload, "text", pipelineName, "import:dropbox")
+		_, err = enqueueContent(dc, payload, objectTypeText, pipelineName, "import:dropbox")
 		if err != nil {
 			failed++
 			if firstErr == nil {

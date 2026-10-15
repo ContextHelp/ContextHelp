@@ -313,8 +313,9 @@ func printObjectResults(cmd *cobra.Command, objects []*storage.KnowledgeObject, 
 
 	fmt.Printf("Knowledge Objects (%d total)\n\n", total)
 	headers := []string{"ID", "Type", "Title", "Created"}
-	var rows [][]string
-	for _, r := range objectRows(objects) {
+	objRows := objectRows(objects)
+	rows := make([][]string, 0, len(objRows))
+	for _, r := range objRows {
 		rows = append(rows, []string{r.ID, r.Type, r.Title, r.Created})
 	}
 	printTable(os.Stdout, headers, rows)

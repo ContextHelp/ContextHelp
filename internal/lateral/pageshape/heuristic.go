@@ -1,3 +1,5 @@
+// Package pageshape classifies a page by shape (pricing, about, docs, ...):
+// URL and HTML signatures first, then cached or fresh LLM verdicts.
 package pageshape
 
 import "strings"

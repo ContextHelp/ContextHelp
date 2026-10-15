@@ -4,11 +4,12 @@
 // Subcommands:
 //
 //	ctxt lateral eval replay <fixtures.jsonl>   dispatch fixtures, dump JSON report
-//	ctxt lateral eval metrics <fixtures.jsonl>  same as replay + per-strategy precision/recall (T-0326)
+//	ctxt lateral eval metrics <fixtures.jsonl>  same as replay + per-strategy precision/recall
 //
 // Both commands honor the same --lateral-config flag the daemon
 // commands use; the replay shares the daemon's registry construction
 // (daemon.Build) so eval-time strategy selection mirrors production.
+
 package cmd
 
 import (

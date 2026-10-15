@@ -71,7 +71,7 @@ func TestBuild_DefaultsRegistersRoster_GitHubOff_JITOff(t *testing.T) {
 	// Disable github explicitly here; the default Roster (zero value)
 	// should register everything.
 	cfg := Config{
-		GitHub: github.Config{}, // EnableParent=false
+		GitHub: github.Config{}, // parent strategy off: EnableParent is false
 		Roster: roster.Gates{},
 		JIT:    jit.Config{Enabled: false},
 	}

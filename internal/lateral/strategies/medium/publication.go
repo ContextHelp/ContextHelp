@@ -43,7 +43,7 @@ func (*PublicationStrategy) Applies(_ context.Context, ev lateral.CapturedEvent)
 		return lateral.AppliesResult{Matches: true, Specificity: 3}
 	}
 	// Path-based pub: medium.com/<slug>, single segment, not @user.
-	if host == "medium.com" && len(parts) == 1 && !strings.HasPrefix(parts[0], "@") && parts[0] != "p" {
+	if host == mediumHost && len(parts) == 1 && !strings.HasPrefix(parts[0], "@") && parts[0] != "p" {
 		return lateral.AppliesResult{Matches: true, Specificity: 3}
 	}
 	// Custom domain root path is a publication homepage.
@@ -65,7 +65,7 @@ func (s *PublicationStrategy) Probe(ctx context.Context, ev lateral.CapturedEven
 	switch {
 	case strings.HasSuffix(host, ".medium.com"):
 		slug = strings.TrimSuffix(host, ".medium.com")
-	case host == "medium.com" && len(parts) >= 1:
+	case host == mediumHost && len(parts) >= 1:
 		slug = parts[0]
 	case d.CustomHost:
 		// resolved indicates whether slug is a real Medium publication

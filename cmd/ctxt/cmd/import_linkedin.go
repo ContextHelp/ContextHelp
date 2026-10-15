@@ -6,7 +6,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	linkedinimporter "github.com/ideacrafterslabs/ctxt/internal/importer/linkedin"
 	"github.com/spf13/cobra"
 )
@@ -53,23 +52,7 @@ func init() {
 	importLinkedInCmd.Flags().String("server", "", serverFlagUsage)
 	importLinkedInCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 
-	cliconv.WithSideEffect(importLinkedInCmd, cliconv.SideEffectWrite)
-	cliconv.WithIdempotency(importLinkedInCmd, cliconv.IdempotencyConditional)
-
-	cliconv.WithExamples(importLinkedInCmd, []cliconv.Example{
-		{
-			Title:   "Import from default source",
-			Command: "ctxt import linkedin --posts ./Posts.csv",
-		},
-		{
-			Title:   "Dry-run preview",
-			Command: "ctxt import linkedin --posts ./Posts.csv --confirm=no --dry-run",
-		},
-	})
-	cliconv.WithNextSteps(importLinkedInCmd, []cliconv.NextStep{
-		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
-		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
-	})
+	markImportCmd(importLinkedInCmd, "ctxt import linkedin --posts ./Posts.csv")
 }
 
 func runImportLinkedIn(cmd *cobra.Command, _ []string) error {
@@ -192,7 +175,7 @@ func runImportLinkedIn(cmd *cobra.Command, _ []string) error {
 	seenKeys := make(map[string]struct{}, totalItems)
 	pipeline := pipelineName
 	if pipeline == "" {
-		pipeline = "text.short"
+		pipeline = pipelineTextShort
 	}
 
 	for _, p := range posts {
@@ -209,7 +192,7 @@ func runImportLinkedIn(cmd *cobra.Command, _ []string) error {
 			source = "import:linkedin"
 		}
 
-		_, err := enqueueContent(dc, content, "text", pipeline, source)
+		_, err := enqueueContent(dc, content, objectTypeText, pipeline, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {
@@ -234,7 +217,7 @@ func runImportLinkedIn(cmd *cobra.Command, _ []string) error {
 			source = "import:linkedin"
 		}
 
-		_, err := enqueueContent(dc, content, "text", pipeline, source)
+		_, err := enqueueContent(dc, content, objectTypeText, pipeline, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {

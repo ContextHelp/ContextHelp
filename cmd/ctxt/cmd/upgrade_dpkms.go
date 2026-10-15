@@ -1,5 +1,5 @@
-// Package cmd: ctxt upgrade {status,plan,run} — operator-facing surface
-// for ADR-070 dpkms bucket upgrades (T-0580, ADR-070 Phase 2).
+// ctxt upgrade {status,plan,run} is the operator-facing surface for
+// ADR-070 dpkms bucket upgrades (ADR-070 Phase 2).
 //
 // These subcommands are SEPARATE from `ctxt upgrade {check,install,snooze,
 // notes}` (defined in upgrade.go) which handle binary self-update via
@@ -23,6 +23,7 @@
 //   - --watch loops until state goes idle (or the user interrupts).
 //   - status exits 1 when state == "failed", 70 when the daemon is
 //     unreachable.
+
 package cmd
 
 import (
@@ -219,7 +220,7 @@ func runUpgradeStatus(cmd *cobra.Command, _ []string) error {
 		// Exit cleanly when the upgrade returns to idle so --watch is
 		// usable in scripts ("wait until upgrade is done").
 		env, ferr := fetchUpgradeHealthz(ctx, client)
-		if ferr == nil && (env.Upgrade == nil || env.Upgrade.State == "idle") {
+		if ferr == nil && (env.Upgrade == nil || env.Upgrade.State == string(upgrade.StateIdle)) {
 			return nil
 		}
 		if err != nil {
@@ -248,7 +249,7 @@ func upgradeStatusOnce(cmd *cobra.Command, client *dpkmsclient.Client) error {
 		// Idle is represented as {"state":"idle"} for shape stability.
 		payload := env.Upgrade
 		if payload == nil {
-			payload = &upgradeEnvelope{State: "idle"}
+			payload = &upgradeEnvelope{State: string(upgrade.StateIdle)}
 		}
 		if err := outputJSON(cmd.OutOrStdout(), payload); err != nil {
 			return err
@@ -260,7 +261,7 @@ func upgradeStatusOnce(cmd *cobra.Command, client *dpkmsclient.Client) error {
 	// GENERIC by construction: the daemon answered, the upgrade failed.
 	// last_error is free text from the worker (often a provider's
 	// "connection refused"), so it must not reach the message classifier.
-	if env.Upgrade != nil && env.Upgrade.State == "failed" {
+	if env.Upgrade != nil && env.Upgrade.State == string(upgrade.StateFailed) {
 		return output.GenericError("upgrade failed: " + env.Upgrade.LastError)
 	}
 	return nil
@@ -268,7 +269,7 @@ func upgradeStatusOnce(cmd *cobra.Command, client *dpkmsclient.Client) error {
 
 // renderUpgradeStatus prints the human-readable view per the T-0580 spec.
 func renderUpgradeStatus(w io.Writer, up *upgradeEnvelope) {
-	if up == nil || up.State == "idle" || up.State == "" {
+	if up == nil || up.State == string(upgrade.StateIdle) || up.State == "" {
 		fmt.Fprintln(w, "Upgrade state: idle")
 		return
 	}
@@ -279,7 +280,7 @@ func renderUpgradeStatus(w io.Writer, up *upgradeEnvelope) {
 	if up.Target != "" {
 		fmt.Fprintf(w, "  Target:    %s\n", up.Target)
 	}
-	if up.State == "in_progress" && up.Total > 0 {
+	if up.State == string(upgrade.StateInProgress) && up.Total > 0 {
 		pct := int(up.Progress*100 + 0.5)
 		fmt.Fprintf(w, "  Progress:  %d/%d (%d%%)\n", up.Done, up.Total, pct)
 		fmt.Fprintf(w, "  ETA:       %ds\n", up.EtaSeconds)
@@ -287,13 +288,13 @@ func renderUpgradeStatus(w io.Writer, up *upgradeEnvelope) {
 			fmt.Fprintf(w, "  Started:   %s\n", up.StartedAt)
 		}
 	}
-	if up.State == "failed" && up.Total > 0 {
+	if up.State == string(upgrade.StateFailed) && up.Total > 0 {
 		fmt.Fprintf(w, "  Progress:  %d/%d\n", up.Done, up.Total)
 	}
 	if up.Failed > 0 {
 		fmt.Fprintf(w, "  Failed:    %d objects\n", up.Failed)
 	}
-	if up.State == "failed" && up.LastError != "" {
+	if up.State == string(upgrade.StateFailed) && up.LastError != "" {
 		fmt.Fprintf(w, "  Last error: %s\n", up.LastError)
 	}
 }
@@ -422,7 +423,7 @@ type schemaPreview struct {
 func previewSchema(ctx context.Context) (schemaPreview, error) {
 	typ := cfg.Storage.Type
 	if typ == "" {
-		typ = "sqlite"
+		typ = storageTypeSQLite
 	}
 	path, err := resolveStoragePath()
 	if err != nil {
@@ -436,7 +437,7 @@ func previewSchema(ctx context.Context) (schemaPreview, error) {
 		return schemaPreview{}, err
 	}
 	p := schemaPreview{Backend: typ, SchemaStatus: st, PendingFlag: st.Pending()}
-	if typ == "sqlite" && st.Pending() && !st.New && cfg.Storage.MigrateSnapshot {
+	if typ == storageTypeSQLite && st.Pending() && !st.New && cfg.Storage.MigrateSnapshot {
 		p.SnapshotDir = sqlite.SnapshotDir(path)
 	}
 	return p, nil

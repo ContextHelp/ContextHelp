@@ -14,6 +14,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// defaultAddressbook is the cardamum addressbook ingest reads when
+// none is named.
+const defaultAddressbook = "default"
+
 var ingestCmd = &cobra.Command{
 	Use:   "ingest",
 	Short: "Ingest objects from external adapters",
@@ -58,7 +62,7 @@ func init() {
 	ingestCmd.Flags().String("type", "", "override object type")
 
 	// cardamum-specific flags
-	ingestCmd.Flags().String("addressbook", "default", "cardamum addressbook ID")
+	ingestCmd.Flags().String("addressbook", defaultAddressbook, "cardamum addressbook ID")
 	ingestCmd.Flags().String("account", "", "adapter account name")
 	ingestCmd.Flags().String("binary", "", "path to adapter binary")
 
@@ -66,7 +70,7 @@ func init() {
 	ingestCmd.Flags().String("folder", "INBOX", "himalaya IMAP folder")
 	ingestCmd.Flags().Int("max-items", 0, "max items to fetch (0=all)")
 
-	_ = ingestCmd.MarkFlagRequired("source")
+	markFlagsRequired(ingestCmd, "source")
 }
 
 func runIngest(cmd *cobra.Command, _ []string) error {
@@ -178,7 +182,7 @@ func printIngestResult(res *ingest.Result) {
 func IngestRegistry() *ingest.Registry {
 	reg := ingest.NewRegistry()
 	reg.Register("cardamum", func(args []string) (ingest.Adapter, error) {
-		ab := "default"
+		ab := defaultAddressbook
 		if len(args) > 0 {
 			ab = args[0]
 		}

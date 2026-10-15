@@ -30,6 +30,9 @@ import (
 	"strings"
 )
 
+// googleHost is Google's apex host; subdomains match by ".google.com" suffix.
+const googleHost = "google.com"
+
 const (
 	IDParent  = "GoogleStrategy"
 	IDSearch  = "GoogleSearchStrategy"
@@ -82,5 +85,5 @@ func pathSegments(p string) []string {
 // isGoogleHost reports whether host is *.google.com (any subdomain) or
 // google.com itself. The .gle short-domain is also accepted.
 func isGoogleHost(host string) bool {
-	return host == "google.com" || strings.HasSuffix(host, ".google.com") || strings.HasSuffix(host, ".gle")
+	return host == googleHost || strings.HasSuffix(host, ".google.com") || strings.HasSuffix(host, ".gle")
 }

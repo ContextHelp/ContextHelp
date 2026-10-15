@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	obsidianImporter "github.com/ideacrafterslabs/ctxt/internal/importer/obsidian"
 	"github.com/spf13/cobra"
 )
@@ -44,25 +43,9 @@ func init() {
 	importObsidianCmd.Flags().String("server", "", serverFlagUsage)
 	importObsidianCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 
-	importObsidianCmd.MarkFlagRequired("vault")
+	markFlagsRequired(importObsidianCmd, "vault")
 
-	cliconv.WithSideEffect(importObsidianCmd, cliconv.SideEffectWrite)
-	cliconv.WithIdempotency(importObsidianCmd, cliconv.IdempotencyConditional)
-
-	cliconv.WithExamples(importObsidianCmd, []cliconv.Example{
-		{
-			Title:   "Import from default source",
-			Command: "ctxt import obsidian --vault ~/Obsidian",
-		},
-		{
-			Title:   "Dry-run preview",
-			Command: "ctxt import obsidian --vault ~/Obsidian --confirm=no --dry-run",
-		},
-	})
-	cliconv.WithNextSteps(importObsidianCmd, []cliconv.NextStep{
-		{When: "on success", Suggest: "ctxt list", Reason: "verify imported items"},
-		{When: "on success", Suggest: "ctxt find <keyword>", Reason: "search the newly-imported data"},
-	})
+	markImportCmd(importObsidianCmd, "ctxt import obsidian --vault ~/Obsidian")
 }
 
 func runImportObsidian(cmd *cobra.Command, args []string) error {
@@ -150,7 +133,7 @@ func runImportObsidian(cmd *cobra.Command, args []string) error {
 		content := obsidianImporter.RenderContent(n)
 		source := "import:obsidian:" + n.RelPath
 
-		_, err := enqueueContent(dc, content, "text", pipelineName, source)
+		_, err := enqueueContent(dc, content, objectTypeText, pipelineName, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {

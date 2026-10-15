@@ -170,12 +170,12 @@ func runFeedList(cmd *cobra.Command, args []string) error {
 	// callers may have reset between command invocations, but the
 	// cobra flag value reflects the parsed command line either way.
 	formatFlag, _ := cmd.Flags().GetString("format")
-	if formatFlag == "json" || isJSONOutput() {
+	if formatFlag == formatJSON || isJSONOutput() {
 		return outputJSON(cmd.OutOrStdout(), map[string]any{"feeds": feeds})
 	}
 
 	headers := []string{"ID", "URL", "STATUS", "LAST SYNC"}
-	var rows [][]string
+	rows := make([][]string, 0, len(feeds))
 	for _, f := range feeds {
 		rows = append(rows, []string{
 			f.ID,

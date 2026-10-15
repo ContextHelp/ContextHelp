@@ -104,7 +104,7 @@ func printTopicEntries(cmd *cobra.Command, client *dpkmsclient.Client, topic str
 
 	fmt.Fprintf(out, "Topic: %s (%d entries)\n\n", topic, len(entries))
 	headers := []string{"Object ID", "Summary"}
-	var rows [][]string
+	rows := make([][]string, 0, len(entries))
 	for _, e := range entries {
 		rows = append(rows, []string{e.ObjectID, truncate(e.Summary, 80)})
 	}
