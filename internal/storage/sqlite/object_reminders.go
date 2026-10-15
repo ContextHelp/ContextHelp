@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 // SetReminder sets remind_at on the object (clears any previous reminded_at).
@@ -88,13 +89,5 @@ const reminderSelectCols = `SELECT
 `
 
 func collectReminderRows(rows *sql.Rows) ([]*storage.KnowledgeObject, error) {
-	var objects []*storage.KnowledgeObject
-	for rows.Next() {
-		obj, err := scanObjectFromRows(rows)
-		if err != nil {
-			return nil, err
-		}
-		objects = append(objects, obj)
-	}
-	return objects, rows.Err()
+	return rowscan.All(rows, scanObjectFromRows)
 }

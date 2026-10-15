@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 // SearchHistoryStore implements storage.SearchHistoryStore for SQLite.
@@ -31,19 +32,8 @@ func (s *SearchHistoryStore) Append(ctx context.Context, e *storage.SearchHistor
 func (s *SearchHistoryStore) List(
 	ctx context.Context, f storage.SearchHistoryFilter,
 ) ([]*storage.SearchHistoryEntry, error) {
-	query := `SELECT id, query, profile_id, strategies_used, result_count, searched_at
-		FROM search_history WHERE 1=1`
-	var args []any
-
-	if f.ProfileID != "" {
-		query += " AND profile_id = ?"
-		args = append(args, f.ProfileID)
-	}
-	query += " ORDER BY searched_at DESC"
-	if f.Limit > 0 {
-		query += " LIMIT ? OFFSET ?"
-		args = append(args, f.Limit, f.Offset)
-	}
+	query, args := profilePage(`SELECT id, query, profile_id, strategies_used, result_count, searched_at
+		FROM search_history WHERE 1=1`, " ORDER BY searched_at DESC", f.ProfileID, f.Limit, f.Offset)
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -51,15 +41,7 @@ func (s *SearchHistoryStore) List(
 	}
 	defer rows.Close()
 
-	var out []*storage.SearchHistoryEntry
-	for rows.Next() {
-		e, err := scanSearchHistoryEntry(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, e)
-	}
-	return out, rows.Err()
+	return rowscan.AllScanner(rows, scanSearchHistoryEntry)
 }
 
 func (s *SearchHistoryStore) ClearByProfile(ctx context.Context, profileID string) error {

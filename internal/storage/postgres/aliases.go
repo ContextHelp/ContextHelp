@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 type AliasStore struct{ db *sql.DB }
@@ -77,15 +78,13 @@ func (s *AliasStore) List(ctx context.Context, filter storage.AliasFilter) ([]*s
 	}
 	defer rows.Close()
 
-	var out []*storage.Alias
-	for rows.Next() {
+	return rowscan.All(rows, func(rows *sql.Rows) (*storage.Alias, error) {
 		var a storage.Alias
 		if err := rows.Scan(&a.Alias, &a.ObjectID, &a.Scope, &a.Profile, &a.CreatedAt, &a.UpdatedAt); err != nil {
 			return nil, err
 		}
-		out = append(out, &a)
-	}
-	return out, rows.Err()
+		return &a, nil
+	})
 }
 
 // Delete removes one alias by its full key. A miss wraps storage.ErrNotFound.

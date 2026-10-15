@@ -14,6 +14,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/search/ftsq"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/indexsig"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 	uri "hop.top/cite/scheme"
 )
 
@@ -39,7 +40,7 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 	}
 
 	if obj.Status == "" {
-		obj.Status = "active"
+		obj.Status = storage.ObjectStatusActive
 	}
 
 	// An empty TextContent defaults to the body the embedding step used
@@ -122,15 +123,13 @@ func (s *ObjectStore) listAttachmentIDs(ctx context.Context, objectID string) ([
 		return nil, fmt.Errorf("list attachment ids: %w", err)
 	}
 	defer rows.Close()
-	var ids []string
-	for rows.Next() {
+	return rowscan.All(rows, func(rows *sql.Rows) (string, error) {
 		var id string
 		if err := rows.Scan(&id); err != nil {
-			return nil, err
+			return "", err
 		}
-		ids = append(ids, id)
-	}
-	return ids, rows.Err()
+		return id, nil
+	})
 }
 
 func (s *ObjectStore) GetByContentHash(ctx context.Context, hash string) (*storage.KnowledgeObject, error) {
@@ -172,13 +171,63 @@ func (s *ObjectStore) GetBySourceKey(ctx context.Context, key string) (*storage.
 }
 
 func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, int, error) {
+	conditions, args := objectListConditions(filter)
+
+	where := ""
+	if len(conditions) > 0 {
+		where = "WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	// Count total.
+	var total int
+	countArgs := make([]any, len(args))
+	copy(countArgs, args)
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM objects "+where, countArgs...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count objects: %w", err)
+	}
+
+	order := filter.ListOrder()
+
+	// #nosec G201 -- where joins objectListConditions' fixed predicates (values bound in args); order is a ListOrder literal.
+	query := fmt.Sprintf(`SELECT
+		id, type, subtype, raw_content, content_type, text_content,
+		metadata, summaries, sections, tags, mentions,
+		decisions, tasks, pipeline, source,
+		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
+		created_at, updated_at, fts_indexed, status, inbox_note,
+		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq
+	FROM objects %s ORDER BY %s`, where, order)
+
+	if filter.Limit > 0 {
+		query += fmt.Sprintf(" LIMIT %d", filter.Limit)
+	}
+	if filter.Offset > 0 {
+		query += fmt.Sprintf(" OFFSET %d", filter.Offset)
+	}
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list objects: %w", err)
+	}
+	defer rows.Close()
+
+	objects, err := rowscan.All(rows, scanObjectFromRows)
+	if err != nil {
+		return nil, 0, err
+	}
+	return objects, total, nil
+}
+
+// objectListConditions turns filter into List's WHERE predicates and their
+// bound arguments, in placeholder order.
+func objectListConditions(filter storage.ObjectFilter) ([]string, []any) {
 	var conditions []string
 	var args []any
 
 	// Status filter: default to "active" to avoid breaking existing callers.
 	statusVal := filter.Status
 	if statusVal == "" {
-		statusVal = "active"
+		statusVal = storage.ObjectStatusActive
 	}
 	if statusVal != "all" {
 		conditions = append(conditions, "status = ?")
@@ -238,65 +287,7 @@ func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]
 	mc, ma := metadataFacetConditionsSQLite(filter)
 	conditions = append(conditions, mc...)
 	args = append(args, ma...)
-
-	where := ""
-	if len(conditions) > 0 {
-		where = "WHERE " + strings.Join(conditions, " AND ")
-	}
-
-	// Count total.
-	var total int
-	countArgs := make([]any, len(args))
-	copy(countArgs, args)
-	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM objects "+where, countArgs...).Scan(&total); err != nil {
-		return nil, 0, fmt.Errorf("count objects: %w", err)
-	}
-
-	// Sort.
-	order := "change_seq ASC" // change order
-	if filter.ChangedAfter == nil {
-		sortCol := "created_at"
-		if filter.Sort == "updated_at" {
-			sortCol = "updated_at"
-		}
-		dir := "DESC"
-		if filter.Dir == "asc" {
-			dir = "ASC"
-		}
-		order = sortCol + " " + dir
-	}
-
-	query := fmt.Sprintf(`SELECT
-		id, type, subtype, raw_content, content_type, text_content,
-		metadata, summaries, sections, tags, mentions,
-		decisions, tasks, pipeline, source,
-		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
-		created_at, updated_at, fts_indexed, status, inbox_note,
-		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq
-	FROM objects %s ORDER BY %s`, where, order)
-
-	if filter.Limit > 0 {
-		query += fmt.Sprintf(" LIMIT %d", filter.Limit)
-	}
-	if filter.Offset > 0 {
-		query += fmt.Sprintf(" OFFSET %d", filter.Offset)
-	}
-
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, 0, fmt.Errorf("list objects: %w", err)
-	}
-	defer rows.Close()
-
-	var objects []*storage.KnowledgeObject
-	for rows.Next() {
-		obj, err := scanObjectFromRows(rows)
-		if err != nil {
-			return nil, 0, err
-		}
-		objects = append(objects, obj)
-	}
-	return objects, total, rows.Err()
+	return conditions, args
 }
 
 func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) error {
@@ -514,6 +505,7 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 	// fts_indexed is not cleared here: the row is re-indexed below, which
 	// sets it when the new body is non-empty. Clearing it misreported
 	// reinforced (deduplicated) objects as unindexed.
+	// #nosec G201 -- contentUpdate is empty or a fixed SET fragment; its values are bound in contentArgs.
 	query := fmt.Sprintf(`
 		UPDATE objects SET
 			tags = ?,
@@ -607,7 +599,7 @@ func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, l
 	if where != "" {
 		query += " WHERE " + where
 	}
-	query += " ORDER BY created_at DESC"
+	query += orderNewestFirst
 	pageArgs := append([]any(nil), args...)
 	if limit > 0 {
 		query += " LIMIT ?"
@@ -629,15 +621,11 @@ func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, l
 	}
 	defer rows.Close()
 
-	var objects []*storage.KnowledgeObject
-	for rows.Next() {
-		obj, err := scanObjectFromRows(rows)
-		if err != nil {
-			return nil, 0, err
-		}
-		objects = append(objects, obj)
+	objects, err := rowscan.All(rows, scanObjectFromRows)
+	if err != nil {
+		return nil, 0, err
 	}
-	return objects, total, rows.Err()
+	return objects, total, nil
 }
 
 // scanObject scans a single row into a KnowledgeObject.
@@ -933,7 +921,7 @@ func (s *ObjectStore) VectorSearch(ctx context.Context, q storage.VectorQuery, f
 		return nil, fmt.Errorf("vector search: %w", err)
 	}
 
-	var out []*storage.KnowledgeObject
+	out := make([]*storage.KnowledgeObject, 0, min(limit, len(hits)))
 	for _, h := range hits {
 		if len(out) >= limit {
 			break
@@ -1043,8 +1031,7 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 	}
 	defer rows.Close()
 
-	var results []*storage.KnowledgeObject
-	for rows.Next() {
+	return rowscan.All(rows, func(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 		var obj storage.KnowledgeObject
 		var (
 			metadataJSON, summariesJSON, sectionsJSON, tagsJSON string
@@ -1085,9 +1072,8 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 			obj.Metadata = make(map[string]any)
 		}
 		obj.Metadata["fts_score"] = score
-		results = append(results, &obj)
-	}
-	return results, rows.Err()
+		return &obj, nil
+	})
 }
 
 // nodeTypeObjectIDs returns object IDs that contain at least one node of each
@@ -1156,7 +1142,7 @@ func (s *ObjectStore) FTSSearchNodeAware(
 		return nil, err
 	}
 
-	var out []*storage.NodeAwareResult
+	out := make([]*storage.NodeAwareResult, 0, len(objects))
 	for _, obj := range objects {
 		if allowedIDs != nil {
 			if _, ok := allowedIDs[obj.ID]; !ok {
@@ -1192,7 +1178,7 @@ func (s *ObjectStore) VectorSearchNodeAware(
 		return nil, err
 	}
 
-	var out []*storage.NodeAwareResult
+	out := make([]*storage.NodeAwareResult, 0, len(objects))
 	for _, obj := range objects {
 		if allowedIDs != nil {
 			if _, ok := allowedIDs[obj.ID]; !ok {

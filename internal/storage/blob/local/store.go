@@ -1,3 +1,5 @@
+// Package local is the filesystem storage.BlobStore: blobs live as files
+// under a configured root directory.
 package local
 
 import (

@@ -20,26 +20,7 @@ func ChangeOrderConformance(t *testing.T, drv storage.StorageDriver) {
 	ctx := context.Background()
 	objs := drv.Objects()
 	base := fixtureTime()
-	// Written in this order. updated_at runs backwards from it, as an
-	// import or a federated row from a slower clock carries; the caller
-	// also passes ChangeSeq values the store must not keep.
-	seed := []struct {
-		id string
-		at time.Time
-	}{
-		{"co-z", base},
-		{"co-a", base.Add(-time.Hour)},
-		{"co-imported", time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)},
-		{"co-b", base.Add(-2 * time.Hour)},
-	}
-	for i, o := range seed {
-		if err := objs.Create(ctx, &storage.KnowledgeObject{
-			ID: o.id, Type: "note", RawContent: o.id, Status: "inbox",
-			CreatedAt: o.at, UpdatedAt: o.at, ChangeSeq: int64(1000 - i),
-		}); err != nil {
-			t.Fatalf("Create %s: %v", o.id, err)
-		}
-	}
+	seeded := seedChangeOrder(t, objs, base)
 	written := []string{"co-z", "co-a", "co-imported", "co-b"}
 
 	list := func(t *testing.T, after int64, limit int) []*storage.KnowledgeObject {
@@ -50,13 +31,7 @@ func ChangeOrderConformance(t *testing.T, drv storage.StorageDriver) {
 		}
 		return got
 	}
-	ids := func(os []*storage.KnowledgeObject) []string {
-		out := make([]string, 0, len(os))
-		for _, o := range os {
-			out = append(out, o.ID)
-		}
-		return out
-	}
+	ids := objectIDs
 	seqOf := func(t *testing.T, id string) int64 {
 		t.Helper()
 		o, err := objs.Get(ctx, id)
@@ -72,7 +47,7 @@ func ChangeOrderConformance(t *testing.T, drv storage.StorageDriver) {
 			t.Fatalf("change order %v, want write order %v", got, written)
 		}
 		for i, o := range all {
-			if o.ChangeSeq <= 0 || o.ChangeSeq >= 1000-int64(len(seed)) {
+			if o.ChangeSeq <= 0 || o.ChangeSeq >= 1000-int64(seeded) {
 				t.Errorf("%s ChangeSeq = %d: want a store-stamped value, not the caller's", o.ID, o.ChangeSeq)
 			}
 			if i > 0 && o.ChangeSeq <= all[i-1].ChangeSeq {
@@ -165,4 +140,39 @@ func WatermarkConformance(t *testing.T, drv storage.StorageDriver) {
 			t.Errorf("%s = %d, want %d", name, got, want)
 		}
 	}
+}
+
+// seedChangeOrder creates co-z, co-a, co-imported and co-b, in that order.
+// updated_at runs backwards from base, as an import or a federated row from
+// a slower clock carries; the caller also passes ChangeSeq values (1000
+// down) the store must not keep. It returns how many objects it wrote.
+func seedChangeOrder(t *testing.T, objs storage.ObjectStore, base time.Time) int {
+	t.Helper()
+	seed := []struct {
+		id string
+		at time.Time
+	}{
+		{"co-z", base},
+		{"co-a", base.Add(-time.Hour)},
+		{"co-imported", time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)},
+		{"co-b", base.Add(-2 * time.Hour)},
+	}
+	for i, o := range seed {
+		if err := objs.Create(context.Background(), &storage.KnowledgeObject{
+			ID: o.id, Type: "note", RawContent: o.id, Status: "inbox",
+			CreatedAt: o.at, UpdatedAt: o.at, ChangeSeq: int64(1000 - i),
+		}); err != nil {
+			t.Fatalf("Create %s: %v", o.id, err)
+		}
+	}
+	return len(seed)
+}
+
+// objectIDs lists the IDs of objs in order.
+func objectIDs(objs []*storage.KnowledgeObject) []string {
+	out := make([]string, 0, len(objs))
+	for _, o := range objs {
+		out = append(out, o.ID)
+	}
+	return out
 }

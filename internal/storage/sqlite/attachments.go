@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 // AttachmentStore implements storage.AttachmentStore for SQLite.
@@ -59,17 +60,15 @@ func (s *AttachmentStore) ListAttachments(ctx context.Context, objectID string) 
 	}
 	defer rows.Close()
 
-	var out []storage.Attachment
-	for rows.Next() {
+	return rowscan.All(rows, func(rows *sql.Rows) (storage.Attachment, error) {
 		var a storage.Attachment
 		var createdStr string
 		if err := rows.Scan(&a.ID, &a.ObjectID, &a.Filename, &a.MimeType, &a.SizeBytes, &createdStr); err != nil {
-			return nil, err
+			return storage.Attachment{}, err
 		}
 		a.CreatedAt, _ = time.Parse(time.RFC3339, createdStr)
-		out = append(out, a)
-	}
-	return out, rows.Err()
+		return a, nil
+	})
 }
 
 // DeleteAttachment removes an attachment by ID.

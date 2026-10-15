@@ -31,11 +31,9 @@ func Tokenize(s string) []string {
 	for _, r := range s {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '.' {
 			cur.WriteRune(r)
-		} else {
-			if cur.Len() > 0 {
-				tokens = append(tokens, cur.String())
-				cur.Reset()
-			}
+		} else if cur.Len() > 0 {
+			tokens = append(tokens, cur.String())
+			cur.Reset()
 		}
 	}
 	if cur.Len() > 0 {

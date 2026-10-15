@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 func (s *EntityStore) Upsert(ctx context.Context, entity *storage.Entity) error {
@@ -135,15 +136,7 @@ func (s *EntityStore) List(ctx context.Context, filter storage.EntityFilter) ([]
 	}
 	defer rows.Close()
 
-	var entities []*storage.Entity
-	for rows.Next() {
-		e, err := scanEntityRow(rows)
-		if err != nil {
-			return nil, err
-		}
-		entities = append(entities, e)
-	}
-	return entities, rows.Err()
+	return rowscan.All(rows, scanEntityRow)
 }
 
 func (s *EntityStore) Resolve(ctx context.Context, mention string) (*storage.Entity, error) {

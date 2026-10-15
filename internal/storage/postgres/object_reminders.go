@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 // SetReminder sets remind_at on the object (clears reminded_at).
@@ -77,13 +78,5 @@ func (s *ObjectStore) ListPendingReminders(ctx context.Context) ([]*storage.Know
 }
 
 func collectPgReminderRows(rows *sql.Rows) ([]*storage.KnowledgeObject, error) {
-	var objects []*storage.KnowledgeObject
-	for rows.Next() {
-		obj, err := scanObjectRows(rows)
-		if err != nil {
-			return nil, err
-		}
-		objects = append(objects, obj)
-	}
-	return objects, rows.Err()
+	return rowscan.All(rows, scanObjectRows)
 }

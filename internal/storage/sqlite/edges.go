@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 type EdgeStore struct {
@@ -177,39 +178,13 @@ func (s *EdgeStore) RelatedObjectIDs(ctx context.Context, objectID string, depth
 			break
 		}
 
-		// Collect mention targets for all frontier objects.
-		args := make([]any, 0, len(frontier))
-		for id := range frontier {
-			args = append(args, id)
-		}
-
-		// Find shared-target neighbours: objects that share any mention target
-		// with any object in the current frontier.
-		// #nosec G201 -- placeholders are literal "?" strings, not user input
-		query := fmt.Sprintf(`
-			SELECT DISTINCT e2.from_id
-			FROM edges e1
-			JOIN edges e2 ON e1.to_id = e2.to_id
-			WHERE e1.from_type = 'object'
-			  AND e1.from_id IN (%s)
-			  AND e1.edge_type = 'mentions'
-			  AND e2.from_type = 'object'
-			  AND e2.edge_type = 'mentions'`,
-			joinPlaceholders(len(frontier)),
-		)
-
-		rows, err := s.db.QueryContext(ctx, query, args...)
+		ids, err := s.sharedMentionNeighbours(ctx, frontier)
 		if err != nil {
 			return nil, fmt.Errorf("related objects hop %d: %w", hop+1, err)
 		}
 
 		nextFrontier := map[string]struct{}{}
-		for rows.Next() {
-			var id string
-			if err := rows.Scan(&id); err != nil {
-				rows.Close()
-				return nil, fmt.Errorf("scan related id: %w", err)
-			}
+		for _, id := range ids {
 			if _, seen := visited[id]; seen {
 				continue
 			}
@@ -217,19 +192,50 @@ func (s *EdgeStore) RelatedObjectIDs(ctx context.Context, objectID string, depth
 			nextFrontier[id] = struct{}{}
 			result = append(result, id)
 			if limit > 0 && len(result) >= limit {
-				rows.Close()
 				return result, nil
 			}
-		}
-		rows.Close()
-		if err := rows.Err(); err != nil {
-			return nil, fmt.Errorf("related objects rows: %w", err)
 		}
 
 		frontier = nextFrontier
 	}
 
 	return result, nil
+}
+
+// sharedMentionNeighbours returns the distinct objects that share any mention
+// target with an object in frontier, in the order the query yields them.
+func (s *EdgeStore) sharedMentionNeighbours(ctx context.Context, frontier map[string]struct{}) ([]string, error) {
+	args := make([]any, 0, len(frontier))
+	for id := range frontier {
+		args = append(args, id)
+	}
+
+	// #nosec G201 -- placeholders are literal "?" strings, not user input
+	query := fmt.Sprintf(`
+		SELECT DISTINCT e2.from_id
+		FROM edges e1
+		JOIN edges e2 ON e1.to_id = e2.to_id
+		WHERE e1.from_type = 'object'
+		  AND e1.from_id IN (%s)
+		  AND e1.edge_type = 'mentions'
+		  AND e2.from_type = 'object'
+		  AND e2.edge_type = 'mentions'`,
+		joinPlaceholders(len(frontier)),
+	)
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return rowscan.All(rows, func(rows *sql.Rows) (string, error) {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return "", fmt.Errorf("scan related id: %w", err)
+		}
+		return id, nil
+	})
 }
 
 func joinPlaceholders(n int) string {
@@ -241,8 +247,7 @@ func joinPlaceholders(n int) string {
 }
 
 func scanEdges(rows *sql.Rows) ([]*storage.Edge, error) {
-	var edges []*storage.Edge
-	for rows.Next() {
+	return rowscan.All(rows, func(rows *sql.Rows) (*storage.Edge, error) {
 		var e storage.Edge
 		var metadataJSON, createdAt string
 		err := rows.Scan(&e.ID, &e.FromType, &e.FromID, &e.ToType, &e.ToID,
@@ -254,7 +259,6 @@ func scanEdges(rows *sql.Rows) ([]*storage.Edge, error) {
 			return nil, fmt.Errorf("scan edge: %w", err)
 		}
 		e.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
-		edges = append(edges, &e)
-	}
-	return edges, rows.Err()
+		return &e, nil
+	})
 }

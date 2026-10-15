@@ -613,7 +613,9 @@ func (d *Driver) migrateThrough(ctx context.Context, target int) error {
 	if err != nil {
 		return fmt.Errorf("acquire migration connection: %w", err)
 	}
-	defer conn.Close()
+	// Close only hands the session back to the pool (or drops a poisoned
+	// one); there is no work left whose failure it could report.
+	defer func() { _ = conn.Close() }()
 	if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, migrateLockKey); err != nil {
 		return fmt.Errorf("acquire migration advisory lock: %w", err)
 	}

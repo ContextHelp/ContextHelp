@@ -14,6 +14,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/search/ftsq"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/indexsig"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 	uri "hop.top/cite/scheme"
 )
 
@@ -32,7 +33,7 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		return fmt.Errorf("create object graph: %w", err)
 	}
 	if obj.Status == "" {
-		obj.Status = "active"
+		obj.Status = storage.ObjectStatusActive
 	}
 
 	// An empty TextContent defaults to the body the embedding step used
@@ -121,13 +122,61 @@ func (s *ObjectStore) GetBySourceKey(ctx context.Context, key string) (*storage.
 }
 
 func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, int, error) {
+	conditions, args, idx := objectListConditionsPG(filter)
+
+	where := ""
+	if len(conditions) > 0 {
+		where = "WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	var total int
+	countArgs := make([]any, len(args))
+	copy(countArgs, args)
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM objects "+where, countArgs...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count objects: %w", err)
+	}
+
+	// ListOrder resolves Sort/Dir through a closed allowlist of literals.
+	order := filter.ListOrder()
+
+	// #nosec G202 -- order is one of ListOrder's allowlisted literals, not
+	// caller-controlled text; `where` holds only $N placeholders.
+	query := objectSelectCols + ` FROM objects ` + where + ` ORDER BY ` + order
+	if filter.Limit > 0 {
+		// #nosec G202 -- appends a generated "$N" placeholder; value in args.
+		query += fmt.Sprintf(" LIMIT $%d", idx)
+		args = append(args, filter.Limit)
+		idx++
+	}
+	if filter.Offset > 0 {
+		// #nosec G202 -- appends a generated "$N" placeholder; value in args.
+		query += fmt.Sprintf(" OFFSET $%d", idx)
+		args = append(args, filter.Offset)
+	}
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list objects: %w", err)
+	}
+	defer rows.Close()
+
+	objects, err := rowscan.All(rows, scanObjectRows)
+	if err != nil {
+		return nil, 0, err
+	}
+	return objects, total, nil
+}
+
+// objectListConditionsPG turns filter into List's WHERE predicates and their
+// bound arguments, and returns the next free $N placeholder index.
+func objectListConditionsPG(filter storage.ObjectFilter) ([]string, []any, int) {
 	var conditions []string
 	var args []any
 	idx := 1
 
 	statusVal := filter.Status
 	if statusVal == "" {
-		statusVal = "active"
+		statusVal = storage.ObjectStatusActive
 	}
 	if statusVal != "all" {
 		conditions = append(conditions, fmt.Sprintf("status = $%d", idx))
@@ -192,67 +241,7 @@ func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]
 	mc, ma := metadataFacetConditionsPG(filter, &idx)
 	conditions = append(conditions, mc...)
 	args = append(args, ma...)
-
-	where := ""
-	if len(conditions) > 0 {
-		where = "WHERE " + strings.Join(conditions, " AND ")
-	}
-
-	var total int
-	countArgs := make([]any, len(args))
-	copy(countArgs, args)
-	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM objects "+where, countArgs...).Scan(&total); err != nil {
-		return nil, 0, fmt.Errorf("count objects: %w", err)
-	}
-
-	// ORDER BY cannot take a bind parameter, so the column and direction
-	// are resolved through a closed allowlist: the only reachable values
-	// are the literals below. filter.Sort / filter.Dir are compared, never
-	// interpolated, so caller input cannot reach the query text.
-	order := "change_seq ASC" // change order
-	if filter.ChangedAfter == nil {
-		sortCol := "created_at"
-		if filter.Sort == "updated_at" {
-			sortCol = "updated_at"
-		}
-		dir := "DESC"
-		if filter.Dir == "asc" {
-			dir = "ASC"
-		}
-		order = sortCol + " " + dir
-	}
-
-	// #nosec G202 -- order is built from allowlisted literals (see above),
-	// not caller-controlled strings; `where` holds only $N placeholders.
-	query := objectSelectCols + ` FROM objects ` + where + ` ORDER BY ` + order
-	if filter.Limit > 0 {
-		// #nosec G202 -- appends a generated "$N" placeholder; value in args.
-		query += fmt.Sprintf(" LIMIT $%d", idx)
-		args = append(args, filter.Limit)
-		idx++
-	}
-	if filter.Offset > 0 {
-		// #nosec G202 -- appends a generated "$N" placeholder; value in args.
-		query += fmt.Sprintf(" OFFSET $%d", idx)
-		args = append(args, filter.Offset)
-		idx++
-	}
-
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, 0, fmt.Errorf("list objects: %w", err)
-	}
-	defer rows.Close()
-
-	var objects []*storage.KnowledgeObject
-	for rows.Next() {
-		obj, err := scanObjectRows(rows)
-		if err != nil {
-			return nil, 0, err
-		}
-		objects = append(objects, obj)
-	}
-	return objects, total, rows.Err()
+	return conditions, args, idx
 }
 
 func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) error {
@@ -500,15 +489,11 @@ func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, l
 	}
 	defer rows.Close()
 
-	var objects []*storage.KnowledgeObject
-	for rows.Next() {
-		obj, err := scanObjectRows(rows)
-		if err != nil {
-			return nil, 0, err
-		}
-		objects = append(objects, obj)
+	objects, err := rowscan.All(rows, scanObjectRows)
+	if err != nil {
+		return nil, 0, err
 	}
-	return objects, total, rows.Err()
+	return objects, total, nil
 }
 
 // VectorSearch ranks objects through q.ModelID's per-model partial HNSW
@@ -716,8 +701,7 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 	}
 	defer rows.Close()
 
-	var results []*storage.KnowledgeObject
-	for rows.Next() {
+	return rowscan.All(rows, func(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 		obj, score, err := scanObjectRowWithScore(rows)
 		if err != nil {
 			return nil, fmt.Errorf("fts search scan: %w", err)
@@ -726,9 +710,8 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 			obj.Metadata = make(map[string]any)
 		}
 		obj.Metadata["fts_score"] = score
-		results = append(results, obj)
-	}
-	return results, rows.Err()
+		return obj, nil
+	})
 }
 
 // nodeTypeObjectIDs returns object IDs that contain at least one node of each
@@ -791,7 +774,7 @@ func (s *ObjectStore) FTSSearchNodeAware(
 		return nil, err
 	}
 
-	var out []*storage.NodeAwareResult
+	out := make([]*storage.NodeAwareResult, 0, len(objects))
 	for _, obj := range objects {
 		if allowedIDs != nil {
 			if _, ok := allowedIDs[obj.ID]; !ok {
@@ -829,7 +812,7 @@ func (s *ObjectStore) VectorSearchNodeAware(
 		return nil, err
 	}
 
-	var out []*storage.NodeAwareResult
+	out := make([]*storage.NodeAwareResult, 0, len(objects))
 	for _, obj := range objects {
 		if allowedIDs != nil {
 			if _, ok := allowedIDs[obj.ID]; !ok {
@@ -877,19 +860,9 @@ func queryVectorRows(ctx context.Context, db *sql.DB, caps *pgCaps,
 	if _, err := tx.ExecContext(ctx, `SET LOCAL hnsw.iterative_scan = strict_order`); err != nil {
 		return fmt.Errorf("enable iterative scan: %w", err)
 	}
-	rows, err := tx.QueryContext(ctx, query, args...)
-	if err != nil {
+	if err := scanTxRows(ctx, tx, scan, query, args...); err != nil {
 		return err
 	}
-	if err := scan(rows); err != nil {
-		rows.Close()
-		return err
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return err
-	}
-	rows.Close()
 	return tx.Commit()
 }
 

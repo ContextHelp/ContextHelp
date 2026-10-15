@@ -79,116 +79,21 @@ func RunSearchConformance(t *testing.T, drv storage.StorageDriver, caps SearchCa
 		if !caps.FTS {
 			t.Skip("PARITY GAP: driver declares FTS=false — FTS rank contract unverified")
 		}
-		for _, d := range ftsRankCorpus {
-			if err := drv.Objects().Create(ctx, searchFixtureObject(d.ID, "note", d.Text)); err != nil {
-				t.Fatalf("seed %s: %v", d.ID, err)
-			}
-		}
-		results, err := drv.Objects().FTSSearch(ctx, "raft", storage.ObjectFilter{Limit: 10})
-		if err != nil {
-			t.Fatalf("FTSSearch: %v", err)
-		}
-		if len(results) != len(ftsRankOrder) {
-			t.Fatalf("results: got %d (%v) want %d", len(results), resultIDs(results), len(ftsRankOrder))
-		}
-		for i, want := range ftsRankOrder {
-			if results[i].ID != want {
-				t.Errorf("rank %d: got %s want %s (best-first is the cross-driver contract)", i, results[i].ID, want)
-			}
-			if _, ok := results[i].Metadata["fts_score"].(float64); !ok {
-				t.Errorf("rank %d (%s): Metadata[fts_score] missing or not float64: %#v",
-					i, results[i].ID, results[i].Metadata["fts_score"])
-			}
-		}
+		searchFTSRankOrder(t, drv)
 	})
 
 	t.Run("FTSHostileInput", func(t *testing.T) {
 		if !caps.FTS {
 			t.Skip("PARITY GAP: driver declares FTS=false — sanitizer contract unverified")
 		}
-		if err := drv.Objects().Create(ctx,
-			searchFixtureObject("ftsh-doc", "note", "documents that are credit eligible")); err != nil {
-			t.Fatalf("seed: %v", err)
-		}
-
-		// The hyphen class: raw user text must match separated words on
-		// every driver — no operator semantics, no phrase strictness.
-		res, err := drv.Objects().FTSSearch(ctx, "credit-eligible", storage.ObjectFilter{Limit: 10})
-		if err != nil {
-			t.Fatalf("hyphenated query errored: %v", err)
-		}
-		if len(res) != 1 || res[0].ID != "ftsh-doc" {
-			t.Errorf("hyphenated query: got %v want [ftsh-doc]", resultIDs(res))
-		}
-
-		// Hostile corpus: no driver may error or leak operator semantics.
-		for _, q := range []string{
-			`"credit eligible"`,
-			"NEAR(credit, eligible)",
-			"credit AND eligible",
-			"credit OR zqxjkv",
-			"credit:eligible",
-			"credit*",
-			"-credit",
-		} {
-			if _, err := drv.Objects().FTSSearch(ctx, q, storage.ObjectFilter{Limit: 10}); err != nil {
-				t.Errorf("hostile input %q errored: %v", q, err)
-			}
-		}
-
-		// No usable tokens: match nothing, do not error.
-		res, err = drv.Objects().FTSSearch(ctx, "!!! ???", storage.ObjectFilter{Limit: 10})
-		if err != nil {
-			t.Errorf("punctuation-only query errored: %v", err)
-		}
-		if len(res) != 0 {
-			t.Errorf("punctuation-only query matched: %v", resultIDs(res))
-		}
-
-		// Truly empty input is a caller bug on every driver.
-		if _, err := drv.Objects().FTSSearch(ctx, "", storage.ObjectFilter{Limit: 10}); err == nil {
-			t.Error("empty query succeeded; want error")
-		}
+		searchFTSHostileInput(t, drv)
 	})
 
 	t.Run("FilteredKNNRecall", func(t *testing.T) {
 		if !caps.Vectors {
 			t.Skip("PARITY GAP: driver declares Vectors=false — filtered recall unverified")
 		}
-		SeedVectorModel(t, drv)
-		// 12 near-query objects of the majority type, 3 far objects of the
-		// selective type: a selective filter + limit must return ALL
-		// qualifying neighbors even though every unfiltered near neighbor
-		// ranks above them.
-		for i := 0; i < 12; i++ {
-			obj := searchFixtureObject(fkID("fkr-hay", i), "fkr-hay", "haystack filler")
-			if err := drv.Objects().Create(ctx, obj); err != nil {
-				t.Fatalf("seed hay %d: %v", i, err)
-			}
-			putFixtureVector(t, drv, obj.ID, []float32{1, float32(i) * 0.001, 0, 0})
-		}
-		for i := 0; i < 3; i++ {
-			obj := searchFixtureObject(fkID("fkr-needle", i), "fkr-needle", "needle fixture")
-			if err := drv.Objects().Create(ctx, obj); err != nil {
-				t.Fatalf("seed needle %d: %v", i, err)
-			}
-			putFixtureVector(t, drv, obj.ID, []float32{0, 0, 1, float32(i) * 0.01})
-		}
-
-		results, err := drv.Objects().VectorSearch(ctx, fixtureQuery([]float32{1, 0, 0, 0}),
-			storage.ObjectFilter{Type: "fkr-needle", Limit: 3})
-		if err != nil {
-			t.Fatalf("filtered VectorSearch: %v", err)
-		}
-		if len(results) != 3 {
-			t.Fatalf("filtered recall: got %d (%v) want all 3 qualifying neighbors",
-				len(results), resultIDs(results))
-		}
-		for _, r := range results {
-			if r.Type != "fkr-needle" {
-				t.Errorf("non-qualifying hit %s (type %s) leaked through filter", r.ID, r.Type)
-			}
-		}
+		searchFilteredKNNRecall(t, drv)
 	})
 
 	t.Run("FTSProfileScope", func(t *testing.T) {
@@ -236,6 +141,119 @@ func RunSearchConformance(t *testing.T, drv storage.StorageDriver, caps SearchCa
 			t.Fatalf("VectorSearch on an unindexed model: err = %v, want ErrEmbeddingIndexMissing", err)
 		}
 	})
+}
+
+// searchFTSRankOrder checks FTSSearch ranks ftsRankCorpus best-first, each hit carrying a float64 fts_score.
+func searchFTSRankOrder(t *testing.T, drv storage.StorageDriver) {
+	ctx := context.Background()
+	for _, d := range ftsRankCorpus {
+		if err := drv.Objects().Create(ctx, searchFixtureObject(d.ID, "note", d.Text)); err != nil {
+			t.Fatalf("seed %s: %v", d.ID, err)
+		}
+	}
+	results, err := drv.Objects().FTSSearch(ctx, "raft", storage.ObjectFilter{Limit: 10})
+	if err != nil {
+		t.Fatalf("FTSSearch: %v", err)
+	}
+	if len(results) != len(ftsRankOrder) {
+		t.Fatalf("results: got %d (%v) want %d", len(results), resultIDs(results), len(ftsRankOrder))
+	}
+	for i, want := range ftsRankOrder {
+		if results[i].ID != want {
+			t.Errorf("rank %d: got %s want %s (best-first is the cross-driver contract)", i, results[i].ID, want)
+		}
+		if _, ok := results[i].Metadata["fts_score"].(float64); !ok {
+			t.Errorf("rank %d (%s): Metadata[fts_score] missing or not float64: %#v",
+				i, results[i].ID, results[i].Metadata["fts_score"])
+		}
+	}
+}
+
+// searchFTSHostileInput checks raw user text never errors or leaks FTS operator semantics on any driver.
+func searchFTSHostileInput(t *testing.T, drv storage.StorageDriver) {
+	ctx := context.Background()
+	if err := drv.Objects().Create(ctx,
+		searchFixtureObject("ftsh-doc", "note", "documents that are credit eligible")); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// The hyphen class: raw user text must match separated words on
+	// every driver — no operator semantics, no phrase strictness.
+	res, err := drv.Objects().FTSSearch(ctx, "credit-eligible", storage.ObjectFilter{Limit: 10})
+	if err != nil {
+		t.Fatalf("hyphenated query errored: %v", err)
+	}
+	if len(res) != 1 || res[0].ID != "ftsh-doc" {
+		t.Errorf("hyphenated query: got %v want [ftsh-doc]", resultIDs(res))
+	}
+
+	// Hostile corpus: no driver may error or leak operator semantics.
+	for _, q := range []string{
+		`"credit eligible"`,
+		"NEAR(credit, eligible)",
+		"credit AND eligible",
+		"credit OR zqxjkv",
+		"credit:eligible",
+		"credit*",
+		"-credit",
+	} {
+		if _, err := drv.Objects().FTSSearch(ctx, q, storage.ObjectFilter{Limit: 10}); err != nil {
+			t.Errorf("hostile input %q errored: %v", q, err)
+		}
+	}
+
+	// No usable tokens: match nothing, do not error.
+	res, err = drv.Objects().FTSSearch(ctx, "!!! ???", storage.ObjectFilter{Limit: 10})
+	if err != nil {
+		t.Errorf("punctuation-only query errored: %v", err)
+	}
+	if len(res) != 0 {
+		t.Errorf("punctuation-only query matched: %v", resultIDs(res))
+	}
+
+	// Truly empty input is a caller bug on every driver.
+	if _, err := drv.Objects().FTSSearch(ctx, "", storage.ObjectFilter{Limit: 10}); err == nil {
+		t.Error("empty query succeeded; want error")
+	}
+}
+
+// searchFilteredKNNRecall checks a selective filter plus limit returns every qualifying vector neighbor, even when unfiltered neighbors rank above them.
+func searchFilteredKNNRecall(t *testing.T, drv storage.StorageDriver) {
+	ctx := context.Background()
+	SeedVectorModel(t, drv)
+	// 12 near-query objects of the majority type, 3 far objects of the
+	// selective type: a selective filter + limit must return ALL
+	// qualifying neighbors even though every unfiltered near neighbor
+	// ranks above them.
+	for i := 0; i < 12; i++ {
+		obj := searchFixtureObject(fkID("fkr-hay", i), "fkr-hay", "haystack filler")
+		if err := drv.Objects().Create(ctx, obj); err != nil {
+			t.Fatalf("seed hay %d: %v", i, err)
+		}
+		putFixtureVector(t, drv, obj.ID, []float32{1, float32(i) * 0.001, 0, 0})
+	}
+	for i := 0; i < 3; i++ {
+		obj := searchFixtureObject(fkID("fkr-needle", i), "fkr-needle", "needle fixture")
+		if err := drv.Objects().Create(ctx, obj); err != nil {
+			t.Fatalf("seed needle %d: %v", i, err)
+		}
+		putFixtureVector(t, drv, obj.ID, []float32{0, 0, 1, float32(i) * 0.01})
+	}
+
+	results, err := drv.Objects().VectorSearch(ctx, fixtureQuery([]float32{1, 0, 0, 0}),
+		storage.ObjectFilter{Type: "fkr-needle", Limit: 3})
+	if err != nil {
+		t.Fatalf("filtered VectorSearch: %v", err)
+	}
+	if len(results) != 3 {
+		t.Fatalf("filtered recall: got %d (%v) want all 3 qualifying neighbors",
+			len(results), resultIDs(results))
+	}
+	for _, r := range results {
+		if r.Type != "fkr-needle" {
+			t.Errorf("non-qualifying hit %s (type %s) leaked through filter", r.ID, r.Type)
+		}
+	}
 }
 
 // profileScopeToken is the FTS term every profile-scope fixture shares, so

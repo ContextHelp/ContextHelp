@@ -10,6 +10,7 @@ import (
 	"github.com/lib/pq"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 // edgeExecer is what an edge write runs on: the database or a
@@ -243,8 +244,7 @@ func (s *EdgeStore) relatedHop(
 }
 
 func scanEdges(rows *sql.Rows) ([]*storage.Edge, error) {
-	var edges []*storage.Edge
-	for rows.Next() {
+	return rowscan.All(rows, func(rows *sql.Rows) (*storage.Edge, error) {
 		var e storage.Edge
 		var metadataJSON []byte
 		err := rows.Scan(&e.ID, &e.FromType, &e.FromID, &e.ToType, &e.ToID,
@@ -255,7 +255,6 @@ func scanEdges(rows *sql.Rows) ([]*storage.Edge, error) {
 		if err := decodeJSONColumn(metadataJSON, "metadata", &e.Metadata); err != nil {
 			return nil, fmt.Errorf("scan edge: %w", err)
 		}
-		edges = append(edges, &e)
-	}
-	return edges, rows.Err()
+		return &e, nil
+	})
 }

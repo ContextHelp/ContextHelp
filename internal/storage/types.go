@@ -187,6 +187,17 @@ type Entity struct {
 	UpdatedAt     time.Time      `json:"updated_at"`
 }
 
+// EdgeEndpointEntity is the Edge.FromType / Edge.ToType value for an
+// endpoint that is an entity rather than an object.
+const EdgeEndpointEntity = "entity"
+
+// ObjectStatusActive is the status a KnowledgeObject is created with when it
+// carries none, and the status an ObjectFilter with no Status matches.
+const ObjectStatusActive = "active"
+
+// FeedStatusActive is the status a Feed is created with when it carries none.
+const FeedStatusActive = "active"
+
 // Edge represents a relationship between two nodes in the knowledge graph (ADR-049).
 type Edge struct {
 	ID        string         `json:"id"`
@@ -229,6 +240,27 @@ type ObjectFilter struct {
 	// place of Sort and Dir. With Limit it pages through changes: the
 	// next page starts after the last object's ChangeSeq.
 	ChangedAfter *int64
+}
+
+// ListOrder is the ORDER BY expression (without the keywords) a List over f
+// sorts by. ORDER BY cannot take a bind parameter, so the result is only ever
+// one of the literals below: Sort and Dir are compared, never interpolated,
+// and caller input cannot reach the query text. A ChangedAfter page follows
+// change order; otherwise created_at (or updated_at), newest first unless
+// Dir is "asc".
+func (f ObjectFilter) ListOrder() string {
+	if f.ChangedAfter != nil {
+		return "change_seq ASC"
+	}
+	sortCol := "created_at"
+	if f.Sort == "updated_at" {
+		sortCol = "updated_at"
+	}
+	dir := "DESC"
+	if f.Dir == "asc" {
+		dir = "ASC"
+	}
+	return sortCol + " " + dir
 }
 
 // EntityFilter specifies criteria for listing entities.
