@@ -117,7 +117,10 @@ func UpdateWatch(svc *service.Service, mgr *watcher.Manager) http.HandlerFunc {
 			DebounceMS       *int      `json:"debounce_ms"`
 			PipelineOverride *string   `json:"pipeline_override"`
 		}
-		json.NewDecoder(r.Body).Decode(&patch)
+		if err := decodeOptionalBody(r, &patch); err != nil {
+			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid JSON body")
+			return
+		}
 		if patch.IncludePatterns != nil {
 			cfg.IncludePatterns = *patch.IncludePatterns
 		}

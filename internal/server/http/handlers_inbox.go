@@ -185,7 +185,10 @@ func TriageInbox(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
 		var req service.TriageRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		if err := decodeOptionalBody(r, &req); err != nil {
+			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid JSON body")
+			return
+		}
 
 		jobID, err := svc.TriageInbox(r.Context(), id, req)
 		if err != nil {

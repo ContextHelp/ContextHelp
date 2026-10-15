@@ -2,6 +2,8 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 )
 
@@ -35,4 +37,14 @@ func WriteJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(v)
+}
+
+// decodeOptionalBody decodes r's JSON body into v. An empty body leaves v
+// untouched and is not an error; a body that does not decode is, so a
+// malformed request is refused rather than half-applied.
+func decodeOptionalBody(r *http.Request, v any) error {
+	if err := json.NewDecoder(r.Body).Decode(v); err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+	return nil
 }
