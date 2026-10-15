@@ -48,8 +48,9 @@ import (
 )
 
 const (
-	token     = "e2e-uiauth-token-5f0c2a9e1b7d4c3f6a80"
-	principal = "e2e-ops"
+	// principal is who the CLI signs in as: the instance owner, whose
+	// API key startInstance creates with dpkms auth key create.
+	principal = "owner"
 	busToken  = "e2e-uiauth-bus-9d1"
 	probePath = "/__e2e/probe.js"
 )
@@ -146,6 +147,8 @@ type instance struct {
 	dir, dpkmsCfg, ctxtCfg string
 	api                    string // dpkms, direct
 	proxy                  *probeProxy
+	// token is the owner's API key, minted on the host before serve.
+	token string
 }
 
 func startInstance(t *testing.T) *instance {
@@ -166,24 +169,32 @@ func startInstance(t *testing.T) *instance {
   path: %q
 server:
   access: protected
+  public_url: %q
   allowed_hosts:
     - %q
-  auth:
-    provider: static
-    static:
-      tokens:
-        - token: %q
-          principal: %q
-          roles: [admin]
 browser:
   enabled: false
-`, filepath.Join(dir, "dpkms.db"), proxyHost, token, principal))
+`, filepath.Join(dir, "dpkms.db"), in.proxy.URL, proxyHost))
+	// Bootstrap as an operator does: the owner's key is created on the
+	// host, against the store, before the daemon starts (ADR-079 §4).
+	mint := exec.Command(bins.dpkms, "--config", in.dpkmsCfg, "auth", "key", "create", "--principal", principal, "--name", "e2e") //nolint:gosec // the binary under test
+	mint.Env = hermeticEnv(dir)
+	mint.Dir = dir
+	var key, mintErr bytes.Buffer
+	mint.Stdout, mint.Stderr = &key, &mintErr
+	if err := mint.Run(); err != nil {
+		t.Fatalf("dpkms auth key create: %v\n%s", err, mintErr.String())
+	}
+	in.token = strings.TrimSpace(key.String())
+	if in.token == "" {
+		t.Fatalf("dpkms auth key create printed no key:\n%s", mintErr.String())
+	}
 	writeFile(t, in.ctxtCfg, fmt.Sprintf(`storage:
   path: %q
 server:
   url: %q
   token: %q
-`, filepath.Join(dir, "ctxt.db"), in.proxy.URL, token))
+`, filepath.Join(dir, "ctxt.db"), in.proxy.URL, in.token))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(ctx, bins.dpkms, "--config", in.dpkmsCfg, "serve", //nolint:gosec // the binary under test

@@ -2,25 +2,31 @@ package auth
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
-
-// ProviderAPIKey is the Provider name of API keys issued against the
-// principal registry (ADR-079 §2).
-const ProviderAPIKey = "api_key"
 
 // Principal.Meta keys set on a principal that authenticated with an
 // API key.
 const (
-	// MetaKeyID is the id of the key that authenticated the request.
+	// MetaKeyID is the id of the key that authenticated the request; for
+	// a key declared in server.auth.keys it is "config:" and the first
+	// twelve hex digits of its hash.
 	MetaKeyID = "key_id"
-	// MetaIdentityID is the identity row of that key.
+	// MetaIdentityID is the identity row of that key. A key declared in
+	// config has none, so the meta is absent.
 	MetaIdentityID = "identity_id"
+	// configKeyIDPrefix begins the MetaKeyID of a config-declared key.
+	configKeyIDPrefix = "config:"
 )
 
 // MintKey is what Keys.Mint issues a key for.
@@ -191,20 +197,76 @@ func (k *Keys) Verify(ctx context.Context, raw string) (*Principal, *storage.Ide
 
 // keyPrincipal is the Principal a verified key acts as.
 func keyPrincipal(p *storage.Principal, rec *APIKey, idn *storage.Identity) *Principal {
-	scopes := make([]Scope, 0, len(rec.Scopes))
+	out := registryPrincipal(p, scopesNamed(rec.Scopes), MethodAPIKey)
+	out.Meta = map[string]string{MetaKeyID: rec.ID, MetaIdentityID: idn.ID}
+	return out
+}
+
+// scopesNamed returns the known scopes among names, in AllScopes order.
+func scopesNamed(names []string) []Scope {
+	scopes := make([]Scope, 0, len(names))
 	for _, s := range AllScopes {
-		if slices.Contains(rec.Scopes, string(s)) {
+		if slices.Contains(names, string(s)) {
 			scopes = append(scopes, s)
 		}
 	}
+	return scopes
+}
+
+// registryPrincipal is the Principal a registry row acts as when
+// method authenticated it with the given effective scopes.
+func registryPrincipal(p *storage.Principal, scopes []Scope, method string) *Principal {
 	return &Principal{
 		ID:       p.ID,
 		Name:     p.DisplayName,
-		Provider: ProviderAPIKey,
+		Kind:     p.Kind,
+		Provider: method,
 		Roles:    slices.Clone(p.Roles),
 		Scopes:   scopes,
-		Meta:     map[string]string{MetaKeyID: rec.ID, MetaIdentityID: idn.ID},
 	}
+}
+
+// ScopesOf returns the effective scopes of the credential behind idn:
+// for an API key its record's scopes, else the principal's role scopes
+// (p). A key whose record is gone has no scopes.
+func (k *Keys) ScopesOf(ctx context.Context, p *storage.Principal, idn *storage.Identity) ([]Scope, error) {
+	if idn.Method != storage.IdentityMethodAPIKey {
+		return ScopesForRoles(p.Roles), nil
+	}
+	rec, err := k.issuer.Get(ctx, idn.Subject)
+	if errors.Is(err, ErrAPIKeyNotFound) {
+		return []Scope{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return scopesNamed(rec.Scopes), nil
+}
+
+// OwnerHasActiveKey reports whether the owner holds an API key that
+// still verifies: an active api_key identity whose record is neither
+// revoked nor expired at now.
+func (k *Keys) OwnerHasActiveKey(ctx context.Context, now time.Time) (bool, error) {
+	idns, err := k.auth.Identities().ListByPrincipal(ctx, storage.OwnerPrincipal)
+	if err != nil {
+		return false, err
+	}
+	for _, idn := range idns {
+		if idn.Method != storage.IdentityMethodAPIKey || !idn.Active() {
+			continue
+		}
+		rec, err := k.issuer.Get(ctx, idn.Subject)
+		if errors.Is(err, ErrAPIKeyNotFound) {
+			continue
+		}
+		if err != nil {
+			return false, err
+		}
+		if rec.RevokedAt.IsZero() && (rec.ExpiresAt.IsZero() || now.Before(rec.ExpiresAt)) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // Revoke ends the key with id: its record stops verifying and its
@@ -227,33 +289,184 @@ func (k *Keys) Revoke(ctx context.Context, id string) error {
 	return k.auth.Identities().Revoke(ctx, idn.ID, k.now().UTC())
 }
 
-// APIKeyProvider is the Provider over Keys: bearer tokens and X-API-Key
-// headers that carry an API key. It is built here for Phase 1b to wire
-// into the method chain; nothing selects it from config yet.
-type APIKeyProvider struct{ keys *Keys }
+// ConfigKey is one API key declared by hash in server.auth.keys
+// (ADR-079 §4): the api_key method accepts a presented key whose
+// SHA-256 is Hash and resolves it to the registry principal named,
+// with the principal's role scopes narrowed to Roles when set. A
+// config key is config, not a registry row: it has no identity, so it
+// cannot mint a browser session, and it is revoked by removing it and
+// restarting.
+type ConfigKey struct {
+	// Hash is the raw SHA-256 of the key.
+	Hash []byte
+	// Principal is the registry id the key acts for.
+	Principal string
+	// Roles narrows the key; empty means the principal's own roles.
+	Roles []string
+	// ExpiresAt, when set, is when the key stops working.
+	ExpiresAt time.Time
+}
 
-// NewAPIKeyProvider returns a Provider that resolves API keys with keys.
-func NewAPIKeyProvider(keys *Keys) *APIKeyProvider { return &APIKeyProvider{keys: keys} }
-
-// Name implements Provider.
-func (*APIKeyProvider) Name() string { return ProviderAPIKey }
-
-// Authenticate implements Provider. A session cookie is never an API
-// key; a connection that carries only a client certificate presents no
-// credential to this provider.
-func (p *APIKeyProvider) Authenticate(ctx context.Context, cred Credential) (*Principal, error) {
-	if cred.Scheme == SchemeSession {
-		return nil, ErrInvalidCredential
+// ConfigKeysFrom parses server.auth.keys entries, which config
+// validation has already checked for shape.
+func ConfigKeysFrom(entries []config.AuthKeyConfig) ([]ConfigKey, error) {
+	out := make([]ConfigKey, 0, len(entries))
+	for i, e := range entries {
+		raw, ok := strings.CutPrefix(e.Hash, "sha256:")
+		if !ok {
+			return nil, fmt.Errorf("auth: server.auth.keys[%d].hash: not a sha256: hash", i)
+		}
+		h, err := hex.DecodeString(raw)
+		if err != nil || len(h) != sha256.Size {
+			return nil, fmt.Errorf("auth: server.auth.keys[%d].hash: not 64 hex digits", i)
+		}
+		at, err := e.ExpiresAt()
+		if err != nil {
+			return nil, fmt.Errorf("auth: server.auth.keys[%d].%w", i, err)
+		}
+		out = append(out, ConfigKey{Hash: h, Principal: e.Principal, Roles: slices.Clone(e.Roles), ExpiresAt: at})
 	}
+	return out, nil
+}
+
+// APIKeyMethod is the api_key Method: a carried key in Authorization:
+// Bearer or X-API-Key, verified against the keys declared in config by
+// hash and then against the registry (Keys).
+type APIKeyMethod struct {
+	keys *Keys
+	cfg  []ConfigKey
+}
+
+// NewAPIKeyMethod returns the api_key method over keys and the config
+// keys cfg.
+func NewAPIKeyMethod(keys *Keys, cfg []ConfigKey) *APIKeyMethod {
+	return &APIKeyMethod{keys: keys, cfg: cfg}
+}
+
+// Name implements Method.
+func (*APIKeyMethod) Name() string { return MethodAPIKey }
+
+// Ambient implements Method: a key is chosen per request.
+func (*APIKeyMethod) Ambient() bool { return false }
+
+// Authenticate implements Method. No header credential is absent; a
+// presented one either matches a config key, verifies as a registry
+// key, or is refused.
+func (m *APIKeyMethod) Authenticate(ctx context.Context, cred Credential) (*Principal, bool, error) {
 	if cred.Token == "" {
-		return nil, ErrNoCredential
+		return nil, false, nil
 	}
-	principal, _, err := p.keys.Verify(ctx, cred.Token)
+	if p, ok, err := m.configMatch(ctx, cred.Token); ok || err != nil {
+		return p, ok, err
+	}
+	p, _, err := m.keys.Verify(ctx, cred.Token)
 	if err != nil {
 		if errors.Is(err, ErrInvalidCredential) || errors.Is(err, ErrNoCredential) {
-			return nil, err
+			return nil, false, err
 		}
-		return nil, fmt.Errorf("auth: api key: %w", err)
+		return nil, false, fmt.Errorf("auth: api key: %w", err)
 	}
-	return principal, nil
+	return p, true, nil
+}
+
+// configMatch compares the presented key's hash with every config key
+// in constant time and resolves the first match. A match whose key is
+// expired or whose principal is unknown or inactive is refused, not
+// passed on to the registry.
+func (m *APIKeyMethod) configMatch(ctx context.Context, raw string) (*Principal, bool, error) {
+	if len(m.cfg) == 0 {
+		return nil, false, nil
+	}
+	sum := sha256.Sum256([]byte(raw))
+	var hit *ConfigKey
+	for i := range m.cfg {
+		if subtle.ConstantTimeCompare(sum[:], m.cfg[i].Hash) == 1 && hit == nil {
+			hit = &m.cfg[i]
+		}
+	}
+	if hit == nil {
+		return nil, false, nil
+	}
+	id := configKeyIDPrefix + hex.EncodeToString(hit.Hash[:6])
+	if !hit.ExpiresAt.IsZero() && !m.keys.now().Before(hit.ExpiresAt) {
+		return nil, false, fmt.Errorf("%w: key %s expired", ErrInvalidCredential, id)
+	}
+	p, err := m.keys.auth.Principals().Get(ctx, hit.Principal)
+	if errors.Is(err, storage.ErrNotFound) {
+		return nil, false, fmt.Errorf("%w: key %s names unknown principal %s", ErrInvalidCredential, id, hit.Principal)
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("auth: api key %s: %w", id, err)
+	}
+	if !p.Active() {
+		return nil, false, fmt.Errorf("%w: principal %s is %s", ErrInvalidCredential, p.ID, p.Status)
+	}
+	roles := p.Roles
+	scopes := ScopesForRoles(p.Roles)
+	if len(hit.Roles) > 0 {
+		roles = rolesWithin(hit.Roles, scopes)
+		scopes = intersectScopes(ScopesForRoles(hit.Roles), scopes)
+	}
+	out := registryPrincipal(p, scopes, MethodAPIKey)
+	out.Roles = slices.Clone(roles)
+	out.Meta = map[string]string{MetaKeyID: id}
+	return out, true, nil
+}
+
+// rolesWithin returns the roles in asked whose whole bundle granted
+// covers: a key narrowed to reader on an admin principal acts as a
+// reader; one asking for admin on a reader principal stays a reader.
+func rolesWithin(asked []string, granted []Scope) []string {
+	out := []string{}
+	for _, r := range asked {
+		bundle, ok := Bundle(r)
+		if !ok {
+			continue
+		}
+		covered := true
+		for _, s := range bundle {
+			if !slices.Contains(granted, s) {
+				covered = false
+				break
+			}
+		}
+		if covered {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// intersectScopes returns the scopes in a that b also holds, in
+// AllScopes order.
+func intersectScopes(a, b []Scope) []Scope {
+	out := []Scope{}
+	for _, s := range AllScopes {
+		if slices.Contains(a, s) && slices.Contains(b, s) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// RequireOwnerCredential is the startup check of a protected or public
+// instance (ADR-079 §4): without an active owner credential, an
+// unexpired and unrevoked API key bound to the owner in the registry or
+// a server.auth.keys entry for the owner, it returns an error naming
+// the command that creates one.
+func RequireOwnerCredential(ctx context.Context, keys *Keys, cfg []ConfigKey, now time.Time) error {
+	for _, k := range cfg {
+		if k.Principal == storage.OwnerPrincipal && (k.ExpiresAt.IsZero() || now.Before(k.ExpiresAt)) {
+			return nil
+		}
+	}
+	ok, err := keys.OwnerHasActiveKey(ctx, now)
+	if err != nil {
+		return fmt.Errorf("auth: owner credential check: %w", err)
+	}
+	if !ok {
+		return errors.New("auth: no active owner credential (an unexpired, unrevoked API key bound to owner, or a server.auth.keys entry for owner): " +
+			"run `dpkms auth key create --principal owner` on this host, then start again")
+	}
+	return nil
 }

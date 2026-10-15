@@ -15,12 +15,34 @@ import (
 // SQLite driver stores Unix milliseconds.
 var uiT0 = time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC)
 
-func uiSession(id, principal, tokenHash string, created time.Time, idle, maxAge time.Duration) *storage.UISession {
+// uiRegistry is the principal registry the session cases run against:
+// every session and login code references one of these identities,
+// since the store refuses an identity it does not know.
+type uiRegistry struct {
+	auth storage.AuthStore
+	// ops is a person with two API keys; other is another person with one.
+	ops, other         *storage.Principal
+	opsA, opsB, otherA *storage.Identity
+}
+
+func newUIRegistry(t *testing.T, drv storage.StorageDriver) *uiRegistry {
+	t.Helper()
+	r := &uiRegistry{auth: drv.Auth()}
+	r.ops = newPrincipal(t, r.auth, "prn_ui_ops", uiT0)
+	r.other = newPrincipal(t, r.auth, "prn_ui_other", uiT0)
+	r.opsA = newIdentity(t, r.auth, r.ops.ID, "ui-ops-a", uiT0)
+	r.opsB = newIdentity(t, r.auth, r.ops.ID, "ui-ops-b", uiT0)
+	r.otherA = newIdentity(t, r.auth, r.other.ID, "ui-other-a", uiT0)
+	return r
+}
+
+// session returns an unstored session of idn's principal, minted by idn.
+func (r *uiRegistry) session(id string, idn *storage.Identity, created time.Time, idle, maxAge time.Duration) *storage.UISession {
 	return &storage.UISession{
 		ID:            id,
 		SecretHash:    "secret-" + id,
-		PrincipalID:   principal,
-		TokenHash:     tokenHash,
+		PrincipalID:   idn.PrincipalID,
+		IdentityID:    idn.ID,
 		Scope:         "ui",
 		UserAgent:     "conformance/1.0",
 		RemoteAddr:    "192.0.2.1",
@@ -31,42 +53,52 @@ func uiSession(id, principal, tokenHash string, created time.Time, idle, maxAge 
 	}
 }
 
+// code returns an unstored login code minted by idn.
+func (r *uiRegistry) code(hash string, idn *storage.Identity, created time.Time, ttl time.Duration) *storage.UILoginCode {
+	return &storage.UILoginCode{CodeHash: hash, PrincipalID: idn.PrincipalID, IdentityID: idn.ID, Scope: "ui",
+		CreatedAt: created, ExpiresAt: created.Add(ttl)}
+}
+
 // UISessionConformance pins the UISessionStore contract every driver
 // implements: single-use login codes, active-session lookup under idle
-// and absolute expiry, touch, revocation (one session and every session
-// of a minting token), listing and pruning.
+// and absolute expiry, touch, revocation, listing and pruning, and the
+// binding to the principal registry: a session or code names the
+// identity that minted it, and revoking that identity, or its
+// principal, ends the sessions and codes it minted in the same step.
 func UISessionConformance(t *testing.T, drv storage.StorageDriver) {
 	t.Helper()
 	st := drv.UISessions()
 	if st == nil {
 		t.Fatal("UISessions() returned nil")
 	}
+	reg := newUIRegistry(t, drv)
 
 	for _, c := range []struct {
 		name string
-		fn   func(*testing.T, storage.UISessionStore)
+		fn   func(*testing.T, storage.UISessionStore, *uiRegistry)
 	}{
 		{"login code is single use", uiConfLoginCodeIsSingleUse},
 		{"expired login code is refused and gone", uiConfExpiredLoginCodeIsRefusedAndGone},
 		{"unknown login code", uiConfUnknownLoginCode},
 		{"concurrent consumes: exactly one wins", uiConfConcurrentConsumesExactlyOneWins},
 		{"create, lookup and get", uiConfCreateLookupAndGet},
+		{"unknown identity is refused", uiConfUnknownIdentityRefused},
 		{"idle expiry and touch", uiConfIdleExpiryAndTouch},
 		{"max expiry caps touch", uiConfMaxExpiryCapsTouch},
 		{"max expiry holds without idle", uiConfMaxExpiryIndependentOfIdle},
 		{"revoke", uiConfRevoke},
-		{"revoke by token hash", uiConfRevokeByTokenHash},
+		{"identity revoke ends its sessions and codes", uiConfIdentityRevokeCascades},
+		{"principal revoke ends every session and code", uiConfPrincipalRevokeCascades},
 		{"list", uiConfList},
 		{"prune", uiConfPrune},
 	} {
-		t.Run(c.name, func(t *testing.T) { c.fn(t, st) })
+		t.Run(c.name, func(t *testing.T) { c.fn(t, st, reg) })
 	}
 }
 
-func uiConfLoginCodeIsSingleUse(t *testing.T, st storage.UISessionStore) {
+func uiConfLoginCodeIsSingleUse(t *testing.T, st storage.UISessionStore, r *uiRegistry) {
 	ctx := context.Background()
-	c := &storage.UILoginCode{CodeHash: "code-once", PrincipalID: "ops", TokenHash: "tok-a", Scope: "ui",
-		CreatedAt: uiT0, ExpiresAt: uiT0.Add(time.Minute)}
+	c := r.code("code-once", r.opsA, uiT0, time.Minute)
 	if err := st.CreateLoginCode(ctx, c); err != nil {
 		t.Fatalf("CreateLoginCode: %v", err)
 	}
@@ -74,7 +106,7 @@ func uiConfLoginCodeIsSingleUse(t *testing.T, st storage.UISessionStore) {
 	if err != nil {
 		t.Fatalf("first consume: %v", err)
 	}
-	if got.PrincipalID != "ops" || got.TokenHash != "tok-a" || got.Scope != "ui" ||
+	if got.PrincipalID != r.ops.ID || got.IdentityID != r.opsA.ID || got.Scope != "ui" ||
 		!got.CreatedAt.Equal(c.CreatedAt) || !got.ExpiresAt.Equal(c.ExpiresAt) {
 		t.Errorf("consumed code = %+v, want the stored fields", got)
 	}
@@ -83,11 +115,9 @@ func uiConfLoginCodeIsSingleUse(t *testing.T, st storage.UISessionStore) {
 	}
 }
 
-func uiConfExpiredLoginCodeIsRefusedAndGone(t *testing.T, st storage.UISessionStore) {
+func uiConfExpiredLoginCodeIsRefusedAndGone(t *testing.T, st storage.UISessionStore, r *uiRegistry) {
 	ctx := context.Background()
-	c := &storage.UILoginCode{CodeHash: "code-late", PrincipalID: "ops", TokenHash: "tok-a", Scope: "ui",
-		CreatedAt: uiT0, ExpiresAt: uiT0.Add(time.Minute)}
-	if err := st.CreateLoginCode(ctx, c); err != nil {
+	if err := st.CreateLoginCode(ctx, r.code("code-late", r.opsA, uiT0, time.Minute)); err != nil {
 		t.Fatalf("CreateLoginCode: %v", err)
 	}
 	if _, err := st.ConsumeLoginCode(ctx, "code-late", uiT0.Add(time.Minute)); !errors.Is(err, storage.ErrNotFound) {
@@ -98,18 +128,16 @@ func uiConfExpiredLoginCodeIsRefusedAndGone(t *testing.T, st storage.UISessionSt
 	}
 }
 
-func uiConfUnknownLoginCode(t *testing.T, st storage.UISessionStore) {
+func uiConfUnknownLoginCode(t *testing.T, st storage.UISessionStore, _ *uiRegistry) {
 	ctx := context.Background()
 	if _, err := st.ConsumeLoginCode(ctx, "code-never", uiT0); !errors.Is(err, storage.ErrNotFound) {
 		t.Errorf("err = %v, want ErrNotFound", err)
 	}
 }
 
-func uiConfConcurrentConsumesExactlyOneWins(t *testing.T, st storage.UISessionStore) {
+func uiConfConcurrentConsumesExactlyOneWins(t *testing.T, st storage.UISessionStore, r *uiRegistry) {
 	ctx := context.Background()
-	c := &storage.UILoginCode{CodeHash: "code-race", PrincipalID: "ops", TokenHash: "tok-a", Scope: "ui",
-		CreatedAt: uiT0, ExpiresAt: uiT0.Add(time.Minute)}
-	if err := st.CreateLoginCode(ctx, c); err != nil {
+	if err := st.CreateLoginCode(ctx, r.code("code-race", r.opsA, uiT0, time.Minute)); err != nil {
 		t.Fatalf("CreateLoginCode: %v", err)
 	}
 	const n = 8
@@ -137,9 +165,9 @@ func uiConfConcurrentConsumesExactlyOneWins(t *testing.T, st storage.UISessionSt
 	}
 }
 
-func uiConfCreateLookupAndGet(t *testing.T, st storage.UISessionStore) {
+func uiConfCreateLookupAndGet(t *testing.T, st storage.UISessionStore, r *uiRegistry) {
 	ctx := context.Background()
-	s := uiSession("ses-create", "ops", "tok-a", uiT0, 12*time.Hour, 7*24*time.Hour)
+	s := r.session("ses-create", r.opsA, uiT0, 12*time.Hour, 7*24*time.Hour)
 	if err := st.Create(ctx, s); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -161,9 +189,22 @@ func uiConfCreateLookupAndGet(t *testing.T, st storage.UISessionStore) {
 	}
 }
 
-func uiConfIdleExpiryAndTouch(t *testing.T, st storage.UISessionStore) {
+// A session or code must name an identity the registry holds: the
+// binding is a foreign key, not a convention.
+func uiConfUnknownIdentityRefused(t *testing.T, st storage.UISessionStore, r *uiRegistry) {
 	ctx := context.Background()
-	s := uiSession("ses-idle", "ops", "tok-a", uiT0, time.Hour, 24*time.Hour)
+	ghost := &storage.Identity{ID: "idn_ui_ghost", PrincipalID: r.ops.ID}
+	if err := st.Create(ctx, r.session("ses-ghost", ghost, uiT0, time.Hour, 24*time.Hour)); err == nil {
+		t.Error("Create with an unknown identity succeeded")
+	}
+	if err := st.CreateLoginCode(ctx, r.code("code-ghost", ghost, uiT0, time.Minute)); err == nil {
+		t.Error("CreateLoginCode with an unknown identity succeeded")
+	}
+}
+
+func uiConfIdleExpiryAndTouch(t *testing.T, st storage.UISessionStore, r *uiRegistry) {
+	ctx := context.Background()
+	s := r.session("ses-idle", r.opsA, uiT0, time.Hour, 24*time.Hour)
 	if err := st.Create(ctx, s); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -190,9 +231,9 @@ func uiConfIdleExpiryAndTouch(t *testing.T, st storage.UISessionStore) {
 	}
 }
 
-func uiConfMaxExpiryCapsTouch(t *testing.T, st storage.UISessionStore) {
+func uiConfMaxExpiryCapsTouch(t *testing.T, st storage.UISessionStore, r *uiRegistry) {
 	ctx := context.Background()
-	s := uiSession("ses-max", "ops", "tok-a", uiT0, time.Hour, 2*time.Hour)
+	s := r.session("ses-max", r.opsA, uiT0, time.Hour, 2*time.Hour)
 	if err := st.Create(ctx, s); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -218,16 +259,16 @@ func uiConfMaxExpiryCapsTouch(t *testing.T, st storage.UISessionStore) {
 // uiConfMaxExpiryIndependentOfIdle pins the absolute expiry on its own:
 // a row whose idle expiry lies past it (Touch never writes one, a
 // buggy or older writer could) still ends at ExpiresAt.
-func uiConfMaxExpiryIndependentOfIdle(t *testing.T, st storage.UISessionStore) {
+func uiConfMaxExpiryIndependentOfIdle(t *testing.T, st storage.UISessionStore, r *uiRegistry) {
 	ctx := context.Background()
-	s := uiSession("ses-max-only", "ops", "tok-a", uiT0, 48*time.Hour, time.Hour)
+	s := r.session("ses-max-only", r.opsA, uiT0, 48*time.Hour, time.Hour)
 	if err := st.Create(ctx, s); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	if _, err := st.Lookup(ctx, s.SecretHash, uiT0.Add(time.Hour)); !errors.Is(err, storage.ErrNotFound) {
 		t.Errorf("Lookup at max expiry with a later idle expiry: err = %v, want ErrNotFound", err)
 	}
-	active, err := st.List(ctx, storage.UISessionFilter{ActiveOnly: true, Now: uiT0.Add(time.Hour), PrincipalID: "ops"})
+	active, err := st.List(ctx, storage.UISessionFilter{ActiveOnly: true, Now: uiT0.Add(time.Hour), PrincipalID: r.ops.ID})
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -238,9 +279,9 @@ func uiConfMaxExpiryIndependentOfIdle(t *testing.T, st storage.UISessionStore) {
 	}
 }
 
-func uiConfRevoke(t *testing.T, st storage.UISessionStore) {
+func uiConfRevoke(t *testing.T, st storage.UISessionStore, r *uiRegistry) {
 	ctx := context.Background()
-	s := uiSession("ses-revoke", "ops", "tok-a", uiT0, time.Hour, 24*time.Hour)
+	s := r.session("ses-revoke", r.opsA, uiT0, time.Hour, 24*time.Hour)
 	if err := st.Create(ctx, s); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -272,41 +313,120 @@ func uiConfRevoke(t *testing.T, st storage.UISessionStore) {
 	}
 }
 
-func uiConfRevokeByTokenHash(t *testing.T, st storage.UISessionStore) {
+// Revoking an identity ends the sessions and pending codes it minted,
+// in the identity's own revoke call, and nothing of its principal's
+// other identities.
+func uiConfIdentityRevokeCascades(t *testing.T, st storage.UISessionStore, r *uiRegistry) {
 	ctx := context.Background()
-	a1 := uiSession("ses-tok-a1", "alice", "tok-gone", uiT0, time.Hour, 24*time.Hour)
-	a2 := uiSession("ses-tok-a2", "alice", "tok-gone", uiT0, time.Hour, 24*time.Hour)
-	b := uiSession("ses-tok-b", "alice", "tok-kept", uiT0, time.Hour, 24*time.Hour)
-	for _, s := range []*storage.UISession{a1, a2, b} {
+	gone := newIdentity(t, r.auth, r.ops.ID, "ui-ops-gone", uiT0)
+	a1 := r.session("ses-idn-a1", gone, uiT0, time.Hour, 24*time.Hour)
+	a2 := r.session("ses-idn-a2", gone, uiT0, time.Hour, 24*time.Hour)
+	kept := r.session("ses-idn-kept", r.opsB, uiT0, time.Hour, 24*time.Hour)
+	ended := r.session("ses-idn-ended", gone, uiT0, time.Hour, 24*time.Hour)
+	for _, s := range []*storage.UISession{a1, a2, kept, ended} {
 		if err := st.Create(ctx, s); err != nil {
 			t.Fatalf("Create %s: %v", s.ID, err)
 		}
 	}
-	n, err := st.RevokeByTokenHash(ctx, "tok-gone", uiT0.Add(time.Minute), "token removed")
-	if err != nil {
-		t.Fatalf("RevokeByTokenHash: %v", err)
+	earlier := uiT0.Add(30 * time.Second)
+	if err := st.Revoke(ctx, ended.ID, earlier, "logout"); err != nil {
+		t.Fatalf("Revoke: %v", err)
 	}
-	if n != 2 {
-		t.Errorf("revoked %d sessions, want 2", n)
+	for _, c := range []*storage.UILoginCode{r.code("code-idn-gone", gone, uiT0, time.Hour), r.code("code-idn-kept", r.opsB, uiT0, time.Hour)} {
+		if err := st.CreateLoginCode(ctx, c); err != nil {
+			t.Fatalf("CreateLoginCode: %v", err)
+		}
+	}
+
+	at := uiT0.Add(time.Minute)
+	if err := r.auth.Identities().Revoke(ctx, gone.ID, at); err != nil {
+		t.Fatalf("revoke identity: %v", err)
 	}
 	for _, s := range []*storage.UISession{a1, a2} {
-		if _, err := st.Lookup(ctx, s.SecretHash, uiT0.Add(2*time.Minute)); !errors.Is(err, storage.ErrNotFound) {
+		got, err := st.Get(ctx, s.ID)
+		if err != nil {
+			t.Fatalf("Get %s: %v", s.ID, err)
+		}
+		if got.RevokedAt == nil || !got.RevokedAt.Equal(at) || got.RevokeReason != storage.RevokeReasonIdentityRevoked {
+			t.Errorf("%s after identity revoke = %v %q, want %s %q", s.ID, got.RevokedAt, got.RevokeReason, at, storage.RevokeReasonIdentityRevoked)
+		}
+		if _, err := st.Lookup(ctx, s.SecretHash, at.Add(time.Second)); !errors.Is(err, storage.ErrNotFound) {
 			t.Errorf("%s still active: err = %v", s.ID, err)
 		}
 	}
-	if _, err := st.Lookup(ctx, b.SecretHash, uiT0.Add(2*time.Minute)); err != nil {
-		t.Errorf("session of another token revoked: %v", err)
+	if got, _ := st.Get(ctx, ended.ID); got == nil || !got.RevokedAt.Equal(earlier) || got.RevokeReason != "logout" {
+		t.Errorf("an already ended session lost its first revocation: %+v", got)
 	}
-	if n, err := st.RevokeByTokenHash(ctx, "tok-gone", uiT0.Add(time.Hour), "again"); err != nil || n != 0 {
-		t.Errorf("second RevokeByTokenHash = %d, %v; want 0, nil", n, err)
+	if _, err := st.Lookup(ctx, kept.SecretHash, at.Add(time.Second)); err != nil {
+		t.Errorf("a session of the principal's other identity was ended: %v", err)
+	}
+	if _, err := st.ConsumeLoginCode(ctx, "code-idn-gone", at); !errors.Is(err, storage.ErrNotFound) {
+		t.Errorf("a code the revoked identity minted survived: err = %v", err)
+	}
+	if _, err := st.ConsumeLoginCode(ctx, "code-idn-kept", at); err != nil {
+		t.Errorf("a code of the other identity was dropped: %v", err)
 	}
 }
 
-func uiConfList(t *testing.T, st storage.UISessionStore) {
+// Revoking a principal ends every session and code of it, whichever
+// identity minted them, and none of another principal's.
+func uiConfPrincipalRevokeCascades(t *testing.T, st storage.UISessionStore, r *uiRegistry) {
 	ctx := context.Background()
+	doomed := newPrincipal(t, r.auth, "prn_ui_doomed", uiT0)
+	d1 := newIdentity(t, r.auth, doomed.ID, "ui-doomed-1", uiT0)
+	d2 := newIdentity(t, r.auth, doomed.ID, "ui-doomed-2", uiT0)
+	s1 := r.session("ses-prn-1", d1, uiT0, time.Hour, 24*time.Hour)
+	s2 := r.session("ses-prn-2", d2, uiT0, time.Hour, 24*time.Hour)
+	kept := r.session("ses-prn-kept", r.otherA, uiT0, time.Hour, 24*time.Hour)
+	for _, s := range []*storage.UISession{s1, s2, kept} {
+		if err := st.Create(ctx, s); err != nil {
+			t.Fatalf("Create %s: %v", s.ID, err)
+		}
+	}
+	for _, c := range []*storage.UILoginCode{r.code("code-prn-gone", d2, uiT0, time.Hour), r.code("code-prn-kept", r.otherA, uiT0, time.Hour)} {
+		if err := st.CreateLoginCode(ctx, c); err != nil {
+			t.Fatalf("CreateLoginCode: %v", err)
+		}
+	}
+
+	at := uiT0.Add(time.Minute)
+	if err := r.auth.Principals().Revoke(ctx, doomed.ID, at); err != nil {
+		t.Fatalf("revoke principal: %v", err)
+	}
+	for _, s := range []*storage.UISession{s1, s2} {
+		got, err := st.Get(ctx, s.ID)
+		if err != nil {
+			t.Fatalf("Get %s: %v", s.ID, err)
+		}
+		if got.RevokedAt == nil || !got.RevokedAt.Equal(at) || got.RevokeReason != storage.RevokeReasonPrincipalRevoked {
+			t.Errorf("%s after principal revoke = %v %q, want %s %q", s.ID, got.RevokedAt, got.RevokeReason, at, storage.RevokeReasonPrincipalRevoked)
+		}
+	}
+	active, err := st.List(ctx, storage.UISessionFilter{ActiveOnly: true, Now: at.Add(time.Second), PrincipalID: doomed.ID})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(active) != 0 {
+		t.Errorf("revoked principal still has active sessions: %v", ids(active))
+	}
+	if _, err := st.Lookup(ctx, kept.SecretHash, at.Add(time.Second)); err != nil {
+		t.Errorf("another principal's session was ended: %v", err)
+	}
+	if _, err := st.ConsumeLoginCode(ctx, "code-prn-gone", at); !errors.Is(err, storage.ErrNotFound) {
+		t.Errorf("a code of the revoked principal survived: err = %v", err)
+	}
+	if _, err := st.ConsumeLoginCode(ctx, "code-prn-kept", at); err != nil {
+		t.Errorf("another principal's code was dropped: %v", err)
+	}
+}
+
+func uiConfList(t *testing.T, st storage.UISessionStore, r *uiRegistry) {
+	ctx := context.Background()
+	lister := newPrincipal(t, r.auth, "prn_ui_lister", uiT0)
+	lk := newIdentity(t, r.auth, lister.ID, "ui-lister", uiT0)
 	base := uiT0.Add(48 * time.Hour)
-	for i, p := range []string{"lister", "lister", "lister", "other"} {
-		s := uiSession(fmt.Sprintf("ses-list-%d", i), p, "tok-list", base.Add(time.Duration(i)*time.Minute), time.Hour, 24*time.Hour)
+	for i, idn := range []*storage.Identity{lk, lk, lk, r.otherA} {
+		s := r.session(fmt.Sprintf("ses-list-%d", i), idn, base.Add(time.Duration(i)*time.Minute), time.Hour, 24*time.Hour)
 		if err := st.Create(ctx, s); err != nil {
 			t.Fatalf("Create: %v", err)
 		}
@@ -314,28 +434,28 @@ func uiConfList(t *testing.T, st storage.UISessionStore) {
 	if err := st.Revoke(ctx, "ses-list-1", base.Add(10*time.Minute), "revoked"); err != nil {
 		t.Fatalf("Revoke: %v", err)
 	}
-	all, err := st.List(ctx, storage.UISessionFilter{PrincipalID: "lister"})
+	all, err := st.List(ctx, storage.UISessionFilter{PrincipalID: lister.ID})
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
 	if got := ids(all); fmt.Sprint(got) != "[ses-list-2 ses-list-1 ses-list-0]" {
 		t.Errorf("List(principal) = %v, want newest first", got)
 	}
-	active, err := st.List(ctx, storage.UISessionFilter{PrincipalID: "lister", ActiveOnly: true, Now: base.Add(15 * time.Minute)})
+	active, err := st.List(ctx, storage.UISessionFilter{PrincipalID: lister.ID, ActiveOnly: true, Now: base.Add(15 * time.Minute)})
 	if err != nil {
 		t.Fatalf("List active: %v", err)
 	}
 	if got := ids(active); fmt.Sprint(got) != "[ses-list-2 ses-list-0]" {
 		t.Errorf("List(active) = %v", got)
 	}
-	expired, err := st.List(ctx, storage.UISessionFilter{PrincipalID: "lister", ActiveOnly: true, Now: base.Add(2 * time.Hour)})
+	expired, err := st.List(ctx, storage.UISessionFilter{PrincipalID: lister.ID, ActiveOnly: true, Now: base.Add(2 * time.Hour)})
 	if err != nil {
 		t.Fatalf("List active later: %v", err)
 	}
 	if len(expired) != 0 {
 		t.Errorf("idle-expired sessions listed as active: %v", ids(expired))
 	}
-	limited, err := st.List(ctx, storage.UISessionFilter{PrincipalID: "lister", Limit: 1})
+	limited, err := st.List(ctx, storage.UISessionFilter{PrincipalID: lister.ID, Limit: 1})
 	if err != nil {
 		t.Fatalf("List limit: %v", err)
 	}
@@ -344,12 +464,14 @@ func uiConfList(t *testing.T, st storage.UISessionStore) {
 	}
 }
 
-func uiConfPrune(t *testing.T, st storage.UISessionStore) {
+func uiConfPrune(t *testing.T, st storage.UISessionStore, r *uiRegistry) {
 	ctx := context.Background()
+	pruner := newPrincipal(t, r.auth, "prn_ui_pruner", uiT0)
+	pk := newIdentity(t, r.auth, pruner.ID, "ui-pruner", uiT0)
 	base := uiT0.Add(30 * 24 * time.Hour)
-	live := uiSession("ses-prune-live", "pruner", "tok-p", base, time.Hour, 24*time.Hour)
-	idle := uiSession("ses-prune-idle", "pruner", "tok-p", base.Add(-3*time.Hour), time.Hour, 24*time.Hour)
-	gone := uiSession("ses-prune-revoked", "pruner", "tok-p", base, time.Hour, 24*time.Hour)
+	live := r.session("ses-prune-live", pk, base, time.Hour, 24*time.Hour)
+	idle := r.session("ses-prune-idle", pk, base.Add(-3*time.Hour), time.Hour, 24*time.Hour)
+	gone := r.session("ses-prune-revoked", pk, base, time.Hour, 24*time.Hour)
 	for _, s := range []*storage.UISession{live, idle, gone} {
 		if err := st.Create(ctx, s); err != nil {
 			t.Fatalf("Create %s: %v", s.ID, err)
@@ -358,8 +480,7 @@ func uiConfPrune(t *testing.T, st storage.UISessionStore) {
 	if err := st.Revoke(ctx, gone.ID, base.Add(-time.Minute), "revoked"); err != nil {
 		t.Fatalf("Revoke: %v", err)
 	}
-	oldCode := &storage.UILoginCode{CodeHash: "code-prune", PrincipalID: "pruner", TokenHash: "tok-p", Scope: "ui",
-		CreatedAt: base.Add(-time.Hour), ExpiresAt: base.Add(-time.Hour + time.Minute)}
+	oldCode := r.code("code-prune", pk, base.Add(-time.Hour), time.Minute)
 	if err := st.CreateLoginCode(ctx, oldCode); err != nil {
 		t.Fatalf("CreateLoginCode: %v", err)
 	}
@@ -396,24 +517,19 @@ func ids(ss []*storage.UISession) []string {
 func assertUISession(t *testing.T, got, want *storage.UISession) {
 	t.Helper()
 	if got.ID != want.ID || got.SecretHash != want.SecretHash || got.PrincipalID != want.PrincipalID ||
-		got.TokenHash != want.TokenHash || got.Scope != want.Scope || got.UserAgent != want.UserAgent ||
+		got.IdentityID != want.IdentityID || got.Scope != want.Scope || got.UserAgent != want.UserAgent ||
 		got.RemoteAddr != want.RemoteAddr || got.RevokeReason != want.RevokeReason {
-		t.Errorf("session fields = %+v, want %+v", got, want)
+		t.Errorf("session = %+v, want %+v", got, want)
 	}
-	for _, p := range []struct {
-		name      string
-		got, want time.Time
-	}{
-		{"created_at", got.CreatedAt, want.CreatedAt},
-		{"last_seen_at", got.LastSeenAt, want.LastSeenAt},
-		{"idle_expires_at", got.IdleExpiresAt, want.IdleExpiresAt},
-		{"expires_at", got.ExpiresAt, want.ExpiresAt},
+	for name, pair := range map[string][2]time.Time{
+		"created_at": {got.CreatedAt, want.CreatedAt}, "last_seen_at": {got.LastSeenAt, want.LastSeenAt},
+		"idle_expires_at": {got.IdleExpiresAt, want.IdleExpiresAt}, "expires_at": {got.ExpiresAt, want.ExpiresAt},
 	} {
-		if !p.got.Equal(p.want) {
-			t.Errorf("%s = %s, want %s", p.name, p.got, p.want)
+		if !pair[0].Equal(pair[1]) {
+			t.Errorf("%s = %s, want %s", name, pair[0], pair[1])
 		}
 	}
-	if (got.RevokedAt == nil) != (want.RevokedAt == nil) {
+	if (got.RevokedAt == nil) != (want.RevokedAt == nil) || (got.RevokedAt != nil && !got.RevokedAt.Equal(*want.RevokedAt)) {
 		t.Errorf("revoked_at = %v, want %v", got.RevokedAt, want.RevokedAt)
 	}
 }

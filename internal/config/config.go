@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -278,10 +279,10 @@ type BrowserConfig struct {
 }
 
 // FederationConfig holds server-side (receive-side) federation settings.
+// Inbound pushes authenticate like every other request: on a protected
+// or public instance with an API key bound to a peer principal
+// (ADR-079 §1); there is no separate push token.
 type FederationConfig struct {
-	// Token is the expected Bearer token for incoming push requests.
-	// Empty = no auth check; any token accepted.
-	Token string `mapstructure:"token" yaml:"token" secret:"true"`
 	// MaxRequestBytes caps the body of one incoming push request; a
 	// larger one is refused with 413. 0 = DefaultFederationMaxRequestBytes.
 	MaxRequestBytes int64 `mapstructure:"max_request_bytes" yaml:"max_request_bytes"`
@@ -699,10 +700,16 @@ type ServerConfig struct {
 	// or "public". Empty means unset; EffectiveAccess resolves the
 	// default and the legacy server.public shorthand.
 	Access string `mapstructure:"access" yaml:"access"`
-	// Auth selects and configures the inbound authentication provider.
-	// Consumed through the internal/auth Provider interface so the
-	// identity backend is an ops decision, never a rebuild.
-	Auth AuthConfig `mapstructure:"auth" yaml:"auth"`
+	// PublicURL is the URL people open the instance at: the base of
+	// every invite and sign-in link (ADR-079 §4). Required on a
+	// protected or public instance whose server.auth.sign_in lists a
+	// link method, which the default does.
+	PublicURL string `mapstructure:"public_url" yaml:"public_url,omitempty" secret:"false"`
+	// Auth configures inbound authentication on protected and public
+	// instances: the authenticator chain, the sign-in ceremonies and
+	// keys declared by hash. Credentials themselves live in the
+	// instance database (dpkms auth key create).
+	Auth AuthConfig `mapstructure:"auth" yaml:"auth,omitempty"`
 	// Quotas declares per-principal metering quotas enforced on the
 	// entity-serving surface of non-private instances. Namespace
 	// entitlement grants are data (entitlement rows keyed by principal
@@ -832,52 +839,130 @@ func (s ServerConfig) EffectiveAccess() string {
 	return AccessPrivate
 }
 
-// AuthConfig selects the inbound authentication provider and its settings.
+// Authenticators server.auth.methods may list (ADR-079 §2). Carried
+// methods present a credential the client chose for the request;
+// ambient ones ride along with every request a browser or proxy sends.
+const (
+	// AuthMethodAPIKey authenticates an API key in Authorization: Bearer
+	// or X-API-Key. Mandatory: every instance keeps a way in for the
+	// CLI and for bootstrap.
+	AuthMethodAPIKey = "api_key"
+	// AuthMethodSession authenticates the web UI session cookie.
+	AuthMethodSession = "session"
+)
+
+// AuthMethods lists the authenticators this build implements.
+var AuthMethods = []string{AuthMethodAPIKey, AuthMethodSession}
+
+// ReservedAuthMethods are named by ADR-079 but not yet implemented;
+// listing one fails validation naming it.
+var ReservedAuthMethods = []string{"proxy", "mtls", "jwt"}
+
+// Sign-in ceremonies server.auth.sign_in may list: the ways a browser
+// session gets minted (ADR-079 §2).
+const (
+	// AuthSignInInvite redeems a single-use invite link.
+	AuthSignInInvite = "invite"
+	// AuthSignInLink redeems a single-use sign-in link for an existing
+	// principal.
+	AuthSignInLink = "link"
+)
+
+// AuthSignIns lists the ceremonies this build implements.
+var AuthSignIns = []string{AuthSignInInvite, AuthSignInLink}
+
+// ReservedAuthSignIns are named by ADR-079 but not yet implemented.
+var ReservedAuthSignIns = []string{"passkey", "oidc"}
+
+// DefaultAuthMethods and DefaultAuthSignIn are what a protected or
+// public instance gets when the lists are unset.
+var (
+	DefaultAuthMethods = []string{AuthMethodAPIKey, AuthMethodSession}
+	DefaultAuthSignIn  = []string{AuthSignInInvite, AuthSignInLink}
+)
+
+// AuthConfig configures inbound authentication on protected and public
+// instances (ADR-079). A private instance ignores it.
 type AuthConfig struct {
-	// Provider names the authentication backend. "static" is implemented;
-	// "oidc" and "mtls" are reserved for future backends behind the same
-	// interface. Empty = no inbound auth configured.
-	Provider string `mapstructure:"provider" yaml:"provider"`
-	// Static configures the static token/API-key provider.
-	Static StaticAuthConfig `mapstructure:"static" yaml:"static"`
+	// Methods are the authenticators tried on every request. Carried
+	// methods run before ambient ones whatever the order here; within
+	// each group this order applies. Unset means DefaultAuthMethods;
+	// api_key is always required.
+	Methods []string `mapstructure:"methods" yaml:"methods,omitempty"`
+	// SignIn are the ceremonies allowed to mint a browser session. Unset
+	// means DefaultAuthSignIn; an empty list disables every ceremony.
+	SignIn []string `mapstructure:"sign_in" yaml:"sign_in,omitempty"`
+	// Keys declares API keys by hash, for infrastructure as code. A key
+	// written here in the clear is refused by validation.
+	Keys []AuthKeyConfig `mapstructure:"keys" yaml:"keys,omitempty"`
 }
 
-// StaticAuthConfig holds credentials for the static token provider.
-type StaticAuthConfig struct {
-	// Tokens maps bearer tokens / API keys to principals.
-	Tokens []StaticTokenConfig `mapstructure:"tokens" yaml:"tokens"`
-}
-
-// StaticTokenConfig is one accepted credential and the principal it
-// authenticates as.
-type StaticTokenConfig struct {
-	// Token is the shared secret presented by the caller.
-	Token string `mapstructure:"token" yaml:"token" secret:"true"`
-	// Principal is the stable identity assigned to callers of this token.
+// AuthKeyConfig is one API key declared by hash (ADR-079 §4): the
+// api_key method accepts a presented key whose SHA-256 matches Hash and
+// resolves it to Principal.
+type AuthKeyConfig struct {
+	// Hash is "sha256:" followed by the hex SHA-256 of the key itself:
+	// printf %s "$KEY" | sha256sum. Never the key.
+	Hash string `mapstructure:"hash" yaml:"hash"`
+	// Principal is the id of the principal the key acts for: owner, or a
+	// prn_ id the registry holds.
 	Principal string `mapstructure:"principal" yaml:"principal"`
-	// Roles grants fixed scope bundles to the principal: one or more of
-	// AuthRoles. admin holds every scope; writer every read and write
-	// scope; reader every read scope.
-	Roles []string `mapstructure:"roles" yaml:"roles"`
+	// Roles narrows the key to these role bundles; empty means the
+	// principal's own roles. A key never reaches past its principal.
+	Roles []string `mapstructure:"roles" yaml:"roles,omitempty"`
+	// Expires, when set, is when the key stops working: an RFC 3339
+	// time, or a date (2026-12-31), which expires at the end of that
+	// day, UTC.
+	Expires string `mapstructure:"expires" yaml:"expires,omitempty"`
 }
 
-// AuthRoles are the roles a static token may carry, most to least
-// privileged. The scope each one grants lives in internal/auth.
+// ExpiresAt parses Expires; zero when unset.
+func (k AuthKeyConfig) ExpiresAt() (time.Time, error) {
+	s := strings.TrimSpace(k.Expires)
+	if s == "" {
+		return time.Time{}, nil
+	}
+	if day, err := time.Parse(time.DateOnly, s); err == nil {
+		return day.AddDate(0, 0, 1), nil
+	}
+	at, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("expires %q: give an RFC 3339 time or a date (2026-12-31)", k.Expires)
+	}
+	return at.UTC(), nil
+}
+
+// AuthRoles are the roles a principal or a declared key may carry,
+// most to least privileged. The scope each one grants lives in
+// internal/auth.
 var AuthRoles = []string{"admin", "writer", "reader"}
 
-// HasInboundAuth reports whether the auth config carries a usable
-// credential set: a provider is selected and (for the static provider)
-// at least one token is configured. Reserved providers count as
-// configured here; their sub-config is validated at construction time.
-func (a AuthConfig) HasInboundAuth() bool {
-	switch a.Provider {
-	case "":
-		return false
-	case "static":
-		return len(a.Static.Tokens) > 0
-	default:
-		return true
+// EffectiveMethods returns Methods, or DefaultAuthMethods when unset.
+func (a AuthConfig) EffectiveMethods() []string {
+	if a.Methods == nil {
+		return slices.Clone(DefaultAuthMethods)
 	}
+	return slices.Clone(a.Methods)
+}
+
+// EffectiveSignIn returns SignIn, or DefaultAuthSignIn when unset. An
+// explicit empty list stays empty: no ceremony may mint a session.
+func (a AuthConfig) EffectiveSignIn() []string {
+	if a.SignIn == nil {
+		return slices.Clone(DefaultAuthSignIn)
+	}
+	return slices.Clone(a.SignIn)
+}
+
+// NeedsPublicURL reports whether the effective sign-in list holds a
+// method that builds links, which server.public_url is the base of.
+func (a AuthConfig) NeedsPublicURL() bool {
+	for _, m := range a.EffectiveSignIn() {
+		if m == AuthSignInInvite || m == AuthSignInLink {
+			return true
+		}
+	}
+	return false
 }
 
 // ServerEndpoint is one client-routing target: a dpkms base URL plus an

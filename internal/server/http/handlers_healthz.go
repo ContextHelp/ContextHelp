@@ -212,13 +212,13 @@ func Healthz(svc *service.Service, probes HealthzProbes) http.HandlerFunc {
 // verdict with the same status code — enough for an LB, nothing about
 // version, queue depths, or upgrade progress. Public instances mount
 // this instead of Healthz.
-func RedactedHealthz(svc *service.Service, probes HealthzProbes, provider authn.Provider) http.HandlerFunc {
+func RedactedHealthz(svc *service.Service, probes HealthzProbes, chain *authn.Chain) http.HandlerFunc {
 	build := healthzBuilder(svc, probes)
 	return func(w http.ResponseWriter, r *http.Request) {
 		env := build(r.Context())
 		code := healthzStatusCode(env)
-		if provider != nil {
-			if _, err := provider.Authenticate(r.Context(), credentialFromRequest(r)); err == nil {
+		if chain != nil {
+			if _, err := chain.Authenticate(r.Context(), credentialFromRequest(r)); err == nil {
 				WriteJSON(w, code, env)
 				return
 			}

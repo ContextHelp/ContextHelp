@@ -30,9 +30,10 @@ type RouterConfig struct {
 	// Probes injects runtime healthcheck signals into /healthz.
 	Probes HealthzProbes
 	// Auth guards the /api/v1 route table (MCP mount included) behind
-	// the configured provider. nil = no inbound auth (private instance).
-	// Health endpoints and static UI assets stay open for probes.
-	Auth authn.Provider
+	// the configured method chain. nil = no inbound auth (private
+	// instance). Health endpoints and static UI assets stay open for
+	// probes.
+	Auth *authn.Chain
 	// Security receives auth-failure and ACL-denial events. nil = no
 	// security event recording.
 	Security *security.Emitter
@@ -40,11 +41,10 @@ type RouterConfig struct {
 	// namespace grants and metering quotas. nil = no inbound
 	// entitlement enforcement (private instance).
 	Entitlements *registry.InboundGate
-	// RequireFederationCredential makes the federation.token credential
-	// mandatory on the push route (non-private instances): without a
-	// configured token the route refuses requests instead of accepting
-	// any authenticated principal.
-	RequireFederationCredential bool
+	// RequirePeerPrincipal makes the push route accept only a principal
+	// of kind peer (non-private instances): a federation push carries a
+	// peer's API key, never any authenticated principal's.
+	RequirePeerPrincipal bool
 	// RedactHealthz hides the verbose /healthz envelope (version, queue
 	// depths, upgrade progress) from unauthenticated callers — public
 	// instances set it. Bare /health stays open for LB probes either way.
@@ -59,8 +59,8 @@ type RouterConfig struct {
 	// later included). nil = no Host check.
 	Hosts *HostAllowlist
 	// Sessions enables web UI sign-in (login codes, session cookies)
-	// on an authenticated instance; Auth must then be
-	// Sessions.Provider(base). nil = no browser sessions.
+	// on an authenticated instance; Auth must then run the session
+	// method (Sessions.Method). nil = no browser sessions.
 	Sessions *authn.Sessions
 	// SessionRecheck is how often an open event stream re-checks its
 	// session; zero means DefaultSessionRecheck.
@@ -148,11 +148,11 @@ func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
 	r.Route("/api/v1", func(r chi.Router) {
 		// Inbound authentication ahead of the whole route table
 		// (REST, SSE, federation push, and the MCP mount all inherit
-		// it). Provider-agnostic by construction: the middleware
-		// consumes authn.Provider, never a scheme.
+		// it). Method-agnostic by construction: the middleware
+		// consumes the authn.Chain, never a scheme.
 		if rc.Auth != nil {
-			r.Use(RequireAuth(rc.Auth, rc.Security))
-			r.Use(SessionGuard(rc.Sessions, rc.DevCORS, rc.SessionRecheck))
+			r.Use(RequireAuth(rc.Auth, rc.Security, rc.DevCORS))
+			r.Use(SessionGuard(rc.Sessions, rc.SessionRecheck))
 		} else {
 			// Private instance: no principal, but every caller is the
 			// owner and reads unscoped. The viewer is attached here,

@@ -6,7 +6,7 @@
 // HTTP against the same API an operator's daemon serves:
 //
 //	driver := storageutil.NewTestDriver(t)
-//	srv := dpkmstest.Start(t, driver, dpkmstest.WithStaticTokens())
+//	srv := dpkmstest.Start(t, driver, dpkmstest.WithKeys())
 //	// srv.URL, srv.Token(dpkmstest.RoleReader)
 //
 // The package that calls Start must run its tests through
@@ -23,8 +23,6 @@ package dpkmstest
 
 import (
 	"context"
-	"crypto/rand"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -47,16 +45,25 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/upgrade"
 )
 
-// Roles the static test tokens grant. They are plain role strings on the
-// principal; what each may do is the server's authorization decision.
+// Roles the test keys grant, one principal each: the seeded owner
+// (admin), a device (writer) and a person (reader). They are plain role
+// strings on the principal; what each may do is the server's
+// authorization decision.
 const (
 	RoleAdmin  = "admin"
 	RoleWriter = "writer"
 	RoleReader = "reader"
 )
 
-// Roles lists every role WithStaticTokens issues a token for.
+// Roles lists every role WithKeys issues a key for.
 var Roles = []string{RoleAdmin, RoleWriter, RoleReader}
+
+// Principal IDs behind the WithKeys roles: the admin key is the owner's.
+const (
+	PrincipalAdmin  = storage.OwnerPrincipal
+	PrincipalWriter = "test-writer"
+	PrincipalReader = "test-reader"
+)
 
 // Server is a running in-process dpkms instance.
 type Server struct {
@@ -73,12 +80,24 @@ type Server struct {
 	tokens map[string]string
 }
 
-// Token returns the bearer token for role, or "" when the instance
-// issues none for it (private or Unreachable instances, custom
-// providers).
+// Token returns the API key for role, or "" when the instance issues
+// none for it (private or Unreachable instances, custom methods).
 func (s *Server) Token(role string) string { return s.tokens[role] }
 
-// Request sends method path (relative to URL) with role's bearer token,
+// Principal returns the registry id behind role's key.
+func (s *Server) Principal(role string) string {
+	switch role {
+	case RoleAdmin:
+		return PrincipalAdmin
+	case RoleWriter:
+		return PrincipalWriter
+	case RoleReader:
+		return PrincipalReader
+	}
+	return ""
+}
+
+// Request sends method path (relative to URL) with role's API key,
 // when it has one, and returns the response. The caller closes the body.
 func (s *Server) Request(t testing.TB, method, path, role string, body io.Reader) *http.Response {
 	t.Helper()
@@ -100,8 +119,8 @@ func (s *Server) Request(t testing.TB, method, path, role string, body io.Reader
 }
 
 type options struct {
-	tokens      bool
-	provider    authn.Provider
+	keys        bool
+	methods     []authn.Method
 	unreachable bool
 	embedClient *http.Client
 	upgrade     *upgrade.Manager
@@ -110,19 +129,23 @@ type options struct {
 // Option configures Start.
 type Option func(*options)
 
-// WithStaticTokens makes the instance protected (server.access:
-// protected) behind the static token provider, with one principal per
-// role in Roles ("test-admin", "test-writer", "test-reader"). Server.Token
-// returns each token.
-func WithStaticTokens() Option {
-	return func(o *options) { o.tokens = true }
+// WithKeys makes the instance protected (server.access: protected)
+// behind key-backed principals: the seeded owner (admin) and two
+// principals created in the driver's registry, PrincipalWriter (a
+// device, writer) and PrincipalReader (a person, reader), each with one
+// API key. Server.Token returns each key.
+func WithKeys() Option {
+	return func(o *options) { o.keys = true }
 }
 
-// WithAuthProvider makes the instance protected behind p. It is the
-// seam for tests that need a provider other than the static table.
-// Server.Token returns "" for every role; the test owns the credentials.
-func WithAuthProvider(p authn.Provider) Option {
-	return func(o *options) { o.provider = p }
+// WithAuthMethods makes the instance protected behind a chain of
+// methods, in place of the configured one. It is the seam for tests
+// that need another authenticator. Server.Token returns "" for every
+// role; the test owns the credentials. The owner still gets a key in
+// the registry, since a protected instance refuses to start without
+// one.
+func WithAuthMethods(methods ...authn.Method) Option {
+	return func(o *options) { o.methods = methods }
 }
 
 // WithEmbeddingHTTPClient carries the instance's embedding requests over c,
@@ -160,8 +183,8 @@ func Start(t testing.TB, driver storage.StorageDriver, opts ...Option) *Server {
 	for _, opt := range opts {
 		opt(&o)
 	}
-	if o.tokens && o.provider != nil {
-		t.Fatal("dpkmstest: WithStaticTokens and WithAuthProvider are exclusive")
+	if o.keys && o.methods != nil {
+		t.Fatal("dpkmstest: WithKeys and WithAuthMethods are exclusive")
 	}
 	if o.unreachable {
 		return &Server{URL: testguard.ClosedServerURL, Driver: driver}
@@ -169,24 +192,34 @@ func Start(t testing.TB, driver storage.StorageDriver, opts ...Option) *Server {
 
 	dir := t.TempDir()
 	srv := &Server{Driver: driver, tokens: map[string]string{}}
-	if o.tokens {
-		for _, role := range Roles {
-			srv.tokens[role] = "dpkmstest-" + role + "-" + randomHex(t)
+	protected := o.keys || o.methods != nil
+
+	// The listener comes first so the config can name the instance's
+	// own URL as server.public_url, the base of its sign-in links.
+	hs := httptest.NewUnstartedServer(nil)
+	t.Cleanup(hs.Close)
+	srv.URL = "http://" + hs.Listener.Addr().String()
+
+	if protected {
+		tokens := mintKeys(t, driver)
+		if o.keys {
+			srv.tokens = tokens
 		}
 	}
-	cfgPath := writeConfig(t, dir, o.provider != nil, srv.tokens)
+	cfgPath := writeConfig(t, dir, protected, srv.URL)
 	cfg, err := config.Load("dpkms", cfgPath)
 	if err != nil {
 		t.Fatalf("dpkmstest: load config: %v", err)
 	}
 	srv.Config = cfg
 
-	access, provider, err := stack.ResolveInboundAuth(cfg, false)
+	access, err := stack.ResolveInboundAuth(cfg, false)
 	if err != nil {
 		t.Fatalf("dpkmstest: %v", err)
 	}
-	if o.provider != nil {
-		provider = o.provider
+	var chain *authn.Chain
+	if o.methods != nil {
+		chain = authn.NewChain(o.methods...)
 	}
 
 	probes := httpserver.HealthzProbes{Version: "dpkmstest", Started: time.Now()}
@@ -202,7 +235,7 @@ func Start(t testing.TB, driver storage.StorageDriver, opts ...Option) *Server {
 		Config:     cfg,
 		Driver:     driver,
 		Access:     access,
-		Auth:       provider,
+		Auth:       chain,
 		PolicyBus:  bus,
 		Embeddings: hermeticEmbeddings(cfg, o.embedClient),
 		StepsPath:  filepath.Join(dir, "steps"),
@@ -216,10 +249,34 @@ func Start(t testing.TB, driver storage.StorageDriver, opts ...Option) *Server {
 	t.Cleanup(st.Close)
 	srv.Stack = st
 
-	hs := httptest.NewServer(st.Router)
-	t.Cleanup(hs.Close)
-	srv.URL = hs.URL
+	hs.Config.Handler = st.Router
+	hs.Start()
 	return srv
+}
+
+// mintKeys creates the writer and reader principals in driver's
+// registry (the owner is seeded) and mints one key per role.
+func mintKeys(t testing.TB, driver storage.StorageDriver) map[string]string {
+	t.Helper()
+	ctx := context.Background()
+	for _, p := range []*storage.Principal{
+		{ID: PrincipalWriter, Kind: storage.PrincipalKindDevice, DisplayName: "Test writer", Roles: []string{RoleWriter}},
+		{ID: PrincipalReader, Kind: storage.PrincipalKindPerson, DisplayName: "Test reader", Roles: []string{RoleReader}},
+	} {
+		if err := driver.Auth().Principals().Create(ctx, p); err != nil {
+			t.Fatalf("dpkmstest: create principal %s: %v", p.ID, err)
+		}
+	}
+	keys := authn.NewKeysOver(driver.Auth(), nil)
+	tokens := map[string]string{}
+	for role, principal := range map[string]string{RoleAdmin: PrincipalAdmin, RoleWriter: PrincipalWriter, RoleReader: PrincipalReader} {
+		secret, _, err := keys.Mint(ctx, authn.MintKey{PrincipalID: principal, Name: "dpkmstest " + role})
+		if err != nil {
+			t.Fatalf("dpkmstest: mint %s key: %v", role, err)
+		}
+		tokens[role] = secret
+	}
+	return tokens
 }
 
 // providerKeys are the providers.* sections pinned to their stub
@@ -228,34 +285,16 @@ func Start(t testing.TB, driver storage.StorageDriver, opts ...Option) *Server {
 var providerKeys = []string{"video", "document", "ocr", "transcription", "vision", "diarization", "llm"}
 
 // writeConfig writes the instance's dpkms config and returns its path.
-// With tokens (or an injected provider) the instance is protected.
-func writeConfig(t testing.TB, dir string, customAuth bool, tokens map[string]string) string {
+// A protected instance names publicURL as its server.public_url.
+func writeConfig(t testing.TB, dir string, protected bool, publicURL string) string {
 	t.Helper()
 	providers := map[string]any{}
 	for _, k := range providerKeys {
 		providers[k] = map[string]any{"backend": "stub"}
 	}
 	server := map[string]any{"access": config.AccessPrivate}
-	if len(tokens) > 0 {
-		entries := make([]map[string]any, 0, len(tokens))
-		for _, role := range Roles {
-			entries = append(entries, map[string]any{
-				"token": tokens[role], "principal": "test-" + role, "roles": []string{role},
-			})
-		}
-		server = map[string]any{
-			"access": config.AccessProtected,
-			"auth":   map[string]any{"provider": authn.ProviderStatic, "static": map[string]any{"tokens": entries}},
-		}
-	} else if customAuth {
-		// ResolveInboundAuth needs credentials to accept a protected
-		// class; the injected provider replaces this placeholder.
-		server = map[string]any{
-			"access": config.AccessProtected,
-			"auth": map[string]any{"provider": authn.ProviderStatic, "static": map[string]any{"tokens": []map[string]any{
-				{"token": "dpkmstest-unused-" + randomHex(t), "principal": "dpkmstest-unused", "roles": []string{RoleReader}},
-			}}},
-		}
+	if protected {
+		server = map[string]any{"access": config.AccessProtected, "public_url": publicURL}
 	}
 	body, err := yaml.Marshal(map[string]any{
 		"server":    server,
@@ -287,13 +326,4 @@ func hermeticEmbeddings(cfg *config.Config, client *http.Client) *embeddings.Res
 		LookupEnv:  func(k string) (string, bool) { v, ok := env[k]; return v, ok },
 		HTTPClient: client,
 	}
-}
-
-func randomHex(t testing.TB) string {
-	t.Helper()
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		t.Fatalf("dpkmstest: random token: %v", err)
-	}
-	return fmt.Sprintf("%x", b)
 }

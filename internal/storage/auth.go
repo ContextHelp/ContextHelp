@@ -142,8 +142,10 @@ type PrincipalStore interface {
 	// the owner is ErrOwnerProtected; an unknown id is ErrNotFound.
 	Suspend(ctx context.Context, id string) error
 	// Revoke moves the principal to PrincipalRevoked at at and revokes
-	// every identity of it that is still active, in one transaction. A
-	// revoked principal keeps its first revocation; the owner is
+	// every identity of it that is still active and every active web
+	// UI session of it (reason RevokeReasonPrincipalRevoked), and
+	// deletes its pending login codes, in one transaction. A revoked
+	// principal keeps its first revocation; the owner is
 	// ErrOwnerProtected; an unknown id is ErrNotFound.
 	Revoke(ctx context.Context, id string, at time.Time) error
 }
@@ -188,8 +190,11 @@ type IdentityStore interface {
 	// ListByPrincipal returns every identity of a principal, oldest
 	// first; an unknown principal lists nothing.
 	ListByPrincipal(ctx context.Context, principalID string) ([]*Identity, error)
-	// Revoke ends the identity at at. A revoked identity keeps its
-	// first revocation; an unknown id is ErrNotFound.
+	// Revoke ends the identity at at, revokes every active web UI
+	// session it minted (reason RevokeReasonIdentityRevoked) and
+	// deletes the login codes it minted, in one transaction. A
+	// revoked identity keeps its first revocation; an unknown id is
+	// ErrNotFound.
 	Revoke(ctx context.Context, id string, at time.Time) error
 	// Touch records a use at at, but only when the last recorded use is
 	// IdentityTouchEvery or more in the past (or unset), so a busy

@@ -204,11 +204,11 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		// Audit log
 		{Method: get, Pattern: "/audit-log", Scope: authn.ScopeAdminAudit, Handler: ListAuditLog(svc)},
 
-		// Federation push needs write:objects AND the federation
-		// credential: on non-private instances federation.token is
-		// mandatory and the handler checks it itself.
+		// Federation push needs write:objects AND, on non-private
+		// instances, a peer principal: an inbound push authenticates
+		// with a peer's API key (ADR-079 §1), never with any principal.
 		{Method: post, Pattern: "/federation/push", Scope: authn.ScopeWriteObjects,
-			Handler: FederationPush(svc, rc.RequireFederationCredential)},
+			Handler: FederationPush(svc, rc.RequirePeerPrincipal)},
 
 		// MCP read surface (ADR-068): JSON-RPC 2.0 over POST, mounted
 		// as a sibling of the REST routes. Tool dispatch happens inside

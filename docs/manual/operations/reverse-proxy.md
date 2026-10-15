@@ -2,12 +2,12 @@
 
 Use this page to open the web UI and the API of a remote dpkms in a
 browser. A reverse proxy in front of dpkms signs you in, terminates TLS,
-and adds the instance's token to every request it forwards. dpkms itself
-needs no new feature: it runs as a protected instance with one static
-token.
+and adds the instance's API key to every request it forwards. dpkms
+itself needs no new feature: it runs as a protected instance with one
+API key created for the proxy.
 
 ```text
-browser ──HTTPS + sign-in──▶ proxy ──HTTP + Authorization: Bearer <token>──▶ dpkms (protected)
+browser ──HTTPS + sign-in──▶ proxy ──HTTP + Authorization: Bearer <key>──▶ dpkms (protected)
 ```
 
 ## Is this the right setup?
@@ -20,20 +20,20 @@ Tailscale Serve).
 Know what it means before you set it up:
 
 - **Everyone the proxy lets through is the same principal.** dpkms sees
-  one token, so every user gets the same data, roles and quotas, and
-  dpkms logs and security events cannot tell them apart.
-- **The proxy is the authentication.** It adds the token to anything it
+  one key, so every user gets the same data, roles and quotas, and dpkms
+  logs and security events cannot tell them apart.
+- **The proxy is the authentication.** It adds the key to anything it
   forwards, so whoever gets past the proxy's sign-in is signed in to
   dpkms. Never run it without a sign-in step or a network limit such as a
   tailnet.
 - **Non-browser clients stay outside it.** The ctxt CLI and agents keep
-  their own token and talk to dpkms directly (see
+  their own API key and talk to dpkms directly (see
   [Clients other than the browser](#clients-other-than-the-browser)).
 
-dpkms does not have its own browser sign-in yet. One is planned; until
-it ships, a proxy is the way to use the web UI on a protected or public
-instance. If people need separate identities, give each one their own
-CLI token instead.
+dpkms does not have its own browser sign-in for people without a CLI
+yet. One is coming with invite links; until it ships, a proxy is the way
+to use the web UI on a protected or public instance. If people need
+separate identities, create each one their own API key instead.
 
 Never put a **private** instance behind a proxy: it has no
 authentication at all. See
@@ -41,29 +41,32 @@ authentication at all. See
 
 ## 1. Make dpkms a protected instance
 
-Generate a long random token:
-
-```bash
-openssl rand -hex 32
-```
-
-Add it to the dpkms config file (`dpkms config paths` lists where dpkms
-looks, for example `~/.config/contexthelp/dpkms.yaml`), together with the
-proxy's public host name:
+Set the access class and the proxy's public host name in the dpkms
+config file (`dpkms config paths` lists where dpkms looks, for example
+`~/.config/contexthelp/dpkms.yaml`). `public_url` is the address people
+open in a browser: dpkms uses it as the base of the sign-in links it
+mints.
 
 ```yaml
 server:
   access: protected
+  public_url: https://dpkms.example.com
   allowed_hosts:
     - dpkms.example.com
-  auth:
-    provider: static
-    static:
-      tokens:
-        - token: <token>
-          principal: me
-          roles: [admin]
 ```
+
+Credentials no longer live in the config file. Create the owner's API
+key on the dpkms host, against its database, before you start the new
+instance:
+
+```bash
+dpkms auth key create --principal owner --name proxy
+```
+
+It prints the key once and stores only a hash. Keep the key for the
+proxy configuration in step 3. A lost key is revoked and replaced, never
+recovered; a running dpkms accepts a new key on its next request, no
+restart needed.
 
 Restart dpkms:
 
@@ -74,12 +77,12 @@ dpkms serve --port 8080
 It prints, among other lines:
 
 ```text
-Inbound auth: static provider (protected access)
+Inbound auth: api_key, session (protected access)
 HTTP server listening on 0.0.0.0:8080
 ```
 
-A protected instance without a token refuses to start with
-`protected instance requires inbound authentication`.
+A protected instance whose owner holds no key refuses to start with
+`no active owner credential` and names that command.
 
 `server.allowed_hosts` switches on the `Host` check, which stops a web
 page that points its own DNS name at your server from using the API.
@@ -97,7 +100,7 @@ so it reads a `Host` without a port as port 80: an entry such as
 
 A protected instance listens on every interface, for HTTP (`8080`) and
 gRPC (`9090`), and has no setting to bind a single address. Anyone who
-reaches port 8080 without the proxy only needs the token, so close it
+reaches port 8080 without the proxy only needs the key, so close it
 with a firewall.
 
 With the proxy on the same host, block both ports from outside. A
@@ -118,7 +121,7 @@ sudo ufw deny 9090/tcp
 ```
 
 Leave 9090 open to the CLI clients and agents that use gRPC if you have
-any: they authenticate with their own token.
+any: they authenticate with their own key.
 
 If dpkms runs in Docker, publish its port on loopback only
 (`127.0.0.1:8080:8080`): ports Docker publishes skip ufw's rules.
@@ -133,7 +136,7 @@ Both examples do the same four things:
 - sign the user in (basic auth here; swap in your sign-in proxy),
 - terminate TLS,
 - replace any `Authorization` header the client sent with
-  `Authorization: Bearer <token>`, and drop any `X-API-Key`,
+  `Authorization: Bearer <key>`, and drop any `X-API-Key`,
 - keep the `Host` header the browser sent.
 
 Pick one.
@@ -155,15 +158,15 @@ dpkms.example.com {
 	}
 
 	reverse_proxy 127.0.0.1:8080 {
-		header_up Authorization "Bearer {env.DPKMS_PROXY_TOKEN}"
+		header_up Authorization "Bearer {env.DPKMS_PROXY_KEY}"
 		header_up -X-API-Key
 	}
 }
 ```
 
-Give Caddy the token through its environment, not the Caddyfile. With
-the packaged systemd service, run `sudo systemctl edit caddy` and add
-`Environment=DPKMS_PROXY_TOKEN=<token>` under `[Service]`, then restart
+Give Caddy the key through its environment, not the Caddyfile. With the
+packaged systemd service, run `sudo systemctl edit caddy` and add
+`Environment=DPKMS_PROXY_KEY=<key>` under `[Service]`, then restart
 Caddy.
 
 What each part does:
@@ -188,17 +191,17 @@ Create the sign-in user (`htpasswd` comes with `apache2-utils` or
 sudo htpasswd -B -c /etc/nginx/dpkms.htpasswd jad
 ```
 
-Keep the token in a file only root can read:
+Keep the key in a file only root can read:
 
 ```bash
-sudo install -m 600 /dev/null /etc/nginx/dpkms-token.conf
-sudoedit /etc/nginx/dpkms-token.conf
+sudo install -m 600 /dev/null /etc/nginx/dpkms-key.conf
+sudoedit /etc/nginx/dpkms-key.conf
 ```
 
 It holds one line:
 
 ```nginx
-proxy_set_header Authorization "Bearer <token>";
+proxy_set_header Authorization "Bearer <key>";
 ```
 
 `/etc/nginx/conf.d/dpkms.conf`:
@@ -230,7 +233,7 @@ server {
     proxy_set_header X-API-Key "";
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection $connection_upgrade;
-    include /etc/nginx/dpkms-token.conf;
+    include /etc/nginx/dpkms-key.conf;
 
     location / {
         proxy_pass http://127.0.0.1:8080;
@@ -249,10 +252,10 @@ What each part does:
 
 - The `proxy_set_header` lines sit at `server` level on purpose: a
   `location` that sets any `proxy_set_header` of its own loses all the
-  inherited ones, token included.
+  inherited ones, key included.
 - `Host $http_host` keeps the name and port the browser used. nginx's
   default sends the upstream address instead (`127.0.0.1:8080`).
-- The token line replaces the basic-auth `Authorization` header;
+- The key line replaces the basic-auth `Authorization` header;
   `X-API-Key ""` drops that header.
 - `/api/v1/events` is the live-update stream. dpkms sends
   `X-Accel-Buffering: no`, so nginx does not buffer it, but nginx closes
@@ -290,7 +293,7 @@ curl -u jad -X POST https://dpkms.example.com/api/v1/inbox \
   -d '{"content":"remember this"}'
 ```
 
-**Other sites cannot write.** The proxy adds the token to anything that
+**Other sites cannot write.** The proxy adds the key to anything that
 passes its sign-in, including a request another site's page makes while
 your sign-in cookie is still valid. dpkms refuses such writes itself:
 a write whose `Sec-Fetch-Site` or `Origin` header names another site
@@ -314,9 +317,9 @@ client address.
 
 The proxy's sign-in step stands between the ctxt CLI and dpkms. Point
 the CLI at dpkms directly (over a VPN, a tailnet or an SSH tunnel) with
-its own token in `server.url` and `server.token`, or in a `server.urls`
-entry. Give each machine its own entry under `server.auth.static.tokens`
-so you can revoke one without the others.
+its own key in `server.url` and `server.token`, or in a `server.urls`
+entry. Create each machine its own key with `dpkms auth key create` so
+you can revoke one without the others.
 
 ## Never proxy a private instance
 
@@ -324,7 +327,7 @@ A private instance (the default) authenticates nobody and always answers
 to `127.0.0.1:<port>`. A proxy on the same host reaches it over
 loopback, and nginx's default `Host` for `proxy_pass
 http://127.0.0.1:8080` is exactly `127.0.0.1:8080`. The whole API is then
-open to anyone who reaches the proxy, and the token the proxy adds is
+open to anyone who reaches the proxy, and the key the proxy adds is
 ignored.
 
 If a private instance behind a proxy answers `403` `HOST_NOT_ALLOWED`,
@@ -360,13 +363,14 @@ Check who answered. dpkms answers with a JSON body and
 `WWW-Authenticate: Bearer realm="dpkms"`; a proxy's sign-in failure does
 not.
 
-- `"authentication required"`: the proxy did not add the token. With
-  Caddy, `DPKMS_PROXY_TOKEN` is not set in Caddy's environment. With
+- `"authentication required"`: the proxy did not add the key. With
+  Caddy, `DPKMS_PROXY_KEY` is not set in Caddy's environment. With
   nginx, the `include` line is missing or sits inside a `location` that
   has its own `proxy_set_header`.
-- `"invalid credentials"`: the proxy's token differs from every
-  `server.auth.static.tokens` entry. Copy it again and restart dpkms after
-  editing its config.
+- `"invalid credentials"`: the proxy's key is not one dpkms accepts: it
+  was revoked, it expired, or it was copied wrong. Create a new one with
+  `dpkms auth key create --principal owner` and update the proxy; dpkms
+  picks it up without a restart.
 
 ### `415 UNSUPPORTED_MEDIA_TYPE`
 

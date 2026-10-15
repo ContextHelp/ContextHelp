@@ -227,7 +227,7 @@ func inboxStatus(t *testing.T, db *testDB, id string) string {
 // refused triage, discard and clear with exit 5 and change nothing; an
 // admin token does all of it.
 func TestInboxOverAPIRoles(t *testing.T) {
-	db := setupTestDB(t, dpkmstest.WithStaticTokens())
+	db := setupTestDB(t, dpkmstest.WithKeys())
 	seedInboxItem(t, db, "inbox_role_01", "first")
 	seedInboxItem(t, db, "inbox_role_02", "second")
 	seedRawObject(t, db, "raw_role_01", "raw")
@@ -283,7 +283,7 @@ func TestInboxOverAPIRoles(t *testing.T) {
 
 // Without a token a protected instance answers 401: exit 5.
 func TestInboxNoTokenIsUnauthorized(t *testing.T) {
-	db := setupTestDB(t, dpkmstest.WithStaticTokens())
+	db := setupTestDB(t, dpkmstest.WithKeys())
 	db.useRole(t, "none")
 	for _, args := range [][]string{{"inbox", "list"}, {"inbox", "list", "--pending"}} {
 		out, err := db.exec(args...)

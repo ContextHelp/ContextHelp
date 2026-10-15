@@ -47,7 +47,7 @@ Examples:
 var uiOpenCmd = &cobra.Command{
 	Use:   "open",
 	Short: "Sign in to the dpkms web UI in a browser",
-	Long: `Open the dpkms web UI signed in as the principal of your API token.
+	Long: `Open the dpkms web UI signed in as the principal of your API key.
 
 ctxt asks the instance (--server, --instance, CTXT_INSTANCE, the current
 instance, the first server.urls entry, or server.url) for
@@ -193,7 +193,7 @@ func mintUILink(ctx context.Context, client *dpkmsclient.Client) (uiLink, error)
 	case errors.As(err, &remote) && errors.As(err, &oe) && oe.Code == output.CodeUnauthorized:
 		e := output.WrapError(fmt.Errorf("dpkms at %s refused to mint a sign-in link (%d): %s",
 			base, remote.StatusCode, remoteMessage(remote)), output.CodeUnauthorized, output.ExitUnauthorized)
-		e.SuggestedFix = "set server.token (or the token of this server.urls entry) to one of the server's server.auth.static.tokens"
+		e.SuggestedFix = "set server.token (or the token of this server.urls entry) to an API key of that instance (dpkms auth key create on its host)"
 		return uiLink{}, e
 	default:
 		return uiLink{}, err

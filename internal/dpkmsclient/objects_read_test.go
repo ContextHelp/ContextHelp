@@ -107,7 +107,7 @@ func TestObjectFilterAcceptedByDpkms(t *testing.T) {
 func startFacetCorpus(t *testing.T) *dpkmstest.Server {
 	t.Helper()
 	driver := storageutil.NewTestDriver(t)
-	srv := dpkmstest.Start(t, driver, dpkmstest.WithStaticTokens())
+	srv := dpkmstest.Start(t, driver, dpkmstest.WithKeys())
 	ctx := context.Background()
 	day := func(d int) time.Time { return time.Date(2026, 3, d, 12, 0, 0, 0, time.UTC) }
 	for _, o := range []*storage.KnowledgeObject{

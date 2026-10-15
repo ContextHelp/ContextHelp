@@ -322,6 +322,11 @@ var pgMigrations = []pgMigration{
 		 VALUES ('owner', 'owner', 'Owner', '["admin"]', 'active', NOW())
 		 ON CONFLICT (id) DO NOTHING`,
 	}},
+	// ui_sessions and ui_login_codes reference the identity that minted
+	// them (ADR-079) instead of the hash of a static token, mirroring
+	// SQLite migration 049. The rows, minted by static tokens that no
+	// longer authenticate, are dropped before the column swap.
+	{Version: 29, Name: "sessions bound to identities", fn: migrateSessionsBoundToIdentities},
 	// The columns ObjectStore.List filters and orders by, mirroring SQLite
 	// migration 050 (status has been indexed there since 009): the exact
 	// COUNT(*) of the default scope can be an index-only walk of
@@ -333,6 +338,40 @@ var pgMigrations = []pgMigration{
 		`CREATE INDEX IF NOT EXISTS idx_objects_created_at ON objects (created_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_objects_updated_at ON objects (updated_at)`,
 	}},
+}
+
+// migrateSessionsBoundToIdentities swaps token_hash for identity_id
+// REFERENCES principal_identities(id) on ui_sessions and ui_login_codes.
+// Every existing row was minted by a static token, which no longer
+// authenticates, so both tables are emptied first; a NOT NULL column
+// then adds cleanly. IF EXISTS and IF NOT EXISTS make a replay a no-op.
+func migrateSessionsBoundToIdentities(ctx context.Context, d *Driver) error {
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, stmt := range []string{
+		`DELETE FROM ui_sessions WHERE EXISTS (SELECT 1 FROM information_schema.columns
+			WHERE table_name = 'ui_sessions' AND column_name = 'token_hash')`,
+		`DELETE FROM ui_login_codes WHERE EXISTS (SELECT 1 FROM information_schema.columns
+			WHERE table_name = 'ui_login_codes' AND column_name = 'token_hash')`,
+		`DROP INDEX IF EXISTS idx_ui_sessions_token_hash`,
+		`ALTER TABLE ui_sessions DROP COLUMN IF EXISTS token_hash`,
+		`ALTER TABLE ui_login_codes DROP COLUMN IF EXISTS token_hash`,
+		`ALTER TABLE ui_sessions ADD COLUMN IF NOT EXISTS identity_id TEXT NOT NULL REFERENCES principal_identities(id)`,
+		`ALTER TABLE ui_login_codes ADD COLUMN IF NOT EXISTS identity_id TEXT NOT NULL REFERENCES principal_identities(id)`,
+		`CREATE INDEX IF NOT EXISTS idx_ui_sessions_identity ON ui_sessions (identity_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_ui_login_codes_identity ON ui_login_codes (identity_id)`,
+	} {
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("sessions bound to identities: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+	return nil
 }
 
 // migrateAliasesObjectFK deletes aliases whose object is gone, then adds

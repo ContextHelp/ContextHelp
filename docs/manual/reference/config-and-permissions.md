@@ -58,27 +58,31 @@ The other serve settings follow the same order (flag, env var, file, default):
 
 ### Inbound auth, roles and scopes
 
-A private instance (the default: loopback only, no `server.auth`) needs no token and grants every scope. A `protected` or `public` instance requires `server.auth`, and each token carries one or more roles:
+A private instance (the default: loopback only) needs no credential and grants every scope. A `protected` or `public` instance authenticates every request through an ordered chain of methods, `server.auth.methods`, against the principal registry in its database. Carried credentials (`api_key`, in `Authorization: Bearer` or `X-API-Key`) run before ambient ones (`session`, the web UI cookie) whatever order you list them in. The first match wins and the first refusal ends the request, so a bad key is never rescued by a cookie behind it. An expired or unknown cookie is treated as absent and cleared.
 
 ```yaml
 server:
   access: protected
+  public_url: https://dpkms.example.net   # base of every sign-in link; required unless sign_in is []
   auth:
-    provider: static
-    static:
-      tokens:
-        - token: <owner-token>      # the secret itself
-          principal: owner
-          roles: [admin]
-        - token: <phone-token>
-          principal: phone
-          roles: [writer]   # capture-only device
-        - token: <dashboard-token>
-          principal: dashboard
-          roles: [reader]
+    methods: [api_key, session]           # default
+    sign_in: [invite, link]               # ceremonies that may mint a browser session; default
+    keys:                                 # optional: keys declared by hash, for infrastructure as code
+      - hash: sha256:3f9c...              # printf %s "$KEY" | sha256sum
+        principal: owner
+        roles: [reader]                   # narrows the key; default: the principal's roles
+        expires: 2027-12-31
 ```
 
-Each `token` is the literal secret: config files do not expand `${VAR}`, so `token: ${DPKMS_TOKEN_OWNER}` would accept the string `${DPKMS_TOKEN_OWNER}`. Generate tokens with `openssl rand -hex 32`. A token shorter than 32 characters, or one containing `REPLACE_ME` (the Docker example's placeholder), fails `ctxt config validate` and stops `dpkms serve`. To keep them out of a committed config, put `server.auth` in its own file and pass it as a second `--config` (later files win); in a container, mount that file as a secret, as the Docker setup does ([Docker: Secrets](https://github.com/ContextHelp/ContextHelp/blob/next/docs/deployment/docker.md#secrets)).
+Keys are created on the dpkms host and stored as hashes:
+
+```bash
+dpkms auth key create --principal owner --name "laptop CLI"   # --expires 720h, or a date
+```
+
+The key is printed once. Every principal is a row in the instance database: `owner` is seeded by the schema, and every other principal (a person, a device, a federation peer) gets keys of its own, so one can be revoked without the others. A key holds its principal's role scopes, or fewer when it was narrowed at creation; it never reaches past its principal.
+
+A `protected` or `public` instance refuses to start until the owner holds an active key, or a `server.auth.keys` entry names one. The refusal names `dpkms auth key create --principal owner`. `server.auth.keys` takes hashes only, for infrastructure as code: a key written in the clear fails `ctxt config validate` and stops `dpkms serve`, naming the entry. A key declared in config cannot sign a browser in, since there is no identity row to bind the session to; use a created key for `ctxt ui open`. `server.public_url` is the base of every invite and sign-in link, so it is required whenever `sign_in` lists `invite` or `link`, which the default does. Set `sign_in: []` on an instance that mints no links.
 
 Every `/api/v1` route and gRPC method requires one scope. A role is a fixed bundle of scopes:
 
@@ -90,7 +94,7 @@ Every `/api/v1` route and gRPC method requires one scope. A role is a fixed bund
 
 `read:ui` (mint a web UI sign-in link) is a read scope, so every role holds it; a browser session never does, so a session cannot mint another. `signout:ui` (end your own browser session) belongs to browser sessions only: no role holds it.
 
-A token needs at least one known role; an unknown or missing role fails `ctxt config validate` and stops `dpkms serve`. A token without a route's scope gets 403 `INSUFFICIENT_SCOPE` naming the scope; a missing or invalid token gets 401. `GET /api/v1/whoami` shows the caller's principal, roles and scopes, and how it signed in (`via`: `token`, `session` or `none` on a private instance).
+A principal needs at least one known role; an unknown role on a declared key fails `ctxt config validate` and stops `dpkms serve`. A key without a route's scope gets 403 `INSUFFICIENT_SCOPE` naming the scope. A missing, revoked, expired or invalid key gets 401. `GET /api/v1/whoami` shows the caller's principal, roles and scopes, and how it signed in (`via`: `token`, `session` or `none` on a private instance).
 
 | Scope | Bundles | Routes (under `/api/v1`) and gRPC methods |
 |---|---|---|
@@ -101,6 +105,7 @@ A token needs at least one known role; an unknown or missing role fails `ctxt co
 | `read:jobs` | reader, writer, admin | `GET` jobs, `import/{id}`, `importers/runs/{id}`, `capture/recent`; gRPC `JobService/*` |
 | `read:registries` | reader, writer, admin | `GET /steps/registries` |
 | `read:system` | reader, writer, admin | `GET /whoami`, `GET /system/reminders`; gRPC reflection |
+| `write:self` | reader, writer, admin; browser sessions | a principal's own keys, identities and sessions (routes arrive with the principal CLI) |
 | `read:pipelines` | reader, writer, admin | `GET` pipelines and steps |
 | `read:watches` | reader, writer, admin | `GET` watches and watch files |
 | `write:objects` | writer, admin | `POST /analyze`, `capture/*`, `import`, `importers/*/run`, `pipelines/enqueue`, `aliases`, `saved-searches`, suggestion approve and reject, `entities/{slug}/pull`; `PATCH /objects/{id}`, `POST /objects/{id}/reprocess`, `POST /edges`; gRPC `AnalyzeService/Analyze` |
@@ -120,10 +125,12 @@ A token needs at least one known role; an unknown or missing role fails `ctxt co
 | `admin:steps` | admin | `POST /steps/install`; `DELETE /steps/{name}` |
 | `admin:watches` | admin | `POST /watches`, `watches/{id}/pause`, `watches/{id}/resume`; `PATCH` and `DELETE /watches/{id}` |
 | `admin:audit` | admin | `GET /audit-log` |
+| `admin:principals` | admin | principals, their identities, keys and invites (routes arrive with the principal CLI) |
+| `admin:shares` | admin | audiences, share policies and ceilings (routes arrive with sharing) |
 | `read:ui` | reader, writer, admin; never a browser session | `POST /ui/login-codes` (`ctxt ui open`) |
 | `signout:ui` | browser sessions only | `DELETE /ui/session` |
 
-`POST /api/v1/federation/push` needs `write:objects` and, on non-private instances, the `federation.token` credential as well: the federation token must be a static token whose principal holds `writer` or `admin`. `/health`, `/healthz` and gRPC health are open.
+`POST /api/v1/federation/push` needs `write:objects` and, on non-private instances, the key of a principal of kind `peer`; any other principal gets 403 `PEER_REQUIRED`. `/health`, `/healthz` and gRPC health are open.
 
 ### Reach dpkms by another host name
 
@@ -237,29 +244,32 @@ server:
   used (two instances on one machine get different cookies), `HttpOnly`,
   `Secure`, `SameSite=Strict`, `Path=/`, expiring with the session.
   Browsers keep it only over HTTPS or on `localhost`.
-- **Principal**: the principal of the static token that minted the link,
-  with its roles; the session ends when that token leaves
-  `server.auth.static.tokens` (every request checks the tokens dpkms
-  loaded at start, so a removal takes effect on restart).
-- **Scopes**: the token's scopes narrowed to the web UI's set: `read:objects`,
+- **Principal**: the principal of the API key that minted the link,
+  with its roles. The session ends the moment that key, or the
+  principal, is revoked: the store ends it in the same transaction, and
+  the next request with the cookie gets `401` and the cookie cleared. A
+  key declared in `server.auth.keys` cannot mint a link.
+- **Scopes**: the key's scopes narrowed to the web UI's set: `read:objects`,
   `read:inbox`, `read:feeds`, `read:jobs`, `read:registries`,
-  `read:system`, `delete:objects`, `write:jobs`, plus `signout:ui`, which
-  only sessions hold. Apart from signing itself out, a session never
-  holds a scope its token lacks: a `reader` token's session only reads,
-  a `writer` token's may also retry jobs, an `admin` token's gets the
-  whole set and nothing more. It never holds `read:ui`, so it cannot
-  mint sign-in links. Every other route (pipelines, steps,
-  registry changes, watches, the audit log, federation, the MCP mount,
-  login links, other writes) answers `403` `INSUFFICIENT_SCOPE` naming
-  the scope. `/ws/bus` keeps its own bus token and gRPC keeps API tokens
-  only; a session cookie opens neither. `GET /api/v1/whoami` with the
-  cookie shows the session's scopes and times.
+  `read:system`, `delete:objects`, `write:jobs`, `write:self`, plus
+  `signout:ui`, which only sessions hold. Apart from signing itself out,
+  a session never holds a scope its key lacks. A reader's session only
+  reads and manages its own credentials. A writer's may also retry jobs.
+  An admin's gets the whole set and nothing more. It never holds
+  `read:ui`, so it cannot mint sign-in links. Every other route
+  (pipelines, steps, registry changes, watches, the audit log,
+  federation, the MCP mount, login links, other writes) answers `403`
+  `INSUFFICIENT_SCOPE` naming the scope. `/ws/bus` keeps its own bus
+  token and gRPC keeps API keys only; a session cookie opens neither.
+  `GET /api/v1/whoami` with the cookie shows the session's scopes and
+  times.
 - **CSRF**: a request carrying the cookie must come from the instance's
-  own pages: writes need `Sec-Fetch-Site: same-origin` or a matching
+  own pages. Writes need `Sec-Fetch-Site: same-origin` or a matching
   `Origin` (`403` `CROSS_ORIGIN_REQUEST`) and the header `X-Ctxt-CSRF: 1`
-  (`403` `CSRF_HEADER_REQUIRED`); reads sent by another site or another
-  port on the host are refused. Requests with `Authorization` or
-  `X-API-Key` are unaffected, and those headers win over the cookie.
+  (`403` `CSRF_HEADER_REQUIRED`). Reads sent by another site or another
+  port on the host are refused. A request that also carries
+  `Authorization` or `X-API-Key` is decided by that key first: a valid
+  key lifts these rules, an invalid one is refused whatever the cookie.
 
 `dpkms session list [--all] [--principal P]` and
 `dpkms session revoke <id> | --principal P` manage sessions on the server

@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
+	"github.com/ideacrafterslabs/ctxt/internal/auth/authtest"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
@@ -102,10 +103,9 @@ func TestResolveEntity(t *testing.T) {
 func TestEntityQueryRoutesRequireReadObjects(t *testing.T) {
 	svc := newScopeTestService(t)
 	seedQueryEntities(t, svc.Store(ownerCtx()).Entities())
-	provider, err := authn.NewStatic([]authn.StaticToken{
-		{Token: "tok-reader-fixture-0123456789abcdef0123456789", Principal: "tablet", Roles: []string{authn.RoleReader}},
-	})
-	require.NoError(t, err)
+	provider := authtest.TokenChain(
+		authtest.Token{Token: "tok-reader-fixture-0123456789abcdef0123456789", Principal: "tablet", Roles: []string{authn.RoleReader}},
+	)
 	ts := newScopedServer(t, svc, provider)
 
 	for _, path := range []string{"/api/v1/entities?q=cart", "/api/v1/entities/resolve?mention=basket"} {
@@ -116,9 +116,9 @@ func TestEntityQueryRoutesRequireReadObjects(t *testing.T) {
 		assert.Equal(t, http.StatusUnauthorized, resp.StatusCode, "no token %s: %s", path, body)
 	}
 
-	scopeless := newScopedServer(t, svc, fixedProvider{p: &authn.Principal{
+	scopeless := newScopedServer(t, svc, authtest.Fixed(&authn.Principal{
 		ID: "almost", Scopes: []authn.Scope{authn.ScopeReadInbox, authn.ScopeWriteObjects},
-	}})
+	}))
 	for _, path := range []string{"/api/v1/entities?q=cart", "/api/v1/entities/resolve?mention=basket"} {
 		resp, body := roleDo(t, http.MethodGet, scopeless+path, "any", nil)
 		assertScopeDenied(t, resp, body, authn.ScopeReadObjects)
@@ -146,10 +146,10 @@ func TestEntityQueryRoutesGateNonAdmin(t *testing.T) {
 	assert.Equal(t, storage.MeteringEventEntityResolve, events[0].EventType)
 }
 
-// newScopedServer serves svc behind provider and returns its base URL.
-func newScopedServer(t *testing.T, svc *service.Service, provider authn.Provider) string {
+// newScopedServer serves svc behind chain and returns its base URL.
+func newScopedServer(t *testing.T, svc *service.Service, chain *authn.Chain) string {
 	t.Helper()
-	ts := httptest.NewServer(NewRouterWithConfig(svc, RouterConfig{Auth: provider}))
+	ts := httptest.NewServer(NewRouterWithConfig(svc, RouterConfig{Auth: chain}))
 	t.Cleanup(ts.Close)
 	return ts.URL
 }

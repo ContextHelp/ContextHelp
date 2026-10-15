@@ -62,7 +62,7 @@ func pageFixture(t *testing.T) storage.StorageDriver {
 }
 
 func TestPages_Reader(t *testing.T) {
-	srv := dpkmstest.Start(t, pageFixture(t), dpkmstest.WithStaticTokens())
+	srv := dpkmstest.Start(t, pageFixture(t), dpkmstest.WithKeys())
 	c := newClient(t, dpkmsclient.Endpoint{URL: srv.URL, Token: srv.Token(dpkmstest.RoleReader)})
 	ctx := context.Background()
 
@@ -102,7 +102,7 @@ func TestPages_Reader(t *testing.T) {
 }
 
 func TestPages_WriterRefreshes(t *testing.T) {
-	srv := dpkmstest.Start(t, pageFixture(t), dpkmstest.WithStaticTokens())
+	srv := dpkmstest.Start(t, pageFixture(t), dpkmstest.WithKeys())
 	c := newClient(t, dpkmsclient.Endpoint{URL: srv.URL, Token: srv.Token(dpkmstest.RoleWriter)})
 	ctx := context.Background()
 
@@ -120,7 +120,7 @@ func TestPages_WriterRefreshes(t *testing.T) {
 }
 
 func TestTopicIndex(t *testing.T) {
-	srv := dpkmstest.Start(t, pageFixture(t), dpkmstest.WithStaticTokens())
+	srv := dpkmstest.Start(t, pageFixture(t), dpkmstest.WithKeys())
 	reader := newClient(t, dpkmsclient.Endpoint{URL: srv.URL, Token: srv.Token(dpkmstest.RoleReader)})
 	writer := newClient(t, dpkmsclient.Endpoint{URL: srv.URL, Token: srv.Token(dpkmstest.RoleWriter)})
 	ctx := context.Background()
@@ -158,7 +158,7 @@ func TestTopicIndex(t *testing.T) {
 }
 
 func TestStats(t *testing.T) {
-	srv := dpkmstest.Start(t, pageFixture(t), dpkmstest.WithStaticTokens())
+	srv := dpkmstest.Start(t, pageFixture(t), dpkmstest.WithKeys())
 	c := newClient(t, dpkmsclient.Endpoint{URL: srv.URL, Token: srv.Token(dpkmstest.RoleReader)})
 	ctx := context.Background()
 

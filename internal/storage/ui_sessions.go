@@ -11,7 +11,10 @@ import (
 //
 // A session is active while it is not revoked and now is before both
 // IdleExpiresAt and ExpiresAt. Touch moves IdleExpiresAt forward, never
-// past ExpiresAt.
+// past ExpiresAt. The session references the identity (the credential)
+// that minted its login code: revoking that identity, or the principal
+// it belongs to, revokes the session in the same transaction
+// (IdentityStore.Revoke, PrincipalStore.Revoke).
 type UISession struct {
 	// ID is the public handle used to list and revoke the session. It
 	// grants nothing on its own.
@@ -20,11 +23,12 @@ type UISession struct {
 	SecretHash string `json:"-"`
 	// PrincipalID is the principal the session acts as.
 	PrincipalID string `json:"principal_id"`
-	// TokenHash is the hex SHA-256 of the static token that minted the
-	// session. The session ends when that token leaves the config.
-	TokenHash string `json:"-"`
+	// IdentityID is the principal_identities row of the credential that
+	// minted the session's login code. The session ends when that
+	// identity or its principal is revoked.
+	IdentityID string `json:"identity_id"`
 	// Scope holds the session kind ("ui", stored in the scope column).
-	// The kind fixes the scope set the session narrows its token's
+	// The kind fixes the scope set the session narrows its principal's
 	// scopes to (auth.SessionScopes).
 	Scope string `json:"kind"`
 	// UserAgent and RemoteAddr describe the browser that signed in, for
@@ -37,7 +41,7 @@ type UISession struct {
 	IdleExpiresAt time.Time `json:"idle_expires_at"`
 	ExpiresAt     time.Time `json:"expires_at"`
 	// RevokedAt is set once the session was revoked; RevokeReason says
-	// why ("logout", "revoked", "token removed").
+	// why ("logout", "revoked", "identity revoked", "principal revoked").
 	RevokedAt    *time.Time `json:"revoked_at,omitempty"`
 	RevokeReason string     `json:"revoke_reason,omitempty"`
 }
@@ -47,15 +51,26 @@ func (s *UISession) Active(now time.Time) bool {
 	return s != nil && s.RevokedAt == nil && now.Before(s.IdleExpiresAt) && now.Before(s.ExpiresAt)
 }
 
+// Session revocation reasons the stores write when a revocation
+// cascades from the principal registry.
+const (
+	// RevokeReasonIdentityRevoked is written on the sessions an identity
+	// minted when that identity is revoked.
+	RevokeReasonIdentityRevoked = "identity revoked"
+	// RevokeReasonPrincipalRevoked is written on every session of a
+	// principal when the principal is revoked.
+	RevokeReasonPrincipalRevoked = "principal revoked"
+)
+
 // UILoginCode is a one-time code that a browser exchanges for a
 // UISession. Only its hash is stored.
 type UILoginCode struct {
 	// CodeHash is the hex SHA-256 of the code.
 	CodeHash    string
 	PrincipalID string
-	// TokenHash is the hex SHA-256 of the static token that minted the
+	// IdentityID is the identity of the credential that minted the
 	// code; the session inherits it.
-	TokenHash string
+	IdentityID string
 	// Scope holds the kind of the session the code opens ("ui").
 	Scope     string
 	CreatedAt time.Time
@@ -73,7 +88,9 @@ type UISessionFilter struct {
 	Limit int
 }
 
-// UISessionStore persists web UI sessions and their login codes.
+// UISessionStore persists web UI sessions and their login codes. Both
+// reference principal_identities: a code or session whose identity row
+// does not exist is refused by the database.
 type UISessionStore interface {
 	// CreateLoginCode stores a one-time login code.
 	CreateLoginCode(ctx context.Context, c *UILoginCode) error
@@ -96,9 +113,6 @@ type UISessionStore interface {
 	// Revoke ends the session with id at at. Revoking a revoked session
 	// keeps its first revocation. An unknown id is ErrNotFound.
 	Revoke(ctx context.Context, id string, at time.Time, reason string) error
-	// RevokeByTokenHash revokes every unrevoked session minted by the
-	// token with tokenHash and returns how many it revoked.
-	RevokeByTokenHash(ctx context.Context, tokenHash string, at time.Time, reason string) (int, error)
 	// List returns sessions, newest first.
 	List(ctx context.Context, f UISessionFilter) ([]*UISession, error)
 	// Prune deletes sessions that ended (expired or were revoked) before

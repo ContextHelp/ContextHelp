@@ -31,7 +31,7 @@ type Server struct {
 type Option func(*serverOptions)
 
 type serverOptions struct {
-	auth         authn.Provider
+	auth         *authn.Chain
 	security     *security.Emitter
 	entitlements *registry.InboundGate
 	reflection   bool
@@ -45,10 +45,10 @@ func WithSecurity(e *security.Emitter) Option {
 }
 
 // WithAuth guards every RPC (unary and stream) behind the configured
-// authentication provider; grpc.health.v1 probes stay exempt. A nil
-// provider is a no-op (private instance).
-func WithAuth(p authn.Provider) Option {
-	return func(o *serverOptions) { o.auth = p }
+// authentication chain; grpc.health.v1 probes stay exempt. A nil chain
+// is a no-op (private instance).
+func WithAuth(c *authn.Chain) Option {
+	return func(o *serverOptions) { o.auth = c }
 }
 
 // WithEntitlements gates the entity-serving RPCs behind per-principal

@@ -86,7 +86,7 @@ func TestPolicy_PrincipalPropagatesIntoCEL(t *testing.T) {
 	// transport middleware does it → allowed.
 	authed := authn.Attach(ctx, &authn.Principal{
 		ID:       "ops",
-		Provider: authn.ProviderStatic,
+		Provider: authn.MethodAPIKey,
 		Roles:    []string{"admin"},
 	})
 	require.NoError(t, svc.DeletePipeline(authed, "principal-gated"))

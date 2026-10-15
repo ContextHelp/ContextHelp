@@ -21,7 +21,7 @@ import (
 // driver reads back through GET /api/v1/objects/{id} on the in-process
 // dpkms setupTestDB starts.
 func TestFixtureServesSeededObjectOverAPI(t *testing.T) {
-	db := setupTestDB(t, dpkmstest.WithStaticTokens())
+	db := setupTestDB(t, dpkmstest.WithKeys())
 	now := time.Now().Truncate(time.Second)
 	if err := db.Driver.Objects().Create(context.Background(), &storage.KnowledgeObject{
 		ID: "obj_fixture_api", Type: "text", Summaries: []string{"seeded through the driver"},
@@ -61,7 +61,7 @@ func TestFixtureConfigRoutesCommandsToInstance(t *testing.T) {
 // TestFixtureUseRoleSwitchesToken: useRole rewrites the token commands
 // send; each is the instance's token for that role.
 func TestFixtureUseRoleSwitchesToken(t *testing.T) {
-	db := setupTestDB(t, dpkmstest.WithStaticTokens())
+	db := setupTestDB(t, dpkmstest.WithKeys())
 	for _, role := range dpkmstest.Roles {
 		db.useRole(t, role)
 		body, err := os.ReadFile(db.ClientConfigPath)
@@ -90,7 +90,7 @@ func TestFixtureDefaultPortRequestFailsRun(t *testing.T) {
 		if testguard.Active == nil || !testguard.Guarded("127.0.0.1:8080") {
 			t.Fatal("proof child: 127.0.0.1:8080 is not guarded; refusing to send the request")
 		}
-		setupTestDB(t, dpkmstest.WithStaticTokens())
+		setupTestDB(t, dpkmstest.WithKeys())
 		resp, err := http.Get("http://127.0.0.1:8080/health")
 		if resp != nil {
 			_ = resp.Body.Close()

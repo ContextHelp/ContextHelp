@@ -70,7 +70,7 @@ func ScanSecrets(cfg *Config) []SecretWarning {
 
 // walkStrings recursively walks v and calls fn with the dot-separated
 // config path of every non-empty string value. Slice elements carry
-// their index: server.auth.static.tokens[0].token.
+// their index: server.urls[0].token.
 func walkStrings(v reflect.Value, path string, fn func(path, val string)) {
 	// Dereference pointers.
 	for v.Kind() == reflect.Ptr {

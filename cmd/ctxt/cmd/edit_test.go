@@ -154,7 +154,7 @@ func TestEditNeverOpensLocalStore(t *testing.T) {
 // TestEditRoles: a writer edits; a reader and a request without a token
 // get exit 5 and change nothing.
 func TestEditRoles(t *testing.T) {
-	db := setupTestDB(t, dpkmstest.WithStaticTokens())
+	db := setupTestDB(t, dpkmstest.WithKeys())
 	seedEditObject(t, db)
 
 	for _, role := range []string{dpkmstest.RoleReader, "none"} {

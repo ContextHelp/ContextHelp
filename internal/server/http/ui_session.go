@@ -20,8 +20,9 @@ import (
 
 // Web UI sign-in, in three steps:
 //
-//  1. The ctxt CLI, authenticated with its static token, calls
-//     POST /api/v1/ui/login-codes and gets a single-use code.
+//  1. The ctxt CLI, authenticated with its API key, calls
+//     POST /api/v1/ui/login-codes and gets a single-use code bound to
+//     that key's identity.
 //  2. It opens /ui/auth#code=<code>. The fragment never reaches the
 //     server, proxies or Referer.
 //  3. The page POSTs the code to /ui/auth/session and receives the
@@ -124,27 +125,29 @@ type loginCodeResponse struct {
 }
 
 // mintCode handles POST /api/v1/ui/login-codes, behind read:ui. Only a
-// token caller may mint: no session holds read:ui (a session minting
-// codes could extend itself forever), and the code is bound to
-// the presented token, so the new session's scopes derive from it.
+// key caller may mint: no session holds read:ui (a session minting
+// codes could extend itself forever), and the code is bound to the
+// identity of the presented key, so the new session's scopes derive
+// from it and it ends with it. A key declared in server.auth.keys has
+// no identity and cannot mint.
 func (u *uiSessionRoutes) mintCode(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	if u.sessions == nil {
 		WriteJSON(w, http.StatusOK, loginCodeResponse{SessionRequired: false, LoginPath: "/ui/"})
 		return
 	}
-	cred := credentialFromRequest(r)
-	if cred.Scheme != authn.SchemeBearer && cred.Scheme != authn.SchemeAPIKey {
-		WriteError(w, http.StatusUnauthorized, "UNAUTHORIZED", "login codes need an API token")
-		return
-	}
-	code, expires, err := u.sessions.MintCode(r.Context(), cred.Token)
+	p, _ := authn.FromContext(r.Context())
+	code, expires, err := u.sessions.MintCode(r.Context(), p)
 	if err != nil {
-		if errors.Is(err, authn.ErrInvalidCredential) || errors.Is(err, authn.ErrNoCredential) {
-			WriteError(w, http.StatusUnauthorized, "UNAUTHORIZED", "login codes need a configured API token")
-			return
+		switch {
+		case errors.Is(err, authn.ErrNoIdentity):
+			WriteError(w, http.StatusForbidden, "KEY_HAS_NO_IDENTITY",
+				"login codes need an API key created with dpkms auth key create; a key declared in server.auth.keys cannot sign a browser in")
+		case errors.Is(err, authn.ErrInvalidCredential), errors.Is(err, authn.ErrNoCredential):
+			WriteError(w, http.StatusUnauthorized, "UNAUTHORIZED", "login codes need an API key")
+		default:
+			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "could not mint a login code")
 		}
-		WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "could not mint a login code")
 		return
 	}
 	WriteJSON(w, http.StatusCreated, loginCodeResponse{

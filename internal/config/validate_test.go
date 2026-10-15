@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -126,8 +128,8 @@ func TestValidate(t *testing.T) {
 	}
 }
 
-// testStaticToken is a fake token long enough to pass CheckStaticToken.
-const testStaticToken = "test-static-token-0123456789abcdef"
+// testKeyHash is a well-formed server.auth.keys[].hash.
+const testKeyHash = "sha256:3f9c1a7be2d84605a1c7f0e9b8d2c4a63f9c1a7be2d84605a1c7f0e9b8d2c4a6"
 
 func TestValidate_RegistryAuthTypesAccepted(t *testing.T) {
 	for _, typ := range []RegistryAuthType{"", RegistryAuthBearer, RegistryAuthAPIKey, RegistryAuthOAuth2} {
@@ -139,13 +141,8 @@ func TestValidate_RegistryAuthTypesAccepted(t *testing.T) {
 	}
 }
 
-func staticAuth() AuthConfig {
-	return AuthConfig{
-		Provider: "static",
-		Static: StaticAuthConfig{
-			Tokens: []StaticTokenConfig{{Token: testStaticToken, Principal: "ops", Roles: []string{"admin"}}},
-		},
-	}
+func keysAuth() AuthConfig {
+	return AuthConfig{Keys: []AuthKeyConfig{{Hash: testKeyHash, Principal: "owner", Roles: []string{"admin"}}}}
 }
 
 func TestValidateAccess(t *testing.T) {
@@ -168,42 +165,43 @@ func TestValidateAccess(t *testing.T) {
 			wantField: "server.public",
 		},
 		{
-			name:      "protected requires inbound auth",
+			name:      "protected mints links, so it needs public_url",
 			mutate:    func(c *Config) { c.Server.Access = AccessProtected },
-			wantField: "server.access",
+			wantField: "server.public_url",
 		},
 		{
-			name:      "public requires inbound auth",
+			name:      "public needs public_url",
 			mutate:    func(c *Config) { c.Server.Access = AccessPublic },
-			wantField: "server.access",
+			wantField: "server.public_url",
 		},
 		{
-			name:      "public shorthand requires inbound auth",
+			name:      "public shorthand needs public_url",
 			mutate:    func(c *Config) { c.Server.Public = true },
-			wantField: "server.access",
+			wantField: "server.public_url",
 		},
 		{
-			name: "static provider without tokens is not inbound auth",
+			name: "protected with public_url is valid: credentials live in the database",
 			mutate: func(c *Config) {
 				c.Server.Access = AccessProtected
-				c.Server.Auth = AuthConfig{Provider: "static"}
-			},
-			wantField: "server.access",
-		},
-		{
-			name: "protected with static auth is valid",
-			mutate: func(c *Config) {
-				c.Server.Access = AccessProtected
-				c.Server.Auth = staticAuth()
+				c.Server.PublicURL = "https://dpkms.example.net"
 			},
 			wantField: "",
 		},
 		{
-			name: "public with public flag and static auth is valid",
+			name: "protected minting no links needs no public_url",
+			mutate: func(c *Config) {
+				c.Server.Access = AccessProtected
+				c.Server.Auth.SignIn = []string{}
+			},
+			wantField: "",
+		},
+		{
+			name: "public with public flag, public_url and declared keys is valid",
 			mutate: func(c *Config) {
 				c.Server.Access = AccessPublic
 				c.Server.Public = true
-				c.Server.Auth = staticAuth()
+				c.Server.PublicURL = "https://dpkms.example.net"
+				c.Server.Auth = keysAuth()
 			},
 			wantField: "",
 		},
@@ -258,32 +256,29 @@ func TestValidateQuotasValid(t *testing.T) {
 	assert.Empty(t, Validate(cfg))
 }
 
-// Every static token needs at least one known role: roles are the only
-// source of a token's scopes.
-func TestValidateAuthRoles(t *testing.T) {
+// A declared key's roles narrow it, so each must be a known bundle;
+// none means the principal's own.
+func TestValidateAuthKeyRoles(t *testing.T) {
 	cases := []struct {
 		name    string
 		roles   []string
 		wantMsg string // "" = expect no errors
 	}{
 		{name: "known roles", roles: []string{"writer", "reader"}},
-		{name: "no role", roles: nil, wantMsg: "at least one role"},
+		{name: "no role means the principal's", roles: nil},
 		{name: "unknown role", roles: []string{"admin", "owner"}, wantMsg: `unknown role "owner"`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := &Config{}
-			cfg.Server.Auth = AuthConfig{
-				Provider: "static",
-				Static:   StaticAuthConfig{Tokens: []StaticTokenConfig{{Token: testStaticToken, Principal: "p", Roles: tc.roles}}},
-			}
+			cfg.Server.Auth = AuthConfig{Keys: []AuthKeyConfig{{Hash: testKeyHash, Principal: "owner", Roles: tc.roles}}}
 			errs := Validate(cfg)
 			if tc.wantMsg == "" {
 				assert.Empty(t, errs)
 				return
 			}
 			require.Len(t, errs, 1)
-			assert.Equal(t, "server.auth.static.tokens[0].roles", errs[0].Field)
+			assert.Equal(t, "server.auth.keys[0].roles", errs[0].Field)
 			assert.Contains(t, errs[0].Message, tc.wantMsg)
 		})
 	}
@@ -376,34 +371,163 @@ func TestValidateBlob(t *testing.T) {
 	}
 }
 
-// A static token guards a non-private instance: the example placeholder
-// and short, guessable strings must never pass as one.
-func TestCheckStaticToken(t *testing.T) {
-	strong := "3f9c1a7be2d84605a1c7f0e9b8d2c4a63f9c1a7be2d84605a1c7f0e9b8d2c4a6"
+// server.auth.keys[] holds hashes only: a key in the clear, in any
+// shape, is refused naming the entry; so are the example placeholder,
+// a missing principal and an unparsable expiry.
+func TestValidateAuthKeys(t *testing.T) {
 	cases := []struct {
-		name    string
-		token   string
-		wantMsg string // "" = accepted
+		name      string
+		key       AuthKeyConfig
+		wantField string // "" = accepted
+		wantMsg   string
 	}{
-		{name: "64 hex", token: strong},
-		{name: "exactly minimum length", token: strings.Repeat("a", MinStaticTokenLen)},
-		{name: "example placeholder", token: "REPLACE_ME_admin_token", wantMsg: "REPLACE_ME"},
-		{name: "placeholder any case, long", token: "replace_me_" + strong, wantMsg: "REPLACE_ME"},
-		{name: "placeholder mid-token", token: strong + "Replace_Me", wantMsg: "REPLACE_ME"},
-		{name: "one short of minimum", token: strings.Repeat("a", MinStaticTokenLen-1), wantMsg: "at least 32"},
-		{name: "short", token: "tok-1", wantMsg: "at least 32"},
+		{name: "hash", key: AuthKeyConfig{Hash: testKeyHash, Principal: "owner"}},
+		{name: "hash with date expiry", key: AuthKeyConfig{Hash: testKeyHash, Principal: "owner", Expires: "2026-12-31"}},
+		{name: "hash with rfc3339 expiry", key: AuthKeyConfig{Hash: testKeyHash, Principal: "prn_01J", Expires: "2026-12-31T10:00:00Z"}},
+		{name: "the key itself", key: AuthKeyConfig{Hash: "ctxt_0123456789abcdef_" + strings.Repeat("A", 43), Principal: "owner"},
+			wantField: "server.auth.keys[0].hash", wantMsg: "never the key itself"},
+		{name: "a random secret", key: AuthKeyConfig{Hash: strings.Repeat("a", 64), Principal: "owner"},
+			wantField: "server.auth.keys[0].hash", wantMsg: "sha256:<64 hex digits>"},
+		{name: "wrong digest length", key: AuthKeyConfig{Hash: "sha256:abcd", Principal: "owner"},
+			wantField: "server.auth.keys[0].hash", wantMsg: "sha256:<64 hex digits>"},
+		{name: "upper-case hex", key: AuthKeyConfig{Hash: "sha256:" + strings.Repeat("A", 64), Principal: "owner"},
+			wantField: "server.auth.keys[0].hash", wantMsg: "sha256:<64 hex digits>"},
+		{name: "example placeholder", key: AuthKeyConfig{Hash: "sha256:REPLACE_ME", Principal: "owner"},
+			wantField: "server.auth.keys[0].hash", wantMsg: "placeholder"},
+		{name: "no principal", key: AuthKeyConfig{Hash: testKeyHash},
+			wantField: "server.auth.keys[0].principal", wantMsg: "principal is required"},
+		{name: "bad expiry", key: AuthKeyConfig{Hash: testKeyHash, Principal: "owner", Expires: "next year"},
+			wantField: "server.auth.keys[0].expires", wantMsg: "RFC 3339"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := CheckStaticToken(tc.token)
-			if tc.wantMsg == "" {
-				assert.NoError(t, err)
+			cfg := &Config{}
+			cfg.Server.Auth = AuthConfig{Keys: []AuthKeyConfig{tc.key}}
+			errs := Validate(cfg)
+			if tc.wantField == "" {
+				assert.Empty(t, errs)
 				return
 			}
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), tc.wantMsg)
-			assert.Contains(t, err.Error(), "openssl rand -hex 32", "error tells the operator how to generate one")
+			require.Len(t, errs, 1, "%v", errs)
+			assert.Equal(t, tc.wantField, errs[0].Field)
+			assert.Contains(t, errs[0].Message, tc.wantMsg)
 		})
+	}
+	for _, k := range []AuthKeyConfig{{Expires: "2026-12-31"}, {Expires: "2026-12-31T10:00:00+02:00"}, {}} {
+		at, err := k.ExpiresAt()
+		require.NoError(t, err)
+		switch k.Expires {
+		case "":
+			assert.True(t, at.IsZero())
+		case "2026-12-31":
+			assert.Equal(t, time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC), at, "a date expires at the end of that UTC day")
+		default:
+			assert.Equal(t, time.Date(2026, 12, 31, 8, 0, 0, 0, time.UTC), at)
+		}
+	}
+}
+
+// The method and sign-in lists hold known names once each; api_key is
+// never optional; names ADR-079 reserves are refused by name until they
+// ship.
+func TestValidateAuthMethodsAndSignIn(t *testing.T) {
+	cases := []struct {
+		name    string
+		auth    AuthConfig
+		field   string // "" = accepted
+		wantMsg string
+	}{
+		{name: "defaults", auth: AuthConfig{}},
+		{name: "api_key only", auth: AuthConfig{Methods: []string{"api_key"}, SignIn: []string{}}},
+		{name: "any order", auth: AuthConfig{Methods: []string{"session", "api_key"}}},
+		{name: "unknown method", auth: AuthConfig{Methods: []string{"api_key", "cookie"}}, field: "server.auth.methods", wantMsg: `unknown entry "cookie"`},
+		{name: "reserved method", auth: AuthConfig{Methods: []string{"api_key", "proxy"}}, field: "server.auth.methods", wantMsg: `"proxy" is reserved`},
+		{name: "repeated method", auth: AuthConfig{Methods: []string{"api_key", "session", "session"}}, field: "server.auth.methods", wantMsg: "listed twice"},
+		{name: "without api_key", auth: AuthConfig{Methods: []string{"session"}}, field: "server.auth.methods", wantMsg: "api_key is required"},
+		{name: "unknown sign-in", auth: AuthConfig{SignIn: []string{"password"}}, field: "server.auth.sign_in", wantMsg: `unknown entry "password"`},
+		{name: "reserved sign-in", auth: AuthConfig{SignIn: []string{"passkey"}}, field: "server.auth.sign_in", wantMsg: `"passkey" is reserved`},
+		{name: "repeated sign-in", auth: AuthConfig{SignIn: []string{"invite", "invite"}}, field: "server.auth.sign_in", wantMsg: "listed twice"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &Config{}
+			cfg.Server.Auth = tc.auth
+			errs := Validate(cfg)
+			if tc.field == "" {
+				assert.Empty(t, errs)
+				return
+			}
+			require.Len(t, errs, 1, "%v", errs)
+			assert.Equal(t, tc.field, errs[0].Field)
+			assert.Contains(t, errs[0].Message, tc.wantMsg)
+		})
+	}
+	assert.Equal(t, DefaultAuthMethods, AuthConfig{}.EffectiveMethods())
+	assert.Equal(t, DefaultAuthSignIn, AuthConfig{}.EffectiveSignIn())
+	assert.Empty(t, AuthConfig{SignIn: []string{}}.EffectiveSignIn(), "an explicit empty list disables every ceremony")
+	assert.True(t, AuthConfig{}.NeedsPublicURL())
+	assert.False(t, AuthConfig{SignIn: []string{}}.NeedsPublicURL())
+}
+
+// server.public_url is the base of every link: a non-private instance
+// whose sign-in list builds links must name an absolute http(s) URL
+// with nothing after the path. A private instance and one minting no
+// links need none.
+func TestValidatePublicURL(t *testing.T) {
+	for raw, wantMsg := range map[string]string{
+		"https://dpkms.example.net":      "",
+		"http://127.0.0.1:8080":          "",
+		"https://dpkms.example.net/base": "",
+		"":                               "required",
+		"dpkms.example.net":              "absolute http or https",
+		"ftp://dpkms.example.net":        "absolute http or https",
+		"https://":                       "absolute http or https",
+		"https://dpkms.example.net/?x=1": "no query",
+		"https://u:p@dpkms.example.net":  "no query, fragment or credentials",
+	} {
+		t.Run(raw, func(t *testing.T) {
+			cfg := &Config{}
+			cfg.Server.Access = AccessProtected
+			cfg.Server.PublicURL = raw
+			errs := Validate(cfg)
+			if wantMsg == "" {
+				assert.Empty(t, errs)
+				return
+			}
+			require.Len(t, errs, 1, "%v", errs)
+			assert.Equal(t, "server.public_url", errs[0].Field)
+			assert.Contains(t, errs[0].Message, wantMsg)
+		})
+	}
+	private := &Config{}
+	assert.Empty(t, Validate(private), "a private instance needs no public_url")
+	assert.NoError(t, private.ValidateAccess())
+	broken := &Config{}
+	broken.Server.Access = AccessProtected
+	broken.Server.Auth.Keys = []AuthKeyConfig{{Hash: "ctxt_plain", Principal: "owner"}}
+	err := broken.ValidateAccess()
+	require.Error(t, err, "serve refuses a broken server.auth before binding a port")
+	assert.Contains(t, err.Error(), "server.auth.keys[0].hash")
+	assert.Contains(t, err.Error(), "server.public_url")
+}
+
+// A YAML file distinguishes an absent sign_in (the default list) from
+// an explicit empty one (no ceremony at all), through the loader.
+func TestLoadAuthSignInUnsetVersusEmpty(t *testing.T) {
+	clearPortEnv(t)
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv(EnvConfigPath, "")
+	for body, want := range map[string][]string{
+		"server:\n  access: protected\n  public_url: https://x.example\n": DefaultAuthSignIn,
+		"server:\n  access: protected\n  auth:\n    sign_in: []\n":        {},
+		"server:\n  access: protected\n  public_url: https://x.example\n  auth:\n    sign_in: [link]\n    methods: [api_key]\n    keys:\n      - hash: " + testKeyHash + "\n        principal: owner\n        expires: 2026-12-31\n": {"link"},
+	} {
+		path := filepath.Join(t.TempDir(), "dpkms.yaml")
+		require.NoError(t, os.WriteFile(path, []byte(body), 0o600))
+		cfg, err := Load("dpkms", path)
+		require.NoError(t, err, body)
+		assert.Equal(t, want, cfg.Server.Auth.EffectiveSignIn(), body)
+		assert.Empty(t, Validate(cfg), body)
 	}
 }
 
@@ -414,10 +538,7 @@ func TestValidateRejectsUnexpandedEnvRefs(t *testing.T) {
 	cfg.Storage.Blob.S3.SecretKey = "${S3_SECRET_KEY}"
 	cfg.Storage.Path = "postgres://u:${PGPASSWORD}@db/ctxt"
 	cfg.Storage.Blob.S3.AccessKey = "$S3_ACCESS_KEY"
-	cfg.Server.Auth = AuthConfig{
-		Provider: "static",
-		Static:   StaticAuthConfig{Tokens: []StaticTokenConfig{{Token: "${DEVICE_TOKEN}", Principal: "p", Roles: []string{"reader"}}}},
-	}
+	cfg.Server.Token = "${DEVICE_TOKEN}"
 
 	got := map[string]string{}
 	for _, e := range Validate(cfg) {
@@ -427,7 +548,7 @@ func TestValidateRejectsUnexpandedEnvRefs(t *testing.T) {
 		"storage.blob.s3.secret_key",
 		"storage.path",
 		"storage.blob.s3.access_key",
-		"server.auth.static.tokens[0].token",
+		"server.token",
 	} {
 		assert.Equal(t, envRefMessage, got[field], field)
 	}
@@ -442,16 +563,4 @@ func TestValidateAllowsLiteralDollars(t *testing.T) {
 		cfg.Storage.Blob.S3.SecretKey = v
 		assert.Empty(t, Validate(cfg), v)
 	}
-}
-
-// Validate reports a weak static token against its entry.
-func TestValidateAuthTokens(t *testing.T) {
-	cfg := &Config{}
-	cfg.Server.Auth = staticAuth()
-	cfg.Server.Auth.Static.Tokens = append(cfg.Server.Auth.Static.Tokens,
-		StaticTokenConfig{Token: "REPLACE_ME_admin_token", Principal: "admin", Roles: []string{"admin"}})
-	errs := Validate(cfg)
-	require.Len(t, errs, 1)
-	assert.Equal(t, "server.auth.static.tokens[1].token", errs[0].Field)
-	assert.Contains(t, errs[0].Message, "REPLACE_ME")
 }

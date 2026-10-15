@@ -25,8 +25,8 @@ import (
 
 // Fixture is an in-process dpkms the cases call: the HTTP API behind
 // an httptest server and the gRPC API over an in-memory listener, both
-// over one store the caller supplies, guarded by the static token
-// provider. It holds the owner and one object of theirs for now; the
+// over one store the caller supplies, guarded by key-backed
+// principals. It holds the owner and one object of theirs for now; the
 // restricted viewers and the corpus they must not see arrive with the
 // sharing phases.
 type Fixture struct {
@@ -52,7 +52,7 @@ const bufSize = 1 << 20
 // requires it).
 func Start(t testing.TB, driver storage.StorageDriver) *Fixture {
 	t.Helper()
-	srv := dpkmstest.Start(t, driver, dpkmstest.WithStaticTokens())
+	srv := dpkmstest.Start(t, driver, dpkmstest.WithKeys())
 	f := &Fixture{
 		Server: srv,
 		owner:  Principal{Name: "owner", Token: srv.Token(dpkmstest.RoleAdmin)},

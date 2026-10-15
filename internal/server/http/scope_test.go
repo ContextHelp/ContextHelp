@@ -19,31 +19,18 @@ import (
 	"github.com/stretchr/testify/require"
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
+	"github.com/ideacrafterslabs/ctxt/internal/auth/authtest"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/ideacrafterslabs/ctxt/internal/testguard"
 )
 
 func TestMain(m *testing.M) {
 	os.Exit(testguard.Main(m, nil))
-}
-
-// fixedProvider authenticates any presented credential as one fixed
-// principal: the route-coverage tests use it to call every route as a
-// principal holding no scope at all.
-type fixedProvider struct{ p *authn.Principal }
-
-func (fixedProvider) Name() string { return "fixed" }
-
-func (f fixedProvider) Authenticate(_ context.Context, cred authn.Credential) (*authn.Principal, error) {
-	if cred.Empty() {
-		return nil, authn.ErrNoCredential
-	}
-	out := *f.p
-	return &out, nil
 }
 
 func newScopeTestService(t *testing.T) *service.Service {
@@ -85,7 +72,7 @@ var urlParam = regexp.MustCompile(`\{[^}]+\}`)
 // the federation push, which keeps its own credential rule.
 func TestRouteCoverageEveryRouteDeclaresAScope(t *testing.T) {
 	svc := newScopeTestService(t)
-	rc := RouterConfig{Auth: fixedProvider{p: &authn.Principal{ID: "none"}}}
+	rc := RouterConfig{Auth: authtest.Fixed(&authn.Principal{ID: "none"})}
 	table := apiRoutes(svc, rc)
 	walked := walkAPIRoutes(t, NewRouterWithConfig(svc, rc))
 
@@ -103,7 +90,7 @@ func TestRouteCoverageEveryRouteDeclaresAScope(t *testing.T) {
 // route is really mounted behind RequireScope. Handlers never run.
 func TestRouteCoverageScopelessPrincipalDeniedEverywhere(t *testing.T) {
 	svc := newScopeTestService(t)
-	rc := RouterConfig{Auth: fixedProvider{p: &authn.Principal{ID: "none"}}}
+	rc := RouterConfig{Auth: authtest.Fixed(&authn.Principal{ID: "none"})}
 	table := apiRoutes(svc, rc)
 	router := NewRouterWithConfig(svc, rc)
 
@@ -131,16 +118,15 @@ func TestRouteCoverageScopelessPrincipalDeniedEverywhere(t *testing.T) {
 	}
 }
 
-// roleServer is an authenticated router with one static token per role.
+// roleServer is an authenticated router with one token per role.
 func roleServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	provider, err := authn.NewStatic([]authn.StaticToken{
-		{Token: "tok-admin-fixture-0123456789abcdef0123456789", Principal: "owner", Roles: []string{authn.RoleAdmin}},
-		{Token: "tok-writer-fixture-0123456789abcdef0123456789", Principal: "phone", Roles: []string{authn.RoleWriter}},
-		{Token: "tok-reader-fixture-0123456789abcdef0123456789", Principal: "tablet", Roles: []string{authn.RoleReader}},
-	})
-	require.NoError(t, err)
-	ts := httptest.NewServer(NewRouterWithConfig(newScopeTestService(t), RouterConfig{Auth: provider}))
+	chain := authtest.TokenChain(
+		authtest.Token{Token: "tok-admin-fixture-0123456789abcdef0123456789", Principal: "owner", Roles: []string{authn.RoleAdmin}},
+		authtest.Token{Token: "tok-writer-fixture-0123456789abcdef0123456789", Principal: "phone", Roles: []string{authn.RoleWriter}},
+		authtest.Token{Token: "tok-reader-fixture-0123456789abcdef0123456789", Principal: "tablet", Roles: []string{authn.RoleReader}},
+	)
+	ts := httptest.NewServer(NewRouterWithConfig(newScopeTestService(t), RouterConfig{Auth: chain}))
 	t.Cleanup(ts.Close)
 	return ts
 }
@@ -258,7 +244,7 @@ func TestPrivateInstanceNeedsNoToken(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(body))
 	var who whoamiResponse
 	require.NoError(t, json.Unmarshal(body, &who))
-	assert.Equal(t, "local", who.Principal)
+	assert.Equal(t, storage.OwnerPrincipal, who.Principal)
 	assert.Equal(t, authn.AllScopes, who.Scopes)
 }
 
@@ -279,7 +265,7 @@ func TestWhoamiReportsPrincipalRolesScopes(t *testing.T) {
 		require.NoError(t, json.Unmarshal(body, &who))
 		bundle, _ := authn.Bundle(want.role)
 		assert.Equal(t, want.principal, who.Principal)
-		assert.Equal(t, authn.ProviderStatic, who.Provider)
+		assert.Equal(t, authn.MethodAPIKey, who.Provider)
 		assert.Equal(t, []string{want.role}, who.Roles)
 		assert.Equal(t, bundle, who.Scopes, token)
 	}
@@ -288,14 +274,14 @@ func TestWhoamiReportsPrincipalRolesScopes(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 }
 
-// Federation push needs write:objects on top of its federation.token
-// rule: a reader principal is refused before the handler runs; a writer
-// reaches the handler (which then applies the federation credential).
+// Federation push needs write:objects on top of its peer rule: a
+// reader principal is refused before the handler runs; a writer reaches
+// the handler (which then checks the principal is a peer).
 func TestFederationPushRequiresWriteObjects(t *testing.T) {
 	svc := newScopeTestService(t)
 	for role, wantScopeDenied := range map[string]bool{authn.RoleReader: true, authn.RoleWriter: false, authn.RoleAdmin: false} {
 		p := &authn.Principal{ID: role, Roles: []string{role}, Scopes: authn.ScopesForRoles([]string{role})}
-		router := NewRouterWithConfig(svc, RouterConfig{Auth: fixedProvider{p: p}})
+		router := NewRouterWithConfig(svc, RouterConfig{Auth: authtest.Fixed(p)})
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/federation/push", strings.NewReader("{}"))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer any")
@@ -356,7 +342,7 @@ var uiSessionRouteSet = []string{
 // reach declare scopes outside the set.
 func TestUISessionRouteSetPinned(t *testing.T) {
 	svc := newScopeTestService(t)
-	rc := RouterConfig{Auth: fixedProvider{p: &authn.Principal{ID: "none"}}}
+	rc := RouterConfig{Auth: authtest.Fixed(&authn.Principal{ID: "none"})}
 	table := apiRoutes(svc, rc)
 
 	var got []string
@@ -405,7 +391,7 @@ func TestUISessionRefusedOutsideRouteSet(t *testing.T) {
 		ID: "ops", Roles: []string{authn.RoleAdmin}, Scopes: authn.UISessionScopes,
 		Meta: map[string]string{authn.MetaVia: authn.ViaSession, authn.MetaSessionKind: authn.SessionKindUI},
 	}
-	rc := RouterConfig{Auth: fixedProvider{p: sess}}
+	rc := RouterConfig{Auth: authtest.Fixed(sess)}
 	table := apiRoutes(svc, rc)
 	router := NewRouterWithConfig(svc, rc)
 

@@ -20,7 +20,7 @@ func validTokenMD(ctx context.Context) context.Context {
 // An authenticated unary call sees the owner's viewer, attached in the
 // same step as the principal.
 func TestAuthUnaryAttachesUnrestrictedViewer(t *testing.T) {
-	ic := authUnaryInterceptor(newTestProvider(t), nil)
+	ic := authUnaryInterceptor(newTestChain(t), nil)
 	var seen sharing.Viewer
 	var ok bool
 	_, err := ic(validTokenMD(context.Background()), nil, unaryInfo(viewerTestMethod),
@@ -39,7 +39,7 @@ func TestAuthUnaryAttachesUnrestrictedViewer(t *testing.T) {
 // A rejected unary call never reaches the handler, so no viewer leaks
 // past a failed authentication.
 func TestAuthUnaryRejectedAttachesNoViewer(t *testing.T) {
-	ic := authUnaryInterceptor(newTestProvider(t), nil)
+	ic := authUnaryInterceptor(newTestChain(t), nil)
 	ran := false
 	_, err := ic(context.Background(), nil, unaryInfo(viewerTestMethod),
 		func(context.Context, any) (any, error) { ran = true; return "ok", nil })
@@ -50,7 +50,7 @@ func TestAuthUnaryRejectedAttachesNoViewer(t *testing.T) {
 
 // Streams get the same viewer as unary calls.
 func TestAuthStreamAttachesUnrestrictedViewer(t *testing.T) {
-	ic := authStreamInterceptor(newTestProvider(t), nil)
+	ic := authStreamInterceptor(newTestChain(t), nil)
 	var seen sharing.Viewer
 	var ok bool
 	err := ic(nil, &fakeServerStream{ctx: validTokenMD(context.Background())},

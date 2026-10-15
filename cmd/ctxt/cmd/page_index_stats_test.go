@@ -80,7 +80,7 @@ func assertStoreNotCreated(t *testing.T, path string) {
 // page list and show read with a reader token; refresh needs a writer.
 // None opens the store the config names.
 func TestPageCommandsOverAPI(t *testing.T) {
-	db := setupTestDB(t, dpkmstest.WithStaticTokens())
+	db := setupTestDB(t, dpkmstest.WithKeys())
 	seedPagesIndexStats(t, db)
 	db.useRole(t, dpkmstest.RoleReader)
 	local := detachLocalStore(t, db)
@@ -133,7 +133,7 @@ func TestPageCommandsOverAPI(t *testing.T) {
 // An unknown slug is NOT_FOUND (3); no token UNAUTHORIZED (5); nothing
 // answering PREREQUISITE (70).
 func TestPageCommandsErrors(t *testing.T) {
-	db := setupTestDB(t, dpkmstest.WithStaticTokens())
+	db := setupTestDB(t, dpkmstest.WithKeys())
 	seedPagesIndexStats(t, db)
 
 	_, err := db.exec("page", "show", "no.such")
@@ -155,7 +155,7 @@ func TestPageCommandsErrors(t *testing.T) {
 // index reads for a reader; --refresh needs a writer. Before the first
 // rebuild the index is NOT_FOUND with a hint.
 func TestIndexCommandOverAPI(t *testing.T) {
-	db := setupTestDB(t, dpkmstest.WithStaticTokens())
+	db := setupTestDB(t, dpkmstest.WithKeys())
 	seedPagesIndexStats(t, db)
 	db.useRole(t, dpkmstest.RoleReader)
 	local := detachLocalStore(t, db)
@@ -221,7 +221,7 @@ func TestIndexCommandOverAPI(t *testing.T) {
 // the resurfacing candidates of the active profile, which travels with
 // the request. Profiles stay the client's own config.
 func TestStatsOverAPI(t *testing.T) {
-	db := setupTestDB(t, dpkmstest.WithStaticTokens())
+	db := setupTestDB(t, dpkmstest.WithKeys())
 	seedPagesIndexStats(t, db)
 	db.useRole(t, dpkmstest.RoleReader)
 	local := detachLocalStore(t, db)
@@ -291,7 +291,7 @@ func mustJSON(t *testing.T, v any) string {
 // stats and stats --watch fail on the first snapshot: no token is exit
 // 5, nothing answering exit 70.
 func TestStatsErrors(t *testing.T) {
-	db := setupTestDB(t, dpkmstest.WithStaticTokens())
+	db := setupTestDB(t, dpkmstest.WithKeys())
 	db.useRole(t, "none")
 	for _, args := range [][]string{{"stats"}, {"stats", "--watch"}} {
 		_, err := db.exec(args...)

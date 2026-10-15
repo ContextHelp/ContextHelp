@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
+	"github.com/ideacrafterslabs/ctxt/internal/auth/authtest"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
@@ -25,20 +26,6 @@ func TestMain(m *testing.M) {
 	os.Exit(testguard.Main(m, nil))
 }
 
-// fixedProvider authenticates any presented credential as one fixed
-// principal.
-type fixedProvider struct{ p *authn.Principal }
-
-func (fixedProvider) Name() string { return "fixed" }
-
-func (f fixedProvider) Authenticate(_ context.Context, cred authn.Credential) (*authn.Principal, error) {
-	if cred.Empty() {
-		return nil, authn.ErrNoCredential
-	}
-	out := *f.p
-	return &out, nil
-}
-
 // registeredMethods lists every method the server registers, reflection
 // included, as full method names, with whether each is a stream.
 func registeredMethods(t *testing.T) map[string]bool {
@@ -46,7 +33,7 @@ func registeredMethods(t *testing.T) map[string]bool {
 	driver := storageutil.NewTestDriver(t)
 	svc := service.New(driver, jobs.NewQueue(driver.Jobs()), builtins.Registry(), search.NewEngine(driver), "", nil)
 	s := New("127.0.0.1:0", svc,
-		WithAuth(fixedProvider{p: &authn.Principal{ID: "none"}}),
+		WithAuth(authtest.Fixed(&authn.Principal{ID: "none"})),
 		WithReflection(true),
 	)
 	out := map[string]bool{}
@@ -89,7 +76,7 @@ func TestMethodCoverageEveryMethodDeclaresAScope(t *testing.T) {
 // registered method (unary and stream) with PermissionDenied naming the
 // scope; the handler never runs.
 func TestMethodCoverageScopelessPrincipalDeniedEverywhere(t *testing.T) {
-	provider := fixedProvider{p: &authn.Principal{ID: "none"}}
+	provider := authtest.Fixed(&authn.Principal{ID: "none"})
 	unary := authUnaryInterceptor(provider, nil)
 	stream := authStreamInterceptor(provider, nil)
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer any"))
@@ -121,7 +108,7 @@ func TestMethodCoverageScopelessPrincipalDeniedEverywhere(t *testing.T) {
 }
 
 func TestUnknownMethodIsRefused(t *testing.T) {
-	ic := authUnaryInterceptor(newTestProvider(t), nil)
+	ic := authUnaryInterceptor(newTestChain(t), nil)
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer tok-valid-fixture-0123456789abcdef0123456789"))
 	_, err := ic(ctx, nil, unaryInfo("/dpkms.v1.Unlisted/Method"),
 		func(context.Context, any) (any, error) { return "ok", nil })

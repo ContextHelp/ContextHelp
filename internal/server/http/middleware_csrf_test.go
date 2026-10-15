@@ -200,7 +200,7 @@ func TestLegitimateClientsPass(t *testing.T) {
 // Federation peers push JSON with no Origin; the guard lets them through
 // to the handler.
 func TestFederationPushPassesGuard(t *testing.T) {
-	ts := newFedTestBundle(t, "")
+	ts := newFedTestBundle(t)
 	defer ts.Close()
 
 	body := makePushBody(t, []storage.KnowledgeObject{makeKO("o1", "h1")}, nil)

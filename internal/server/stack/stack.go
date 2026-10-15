@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"slices"
 	"strconv"
 	"time"
 
@@ -56,9 +57,10 @@ type Inputs struct {
 	// Access is the effective access class (config.Access*), as
 	// ResolveInboundAuth returns it.
 	Access string
-	// Auth is the inbound authentication provider. It guards the route
-	// table on non-private instances only.
-	Auth authn.Provider
+	// Auth replaces the authentication chain Build assembles from
+	// server.auth and the driver's principal registry (tests). nil
+	// builds the configured chain. Ignored on private instances.
+	Auth *authn.Chain
 	// PolicyBus is the bus the policy engine subscribes to; dpkms serve
 	// passes its /ws/bus hub.
 	PolicyBus kitbus.Bus
@@ -101,13 +103,16 @@ type Stack struct {
 	Bus     events.Bus
 	Service *service.Service
 	Watcher *watcher.Manager
-	// RouteAuth is the token provider guarding the route table (and
-	// gRPC); nil on private instances.
-	RouteAuth authn.Provider
+	// RouteAuth is the authentication chain guarding the route table
+	// and gRPC; nil on private instances.
+	RouteAuth *authn.Chain
+	// Keys mints and verifies the registry API keys RouteAuth accepts;
+	// nil on private instances.
+	Keys *authn.Keys
 	// UISessions is the web UI sign-in session manager; nil when the
-	// instance offers no browser sign-in (private instances, providers
-	// that cannot resolve token hashes). The HTTP route table accepts
-	// its session cookies on top of RouteAuth's tokens; gRPC does not.
+	// instance offers no browser sign-in (private instances, a
+	// server.auth.methods without session). Only the HTTP chain runs
+	// the session method: gRPC carries no cookies.
 	UISessions   *authn.Sessions
 	Security     *security.Emitter
 	Entitlements *registry.InboundGate
@@ -143,32 +148,20 @@ func (s *Stack) Close() {
 	_ = s.Shutdown(ctx)
 }
 
-// ResolveInboundAuth folds the --public flag into the loaded config,
-// enforces the access-class rules, and constructs the configured
-// authentication provider. Returns the effective access class and the
-// provider (nil when no auth is configured, which is only legal for
-// private instances). Any misconfiguration (unknown class, explicit
-// private + --public, non-private without credentials, broken provider
-// config) is an error, so dpkms serve refuses before a port is bound.
-func ResolveInboundAuth(c *config.Config, publicFlag bool) (string, authn.Provider, error) {
+// ResolveInboundAuth folds the --public flag into the loaded config and
+// enforces the access-class and server.auth rules, returning the
+// effective access class. Any misconfiguration (unknown class, explicit
+// private + --public, broken server.auth, a link-minting instance with
+// no public_url) is an error, so dpkms serve refuses before a port is
+// bound. Whether the instance holds a credential is checked by Build
+// against the registry (authn.RequireOwnerCredential).
+func ResolveInboundAuth(c *config.Config, publicFlag bool) (string, error) {
 	folded := *c
 	folded.Server.Public = folded.Server.Public || publicFlag
 	if err := folded.ValidateAccess(); err != nil {
-		return "", nil, err
+		return "", err
 	}
-	access := folded.Server.EffectiveAccess()
-
-	provider, err := authn.FromConfig(c.Server.Auth)
-	if err != nil {
-		return "", nil, err
-	}
-	if access != config.AccessPrivate && provider == nil {
-		// Unreachable while ValidateAccess covers credential presence;
-		// kept as a hard stop so a validation regression can never
-		// expose an unauthenticated non-private listener.
-		return "", nil, fmt.Errorf("config: %s instance requires inbound authentication (server.auth)", access)
-	}
-	return access, provider, nil
+	return folded.Server.EffectiveAccess(), nil
 }
 
 // EmbeddingBuildOpts wires the embedding write path into the pipeline
@@ -242,40 +235,57 @@ func HostAllowlist(access string, port int, extra []string) (*httpserver.HostAll
 // Build prunes them.
 const uiSessionRetention = 30 * 24 * time.Hour
 
-// newUISessions builds the web UI session manager for a non-private
-// instance, or returns nil (private instances need no sign-in; a
-// provider that cannot resolve token hashes cannot mint sessions). At
-// start it revokes sessions whose minting token left the config, and
-// prunes sessions that ended more than uiSessionRetention ago.
-func newUISessions(ctx context.Context, out io.Writer, store storage.UISessionStore, provider authn.Provider, access string, bounds config.UISessionConfig) (*authn.Sessions, error) {
-	if access == config.AccessPrivate || provider == nil {
+// newUISessions builds the web UI session manager of a non-private
+// instance over the driver's session store and principal registry, or
+// returns nil (private instances need no sign-in). At start it prunes
+// sessions that ended more than uiSessionRetention ago.
+func newUISessions(ctx context.Context, out io.Writer, driver storage.StorageDriver, keys *authn.Keys, access string, bounds config.UISessionConfig) (*authn.Sessions, error) {
+	if access == config.AccessPrivate {
 		return nil, nil
 	}
-	resolver, ok := provider.(authn.TokenHashResolver)
-	if !ok {
-		fmt.Fprintf(out, "Web UI sign-in: unavailable with the %s provider\n", provider.Name())
-		return nil, nil
-	}
-	sessions, err := authn.NewSessions(store, resolver, authn.SessionOptions{
+	sessions, err := authn.NewSessions(driver.UISessions(), driver.Auth(), keys, authn.SessionOptions{
 		IdleTTL: bounds.IdleTTL,
 		MaxTTL:  bounds.MaxTTL,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("web UI sessions: %w", err)
 	}
-	n, err := sessions.SweepRemovedTokens(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("web UI sessions: %w", err)
-	}
-	if n > 0 {
-		fmt.Fprintf(out, "Web UI sign-in: revoked %d session(s) whose token is no longer configured\n", n)
-	}
-	if _, err := store.Prune(ctx, time.Now().Add(-uiSessionRetention)); err != nil {
+	if _, err := driver.UISessions().Prune(ctx, time.Now().Add(-uiSessionRetention)); err != nil {
 		return nil, fmt.Errorf("web UI sessions: prune: %w", err)
 	}
 	fmt.Fprintf(out, "Web UI sign-in: ctxt ui open (sessions end after %s idle, %s at most)\n",
 		sessions.IdleTTL(), sessions.MaxTTL())
 	return sessions, nil
+}
+
+// buildAuth assembles the authentication of a non-private instance
+// (ADR-079): registry keys and config-declared keys behind the api_key
+// method, browser sessions behind the session method, chained in the
+// configured order with carried methods first. It refuses an instance
+// with no active owner credential, naming the command that creates one.
+func buildAuth(ctx context.Context, notes io.Writer, driver storage.StorageDriver, cfg *config.Config, access string) (*authn.Chain, *authn.Keys, *authn.Sessions, error) {
+	keys := authn.NewKeysOver(driver.Auth(), nil)
+	cfgKeys, err := authn.ConfigKeysFrom(cfg.Server.Auth.Keys)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("config: %w", err)
+	}
+	if err := authn.RequireOwnerCredential(ctx, keys, cfgKeys, time.Now()); err != nil {
+		return nil, nil, nil, fmt.Errorf("config: %s instance: %w", access, err)
+	}
+	methods := cfg.Server.Auth.EffectiveMethods()
+	available := []authn.Method{authn.NewAPIKeyMethod(keys, cfgKeys)}
+	var sessions *authn.Sessions
+	if slices.Contains(methods, authn.MethodSession) {
+		if sessions, err = newUISessions(ctx, notes, driver, keys, access, cfg.Server.UI.Session); err != nil {
+			return nil, nil, nil, err
+		}
+		available = append(available, sessions.Method())
+	}
+	chain, err := authn.ChainFor(methods, available...)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return chain, keys, sessions, nil
 }
 
 // Build assembles the stack over in.Driver.
@@ -379,9 +389,22 @@ func Build(in Inputs) (*Stack, error) {
 	s.Watcher = watcher.NewManager(in.Driver.Watches(), watcher.StoreRecords(in.Driver.Watches()), serviceIngester{s.Service})
 
 	// Non-private instances authenticate the whole /api/v1 route table
-	// (MCP mount included) through the provider-agnostic middleware.
+	// (MCP mount included) through the method chain: the configured one
+	// over the driver's principal registry, or the one a test injects.
+	notes := in.Notes
+	if notes == nil {
+		notes = io.Discard
+	}
 	if access != config.AccessPrivate {
-		s.RouteAuth = in.Auth
+		chain, keys, sessions, err := buildAuth(context.Background(), notes, in.Driver, cfg, access)
+		if err != nil {
+			s.Close()
+			return nil, err
+		}
+		s.RouteAuth, s.Keys, s.UISessions = chain, keys, sessions
+		if in.Auth != nil {
+			s.RouteAuth = in.Auth
+		}
 	}
 	// Auth failures and ACL denials feed the audit log
 	// (event_class=security) plus optional webhook/SMTP alerting. Wired
@@ -402,37 +425,20 @@ func Build(in Inputs) (*Stack, error) {
 		}
 	}
 
-	// Web UI sign-in (`ctxt ui open`): browser sessions persisted in the
-	// store, acting as the principal of the token that minted them. The
-	// HTTP route table takes session cookies; gRPC keeps tokens only.
-	httpAuth := s.RouteAuth
-	notes := in.Notes
-	if notes == nil {
-		notes = io.Discard
-	}
-	s.UISessions, err = newUISessions(context.Background(), notes, in.Driver.UISessions(), s.RouteAuth, access, cfg.Server.UI.Session)
-	if err != nil {
-		s.Close()
-		return nil, err
-	}
-	if s.UISessions != nil {
-		httpAuth = s.UISessions.Provider(s.RouteAuth)
-	}
-
 	s.Router = httpserver.NewRouterWithConfig(s.Service, httpserver.RouterConfig{
 		Semantic:     QuerySemantic(in.Driver, resolver, in.Warnings),
 		DevCORS:      in.DevCORS,
 		Watcher:      s.Watcher,
 		Probes:       in.Probes,
-		Auth:         httpAuth,
+		Auth:         s.RouteAuth,
 		Sessions:     s.UISessions,
 		Security:     s.Security,
 		Entitlements: s.Entitlements,
-		// On non-private instances the federation push route is gated
-		// per federation.token, never by a principal token alone.
-		RequireFederationCredential: access != config.AccessPrivate,
-		RedactHealthz:               access == config.AccessPublic,
-		Hosts:                       hosts,
+		// On non-private instances the federation push route takes a
+		// peer principal's key, never any authenticated principal.
+		RequirePeerPrincipal: access != config.AccessPrivate,
+		RedactHealthz:        access == config.AccessPublic,
+		Hosts:                hosts,
 	})
 	return s, nil
 }

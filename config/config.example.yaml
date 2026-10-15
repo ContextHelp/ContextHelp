@@ -67,19 +67,29 @@
 #  reminder_interval: 1m
 # CORS for the Vite dev server (http://localhost:5173).
 #  dev: false
-# private (loopback only) | protected (trusted network) | public. Every
-# non-private instance needs server.auth or serve refuses to start.
+# private (loopback only) | protected (trusted network) | public. A
+# non-private instance refuses to start without an active owner
+# credential: create one on the host with
+#   dpkms auth key create --principal owner
 #  access: private
+# The URL people open the instance at: the base of every invite and
+# sign-in link. Required on a non-private instance unless sign_in is [].
+#  public_url: https://dpkms.example.net
 #  auth:
-# static is the only implemented provider.
-#    provider: static
-#    static:
-#      tokens:
-# Each token: at least 32 characters (openssl rand -hex 32), no REPLACE_ME,
-# one or more roles of admin | writer | reader.
-#        - token: REPLACE_ME
-#          principal: laptop
-#          roles: [admin]
+# Authenticators tried on every request, carried (api_key) before
+# ambient (session) whatever the order; api_key is required.
+#    methods: [api_key, session]
+# Ceremonies that may mint a browser session: invite | link.
+#    sign_in: [invite, link]
+# Keys declared by hash, for infrastructure as code. Never the key
+# itself: hash: sha256:$(printf %s "$KEY" | sha256sum | cut -d' ' -f1).
+# principal: owner or a prn_ id; roles narrow the key (default: the
+# principal's); expires: RFC 3339 or a date.
+#    keys:
+#      - hash: sha256:REPLACE_ME
+#        principal: owner
+#        roles: [admin]
+#        expires: 2027-12-31
 # Extra Host header values to answer to (host, or host:port).
 #  allowed_hosts:
 #    - dpkms.lan
@@ -230,8 +240,9 @@
 #  onepassword_vault: ContextHelp
 #  gh_repo: owner/repo
 
-# Federation (dpkms serve). Peer tokens and the receive-side token are
-# secrets: put them in a separate gitignored file passed as a second --config.
+# Federation (dpkms serve). Peer tokens are secrets: put them in a
+# separate gitignored file passed as a second --config. Inbound pushes
+# authenticate with an API key of a peer principal, like any request.
 #federations:
 #  - name: office
 #    url: https://office.example.net:8080
@@ -240,7 +251,7 @@
 #    interval: 1h
 #    token: REPLACE_ME
 #federation:
-#  token: REPLACE_ME
+#  max_request_bytes: 268435456
 
 # Security alerts (dpkms serve).
 #security:

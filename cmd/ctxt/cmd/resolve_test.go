@@ -169,7 +169,7 @@ func TestResolveNotFound(t *testing.T) {
 // object ID, and never opens the store the config names. No token is
 // UNAUTHORIZED (exit 5).
 func TestResolveOverAPI(t *testing.T) {
-	db := setupTestDB(t, dpkmstest.WithStaticTokens())
+	db := setupTestDB(t, dpkmstest.WithKeys())
 	seedResolveObject(t, db)
 	seedResolveEntity(t, db)
 	now := time.Now().Truncate(time.Second)

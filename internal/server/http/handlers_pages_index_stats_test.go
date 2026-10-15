@@ -32,13 +32,13 @@ func RunPagesIndexStatsSuite(t *testing.T, newDriver func(*testing.T) storage.St
 	fresh := func(t *testing.T) *dpkmstest.Server {
 		t.Helper()
 		driver := newDriver(t)
-		srv := dpkmstest.Start(t, driver, dpkmstest.WithStaticTokens())
+		srv := dpkmstest.Start(t, driver, dpkmstest.WithKeys())
 		seedPagesIndexStatsCorpus(t, driver)
 		return srv
 	}
 	t.Run("Stats", func(t *testing.T) {
 		driver := newDriver(t)
-		srv := dpkmstest.Start(t, driver, dpkmstest.WithStaticTokens())
+		srv := dpkmstest.Start(t, driver, dpkmstest.WithKeys())
 		testStats(t, srv, seedPagesIndexStatsCorpus(t, driver))
 	})
 	t.Run("StatsRejectsBadParams", func(t *testing.T) { testStatsRejectsBadParams(t, fresh(t)) })

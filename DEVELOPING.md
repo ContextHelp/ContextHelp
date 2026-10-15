@@ -184,8 +184,8 @@ real router and service, built by the same `internal/server/stack.Build` that
 Seed through `db.Driver`; a command reaches the same data over the API.
 
 ```go
-db := setupTestDB(t, dpkmstest.WithStaticTokens()) // protected; admin/writer/reader tokens
-db.useRole(t, dpkmstest.RoleReader)                // the client now sends the reader token
+db := setupTestDB(t, dpkmstest.WithKeys()) // protected; owner/writer/reader API keys
+db.useRole(t, dpkmstest.RoleReader)                // the client now sends the reader's key
 out, err := db.exec("status")                      // routed to db.Server.URL
 resp := db.Server.Request(t, http.MethodGet, "/api/v1/objects/"+id, dpkmstest.RoleAdmin, nil)
 ```
@@ -193,8 +193,8 @@ resp := db.Server.Request(t, http.MethodGet, "/api/v1/objects/"+id, dpkmstest.Ro
 - `server.url`, plus `server.token` for a protected instance, goes into the
   user-level config (`db.ClientConfigPath`). `--config` layers over it, so a
   test that writes its own `server` section wins.
-- Options: `WithStaticTokens()`, `WithAuthProvider(p)` to plug in another
-  `auth.Provider`, `Unreachable()` for a closed port.
+- Options: `WithKeys()`, `WithAuthMethods(m...)` to plug in another chain
+  of `auth.Method`, `Unreachable()` for a closed port.
 - The fixture is hermetic. Every provider backend is the stub, and the
   embedding provider is a stub on a closed port. No worker pool runs, so
   enqueued jobs stay pending.
@@ -210,8 +210,8 @@ binary and runs `dpkms serve` for the test:
 
 - in a hermetic HOME and XDG root, with `CTXT_*`, `CH_*`, `DPKMS_*` and
   `BUS_TOKEN` removed from the inherited env;
-- with a protected config (mode 0600), static admin, writer and reader tokens,
-  and stub providers;
+- with a protected config (mode 0600), API keys for the owner, a writer
+  device and a reader person seeded in its registry, and stub providers;
 - on free ephemeral HTTP and gRPC ports. It reads the actual ports back from
   the instance's pidfile.
 

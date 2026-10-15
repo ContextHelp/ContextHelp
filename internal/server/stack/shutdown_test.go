@@ -6,7 +6,6 @@ import (
 
 	kitbus "hop.top/kit/go/runtime/bus"
 
-	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/security"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
@@ -16,17 +15,16 @@ import (
 // seen before Shutdown are in the store when it returns, and failures
 // after it write nothing, so the caller can close the store next.
 func TestShutdownDrainsSecurityAuditRows(t *testing.T) {
-	cfg := stubProviders(&config.Config{})
-	cfg.Server.Access = config.AccessProtected
-	cfg.Server.Auth = staticAuthCfg()
-	access, provider, err := ResolveInboundAuth(cfg, false)
+	cfg := stubProviders(protectedCfg())
+	access, err := ResolveInboundAuth(cfg, false)
 	if err != nil {
 		t.Fatalf("ResolveInboundAuth: %v", err)
 	}
 	driver := storageutil.NewTestDriver(t)
+	ownerKey(t, driver)
 	bus := kitbus.New()
 	t.Cleanup(func() { _ = bus.Close(context.Background()) })
-	st, err := Build(Inputs{Config: cfg, Driver: driver, Access: access, Auth: provider, PolicyBus: bus})
+	st, err := Build(Inputs{Config: cfg, Driver: driver, Access: access, PolicyBus: bus})
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}

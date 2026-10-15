@@ -174,7 +174,7 @@ func TestSearchGraphViewerSecurityHeaders(t *testing.T) {
 func TestSearchGraphViewerPageOpenDataGuarded(t *testing.T) {
 	bundle := newTestServerBundle(t)
 	t.Cleanup(bundle.Close)
-	router := NewRouterWithConfig(bundle.svc, RouterConfig{Auth: testProvider(t)})
+	router := NewRouterWithConfig(bundle.svc, RouterConfig{Auth: testChain(t)})
 
 	rr := serveUI(router, http.MethodGet, "/ui/searchgraph/?q=deploy")
 	assert.Equal(t, http.StatusOK, rr.Code)

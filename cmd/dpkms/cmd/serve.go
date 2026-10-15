@@ -132,11 +132,12 @@ func runServe(cmd *cobra.Command, args []string) error {
 	public, _ := cmd.Flags().GetBool("public")
 	reminderInterval := settings.reminderInterval
 
-	// Resolve the access class and inbound auth provider before any
-	// resource is initialized: a protected/public instance with no
-	// credentials refuses to start rather than exposing an open
-	// listener.
-	access, authProvider, err := stack.ResolveInboundAuth(cfg, public)
+	// Resolve the access class and check server.auth before any
+	// resource is initialized: a protected/public instance with a
+	// broken auth config refuses to start rather than exposing an open
+	// listener. Whether an owner credential exists is checked against
+	// the registry once storage is open (stack.Build).
+	access, err := stack.ResolveInboundAuth(cfg, public)
 	if err != nil {
 		return err
 	}
@@ -144,7 +145,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		fmt.Println("note: --public/server.public is deprecated shorthand for server.access: public; set server.access explicitly")
 	}
 	if access != config.AccessPrivate {
-		fmt.Printf("Inbound auth: %s provider (%s access)\n", authProvider.Name(), access)
+		fmt.Printf("Inbound auth: %s (%s access)\n", strings.Join(cfg.Server.Auth.EffectiveMethods(), ", "), access)
 	}
 
 	// 1. Init storage, under the database lock: held until serve
@@ -277,7 +278,6 @@ func runServe(cmd *cobra.Command, args []string) error {
 		Config:     cfg,
 		Driver:     driver,
 		Access:     access,
-		Auth:       authProvider,
 		PolicyBus:  hubBus,
 		Embeddings: embResolver,
 		Browser:    browserClient,
@@ -343,11 +343,10 @@ func runServe(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Serve-time federation-credential validation: on non-private
-	// instances the push route is gated per federation.token, never by
-	// a principal token alone; without one the route refuses requests.
-	if access != config.AccessPrivate && cfg.Federation.Token == "" {
-		fmt.Printf("Federation push: refused — no federation.token configured (mandatory on %s instances)\n", access)
+	// On non-private instances the push route takes a peer principal's
+	// API key, never any authenticated principal's (ADR-079 §1).
+	if access != config.AccessPrivate {
+		fmt.Printf("Federation push: accepts the API key of a peer principal (%s access)\n", access)
 	}
 
 	// 10. Init worker pool.
