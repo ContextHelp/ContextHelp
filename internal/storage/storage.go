@@ -356,11 +356,20 @@ type RegistryStore interface {
 	Delete(ctx context.Context, url string) error
 }
 
-// EntitlementStore persists and retrieves registry entitlement records.
+// EntitlementStore persists and retrieves entitlement records, keyed by
+// (kind, name): an outbound row for a registry and an inbound grant for
+// a principal of the same name are separate rows.
 type EntitlementStore interface {
+	// Upsert inserts or replaces the row keyed by (e.Kind,
+	// e.RegistryName). An invalid Kind is refused.
 	Upsert(ctx context.Context, e *RegistryEntitlement) error
-	Get(ctx context.Context, registryName string) (*RegistryEntitlement, error)
-	List(ctx context.Context) ([]*RegistryEntitlement, error)
+	// Get returns the row keyed by (kind, name).
+	Get(ctx context.Context, kind EntitlementKind, name string) (*RegistryEntitlement, error)
+	// List returns every row of kind, ordered by name.
+	List(ctx context.Context, kind EntitlementKind) ([]*RegistryEntitlement, error)
+	// Delete removes the row keyed by (kind, name). Returns an error
+	// wrapping ErrNotFound when there is no such row.
+	Delete(ctx context.Context, kind EntitlementKind, name string) error
 }
 
 // ReminderStore persists and retrieves system reminders.

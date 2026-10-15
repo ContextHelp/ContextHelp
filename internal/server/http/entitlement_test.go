@@ -56,6 +56,7 @@ func newGatedServerWithDriver(t *testing.T, driver storage.StorageDriver) (*http
 	// bypass lets "owner" past it.
 	for _, principal := range []string{"ops", "owner"} {
 		require.NoError(t, driver.Entitlements().Upsert(ctx, &storage.RegistryEntitlement{
+			Kind:         storage.EntitlementInbound,
 			RegistryName: principal,
 			Plan:         "inbound",
 			Namespaces:   []string{"ai.*"},

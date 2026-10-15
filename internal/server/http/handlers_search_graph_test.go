@@ -46,7 +46,7 @@ func gatedGraphServer(t *testing.T, f *servicetest.HybridFixture) *httptest.Serv
 	t.Helper()
 	for _, principal := range []string{"ops", "owner"} {
 		require.NoError(t, f.Drv.Entitlements().Upsert(ownerCtx(), &storage.RegistryEntitlement{
-			RegistryName: principal, Plan: "inbound", Namespaces: []string{servicetest.GraphOpenNamespace},
+			Kind: storage.EntitlementInbound, RegistryName: principal, Plan: "inbound", Namespaces: []string{servicetest.GraphOpenNamespace},
 			FetchedAt: time.Now().Truncate(time.Second),
 		}))
 	}

@@ -570,14 +570,36 @@ type RegistryCache struct {
 	KeyFingerprint string `json:"key_fingerprint,omitempty"`
 }
 
-// RegistryEntitlement stores the entitlement record returned by a registry's
-// /entitlements endpoint. Namespaces contains glob patterns (e.g. "ai.*").
+// EntitlementKind says which direction an entitlement row governs.
+type EntitlementKind string
+
+const (
+	// EntitlementOutbound is this instance's entitlement on a remote
+	// registry, fetched from the registry's /entitlements endpoint and
+	// keyed by registry name.
+	EntitlementOutbound EntitlementKind = "outbound"
+	// EntitlementInbound is a grant an operator gives an authenticated
+	// caller of this instance, keyed by principal ID.
+	EntitlementInbound EntitlementKind = "inbound"
+)
+
+// Valid reports whether k is one of the defined kinds.
+func (k EntitlementKind) Valid() bool {
+	return k == EntitlementOutbound || k == EntitlementInbound
+}
+
+// RegistryEntitlement stores one entitlement row: a remote registry's
+// /entitlements answer (Kind outbound, RegistryName = registry name) or
+// an inbound grant (Kind inbound, RegistryName = principal ID).
+// Namespaces contains glob patterns (e.g. "ai.*"). Rows are keyed by
+// (Kind, RegistryName): the two kinds never overwrite each other.
 type RegistryEntitlement struct {
-	RegistryName string    `json:"registry_name"`
-	Plan         string    `json:"plan"`
-	Namespaces   []string  `json:"namespaces"`
-	ExpiresAt    time.Time `json:"expires_at,omitempty"`
-	FetchedAt    time.Time `json:"fetched_at"`
+	Kind         EntitlementKind `json:"kind"`
+	RegistryName string          `json:"registry_name"`
+	Plan         string          `json:"plan"`
+	Namespaces   []string        `json:"namespaces"`
+	ExpiresAt    time.Time       `json:"expires_at,omitempty"`
+	FetchedAt    time.Time       `json:"fetched_at"`
 }
 
 // SystemReminder represents a notification for the user.
