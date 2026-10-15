@@ -1,5 +1,6 @@
-// Package federation. worker.go implements WorkerSet — one async push
-// goroutine per configured federation target. Wakes on `interval`, pushes
+// Package federation pushes knowledge objects, their edges and mention
+// entities from one instance to others. This file implements WorkerSet —
+// one async push goroutine per configured federation target. Wakes on `interval`, pushes
 // the source objects changed since the target's watermark (Sync), logs
 // errors and continues. Honors context cancel for graceful shutdown
 // (US-0319 AC #9). Cycle detection runs at construction time per US-0318.
@@ -219,9 +220,9 @@ func collectEntitiesForEdges(
 	ctx context.Context,
 	src storage.StorageDriver,
 	edges []storage.Edge,
-) ([]storage.Entity, error) {
+) []storage.Entity {
 	seen := make(map[string]bool, len(edges))
-	var entities []storage.Entity
+	var entities []storage.Entity //nolint:prealloc // nil when no edge names an entity; preallocating turns the push payload's "entities": null into []
 	store := src.Entities()
 	for i := range edges {
 		e := &edges[i]
@@ -235,7 +236,7 @@ func collectEntitiesForEdges(
 		}
 		entities = append(entities, *ent)
 	}
-	return entities, nil
+	return entities
 }
 
 // pusherFor returns the appropriate Pusher implementation for a federation

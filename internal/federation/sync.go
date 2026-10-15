@@ -227,9 +227,5 @@ func pushObjects(ctx context.Context, src storage.StorageDriver, p Pusher, page 
 			edges = append(edges, *e)
 		}
 	}
-	entities, err := collectEntitiesForEdges(ctx, src, edges)
-	if err != nil {
-		return fmt.Errorf("collect mention entities: %w", err)
-	}
-	return p.Push(ctx, objects, edges, entities)
+	return p.Push(ctx, objects, edges, collectEntitiesForEdges(ctx, src, edges))
 }
