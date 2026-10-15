@@ -22,7 +22,7 @@ func ProjectDocument(ko *storage.KnowledgeObject) storage.DocumentProjection {
 			Sections: ko.Sections,
 		}
 	}
-	var sections []storage.Section
+	sections := make([]storage.Section, 0, len(ko.Graph.Nodes))
 	for _, n := range ko.Graph.Nodes {
 		if n.NodeType != storage.NodeTypeSection {
 			continue
@@ -96,9 +96,9 @@ func flatIndexProjection(ko *storage.KnowledgeObject) storage.IndexProjection {
 	for _, s := range ko.Sections {
 		parts.add(s.Content)
 	}
-	var mentions []string
+	mentions := make([]string, len(ko.Mentions))
 	for i := range ko.Mentions {
-		mentions = append(mentions, ko.Mentions[i].String())
+		mentions[i] = ko.Mentions[i].String()
 	}
 	return storage.IndexProjection{
 		FTSBody:       strings.Join(parts.list, " "),
