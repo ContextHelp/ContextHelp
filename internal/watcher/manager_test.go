@@ -1,16 +1,21 @@
 package watcher_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/fsnotify/fsnotify"
 
 	"github.com/ideacrafterslabs/ctxt/internal/watcher"
 )
@@ -414,4 +419,64 @@ func TestPollLoop_PicksUpNewFile(t *testing.T) {
 	if len(ing.enqueued()) == 0 {
 		t.Fatal("polling loop did not ingest new.md within 10s")
 	}
+}
+
+// syncBuffer is a bytes.Buffer safe to write from the watch goroutine
+// while the test reads it.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// captureLogs routes slog to a buffer for the test's duration.
+func captureLogs(t *testing.T) *syncBuffer {
+	t.Helper()
+	buf := &syncBuffer{}
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	return buf
+}
+
+// An error fsnotify reports (a kernel queue overflow drops events) is
+// logged with the watch it hit, and the watch keeps running.
+func TestWatchLoop_LogsWatcherError(t *testing.T) {
+	logs := captureLogs(t)
+	dir := t.TempDir()
+	ing := &fakeIngester{}
+	opened := make(chan *fsnotify.Watcher, 1)
+	startManager(t, newMemRecords(), ing, dirWatch(dir),
+		watcher.WithFSWatcherHook(func(w *fsnotify.Watcher) { opened <- w }))
+
+	var fsw *fsnotify.Watcher
+	select {
+	case fsw = <-opened:
+	case <-time.After(5 * time.Second):
+		t.Fatal("watch loop opened no fsnotify watcher")
+	}
+	fsw.Errors <- fsnotify.ErrEventOverflow
+
+	eventually(t, "fsnotify error logged", func() bool {
+		out := logs.String()
+		return strings.Contains(out, "level=WARN") &&
+			strings.Contains(out, fsnotify.ErrEventOverflow.Error()) &&
+			strings.Contains(out, "watch="+dir)
+	})
+
+	if err := os.WriteFile(filepath.Join(dir, "after.md"), []byte("# After"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "after.md enqueue", func() bool { return len(ing.enqueued()) > 0 })
 }
