@@ -134,7 +134,11 @@ func Sign(message []byte, priv ed25519.PrivateKey) []byte {
 // PublicFromPrivate extracts the Ed25519 public key from a private key.
 // Ed25519 private keys embed the public key in their last 32 bytes.
 func PublicFromPrivate(priv ed25519.PrivateKey) ed25519.PublicKey {
-	return priv.Public().(ed25519.PublicKey)
+	pub, ok := priv.Public().(ed25519.PublicKey)
+	if !ok {
+		panic(fmt.Sprintf("bundle: ed25519 private key returned a %T public key", priv.Public()))
+	}
+	return pub
 }
 
 // Verify returns nil iff the signature is valid for message under pubKey.
@@ -191,7 +195,7 @@ func Build(opts BuildOpts) (BuildResult, error) {
 	zw := zip.NewWriter(&buf)
 
 	// Write config files into zip.
-	var fileNames []string
+	fileNames := make([]string, 0, len(opts.Files))
 	for _, fname := range opts.Files {
 		srcPath := filepath.Join(opts.ConfigDir, fname)
 		data, err := os.ReadFile(srcPath)
@@ -317,6 +321,38 @@ type VerifyResult struct {
 	Files map[string][]byte
 }
 
+// readEntries reads every zip entry: the manifest, decoded, and the
+// others, each checked by checkEntry, by name.
+func readEntries(zr *zip.Reader) (Manifest, map[string][]byte, error) {
+	var manifest Manifest
+	files := make(map[string][]byte)
+
+	for _, f := range zr.File {
+		if f.Name != ManifestName {
+			if err := checkEntry(f); err != nil {
+				return Manifest{}, nil, err
+			}
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return Manifest{}, nil, fmt.Errorf("bundle: open zip entry %s: %w", f.Name, err)
+		}
+		data, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			return Manifest{}, nil, fmt.Errorf("bundle: read zip entry %s: %w", f.Name, err)
+		}
+		if f.Name == ManifestName {
+			if err := json.Unmarshal(data, &manifest); err != nil {
+				return Manifest{}, nil, fmt.Errorf("bundle: parse manifest: %w", err)
+			}
+			continue
+		}
+		files[f.Name] = data
+	}
+	return manifest, files, nil
+}
+
 // VerifyAndOpen reads a signed bundle, verifies the signature, and returns its contents.
 // Uses the public key embedded in the bundle manifest unless opts.PublicKey is set.
 func VerifyAndOpen(opts VerifyOpts) (VerifyResult, error) {
@@ -335,31 +371,9 @@ func VerifyAndOpen(opts VerifyOpts) (VerifyResult, error) {
 		return VerifyResult{}, fmt.Errorf("bundle: open zip: %w", err)
 	}
 
-	var manifest Manifest
-	files := make(map[string][]byte)
-
-	for _, f := range zr.File {
-		if f.Name != ManifestName {
-			if err := checkEntry(f); err != nil {
-				return VerifyResult{}, err
-			}
-		}
-		rc, err := f.Open()
-		if err != nil {
-			return VerifyResult{}, fmt.Errorf("bundle: open zip entry %s: %w", f.Name, err)
-		}
-		data, err := io.ReadAll(rc)
-		rc.Close()
-		if err != nil {
-			return VerifyResult{}, fmt.Errorf("bundle: read zip entry %s: %w", f.Name, err)
-		}
-		if f.Name == ManifestName {
-			if err := json.Unmarshal(data, &manifest); err != nil {
-				return VerifyResult{}, fmt.Errorf("bundle: parse manifest: %w", err)
-			}
-			continue
-		}
-		files[f.Name] = data
+	manifest, files, err := readEntries(zr)
+	if err != nil {
+		return VerifyResult{}, err
 	}
 
 	// Resolve public key: caller-supplied > manifest-embedded.
