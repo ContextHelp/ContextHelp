@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 // ProximityStore implements storage.ProximityStore for SQLite.
@@ -116,7 +117,9 @@ func (s *ProximityStore) PutBatch(ctx context.Context, scores []*storage.Proximi
 	if err != nil {
 		return fmt.Errorf("proximity.PutBatch: prepare: %w", err)
 	}
-	defer stmt.Close()
+	// The statement belongs to tx: Commit or Rollback releases it anyway,
+	// and the outcome that matters is Commit's error.
+	defer func() { _ = stmt.Close() }()
 
 	for _, score := range scores {
 		a, b := score.ObjectA, score.ObjectB
@@ -157,15 +160,13 @@ func (s *ProximityStore) FindStale(ctx context.Context, cutoff time.Time, limit 
 	}
 	defer rows.Close()
 
-	var ids []string
-	for rows.Next() {
+	return rowscan.All(rows, func(rows *sql.Rows) (string, error) {
 		var id string
 		if err := rows.Scan(&id); err != nil {
-			return nil, fmt.Errorf("proximity.FindStale: scan: %w", err)
+			return "", fmt.Errorf("proximity.FindStale: scan: %w", err)
 		}
-		ids = append(ids, id)
-	}
-	return ids, rows.Err()
+		return id, nil
+	})
 }
 
 func (s *ProximityStore) Stats(ctx context.Context) (*storage.ProximityStats, error) {
@@ -191,16 +192,14 @@ func (s *ProximityStore) Stats(ctx context.Context) (*storage.ProximityStats, er
 
 // scanProximityRows scans all rows from a proximity query.
 func scanProximityRows(rows *sql.Rows) ([]*storage.ProximityScore, error) {
-	var results []*storage.ProximityScore
-	for rows.Next() {
+	return rowscan.All(rows, func(rows *sql.Rows) (*storage.ProximityScore, error) {
 		row := &rowScanner{rows: rows}
 		p, err := scanProximityRow(row)
 		if err != nil {
 			return nil, err
 		}
-		results = append(results, p)
-	}
-	return results, rows.Err()
+		return p, nil
+	})
 }
 
 // rowScanner adapts *sql.Rows to the same Scan interface as *sql.Row.

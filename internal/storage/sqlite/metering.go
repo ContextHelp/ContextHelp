@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 // MeteringStore implements storage.MeteringStore on SQLite.
@@ -69,6 +70,7 @@ func (s *MeteringStore) RecordCapped(
 	}
 	args = append(args, limit)
 
+	// #nosec G202 -- cond is empty or the fixed " AND occurred_at >= ?" predicate; its value is bound in args.
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO metering_events (id, registry_name, event_type, namespace, count, occurred_at)
 		SELECT ?, ?, ?, ?, ?, ?
@@ -104,17 +106,15 @@ func (s *MeteringStore) Aggregate(
 	}
 	defer rows.Close()
 
-	var out []*storage.MeteringAggregate
-	for rows.Next() {
+	return rowscan.All(rows, func(rows *sql.Rows) (*storage.MeteringAggregate, error) {
 		var a storage.MeteringAggregate
 		var et string
 		if err := rows.Scan(&a.RegistryName, &et, &a.Total); err != nil {
 			return nil, fmt.Errorf("scan aggregate: %w", err)
 		}
 		a.EventType = storage.MeteringEventType(et)
-		out = append(out, &a)
-	}
-	return out, rows.Err()
+		return &a, nil
+	})
 }
 
 // List returns raw metering events matching the filter.
@@ -134,8 +134,7 @@ func (s *MeteringStore) List(
 	}
 	defer rows.Close()
 
-	var out []*storage.MeteringEvent
-	for rows.Next() {
+	return rowscan.All(rows, func(rows *sql.Rows) (*storage.MeteringEvent, error) {
 		var e storage.MeteringEvent
 		var et, ts string
 		if err := rows.Scan(&e.ID, &e.RegistryName, &et, &e.Namespace, &e.Count, &ts); err != nil {
@@ -146,9 +145,8 @@ func (s *MeteringStore) List(
 		if err == nil {
 			e.OccurredAt = t
 		}
-		out = append(out, &e)
-	}
-	return out, rows.Err()
+		return &e, nil
+	})
 }
 
 // applyMeteringFilter appends WHERE clauses for the filter fields.

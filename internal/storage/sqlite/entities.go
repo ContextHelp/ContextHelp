@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 type EntityStore struct {
@@ -136,15 +137,7 @@ func (s *EntityStore) List(ctx context.Context, filter storage.EntityFilter) ([]
 	}
 	defer rows.Close()
 
-	var entities []*storage.Entity
-	for rows.Next() {
-		e, err := scanEntityFromRows(rows)
-		if err != nil {
-			return nil, err
-		}
-		entities = append(entities, e)
-	}
-	return entities, rows.Err()
+	return rowscan.All(rows, scanEntityFromRows)
 }
 
 func (s *EntityStore) Resolve(ctx context.Context, mention string) (*storage.Entity, error) {

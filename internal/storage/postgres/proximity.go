@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 type ProximityStore struct{ db *sql.DB }
@@ -109,7 +110,9 @@ func (s *ProximityStore) PutBatch(ctx context.Context, scores []*storage.Proximi
 	if err != nil {
 		return fmt.Errorf("proximity.PutBatch: prepare: %w", err)
 	}
-	defer stmt.Close()
+	// The statement belongs to tx: Commit or Rollback releases it anyway,
+	// and the outcome that matters is Commit's error.
+	defer func() { _ = stmt.Close() }()
 
 	for _, score := range scores {
 		a, b := score.ObjectA, score.ObjectB
@@ -149,15 +152,13 @@ func (s *ProximityStore) FindStale(ctx context.Context, cutoff time.Time, limit 
 	}
 	defer rows.Close()
 
-	var ids []string
-	for rows.Next() {
+	return rowscan.All(rows, func(rows *sql.Rows) (string, error) {
 		var id string
 		if err := rows.Scan(&id); err != nil {
-			return nil, fmt.Errorf("proximity.FindStale: scan: %w", err)
+			return "", fmt.Errorf("proximity.FindStale: scan: %w", err)
 		}
-		ids = append(ids, id)
-	}
-	return ids, rows.Err()
+		return id, nil
+	})
 }
 
 func (s *ProximityStore) Stats(ctx context.Context) (*storage.ProximityStats, error) {
@@ -182,8 +183,7 @@ func (s *ProximityStore) Stats(ctx context.Context) (*storage.ProximityStats, er
 }
 
 func scanProximityRows(rows *sql.Rows) ([]*storage.ProximityScore, error) {
-	var results []*storage.ProximityScore
-	for rows.Next() {
+	return rowscan.All(rows, func(rows *sql.Rows) (*storage.ProximityScore, error) {
 		var p storage.ProximityScore
 		err := rows.Scan(
 			&p.ObjectA, &p.ObjectB, &p.Score,
@@ -194,7 +194,6 @@ func scanProximityRows(rows *sql.Rows) ([]*storage.ProximityScore, error) {
 		if err != nil {
 			return nil, fmt.Errorf("proximity: scan: %w", err)
 		}
-		results = append(results, &p)
-	}
-	return results, rows.Err()
+		return &p, nil
+	})
 }

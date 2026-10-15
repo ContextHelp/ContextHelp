@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 // entitlementStore implements storage.EntitlementStore for SQLite.
@@ -59,15 +60,7 @@ func (s *entitlementStore) List(ctx context.Context) ([]*storage.RegistryEntitle
 	}
 	defer rows.Close()
 
-	var out []*storage.RegistryEntitlement
-	for rows.Next() {
-		e, err := scanEntitlement(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, e)
-	}
-	return out, rows.Err()
+	return rowscan.AllScanner(rows, scanEntitlement)
 }
 
 func scanEntitlement(row interface{ Scan(...any) error }) (*storage.RegistryEntitlement, error) {

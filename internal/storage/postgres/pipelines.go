@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 func (s *PipelineStore) Create(ctx context.Context, pipeline *storage.Pipeline) error {
@@ -69,6 +70,7 @@ func (s *PipelineStore) List(ctx context.Context, filter storage.PipelineFilter)
 		return nil, 0, fmt.Errorf("count pipelines: %w", err)
 	}
 
+	// #nosec G202 -- where joins fixed column predicates whose values are bound placeholders in args; no caller text reaches the SQL.
 	query := `SELECT
 		id, name, description, steps, is_built_in, archived, sandbox, created_at, updated_at
 	FROM pipelines ` + where + " ORDER BY created_at DESC"
@@ -79,15 +81,11 @@ func (s *PipelineStore) List(ctx context.Context, filter storage.PipelineFilter)
 	}
 	defer rows.Close()
 
-	var pipelines []*storage.Pipeline
-	for rows.Next() {
-		p, err := scanPipeline(rows)
-		if err != nil {
-			return nil, 0, err
-		}
-		pipelines = append(pipelines, p)
+	pipelines, err := rowscan.AllScanner(rows, scanPipeline)
+	if err != nil {
+		return nil, 0, err
 	}
-	return pipelines, total, rows.Err()
+	return pipelines, total, nil
 }
 
 func (s *PipelineStore) Update(ctx context.Context, pipeline *storage.Pipeline) error {

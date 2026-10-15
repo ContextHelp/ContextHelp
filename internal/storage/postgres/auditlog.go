@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 type AuditStore struct{ db *sql.DB }
@@ -67,6 +68,7 @@ func (s *AuditStore) List(ctx context.Context, f storage.AuditFilter) ([]*storag
 		return nil, 0, err
 	}
 
+	// #nosec G202 -- where joins fixed column predicates whose values are bound placeholders in args; no caller text reaches the SQL.
 	query := "SELECT id, event_type, object_id, actor, payload, created_at FROM audit_log WHERE " +
 		where + " ORDER BY created_at ASC"
 	if f.Limit > 0 {
@@ -82,15 +84,11 @@ func (s *AuditStore) List(ctx context.Context, f storage.AuditFilter) ([]*storag
 	}
 	defer rows.Close()
 
-	var out []*storage.AuditEntry
-	for rows.Next() {
-		e, err := scanAuditEntry(rows)
-		if err != nil {
-			return nil, 0, err
-		}
-		out = append(out, e)
+	out, err := rowscan.All(rows, scanAuditEntry)
+	if err != nil {
+		return nil, 0, err
 	}
-	return out, total, rows.Err()
+	return out, total, nil
 }
 
 func (s *AuditStore) GetObjectHistory(ctx context.Context, objectID string) ([]*storage.AuditEntry, error) {
@@ -104,15 +102,7 @@ func (s *AuditStore) GetObjectHistory(ctx context.Context, objectID string) ([]*
 	}
 	defer rows.Close()
 
-	var out []*storage.AuditEntry
-	for rows.Next() {
-		e, err := scanAuditEntry(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, e)
-	}
-	return out, rows.Err()
+	return rowscan.All(rows, scanAuditEntry)
 }
 
 func scanAuditEntry(rows *sql.Rows) (*storage.AuditEntry, error) {

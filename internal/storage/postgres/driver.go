@@ -1,3 +1,5 @@
+// Package postgres is the PostgreSQL storage.StorageDriver, with pgvector
+// for embeddings.
 package postgres
 
 import (

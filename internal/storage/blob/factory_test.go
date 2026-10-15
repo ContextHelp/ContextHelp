@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
-	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 func TestFactoryLocal(t *testing.T) {
@@ -17,7 +16,9 @@ func TestFactoryLocal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new local: %v", err)
 	}
-	var _ storage.BlobStore = store
+	if store == nil {
+		t.Fatal("New returned a nil store with no error")
+	}
 }
 
 // The no-op stub that kept nothing is gone: "stub" is an unknown backend.
@@ -54,7 +55,9 @@ func TestFactoryDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new default: %v", err)
 	}
-	var _ storage.BlobStore = store
+	if store == nil {
+		t.Fatal("New returned a nil store with no error")
+	}
 }
 
 func TestFactoryGarageDefaultsPathStyleAndRegion(t *testing.T) {
@@ -71,7 +74,9 @@ func TestFactoryGarageDefaultsPathStyleAndRegion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new garage: %v", err)
 	}
-	var _ storage.BlobStore = store
+	if store == nil {
+		t.Fatal("New returned a nil store with no error")
+	}
 }
 
 func TestFactoryGarageRequiresEndpoint(t *testing.T) {

@@ -2,10 +2,12 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blobref"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 var _ storage.RefTextStore = (*ObjectStore)(nil)
@@ -20,8 +22,7 @@ func (s *ObjectStore) ListRefText(ctx context.Context, after string, limit int) 
 		return nil, fmt.Errorf("list ref text: %w", err)
 	}
 	defer rows.Close()
-	var objs []*storage.KnowledgeObject
-	for rows.Next() {
+	return rowscan.All(rows, func(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 		var obj storage.KnowledgeObject
 		var meta []byte
 		if err := rows.Scan(&obj.ID, &obj.RawContent, &obj.TextContent, &meta); err != nil {
@@ -30,9 +31,8 @@ func (s *ObjectStore) ListRefText(ctx context.Context, after string, limit int) 
 		if err := decodeJSONColumn(meta, "metadata", &obj.Metadata); err != nil {
 			return nil, fmt.Errorf("list ref text %s: %w", obj.ID, err)
 		}
-		objs = append(objs, &obj)
-	}
-	return objs, rows.Err()
+		return &obj, nil
+	})
 }
 
 // ReplaceRefText implements storage.RefTextStore. An empty

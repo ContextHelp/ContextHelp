@@ -37,8 +37,8 @@ func TestDocumentProjection_HasSections(t *testing.T) {
 		Body:     "body text",
 		Sections: []storage.Section{{Title: "S1", Content: "c1"}},
 	}
-	if len(dp.Sections) != 1 {
-		t.Fatal("Sections missing")
+	if dp.Title != "My Doc" || dp.Body != "body text" || len(dp.Sections) != 1 {
+		t.Fatalf("DocumentProjection fields not retained: %+v", dp)
 	}
 }
 

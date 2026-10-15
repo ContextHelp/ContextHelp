@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 type aliasStore struct{ db *sql.DB }
@@ -76,8 +77,7 @@ func (s *aliasStore) List(ctx context.Context, filter storage.AliasFilter) ([]*s
 	}
 	defer rows.Close()
 
-	var out []*storage.Alias
-	for rows.Next() {
+	return rowscan.All(rows, func(rows *sql.Rows) (*storage.Alias, error) {
 		var a storage.Alias
 		var createdStr, updatedStr string
 		if err := rows.Scan(&a.Alias, &a.ObjectID, &a.Scope, &a.Profile, &createdStr, &updatedStr); err != nil {
@@ -85,9 +85,8 @@ func (s *aliasStore) List(ctx context.Context, filter storage.AliasFilter) ([]*s
 		}
 		a.CreatedAt, _ = time.Parse(time.RFC3339, createdStr)
 		a.UpdatedAt, _ = time.Parse(time.RFC3339, updatedStr)
-		out = append(out, &a)
-	}
-	return out, rows.Err()
+		return &a, nil
+	})
 }
 
 // Delete removes one alias by its full key. A miss wraps storage.ErrNotFound.

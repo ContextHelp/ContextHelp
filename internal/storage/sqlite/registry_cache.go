@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 type RegistryStore struct {
@@ -76,15 +77,8 @@ func (s *RegistryStore) List(ctx context.Context) ([]*storage.RegistryCache, int
 	}
 	defer rows.Close()
 
-	var registries []*storage.RegistryCache
-	for rows.Next() {
-		r, err := scanRegistryCache(rows)
-		if err != nil {
-			return nil, 0, err
-		}
-		registries = append(registries, r)
-	}
-	if err := rows.Err(); err != nil {
+	registries, err := rowscan.AllScanner(rows, scanRegistryCache)
+	if err != nil {
 		return nil, 0, fmt.Errorf("iterate registries: %w", err)
 	}
 

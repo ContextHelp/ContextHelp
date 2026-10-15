@@ -88,44 +88,53 @@ func BlobSweepConformance(t *testing.T, drv storage.StorageDriver) {
 		{name: "ingest row lands after the blob delete", key: "swpracelate"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			const content = "content the ingest holds"
-			if err := drv.Blobs().Put(ctx, tc.key, strings.NewReader(content), storage.BlobMeta{}); err != nil {
-				t.Fatalf("put: %v", err)
-			}
-			row := ingested("swp-"+tc.key, tc.key, content)
-			fired := false
-			hooked := countHookDriver{StorageDriver: NewAgedBlobs(drv, now.Add(-48*time.Hour)), after: func(key string) {
-				if key != tc.key || fired {
-					return
-				}
-				fired = true
-				if err := drv.Blobs().Put(ctx, tc.key, strings.NewReader(content), storage.BlobMeta{}); err != nil {
-					t.Fatalf("ingest put: %v", err)
-				}
-				if tc.rowFirst {
-					ingestRow(t, drv, row)
-				}
-			}}
-			res, err := blob.Sweep(ctx, hooked, blob.SweepOptions{Grace: grace, Now: now})
-			if err != nil {
-				t.Fatalf("Sweep: %v", err)
-			}
-			if !fired {
-				t.Fatal("the sweep never counted the blob's references")
-			}
-			if !tc.rowFirst {
-				ingestRow(t, drv, row)
-			}
-			if !exists(t, tc.key) {
-				t.Fatalf("an ingest racing the sweep lost its blob: %s names a deleted key", row.ID)
-			}
-			if got := blobContent(t, drv.Blobs(), tc.key); got != content {
-				t.Errorf("blob content = %q, want %q", got, content)
-			}
-			if tc.rowFirst && slices.Contains(res.Deleted, tc.key) {
-				t.Errorf("Deleted = %v lists %s, which the sweep put back", res.Deleted, tc.key)
-			}
+			sweepIngestRace(t, drv, now, grace, tc.key, tc.rowFirst)
 		})
+	}
+}
+
+// sweepIngestRace runs one sweep with an ingest of key's content landing
+// after the sweep has counted the blob's references and before it deletes
+// the blob. rowFirst lands the ingest's row and check inside that window;
+// otherwise they follow the sweep. Either way the blob must survive.
+func sweepIngestRace(t *testing.T, drv storage.StorageDriver, now time.Time, grace time.Duration, key string, rowFirst bool) {
+	ctx := context.Background()
+	const content = "content the ingest holds"
+	if err := drv.Blobs().Put(ctx, key, strings.NewReader(content), storage.BlobMeta{}); err != nil {
+		t.Fatalf("put: %v", err)
+	}
+	row := ingested("swp-"+key, key, content)
+	fired := false
+	hooked := countHookDriver{StorageDriver: NewAgedBlobs(drv, now.Add(-48*time.Hour)), after: func(counted string) {
+		if counted != key || fired {
+			return
+		}
+		fired = true
+		if err := drv.Blobs().Put(ctx, key, strings.NewReader(content), storage.BlobMeta{}); err != nil {
+			t.Fatalf("ingest put: %v", err)
+		}
+		if rowFirst {
+			ingestRow(t, drv, row)
+		}
+	}}
+	res, err := blob.Sweep(ctx, hooked, blob.SweepOptions{Grace: grace, Now: now})
+	if err != nil {
+		t.Fatalf("Sweep: %v", err)
+	}
+	if !fired {
+		t.Fatal("the sweep never counted the blob's references")
+	}
+	if !rowFirst {
+		ingestRow(t, drv, row)
+	}
+	if !blobExists(t, drv, key) {
+		t.Fatalf("an ingest racing the sweep lost its blob: %s names a deleted key", row.ID)
+	}
+	if got := blobContent(t, drv.Blobs(), key); got != content {
+		t.Errorf("blob content = %q, want %q", got, content)
+	}
+	if rowFirst && slices.Contains(res.Deleted, key) {
+		t.Errorf("Deleted = %v lists %s, which the sweep put back", res.Deleted, key)
 	}
 }
 

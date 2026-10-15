@@ -140,9 +140,10 @@ func TestDraftIsKnowledgeObject(t *testing.T) {
 	d.Type = "text"
 
 	// Draft should be usable wherever KnowledgeObject is expected.
-	var obj *KnowledgeObject = &d
-	if obj.ID != "draft-1" {
-		t.Errorf("Draft alias broken: got %q", obj.ID)
+	asObject := func(o *KnowledgeObject) *KnowledgeObject { return o }
+	obj := asObject(&d)
+	if obj.ID != "draft-1" || obj.Type != "text" {
+		t.Errorf("Draft alias broken: got %q/%q", obj.ID, obj.Type)
 	}
 }
 
@@ -282,5 +283,29 @@ func TestJobJSONRoundTrip(t *testing.T) {
 	}
 	if got.MaxRetries != 3 {
 		t.Errorf("MaxRetries: got %d, want 3", got.MaxRetries)
+	}
+}
+
+func TestObjectFilterListOrder(t *testing.T) {
+	seq := int64(7)
+	tests := []struct {
+		name   string
+		filter ObjectFilter
+		want   string
+	}{
+		{name: "default newest created first", want: "created_at DESC"},
+		{name: "ascending", filter: ObjectFilter{Dir: "asc"}, want: "created_at ASC"},
+		{name: "updated_at", filter: ObjectFilter{Sort: "updated_at"}, want: "updated_at DESC"},
+		{name: "updated_at ascending", filter: ObjectFilter{Sort: "updated_at", Dir: "asc"}, want: "updated_at ASC"},
+		{name: "unknown sort column falls back", filter: ObjectFilter{Sort: "title; DROP TABLE objects"}, want: "created_at DESC"},
+		{name: "unknown direction falls back", filter: ObjectFilter{Dir: "ASC"}, want: "created_at DESC"},
+		{name: "change paging overrides sort", filter: ObjectFilter{ChangedAfter: &seq, Sort: "updated_at", Dir: "asc"}, want: "change_seq ASC"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.filter.ListOrder(); got != tc.want {
+				t.Errorf("ListOrder() = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }

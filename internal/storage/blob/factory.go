@@ -9,6 +9,13 @@ import (
 	s3store "github.com/ideacrafterslabs/ctxt/internal/storage/blob/s3"
 )
 
+const (
+	// backendGarage is the storage.blob.backend value for a Garage server.
+	backendGarage = "garage"
+	// garageRegion is the SigV4 region Garage answers to by default.
+	garageRegion = "garage"
+)
+
 // New creates the BlobStore that storage.blob configures. It is the one
 // constructor for the blob store a storage driver writes through.
 //
@@ -23,7 +30,7 @@ func New(cfg config.BlobConfig) (storage.BlobStore, error) {
 	switch cfg.Backend {
 	case "s3":
 		return s3store.New(cfg.S3)
-	case "garage":
+	case backendGarage:
 		return s3store.New(garageDefaults(cfg.S3))
 	default: // "" or "local"
 		if cfg.Local.Path == "" {
@@ -50,7 +57,7 @@ func garageDefaults(in config.BlobS3Config) config.BlobS3Config {
 	out := in
 	out.UsePathStyle = true
 	if out.Region == "" {
-		out.Region = "garage"
+		out.Region = garageRegion
 	}
 	return out
 }

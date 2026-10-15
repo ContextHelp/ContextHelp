@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 func (s *ReminderStore) Create(ctx context.Context, reminder *storage.SystemReminder) error {
@@ -49,6 +50,7 @@ func (s *ReminderStore) List(ctx context.Context, activeOnly bool) ([]*storage.S
 		return nil, 0, fmt.Errorf("count reminders: %w", err)
 	}
 
+	// #nosec G202 -- where joins fixed column predicates whose values are bound placeholders in args; no caller text reaches the SQL.
 	rows, err := s.db.QueryContext(ctx, `SELECT
 		id, type, title, message, source, action_url, dismissed, created_at, updated_at
 	FROM system_reminders `+where+" ORDER BY created_at DESC")
@@ -57,15 +59,11 @@ func (s *ReminderStore) List(ctx context.Context, activeOnly bool) ([]*storage.S
 	}
 	defer rows.Close()
 
-	var reminders []*storage.SystemReminder
-	for rows.Next() {
-		r, err := scanReminder(rows)
-		if err != nil {
-			return nil, 0, err
-		}
-		reminders = append(reminders, r)
+	reminders, err := rowscan.AllScanner(rows, scanReminder)
+	if err != nil {
+		return nil, 0, err
 	}
-	return reminders, total, rows.Err()
+	return reminders, total, nil
 }
 
 func (s *ReminderStore) Dismiss(ctx context.Context, id string) error {

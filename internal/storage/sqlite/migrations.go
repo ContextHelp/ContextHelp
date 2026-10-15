@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage/indexsig"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 //go:embed migrations/001_initial.sql
@@ -570,15 +571,12 @@ func restampEmbeddingSignatures(ctx context.Context, d *Driver) error {
 		return fmt.Errorf("list embedding models for re-stamp: %w", err)
 	}
 	defer rows.Close()
-	var models []model
-	for rows.Next() {
+	models, err := rowscan.All(rows, func(rows *sql.Rows) (model, error) {
 		var m model
-		if err := rows.Scan(&m.id, &m.provider, &m.dim); err != nil {
-			return err
-		}
-		models = append(models, m)
-	}
-	if err := rows.Err(); err != nil {
+		err := rows.Scan(&m.id, &m.provider, &m.dim)
+		return m, err
+	})
+	if err != nil {
 		return err
 	}
 

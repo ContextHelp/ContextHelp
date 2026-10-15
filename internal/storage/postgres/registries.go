@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 func (s *RegistryStore) CacheManifest(ctx context.Context, cache *storage.RegistryCache) error {
@@ -67,15 +68,11 @@ func (s *RegistryStore) List(ctx context.Context) ([]*storage.RegistryCache, int
 	}
 	defer rows.Close()
 
-	var registries []*storage.RegistryCache
-	for rows.Next() {
-		r, err := scanRegistryCache(rows)
-		if err != nil {
-			return nil, 0, err
-		}
-		registries = append(registries, r)
+	registries, err := rowscan.AllScanner(rows, scanRegistryCache)
+	if err != nil {
+		return nil, 0, err
 	}
-	return registries, total, rows.Err()
+	return registries, total, nil
 }
 
 func (s *RegistryStore) Delete(ctx context.Context, url string) error {

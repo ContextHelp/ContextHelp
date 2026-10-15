@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 // ResurfacingQueueStore implements storage.ResurfacingQueueStore for SQLite.
@@ -50,7 +51,7 @@ func (s *ResurfacingQueueStore) List(
 	var args []any
 
 	if f.ProfileID != "" {
-		query += " AND profile_id = ?"
+		query += andProfileScoped
 		args = append(args, f.ProfileID)
 	}
 	if f.UnseenOnly {
@@ -109,8 +110,7 @@ func (s *ResurfacingQueueStore) DeleteByObject(ctx context.Context, objectID str
 }
 
 func collectResurfacingRows(rows *sql.Rows) ([]*storage.ResurfacingEntry, error) {
-	var out []*storage.ResurfacingEntry
-	for rows.Next() {
+	return rowscan.All(rows, func(rows *sql.Rows) (*storage.ResurfacingEntry, error) {
 		e := &storage.ResurfacingEntry{}
 		var surfacedAt, dismissedAt, createdAt sql.NullString
 		if err := rows.Scan(
@@ -134,7 +134,6 @@ func collectResurfacingRows(rows *sql.Rows) ([]*storage.ResurfacingEntry, error)
 				e.CreatedAt = t
 			}
 		}
-		out = append(out, e)
-	}
-	return out, rows.Err()
+		return e, nil
+	})
 }

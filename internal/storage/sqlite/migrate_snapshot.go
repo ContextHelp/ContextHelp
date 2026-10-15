@@ -204,7 +204,7 @@ func pruneMigrateSnapshots(dir string, keep int) error {
 		ts   string
 		seq  int
 	}
-	var snaps []snap
+	snaps := make([]snap, 0, len(entries))
 	for _, e := range entries {
 		if !e.Type().IsRegular() {
 			continue
