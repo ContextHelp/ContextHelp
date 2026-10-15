@@ -98,6 +98,7 @@ var (
 		Globals: []kitcli.Flag{
 			{Name: "profile", Usage: "focus profile to use"},
 			{Name: "instance", Usage: "target dpkms instance by name or port (overrides current-instance state and config)"},
+			{Name: "as", Usage: "run a read command as another viewer: a principal id or a share policy name (owner only)"},
 		},
 		// Hook runs after kit's built-in chain (chdir → identity → peer →
 		// progress); we use it to reject an unknown --format and to init
@@ -178,7 +179,7 @@ func init() {
 	pf := rootCmd.PersistentFlags()
 	// --offline is kit's own (enforced on http.DefaultTransport), so it
 	// is not mirrored here.
-	for _, name := range []string{"format", "quiet", "no-color", "verbose", "config", "profile", "instance", "output", "no-hints", "chdir"} {
+	for _, name := range []string{"format", "quiet", "no-color", "verbose", "config", "profile", "instance", "output", "no-hints", "chdir", "as"} {
 		if f := pf.Lookup(name); f != nil {
 			_ = viper.BindPFlag(name, f)
 		}

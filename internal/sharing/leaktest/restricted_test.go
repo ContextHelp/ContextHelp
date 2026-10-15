@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"regexp"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -46,12 +47,45 @@ var volatile = []*regexp.Regexp{
 	regexp.MustCompile(`(idn|aud|pol|grt|acc)_[0-9A-HJKMNP-TV-Z]{26}`),
 }
 
+// dropped are removed outright: when a credential was last used is
+// this instance's history of requests, not a row, and the two
+// instances serve different cases before a given one.
+var dropped = []*regexp.Regexp{
+	regexp.MustCompile(`,"last_used_at":"[^"]*"`),
+}
+
 func normalize(b []byte) string {
 	s := string(b)
+	for _, re := range dropped {
+		s = re.ReplaceAllString(s, "")
+	}
 	for _, re := range volatile {
 		s = re.ReplaceAllString(s, "<volatile>")
 	}
 	return sortMCPTools(s)
+}
+
+// normalizeFor is normalize, plus, for the caller's own credential
+// listings (GET /self/...), the rows sorted: two keys minted in the
+// same millisecond list in no fixed order, and the order of a
+// principal's own keys says nothing about rows. Knowledge listings
+// keep their order: it is a ranking, and a ranking can leak.
+func normalizeFor(route string, b []byte) string {
+	if !strings.HasPrefix(route, "GET /self/") {
+		return normalize(b)
+	}
+	var out struct {
+		Data []json.RawMessage `json:"data"`
+	}
+	if json.Unmarshal(b, &out) != nil || len(out.Data) == 0 {
+		return normalize(b)
+	}
+	rows := make([]string, 0, len(out.Data))
+	for _, r := range out.Data {
+		rows = append(rows, normalize(r))
+	}
+	sort.Strings(rows)
+	return "rows:" + strings.Join(rows, "\n")
 }
 
 // sortMCPTools orders the tools of a JSON-RPC tools/list answer by
@@ -94,7 +128,7 @@ func TestDifferentialHiddenRowsChangeNothing(t *testing.T) {
 				b := Run(t, without, q, c)
 				assert.Equal(t, a.Status, b.Status, "status")
 				assert.Equal(t, a.Code, b.Code, "code")
-				assert.Equal(t, normalize(b.Body), normalize(a.Body), "body with the hidden rows differs from without them")
+				assert.Equal(t, normalizeFor(c.Route, b.Body), normalizeFor(c.Route, a.Body), "body with the hidden rows differs from without them")
 			})
 		}
 	}
@@ -116,7 +150,7 @@ func TestHiddenIs404AndClosedIs403(t *testing.T) {
 	colleague, partner, owner := f.Colleague(), f.Partner(), f.Owner()
 
 	for _, hidden := range []string{NoteSarah, ContactClassed, NoteCoMention} {
-		for _, p := range f.Restricted() {
+		for _, p := range f.Viewers() {
 			r := fetch(t, f, p, "/objects/"+hidden)
 			assert.Equal(t, http.StatusNotFound, r.Status, "%s GET %s: %s", p.Name, hidden, r.Body)
 			assert.Contains(t, string(r.Body), httpserver.CodeNotFound)
@@ -129,7 +163,7 @@ func TestHiddenIs404AndClosedIs403(t *testing.T) {
 	assert.Equal(t, http.StatusOK, fetch(t, f, partner, "/objects/"+ContactPersonalTag).Status)
 	// The entity only hidden notes mention is absent; the one the
 	// visible contact mentions is there.
-	for _, p := range f.Restricted() {
+	for _, p := range f.Viewers() {
 		assert.Equal(t, http.StatusNotFound, fetch(t, f, p, "/entities/"+EntitySecret).Status, p.Name)
 		assert.Equal(t, http.StatusOK, fetch(t, f, p, "/entities/"+EntitySarah).Status, p.Name)
 		backlinks := fetch(t, f, p, "/entities/"+EntitySarah+"/backlinks")
@@ -139,7 +173,7 @@ func TestHiddenIs404AndClosedIs403(t *testing.T) {
 
 	for _, path := range []string{"/jobs", "/jobs/" + f.JobID, "/inbox", "/inbox/queue", "/capture/recent", "/events",
 		"/pipelines", "/watches", "/pages", "/topic-index", "/search?q=type==contact"} {
-		for _, p := range f.Restricted() {
+		for _, p := range f.Viewers() {
 			ctx, cancel := context.WithTimeout(context.Background(), StreamWindow)
 			r, err := f.HTTP(ctx, p, http.MethodGet, path, nil)
 			cancel()

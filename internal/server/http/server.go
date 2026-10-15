@@ -85,6 +85,14 @@ type RouterConfig struct {
 	// exchange, invite and link redemption) per client address; nil
 	// means NewAddrLimiter's defaults.
 	CeremonyLimiter *AddrLimiter
+	// StrictSharing makes the visibility backstop answer 500 on a hit
+	// instead of stripping it (dpkms serve --strict-sharing; every
+	// test instance). A hit is a bug in the scoped reads or the render
+	// layer, and a strict instance makes it loud.
+	StrictSharing bool
+	// Audit receives one read audit entry per non-owner request
+	// (ADR-080 §9); nil logs nothing.
+	Audit *sharing.AuditWriter
 }
 
 // NewRouter creates the HTTP router with all routes and middleware.
@@ -190,7 +198,7 @@ func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
 			r.Use(WithViewer(sharing.Unrestricted))
 		}
 		r.Use(UpgradeHeader(probes.Upgrade))
-		mountAPIRoutes(r, apiRoutes(svc, rc), rc)
+		mountAPIRoutes(r, apiRoutes(svc, rc), rc, svc.Viewers())
 	})
 
 	return r
@@ -202,13 +210,17 @@ func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
 // grants every scope, so its routes are mounted bare. Every route sits
 // behind RequireCapability: a restricted viewer reaches only the routes
 // the capability table opens to it (ADR-080 §4), and an unrestricted
-// viewer passes at no cost.
-func mountAPIRoutes(r chi.Router, routes []apiRoute, rc RouterConfig) {
+// viewer passes at no cost. Outermost, Visibility wraps a restricted
+// viewer's request with its ledger and checks the response before it
+// leaves (§8); the owner passes it untouched.
+func mountAPIRoutes(r chi.Router, routes []apiRoute, rc RouterConfig, viewers *sharing.Resolver) {
+	vis := VisibilityConfig{Strict: rc.StrictSharing, Security: rc.Security, Audit: rc.Audit, Viewers: viewers}
 	for _, rt := range routes {
 		h := RequireCapability(rt.Method, rt.Pattern)(rt.Handler)
 		if rc.Auth != nil {
 			h = RequireScope(rt.Scope, rc.Security)(h)
 		}
+		h = Visibility(rt.Method, rt.Pattern, rt.Scope, vis)(h)
 		if rt.Method == "" {
 			r.Handle(rt.Pattern, h)
 			continue

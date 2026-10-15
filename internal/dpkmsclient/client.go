@@ -57,11 +57,14 @@ type Client struct {
 	shown string
 	token string
 	hc    *http.Client
+	// header is sent on every request (WithHeader).
+	header http.Header
 }
 
 type options struct {
 	timeout   time.Duration
 	transport http.RoundTripper
+	header    http.Header
 }
 
 // Option configures a Client.
@@ -75,6 +78,18 @@ func WithTimeout(d time.Duration) Option {
 // WithTransport replaces http.DefaultTransport as the round tripper.
 func WithTransport(rt http.RoundTripper) Option {
 	return func(o *options) { o.transport = rt }
+}
+
+// WithHeader sends key: value on every request (ctxt --as sets
+// X-Ctxt-View-As). It cannot replace Authorization, Content-Type or
+// Accept.
+func WithHeader(key, value string) Option {
+	return func(o *options) {
+		if o.header == nil {
+			o.header = http.Header{}
+		}
+		o.header.Set(key, value)
+	}
 }
 
 // New returns a Client for ep. A URL without an http or https scheme and
@@ -92,9 +107,10 @@ func New(ep Endpoint, opts ...Option) (*Client, error) {
 	}
 	base := strings.TrimRight(ep.URL, "/")
 	return &Client{
-		base:  base,
-		shown: config.RedactDSN(base),
-		token: ep.Token,
+		base:   base,
+		shown:  config.RedactDSN(base),
+		token:  ep.Token,
+		header: o.header,
 		// A nil Transport resolves http.DefaultTransport per request, so
 		// wrappers installed on it later (test guards, kit's offline
 		// policy) still apply.
@@ -194,6 +210,11 @@ func (c *Client) newRequest(ctx context.Context, r Request) (*http.Request, erro
 	req, err := http.NewRequestWithContext(ctx, r.Method, target, body)
 	if err != nil {
 		return nil, fmt.Errorf("build %s %s request: %w", r.Method, r.Path, config.RedactURLError(err))
+	}
+	for k, vs := range c.header {
+		for _, v := range vs {
+			req.Header.Add(k, v)
+		}
 	}
 	for k, vs := range r.Header {
 		for _, v := range vs {

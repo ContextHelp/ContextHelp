@@ -203,8 +203,9 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		{Method: get, Pattern: "/search-history", Scope: authn.ScopeReadObjects, Handler: ListSearchHistory(svc)},
 		{Method: del, Pattern: "/search-history", Scope: authn.ScopeDeleteSearches, Handler: ClearSearchHistory(svc)},
 
-		// Audit log
+		// Audit log, and the read audit of shared viewers (ADR-080 §9).
 		{Method: get, Pattern: "/audit-log", Scope: authn.ScopeAdminAudit, Handler: ListAuditLog(svc)},
+		{Method: get, Pattern: "/share/audit", Scope: authn.ScopeAdminAudit, Handler: http.HandlerFunc(sh.ListShareAudit)},
 
 		// Federation push needs write:objects AND, on non-private
 		// instances, a peer principal: an inbound push authenticates

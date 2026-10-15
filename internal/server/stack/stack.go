@@ -42,6 +42,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/security"
 	httpserver "github.com/ideacrafterslabs/ctxt/internal/server/http"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/watcher"
@@ -89,6 +90,10 @@ type Inputs struct {
 	// Notes receives startup notes (web UI sign-in availability and
 	// session sweeps). nil discards them.
 	Notes io.Writer
+	// StrictSharing makes the visibility backstop refuse a response it
+	// would otherwise strip (ADR-080 §8): dpkms serve --strict-sharing,
+	// and every test instance.
+	StrictSharing bool
 }
 
 // Stack is the assembled request-serving stack.
@@ -121,6 +126,13 @@ type Stack struct {
 	Security     *security.Emitter
 	Entitlements *registry.InboundGate
 	Router       chi.Router
+	// StrictSharing is Inputs.StrictSharing, for the gRPC server the
+	// caller builds beside the router.
+	StrictSharing bool
+	// Audit is the read audit writer (ADR-080 §9) the router records
+	// into; the gRPC server the caller builds takes it too. Shutdown
+	// flushes it.
+	Audit *sharing.AuditWriter
 
 	policy *policy.Bootstrap
 }
@@ -129,16 +141,19 @@ type Stack struct {
 const closeDrainTimeout = 5 * time.Second
 
 // Shutdown releases what Build acquired beyond the driver, and must run
-// before the driver closes: it stops the security emitter and drains its
-// queued audit rows within ctx, then unwires the policy engine from its
-// bus. Idempotent; a drain cut short by ctx is returned as an error.
+// before the driver closes: it flushes the read audit writer, stops the
+// security emitter and drains its queued audit rows within ctx, then
+// unwires the policy engine from its bus. Idempotent; a drain cut short
+// by ctx is returned as an error.
 func (s *Stack) Shutdown(ctx context.Context) error {
 	if s == nil {
 		return nil
 	}
-	var err error
+	err := s.Audit.Close(ctx)
 	if s.Security != nil {
-		err = s.Security.Close(ctx)
+		if serr := s.Security.Close(ctx); serr != nil && err == nil {
+			err = serr
+		}
 	}
 	s.policy.Close()
 	return err
@@ -321,7 +336,7 @@ func Build(in Inputs) (*Stack, error) {
 		}
 	}
 
-	s := &Stack{Queue: jobs.NewQueue(in.Driver.Jobs())}
+	s := &Stack{Queue: jobs.NewQueue(in.Driver.Jobs()), StrictSharing: in.StrictSharing}
 
 	// Pipeline registry with configured providers and per-pipeline
 	// overrides, validated at enqueue time.
@@ -428,6 +443,10 @@ func Build(in Inputs) (*Stack, error) {
 		}
 	}
 
+	// The read audit of shared viewers (ADR-080 §9): buffered, flushed
+	// off the request path.
+	s.Audit = sharing.NewAuditWriter(in.Driver.Sharing().AccessLog(), sharing.AuditOptions{})
+
 	s.Router = httpserver.NewRouterWithConfig(s.Service, httpserver.RouterConfig{
 		Semantic:     QuerySemantic(in.Driver, resolver, in.Warnings),
 		DevCORS:      in.DevCORS,
@@ -450,6 +469,8 @@ func Build(in Inputs) (*Stack, error) {
 		RequirePeerPrincipal: access != config.AccessPrivate,
 		RedactHealthz:        access == config.AccessPublic,
 		Hosts:                hosts,
+		StrictSharing:        in.StrictSharing,
+		Audit:                s.Audit,
 	})
 	return s, nil
 }

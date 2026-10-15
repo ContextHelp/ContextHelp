@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
@@ -10,6 +11,28 @@ import (
 type SharingConfig struct {
 	// Classes configures the content classes assigned at ingest.
 	Classes ClassesConfig `mapstructure:"classes" yaml:"classes"`
+	// Audit configures the read audit of non-owner requests (§9).
+	Audit AuditConfig `mapstructure:"audit" yaml:"audit"`
+}
+
+// DefaultAuditRetention is how long the read audit keeps the object id
+// lists of its entries; the entries and their counts stay.
+const DefaultAuditRetention = 90 * 24 * time.Hour
+
+// AuditConfig configures the read audit (ADR-080 §9, decision D8).
+type AuditConfig struct {
+	// Retention is how long the object id lists of read audit entries
+	// are kept before housekeeping prunes them; the entries and their
+	// counts stay. A duration in hours (2160h is 90 days, the default).
+	Retention time.Duration `mapstructure:"retention" yaml:"retention"`
+}
+
+// EffectiveRetention is Retention, or the default when unset.
+func (a AuditConfig) EffectiveRetention() time.Duration {
+	if a.Retention <= 0 {
+		return DefaultAuditRetention
+	}
+	return a.Retention
 }
 
 // ClassesConfig configures the class rules (ADR-080 §3): evaluated by
@@ -53,6 +76,9 @@ func (r ClassRuleConfig) hasMatcher() bool {
 // matcher.
 func (c SharingConfig) Validate() []ValidationError {
 	var errs []ValidationError
+	if c.Audit.Retention < 0 {
+		errs = append(errs, ValidationError{Field: "sharing.audit.retention", Message: fmt.Sprintf("must be a positive duration or 0 for the default (%s); got %s", DefaultAuditRetention, c.Audit.Retention)})
+	}
 	for i, r := range c.Classes.Rules {
 		field := fmt.Sprintf("sharing.classes.rules[%d]", i)
 		if err := storage.ValidateClassName(r.Class); err != nil {

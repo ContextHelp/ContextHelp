@@ -26,6 +26,9 @@ func Everything() sharing.Policy {
 		// Every row has a type; the bound is one no object carries, so
 		// fixtures with a zero created_at are visible too.
 		Data: "type!=__none__",
+		// Every field of every type: the render layer then has nothing
+		// to withhold, and a reader sees the stored object whole.
+		Fields: map[string][]string{"*": {sharing.FieldAll}},
 		Capabilities: sharing.Capabilities{
 			Search: sharing.SearchModes, Entities: true, Export: true, MCP: true, Events: true,
 		},

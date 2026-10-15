@@ -124,7 +124,7 @@ A principal needs at least one known role; an unknown role on a declared key fai
 | `admin:pipelines` | admin | `POST /pipelines`, `pipelines/{name}/archive`, `pipelines/{name}/unarchive`; `DELETE /pipelines/{name}` |
 | `admin:steps` | admin | `POST /steps/install`; `DELETE /steps/{name}` |
 | `admin:watches` | admin | `POST /watches`, `watches/{id}/pause`, `watches/{id}/resume`; `PATCH` and `DELETE /watches/{id}` |
-| `admin:audit` | admin | `GET /audit-log` |
+| `admin:audit` | admin | `GET /audit-log`, `GET /share/audit` |
 | `admin:principals` | admin | the principal registry (`ctxt principal`, `ctxt auth key --principal`): `GET`, `POST /principals`, `GET /principals/{id}`, `POST /principals/{id}/suspend`, `/revoke`, `/links` (a sign-in link); `GET`, `POST /principals/{id}/identities`, `DELETE /principals/{id}/identities/{identity}`; `GET`, `POST /principals/{id}/keys`, `DELETE /principals/{id}/keys/{key}` |
 | `admin:shares` | admin; an admin's browser session | the sharing registry (`ctxt share`): `POST /share/invites` (with `audience`); `GET`, `POST /share/audiences`, `GET /share/audiences/{audience}`, `PUT`, `DELETE /share/audiences/{audience}/members/{principal}`; `GET`, `POST /share/policies`, `GET`, `PUT /share/policies/{policy}`; `GET /share/templates`, `POST /share/templates/{name}`; `GET`, `POST /share/grants`, `DELETE /share/grants/{grant}`; `GET`, `PUT /principals/{id}/ceiling`; `PUT /share/keys/{key}/policy`. Only the `admin` role holds it, and an admin's browser session does too: the Sharing page |
 | `read:ui` | reader, writer, admin; never a browser session | `POST /ui/login-codes` (`ctxt ui open`) |

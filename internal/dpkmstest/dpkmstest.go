@@ -243,6 +243,9 @@ func Start(t testing.TB, driver storage.StorageDriver, opts ...Option) *Server {
 		ConfigPath: cfgPath,
 		Probes:     probes,
 		Warnings:   io.Discard,
+		// A test instance refuses a response the backstop would strip:
+		// a leak is a failure, never a quietly cleaned body.
+		StrictSharing: true,
 	})
 	if err != nil {
 		t.Fatalf("dpkmstest: build stack: %v", err)

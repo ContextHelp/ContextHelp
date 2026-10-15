@@ -25,6 +25,11 @@ func DefaultCheck(t testing.TB, f *Fixture, p Principal, r Result) {
 		return
 	}
 	route := routeOf(f, r)
+	if p.Revoked {
+		assertUnauthenticated(t, route, p, r)
+		AssertNoLeak(t, f, p, route, r)
+		return
+	}
 	if closed, ok := Closed(route, p); ok {
 		if closed {
 			assertNotShared(t, route, p, r)
@@ -72,6 +77,21 @@ func assertNotShared(t testing.TB, route string, p Principal, r Result) {
 	}
 	if r.Status != http.StatusForbidden || !refused {
 		t.Errorf("%s as %s: HTTP %d body %s, want 403 %s", route, p.Name, r.Status, excerpt(r.Body), httpserver.CodeNotShared)
+	}
+}
+
+// assertUnauthenticated checks a revoked principal was refused before
+// any route ran: 401 over HTTP, Unauthenticated over gRPC.
+func assertUnauthenticated(t testing.TB, route string, p Principal, r Result) {
+	t.Helper()
+	if strings.HasPrefix(route, "/") {
+		if r.Code != codes.Unauthenticated {
+			t.Errorf("%s as %s: code %s body %s, want Unauthenticated", route, p.Name, r.Code, excerpt(r.Body))
+		}
+		return
+	}
+	if r.Status != http.StatusUnauthorized {
+		t.Errorf("%s as %s: HTTP %d body %s, want 401", route, p.Name, r.Status, excerpt(r.Body))
 	}
 }
 

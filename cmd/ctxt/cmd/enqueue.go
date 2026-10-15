@@ -23,7 +23,7 @@ func enqueueClient(cmd *cobra.Command) (*dpkmsclient.Client, dpkmsclient.Resolve
 	if err != nil {
 		return nil, r, err
 	}
-	c, err := dpkmsclient.New(r.Endpoint)
+	c, err := dpkmsclient.New(r.Endpoint, clientOptions(cmd)...)
 	if err != nil {
 		return nil, r, err
 	}

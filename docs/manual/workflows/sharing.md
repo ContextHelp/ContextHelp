@@ -119,6 +119,31 @@ An admin's browser session holds `admin:shares`, so the owner sees a **Sharing**
 
 A shared viewer sees a banner above every page, `shared by <owner> · <policy>`, naming who shares with them and the policies in force. It comes from `GET /api/v1/whoami`, which reports `shared` for a non-owner principal that at least one grant applies to.
 
+## Preview what a viewer sees
+
+```bash
+ctxt share preview --as colleagues-network show <object-id>
+ctxt share preview --as prn_01J... find "sarah"
+ctxt --as partners-network list --type contact
+```
+
+The owner can run any read command through another viewer's view: a principal id or a share policy name. The instance answers exactly what that viewer would get, through the same projection, the same checks and the same audit, so you can check a policy before the invite goes out. `ctxt share preview` runs one read command; `--as` on any read command does the same. Only the owner may preview, and only routes that read: a write sent with `--as` is refused. A policy name previews the policy on its own, as if it were the viewer's only grant; a principal id previews that person's full view, grants, ceiling and all. A key's own narrowing cannot be previewed this way, since a key is not a principal; preview the policy the key is bound to instead. Every preview is written to the read audit as your request, with the viewer named.
+
+## Audit who read what
+
+```bash
+ctxt share audit --object <object-id>
+ctxt share audit --principal prn_01J... --since 7d
+```
+
+Every request by a non-owner principal leaves one entry: who, through which credential, on which route, under which policy versions, with the objects the answer carried. `--object` asks who saw one object; `--principal` asks what one viewer read; `--since` takes a date, an RFC 3339 time or a duration such as `7d`. Your own requests are not logged, except previews. The API behind it is `GET /api/v1/share/audit`, under `admin:audit`.
+
+Entries are buffered and written in batches by one goroutine, so a read never waits on the writer. Entries still in the buffer when the process dies are lost; everything written before them is safe. Object ids are kept for `sharing.audit.retention` (`2160h`, 90 days, by default) and pruned by `dpkms housekeeping run`; the entries and their counts stay.
+
+## The backstop
+
+Before an answer leaves the instance, a last check walks the known id paths of the route's declared response shape and searches the body for the values the render layer withheld. Anything the request did not release is stripped, logged as `security.visibility_backstop` and counted. With `dpkms serve --strict-sharing` the request answers 500 instead. This is how every test instance runs: a hit is a bug in the scoped reads or the render layer, never normal operation. The check runs only for shared viewers; the owner pays nothing.
+
 ## What a viewer can search
 
 Shared contacts are rendered from their visible fields, so a colleague's card reads `Sarah Lee | Head of Ops @ Acme` and carries no email, phone or note. Two limits apply in this version:
@@ -128,7 +153,7 @@ Shared contacts are rendered from their visible fields, so a colleague's card re
 
 ## Current runtime
 
-This version ships the management surface: audiences, policies, grants, ceilings, key bindings, invites into audiences, the Sharing page and the banner. The per-viewer read path that filters objects, edges, entities and search by these grants, the render layer that projects fields, and `ctxt share preview` and `ctxt share audit` land with the next sharing changes. Until then a grant records what a viewer may see.
+This version ships the whole contact slice: audiences, policies, grants, ceilings, key bindings, invites, the Sharing page and the banner; the per-viewer read path that filters objects, edges, entities and search by grants; the render layer that rebuilds a contact from its visible fields and drops derived fields (a contact's summary derives from the whole card, so a viewer never sees one); the backstop; `ctxt share preview` and `ctxt share audit`. Span masking of free text, the `redact` block, is still inert.
 
 ## Output validation checklist
 
@@ -136,6 +161,8 @@ This version ships the management surface: audiences, policies, grants, ceilings
 - `ctxt share policy list` shows the version you expect after each edit.
 - `ctxt share audience list --format json` shows one active grant per audience and policy.
 - A shared viewer's `GET /api/v1/whoami` carries `shared.policies` naming the policies you granted.
+- `ctxt share preview --as <policy> show <object-id>` renders the card without the fields the policy leaves out.
+- `ctxt share audit --principal <id>` lists one entry per request the viewer made, with the objects it carried.
 
 ## Troubleshooting
 
@@ -157,4 +184,4 @@ The key or session lacks `admin:shares`. Only the `admin` role holds it, and onl
 
 ## Story alignment
 
-Covers the contact-sharing slice of ADR-080: audiences, share policies and grants (§1, §2), the per-principal ceiling (§2), invites into audiences and the management surface (§11).
+This covers the contact-sharing slice of ADR-080: audiences, share policies and grants (§1, §2), the per-principal ceiling and the owner's preview (§2), the render layer (§5), the backstop (§8), the read audit (§9), invites into audiences and the management surface (§11).

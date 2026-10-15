@@ -315,7 +315,8 @@ func TestShare_EveryRouteIsAdminShares(t *testing.T) {
 	var found int
 	for _, rt := range APIRouteSpecs() {
 		under := strings.HasPrefix(rt.Pattern, "/share/") || rt.Pattern == "/principals/{id}/ceiling"
-		if !under {
+		// The read audit sits under admin:audit (ADR-080 §11).
+		if !under || rt.Pattern == "/share/audit" {
 			continue
 		}
 		found++
