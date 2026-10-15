@@ -128,9 +128,21 @@ func TestShareAudienceGrantLifecycle(t *testing.T) {
 	if !strings.Contains(out, "Granted "+sharing.TemplatePartners+" (version 1) to partners, until ") {
 		t.Errorf("grant note = %q", out)
 	}
-	active, err := db.Driver.Sharing().Grants().ListActiveForPrincipal(context.Background(), dpkmstest.PrincipalReader, time.Now().UTC())
-	if err != nil || len(active) != 1 || active[0].Grant.ID != grantID {
-		t.Fatalf("active grants of the reader = %+v, %v", active, err)
+	// The daemon fixture grants the reader its own policy, so count only ours.
+	hasGrant := func() (bool, error) {
+		active, err := db.Driver.Sharing().Grants().ListActiveForPrincipal(context.Background(), dpkmstest.PrincipalReader, time.Now().UTC())
+		if err != nil {
+			return false, err
+		}
+		for _, a := range active {
+			if a.Grant.ID == grantID {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+	if ok, err := hasGrant(); err != nil || !ok {
+		t.Fatalf("grant %s not active for the reader (err %v)", grantID, err)
 	}
 
 	out, err = db.exec("share", "revoke", grantID)
@@ -140,9 +152,8 @@ func TestShareAudienceGrantLifecycle(t *testing.T) {
 	if !strings.Contains(out, "Revoked grant "+grantID) {
 		t.Errorf("revoke printed %q", out)
 	}
-	active, err = db.Driver.Sharing().Grants().ListActiveForPrincipal(context.Background(), dpkmstest.PrincipalReader, time.Now().UTC())
-	if err != nil || len(active) != 0 {
-		t.Fatalf("after revoke: %+v, %v", active, err)
+	if ok, err := hasGrant(); err != nil || ok {
+		t.Fatalf("grant %s still active after revoke (err %v)", grantID, err)
 	}
 
 	out, err = db.exec("share", "audience", "remove", "partners", dpkmstest.PrincipalReader)
