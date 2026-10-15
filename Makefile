@@ -10,6 +10,20 @@ GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 export CGO_ENABLED := 1
 BUILD_TAGS := -tags fts5
 
+# Pinned tools. scripts/ci/tools.sh runs each command with the version
+# mise.toml (or packageManager, for pnpm) pins, and fails loudly when it is
+# missing or another version is first on PATH. CI targets and every lint
+# path go through these; see docs/ci-cd.md#local-parity.
+CI_TOOLS := $(CURDIR)/scripts/ci/tools.sh
+GO := $(CI_TOOLS) go -- go
+GOLANGCI := $(CI_TOOLS) golangci-lint,go -- golangci-lint
+GITLEAKS := $(CI_TOOLS) gitleaks -- gitleaks
+PNPM := $(CI_TOOLS) node,pnpm -- pnpm
+# Tools mise.toml does not pin; `go run pkg@version` builds exactly this
+# release with the pinned Go, here and in CI.
+GOSEC_VERSION := v2.29.0
+GOVULNCHECK_VERSION := v1.8.0
+
 # Build flags
 LDFLAGS := -ldflags "\
 	-X main.Version=$(VERSION) \
@@ -77,33 +91,11 @@ test-integration:
 	@echo "Running integration tests..."
 	go test $(BUILD_TAGS) -race -count=1 ./test/integration/...
 
-## test-integration-services: Run integration tests needing Postgres
-#
-# Runs the commands of the integration job in .github/workflows/ci.yml, in
-# its order; keep the two in step. The build-tagged suites under
-# test/integration/ plus the Postgres driver, storage factory and embeddings
-# registry suites, which live next to the code they cover, all read the
-# same POSTGRES_* env block, so each tree must be listed or its Postgres
-# coverage never runs. The rest run by name next to the code they drive:
-# task-job claim and re-projection (internal/jobs), HTTP handlers on a
-# Postgres store (internal/server/http), the embeddings journey
-# (cmd/ctxt/cmd) and the search-graph endpoint's Postgres e2e run (e2e tag
-# too). The devcontainer supplies the env block.
-test-integration-services:
-	@echo "Running integration tests (requires Postgres)..."
-	go test -v -tags=integration,fts5 -count=1 \
-		./test/integration/... \
-		./internal/storage/postgres/... \
-		./internal/storageutil/... \
-		./internal/embeddings/registry/...
-	go test -v -tags=integration,fts5 -count=1 \
-		-run 'Test(Claim|Reproject)_.*_Postgres' ./internal/jobs/
-	go test -v -tags=integration,fts5 -count=1 \
-		-run '_Postgres$$' ./internal/server/http/
-	go test -v -tags=integration,fts5 -count=1 \
-		-run TestEmbeddingsJourney_Postgres ./cmd/ctxt/cmd/
-	CGO_ENABLED=1 go test -v -tags 'fts5 e2e integration' -count=1 \
-		-run TestDpkmsGraph_Postgres ./test/e2e/searchgraph/
+## test-integration-services: Run the CI integration job's tests (needs Postgres)
+##
+## Same as `make ci-integration`, which runs the integration job's commands,
+## Postgres env and order. See the CI parity section below.
+test-integration-services: ci-integration
 
 ## test-smoke: Run binary smoke tests
 test-smoke:
@@ -115,8 +107,7 @@ test-smoke:
 ## Suites under test/e2e/ carrying the e2e build tag; each builds its own
 ## binary and runs in a throwaway HOME. Headless-browser smoke tests run
 ## when Chrome/Chromium is found (CTXT_CHROME picks one; CTXT_CHROME=off
-## skips them).
-## Mirrors the e2e step of the test job in .github/workflows/ci.yml.
+## skips them). The CI test job's e2e step is `make ci-test-e2e` (verbose).
 test-e2e:
 	@echo "Running e2e tests..."
 	CGO_ENABLED=1 go test -count=1 -tags 'fts5 e2e' ./test/e2e/...
@@ -182,13 +173,7 @@ eva:
 check: test eva
 
 ## vuln-scan: Run govulncheck + nancy dependency vulnerability scans
-vuln-scan:
-	@echo "Running govulncheck..."
-	@if ! command -v govulncheck >/dev/null 2>&1; then \
-		echo "Installing govulncheck..."; \
-		go install golang.org/x/vuln/cmd/govulncheck@v1.8.0; \
-	fi
-	govulncheck -tags fts5 ./...
+vuln-scan: govulncheck
 	@echo "Running nancy (Sonatype OSS Index)..."
 	@if ! command -v nancy >/dev/null 2>&1; then \
 		echo "Installing nancy..."; \
@@ -197,36 +182,48 @@ vuln-scan:
 	go list -json -deps ./... | nancy sleuth --exclude-vulnerability-file .nancy-ignore
 	@echo "✓ Vulnerability scan complete"
 
+## govulncheck: Report known vulnerabilities in reachable code (CI security job)
+govulncheck:
+	$(GO) run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) -tags fts5 ./...
+
 ## toolchain-check: Assert mise.toml, Dockerfiles and go.mod agree on versions
 toolchain-check:
 	@scripts/check-toolchain-pins.sh
 
-## lint: Run linters (golangci-lint + gosec)
+## lint: Run linters (golangci-lint full scan + gosec), pinned versions
+##
+## The full scan reports the repo's standing lint backlog too; CI blocks
+## only on new findings (make ci-lint-new) and runs this scan as advisory
+## (make ci-lint-full).
 lint: gosec
 	@echo "Running linters..."
-	@if command -v golangci-lint >/dev/null 2>&1; then \
-		golangci-lint run; \
-	else \
-		echo "golangci-lint not installed. Install the pinned version with:"; \
-		echo "  mise install"; \
-		echo "(mise.toml pins the version CI uses; go install @latest drifts)"; \
-		exit 1; \
-	fi
+	$(GOLANGCI) run
 
 ## gosec: Run gosec static security analysis (fails on medium+ severity)
+##
+## -tags fts5 is required, not cosmetic. The storage layer is compiled
+## against SQLite's FTS5 module and guards the tag with a build sentinel,
+## so without it 34 packages fail to type-check and gosec logs "skipping
+## SSA analysis" and moves on: it reports success for code it never looked
+## at.
+##
+## install_launchd.go writes to ~/Library/LaunchAgents and
+## ~/.config/systemd/user. launchd and systemd must traverse those
+## directories and read the unit file, so 0755/0644 is required there
+## rather than an oversight. Scoped to the one file so the rules stay live
+## everywhere else.
+##
+## Prints findings as text and writes gosec-results.sarif, which the CI
+## security job uploads to GitHub code scanning.
 gosec:
 	@echo "Running gosec security scan..."
-	@if command -v gosec >/dev/null 2>&1; then \
-		gosec -tags fts5 -severity medium -confidence medium \
-			-exclude G104,G304,G307 \
-			-exclude-rules "cmd/dpkms/cmd/install_launchd.go:G301,G306" \
-			-exclude-dir vendor -exclude-dir docs -exclude-dir test/fixtures \
-			-fmt text ./...; \
-	else \
-		echo "gosec not installed. Install with:"; \
-		echo "  go install github.com/securego/gosec/v2/cmd/gosec@v2.29.0"; \
-		exit 1; \
-	fi
+	$(GO) run github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION) \
+		-tags fts5 -severity medium -confidence medium \
+		-exclude G104,G304,G307 \
+		-exclude-rules "cmd/dpkms/cmd/install_launchd.go:G301,G306" \
+		-exclude-dir vendor -exclude-dir docs -exclude-dir test/fixtures \
+		-fmt sarif -out gosec-results.sarif -stdout -verbose text \
+		./...
 
 ## fmt: Format Go code
 fmt:
@@ -330,15 +327,14 @@ trivy-scan:
 ## no web/ui/dist. web/ui pins pnpm via packageManager and carries its own
 ## pnpm-workspace.yaml, so pnpm never resolves an enclosing workspace.
 build-ui:
-	cd web/ui && pnpm install --frozen-lockfile && pnpm run build
+	cd web/ui && $(PNPM) install --frozen-lockfile && $(PNPM) run build
 
 ## check-ui-dist: Rebuild the web UI; fail if the committed bundle drifts
 ##
 ## Rebuilds internal/ui/dist in place, then compares it with the index:
 ## unstaged edits or new untracked files mean the committed bundle does not
 ## match web/ui. Overwrites any unstaged dist edits. Fix a failure with
-## `make build-ui` and commit the result. Mirrors the webui job in
-## .github/workflows/ci.yml.
+## `make build-ui` and commit the result. CI's webui job runs this target.
 UI_DIST := internal/ui/dist
 check-ui-dist: build-ui
 	@untracked=$$(git ls-files --others --exclude-standard -- $(UI_DIST)); \
@@ -354,17 +350,17 @@ check-ui-dist: build-ui
 
 ## build-searchgraph-viewer: Rebuild the embedded search-graph viewer into internal/searchgraph/viewer/dist
 build-searchgraph-viewer:
-	cd web/searchgraph && pnpm install --frozen-lockfile && pnpm run build
+	cd web/searchgraph && $(PNPM) install --frozen-lockfile && $(PNPM) run build
 
 ## test-searchgraph-viewer-js: Run the search-graph viewer's JS unit tests
 ##
 ## Dependency-free `node --test` over web/searchgraph/src/*.test.js, so no
 ## install step. web/searchgraph pins pnpm via packageManager and carries its
 ## own pnpm-workspace.yaml, so pnpm never resolves an enclosing workspace.
-## Mirrors the viewer job in .github/workflows/ci.yml.
+## CI's viewer job runs this target.
 test-searchgraph-viewer-js:
 	@echo "Running search-graph viewer JS tests..."
-	cd web/searchgraph && pnpm test
+	cd web/searchgraph && $(PNPM) test
 
 ## check-searchgraph-viewer-dist: Rebuild the viewer; fail if the committed bundle drifts
 ##
@@ -372,7 +368,7 @@ test-searchgraph-viewer-js:
 ## the index: unstaged edits or new untracked files mean the committed bundle
 ## does not match its sources. Overwrites any unstaged dist edits. Fix a
 ## failure with `make build-searchgraph-viewer` and commit the result.
-## Mirrors the viewer job in .github/workflows/ci.yml.
+## CI's viewer job runs this target.
 SEARCHGRAPH_VIEWER_DIST := internal/searchgraph/viewer/dist
 check-searchgraph-viewer-dist: build-searchgraph-viewer
 	@untracked=$$(git ls-files --others --exclude-standard -- $(SEARCHGRAPH_VIEWER_DIST)); \
@@ -395,7 +391,7 @@ check-searchgraph-viewer-dist: build-searchgraph-viewer
 SCAN_REFS ?= HEAD
 security-scan: install-gitleaks
 	@echo "Scanning git history ($(SCAN_REFS)) for secrets..."
-	gitleaks git . --config .gitleaks.toml --gitleaks-ignore-path .gitleaksignore \
+	$(GITLEAKS) git . --config .gitleaks.toml --gitleaks-ignore-path .gitleaksignore \
 		--log-opts="$(SCAN_REFS)" --redact --verbose --no-banner
 	@echo "✓ No new secrets in history"
 
@@ -520,6 +516,229 @@ ben-vector: ben-install ben-adapter
 		--suite suites/recall-vector.ben.yaml \
 		--format json > $(BEN_RUN_DIR)/recall-vector.json
 	@bash scripts/ben-floor.sh $(BEN_RUN_DIR)/recall-vector.json $(BEN_VECTOR_FLOOR)
+
+# ─── CI parity ───────────────────────────────────────────────────────────────
+#
+# Every check .github/workflows/ci.yml runs is a target here: each CI step
+# is `make <target>`, and ci-<job> runs the same targets in the same order,
+# so a local run executes CI's commands with CI's flags, tags, env and tool
+# versions. scripts/check-ci-parity.sh (make ci-parity-check, run by CI's
+# toolchain job) fails when the two drift apart. To change what CI runs,
+# change the target; add a CI step by adding a target, then a
+# `$(CI_STEP) <target>` line to ci-<job>.
+#
+# What a laptop cannot reproduce (Linux and macOS runners, the Postgres
+# service, mingw-w64, Chrome, CI-only uploads) is listed in docs/ci-cd.md
+# (#local-parity); scripts/ci/prereq.sh reports each missing one instead
+# of letting a step pass without it.
+
+# CI's jobs, in workflow order.
+CI_JOBS := toolchain secret-scan lint windows security test viewer webui integration build
+CI_STEP := $(MAKE) --no-print-directory
+CI_PREREQ := $(CURDIR)/scripts/ci/prereq.sh
+CI_WORKFLOW := .github/workflows/ci.yml
+
+## ci: Run every CI job locally, then print a per-job verdict
+##
+## Jobs run in CI_JOBS order and a failure does not stop the rest, as in
+## CI. A job whose runner-provided prerequisite is missing (Postgres,
+## mingw-w64) is SKIPPED with how to run it, and the run ends INCOMPLETE;
+## CI_STRICT=1 makes that exit non-zero. For one job, make ci-<job>.
+ci:
+	@scripts/ci/run-all.sh $(CI_JOBS)
+
+## ci-<job>: Run one CI job locally (ci-toolchain, ci-lint, ci-test, ...; see CI_JOBS)
+
+## ci-parity-check: Fail when ci.yml and the ci-<job> targets disagree
+ci-parity-check:
+	@scripts/check-ci-parity.sh
+
+# go.mod may carry local-path replace directives for these sibling modules
+# (developer convenience); CI drops them so the published versions build.
+CI_DROP_REPLACES := hop.top/kit hop.top/c12n
+
+## ci-drop-replaces: CI drops local-path replaces; a local run refuses them
+##
+## On GitHub Actions this edits go.mod. A local run must not, so it fails
+## instead when the edit would change go.mod: with such a replace in place
+## the local build is not the one CI tests.
+ci-drop-replaces:
+	@args="$(foreach m,$(CI_DROP_REPLACES),-dropreplace=$(m))"; \
+	if [ "$$GITHUB_ACTIONS" = true ]; then \
+		$(GO) mod edit $$args; \
+	elif [ "$$($(GO) mod edit -print)" != "$$($(GO) mod edit $$args -print)" ]; then \
+		echo "ERROR: go.mod replaces $(CI_DROP_REPLACES) with a local path; CI drops that" >&2; \
+		echo "and builds the published version. Remove it (go mod edit $$args)" >&2; \
+		echo "or run from a clean clone." >&2; \
+		exit 1; \
+	fi
+
+ci-toolchain:
+	$(CI_STEP) toolchain-check
+	$(CI_STEP) ci-parity-check
+
+ci-secret-scan:
+	$(CI_STEP) security-scan
+
+# Findings new since LINT_BASE fail. CI passes the PR's base commit (HEAD~1
+# on a push); locally it defaults to the merge base with LINT_BASE_REF, the
+# branch a PR would target.
+LINT_BASE ?=
+LINT_BASE_REF ?= origin/next
+
+ci-lint:
+	$(CI_STEP) ci-drop-replaces
+	$(CI_STEP) ci-lint-new
+	-$(CI_STEP) ci-lint-full
+	$(CI_STEP) ci-gofmt
+	$(CI_STEP) ci-vet
+
+ci-lint-new:
+	@base="$(LINT_BASE)"; \
+	if [ -z "$$base" ]; then \
+		base=$$(git merge-base HEAD $(LINT_BASE_REF)) || { \
+			echo "ERROR: no merge base with $(LINT_BASE_REF); pass LINT_BASE=<commit> (CI uses the PR base)" >&2; \
+			exit 1; \
+		}; \
+		echo "lint base: $$base (merge base with $(LINT_BASE_REF))"; \
+	fi; \
+	echo "$(GOLANGCI) run --timeout=10m --new-from-rev=$$base"; \
+	$(GOLANGCI) run --timeout=10m --new-from-rev="$$base"
+
+# Advisory in CI (continue-on-error), so ci-lint carries on past it. The
+# repo's standing lint backlog fails it today.
+ci-lint-full:
+	$(GOLANGCI) run --timeout=10m
+
+ci-gofmt:
+	$(CI_TOOLS) go -- sh -c 'if [ -n "$$(gofmt -l .)" ]; then echo "Go code is not formatted. Run: gofmt -w ."; gofmt -d .; exit 1; fi'
+
+ci-vet:
+	$(GO) vet -tags fts5 ./...
+
+# GoReleaser ships windows/amd64 binaries, cross-compiled with CGO and
+# mingw-w64. Type-check every package, tests included, for that target,
+# then build the two binaries as GoReleaser does.
+CI_WINDOWS_ENV := GOOS=windows GOARCH=amd64 CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc
+
+ci-windows:
+	$(CI_STEP) ci-drop-replaces
+	$(CI_STEP) ci-windows-vet
+	$(CI_STEP) ci-windows-build
+
+ci-windows-vet:
+	@$(CI_PREREQ) mingw
+	$(CI_WINDOWS_ENV) $(GO) vet -tags fts5 ./...
+
+ci-windows-build:
+	@$(CI_PREREQ) mingw
+	$(CI_WINDOWS_ENV) $(GO) build -tags fts5 ./cmd/ctxt ./cmd/dpkms
+
+ci-security:
+	$(CI_STEP) ci-drop-replaces
+	$(CI_STEP) gosec
+	$(CI_STEP) govulncheck
+
+ci-test:
+	$(CI_STEP) ci-drop-replaces
+	$(CI_STEP) ci-test-unit
+	$(CI_STEP) ci-test-e2e
+
+ci-test-unit:
+	$(GO) test -v -short -race -tags fts5 -coverprofile=coverage.out -covermode=atomic ./...
+
+# Black-box suites under test/e2e/ tagged e2e: each builds ctxt, seeds a
+# throwaway store through the binary and asserts exit codes, output and
+# files. Headless-browser checks run when Chrome is found and skip
+# otherwise. Other test/e2e suites carry their own tags.
+ci-test-e2e:
+	@$(CI_PREREQ) chrome
+	$(GO) test -v -count=1 -tags 'fts5 e2e' ./test/e2e/...
+
+ci-viewer:
+	$(CI_STEP) test-searchgraph-viewer-js
+	$(CI_STEP) check-searchgraph-viewer-dist
+
+ci-webui:
+	$(CI_STEP) check-ui-dist
+
+# Postgres the integration job's service runs. Credentials default to the
+# service's env block in ci.yml; export POSTGRES_* to point elsewhere.
+CI_INTEGRATION_STEPS := ci-integration-suites ci-integration-jobs ci-integration-http ci-integration-journey ci-integration-searchgraph
+ci_service_env = $(shell sed -n 's/^ *$(1): *//p' $(CI_WORKFLOW) | head -1)
+$(CI_INTEGRATION_STEPS): export POSTGRES_HOST ?= localhost
+$(CI_INTEGRATION_STEPS): export POSTGRES_PORT ?= 5432
+$(CI_INTEGRATION_STEPS): export POSTGRES_USER ?= $(call ci_service_env,POSTGRES_USER)
+$(CI_INTEGRATION_STEPS): export POSTGRES_PASSWORD ?= $(call ci_service_env,POSTGRES_PASSWORD)
+$(CI_INTEGRATION_STEPS): export POSTGRES_DB ?= $(call ci_service_env,POSTGRES_DB)
+
+ci-integration:
+	$(CI_STEP) ci-drop-replaces
+	$(CI_STEP) ci-integration-suites
+	$(CI_STEP) ci-integration-jobs
+	$(CI_STEP) ci-integration-http
+	$(CI_STEP) ci-integration-journey
+	$(CI_STEP) ci-integration-searchgraph
+
+# The build-tagged suites under test/integration/ plus the Postgres driver,
+# storage factory and embeddings registry suites, which live next to their
+# code; all read the POSTGRES_* env, so each tree must be listed or its
+# Postgres coverage never runs.
+ci-integration-suites:
+	@$(CI_PREREQ) postgres
+	$(GO) test -v -tags=integration,fts5 \
+		./test/integration/... \
+		./internal/storage/postgres/... \
+		./internal/storageutil/... \
+		./internal/embeddings/registry/...
+
+# Task-job claim and re-projection on Postgres (the SQLite variants run in
+# the test job).
+ci-integration-jobs:
+	@$(CI_PREREQ) postgres
+	$(GO) test -v -tags=integration,fts5 -count=1 \
+		-run 'Test(Claim|Reproject)_.*_Postgres' ./internal/jobs/
+
+# HTTP handlers against a Postgres store; the package's other tests run in
+# the test job.
+ci-integration-http:
+	@$(CI_PREREQ) postgres
+	$(GO) test -v -tags=integration,fts5 -count=1 \
+		-run '_Postgres$$' ./internal/server/http/
+
+# The embeddings journey drives the built ctxt and dpkms binaries.
+ci-integration-journey:
+	@$(CI_PREREQ) postgres
+	$(GO) test -v -tags=integration,fts5 -count=1 \
+		-run TestEmbeddingsJourney_Postgres ./cmd/ctxt/cmd/
+
+# The search-graph endpoint's Postgres run needs the e2e and integration
+# tags (its SQLite run is part of ci-test-e2e).
+ci-integration-searchgraph:
+	@$(CI_PREREQ) postgres
+	$(GO) test -v -count=1 -tags 'fts5 e2e integration' \
+		-run TestDpkmsGraph_Postgres ./test/e2e/searchgraph/
+
+ci-build:
+	$(CI_STEP) ci-drop-replaces
+	$(CI_STEP) ci-build-dpkms
+	$(CI_STEP) ci-build-ctxt
+	$(CI_STEP) ci-build-verify
+
+ci-build-dpkms:
+	$(GO) build -v -tags fts5 -o bin/dpkms ./cmd/dpkms
+
+ci-build-ctxt:
+	$(GO) build -v -tags fts5 -o bin/ctxt ./cmd/ctxt
+
+ci-build-verify:
+	./bin/dpkms version || echo "dpkms built successfully"
+	./bin/ctxt version || echo "ctxt built successfully"
+
+.PHONY: ci ci-parity-check ci-drop-replaces govulncheck \
+	$(addprefix ci-,$(CI_JOBS)) $(CI_INTEGRATION_STEPS) \
+	ci-lint-new ci-lint-full ci-gofmt ci-vet ci-windows-vet ci-windows-build \
+	ci-test-unit ci-test-e2e ci-build-dpkms ci-build-ctxt ci-build-verify
 
 ## help: Show this help message
 help:

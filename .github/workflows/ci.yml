@@ -21,6 +21,13 @@ on:
         description: Go version pinned in mise.toml
         value: ${{ jobs.toolchain.outputs.go-version }}
 
+# Every check step below is `make <target>`: the Makefile holds the
+# commands, flags, tags and env, and `make ci-<job>` runs the same targets
+# in the same order on a laptop (`make ci` runs every job).
+# scripts/check-ci-parity.sh (the toolchain job runs it) fails when a step
+# runs anything inline or ci-<job> stops matching. Steps that only install
+# a tool are exempt; scripts/ci/tools.sh gives a local run the same pins.
+
 jobs:
   # mise.toml is the single source of truth for tool versions. This job parses
   # it once and every other job consumes the outputs, so bumping a version in
@@ -58,7 +65,10 @@ jobs:
           echo "go=$go_version golangci-lint=$golangci_version node=$node_version gitleaks=$gitleaks_version"
 
       - name: Verify every toolchain declaration agrees
-        run: scripts/check-toolchain-pins.sh
+        run: make toolchain-check
+
+      - name: Verify make ci-<job> runs what each job runs
+        run: make ci-parity-check
 
   # History secret scan: every commit reachable from the checked-out ref,
   # minus the reviewed findings baselined in .gitleaksignore, so only new
@@ -117,12 +127,10 @@ jobs:
           go-version: ${{ needs.toolchain.outputs.go-version }}
           cache: true
 
-      # go.mod ships local-path replace directives for hop.top/kit and
-      # hop.top/c12n (developer convenience). Strip them before any Go
-      # step so published tags resolve via the module proxy. No-op when
-      # the directives are absent (e.g. on main after rollout).
+      # Strips local-path replaces of the CI_DROP_REPLACES modules, so
+      # published tags resolve via the module proxy; no-op without them.
       - name: Drop local-path replaces
-        run: go mod edit -dropreplace=hop.top/kit -dropreplace=hop.top/c12n
+        run: make ci-drop-replaces
 
       - name: Install golangci-lint
         run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v${{ needs.toolchain.outputs.golangci-version }}
@@ -132,27 +140,19 @@ jobs:
       # switched off — which is exactly what scripts/hooks/golangci-staged.sh
       # already says about the local hook.
       - name: Run golangci-lint (new findings)
-        run: |
-          base="${{ github.event.pull_request.base.sha }}"
-          [ -n "$base" ] || base="HEAD~1"
-          golangci-lint run --timeout=10m --new-from-rev="$base"
+        run: make ci-lint-new LINT_BASE="${{ github.event.pull_request.base.sha || 'HEAD~1' }}"
 
       # The whole-repo scan stays visible so the backlog cannot grow
       # unnoticed, but does not block: it reports the standing count.
       - name: Run golangci-lint (full scan, advisory)
         continue-on-error: true
-        run: golangci-lint run --timeout=10m
+        run: make ci-lint-full
 
       - name: Check formatting
-        run: |
-          if [ -n "$(gofmt -l .)" ]; then
-            echo "Go code is not formatted. Run: gofmt -w ."
-            gofmt -d .
-            exit 1
-          fi
+        run: make ci-gofmt
 
       - name: Run go vet
-        run: go vet -tags fts5 ./...
+        run: make ci-vet
 
   # GoReleaser ships windows/amd64 binaries, cross-compiled with CGO and
   # mingw-w64 (release.yml). Type-check every package, tests included, for
@@ -173,31 +173,19 @@ jobs:
           go-version: ${{ needs.toolchain.outputs.go-version }}
           cache: true
 
-      # go.mod ships local-path replace directives for hop.top/kit and
-      # hop.top/c12n (developer convenience). Strip them before any Go
-      # step so published tags resolve via the module proxy. No-op when
-      # the directives are absent (e.g. on main after rollout).
+      # Strips local-path replaces of the CI_DROP_REPLACES modules, so
+      # published tags resolve via the module proxy; no-op without them.
       - name: Drop local-path replaces
-        run: go mod edit -dropreplace=hop.top/kit -dropreplace=hop.top/c12n
+        run: make ci-drop-replaces
 
       - name: Install mingw-w64 (Windows CGO cross-compilation)
         run: sudo apt-get install -y gcc-mingw-w64-x86-64
 
       - name: Vet for windows/amd64
-        env:
-          GOOS: windows
-          GOARCH: amd64
-          CGO_ENABLED: '1'
-          CC: x86_64-w64-mingw32-gcc
-        run: go vet -tags fts5 ./...
+        run: make ci-windows-vet
 
       - name: Build ctxt and dpkms for windows/amd64
-        env:
-          GOOS: windows
-          GOARCH: amd64
-          CGO_ENABLED: '1'
-          CC: x86_64-w64-mingw32-gcc
-        run: go build -tags fts5 ./cmd/ctxt ./cmd/dpkms
+        run: make ci-windows-build
 
   security:
     name: Security Scan
@@ -216,45 +204,16 @@ jobs:
           go-version: ${{ needs.toolchain.outputs.go-version }}
           cache: true
 
-      # go.mod ships local-path replace directives for hop.top/kit and
-      # hop.top/c12n (developer convenience). Strip them before any Go
-      # step so published tags resolve via the module proxy. No-op when
-      # the directives are absent (e.g. on main after rollout).
+      # Strips local-path replaces of the CI_DROP_REPLACES modules, so
+      # published tags resolve via the module proxy; no-op without them.
       - name: Drop local-path replaces
-        run: go mod edit -dropreplace=hop.top/kit -dropreplace=hop.top/c12n
+        run: make ci-drop-replaces
 
-      - name: Install gosec
-        run: go install github.com/securego/gosec/v2/cmd/gosec@v2.29.0
-
+      # gosec and govulncheck run via `go run <pkg>@<version>` at the
+      # Makefile's GOSEC_VERSION / GOVULNCHECK_VERSION. gosec needs -tags
+      # fts5 or it analyzes nothing in 34 packages; see the gosec target.
       - name: Run gosec (fail on medium+ severity)
-        # -tags fts5 is required, not cosmetic: without it 34 packages fail to
-        # type-check and gosec logs "skipping SSA analysis, no ssa result" for
-        # each, so the taint-tracking rules silently analyze nothing there.
-        run: |
-          # -tags fts5 is required, not cosmetic. The storage layer is
-          # compiled against SQLite's FTS5 module and guards the tag with
-          # a build sentinel, so without it 34 packages fail to type-check
-          # and gosec logs "skipping SSA analysis" and moves on — it
-          # reports success for code it never looked at. govulncheck in
-          # this same job already passes the tag.
-          #
-          # install_launchd.go writes to ~/Library/LaunchAgents and
-          # ~/.config/systemd/user. launchd and systemd must traverse
-          # those directories and read the unit file, so 0755/0644 is
-          # required there rather than an oversight. Scoped to the one
-          # file so the rules stay live everywhere else.
-          gosec \
-            -tags fts5 \
-            -severity medium \
-            -confidence medium \
-            -exclude G104,G304,G307 \
-            -exclude-rules "cmd/dpkms/cmd/install_launchd.go:G301,G306" \
-            -exclude-dir vendor \
-            -exclude-dir docs \
-            -exclude-dir test/fixtures \
-            -fmt sarif \
-            -out gosec-results.sarif \
-            ./...
+        run: make gosec
 
       - name: Upload gosec results to GitHub Security
         uses: github/codeql-action/upload-sarif@v4
@@ -263,11 +222,8 @@ jobs:
         with:
           sarif_file: gosec-results.sarif
 
-      - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
-
       - name: Run govulncheck
-        run: govulncheck -tags fts5 ./...
+        run: make govulncheck
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@v0.36.0
@@ -301,12 +257,10 @@ jobs:
           go-version: ${{ needs.toolchain.outputs.go-version }}
           cache: true
 
-      # go.mod ships local-path replace directives for hop.top/kit and
-      # hop.top/c12n (developer convenience). Strip them before any Go
-      # step so published tags resolve via the module proxy. No-op when
-      # the directives are absent (e.g. on main after rollout).
+      # Strips local-path replaces of the CI_DROP_REPLACES modules, so
+      # published tags resolve via the module proxy; no-op without them.
       - name: Drop local-path replaces
-        run: go mod edit -dropreplace=hop.top/kit -dropreplace=hop.top/c12n
+        run: make ci-drop-replaces
 
       - name: Download dependencies
         shell: bash
@@ -314,9 +268,7 @@ jobs:
 
       - name: Run unit tests
         shell: bash
-        env:
-          CGO_ENABLED: '1'
-        run: go test -v -short -race -tags fts5 -coverprofile=coverage.out -covermode=atomic ./...
+        run: make ci-test-unit
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v7
@@ -326,16 +278,11 @@ jobs:
           flags: unittests
           name: codecov-umbrella
 
-      # Black-box suites under test/e2e/ tagged e2e: each builds ctxt,
-      # seeds a throwaway store through the binary and asserts exit codes,
-      # output and files. Headless-browser smoke tests run when the runner
-      # has Chrome and skip otherwise. Other test/e2e suites carry their
-      # own tags and are not selected here.
+      # Black-box suites under test/e2e/ tagged e2e; headless-browser
+      # checks run when the runner has Chrome and skip otherwise.
       - name: Run e2e tests
         shell: bash
-        env:
-          CGO_ENABLED: '1'
-        run: go test -v -count=1 -tags 'fts5 e2e' ./test/e2e/...
+        run: make ci-test-e2e
 
   # Search-graph viewer (web/searchgraph): its JS unit tests, plus a drift
   # gate on the bundle the Go binary embeds from
@@ -426,92 +373,27 @@ jobs:
           go-version: ${{ needs.toolchain.outputs.go-version }}
           cache: true
 
-      # go.mod ships local-path replace directives for hop.top/kit and
-      # hop.top/c12n (developer convenience). Strip them before any Go
-      # step so published tags resolve via the module proxy. No-op when
-      # the directives are absent (e.g. on main after rollout).
+      # Strips local-path replaces of the CI_DROP_REPLACES modules, so
+      # published tags resolve via the module proxy; no-op without them.
       - name: Drop local-path replaces
-        run: go mod edit -dropreplace=hop.top/kit -dropreplace=hop.top/c12n
+        run: make ci-drop-replaces
 
-      # Postgres driver, storage factory and embeddings registry suites
-      # live next to the code, not under test/integration/. They carry the
-      # same integration build tag and read the same POSTGRES_* env block,
-      # so they must be listed here explicitly or CI never runs them.
+      # The POSTGRES_* env the tests read defaults to the service env
+      # above (Makefile, CI_INTEGRATION_STEPS).
       - name: Run integration tests
-        run: >-
-          go test -v -tags=integration,fts5
-          ./test/integration/...
-          ./internal/storage/postgres/...
-          ./internal/storageutil/...
-          ./internal/embeddings/registry/...
-        env:
-          CGO_ENABLED: '1'
-          POSTGRES_HOST: localhost
-          POSTGRES_PORT: 5432
-          POSTGRES_USER: contexthelp
-          POSTGRES_PASSWORD: test_password
-          POSTGRES_DB: contexthelp_test
+        run: make ci-integration-suites
 
-      # Task-job claim and re-projection scenarios on Postgres. They live
-      # next to the worker pool; only the Postgres variants run here (the
-      # SQLite ones run in the unit job).
       - name: Run task-job claim and re-projection tests on Postgres
-        run: >-
-          go test -v -tags=integration,fts5 -count=1
-          -run 'Test(Claim|Reproject)_.*_Postgres' ./internal/jobs/
-        env:
-          CGO_ENABLED: '1'
-          POSTGRES_HOST: localhost
-          POSTGRES_PORT: 5432
-          POSTGRES_USER: contexthelp
-          POSTGRES_PASSWORD: test_password
-          POSTGRES_DB: contexthelp_test
+        run: make ci-integration-jobs
 
-      # HTTP handlers against a Postgres store (object reads and writes,
-      # inbox, pages/index/stats, the entity gate). They need the
-      # integration tag; the package's other tests run in the unit job.
       - name: Run HTTP handler tests on Postgres
-        run: >-
-          go test -v -tags=integration,fts5 -count=1
-          -run '_Postgres$' ./internal/server/http/
-        env:
-          CGO_ENABLED: '1'
-          POSTGRES_HOST: localhost
-          POSTGRES_PORT: 5432
-          POSTGRES_USER: contexthelp
-          POSTGRES_PASSWORD: test_password
-          POSTGRES_DB: contexthelp_test
+        run: make ci-integration-http
 
-      # The embeddings journey drives the built ctxt and dpkms binaries; its
-      # Postgres variant lives next to the CLI it drives, so only that test
-      # runs here (the SQLite variant runs in the unit job).
       - name: Run embeddings journey on Postgres
-        run: >-
-          go test -v -tags=integration,fts5 -count=1
-          -run TestEmbeddingsJourney_Postgres ./cmd/ctxt/cmd/
-        env:
-          CGO_ENABLED: '1'
-          POSTGRES_HOST: localhost
-          POSTGRES_PORT: 5432
-          POSTGRES_USER: contexthelp
-          POSTGRES_PASSWORD: test_password
-          POSTGRES_DB: contexthelp_test
+        run: make ci-integration-journey
 
-      # The search-graph endpoint's black-box suite drives the built ctxt
-      # and dpkms binaries over throwaway databases; its Postgres run needs
-      # both the e2e and integration tags, so only that test runs here (the
-      # SQLite run is part of the test job's e2e step).
       - name: Run search-graph endpoint e2e on Postgres
-        run: >-
-          go test -v -count=1 -tags 'fts5 e2e integration'
-          -run TestDpkmsGraph_Postgres ./test/e2e/searchgraph/
-        env:
-          CGO_ENABLED: '1'
-          POSTGRES_HOST: localhost
-          POSTGRES_PORT: 5432
-          POSTGRES_USER: contexthelp
-          POSTGRES_PASSWORD: test_password
-          POSTGRES_DB: contexthelp_test
+        run: make ci-integration-searchgraph
 
   build:
     name: Build
@@ -527,23 +409,19 @@ jobs:
           go-version: ${{ needs.toolchain.outputs.go-version }}
           cache: true
 
-      # go.mod ships local-path replace directives for hop.top/kit and
-      # hop.top/c12n (developer convenience). Strip them before any Go
-      # step so published tags resolve via the module proxy. No-op when
-      # the directives are absent (e.g. on main after rollout).
+      # Strips local-path replaces of the CI_DROP_REPLACES modules, so
+      # published tags resolve via the module proxy; no-op without them.
       - name: Drop local-path replaces
-        run: go mod edit -dropreplace=hop.top/kit -dropreplace=hop.top/c12n
+        run: make ci-drop-replaces
 
       - name: Build dpkms
-        run: CGO_ENABLED=1 go build -v -tags fts5 -o bin/dpkms ./cmd/dpkms
+        run: make ci-build-dpkms
 
       - name: Build ctxt
-        run: CGO_ENABLED=1 go build -v -tags fts5 -o bin/ctxt ./cmd/ctxt
+        run: make ci-build-ctxt
 
       - name: Verify binaries
-        run: |
-          ./bin/dpkms version || echo "dpkms built successfully"
-          ./bin/ctxt version || echo "ctxt built successfully"
+        run: make ci-build-verify
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
