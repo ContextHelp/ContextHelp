@@ -8,7 +8,7 @@
 # that arrangement:
 #
 #   1. every `run:` step in ci.yml is a one-line `make <target>`, optionally
-#      followed by LINT_BASE=... (the PR base only CI knows); the exceptions
+#      followed by a variable in $ci_vars (none is passed today); the exceptions
 #      are the provisioning steps named in $exempt, and those may not run a
 #      check themselves
 #   2. no step or job in ci.yml sets env:, defaults: or working-directory:;

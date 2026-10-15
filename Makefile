@@ -192,9 +192,9 @@ toolchain-check:
 
 ## lint: Run linters (golangci-lint full scan + gosec), pinned versions
 ##
-## The full scan reports the repo's standing lint backlog too; CI blocks
-## only on new findings (make ci-lint-new) and runs this scan as advisory
-## (make ci-lint-full).
+## The full scan is the blocking gate in CI (make ci-lint-full); the tree is
+## at zero findings at the pinned version. make lint-new narrows it to your
+## branch for a faster loop.
 lint: gosec
 	@echo "Running linters..."
 	$(GOLANGCI) run
@@ -588,12 +588,13 @@ LINT_BASE_REF ?= origin/next
 
 ci-lint:
 	$(CI_STEP) ci-drop-replaces
-	$(CI_STEP) ci-lint-new
-	-$(CI_STEP) ci-lint-full
+	$(CI_STEP) ci-lint-full
 	$(CI_STEP) ci-gofmt
 	$(CI_STEP) ci-vet
 
-ci-lint-new:
+# Local only: findings your branch introduces, for a faster loop. CI runs
+# the full scan (ci-lint-full), which is a superset of this.
+lint-new:
 	@base="$(LINT_BASE)"; \
 	if [ -z "$$base" ]; then \
 		base=$$(git merge-base HEAD $(LINT_BASE_REF)) || { \
@@ -605,8 +606,8 @@ ci-lint-new:
 	echo "$(GOLANGCI) run --timeout=10m --new-from-rev=$$base"; \
 	$(GOLANGCI) run --timeout=10m --new-from-rev="$$base"
 
-# Advisory in CI (continue-on-error), so ci-lint carries on past it. The
-# repo's standing lint backlog fails it today.
+# Blocking in CI and in ci-lint: the whole repo is at zero findings at the
+# pinned version, so every finding is new.
 ci-lint-full:
 	$(GOLANGCI) run --timeout=10m
 
@@ -737,7 +738,7 @@ ci-build-verify:
 
 .PHONY: ci ci-parity-check ci-drop-replaces govulncheck \
 	$(addprefix ci-,$(CI_JOBS)) $(CI_INTEGRATION_STEPS) \
-	ci-lint-new ci-lint-full ci-gofmt ci-vet ci-windows-vet ci-windows-build \
+	lint-new ci-lint-full ci-gofmt ci-vet ci-windows-vet ci-windows-build \
 	ci-test-unit ci-test-e2e ci-build-dpkms ci-build-ctxt ci-build-verify
 
 ## help: Show this help message

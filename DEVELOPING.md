@@ -47,9 +47,9 @@ one. What cannot match CI locally, and what the runner does about it:
 | a local `go.work` | ignored (`GOWORK=off`), as CI has none |
 | secrets | none needed: CI uses none |
 
-The lint job's new-findings gate compares against the merge base with
-`origin/next` (CI uses the PR base). Override with `LINT_BASE=<commit>` or
-`LINT_BASE_REF=<branch>`.
+`make lint-new` lints only the findings your branch adds, against the merge
+base with `origin/next` (`LINT_BASE=<commit>` or `LINT_BASE_REF=<branch>` to
+override). It is a quick local check. The gate CI runs is the full scan.
 
 ---
 
@@ -321,12 +321,10 @@ findings differ between releases, so no other version is accepted.
 
 Formatting is fixed with `gofmt -w .` (or `make fmt`).
 
-> **Heads up:** the tree carries a large pre-existing lint backlog, so the
-> full scan (`make ci-lint-full`, `make lint`) reports findings that predate
-> your change and fails. CI runs it as advisory for that reason, and
-> `make ci-lint` carries on past it the same way. Judge your own diff: the
-> blocking gate is `make ci-lint-new`. The pre-commit hooks below are
-> scoped to changed files for the same reason.
+The full scan (`make ci-lint-full`, `make lint`) is the blocking gate, in CI
+and in `make ci-lint`. The tree is at zero findings at the pinned version, so
+any finding the scan reports is yours to fix. `make lint-new` narrows the run
+to your branch when you want a faster loop.
 
 ### Pre-commit hooks
 
@@ -345,10 +343,10 @@ after the secret scan, so both gates run from one hook. If `pre-commit` is not
 on your `PATH`, the lint gate does not run and every commit prints a warning
 saying so.
 
-The hooks are scoped so the tree's pre-existing backlog does not block you:
-`gofmt` and `go vet` see only the staged files, and `golangci-lint` runs with
-`--new-from-rev=HEAD`, so only findings *your* diff introduces fail the commit.
-Editing a file that already has findings is fine. All three use the pinned
+The hooks are scoped for speed: `gofmt` and `go vet` see only the staged
+files, and `golangci-lint` runs with `--new-from-rev=HEAD` over the staged
+packages, so only findings your commit introduces fail it. The full scan in
+CI catches anything that scope misses. All three use the pinned
 tools: a missing or different golangci-lint fails the commit instead of
 being skipped.
 

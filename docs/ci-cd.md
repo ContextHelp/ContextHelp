@@ -144,12 +144,11 @@ It also unsets `GOROOT` and sets `GOWORK=off`. The pre-commit hooks,
 | local-path `replace` in `go.mod` | `make ci-drop-replaces` fails |
 | secrets | none: CI uses none |
 
-**Lint backlog.** `ci-lint-full` mirrors CI's advisory full scan. It fails
-today on the pre-existing backlog, and `ci-lint` carries on past it as CI
-does. Clearing that backlog is separate work. The blocking gate is
-`ci-lint-new`, against the PR base in CI and the merge base with
-`origin/next` locally (`LINT_BASE=<commit>` or `LINT_BASE_REF=<branch>`
-overrides it).
+**Lint.** `ci-lint-full` is the blocking full scan, in CI and in `ci-lint`.
+The tree is at zero findings at the pinned version. `lint-new` lints only
+your branch's findings against the merge base with `origin/next`
+(`LINT_BASE=<commit>` or `LINT_BASE_REF=<branch>` overrides it) for a faster
+local loop; CI does not run it.
 
 ---
 
@@ -210,9 +209,9 @@ gh run view <run-id> --log-failed
 - **Toolchain check**: the message names the file and the pin it disagrees
   with. Update `mise.toml` first, then the straggler.
 - **Any job**: `make ci-<job>` runs the same commands locally.
-- **Lint**: only findings your branch introduces fail the job:
-  `make ci-lint-new LINT_BASE=<base>`. The full-scan step is advisory and
-  reports the standing backlog.
+- **Lint.** The full scan blocks, and the message names the file and line.
+  Reproduce with `make ci-lint-full`, or with `make lint-new` to see only
+  your branch's findings.
 - **Parity check**: the message names the step or target that drifted; see
   [Local parity](#local-parity).
 - **Integration**: `make ci-integration` against a local pgvector Postgres

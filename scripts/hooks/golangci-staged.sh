@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
 # Run golangci-lint over the staged packages, reporting only NEW findings.
 #
-# Same linter version and config as CI's lint job (make ci-lint-new), with
-# two deliberate differences that make it usable as a commit hook:
+# Same linter version and config as CI's lint job (make ci-lint-full), with
+# two deliberate differences that keep it fast enough for a commit hook:
 #
 #   1. Scoped to the packages holding the staged files, not ./...
-#   2. --new-from-rev=HEAD, so the large pre-existing backlog is filtered out
-#      and only findings this commit introduces fail the hook.
+#   2. --new-from-rev=HEAD, so only findings this commit introduces fail the
+#      hook. The full scan in CI catches anything this scope misses.
 #
-# Without (2) the hook fails on any file that already has findings — which is
-# most of them — and gets switched off. See .pre-commit-config.yaml.
+# See .pre-commit-config.yaml.
 #
 # golangci-lint is the mise.toml pin, resolved by scripts/ci/tools.sh. When
 # it is missing or another version comes first on PATH the hook FAILS: a
