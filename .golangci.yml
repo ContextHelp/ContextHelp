@@ -58,7 +58,6 @@ linters:
     gocritic:
       disabled-checks:
         - commentFormatting
-        - whyNoLint
       # diagnostic only. The style and performance tags cost ~6m of analyzer
       # time against a 5m CI budget, and their headline fix (hugeParam, pass
       # by pointer) changes aliasing semantics — a real bug risk traded for a
