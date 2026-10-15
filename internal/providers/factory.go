@@ -117,7 +117,7 @@ func (f *Factory) Video() VideoProvider {
 // Document returns the best available DocumentProvider.
 func (f *Factory) Document() DocumentProvider {
 	switch f.cfg.Document.Backend {
-	case "pdftotext":
+	case pdftotextTool:
 		return f.mustPdftotext()
 	case "golib":
 		return f.newGolib()
@@ -202,7 +202,7 @@ func (f *Factory) Vision() vision.Provider {
 // Diarization returns the best available DiarizationProvider.
 func (f *Factory) Diarization() DiarizationProvider {
 	switch f.cfg.Diarization.Backend {
-	case "pyannote":
+	case pyannoteName:
 		return f.mustPyannote()
 	case backendStub:
 		return NewStubDiarizationProvider()
@@ -290,7 +290,7 @@ func (f *Factory) newGolib() DocumentProvider {
 // --- Pdftotext ---
 
 func (f *Factory) tryPdftotext() DocumentProvider {
-	if _, err := LookupTool("pdftotext"); err != nil {
+	if _, err := LookupTool(pdftotextTool); err != nil {
 		return nil
 	}
 	return NewPdftotextDocumentProvider()
@@ -431,7 +431,7 @@ func (f *Factory) openRouterVision(key string) vision.Provider {
 
 func (f *Factory) tryPyannote() DiarizationProvider {
 	// Try standard binary names.
-	for _, name := range []string{"pyannote-audio", "pyannote"} {
+	for _, name := range []string{"pyannote-audio", pyannoteName} {
 		if path, err := LookupTool(name); err == nil {
 			return NewPyannoteDiarizationProvider(path)
 		}

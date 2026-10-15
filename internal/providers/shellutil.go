@@ -41,7 +41,7 @@ var installHints = map[string]map[string]string{
 		"darwin": "brew install ffmpeg",
 		"linux":  "apt install ffmpeg   # or: dnf install ffmpeg",
 	},
-	"pdftotext": {
+	pdftotextTool: {
 		"darwin": "brew install poppler",
 		"linux":  "apt install poppler-utils",
 	},
@@ -57,7 +57,7 @@ var installHints = map[string]map[string]string{
 		"darwin": "brew install whisper-cpp   # or build from source: github.com/ggerganov/whisper.cpp",
 		"linux":  "build from source: github.com/ggerganov/whisper.cpp",
 	},
-	"pyannote": {
+	pyannoteName: {
 		"darwin": "pip install pyannote.audio",
 		"linux":  "pip install pyannote.audio",
 	},

@@ -14,11 +14,15 @@ func NewPdftotextDocumentProvider() *PdftotextDocumentProvider {
 	return &PdftotextDocumentProvider{}
 }
 
-func (p *PdftotextDocumentProvider) Name() string { return "pdftotext" }
+// pdftotextTool is the poppler CLI this provider shells out to; it is also
+// the provider name operators configure.
+const pdftotextTool = "pdftotext"
+
+func (p *PdftotextDocumentProvider) Name() string { return pdftotextTool }
 
 func (p *PdftotextDocumentProvider) ExtractPDF(ctx context.Context, pdfPath string) (*DocumentResult, error) {
 	// Extract full text.
-	textResult, err := RunCommand(ctx, "pdftotext", "-layout", pdfPath, "-")
+	textResult, err := RunCommand(ctx, pdftotextTool, "-layout", pdfPath, "-")
 	if err != nil {
 		return nil, fmt.Errorf("pdftotext: %w", err)
 	}
@@ -44,7 +48,7 @@ func (p *PdftotextDocumentProvider) ExtractPDF(ctx context.Context, pdfPath stri
 	// Extract per-page text.
 	if result.PageCount > 0 {
 		for i := 1; i <= result.PageCount; i++ {
-			pageResult, err := RunCommand(ctx, "pdftotext",
+			pageResult, err := RunCommand(ctx, pdftotextTool,
 				"-f", strconv.Itoa(i),
 				"-l", strconv.Itoa(i),
 				"-layout",

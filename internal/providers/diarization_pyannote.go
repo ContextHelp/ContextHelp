@@ -22,7 +22,11 @@ func NewPyannoteDiarizationProvider(cmd string, args ...string) *PyannoteDiariza
 	}
 }
 
-func (p *PyannoteDiarizationProvider) Name() string { return "pyannote" }
+// pyannoteName is the provider name operators configure and the first
+// binary name probed on PATH.
+const pyannoteName = "pyannote"
+
+func (p *PyannoteDiarizationProvider) Name() string { return pyannoteName }
 
 func (p *PyannoteDiarizationProvider) Diarize(ctx context.Context, audioPath string, segments []TranscriptSegment) (*DiarizedResult, error) {
 	// Run pyannote-audio CLI which outputs RTTM format.

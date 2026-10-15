@@ -5,7 +5,7 @@ import "github.com/ideacrafterslabs/ctxt/internal/deps"
 func init() {
 	deps.Register(
 		deps.Dep{
-			Binary:      "pdftotext",
+			Binary:      pdftotextTool,
 			BrewPkg:     "poppler",
 			AptPkg:      "poppler-utils",
 			DnfPkg:      "poppler-utils",

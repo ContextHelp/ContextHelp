@@ -40,7 +40,7 @@ func (p *GolibDocumentProvider) ExtractPDF(ctx context.Context, pdfPath string) 
 		return p.pdfProvider.ExtractPDF(ctx, pdfPath)
 	}
 	// No pure-Go PDF extraction available yet; try pdftotext if available.
-	if _, err := LookupTool("pdftotext"); err == nil {
+	if _, err := LookupTool(pdftotextTool); err == nil {
 		fallback := NewPdftotextDocumentProvider()
 		return fallback.ExtractPDF(ctx, pdfPath)
 	}
