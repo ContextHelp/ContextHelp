@@ -256,7 +256,7 @@ func waitForJobTimeout(t *testing.T, url, jobID string, wantStatus storage.JobSt
 	for time.Now().Before(deadline) {
 		polls++
 
-		resp, err := gohttp.Get(fmt.Sprintf("%s/api/v1/jobs/%s", url, jobID)) //nolint:noctx
+		resp, err := gohttp.Get(fmt.Sprintf("%s/api/v1/jobs/%s", url, jobID))
 		if err != nil {
 			lastErr = err
 			time.Sleep(pollInterval)
