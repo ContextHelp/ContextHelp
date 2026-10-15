@@ -8,19 +8,21 @@ import (
 )
 
 // SearchHistoryStore is a placeholder for the postgres backend.
-// Full implementation deferred until postgres parity sprint.
+// Full implementation deferred until postgres parity sprint. Every
+// method wraps storage.ErrNotImplemented so callers and conformance
+// suites can tell the gap from a failure.
 type SearchHistoryStore struct{}
 
 func (s *SearchHistoryStore) Append(_ context.Context, _ *storage.SearchHistoryEntry) error {
-	return fmt.Errorf("search_history: postgres backend not yet implemented")
+	return fmt.Errorf("search_history: postgres backend: %w", storage.ErrNotImplemented)
 }
 
 func (s *SearchHistoryStore) List(
 	_ context.Context, _ storage.SearchHistoryFilter,
 ) ([]*storage.SearchHistoryEntry, error) {
-	return nil, fmt.Errorf("search_history: postgres backend not yet implemented")
+	return nil, fmt.Errorf("search_history: postgres backend: %w", storage.ErrNotImplemented)
 }
 
 func (s *SearchHistoryStore) ClearByProfile(_ context.Context, _ string) error {
-	return fmt.Errorf("search_history: postgres backend not yet implemented")
+	return fmt.Errorf("search_history: postgres backend: %w", storage.ErrNotImplemented)
 }

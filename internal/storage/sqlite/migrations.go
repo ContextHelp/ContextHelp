@@ -247,6 +247,11 @@ var migrations = []migration{
 	// cannot add a foreign key in place) and drops pairs whose object is
 	// already gone.
 	{Version: 46, fn: migrate046ProximityObjectFK},
+	// Migration 047: owner_principal on the per-principal tables
+	// (search_history, saved_searches, resurfacing_queue), defaulting to
+	// the instance owner so every existing row stays the owner's. Column
+	// add only; nothing is an FTS input, so no re-projection follows.
+	{Version: 47, fn: migrate047OwnerPrincipal},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
@@ -928,6 +933,35 @@ func migrate046ProximityObjectFK(ctx context.Context, d *Driver) error {
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit: %w", err)
+	}
+	return nil
+}
+
+// perPrincipalTables hold rows that belong to one principal: the instance
+// owner's by default, a restricted viewer's once sharing lands. Each has
+// an owner_principal column since migration 047.
+var perPrincipalTables = []string{"search_history", "saved_searches", "resurfacing_queue"}
+
+// migrate047OwnerPrincipal adds owner_principal TEXT NOT NULL DEFAULT
+// 'owner' to every per-principal table that lacks it. Existing rows take
+// the default: they are the owner's. Guarded per table, so a replay is a
+// no-op.
+func migrate047OwnerPrincipal(ctx context.Context, d *Driver) error {
+	for _, add := range []struct{ table, ddl string }{
+		{"search_history", `ALTER TABLE search_history ADD COLUMN owner_principal TEXT NOT NULL DEFAULT 'owner'`},
+		{"saved_searches", `ALTER TABLE saved_searches ADD COLUMN owner_principal TEXT NOT NULL DEFAULT 'owner'`},
+		{"resurfacing_queue", `ALTER TABLE resurfacing_queue ADD COLUMN owner_principal TEXT NOT NULL DEFAULT 'owner'`},
+	} {
+		has, err := tableHasColumn(ctx, d, add.table, "owner_principal")
+		if err != nil {
+			return err
+		}
+		if has {
+			continue
+		}
+		if _, err := d.db.ExecContext(ctx, add.ddl); err != nil {
+			return fmt.Errorf("add %s.owner_principal: %w", add.table, err)
+		}
 	}
 	return nil
 }

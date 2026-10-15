@@ -461,22 +461,27 @@ type AttachmentStore interface {
 
 // ResurfacingEntry is one candidate in the resurfacing queue.
 type ResurfacingEntry struct {
-	ID          string     `json:"id"`
-	ObjectID    string     `json:"object_id"`
-	ProfileID   string     `json:"profile_id"`
-	Score       float64    `json:"score"`
-	Reason      string     `json:"reason"`
-	SurfacedAt  *time.Time `json:"surfaced_at,omitempty"`
-	DismissedAt *time.Time `json:"dismissed_at,omitempty"`
-	CreatedAt   time.Time  `json:"created_at"`
+	ID        string  `json:"id"`
+	ObjectID  string  `json:"object_id"`
+	ProfileID string  `json:"profile_id"`
+	Score     float64 `json:"score"`
+	Reason    string  `json:"reason"`
+	// OwnerPrincipal is the principal the candidate is queued for; empty
+	// on write means OwnerPrincipal (the instance owner).
+	OwnerPrincipal string     `json:"owner_principal"`
+	SurfacedAt     *time.Time `json:"surfaced_at,omitempty"`
+	DismissedAt    *time.Time `json:"dismissed_at,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
 }
 
 // ResurfacingFilter restricts resurfacing queue queries.
 type ResurfacingFilter struct {
-	ProfileID  string
-	UnseenOnly bool // surfaced_at IS NULL AND dismissed_at IS NULL
-	MinScore   float64
-	Limit      int
+	ProfileID string
+	// OwnerPrincipal, when set, keeps that principal's candidates only.
+	OwnerPrincipal string
+	UnseenOnly     bool // surfaced_at IS NULL AND dismissed_at IS NULL
+	MinScore       float64
+	Limit          int
 }
 
 // ResurfacingQueueStore manages the resurfacing candidate queue.

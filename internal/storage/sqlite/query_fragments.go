@@ -7,7 +7,22 @@ const (
 	orderNewestFirst = " ORDER BY created_at DESC"
 	// andProfileScoped narrows a query to one profile's rows.
 	andProfileScoped = " AND profile_id = ?"
+	// andOwnerPrincipal narrows a per-principal table to one principal's rows.
+	andOwnerPrincipal = " AND owner_principal = ?"
 )
+
+// principalPage is profilePage with an optional owner_principal scope
+// ahead of the profile scope. Either scope applies only when set, so a
+// caller that passes neither lists every row as before.
+func principalPage(base, orderBy, ownerPrincipal, profileID string, limit, offset int) (string, []any) {
+	var args []any
+	if ownerPrincipal != "" {
+		base += andOwnerPrincipal
+		args = append(args, ownerPrincipal)
+	}
+	query, rest := profilePage(base, orderBy, profileID, limit, offset)
+	return query, append(args, rest...)
+}
 
 // profilePage completes base, a SELECT ending in "WHERE 1=1", with the
 // optional profile scope, the orderBy clause, and the optional limit/offset
