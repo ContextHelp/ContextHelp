@@ -1,14 +1,16 @@
 package cmd
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
 
 // ctxt is unreleased, so it carries no forwarders for commands that live
 // in dpkms (dev, detector, job, key, secret) and no aliases for renamed
-// profile verbs (show is view, delete is rm). Each is gone from the
-// tree, and invoking one is an unknown command, not a "moved" notice.
+// profile verbs (show is view, delete is rm, default is set/unset). Each
+// is gone from the tree, and invoking one is an unknown command, not a
+// "moved" notice.
 func TestCompatForwardersRemoved(t *testing.T) {
 	children := func(names []string) map[string]bool {
 		m := map[string]bool{}
@@ -23,10 +25,24 @@ func TestCompatForwardersRemoved(t *testing.T) {
 			t.Errorf("ctxt %s still registered: it lives in dpkms", c.Name())
 		}
 	}
-	goneProfile := children([]string{"show", "delete"})
+	goneProfile := children([]string{"show", "delete", "default"})
 	for _, c := range profileCmd.Commands() {
 		if goneProfile[c.Name()] {
-			t.Errorf("ctxt profile %s still registered: use view / rm", c.Name())
+			t.Errorf("ctxt profile %s still registered: use view / rm / set / unset", c.Name())
+		}
+	}
+	// profile is a non-runnable group, so cobra alone would print its
+	// help and exit 0 for an unknown verb; Execute's unknown-subcommand
+	// check is what turns a removed alias into a usage error.
+	for _, args := range [][]string{
+		{"profile", "show", "founder"},
+		{"profile", "delete", "founder"},
+		{"profile", "default", "founder"},
+		{"profile", "default"},
+	} {
+		err := checkUnknownSubcommand(rootCmd, args)
+		if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("unknown command %q", args[1])) {
+			t.Errorf("ctxt %s: got %v, want an unknown command", strings.Join(args, " "), err)
 		}
 	}
 	if _, ok := commandGroups["dev"]; ok {
