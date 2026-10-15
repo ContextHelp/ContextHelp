@@ -29,6 +29,10 @@ import (
 type EmbeddingStore struct {
 	db   *sql.DB
 	caps *pgCaps
+	// scope, when set, makes Search rank the masked variant over the
+	// objects the viewer may see only, filtered inside the KNN query
+	// (see scope.go).
+	scope *storage.Scope
 }
 
 var _ storage.EmbeddingStore = (*EmbeddingStore)(nil)
@@ -412,11 +416,16 @@ func (s *EmbeddingStore) Get(ctx context.Context, objectID, modelID string) ([]s
 // Search runs a KNN query over the model's partial index and collapses
 // chunks to the best one per object. The LIMIT starts at TopK and grows
 // until TopK distinct objects are found, the rows run out, or the fetch
-// cap is reached.
+// cap is reached. A scoped store ranks the masked variant (ADR-080 §7)
+// over visible objects only: the scope's predicate sits in the KNN
+// query, so candidates are filtered before they are ranked.
 func (s *EmbeddingStore) Search(ctx context.Context, q storage.VectorQuery) ([]storage.EmbeddingHit, error) {
 	topK := q.TopK
 	if topK <= 0 {
 		topK = 10
+	}
+	if s.scope != nil {
+		q.Variant = storage.EmbeddingVariantMasked
 	}
 	// The model_id is inlined into the query below; refuse anything the
 	// charset rule does not admit before it gets there.
@@ -440,6 +449,14 @@ func (s *EmbeddingStore) Search(ctx context.Context, q storage.VectorQuery) ([]s
 	}
 	query := pgIndexFor(q.ModelID).render(pgSearchTmpl, q.ModelID, dim)
 	lit := pgVectorLiteral(q.Vector)
+	var scopeArgs []any
+	if s.scope != nil {
+		// $1 is the vector and $2 the limit; the scope numbers from $3.
+		idx := 3
+		clause, sargs := andObjectIn("object_id", s.scope, &idx)
+		query = strings.Replace(query, "\n ORDER BY", clause+"\n ORDER BY", 1)
+		scopeArgs = sargs
+	}
 
 	for k := topK; ; k *= 4 {
 		if k > pgEmbeddingMaxFetch {
@@ -466,7 +483,7 @@ func (s *EmbeddingStore) Search(ctx context.Context, q storage.VectorQuery) ([]s
 				rows = append(rows, h)
 			}
 			return nil
-		}, query, lit, k)
+		}, query, append([]any{lit, k}, scopeArgs...)...)
 		if err != nil {
 			return nil, fmt.Errorf("postgres embeddings search %s: %w", q.ModelID, err)
 		}

@@ -151,15 +151,27 @@ func NewWithOptions(store storage.StorageDriver, queue *jobs.Queue, pipes pipeli
 }
 
 // Store returns the storage driver as the caller of ctx may see it:
-// the driver itself for an unrestricted viewer, a driver whose every
-// read fails closed for any other viewer, including a context no
-// transport attached a viewer to (ADR-080 §4). Every read the service
-// performs on a caller's behalf goes through it; callers that act as
-// the system (pipeline, jobs, housekeeping, the CLI at the owner's
-// terminal) attach sharing.Unrestricted to their context, and say so.
+// the driver itself for an unrestricted viewer, a driver whose reads
+// answer through the viewer's predicate for a restricted one (hidden
+// rows are absent, owner-only stores refuse), and a driver whose every
+// read fails closed for a context no transport attached a viewer to,
+// which is a transport bug and stays loud (ADR-080 §4). Every read the
+// service performs on a caller's behalf goes through it; callers that
+// act as the system (pipeline, jobs, housekeeping, the CLI at the
+// owner's terminal) attach sharing.Unrestricted to their context, and
+// say so.
 func (s *Service) Store(ctx context.Context) storage.StorageDriver {
-	v, _ := sharing.FromContext(ctx)
-	return storage.ScopedDriver(v, s.store)
+	return storage.ScopedDriver(s.viewer(ctx), s.store)
+}
+
+// viewer is the viewer attached to ctx as storage sees it: nil when
+// none was attached, so every read refuses.
+func (s *Service) viewer(ctx context.Context) storage.Viewer {
+	v, ok := sharing.FromContext(ctx)
+	if !ok {
+		return nil
+	}
+	return v
 }
 
 // ErrPipelineNotFound is returned by Analyze/Enqueue when the resolved
@@ -532,9 +544,12 @@ func (s *Service) DeleteObject(ctx context.Context, id string) error {
 }
 
 // SearchObjects executes an RSQL query and returns matching objects.
-// profileID, when non-empty, restricts results to the named profile's objects.
+// profileID, when non-empty, restricts results to the named profile's
+// objects. The query runs as the caller's viewer: over its scoped
+// store, with the cross-object operators compiled on both sides of
+// their edges (ADR-080 §7).
 func (s *Service) SearchObjects(ctx context.Context, query string, limit, offset int, profileID ...string) ([]*storage.KnowledgeObject, int, error) {
-	objs, total, err := s.Search.Search(ctx, s.Store(ctx).Objects(), query, limit, offset, profileID...)
+	objs, total, err := s.Search.SearchAs(ctx, s.viewer(ctx), s.Store(ctx).Objects(), query, limit, offset, profileID...)
 	if err != nil {
 		return nil, 0, err
 	}

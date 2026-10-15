@@ -94,8 +94,21 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 	return nil
 }
 
+// andScope is " AND (<scope>)" numbered from *idx for a scoped store,
+// empty otherwise: a hidden row answers exactly as a missing one.
+func (s *ObjectStore) andScope(idx *int) (string, []any) {
+	term, args := scopeTerm(s.scope, idx)
+	if term == "" {
+		return "", nil
+	}
+	return " AND " + term, args
+}
+
 func (s *ObjectStore) Get(ctx context.Context, id string) (*storage.KnowledgeObject, error) {
-	row := s.db.QueryRowContext(ctx, objectSelectCols+` FROM objects WHERE id = $1`, id)
+	idx := 2
+	clause, sargs := s.andScope(&idx)
+	// #nosec G202 -- clause is compiled SQL whose values are bound in sargs.
+	row := s.db.QueryRowContext(ctx, objectSelectCols+` FROM objects WHERE id = $1`+clause, append([]any{id}, sargs...)...)
 	return scanObjectRow(row)
 }
 
@@ -105,7 +118,11 @@ func (s *ObjectStore) GetByContentHash(ctx context.Context, hash, profileID stri
 	if hash == "" {
 		return nil, nil
 	}
-	row := s.db.QueryRowContext(ctx, objectSelectCols+` FROM objects WHERE content_hash = $1 AND profile_id = $2 LIMIT 1`, hash, profileID)
+	idx := 3
+	clause, sargs := s.andScope(&idx)
+	// #nosec G202 -- clause is compiled SQL whose values are bound in sargs.
+	row := s.db.QueryRowContext(ctx, objectSelectCols+` FROM objects WHERE content_hash = $1 AND profile_id = $2`+clause+` LIMIT 1`,
+		append([]any{hash, profileID}, sargs...)...)
 	obj, err := scanObjectRow(row)
 	if errors.Is(err, errObjectNotFound) {
 		return nil, nil
@@ -117,7 +134,10 @@ func (s *ObjectStore) GetBySourceKey(ctx context.Context, key string) (*storage.
 	if key == "" {
 		return nil, nil
 	}
-	row := s.db.QueryRowContext(ctx, objectSelectCols+` FROM objects WHERE source_key = $1 LIMIT 1`, key)
+	idx := 2
+	clause, sargs := s.andScope(&idx)
+	// #nosec G202 -- clause is compiled SQL whose values are bound in sargs.
+	row := s.db.QueryRowContext(ctx, objectSelectCols+` FROM objects WHERE source_key = $1`+clause+` LIMIT 1`, append([]any{key}, sargs...)...)
 	obj, err := scanObjectRow(row)
 	if errors.Is(err, errObjectNotFound) {
 		return nil, nil
@@ -126,7 +146,7 @@ func (s *ObjectStore) GetBySourceKey(ctx context.Context, key string) (*storage.
 }
 
 func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, int, error) {
-	conditions, args, idx := objectListConditionsPG(filter, 1)
+	conditions, args, idx := objectListConditionsPG(filter, 1, s.scope)
 
 	where := ""
 	if len(conditions) > 0 {
@@ -173,8 +193,10 @@ func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]
 
 // objectListConditionsPG turns filter into List's WHERE predicates and their
 // bound arguments, numbering placeholders from $start, and returns the next
-// free $N placeholder index.
-func objectListConditionsPG(filter storage.ObjectFilter, start int) ([]string, []any, int) {
+// free $N placeholder index. A scope's predicate goes last, so the count
+// and the page of a restricted viewer are computed inside the scoped
+// query.
+func objectListConditionsPG(filter storage.ObjectFilter, start int, scope *storage.Scope) ([]string, []any, int) {
 	var conditions []string
 	var args []any
 	idx := start
@@ -242,6 +264,11 @@ func objectListConditionsPG(filter storage.ObjectFilter, start int) ([]string, [
 	mc, ma := metadataFacetConditionsPG(filter, &idx)
 	conditions = append(conditions, mc...)
 	args = append(args, ma...)
+
+	if term, sargs := scopeTerm(scope, &idx); term != "" {
+		conditions = append(conditions, term)
+		args = append(args, sargs...)
+	}
 	return conditions, args, idx
 }
 
@@ -458,7 +485,7 @@ func reindexByHashTx(ctx context.Context, tx *sql.Tx, hash, profileID string) er
 func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, int, error) {
 	// List's predicates (status scope first) are numbered after the
 	// caller's $N placeholders, so where runs exactly as compiled.
-	conditions, condArgs, idx := objectListConditionsPG(filter, len(args)+1)
+	conditions, condArgs, idx := objectListConditionsPG(filter, len(args)+1, s.scope)
 	if where != "" {
 		conditions = append([]string{"(" + where + ")"}, conditions...)
 	}
@@ -572,6 +599,20 @@ func (s *ObjectStore) VectorSearch(ctx context.Context, q storage.VectorQuery, f
 	conditions = append(conditions, mc...)
 	args = append(args, ma...)
 
+	// The owner ranks the raw variant. A restricted viewer ranks the
+	// masked variant where an object has one and its raw row otherwise
+	// (ADR-080 §7), over the objects its scope selects, filtered before
+	// ranking: the predicate sits in the KNN query.
+	conditions = append(conditions, "e.variant = '"+storage.EmbeddingVariantRaw+"'")
+	if s.scope != nil {
+		conditions[len(conditions)-1] = `(e.variant = '` + storage.EmbeddingVariantMasked + `' OR (e.variant = '` + storage.EmbeddingVariantRaw + `'
+			AND NOT EXISTS (SELECT 1 FROM embeddings m WHERE m.object_id = e.object_id AND m.model_id = e.model_id
+				AND m.chunk_idx = e.chunk_idx AND m.variant = '` + storage.EmbeddingVariantMasked + `')))`
+		clause, sargs := andObjectIn("objects.id", s.scope, &idx)
+		conditions = append(conditions, strings.TrimPrefix(clause, " AND "))
+		args = append(args, sargs...)
+	}
+
 	limit := filter.Limit
 	if limit <= 0 {
 		limit = q.TopK
@@ -580,17 +621,19 @@ func (s *ObjectStore) VectorSearch(ctx context.Context, q storage.VectorQuery, f
 		limit = 20
 	}
 
-	// The embeddings subquery exposes only object_id, model_id and vector,
-	// so the bare object column names in objectSelectCols and the facet
-	// conditions stay unambiguous; the planner flattens it into a join.
+	// The embeddings subquery exposes only object_id, model_id, chunk_idx,
+	// variant and vector, none of them an object column, so the bare
+	// object column names in objectSelectCols and the facet conditions
+	// stay unambiguous; the planner flattens it into a join.
 	// Interpolated: the validated model_id, the integer dimension, the
-	// condition list (literals and generated $N markers) and $N indexes.
+	// condition list (literals, generated $N markers and the compiled
+	// scope) and $N indexes.
 	dist := fmt.Sprintf("e.vector::vector(%d) <=> $1::vector(%d)", dim, dim)
 	// #nosec G201 G202 -- no caller string reaches the query text; values are in args.
 	query := objectSelectCols + fmt.Sprintf(
 		`, 1 - (%s) AS score
 		  FROM objects
-		  JOIN (SELECT object_id, model_id, vector FROM embeddings) e ON e.object_id = objects.id
+		  JOIN (SELECT object_id, model_id, chunk_idx, variant, vector FROM embeddings) e ON e.object_id = objects.id
 		 WHERE %s
 		 ORDER BY %s
 		 LIMIT $%d`,
@@ -680,7 +723,13 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 	// clause and shared by the match predicate and the rank expression.
 	// Filter placeholders number themselves from $2, mirroring the SQLite
 	// filter shape (status + type + profile + metadata facets).
-	conditions := []string{"fts @@ q"}
+	// A restricted viewer searches the masked shadow tsvector (ADR-080
+	// §7): terms a viewer may not see never match, rank or count.
+	fts := "fts"
+	if s.scope != nil {
+		fts = "fts_masked"
+	}
+	conditions := []string{fts + " @@ q"}
 	args := []any{query}
 	idx := 2
 
@@ -705,15 +754,21 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 	conditions = append(conditions, mc...)
 	args = append(args, ma...)
 
+	if term, sargs := scopeTerm(s.scope, &idx); term != "" {
+		conditions = append(conditions, term)
+		args = append(args, sargs...)
+	}
+
 	// #nosec G202 -- no user data reaches the SQL text. Every caller
-	// value travels as a $N placeholder; the three interpolated items
-	// are the compile-time const ftsRegconfig, a condition list built
-	// only from literals and generated $N markers, and an int limit.
-	q := objectSelectCols + fmt.Sprintf(`, ts_rank_cd(fts, q) AS score
+	// value travels as a $N placeholder; the interpolated items are the
+	// compile-time const ftsRegconfig, one of two literal column names,
+	// a condition list built only from literals, generated $N markers
+	// and the compiled scope, and an int limit.
+	q := objectSelectCols + fmt.Sprintf(`, ts_rank_cd(%s, q) AS score
 		FROM objects, websearch_to_tsquery('%s', $1) AS q
 		WHERE %s
 		ORDER BY score DESC LIMIT %d`,
-		ftsRegconfig, strings.Join(conditions, " AND "), limit)
+		fts, ftsRegconfig, strings.Join(conditions, " AND "), limit)
 
 	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {

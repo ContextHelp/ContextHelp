@@ -9,10 +9,20 @@ import (
 	"testing"
 )
 
-// fakeViewer is a Viewer whose answer is its value.
+// fakeViewer is a Viewer with a fixed answer: unrestricted, or
+// restricted to a predicate as principal "prn_fake" with every
+// capability.
 type fakeViewer bool
 
 func (v fakeViewer) IsUnrestricted() bool { return bool(v) }
+func (v fakeViewer) PrincipalID() string {
+	if v {
+		return ""
+	}
+	return "prn_fake"
+}
+func (v fakeViewer) ObjectPredicate(string) (string, []any) { return "type = ?", []any{"note"} }
+func (v fakeViewer) Allows(string) bool                     { return true }
 
 // nilDriver is a StorageDriver whose every accessor returns a nil store,
 // so a wrapper method that reaches the store panics on the nil
@@ -109,7 +119,11 @@ func TestScopedAccessorsCoverDriver(t *testing.T) {
 			t.Errorf("scopedDriver.%s returned %s, want a restricted wrapper", m.Name, out.Elem().Type())
 		}
 		if _, ok := restrictedReads[m.Name]; !ok {
-			t.Errorf("scoped accessor %s has no entry in restrictedReads", m.Name)
+			if _, ok := scopedReads[m.Name]; !ok {
+				if _, ok := principalReads[m.Name]; !ok {
+					t.Errorf("scoped accessor %s has no entry in restrictedReads, scopedReads or principalReads", m.Name)
+				}
+			}
 		}
 	}
 	for name := range scopedAccessors {
@@ -119,25 +133,66 @@ func TestScopedAccessorsCoverDriver(t *testing.T) {
 	}
 }
 
-// Every listed read names a method of its store, and no store method is
-// variadic (the reflection-driven checks call them with zero arguments).
+// readTables are the three classifications of a restricted viewer's
+// reads, by name.
+var readTables = map[string]map[string][]string{
+	"restrictedReads": restrictedReads,
+	"scopedReads":     scopedReads,
+	"principalReads":  principalReads,
+}
+
+// Every listed read names a method of its store, no method is listed
+// twice across the tables, and no store method is variadic (the
+// reflection-driven checks call them with zero arguments).
 func TestRestrictedReadsNameStoreMethods(t *testing.T) {
-	for accessor, reads := range restrictedReads {
-		m, ok := driverType.MethodByName(accessor)
-		if !ok {
-			t.Errorf("restrictedReads names accessor %s, which StorageDriver does not have", accessor)
+	seen := map[string]string{}
+	for table, reads := range readTables {
+		for accessor, methods := range reads {
+			m, ok := driverType.MethodByName(accessor)
+			if !ok {
+				t.Errorf("%s names accessor %s, which StorageDriver does not have", table, accessor)
+				continue
+			}
+			store := m.Type.Out(0)
+			for _, r := range methods {
+				if _, ok := store.MethodByName(r); !ok {
+					t.Errorf("%s: %s.%s is not a method of %s", table, accessor, r, store.Name())
+				}
+				key := accessor + "." + r
+				if prev, dup := seen[key]; dup {
+					t.Errorf("%s is listed in %s and %s", key, prev, table)
+				}
+				seen[key] = table
+			}
+			for i := 0; i < store.NumMethod(); i++ {
+				if store.Method(i).Type.IsVariadic() {
+					t.Errorf("%s.%s is variadic; the scoped checks do not call variadic methods", store.Name(), store.Method(i).Name)
+				}
+			}
+		}
+	}
+}
+
+// jobWrites are the JobStore methods that are writes. Jobs are
+// owner-only (ADR-080 §6: their payload is raw content), so every other
+// JobStore method must be listed in restrictedReads: a job read added
+// without classifying it fails here.
+var jobWrites = []string{"Create", "AcquireNext", "Complete", "Fail", "Retry", "Cancel", "RecoverStale", "ExtendLease", "ReleaseLease"}
+
+func TestEveryJobReadIsRestricted(t *testing.T) {
+	store := reflect.TypeOf((*JobStore)(nil)).Elem()
+	for i := 0; i < store.NumMethod(); i++ {
+		name := store.Method(i).Name
+		if slices.Contains(jobWrites, name) {
 			continue
 		}
-		store := m.Type.Out(0)
-		for _, r := range reads {
-			if _, ok := store.MethodByName(r); !ok {
-				t.Errorf("restrictedReads: %s.%s is not a method of %s", accessor, r, store.Name())
-			}
+		if !slices.Contains(restrictedReads["Jobs"], name) {
+			t.Errorf("JobStore.%s is neither a known write nor listed in restrictedReads[\"Jobs\"]: jobs are owner-only", name)
 		}
-		for i := 0; i < store.NumMethod(); i++ {
-			if store.Method(i).Type.IsVariadic() {
-				t.Errorf("%s.%s is variadic; the scoped checks do not call variadic methods", store.Name(), store.Method(i).Name)
-			}
+	}
+	for _, w := range jobWrites {
+		if _, ok := store.MethodByName(w); !ok {
+			t.Errorf("jobWrites names %s, which JobStore does not have", w)
 		}
 	}
 }
@@ -177,32 +232,89 @@ func callStore(store reflect.Value, m reflect.Method) (reached bool, err error) 
 	return false, nil
 }
 
-// For a restricted viewer every listed read fails closed without
-// touching the store, with zero results beside the error, and every
-// other method reaches the store.
-func TestRestrictedStoresFailClosedOnReadsAndPassWrites(t *testing.T) {
-	scoped := reflect.ValueOf(ScopedDriver(fakeViewer(false), nilDriver{}))
-	for accessor, reads := range restrictedReads {
-		store := scoped.MethodByName(accessor).Call(nil)[0]
-		// The accessor's declared return type: the store interface,
-		// whose method signatures carry no receiver.
+// principalWrites are the writes of the per-principal stores: the
+// wrapper pins the viewer's principal on them, so they reach the store
+// for a restricted viewer and refuse for a nil viewer, which has none.
+var principalWrites = map[string][]string{
+	"Resurfacing":   {"Upsert"},
+	"SavedSearches": {"Create", "Update", "Delete"},
+	"SearchHistory": {"Append"},
+}
+
+// restrictedStoreMethods walks every method of every scoped accessor's
+// store on scoped and reports, per method, whether it reached the
+// (nil) store and the error it returned.
+func restrictedStoreMethods(t *testing.T, scoped StorageDriver, check func(accessor string, m reflect.Method, reached bool, err error)) {
+	t.Helper()
+	sv := reflect.ValueOf(scoped)
+	for accessor, kind := range scopedAccessors {
+		if kind != accessorScoped {
+			continue
+		}
+		store := sv.MethodByName(accessor).Call(nil)[0]
 		storeType := store.Type()
 		for i := 0; i < storeType.NumMethod(); i++ {
 			m := storeType.Method(i)
-			isRead := slices.Contains(reads, m.Name)
 			reached, err := callStore(store, m)
-			switch {
-			case isRead && reached:
-				t.Errorf("%s.%s: listed as a read but reached the store", accessor, m.Name)
-			case isRead && !errors.Is(err, ErrRestrictedViewer):
-				t.Errorf("%s.%s: read returned %v, want ErrRestrictedViewer", accessor, m.Name, err)
-			case isRead:
-				assertZeroResults(t, accessor, store, m)
-			case !reached:
-				t.Errorf("%s.%s: not listed as a read, yet never reached the store (err=%v)", accessor, m.Name, err)
-			}
+			check(accessor, m, reached, err)
 		}
 	}
+}
+
+// For a restricted viewer over a driver whose stores are nil: every
+// refused read fails closed without touching the store, every scoped
+// read fails closed too (the nil store cannot bind to the scope) with
+// ErrNoScopedReads, every per-principal read and write reaches the
+// store, and every other method reaches the store. Both refusals return
+// nothing beside their error.
+func TestRestrictedStoresFailClosedOnReadsAndPassWrites(t *testing.T) {
+	scoped := ScopedDriver(fakeViewer(false), nilDriver{})
+	restrictedStoreMethods(t, scoped, func(accessor string, m reflect.Method, reached bool, err error) {
+		store := reflect.ValueOf(scoped).MethodByName(accessor).Call(nil)[0]
+		switch {
+		case slices.Contains(restrictedReads[accessor], m.Name):
+			switch {
+			case reached:
+				t.Errorf("%s.%s: listed as a refused read but reached the store", accessor, m.Name)
+			case !errors.Is(err, ErrRestrictedViewer) || errors.Is(err, ErrNoScopedReads):
+				t.Errorf("%s.%s: refused read returned %v, want ErrRestrictedViewer", accessor, m.Name, err)
+			default:
+				assertZeroResults(t, accessor, store, m)
+			}
+		case slices.Contains(scopedReads[accessor], m.Name):
+			switch {
+			case reached:
+				t.Errorf("%s.%s: listed as a scoped read but reached a store that cannot bind to a scope", accessor, m.Name)
+			case !errors.Is(err, ErrNoScopedReads) || !errors.Is(err, ErrRestrictedViewer):
+				t.Errorf("%s.%s: scoped read over an unbindable store returned %v, want ErrNoScopedReads", accessor, m.Name, err)
+			default:
+				assertZeroResults(t, accessor, store, m)
+			}
+		case !reached:
+			t.Errorf("%s.%s: not listed as a read, yet never reached the store (err=%v)", accessor, m.Name, err)
+		}
+	})
+}
+
+// For a nil viewer every read of every table, and every per-principal
+// write, fails closed without touching the store; every other method
+// reaches it.
+func TestNilViewerFailsEveryReadClosed(t *testing.T) {
+	scoped := ScopedDriver(nil, nilDriver{})
+	restrictedStoreMethods(t, scoped, func(accessor string, m reflect.Method, reached bool, err error) {
+		refused := slices.Contains(restrictedReads[accessor], m.Name) ||
+			slices.Contains(scopedReads[accessor], m.Name) ||
+			slices.Contains(principalReads[accessor], m.Name) ||
+			slices.Contains(principalWrites[accessor], m.Name)
+		switch {
+		case refused && reached:
+			t.Errorf("%s.%s: reached the store for a nil viewer", accessor, m.Name)
+		case refused && !errors.Is(err, ErrRestrictedViewer):
+			t.Errorf("%s.%s: nil viewer got %v, want ErrRestrictedViewer", accessor, m.Name, err)
+		case !refused && !reached:
+			t.Errorf("%s.%s: a write never reached the store (err=%v)", accessor, m.Name, err)
+		}
+	})
 }
 
 // assertZeroResults checks a refused read returns nothing beside its

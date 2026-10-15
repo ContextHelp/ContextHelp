@@ -9,9 +9,15 @@ package sharing
 
 import (
 	"context"
+	"slices"
+	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/search"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
+
+// Viewer is what ScopedDriver sees of a viewer.
+var _ storage.Viewer = Viewer{}
 
 // Viewer is what a request's caller is allowed to see.
 //
@@ -90,6 +96,53 @@ func (v Viewer) Predicate(d search.Dialect) (string, []any) {
 	}
 	p := v.view.sql[d]
 	return p.sql, append([]any(nil), p.args...)
+}
+
+// ObjectPredicate implements storage.Viewer: the predicate of v for the
+// storage dialect name (storage.SQLDialectPostgres or SQLite), with ?
+// placeholders in either dialect, for the drivers' scoped reads to
+// number themselves. A viewer that matches nothing yields MatchNothing;
+// Unrestricted yields "".
+func (v Viewer) ObjectPredicate(dialect string) (string, []any) {
+	if v.unrestricted {
+		return "", nil
+	}
+	if v.MatchesNothing() {
+		return MatchNothing, nil
+	}
+	d := search.DialectSQLite
+	if dialect == storage.SQLDialectPostgres {
+		d = search.DialectPostgres
+	}
+	p := v.view.unnumbered[d]
+	return p.sql, append([]any(nil), p.args...)
+}
+
+// Allows implements storage.Viewer: whether v holds capability c
+// (storage.CapabilityEntities, "search:fts", ...). Unrestricted holds
+// every capability; the zero viewer none.
+func (v Viewer) Allows(c string) bool {
+	if v.unrestricted {
+		return true
+	}
+	if v.view == nil {
+		return false
+	}
+	caps := v.view.plan.Capabilities
+	if mode, ok := strings.CutPrefix(c, storage.CapabilitySearchPrefix); ok {
+		return slices.Contains(caps.Search, mode)
+	}
+	switch c {
+	case storage.CapabilityEntities:
+		return caps.Entities
+	case storage.CapabilityExport:
+		return caps.Export
+	case storage.CapabilityMCP:
+		return caps.MCP
+	case storage.CapabilityEvents:
+		return caps.Events
+	}
+	return false
 }
 
 // PredicateNode returns the predicate's AST, for callers that compile

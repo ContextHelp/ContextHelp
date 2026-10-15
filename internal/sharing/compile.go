@@ -93,8 +93,12 @@ type view struct {
 	key       string
 	// node is the predicate's AST; nil when the viewer matches nothing.
 	node search.Node
-	sql  map[search.Dialect]predicate
-	plan RenderPlan
+	// sql is the predicate per dialect as ListBySQL takes it; unnumbered
+	// is the same with ? placeholders in every dialect, for the scoped
+	// reads that splice it into their own statements.
+	sql        map[search.Dialect]predicate
+	unnumbered map[search.Dialect]predicate
+	plan       RenderPlan
 }
 
 type predicate struct {
@@ -112,7 +116,10 @@ func Compile(in Input) (Viewer, error) {
 	if in.PrincipalID == "" {
 		return Viewer{}, errors.New("compile viewer: principal id is required")
 	}
-	v := &view{principal: in.PrincipalID, identity: in.IdentityID, sql: map[search.Dialect]predicate{}}
+	v := &view{
+		principal: in.PrincipalID, identity: in.IdentityID,
+		sql: map[search.Dialect]predicate{}, unnumbered: map[search.Dialect]predicate{},
+	}
 	grants := slices.Clone(in.Grants)
 	sort.SliceStable(grants, func(i, j int) bool { return grants[i].ID < grants[j].ID })
 
@@ -151,6 +158,11 @@ func Compile(in Input) (Viewer, error) {
 				return Viewer{}, fmt.Errorf("compile viewer: %w", err)
 			}
 			v.sql[d] = predicate{sql: sql, args: args}
+			unnumbered, uargs, err := search.CompileUnnumbered(d, v.node, nil)
+			if err != nil {
+				return Viewer{}, fmt.Errorf("compile viewer: %w", err)
+			}
+			v.unnumbered[d] = predicate{sql: unnumbered, args: uargs}
 		}
 	}
 	v.key = policyKey(in, grants)

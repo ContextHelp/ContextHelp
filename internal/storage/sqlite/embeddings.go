@@ -27,6 +27,9 @@ import (
 // rebuilds it from canonical rows whenever its ADR-070 signature drifts.
 type EmbeddingStore struct {
 	db *sql.DB
+	// scope, when set, makes Search rank the masked variant over the
+	// objects the viewer may see only (see scope.go).
+	scope *storage.Scope
 }
 
 var _ storage.EmbeddingStore = (*EmbeddingStore)(nil)
@@ -422,11 +425,17 @@ func decodeFloat32(b []byte) []float32 {
 // Search runs a KNN query against the model's vec0 table and collapses
 // chunks to the best one per object. k starts at TopK and grows until TopK
 // distinct objects are found, the index is exhausted, or vec0's k ceiling
-// is reached.
+// is reached. A scoped store ranks the masked variant (ADR-080 §7) and
+// keeps only visible objects, checked in SQL on each round's candidate
+// ids, so the rounds widen until TopK visible objects are found or the
+// index is exhausted.
 func (s *EmbeddingStore) Search(ctx context.Context, q storage.VectorQuery) ([]storage.EmbeddingHit, error) {
 	topK := q.TopK
 	if topK <= 0 {
 		topK = 10
+	}
+	if s.scope != nil {
+		q.Variant = storage.EmbeddingVariantMasked
 	}
 	dim, err := registryDimension(ctx, s.db, q.ModelID)
 	if err != nil {
@@ -464,6 +473,9 @@ func (s *EmbeddingStore) Search(ctx context.Context, q storage.VectorQuery) ([]s
 		}
 		hits, err := s.selectVariant(ctx, q, rows)
 		if err != nil {
+			return nil, fmt.Errorf("sqlite embeddings search %s: %w", q.ModelID, err)
+		}
+		if hits, err = s.filterVisible(ctx, hits); err != nil {
 			return nil, fmt.Errorf("sqlite embeddings search %s: %w", q.ModelID, err)
 		}
 		collapsed := collapseChunks(hits, topK)

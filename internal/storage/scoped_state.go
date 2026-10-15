@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
 
@@ -23,62 +24,146 @@ func (v restrictedAuditLog) GetObjectHistory(_ context.Context, _ string) ([]*Au
 	return nil, restrictedRead("AuditLog", "GetObjectHistory")
 }
 
-// restrictedSavedSearches is the SavedSearchStore of a restricted viewer: every read fails closed
-// with ErrRestrictedViewer, every write reaches the driver.
-type restrictedSavedSearches struct{ inner SavedSearchStore }
+// principalRead is the error a per-principal read returns for a viewer
+// with no principal (the nil viewer).
+func principalRead(store, method string) error {
+	return fmt.Errorf("%s.%s: no principal: %w", store, method, ErrRestrictedViewer)
+}
+
+// restrictedSavedSearches is the SavedSearchStore of a restricted
+// viewer: the viewer's own searches only (ADR-080 §4, per-principal
+// state). Create stores as the viewer's principal whatever the row
+// says; GetByName, Update and Delete answer another principal's search
+// as missing; List is pinned to the principal. A viewer with no
+// principal refuses.
+type restrictedSavedSearches struct {
+	inner     SavedSearchStore
+	principal string
+}
 
 var _ SavedSearchStore = restrictedSavedSearches{}
 
 func (v restrictedSavedSearches) Create(ctx context.Context, s *SavedSearch) error {
+	if v.principal == "" {
+		return principalRead("SavedSearches", "Create")
+	}
+	s.OwnerPrincipal = v.principal
 	return v.inner.Create(ctx, s)
 }
 
-func (v restrictedSavedSearches) GetByName(_ context.Context, _ string) (*SavedSearch, error) {
-	return nil, restrictedRead("SavedSearches", "GetByName")
+// own returns the viewer's saved search named name, nil when there is
+// none or it belongs to another principal.
+func (v restrictedSavedSearches) own(ctx context.Context, name string) (*SavedSearch, error) {
+	s, err := v.inner.GetByName(ctx, name)
+	if err != nil || s == nil {
+		return nil, err
+	}
+	if PrincipalOrOwner(s.OwnerPrincipal) != v.principal {
+		return nil, nil
+	}
+	return s, nil
 }
 
-func (v restrictedSavedSearches) List(_ context.Context, _ SavedSearchFilter) ([]*SavedSearch, error) {
-	return nil, restrictedRead("SavedSearches", "List")
+func (v restrictedSavedSearches) GetByName(ctx context.Context, name string) (*SavedSearch, error) {
+	if v.principal == "" {
+		return nil, principalRead("SavedSearches", "GetByName")
+	}
+	return v.own(ctx, name)
+}
+
+func (v restrictedSavedSearches) List(ctx context.Context, f SavedSearchFilter) ([]*SavedSearch, error) {
+	if v.principal == "" {
+		return nil, principalRead("SavedSearches", "List")
+	}
+	f.OwnerPrincipal = v.principal
+	return v.inner.List(ctx, f)
 }
 
 func (v restrictedSavedSearches) Update(ctx context.Context, s *SavedSearch) error {
+	if v.principal == "" {
+		return principalRead("SavedSearches", "Update")
+	}
+	own, err := v.own(ctx, s.Name)
+	if err != nil {
+		return err
+	}
+	if own == nil {
+		return fmt.Errorf("saved search %q: %w", s.Name, ErrNotFound)
+	}
+	s.OwnerPrincipal = v.principal
 	return v.inner.Update(ctx, s)
 }
 
 func (v restrictedSavedSearches) Delete(ctx context.Context, name string) error {
+	if v.principal == "" {
+		return principalRead("SavedSearches", "Delete")
+	}
+	own, err := v.own(ctx, name)
+	if err != nil {
+		return err
+	}
+	if own == nil {
+		return fmt.Errorf("saved search %q: %w", name, ErrNotFound)
+	}
 	return v.inner.Delete(ctx, name)
 }
 
-// restrictedSearchHistory is the SearchHistoryStore of a restricted viewer: every read fails closed
-// with ErrRestrictedViewer, every write reaches the driver.
-type restrictedSearchHistory struct{ inner SearchHistoryStore }
+// restrictedSearchHistory is the SearchHistoryStore of a restricted
+// viewer: Append records as the viewer's principal, List is pinned to
+// it, and ClearByProfile, which clears every principal's history of a
+// profile, refuses. A viewer with no principal refuses.
+type restrictedSearchHistory struct {
+	inner     SearchHistoryStore
+	principal string
+}
 
 var _ SearchHistoryStore = restrictedSearchHistory{}
 
 func (v restrictedSearchHistory) Append(ctx context.Context, e *SearchHistoryEntry) error {
+	if v.principal == "" {
+		return principalRead("SearchHistory", "Append")
+	}
+	e.OwnerPrincipal = v.principal
 	return v.inner.Append(ctx, e)
 }
 
-func (v restrictedSearchHistory) List(_ context.Context, _ SearchHistoryFilter) ([]*SearchHistoryEntry, error) {
-	return nil, restrictedRead("SearchHistory", "List")
+func (v restrictedSearchHistory) List(ctx context.Context, f SearchHistoryFilter) ([]*SearchHistoryEntry, error) {
+	if v.principal == "" {
+		return nil, principalRead("SearchHistory", "List")
+	}
+	f.OwnerPrincipal = v.principal
+	return v.inner.List(ctx, f)
 }
 
-func (v restrictedSearchHistory) ClearByProfile(ctx context.Context, profileID string) error {
-	return v.inner.ClearByProfile(ctx, profileID)
+func (v restrictedSearchHistory) ClearByProfile(_ context.Context, _ string) error {
+	return restrictedRead("SearchHistory", "ClearByProfile")
 }
 
-// restrictedResurfacing is the ResurfacingQueueStore of a restricted viewer: every read fails closed
-// with ErrRestrictedViewer, every write reaches the driver.
-type restrictedResurfacing struct{ inner ResurfacingQueueStore }
+// restrictedResurfacing is the ResurfacingQueueStore of a restricted
+// viewer: Upsert queues as the viewer's principal, List is pinned to
+// it, the per-entry and per-profile writes reach the driver. A viewer
+// with no principal refuses.
+type restrictedResurfacing struct {
+	inner     ResurfacingQueueStore
+	principal string
+}
 
 var _ ResurfacingQueueStore = restrictedResurfacing{}
 
 func (v restrictedResurfacing) Upsert(ctx context.Context, e *ResurfacingEntry) error {
+	if v.principal == "" {
+		return principalRead("Resurfacing", "Upsert")
+	}
+	e.OwnerPrincipal = v.principal
 	return v.inner.Upsert(ctx, e)
 }
 
-func (v restrictedResurfacing) List(_ context.Context, _ ResurfacingFilter) ([]*ResurfacingEntry, error) {
-	return nil, restrictedRead("Resurfacing", "List")
+func (v restrictedResurfacing) List(ctx context.Context, f ResurfacingFilter) ([]*ResurfacingEntry, error) {
+	if v.principal == "" {
+		return nil, principalRead("Resurfacing", "List")
+	}
+	f.OwnerPrincipal = v.principal
+	return v.inner.List(ctx, f)
 }
 
 func (v restrictedResurfacing) MarkSurfaced(ctx context.Context, id string, now time.Time) error {

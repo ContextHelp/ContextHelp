@@ -55,7 +55,7 @@ func assertObjectListIndexes(t *testing.T, d *Driver) {
 			t.Errorf("index %s missing", index)
 		}
 	}
-	countSQL, _, args := objectListSQL(storage.ObjectFilter{Limit: 20})
+	countSQL, _, args := objectListSQL(storage.ObjectFilter{Limit: 20}, nil)
 	if plan := objectQueryPlan(t, d, countSQL, args...); !strings.Contains(plan, "COVERING INDEX idx_objects_status") {
 		t.Errorf("default count plan %q, want the covering walk of idx_objects_status", plan)
 	}
@@ -76,7 +76,7 @@ func assertObjectListIndexes(t *testing.T, d *Driver) {
 		{"inbox", storage.ObjectFilter{Status: "inbox", Limit: 20}, "idx_objects_status", false},
 		{"change order", storage.ObjectFilter{ChangedAfter: &after, Limit: 100}, "idx_objects_change_seq", true},
 	} {
-		_, pageSQL, args := objectListSQL(tc.filter)
+		_, pageSQL, args := objectListSQL(tc.filter, nil)
 		plan := objectQueryPlan(t, d, pageSQL, args...)
 		if !strings.Contains(plan, "USING INDEX "+tc.index) {
 			t.Errorf("%s: plan %q, want it to walk %s", tc.name, plan, tc.index)
