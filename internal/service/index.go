@@ -159,7 +159,9 @@ func (s *Service) buildIndex(ctx context.Context) (*TopicIndex, error) {
 	}
 
 	catMap := make(map[string][]TopicEntry)
-	var objectIDs []string
+	// Left nil until an object has topics: an empty index stores
+	// object_ids as null, as it always has.
+	var objectIDs []string //nolint:prealloc // see above; preallocating would store [] instead
 
 	for _, obj := range objects {
 		if obj.Type == TopicIndexType {
@@ -265,8 +267,7 @@ func extractTopicsAndSummary(
 	}
 
 	var topics []string
-	switch m := raw.(type) {
-	case map[string]any:
+	if m, ok := raw.(map[string]any); ok {
 		if t, ok := m["topics"]; ok {
 			switch tv := t.(type) {
 			case []any:

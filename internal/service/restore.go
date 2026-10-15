@@ -326,7 +326,7 @@ func walkArchive(source string, fn func(e backupEntry, hdr *tar.Header, r io.Rea
 	defer closeFn()
 	for {
 		hdr, err := tr.Next()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			return nil
 		}
 		if err != nil {

@@ -95,7 +95,7 @@ func (s *Service) CreateLink(ctx context.Context, req LinkRequest) ([]*storage.E
 
 // allLinkTypes is every link type, inverse names included.
 func allLinkTypes() []string {
-	var out []string
+	out := make([]string, 0, 2*len(graph.UserLinkTypes))
 	for _, lt := range graph.UserLinkTypes {
 		out = append(out, string(lt))
 		if inv, _ := graph.InverseLinkType(lt); inv != lt {

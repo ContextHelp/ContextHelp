@@ -1,3 +1,6 @@
+// Package service holds the business operations behind dpkms's REST and
+// gRPC servers and ctxt's local commands: analyze and capture, search,
+// inbox, links, batches, backup and restore, and re-analysis.
 package service
 
 import (
@@ -197,40 +200,7 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 
 	// Raw mode: bypass pipeline entirely; persist as-is.
 	if req.Raw {
-		obj := &storage.KnowledgeObject{
-			ID:          uuid.New().String(),
-			Type:        detectedType,
-			RawContent:  req.Content,
-			Source:      jobSource,
-			SourceKey:   req.SourceKey,
-			ContentHash: storageutil.ContentHash(req.Content, jobSource),
-			Status:      "raw",
-			CreatedAt:   now,
-			UpdatedAt:   now,
-			Mentions:    mentions.ParseSlice(req.Mentions),
-			// caller-asserted hints become Tag{Source:"user"} on the
-			// raw path too, so capture-with-hints partitioning works without
-			// the pipeline running.
-			Tags: userHintsToTags(req.Hints),
-			// caller-asserted profile and note flow directly onto
-			// the KnowledgeObject so partitioning + audit-note capture
-			// work even on the raw path (no pipeline to plumb through).
-			ProfileID: req.Profile,
-			InboxNote: req.Note,
-		}
-		if err := s.Store.Objects().Create(ctx, obj); err != nil {
-			return "", fmt.Errorf("analyze raw: store: %w", err)
-		}
-		// caller-asserted mentions become thin entity rows + mention
-		// edges even on the raw path so partitioning by @client/@project
-		// works without the pipeline running.
-		if err := s.writeUserMentionEdges(ctx, obj.ID, obj.Mentions); err != nil {
-			return "", fmt.Errorf("analyze raw: user mentions: %w", err)
-		}
-		if ev, err := events.NewEvent("service.analyze", string(events.TopicObjectRawStored), obj); err == nil {
-			_ = s.Bus.Publish(ctx, ev)
-		}
-		return obj.ID, nil
+		return s.analyzeRaw(ctx, req, detectedType, jobSource, now)
 	}
 
 	// A replayed submission (same client-generated idempotency key) must
@@ -258,25 +228,10 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 
 	// Duplicate detection (exact match only at analyze time; embeddings not yet computed).
 	if !req.Force {
-		hashForDedup := req.KnownHash
-		if hashForDedup == "" && s.Cfg.Duplicates.CheckExact {
-			hashForDedup = storageutil.ContentHash(req.Content, jobSource)
-		}
-		dup, err := s.checkDuplicates(ctx, hashForDedup, req.SourceKey, storage.VectorQuery{}, s.Cfg.Duplicates)
-		if err != nil {
-			return "", fmt.Errorf("analyze: duplicate check: %w", err)
-		}
-		if dup != nil {
-			s.logDedupDecision(ctx, dup, s.Cfg.Duplicates.Policy)
-			switch s.Cfg.Duplicates.Policy {
-			case "drop":
-				return dup.Existing.ID, nil
-			case "warn":
-				fmt.Fprintf(os.Stderr, "warning: duplicate detected (%s): existing object %s\n",
-					dup.Kind, dup.Existing.ID)
-			case "keep":
-				// Fall through silently.
-			}
+		if existingID, drop, err := s.analyzeDuplicate(ctx, req, jobSource); err != nil {
+			return "", err
+		} else if drop {
+			return existingID, nil
 		}
 	}
 
@@ -316,6 +271,73 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 		_ = s.Bus.Publish(ctx, ev)
 	}
 	return job.ID, nil
+}
+
+// analyzeRaw persists req's content as a raw object, bypassing the
+// pipeline, and returns the object ID.
+func (s *Service) analyzeRaw(ctx context.Context, req AnalyzeRequest, detectedType, jobSource string, now time.Time) (string, error) {
+	obj := &storage.KnowledgeObject{
+		ID:          uuid.New().String(),
+		Type:        detectedType,
+		RawContent:  req.Content,
+		Source:      jobSource,
+		SourceKey:   req.SourceKey,
+		ContentHash: storageutil.ContentHash(req.Content, jobSource),
+		Status:      "raw",
+		CreatedAt:   now,
+		UpdatedAt:   now,
+		Mentions:    mentions.ParseSlice(req.Mentions),
+		// caller-asserted hints become Tag{Source:"user"} on the
+		// raw path too, so capture-with-hints partitioning works without
+		// the pipeline running.
+		Tags: userHintsToTags(req.Hints),
+		// caller-asserted profile and note flow directly onto
+		// the KnowledgeObject so partitioning + audit-note capture
+		// work even on the raw path (no pipeline to plumb through).
+		ProfileID: req.Profile,
+		InboxNote: req.Note,
+	}
+	if err := s.Store.Objects().Create(ctx, obj); err != nil {
+		return "", fmt.Errorf("analyze raw: store: %w", err)
+	}
+	// caller-asserted mentions become thin entity rows + mention
+	// edges even on the raw path so partitioning by @client/@project
+	// works without the pipeline running.
+	if err := s.writeUserMentionEdges(ctx, obj.ID, obj.Mentions); err != nil {
+		return "", fmt.Errorf("analyze raw: user mentions: %w", err)
+	}
+	if ev, err := events.NewEvent("service.analyze", string(events.TopicObjectRawStored), obj); err == nil {
+		_ = s.Bus.Publish(ctx, ev)
+	}
+	return obj.ID, nil
+}
+
+// analyzeDuplicate runs Analyze's exact-match duplicate check. drop
+// reports that the duplicates policy drops the submission, whose answer
+// is then the existing object's ID; otherwise Analyze goes on and
+// enqueues it.
+func (s *Service) analyzeDuplicate(ctx context.Context, req AnalyzeRequest, jobSource string) (existingID string, drop bool, err error) {
+	hashForDedup := req.KnownHash
+	if hashForDedup == "" && s.Cfg.Duplicates.CheckExact {
+		hashForDedup = storageutil.ContentHash(req.Content, jobSource)
+	}
+	dup, err := s.checkDuplicates(ctx, hashForDedup, req.SourceKey, storage.VectorQuery{}, s.Cfg.Duplicates)
+	if err != nil {
+		return "", false, fmt.Errorf("analyze: duplicate check: %w", err)
+	}
+	if dup != nil {
+		s.logDedupDecision(ctx, dup, s.Cfg.Duplicates.Policy)
+		switch s.Cfg.Duplicates.Policy {
+		case "drop":
+			return dup.Existing.ID, true, nil
+		case "warn":
+			fmt.Fprintf(os.Stderr, "warning: duplicate detected (%s): existing object %s\n",
+				dup.Kind, dup.Existing.ID)
+		case "keep":
+			// Fall through silently.
+		}
+	}
+	return "", false, nil
 }
 
 // userHintsToTags converts caller-asserted hint strings to the
@@ -377,7 +399,7 @@ func (s *Service) writeUserMentionEdges(
 		}
 		edge := &storage.Edge{
 			ID:        uuid.NewString(),
-			FromType:  "object",
+			FromType:  nodeObject,
 			FromID:    objectID,
 			ToType:    "entity",
 			ToID:      slug,
@@ -600,7 +622,7 @@ func (s *Service) EntityBacklinks(ctx context.Context, slug string) ([]*storage.
 
 	var objs []*storage.KnowledgeObject
 	for _, edge := range edges {
-		if edge.FromType == "object" {
+		if edge.FromType == nodeObject {
 			obj, err := s.Store.Objects().Get(ctx, edge.FromID)
 			if err != nil {
 				continue
@@ -1436,7 +1458,8 @@ func (s *Service) SyncAllFeeds(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list feeds: %w", err)
 	}
-	var jobIDs []string
+	// nil when no feed enqueues: POST /feeds/sync answers job_ids: null.
+	var jobIDs []string //nolint:prealloc // see above; preallocating would answer []
 	for _, f := range feeds {
 		jobID, err := s.SyncFeed(ctx, f.ID)
 		if err != nil {
@@ -1514,11 +1537,12 @@ func (s *Service) CreateBatch(ctx context.Context, content, format string) (*sto
 		})
 	}
 
-	if batch.Failed == 0 {
+	switch {
+	case batch.Failed == 0:
 		batch.Status = "completed"
-	} else if batch.Failed < batch.TotalRecords {
+	case batch.Failed < batch.TotalRecords:
 		batch.Status = "partial"
-	} else {
+	default:
 		batch.Status = "failed"
 	}
 	batch.Completed = batch.TotalRecords - batch.Failed
@@ -2225,7 +2249,8 @@ func (s *Service) parsePipelineSteps(stepsJSON string) ([]storage.StepRef, error
 		return nil, err
 	}
 
-	var result []storage.StepRef
+	// nil when no entry names a step: the pipeline stores steps as null.
+	var result []storage.StepRef //nolint:prealloc // see above; preallocating would store []
 	for _, step := range steps {
 		name, ok := step["name"].(string)
 		if !ok {

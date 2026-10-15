@@ -154,31 +154,22 @@ func (s *Service) ListInboxQueue(ctx context.Context, f InboxQueueFilter) ([]*In
 
 	// Pending/running jobs.
 	if showAll || f.Pending {
-		jobs, _, err := s.Store.Jobs().List(ctx, storage.JobFilter{Status: storage.JobPending, Limit: limit})
-		if err != nil {
-			return nil, 0, fmt.Errorf("list pending jobs: %w", err)
-		}
-		for _, j := range jobs {
-			items = append(items, jobToQueueItem(j))
-		}
-		running, _, err := s.Store.Jobs().List(ctx, storage.JobFilter{Status: storage.JobRunning, Limit: limit})
-		if err != nil {
-			return nil, 0, fmt.Errorf("list running jobs: %w", err)
-		}
-		for _, j := range running {
-			items = append(items, jobToQueueItem(j))
+		for _, st := range []storage.JobStatus{storage.JobPending, storage.JobRunning} {
+			got, err := s.jobQueueItems(ctx, st, limit)
+			if err != nil {
+				return nil, 0, err
+			}
+			items = append(items, got...)
 		}
 	}
 
 	// Failed jobs.
 	if showAll || f.Failed {
-		failed, _, err := s.Store.Jobs().List(ctx, storage.JobFilter{Status: storage.JobFailed, Limit: limit})
+		got, err := s.jobQueueItems(ctx, storage.JobFailed, limit)
 		if err != nil {
-			return nil, 0, fmt.Errorf("list failed jobs: %w", err)
+			return nil, 0, err
 		}
-		for _, j := range failed {
-			items = append(items, jobToQueueItem(j))
-		}
+		items = append(items, got...)
 	}
 
 	// Raw objects.
@@ -205,6 +196,19 @@ func (s *Service) ListInboxQueue(ctx context.Context, f InboxQueueFilter) ([]*In
 	}
 
 	return items, total, nil
+}
+
+// jobQueueItems lists up to limit jobs in status st as queue items.
+func (s *Service) jobQueueItems(ctx context.Context, st storage.JobStatus, limit int) ([]*InboxQueueItem, error) {
+	jobs, _, err := s.Store.Jobs().List(ctx, storage.JobFilter{Status: st, Limit: limit})
+	if err != nil {
+		return nil, fmt.Errorf("list %s jobs: %w", st, err)
+	}
+	items := make([]*InboxQueueItem, 0, len(jobs))
+	for _, j := range jobs {
+		items = append(items, jobToQueueItem(j))
+	}
+	return items, nil
 }
 
 func jobToQueueItem(j *storage.Job) *InboxQueueItem {
