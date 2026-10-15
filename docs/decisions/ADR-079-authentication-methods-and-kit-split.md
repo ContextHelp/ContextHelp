@@ -1,6 +1,6 @@
 # ADR-079 – Authentication Methods, Principals and the kit/ctxt Split
 
-> **Status:** Accepted (2026-10-14; decisions D1–D15 as recommended in the plan)
+> **Status:** Accepted (2026-10-14; decisions D1–D15 as recommended in the plan; amended the same day after review, D16–D17)
 > **Date:** 2026-10-14
 > **Author:** jadb
 > **Applies to:** dPKMS, ctxt
@@ -50,14 +50,15 @@ A principal is a row in the instance database, never just a config entry.
 | Kind | Who | Typical methods | Notes |
 |---|---|---|---|
 | `owner` | The person the instance belongs to. Exactly one per instance. | owner-local, passkey, API key, proxy | Holds every scope. Bypasses share policies (ADR-080) unless a request opts in to a preview. |
-| `person` | A colleague, partner or family member the owner invited | invite link, then passkey or proxy identity; magic link for sign-in again | Starts with no data access. Gets access only through audiences (ADR-080). |
-| `agent` | An AI agent or script acting for a person | API key | Attenuated from its parent principal: never more scopes or data than the parent holds. |
+| `person` | A colleague, partner or family member the owner invited | invite link, then passkey or proxy identity; magic link for sign-in again | Roles `[reader]` by default, so every read route is callable, but the viewer (ADR-080) is empty until a grant applies. |
 | `device` | An owned device (capture, sync) | API key now; mTLS / device certificate under ADR-074 | Writer scopes. |
-| `peer` | A federation target (ADR-064) | API key | Replaces the separate `federation.token`. |
+| `peer` | A federation target (ADR-064) | API key | Replaces the separate `federation.token` for inbound pushes. The outbound credential this instance presents to its targets stays in `federation.targets[]`. |
+
+**Agents are keys, not principals.** An AI agent or script gets an API key on the principal it acts for, bound to a share policy that narrows that principal's view (ADR-080 §2). It can never hold more scopes or see more data than that principal. Revoking the key ends the agent, and the access log attributes its reads by key. A separate `agent` principal kind with a parent link was considered and dropped: it duplicates what a key with a policy already expresses, and it leaves open whether grants flow through the parent.
 
 On a `private` instance every request is the owner (today's `LocalPrincipal`, whose ID `local` becomes `owner`). On `protected` and `public` instances an unauthenticated request is anonymous and reaches only the routes that are already open.
 
-A principal can have several **identities**, one per method: a passkey credential, a proxy login, an OIDC `(issuer, subject)`, one or more API keys. An identity is bound to a principal only by an explicit act: the owner creates it, or the invitee accepts an invite. dpkms never links identities by matching email addresses across methods, because a claimed email is not proof of the same person.
+A principal can have several **identities**, one per credential: a passkey, a proxy login, an OIDC `(issuer, subject)`, a client certificate, or an API key. Every identity, keys included, is a row in `principal_identities`, so revoking a principal cascades to all of its credentials and sessions in one place. An identity is bound to a principal only by an explicit act: the owner creates it, the principal adds it to itself under `write:self` (§5), or the invitee accepts an invite. dpkms never links identities by matching email addresses across methods, because a claimed email is not proof of the same person.
 
 ### 2. Methods
 
@@ -77,14 +78,17 @@ Phases refer to the [plan](../plans/2026-10-14-auth-and-sharing.md).
 | **Social login** | Later, opt-in | Same flow as OIDC (Google is OIDC; GitHub is plain OAuth 2.0 and needs a userinfo call) | Invitees who prefer a social account | Proposal K6 |
 | **Passwords** | Rejected | | | ADR-023 rejected them; passkeys cover the same need without stored secrets |
 
-Every method is optional except owner-local and API keys. An instance enables the methods it wants, in order:
+Two kinds of method appear above. **Authenticators** resolve a principal on every request from something the request carries: an API key, a session cookie, a proxy header, a client certificate, an IdP-issued JWT. **Sign-in ceremonies** establish a browser session once: an invite link, a magic link, a passkey ceremony, an OIDC code flow. A ceremony is never tried on an ordinary request. It ends by minting a session, and the `session` authenticator takes over from there.
+
+Every method is optional except owner-local and API keys. An instance enables the authenticators and ceremonies it wants:
 
 ```yaml
 server:
   access: protected
-  public_url: https://dpkms.tail1234.ts.net   # passkey RP ID + origin, link base
+  public_url: https://dpkms.tail1234.ts.net   # link base, passkey RP ID + origin; required by every link and passkey sign-in
   auth:
-    methods: [api_key, session, proxy, passkey]   # tried in order
+    methods: [api_key, session, proxy]        # authenticators; evaluation order in §3
+    sign_in: [invite, link, passkey]          # ceremonies allowed to mint a session
     proxy:
       preset: tailscale                 # tailscale | forward_auth | custom
       trusted_proxies: [127.0.0.1/32]   # tailscale serve forwards from loopback
@@ -101,29 +105,40 @@ server:
 
 ### 3. The chain
 
-Each method returns `matched`, `no credential` or `refused`:
+Each authenticator in `methods` returns `matched`, `no credential` or `refused`:
 
 - **Matched**: stop. The request runs as that principal.
 - **No credential**: try the next method.
 - **Refused** (a credential was presented and is wrong, expired or revoked): stop with 401. dpkms never falls through to a weaker method once a credential has been presented, so a bad bearer token cannot be rescued by a proxy header.
 
+**Order.** Authenticators that carry an explicit credential (`api_key`, `mtls`, `jwt`) always run before ambient ones (`session`, `proxy`), whatever order `methods` lists them in. A request with both a bearer key and a proxy identity therefore runs as the key's principal, which lets an agent behind a tailnet use its own narrower key. Within each group the config order applies.
+
+**What counts as refused.** A carried credential that is wrong, expired or revoked: a bad or expired bearer key, a bad certificate, an invalid JWT. A session cookie is different. Cookies outlive their sessions routinely (idle timeout, restart, revocation), so an expired or unknown cookie is **no credential**: the chain clears it and moves on, and a proxy identity or a fresh sign-in can take over. Only a cookie that fails its integrity check is refused.
+
+**Ambient identity follows the browser rules.** A proxy identity arrives on every request the browser sends through the proxy, including requests a hostile site triggers, exactly as a cookie does. Requests authenticated by `session` or `proxy` therefore get the same treatment: unsafe methods must pass the Origin check (`Sec-Fetch-Site`, falling back to Origin against Host, as `ui_session.go` does today) and carry the CSRF header, and scopes are `UISessionScopes ∩ principal scopes`. A bearer key on the same request lifts both restrictions, because it ran first.
+
 Proxy headers are read only when the TCP peer is in `trusted_proxies`. They are ignored, and logged as a security event, when anyone else sends them.
 
-`tailscale serve` forwards from loopback, so with the `tailscale` preset every local process on the dpkms host can also set the header. On a single-user host that is the same trust the `private` access class already gives loopback. On a host shared with other users, use a sign-in proxy that authenticates to dpkms with an API key of its own, or (later) a `tailscale` preset that asks the local Tailscale API who the peer is (WhoIs) instead of trusting a header. A request that carries both a proxy identity and a bearer token runs as the bearer principal. That lets an agent behind a tailnet use its own narrower key.
+`tailscale serve` forwards from loopback, so with the `tailscale` preset every local process on the dpkms host can also set the header, and so claim any bound login, the owner's included. On a single-user host that is the same trust the `private` access class already gives loopback. On a host shared with other users, use a sign-in proxy that authenticates to dpkms with an API key of its own, or (later) a `tailscale` preset that asks the local Tailscale API who the peer is (WhoIs) instead of trusting a header.
+
+**Ceremonies.** Redeeming an invite or magic link, exchanging a login code and finishing a passkey ceremony are the only ways to mint a session. Each is rate limited per client address. A redemption that arrives on a request already carrying a session is refused: the caller signs out first, so a ticket can never bind to a principal other than the one it was issued for.
 
 ### 4. Bootstrap and owner recovery
 
 - Every instance database has exactly one `owner` principal, created by the migration that adds the principal registry.
 - `dpkms auth key create --principal owner` runs on the dpkms host and prints a new owner API key once; only its hash is stored. It opens the store directly, as the existing `dpkms session list|revoke` commands do. It is both bootstrap and recovery: filesystem access to the host is the root of trust, as ADR-023 Layer 1 already assumes. (`dpkms key` already names the instance signing-key commands, so the new group is `dpkms auth`.)
-- A `protected` or `public` instance with no active owner credential refuses to start and names that command.
+- A `protected` or `public` instance with no active owner credential (an unexpired, unrevoked API key, passkey or identity bound to `owner`) refuses to start and names that command.
 - For infrastructure as code, `server.auth.keys[]` may declare keys **by hash only** (`sha256:<hex>`, principal, roles, optional expiry). Plaintext keys in config are refused.
+- `server.public_url` is required whenever `sign_in` contains a link or passkey method: it is the base of every invite and magic link and the passkey origin. Validation refuses the config without it.
+- Upgrading an existing `protected` instance: run `dpkms auth key create --principal owner` on the host before the new build starts, then replace the static tokens in CLI configs and proxies with the new key. The old tokens stop working at first start.
 
 ### 5. Scopes stay; roles stay bundles
 
 Authentication produces a principal. Authorization is decided afterwards and unchanged in kind. Scopes are the effective capability set and every route declares one. `admin`/`writer`/`reader` remain fixed bundles. ADR-033 team roles are still a convenience that compiles down to scopes. Two additions:
 
-- `admin:principals` lets a principal manage principals, identities, keys and invites. `admin:shares` lets it manage audiences and share policies (ADR-080). Only `owner` holds them by default.
-- A browser session's scopes are `UISessionScopes ∩ principal scopes`, as today, whichever method signed the browser in.
+- `admin:principals` lets a principal manage principals, identities, keys and invites. `admin:shares` lets it manage audiences, share policies and ceilings (ADR-080). Both sit in the `admin` bundle, which only `owner` holds by default.
+- `write:self` lets a principal manage its own credentials and sessions: create and revoke its own API keys, register and remove its own passkeys, list and end its own sessions. Every role bundle includes it, and a route under it checks that the target belongs to the caller. Without it a `person` could never register the passkey the invite flow asks for.
+- A browser session's scopes are `UISessionScopes ∩ principal scopes`, as today, whichever method signed the browser in. Proxy-identified requests get the same intersection (§3).
 
 ### 6. kit/ctxt split
 
@@ -132,9 +147,9 @@ The rule: a mechanism that verifies "who is this" and would work the same way in
 | Concern | kit | ctxt (dpkms) |
 |---|---|---|
 | JWT/JWKS/OIDC token verification | Exists: `authn.NewJWT/NewJWKS/NewOIDC` | Configures issuers, maps claims to principals |
-| API key minting, hashing, expiry, revoke | Exists: `authn.APIKeys`; K1 adds labels and last-used | Implements `kv.Store` over the instance DB (SQLite and Postgres); binds keys to principals and share policies |
-| Ordered authenticator chain | **K2** `api.Chain` | Chooses order from `server.auth.methods` |
-| Identity from trusted proxy headers | **K2** `api.ProxyIdentity` with presets | Maps the login to a principal; `unknown_identity` policy |
+| API key minting, hashing, expiry, revoke | Exists: `authn.APIKeys`; K1 adds labels and last-used | Implements `kv.Store` over the instance DB (SQLite and Postgres); the identity row binds a key to its principal and share policy |
+| Ordered authenticator chain | **K2** `api.Chain`: carried methods before ambient, expired ambient credential = absent, browser rules on ambient identity | Chooses methods from `server.auth.methods` |
+| Identity from trusted proxy headers | **K2** `api.ProxyIdentity` with presets, marked ambient | Maps the login to a principal; `unknown_identity` policy |
 | WebAuthn ceremonies | **K3** `authn/passkey` over go-webauthn with a credential-store interface | Stores credentials per principal; UI pages |
 | Single-use login tickets (invite, magic link) | **K4** ticket issuer and store interface, built on `SignedIssuer` + `NonceStore` | What an invite grants (audiences); delivery |
 | Session cookie + CSRF primitive | **K5** `transport/session` extracted from ctxt's `ui_sessions` design | Session kinds and scope sets |
@@ -186,12 +201,12 @@ The proposals to hand to kit (K1–K6) are listed under [Implementation Notes](#
 - More attack surface: WebAuthn, ticket redemption and header trust all need careful tests. A misconfigured `trusted_proxies` lets anyone who can reach the port claim any identity. Validation must refuse `0.0.0.0/0`, and the docs must show the risk.
 - Passkeys need a stable origin. `server.public_url` becomes required for passkeys, and changing the host name invalidates registered credentials.
 - The principal registry is new state. It replicates with ADR-074 device sync only if the sync protocol carries it. Until then each instance has its own principals.
-- Six kit proposals create a dependency. Phase 1 needs only K1 (or none: ctxt can wrap `APIKeys` without it).
+- Six kit proposals create a dependency. Phase 1 needs none of them: ctxt wraps `APIKeys` directly and builds the chain and tickets behind the K2 and K4 shapes.
 
 ### Neutral or Considerations
 
 - `private` stays unauthenticated. Sharing requires `protected` (or `public`).
-- Static config tokens disappear, so docker-compose examples and the reverse-proxy guide must switch to hashed keys.
+- Static config tokens disappear, so docker-compose examples and the reverse-proxy guide must switch to hashed keys, and every running `protected` instance needs an owner key created on its host before the new build starts (§4).
 - Email delivery is a provider role: absent by default, SMTP opt-in, never a cloud default.
 
 ---
@@ -203,25 +218,28 @@ The proposals to hand to kit (K1–K6) are listed under [Implementation Notes](#
 ```sql
 CREATE TABLE principals (
   id            TEXT PRIMARY KEY,           -- 'owner' or 'prn_<ulid>'
-  kind          TEXT NOT NULL,              -- owner|person|agent|device|peer
+  kind          TEXT NOT NULL,              -- owner|person|device|peer
   display_name  TEXT NOT NULL,
-  parent_id     TEXT REFERENCES principals(id),  -- agents: the person/owner they act for
-  roles         TEXT NOT NULL DEFAULT '[]', -- JSON array: admin|writer|reader
+  roles         TEXT NOT NULL DEFAULT '["reader"]', -- JSON array: admin|writer|reader
   status        TEXT NOT NULL DEFAULT 'active',  -- active|suspended|revoked
   created_at    TIMESTAMP NOT NULL,
   revoked_at    TIMESTAMP
 );
-CREATE TABLE principal_identities (
+CREATE TABLE principal_identities (         -- one row per credential, API keys included
   id            TEXT PRIMARY KEY,
   principal_id  TEXT NOT NULL REFERENCES principals(id),
-  method        TEXT NOT NULL,              -- passkey|proxy|oidc|mtls
+  method        TEXT NOT NULL,              -- api_key|passkey|proxy|oidc|mtls
   issuer        TEXT NOT NULL DEFAULT '',   -- proxy preset, OIDC issuer, CA fingerprint
-  subject       TEXT NOT NULL,              -- tailscale login, OIDC sub, cert SAN
+  subject       TEXT NOT NULL,              -- kit key id, passkey credential id, tailscale login, OIDC sub, cert SAN
+  name          TEXT NOT NULL DEFAULT '',   -- "laptop CLI", "assistant bot", "phone passkey"
   created_at    TIMESTAMP NOT NULL,
-  last_used_at  TIMESTAMP,
+  revoked_at    TIMESTAMP,                  -- set together with the kit key record for api_key rows
+  last_used_at  TIMESTAMP,                  -- touched at most once a minute
   UNIQUE (method, issuer, subject)
 );
-CREATE TABLE passkey_credentials (          -- K3 store interface
+-- ADR-080 (Phase 2) adds: share_policy_id TEXT REFERENCES share_policies(id)
+--   narrows the principal's view for requests made with this identity; never widens it.
+CREATE TABLE passkey_credentials (          -- K3 store interface; each row also has an identity row
   credential_id BLOB PRIMARY KEY,
   principal_id  TEXT NOT NULL REFERENCES principals(id),
   public_key    BLOB NOT NULL,
@@ -241,26 +259,23 @@ CREATE TABLE auth_tickets (                 -- invites + magic links (K4)
   expires_at    TIMESTAMP NOT NULL,
   redeemed_at   TIMESTAMP
 );
--- API keys: kit APIKeys records in a kv table (key 'apikey/<id>'),
--- plus a side table for ctxt bindings:
-CREATE TABLE api_key_bindings (
-  key_id        TEXT PRIMARY KEY,
-  principal_id  TEXT NOT NULL REFERENCES principals(id),
-  name          TEXT NOT NULL,
-  share_policy  TEXT,                       -- ADR-080: narrows the principal's view, never widens it
-  last_used_at  TIMESTAMP
-);
+-- API keys: kit APIKeys records (hash, expiry, scopes, revoked) live in a kv table
+-- keyed 'apikey/<id>'. The identity row (method api_key, subject <id>) carries the
+-- name, the share-policy binding and last-used. There is no side table.
 ```
 
-`ui_sessions.principal_id` already exists. `ui_sessions.token_hash` (session dies when its static token is removed) becomes `identity_id`: the session dies when the identity or principal that minted it is revoked.
+`ui_sessions.principal_id` already exists. `ui_sessions.token_hash` (session dies when its static token is removed) becomes `identity_id REFERENCES principal_identities(id)`: the session dies when the identity or principal that minted it is revoked, whichever method signed the browser in.
 
 ### CLI surface (ctxt, over the API; ADR-077)
 
 | Command | Scope |
 |---|---|
 | `ctxt auth whoami` | `read:system` (exists as `GET /api/v1/whoami`) |
-| `ctxt auth key create --name --expires --scopes --share-policy` / `list` / `revoke` | Own keys: `write:system`; others' keys: `admin:principals` |
+| `ctxt auth key create --name --expires --scopes --share-policy` / `list` / `revoke` | Own keys: `write:self`; others' keys: `admin:principals` |
+| `ctxt auth identity list` / `remove` (own passkeys and proxy logins), `ctxt auth session list` / `end` | `write:self` |
 | `ctxt principal list|show|suspend|revoke` | `admin:principals` |
+| `ctxt principal identity add|list|remove <principal>` (bind a proxy login or OIDC subject by hand) | `admin:principals` |
+| `ctxt principal link <principal>` → single-use sign-in link | `admin:principals` |
 | `ctxt share invite --audience <a> --expires 7d` → prints the link | `admin:shares` (ADR-080) |
 | `dpkms auth key create --principal owner` (host only, direct store) | Host filesystem |
 
@@ -268,8 +283,8 @@ CREATE TABLE api_key_bindings (
 
 Each is independent. None changes an existing kit behaviour.
 
-- **K1 – `authn.APIKey` metadata.** Add `Name string`, `Labels map[string]string` and `LastUsedAt` (updated at most once a minute, like ctxt's session touch). Adopters bind keys to their own records without a side table. Optional for ctxt Phase 1.
-- **K2 – `api.Chain(methods ...Method) AuthFunc` and `api.ProxyIdentity(cfg) Method`.** A `Method` returns `(claims, matched bool, err error)`. The chain stops on the first match and on the first refusal. `ProxyIdentity` reads identity headers only when `PeerAddrFromContext` is in `TrustedProxies`, strips them otherwise, and ships presets `tailscale` and `forward_auth`. Claims carry `Source: "proxy:<preset>"`. Serve config: `services.<svc>.auth.modes: [...]`, a list next to today's single `auth.mode`.
+- **K1 – `authn.APIKey` metadata.** Add `Name string`, `Labels map[string]string` and `LastUsedAt` (updated at most once a minute, like ctxt's session touch). Adopters that have no identity table of their own bind keys without a side table. Optional for ctxt: its identity row already carries them.
+- **K2 – `api.Chain(methods ...Method) AuthFunc` and `api.ProxyIdentity(cfg) Method`.** A `Method` returns `(claims, matched bool, err error)` and declares whether its credential is **carried** (key, certificate, JWT) or **ambient** (cookie, proxy header). The chain runs carried methods before ambient ones whatever the configured order, stops on the first match and on the first refusal, treats an expired or unknown ambient credential as absent (clearing a cookie when it can), and applies `OriginCheck` plus a CSRF header to unsafe requests that only an ambient method authenticated. `ProxyIdentity` reads identity headers only when `PeerAddrFromContext` is in `TrustedProxies`, strips them otherwise, and ships presets `tailscale` and `forward_auth`. Claims carry `Source: "proxy:<preset>"` and `Ambient: true`. Serve config: `services.<svc>.auth.modes: [...]`, a list next to today's single `auth.mode`.
 - **K3 – `authn/passkey`.** Wraps go-webauthn: `BeginRegistration/FinishRegistration/BeginLogin/FinishLogin` over a `CredentialStore` interface and a short-lived `CeremonyStore` (challenge state, 5 min TTL, single use). It derives RP ID and origins from a configured public URL. It never decides who the user is: registration takes an already-authorized principal ID.
 - **K4 – `authn/ticket`.** Single-use, expiring, hashed-at-rest tickets with a `kind` and an opaque payload: `Issue(ctx, kind, payload, ttl) (secret, error)`, `Redeem(ctx, kind, secret) (payload, error)`. Redeem is atomic, so the same secret can never be used twice. It generalizes `SignedIssuer`/`NonceStore` from "run a command" to "establish an identity".
 - **K5 – `transport/session`.** A cookie session primitive taken from ctxt's design: `__Host-` prefix, per-host cookie name, idle and absolute TTLs, rate-limited touch, revocation by owner identity, CSRF header plus `Sec-Fetch-Site`/Origin check (reusing `OriginCheck`), and a store interface. ctxt migrates `internal/auth/session.go` onto it once it lands.
@@ -279,9 +294,10 @@ Order: K2 and K4 first (Phase 1 already uses their shape), then K3 for passkeys 
 
 ### Testing
 
-- A table-driven chain test: every pair of (credential present/absent/bad) across methods asserts matched, next or refused.
+- A table-driven chain test: every pair of (credential present/absent/bad) across methods asserts matched, next or refused. It includes: an expired session cookie followed by a valid proxy identity resolves to the proxy principal and clears the cookie; an expired bearer key is 401 even with a valid proxy identity behind it; bearer plus proxy resolves to the bearer principal in every configured order.
+- Browser rules on ambient identity: an unsafe request authenticated only by proxy identity, without a passing Origin check and CSRF header, is refused; the same request with a bearer key passes; a proxy-identified request gets `UISessionScopes ∩ principal scopes`.
 - Proxy header spoofing: headers from a non-trusted peer are ignored and logged. Validation refuses `0.0.0.0/0` and `::/0`.
-- Ticket redemption under concurrency: N parallel redeems of one secret, exactly one succeeds.
+- Ticket redemption under concurrency: N parallel redeems of one secret, exactly one succeeds. A redemption on a request that already carries a session is refused. The N+1th redemption or login-code exchange per client address inside the window is 429.
 - WebAuthn with a virtual authenticator (go-webauthn test helpers or a Chrome DevTools virtual authenticator in e2e), never a real device.
 - Revocation: revoking a principal ends its sessions, keys and identities within one request.
 - Tests that start dpkms use `t.TempDir()` data dirs and closed ports, never the live instance.

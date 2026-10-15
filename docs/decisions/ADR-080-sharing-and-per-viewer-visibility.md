@@ -1,6 +1,6 @@
 # ADR-080 – Sharing: Audiences, Share Policies and Per-Viewer Visibility
 
-> **Status:** Accepted (2026-10-14; decisions D1–D15 as recommended in the plan)
+> **Status:** Accepted (2026-10-14; decisions D1–D15 as recommended in the plan; amended the same day after review, D18–D23)
 > **Date:** 2026-10-14
 > **Author:** jadb
 > **Applies to:** dPKMS, ctxt
@@ -61,7 +61,7 @@ Response-only filtering (strip what the caller may not see from the JSON) was re
 
 | Term | Meaning |
 |---|---|
-| **Principal** | ADR-079: owner, person, agent, device, peer |
+| **Principal** | ADR-079: owner, person, device, peer. An agent is a key on one of them, not a principal. |
 | **Audience** | A named, owner-managed group of principals (`colleagues`, `partners`). A principal can be in several. |
 | **Share policy** | A named, reusable rule: data filter + exclusions + field projection + redaction + capabilities. Versioned. |
 | **Grant** | Audience × share policy, with an optional expiry. Grants are the only thing that gives a non-owner any data. |
@@ -103,8 +103,9 @@ Rules:
 
 - **Deny by default.** A principal that is not the owner sees nothing unless a grant applies to it.
 - **Union across grants.** An object is visible if *any* grant's `data` matches and that same grant's exclusions do not remove it. The viewer sees the union of the fields the matching grants allow. A category stays masked only if *every* matching grant masks it.
-- **Exclusions are per grant.** `exclude_classes` in one grant does not hide data another grant shows. If the owner wants a hard ceiling for a person, they put the person in only one audience.
-- **Keys narrow, never widen.** An API key bound to a share policy (ADR-079 `api_key_bindings.share_policy`) intersects with its principal's view. An agent key is thus never broader than its person.
+- **Exclusions are per grant.** `exclude_classes` in one grant does not hide data another grant shows.
+- **A per-principal ceiling is the hard guarantee.** `principals.deny_classes` lists classes a principal may never see, whatever its grants say. It is ANDed into the predicate after the grant union and applied to parts in the render layer. A partner who is also a colleague keeps both views and still never sees `personal`. One column; no audience gymnastics.
+- **Keys narrow, never widen.** An API key bound to a share policy (ADR-079: `principal_identities.share_policy_id`) intersects with its principal's view. An agent is such a key (ADR-079 §1), so it is never broader than the person it acts for.
 - **Expiry everywhere.** Grants, audience memberships, invites and keys each carry an optional expiry. The shortest one wins.
 - **Owner bypass.** The owner sees raw data and pays no cost. `ctxt --as <principal|policy>` (header `X-Ctxt-View-As`, owner only) runs a request through another viewer, so the owner can check what a colleague sees before sending the invite. That is also how the owner gets masking on their own requests (for example, during a screen share).
 - **The data filter is RSQL**, already compiled for SQLite and Postgres by `internal/search.CompileFor`. The compiler handles `type`, `subtype`, `pipeline`, `source`, `tag`, `mention` and the date fields today. It gains `profile`, `topic`, `class` and `metadata.<key>` for policies. The `related` and `mention` operators are refused inside a policy, because they reach across objects.
@@ -126,6 +127,8 @@ Unclassified objects are visible to any grant whose data filter matches. Rules c
 - **Reads go through a scoped store.** `storage.ScopedDriver(viewer)` wraps the driver. Every object read (`List`, `Get`, `FTSSearch`, `VectorSearch`, `ListBySQL`, counts, facets) ANDs the viewer predicate into its SQL. Every edge, entity, embedding, proximity, alias, page and saved-search read is rewritten to join against visible objects (§6). Handlers in `internal/server`, `internal/mcp` and the export path get only the scoped driver. The pipeline, jobs and housekeeping keep the unscoped driver, which they must name explicitly (`storage.System(driver)`). A lint check bans the raw driver in server and MCP packages (forbidigo, newly enabled in `.golangci.yml`; neither forbidigo nor depguard runs today).
 - **The predicate is computed, not materialized.** `(objects.status = 'active') AND ((g1.data AND NOT g1.excluded) OR (g2.data AND NOT g2.excluded) …)` over indexed columns. It is always current, needs no rebuild job when a policy changes, and is cheap for the filters a share policy uses. A materialized `object_grants(object_id, grant_id)` table is the fallback if profiling shows the predicate is too slow on Postgres with large tag sets.
 - **The status bug is fixed on the way.** `FTSSearch` and `ListBySQL` start applying `Status` for every viewer.
+- **Hidden means absent.** An object, entity or edge outside the viewer's predicate is answered as if it did not exist: `GET /objects/{id}` is 404, a write to it is 404, a list omits it. 403 `NOT_SHARED` is reserved for routes a capability closes (export, events, jobs), where the route itself is withheld, not a row. A 403 on a row would confirm the row exists.
+- **Dedup stays inside a profile.** `Reinforce` (content-hash dedup) merges tags, mentions and content only into an existing object with the same `profile_id`. The same content arriving under another profile becomes its own object. Otherwise a private capture would write its tags onto an object a viewer can see.
 - **Vector search filters before ranking.** Postgres puts the predicate in the KNN query (pgvector iterative scan). SQLite keeps over-fetching, but in rounds: it widens until it has `k` visible hits or the index is exhausted. The visibility check runs in SQL on the candidate IDs. A sqlite-vec `vec0` metadata column (probed: v0.1.6 supports `IN` filters inside a KNN query) can pre-filter by `classes` or `type` when one policy dominates.
 - **Per-principal state.** Search history, saved searches, reminders and the resurfacing queue get an `owner_principal` column. A restricted viewer sees only its own rows.
 
@@ -168,13 +171,14 @@ Provenance changes this ADR requires:
 - `metadata.source_ids` on every multi-source derived object (entity page, topic index, future digests), plus `classes: [derived]`. Restricted viewers never receive stored derived objects.
 - `objects.owner_principal` on per-principal rows (§4).
 
-**Filter, don't recompute, by default.** Everything that can be decided with a SQL join over provenance is filtered at read time. Only aggregates (counts, scores, multi-source pages) are recomputed, and only in SQL or from already-rendered inputs. Nothing is cached per policy except the compiled viewer (`principal × policy versions`, invalidated on any grant or policy change) and, if profiling needs it, placeholder-entity visibility keyed by `(policy versions, change_seq high-water mark)`.
+**Filter, don't recompute, by default.** Everything that can be decided with a SQL join over provenance is filtered at read time. Only aggregates (counts, scores, multi-source pages) are recomputed, and only in SQL or from already-rendered inputs. Nothing is cached per policy except the compiled viewer (`principal × policy versions`, invalidated on any grant, policy, audience membership, ceiling, key or principal change) and, if profiling needs it, placeholder-entity visibility keyed by `(policy versions, change_seq high-water mark)`.
 
 ### 7. Search must not leak masked or hidden terms
 
 - **Hidden objects** are handled by §4: they are not in the candidate set, so they cannot match, rank or count.
 - **Masked terms inside visible objects** need a shadow index. `projected_fts_body_masked` is the FTS projection with *every* detected PII span replaced by its category token and every non-default class part removed. It has its own `objects_fts_masked` table (SQLite) or `fts_masked` tsvector (Postgres). Restricted viewers always query the masked index. One shadow index, not one per policy.
 - **Revealed categories stay searchable.** A policy that reveals a category (partners see email) gets matching through `pii_terms(object_id, category, value_norm)`. The query matches the masked FTS **or** an exact `pii_terms` row in a revealed category. A colleague searching for a full email address therefore gets nothing, and a partner gets the contact.
+- **Projection below the searchable minimum does not hide terms.** The masked index is policy-independent, so it cannot follow per-policy field projection. Each structured type declares a `SearchableMinimum` field set (contact: `title`, `org`, `role`, `tags`, `city`), and only those fields go into the masked body and the masked vector. Fields outside the set (`email`, `phone`, `address`, `note`) match only through `pii_terms` for revealed categories, or not at all. A policy that projects out a field inside the minimum (hides `org`) still lets a viewer match on it, though the rendered result will not show it. The docs say so: a field that must not even match goes behind a class, not behind projection.
 - **Embeddings of visible objects with masked spans or projected-out fields** get a masked-variant vector computed from the masked projection. It is stored under the same `(object_id, model_id, chunk_idx)` key plus a `variant` column (`raw` | `masked`), which extends ADR-071's key. It is written only when sharing is enabled and only for objects that have spans or excluded parts. Everything else uses one vector for both variants. Restricted viewers search the masked variant.
 - **The RSQL `mention` and `related` operators** in a restricted viewer's query compile their edge subqueries with the viewer predicate on both sides.
 - **Snippets and highlights** are cut from the rendered text.
@@ -182,16 +186,16 @@ Provenance changes this ADR requires:
 
 ### 8. Fail-closed response backstop
 
-A middleware sits after the handler and before the encoder, on REST, gRPC (interceptor), MCP and SSE. It checks two things:
+A middleware sits after the handler and before the encoder, on REST, gRPC (interceptor), MCP and SSE. Every route declares what its response carries (`objects`, `entities`, `mixed` or `none`) next to its scope in the route tables, and the backstop runs only on the first three. It checks two things:
 
-1. **ID ledger.** The scoped driver records every object ID, entity slug and edge ID it released for the request. The backstop walks the encoded response for ID-bearing keys (`id`, `object_id`, `from_id`, `to_id`, `slug`, `entity`, `source_ids`, node IDs by prefix) and removes any value that is not in the ledger.
-2. **Masked-value canary.** For every object in the ledger, the hashes of its masked spans and projected-out field values are known. If any of those raw values appears in the response body, it is replaced with its category token.
+1. **ID ledger.** The scoped driver records every object ID, entity slug and edge ID it released for the request. The backstop walks the known ID-bearing paths of the declared response shape (`objects[].id`, `results[].id`, `related[].id`, `edges[].{id,from_id,to_id}`, `entities[].slug`, `backlinks[].from_id`, `metadata.source_ids[]`, and node IDs, which carry their object ID as prefix) and removes any value not in the ledger. It never keys on a bare field name: object IDs are opaque strings with no format of their own, and `id` also names principals, audiences, policies, grants, jobs and sessions. A route that returns objects through a path the walker does not know fails the leak suite, which is where the path gets added.
+2. **Masked-value canary.** The scoped driver also hands the backstop the raw values of each released object's masked spans and projected-out fields, held in memory for the request only (they are the owner's data on the owner's server, and a hash cannot be substring-searched). Values shorter than six runes are skipped, so a first name or an area code does not blank legitimate text. Any raw value found in the body is replaced with its category token.
 
 Any hit is stripped, logged as a `security.visibility_backstop` event with route, principal and policy versions, and counted. In tests and in `--strict-sharing` mode a hit returns 500 instead, so the leak suite fails loudly. The backstop is a safety net: a hit is a bug in §4–§7 to fix, not normal operation.
 
 ### 9. Audit: who saw what
 
-Every request by a non-owner principal appends to `access_log(at, principal_id, key_id, route, policy_versions, object_ids_hash, object_count, entity_count)`. The ID list itself goes to a separate `access_log_objects` table with configurable retention (default 90 days). The owner can ask "who saw Sarah" (`ctxt share audit --object <id>`) and "what did this partner see" (`--principal`). Owner requests are not logged by default. Grant, policy, invite and revocation changes go to the existing `audit_log`.
+Every request by a non-owner principal appends to `access_log(at, principal_id, identity_id, route, policy_versions, object_count, entity_count)`. The ID list itself goes to a separate `access_log_objects` table with configurable retention (default 90 days). Entries are buffered and flushed in batches by one writer goroutine, so a read request never waits on the SQLite writer; entries still in the buffer at a crash are lost, and the docs say so. The owner can ask "who saw Sarah" (`ctxt share audit --object <id>`) and "what did this partner see" (`--principal`). Owner requests are not logged by default. Grant, policy, invite and revocation changes go to the existing `audit_log`.
 
 ### 10. Ingest-time masking stays as "never store"
 
@@ -212,6 +216,7 @@ Both use the same detector. ADR-058's writable fields gain `pii_spans`, so an in
 | `ctxt share audience create|add|remove|list` | `admin:shares` |
 | `ctxt share policy create|edit|show|list` (YAML in, versioned) | `admin:shares` |
 | `ctxt share grant <audience> <policy> [--expires]`, `ctxt share revoke <grant>` | `admin:shares` |
+| `ctxt share ceiling <principal> --deny-classes personal,…` | `admin:shares` |
 | `ctxt share invite --audience <a> [--expires 7d]` → link (ADR-079) | `admin:shares` |
 | `ctxt share preview --as <principal|policy> <command…>` (any read command) | owner |
 | `ctxt share audit [--principal|--object]` | `admin:audit` |
@@ -289,6 +294,8 @@ CREATE TABLE share_grants (
   policy_id TEXT NOT NULL REFERENCES share_policies(id),
   expires_at TIMESTAMP, created_by TEXT NOT NULL, created_at TIMESTAMP NOT NULL, revoked_at TIMESTAMP);
 
+ALTER TABLE principals ADD COLUMN deny_classes TEXT NOT NULL DEFAULT '[]';           -- §2 ceiling
+ALTER TABLE principal_identities ADD COLUMN share_policy_id TEXT REFERENCES share_policies(id); -- §2 keys narrow
 ALTER TABLE objects ADD COLUMN classes TEXT NOT NULL DEFAULT '[]';
 ALTER TABLE objects ADD COLUMN projected_fts_body_masked TEXT NOT NULL DEFAULT '';
 CREATE TABLE pii_spans (
@@ -306,14 +313,14 @@ CREATE INDEX idx_entity_facts_entity ON entity_facts(entity_slug);
 -- embeddings: add variant TEXT NOT NULL DEFAULT 'raw' to the (object_id, model_id, chunk_idx) key
 -- search_history, saved_searches, resurfacing_queue: add owner_principal TEXT NOT NULL DEFAULT 'owner'
 CREATE TABLE access_log (id TEXT PRIMARY KEY, at TIMESTAMP NOT NULL, principal_id TEXT NOT NULL,
-  key_id TEXT, route TEXT NOT NULL, policy_versions TEXT NOT NULL,
+  identity_id TEXT, route TEXT NOT NULL, policy_versions TEXT NOT NULL,
   object_count INTEGER NOT NULL, entity_count INTEGER NOT NULL);
 CREATE TABLE access_log_objects (access_id TEXT NOT NULL, object_id TEXT NOT NULL,
   PRIMARY KEY (access_id, object_id));
 CREATE INDEX idx_access_log_objects_object ON access_log_objects(object_id);
 ```
 
-SQLite migrations continue the numbered series (`internal/storage/sqlite/migrations/045_*.sql` onward); Postgres adds entries to `pgMigrations`. ctxt is unreleased, so existing rows get defaults and no compatibility shims.
+SQLite migrations continue the numbered series from 047 (045 and 046 are Go migrations already in `internal/storage/sqlite`); Postgres continues `pgMigrations` from version 27. ctxt is unreleased, so existing rows get defaults and no compatibility shims.
 
 ### Code map
 
@@ -323,7 +330,7 @@ SQLite migrations continue the numbered series (`internal/storage/sqlite/migrati
 | `internal/storage` | `ScopedDriver`, `System`; filters on edge/entity/embedding/alias/page/proximity reads; `Status` fix |
 | `internal/storage/{sqlite,postgres}` | Predicate injection, masked FTS, `pii_*`, `entity_facts`, variants; conformance tests in `storagetest` |
 | `internal/pipeline/steps` | `pii_detect`; `mentions` edges get `source_node`; contact renderer; class rules |
-| `internal/server/{http,grpc}`, `internal/mcp` | Viewer middleware/interceptor, backstop, per-subscriber SSE filter, scoped driver only |
+| `internal/server/{http,grpc}`, `internal/mcp` | Viewer middleware/interceptor, response-shape declaration per route, backstop, 404 for hidden rows, per-subscriber SSE filter, scoped driver only |
 | `internal/service` | Entity page and topic index built per view; rerank and alias expansion over visible objects |
 | `cmd/ctxt` | `ctxt share …`, `--as` |
 
@@ -332,6 +339,10 @@ SQLite migrations continue the numbered series (`internal/storage/sqlite/migrati
 - **Leak suite** (`internal/sharing/leaktest`): a fixture corpus (the Sarah note, contacts with email and phone, an entity page, a topic index, co-mentions). For each fixture principal (colleague, partner, agent key narrower than its partner, expired grant, revoked principal), every read route and RPC in the route table is called. The suite asserts that no hidden ID, masked value or hidden term appears anywhere in the body, the headers or the SSE frames, and that counts equal the visible count. The route table is enumerated from `routes.go` and `methodScopes`, so a new route without a leak case fails the suite.
 - **Query oracle cases:** FTS for a masked email, vector search for a hidden note's sentence, RSQL `related==person/sarah`, facet counts, pagination totals, rerank order with and without the hidden note. The visible results must be identical whether or not the hidden data exists. This differential test (run with and without the hidden fixtures, compare) is the strongest one.
 - **Backstop mutation:** remove the scoped join from one store method and check that the backstop fires and the suite goes red. Remove the backstop and check that the leak suite still catches the leak.
+- **Backstop precision:** a restricted viewer's `whoami`, audience and policy listings and job-status errors come back intact; a fixture with a short projected-out value (`Lee`) does not blank other text.
+- **Hidden-row semantics:** `GET /objects/{hidden}` is 404 for the viewer and 200 for the owner; a capability-closed route is 403 `NOT_SHARED`.
+- **Ceiling:** a principal in both audiences with `deny_classes: [personal]` never receives a `personal` object or part through either grant.
+- **Dedup:** the same content captured under two profiles yields two objects, and the viewer's copy carries only its own tags.
 - **Conformance:** every scoped store method, on both drivers, in `storagetest`.
 
 ---
