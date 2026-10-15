@@ -225,7 +225,6 @@ registry/<name>` (value on stdin); see
 | `resurfacing` | Background resurfacing queue |
 | `federations` | Remote dPKMS peers to sync with |
 | `federation` | Receive-side federation `token` |
-| `audit` | Audit-log forwarding: `syslog`, `webhook`. Not read |
 | `security` | Security alert thresholds and delivery (`alerts`) |
 | `backup` | `ctxt config backup`: `dir`, `encrypt_by_default` |
 | `privacy` | `telemetry` (`CH_DISABLE_TELEMETRY` forces it off) |

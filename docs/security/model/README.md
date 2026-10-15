@@ -21,7 +21,7 @@ Supporting: [../secrets-validation-and-log-sanitization.md](../secrets-validatio
 | No telemetry | Nothing is sent anywhere unless you configure a provider, registry, federation peer or remote store |
 | Secrets in config | `ctxt config validate` / `ctxt config doctor` flag plaintext secrets; provider keys belong in the secrets backend (`dpkms secret set`) or env |
 | Registry data | Ed25519 response signatures when the registry declares a key (`registries_global.require_signatures` makes them mandatory); per-registry trust level gates entity writes |
-| Audit | Append-only audit log in the dpkms database (security events, dedup, fan-out, doctor runs; not object edits); `ctxt audit list`, `ctxt audit export`; `security.alerts` posts auth-failure and ACL-denial bursts to a webhook or SMTP. The `audit:` config block is read by no code |
+| Audit | Append-only audit log in the dpkms database (security events, dedup, fan-out, doctor runs; not object edits); `ctxt audit list`, `ctxt audit export`; `security.alerts` posts auth-failure and ACL-denial bursts to a webhook or SMTP. Nothing forwards it; ship it with a scheduled `ctxt audit export` |
 | Encryption at rest | **None.** Use OS disk encryption. [ADR-019](../../decisions/ADR-019-encryption-and-privacy.md) is design |
 | TLS | **None in dpkms.** Terminate TLS at a reverse proxy |
 | Log sanitization | **None.** Logs are written as-is |

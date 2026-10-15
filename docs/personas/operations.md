@@ -106,12 +106,6 @@ registries:
     auth:
       type: bearer
     trust_level: untrusted
-
-audit:
-  syslog:
-    enabled: true
-    protocol: tcp
-    address: siem.internal:514
 ```
 
 Keys and structure: [../configuration-structure.md](../configuration-structure.md).
@@ -149,7 +143,7 @@ dpkms healthcheck --watch --interval 5
   debug, `-VV` to trace. Under `dpkms install` they land in
   `~/Library/Logs/dpkms/{out,err}.log` (macOS) or
   `~/.local/share/dpkms/dpkms.{out,err}.log` (Linux).
-- Audit events can be forwarded to syslog or a webhook (`audit:` config); see
+- Ship audit events to a SIEM with a scheduled `ctxt audit export`; see
   [../operations/siem-integration.md](../operations/siem-integration.md).
 - Job state: `dpkms job list`, `dpkms job status <id>`, `dpkms job log <id>`.
 

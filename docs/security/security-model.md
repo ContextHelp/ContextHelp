@@ -389,7 +389,7 @@ Reference: [Inbound auth, roles and scopes](../manual/reference/config-and-permi
 **Log Protection**:
 - The audit log lives in the dpkms database; read it with `ctxt audit list`
   / `ctxt audit export` (`admin:audit` scope over HTTP)
-- No forwarding: the `audit:` config block (`syslog`, `webhook`) is read by no code
+- No forwarding: ship it to a SIEM with a scheduled `ctxt audit export`
 - Security alerts (`security.alerts`) to the audit log, a webhook or SMTP.
   Their audit rows go through a bounded queue (1024 rows) with one writer:
   `dpkms serve` writes the queued rows before it closes the store on

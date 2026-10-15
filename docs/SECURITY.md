@@ -618,8 +618,8 @@ dpkms serve --verbose
 - [ ] Run `ctxt config validate` before deploying a config change
 - [ ] Telemetry is off by default (`privacy.telemetry: false`);
       `CH_DISABLE_TELEMETRY=true` forces it off
-- [ ] Forward the audit log (`audit.syslog`, `audit.webhook`) and set
-      `security.alerts` for auth-failure alerts
+- [ ] Ship the audit log with a scheduled `ctxt audit export` (no built-in
+      forwarding) and set `security.alerts` for auth-failure alerts
 - [ ] Use full-disk encryption for the data directory (no built-in
       encryption at rest)
 - [ ] Configure automated backups
@@ -637,12 +637,6 @@ server:
   access: protected
   allowed_hosts:
     - dpkms.example.com
-
-audit:
-  syslog:
-    enabled: true
-    protocol: tls
-    address: logs.internal:6514
 ```
 
 ```yaml
@@ -791,8 +785,8 @@ recorded.
 [What output shows secrets](security/secrets-validation-and-log-sanitization.md#what-output-shows-secrets).
 
 **Audit log location:** the audit log is kept by dpkms, not in a file.
-Read it with `ctxt audit list` / `ctxt audit export`; forward it with the
-`audit.syslog` and `audit.webhook` config keys.
+Read it with `ctxt audit list` / `ctxt audit export`. Nothing forwards it:
+ship it to a SIEM with a scheduled `ctxt audit export`.
 
 **Review audit logs:**
 ```bash
@@ -1020,7 +1014,7 @@ git push --force --tags
 - [ ] Use disk encryption for the data directory (no built-in encryption at rest)
 - [ ] Set restrictive file permissions (600/700)
 - [ ] Disable telemetry: `CH_DISABLE_TELEMETRY=true`
-- [ ] Forward the audit log (`audit.syslog` / `audit.webhook`) and set `security.alerts`
+- [ ] Ship the audit log with a scheduled `ctxt audit export` and set `security.alerts`
 - [ ] Configure automated backups (encrypted)
 - [ ] Set up monitoring and alerting
 - [ ] Run as non-root user
