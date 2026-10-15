@@ -1495,6 +1495,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("providers.llm.model", "")
 
 	// Jobs defaults (reproduce current hardcoded values)
+	v.SetDefault("sharing.audit.retention", DefaultAuditRetention)
 	v.SetDefault("jobs.poll_interval", 500*time.Millisecond)
 	v.SetDefault("jobs.stale_timeout", 30*time.Minute)
 	v.SetDefault("jobs.max_retries", 3)

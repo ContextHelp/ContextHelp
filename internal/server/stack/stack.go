@@ -42,6 +42,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/security"
 	httpserver "github.com/ideacrafterslabs/ctxt/internal/server/http"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/watcher"
@@ -128,6 +129,10 @@ type Stack struct {
 	// StrictSharing is Inputs.StrictSharing, for the gRPC server the
 	// caller builds beside the router.
 	StrictSharing bool
+	// Audit is the read audit writer (ADR-080 §9) the router records
+	// into; the gRPC server the caller builds takes it too. Shutdown
+	// flushes it.
+	Audit *sharing.AuditWriter
 
 	policy *policy.Bootstrap
 }
@@ -136,16 +141,19 @@ type Stack struct {
 const closeDrainTimeout = 5 * time.Second
 
 // Shutdown releases what Build acquired beyond the driver, and must run
-// before the driver closes: it stops the security emitter and drains its
-// queued audit rows within ctx, then unwires the policy engine from its
-// bus. Idempotent; a drain cut short by ctx is returned as an error.
+// before the driver closes: it flushes the read audit writer, stops the
+// security emitter and drains its queued audit rows within ctx, then
+// unwires the policy engine from its bus. Idempotent; a drain cut short
+// by ctx is returned as an error.
 func (s *Stack) Shutdown(ctx context.Context) error {
 	if s == nil {
 		return nil
 	}
-	var err error
+	err := s.Audit.Close(ctx)
 	if s.Security != nil {
-		err = s.Security.Close(ctx)
+		if serr := s.Security.Close(ctx); serr != nil && err == nil {
+			err = serr
+		}
 	}
 	s.policy.Close()
 	return err
@@ -435,6 +443,10 @@ func Build(in Inputs) (*Stack, error) {
 		}
 	}
 
+	// The read audit of shared viewers (ADR-080 §9): buffered, flushed
+	// off the request path.
+	s.Audit = sharing.NewAuditWriter(in.Driver.Sharing().AccessLog(), sharing.AuditOptions{})
+
 	s.Router = httpserver.NewRouterWithConfig(s.Service, httpserver.RouterConfig{
 		Semantic:     QuerySemantic(in.Driver, resolver, in.Warnings),
 		DevCORS:      in.DevCORS,
@@ -458,6 +470,7 @@ func Build(in Inputs) (*Stack, error) {
 		RedactHealthz:        access == config.AccessPublic,
 		Hosts:                hosts,
 		StrictSharing:        in.StrictSharing,
+		Audit:                s.Audit,
 	})
 	return s, nil
 }

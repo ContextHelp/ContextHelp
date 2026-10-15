@@ -176,8 +176,9 @@ var runAllCmd = &cobra.Command{
   3. Purge orphaned blobs (no object refers to them, older than --blob-grace)
   4. Compact embeddings table
   5. Prune jobs history >30 days
-  6. Detect zombie jobs (running but stale)
-  7. Print stats summary`,
+  6. Prune the object id lists of read audit entries older than sharing.audit.retention (90 days by default)
+  7. Detect zombie jobs (running but stale)
+  8. Print stats summary`,
 	RunE: runAll,
 }
 
@@ -546,13 +547,16 @@ func runPrune(cmd *cobra.Command, args []string) error {
 
 // housekeepingStats collects counters during a full maintenance run.
 type housekeepingStats struct {
-	PagesBefore  int64
-	PagesAfter   int64
-	PageSize     int64
-	JobsPruned   int64
-	ZombiesFound int64
-	ZombiesReset int64
-	OrphanBlobs  int64
+	PagesBefore int64
+	PagesAfter  int64
+	PageSize    int64
+	JobsPruned  int64
+	// AuditObjectsPruned counts the read audit object ids pruned past
+	// sharing.audit.retention; the entries and their counts stay.
+	AuditObjectsPruned int64
+	ZombiesFound       int64
+	ZombiesReset       int64
+	OrphanBlobs        int64
 	// OrphanBlobsYoung are unreferenced blobs inside the grace period,
 	// kept; OrphanBlobsFailed could not be deleted.
 	OrphanBlobsYoung  int64
@@ -573,15 +577,16 @@ func progress(line string) {
 // precomputed so a caller need not know the page arithmetic.
 func (s housekeepingStats) summary() map[string]any {
 	return map[string]any{
-		"db_size_mb":          s.PagesAfter * s.PageSize / (1024 * 1024),
-		"reclaimed_kb":        (s.PagesBefore - s.PagesAfter) * s.PageSize / 1024,
-		"jobs_pruned":         s.JobsPruned,
-		"zombies_found":       s.ZombiesFound,
-		"zombies_reset":       s.ZombiesReset,
-		"orphan_blobs":        s.OrphanBlobs,
-		"orphan_blobs_young":  s.OrphanBlobsYoung,
-		"orphan_blobs_failed": s.OrphanBlobsFailed,
-		"embeddings_optim":    s.EmbeddingsOpt,
+		"db_size_mb":           s.PagesAfter * s.PageSize / (1024 * 1024),
+		"reclaimed_kb":         (s.PagesBefore - s.PagesAfter) * s.PageSize / 1024,
+		"jobs_pruned":          s.JobsPruned,
+		"audit_objects_pruned": s.AuditObjectsPruned,
+		"zombies_found":        s.ZombiesFound,
+		"zombies_reset":        s.ZombiesReset,
+		"orphan_blobs":         s.OrphanBlobs,
+		"orphan_blobs_young":   s.OrphanBlobsYoung,
+		"orphan_blobs_failed":  s.OrphanBlobsFailed,
+		"embeddings_optim":     s.EmbeddingsOpt,
 	}
 }
 
@@ -589,15 +594,16 @@ func (s housekeepingStats) summary() map[string]any {
 // actions a real run would carry out.
 //
 // One action per mutating step, in execution order, and exactly the
-// six the command's own help documents: checkpoint, vacuum, optimize
-// embeddings, purge orphan blobs, prune jobs history, reset zombies.
+// seven the command's own help documents: checkpoint, vacuum, optimize
+// embeddings, purge orphan blobs, prune jobs history, prune read audit
+// object lists, reset zombies.
 // The counts come from the same read-only queries the dry path already
 // ran, so the projection reports real magnitudes rather than
 // placeholders — which is what makes it reviewable. The seventh step
 // the help lists, "print stats summary", is not an action: it changes
 // nothing, and padding the plan with it would make the list disagree
 // with the work.
-func (s housekeepingStats) plan(command string, threshold, grace time.Duration) cliformat.Plan {
+func (s housekeepingStats) plan(command string, threshold, grace, retention time.Duration) cliformat.Plan {
 	return cliformat.NewPlan(command, []cliformat.Action{
 		{
 			Kind: "checkpoint", Target: "wal:" + cfg.Storage.Path, Count: 0,
@@ -623,6 +629,11 @@ func (s housekeepingStats) plan(command string, threshold, grace time.Duration) 
 			Reversible: false, Detail: "prune completed, failed and canceled jobs older than 30 days",
 		},
 		{
+			Kind: "delete", Target: "table:access_log_objects", Count: s.AuditObjectsPruned,
+			Reversible: false,
+			Detail:     fmt.Sprintf("prune the object id lists of read audit entries older than %s (sharing.audit.retention); the entries and their counts stay", retention),
+		},
+		{
 			Kind: "update", Target: "table:jobs", Count: s.ZombiesFound,
 			Reversible: false,
 			Detail:     fmt.Sprintf("reset jobs running longer than %s back to pending", threshold),
@@ -645,6 +656,7 @@ func (s housekeepingStats) print(w *lineWriter) {
 	w.printf("  DB size now    : %d MB\n", currentMB)
 	w.printf("  Space reclaimed: %d KB\n", reclaimedKB)
 	w.printf("  Jobs pruned    : %d\n", s.JobsPruned)
+	w.printf("  Audit ids pruned: %d\n", s.AuditObjectsPruned)
 	w.printf("  Zombie jobs    : %d found, %d reset to pending\n", s.ZombiesFound, s.ZombiesReset)
 	w.printf("  Orphan blobs   : %d purged, %d kept (younger than grace), %d failed\n",
 		s.OrphanBlobs, s.OrphanBlobsYoung, s.OrphanBlobsFailed)
@@ -743,6 +755,26 @@ func runAll(cmd *cobra.Command, _ []string) error {
 	}
 	progress("done")
 
+	// 6b. Read audit retention (ADR-080 §9): the object id lists of
+	// entries older than sharing.audit.retention go; the entries and
+	// their counts stay.
+	progress("Pruning read audit object lists...")
+	retention := cfg.Sharing.Audit.EffectiveRetention()
+	auditCutoff := time.Now().Add(-retention)
+	if !dryRun {
+		n, err := driver.Sharing().AccessLog().Prune(ctx, auditCutoff)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: prune read audit: %v\n", err)
+		} else {
+			stats.AuditObjectsPruned = n
+		}
+	} else {
+		_ = db.QueryRowContext(ctx,
+			"SELECT COUNT(*) FROM access_log_objects WHERE access_id IN (SELECT id FROM access_log WHERE at < ?)",
+			auditCutoff.UnixMilli()).Scan(&stats.AuditObjectsPruned)
+	}
+	progress("done")
+
 	// 7. Zombie jobs: status='running' but started_at older than threshold.
 	progress("Checking for zombie jobs...")
 	zombieCutoff := time.Now().Add(-threshold).Format(time.RFC3339)
@@ -769,7 +801,7 @@ func runAll(cmd *cobra.Command, _ []string) error {
 	// from a projection that pruned nothing because it was never
 	// going to. The plan states dry_run outright and names each step.
 	if dryRun {
-		return renderPreviewPlan(cmd, stats.plan(cmd.CommandPath(), threshold, grace), func(w *lineWriter) {
+		return renderPreviewPlan(cmd, stats.plan(cmd.CommandPath(), threshold, grace, retention), func(w *lineWriter) {
 			stats.print(w)
 		})
 	}

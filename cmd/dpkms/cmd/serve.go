@@ -385,6 +385,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		grpcserver.WithEntitlements(st.Entitlements),
 		grpcserver.WithReflection(access == config.AccessPrivate),
 		grpcserver.WithStrictSharing(st.StrictSharing),
+		grpcserver.WithAudit(st.Audit),
 	)
 
 	// 10c. Write pidfile so dpkms ps can discover this instance.

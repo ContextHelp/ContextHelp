@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/security"
@@ -26,15 +27,19 @@ type VisibilityConfig struct {
 	// Security receives the security.visibility_backstop events;
 	// nil-safe.
 	Security *security.Emitter
+	// Audit receives the read audit entry of every restricted request
+	// (ADR-080 §9); nil-safe.
+	Audit *sharing.AuditWriter
 }
 
 // Visibility returns the middleware that wraps a restricted viewer's
 // request on the route mounted on method and pattern (ADR-080 §8):
 // it attaches the request's ledger, which the scoped reads record
-// every released row into; buffers the response; walks the ID paths
-// of the route's declared shape and searches the body for the
-// withheld values, stripping anything the ledger does not hold; and
-// logs, counts and (strictly) refuses a hit. An unrestricted viewer
+// every released row into; buffers the response; records the read
+// audit entry (§9); walks the ID paths of the route's declared shape
+// and searches the body for the withheld values, stripping anything
+// the ledger does not hold; and logs, counts and (strictly) refuses a
+// hit. An unrestricted viewer
 // passes through untouched and unbuffered: the owner pays nothing.
 // A route with no declared shape fails closed for a restricted viewer.
 func Visibility(method, pattern string, cfg VisibilityConfig) func(http.Handler) http.Handler {
@@ -56,6 +61,7 @@ func Visibility(method, pattern string, cfg VisibilityConfig) func(http.Handler)
 			ctx := sharing.WithLedger(r.Context(), ledger)
 			rec := newRecorder(w)
 			next.ServeHTTP(rec, r.WithContext(ctx))
+			cfg.Audit.Record(sharing.AccessEntryFor(ctx, v, route, ledger, time.Now()))
 
 			res, err := sharing.Backstop(rec.body.Bytes(), sharing.HTTPPaths(shape), ledger)
 			if err != nil {

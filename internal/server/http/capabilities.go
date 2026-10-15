@@ -172,7 +172,8 @@ var routeAccessTable = map[string]routeAccess{
 	"GET /search-history":    routeNone,
 	"DELETE /search-history": routeOwnerOnly,
 
-	"GET /audit-log": routeOwnerOnly,
+	"GET /audit-log":   routeOwnerOnly,
+	"GET /share/audit": routeOwnerOnly,
 
 	"POST /federation/push": routeNone,
 

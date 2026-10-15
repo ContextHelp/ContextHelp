@@ -36,6 +36,13 @@ type serverOptions struct {
 	entitlements  *registry.InboundGate
 	reflection    bool
 	strictSharing bool
+	audit         *sharing.AuditWriter
+}
+
+// WithAudit records one read audit entry per restricted call on w
+// (ADR-080 §9). A nil writer logs nothing.
+func WithAudit(w *sharing.AuditWriter) Option {
+	return func(o *serverOptions) { o.audit = w }
 }
 
 // WithStrictSharing makes the visibility backstop answer Internal on a
@@ -97,7 +104,7 @@ func New(addr string, svc *service.Service, opts ...Option) *Server {
 	// Visibility runs after the viewer is attached and before the
 	// handler: it attaches the ledger, then checks the answer (ADR-080
 	// §8). The owner passes it untouched.
-	vis := visibilityConfig{strict: o.strictSharing, security: o.security}
+	vis := visibilityConfig{strict: o.strictSharing, security: o.security, audit: o.audit}
 	unary = append(unary, visibilityUnaryInterceptor(vis))
 	stream = append(stream, visibilityStreamInterceptor(vis))
 

@@ -690,6 +690,7 @@ func (f *Fixture) serveGRPC(t testing.TB) {
 		grpcserver.WithEntitlements(st.Entitlements),
 		grpcserver.WithReflection(true),
 		grpcserver.WithStrictSharing(st.StrictSharing),
+		grpcserver.WithAudit(st.Audit),
 	)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})

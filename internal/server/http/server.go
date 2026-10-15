@@ -90,6 +90,9 @@ type RouterConfig struct {
 	// test instance). A hit is a bug in the scoped reads or the render
 	// layer, and a strict instance makes it loud.
 	StrictSharing bool
+	// Audit receives one read audit entry per non-owner request
+	// (ADR-080 §9); nil logs nothing.
+	Audit *sharing.AuditWriter
 }
 
 // NewRouter creates the HTTP router with all routes and middleware.
@@ -211,7 +214,7 @@ func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
 // viewer's request with its ledger and checks the response before it
 // leaves (§8); the owner passes it untouched.
 func mountAPIRoutes(r chi.Router, routes []apiRoute, rc RouterConfig) {
-	vis := VisibilityConfig{Strict: rc.StrictSharing, Security: rc.Security}
+	vis := VisibilityConfig{Strict: rc.StrictSharing, Security: rc.Security, Audit: rc.Audit}
 	for _, rt := range routes {
 		h := RequireCapability(rt.Method, rt.Pattern)(rt.Handler)
 		if rc.Auth != nil {

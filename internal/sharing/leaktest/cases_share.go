@@ -18,5 +18,8 @@ func shareCases() []Case {
 		get("/share/templates"),
 		get("/share/grants"),
 		getAt("/principals/{id}/ceiling", "/principals/"+storage.OwnerPrincipal+"/ceiling"),
+		// The read audit, under admin:audit: the owner's listing of what
+		// the colleague read.
+		getAt("/share/audit", "/share/audit?principal="+ColleagueID),
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"strconv"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -21,6 +22,7 @@ import (
 type visibilityConfig struct {
 	strict   bool
 	security *security.Emitter
+	audit    *sharing.AuditWriter
 }
 
 // visibilityUnaryInterceptor wraps a restricted viewer's call (ADR-080
@@ -36,7 +38,9 @@ func visibilityUnaryInterceptor(cfg visibilityConfig) grpc.UnaryServerIntercepto
 			return handler(ctx, req)
 		}
 		ledger := sharing.NewLedger()
-		resp, err := handler(sharing.WithLedger(ctx, ledger), req)
+		ctx = sharing.WithLedger(ctx, ledger)
+		resp, err := handler(ctx, req)
+		cfg.audit.Record(sharing.AccessEntryFor(ctx, v, info.FullMethod, ledger, time.Now()))
 		if err != nil {
 			return resp, err
 		}
@@ -53,10 +57,13 @@ func visibilityStreamInterceptor(cfg visibilityConfig) grpc.StreamServerIntercep
 			return handler(srv, ss)
 		}
 		ledger := sharing.NewLedger()
-		return handler(srv, &checkedStream{
-			ServerStream: ss, ctx: sharing.WithLedger(ss.Context(), ledger),
+		ctx := sharing.WithLedger(ss.Context(), ledger)
+		err := handler(srv, &checkedStream{
+			ServerStream: ss, ctx: ctx,
 			cfg: cfg, method: info.FullMethod, viewer: v, ledger: ledger,
 		})
+		cfg.audit.Record(sharing.AccessEntryFor(ctx, v, info.FullMethod, ledger, time.Now()))
+		return err
 	}
 }
 
