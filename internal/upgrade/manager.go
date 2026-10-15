@@ -1,5 +1,5 @@
 // Package upgrade owns the in-flight upgrade state machine for ADR-070
-// bucket upgrades (T-0580, ADR-070 Phase 2).
+// bucket upgrades (ADR-070 Phase 2).
 //
 // State is in-memory. The daemon serves it on /healthz and in the
 // X-Dpkms-Upgrade header on /api/v1 responses (header.go), which the CLI
@@ -17,9 +17,9 @@
 //	                    │              \──Complete──▶ idle
 //	                    └─────Fail──────▶ failed ──Start──▶ in_progress
 //
-// awaiting_consent is reserved for future bucket-3 flows (T-0581+) where the
+// awaiting_consent is reserved for future bucket-3 flows where the
 // daemon refuses to run until the operator types `--i-understand-the-cost
-// <sha>`. T-0580 does not transition into it but the type is exported so the
+// <sha>`. Nothing transitions into it but the type is exported so the
 // CLI rendering paths stay forward-compatible.
 package upgrade
 
@@ -44,7 +44,7 @@ const (
 	// progress.
 	StateInProgress State = "in_progress"
 	// StateAwaitingConsent — bucket-3 work is queued but the daemon refuses
-	// to run it until operator confirms (reserved for T-0581+).
+	// to run it until operator confirms (reserved).
 	StateAwaitingConsent State = "awaiting_consent"
 	// StateFailed — the most recent run failed. The state (and the upgrade
 	// header) persists so the CLI banner keeps reminding the operator until

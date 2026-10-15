@@ -235,7 +235,7 @@ func TestLocalPusher_WatermarkOfMissingTargetIsZero(t *testing.T) {
 // AND the entity rows they reference both land at target. Per ADR-049, the
 // edges table is the source of truth for mentions (edge_type='mentions',
 // to_type='entity'). Without their target entity rows, mention edges at
-// the receiver dangle. T-0175 closes that gap.
+// the receiver dangle; the pusher ships them alongside.
 func TestLocalPusher_PushesMentions(t *testing.T) {
 	_, targetPath := newTestDB(t)
 
@@ -364,7 +364,7 @@ func TestLocalPusher_EdgesTravelWithObjects(t *testing.T) {
 	}
 }
 
-// TestFederation_EntityPageDupeDoesNotAbortBatch verifies T-0189: when one
+// TestFederation_EntityPageDupeDoesNotAbortBatch verifies that when one
 // object in the batch hits a UNIQUE-id collision at the target (e.g. an
 // entity_page that auto-generates with the same id on two consecutive ticks
 // and has an empty ContentHash so the dedup-by-hash check at line 83 misses),
@@ -454,7 +454,7 @@ func TestFederation_EntityPageDupeDoesNotAbortBatch(t *testing.T) {
 	}
 }
 
-// TestLocalPusher_FileURLPrefixStripped verifies T-0187: when a federation
+// TestLocalPusher_FileURLPrefixStripped verifies that when a federation
 // target URL is configured as `file:///abs/path/to/db.sqlite`, the LocalPusher
 // strips the `file://` prefix before opening the SQLite driver. Without the
 // strip, the SQLite driver receives a literal `file:///…` path and fails with

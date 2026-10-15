@@ -13,7 +13,7 @@ import (
 // Mentions per ADR-049 are object→entity edges with edge_type='mentions'.
 // They live in the edges slice. The entities slice carries the entity rows
 // those mention edges point at, so the receiver can persist them and avoid
-// dangling references. T-0175 added entities to satisfy US-0319 AC #6.
+// dangling references (US-0319 AC #6).
 //
 // Each target keeps a watermark: the ChangeSeq of the last object it
 // acknowledged. Sync pushes only objects with a greater ChangeSeq.

@@ -2,7 +2,7 @@
 // §Decision item 5).
 //
 // Tests only. Not user-facing — production deployments use the local-FS
-// backend (T-0506) by default or S3 (T-0510) for cross-machine /
+// backend by default or S3 for cross-machine /
 // compliance retention. This backend exists so substrate tests can
 // exercise the Buffer interface without disk dependencies.
 //

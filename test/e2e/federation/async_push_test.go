@@ -55,8 +55,8 @@ func TestFederation_AsyncPush_DedupeByContentHash(t *testing.T) {
 // "federation_watermarks table updated after each successful batch" —
 // with the ChangeSeq of the batch's last object.
 //
-// Backed by T-0173 (Watermarks().GetWatermark/SetWatermark API) and T-0174
-// (LocalPusher advances watermark on success).
+// Backed by the Watermarks().GetWatermark/SetWatermark API and
+// LocalPusher advancing the watermark on success.
 func TestFederation_AsyncPush_WatermarkAdvances(t *testing.T) {
 	ix := setupTwoInstances(t)
 	captureBookmark(t, ix.src, "obj-wm-1", "hash-wm-1", "watermark probe", nil)
@@ -173,7 +173,7 @@ func TestFederation_AsyncPush_EdgesPushed(t *testing.T) {
 // "Mentions associated with pushed objects are upserted at target."
 //
 // Per ADR-049 mentions are object→entity edges with edge_type='mentions'.
-// T-0175 wired the LocalPusher to carry the referenced entities alongside
+// The LocalPusher is wired to carry the referenced entities alongside
 // edges so the receiver doesn't dangle. This test:
 //  1. seeds two entities at source (alice, bob)
 //  2. captures an object
@@ -272,7 +272,7 @@ func TestFederation_AsyncPush_NoChangesNoOp(t *testing.T) {
 // TestFederation_AsyncPush_GracefulShutdown verifies AC #9:
 // "Goroutine exits cleanly on server shutdown (context cancel respected)."
 //
-// Backed by T-0174 (WorkerSet.Start/Stop). Builds a real WorkerSet with one
+// Backed by WorkerSet.Start/Stop. Builds a real WorkerSet with one
 // async target, starts it, then asserts Stop returns nil (workers drained
 // within stopTimeout=5s).
 func TestFederation_AsyncPush_GracefulShutdown(t *testing.T) {

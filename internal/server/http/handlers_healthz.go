@@ -16,7 +16,7 @@
 //	  }
 //	}
 //
-// The envelope is INTENTIONALLY EXTENSIBLE. T-0580 (ADR-070, Phase 2)
+// The envelope is INTENTIONALLY EXTENSIBLE. ADR-070 Phase 2
 // adds an `upgrade` top-level field with the upgrade-state envelope:
 //
 //	{
@@ -35,7 +35,7 @@
 //     conforms to the schema; consumers can read the `checks` map to
 //     diagnose without parsing free-form error strings.
 //
-// The shape is fixed at this T-0564 ship; only additions are allowed.
+// The shape is fixed; only additions are allowed.
 package http
 
 import (
@@ -57,12 +57,12 @@ const (
 	HealthHealthy   HealthStatus = "healthy"
 	HealthDegraded  HealthStatus = "degraded"
 	HealthFailed    HealthStatus = "failed"
-	HealthUpgrading HealthStatus = "upgrading" // reserved for T-0580
+	HealthUpgrading HealthStatus = "upgrading" // set while an upgrade runs
 )
 
 // HealthzEnvelope is the wire shape of a GET /healthz response.
 //
-// New top-level fields (e.g. `Upgrade` for T-0580) MUST be added with
+// New top-level fields (e.g. `Upgrade`) MUST be added with
 // `omitempty` so older clients receive a byte-identical payload until
 // the field is populated.
 type HealthzEnvelope struct {
@@ -70,7 +70,7 @@ type HealthzEnvelope struct {
 	Version       string           `json:"version"`
 	UptimeSeconds int64            `json:"uptime_seconds"`
 	Checks        HealthChecks     `json:"checks"`
-	Upgrade       *UpgradeSnapshot `json:"upgrade,omitempty"` // ADR-070 §5, T-0580.
+	Upgrade       *UpgradeSnapshot `json:"upgrade,omitempty"` // ADR-070 §5.
 }
 
 // UpgradeSnapshot is the read-only view of the in-flight upgrade reported
@@ -158,7 +158,7 @@ type HealthzProbes struct {
 	Watchers func(ctx context.Context) []WatcherCheck
 	// Upgrade returns the current upgrade-state envelope or nil when no
 	// upgrade is in progress. Wired by dpkms serve to the in-process
-	// upgrade.Manager (ADR-070 §5, T-0580).
+	// upgrade.Manager (ADR-070 §5).
 	Upgrade func(ctx context.Context) *UpgradeSnapshot
 }
 
@@ -272,8 +272,8 @@ func healthzBuilder(svc *service.Service, probes HealthzProbes) func(context.Con
 			}
 		}
 
-		// Watcher introspection — optional. Stubbed to [] in T-0564 when
-		// no provider is wired; T-0580 callers (or a future watcher API)
+		// Watcher introspection — optional. Stubbed to [] when
+		// no provider is wired; upgrade callers (or a future watcher API)
 		// can supply richer data.
 		if probes.Watchers != nil {
 			if list := probes.Watchers(ctx); list != nil {
@@ -281,7 +281,7 @@ func healthzBuilder(svc *service.Service, probes HealthzProbes) func(context.Con
 			}
 		}
 
-		// Upgrade probe — optional (T-0580). When present and reporting
+		// Upgrade probe — optional. When present and reporting
 		// in_progress, the top-level Health flips to "upgrading"; for
 		// any other non-nil state we attach the envelope for visibility
 		// but leave the verdict to computeHealth.

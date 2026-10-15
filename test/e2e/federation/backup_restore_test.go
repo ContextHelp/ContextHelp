@@ -1,6 +1,6 @@
 //go:build federation_e2e
 
-// Backup + restore + federation rebuild e2e test for US-0322 (T-0171).
+// Backup + restore + federation rebuild e2e test for US-0322.
 //
 // AC under test:
 //   - source DB is the source of truth; downstream is derivable

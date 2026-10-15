@@ -1,6 +1,6 @@
 package integration
 
-// US-0218: Meeting Redact + Export (per ADR-069 §6 + T-0518).
+// US-0218: Meeting Redact + Export (per ADR-069 §6).
 //
 // E2E acceptance criteria from docs/stories/capture/US-0218-meeting-redact-export.md.
 // Verifies: ctxt capture meeting redact uses supersede chain (new
@@ -10,7 +10,7 @@ package integration
 // formats honors redactions.
 //
 // **Status: skeleton.** Export + RedactSegmentRange + ParseTimeRange
-// are implemented + unit-tested (T-0518). The dpkms-side supersede
+// are implemented + unit-tested. The dpkms-side supersede
 // chain integration and the ffmpeg-driven media-segment removal are
 // the deferred E2E pieces.
 

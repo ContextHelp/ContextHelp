@@ -196,7 +196,7 @@ func Parse(key string, localised bool) Parsed {
 // Get is the legacy reader against the Preview-map form. New code
 // SHOULD prefer the typed lateral.Candidate.IdentityKey field; the
 // substrate's identity resolver consults the typed field first and
-// falls back to Get for one minor cycle (T-0307 / T-0309).
+// falls back to Get for one minor cycle.
 func Get(preview map[string]any) string {
 	if preview == nil {
 		return ""
@@ -211,7 +211,7 @@ func Get(preview map[string]any) string {
 //
 // Deprecated: prefer setting lateral.Candidate.IdentityKey directly (or
 // via SetField). Set survives for one minor cycle so legacy strategies
-// keep compiling; T-0309 sweeps the in-tree call sites onto the typed
+// keep compiling; in-tree call sites already use the typed
 // field.
 func Set(preview map[string]any, key string) map[string]any {
 	if preview == nil {
@@ -225,7 +225,7 @@ func Set(preview map[string]any, key string) map[string]any {
 // field wins when non-empty; otherwise Of falls back to the legacy
 // Preview[KeyField] entry. Substrate adapters wiring lateral.Candidate
 // to identity.Candidate use Of so both forms feed the resolver
-// identically during the T-0309 migration window.
+// identically during the typed-field migration window.
 //
 // When both are set with conflicting non-empty values, the typed field
 // wins — by intent. The typed field is the contract; Preview is the

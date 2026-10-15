@@ -12,7 +12,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
-// TestListObjectsEmptyCollection ensures empty DB returns [] not null (T-0219).
+// TestListObjectsEmptyCollection ensures empty DB returns [] not null.
 func TestListObjectsEmptyCollection(t *testing.T) {
 	ts := newTestServerBundle(t)
 	defer ts.Close()

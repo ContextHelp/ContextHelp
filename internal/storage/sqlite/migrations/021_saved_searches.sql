@@ -1,4 +1,4 @@
--- T-0160: saved_searches and search_history tables (US-0054, US-0055)
+-- saved_searches and search_history tables (US-0054, US-0055)
 CREATE TABLE IF NOT EXISTS saved_searches (
     id           TEXT PRIMARY KEY,
     name         TEXT NOT NULL UNIQUE,

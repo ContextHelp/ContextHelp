@@ -15,14 +15,14 @@
 #   The `ctxt-recall` adapter is a hop.top/ben binary plugin
 #   (cmd/ben-adapter-ctxt-recall) that loads the corpus + queries, ranks
 #   the corpus per query using a token-overlap baseline that mirrors the
-#   post-T-0565 text.short FTS behaviour, and reports mean recall@k.
+#   text.short FTS behaviour, and reports mean recall@k.
 #   See cmd/ben-adapter-ctxt-recall/main.go for the scoring contract.
 #
 # Recall floor (enforced by scripts/ben-floor.sh, called from `make ben-*`):
 #   recall_at_k >= 0.85
 #
 # Tolerance rationale: the harness is deterministic; a healthy fixture
-# clears 0.95+ on the post-T-0565 baseline. 0.85 leaves headroom for
+# clears 0.95+ on the current baseline. 0.85 leaves headroom for
 # *legitimate* recall trade-offs (e.g. a tokenizer change that improves
 # precision at a small recall cost), which we expect to need the
 # `--i-know-recall-regressed` escape hatch documented in

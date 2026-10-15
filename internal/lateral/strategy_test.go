@@ -46,7 +46,7 @@ func TestCapturedEvent_HintsRoundTrip(t *testing.T) {
 	}
 }
 
-// TestActiveContext_AuthorHintsZeroValue pins T-0308's contract:
+// TestActiveContext_AuthorHintsZeroValue pins the contract:
 // nil AuthorHints means "no author hints" — strategies must treat
 // it as skip-author-scoped-probes.
 func TestActiveContext_AuthorHintsZeroValue(t *testing.T) {

@@ -53,12 +53,12 @@ func (t *Tagger) Name() string { return "tagger" }
 
 // Run extracts heuristic + (optional) LLM tags from draft.RawContent and
 // merges them with any pre-existing draft.Tags entries that have
-// Source:"user" (T-0573). User-asserted tags WIN on lowercase-label
+// Source:"user". User-asserted tags WIN on lowercase-label
 // collision — operator intent overrides auto-extraction. Non-user
 // pre-existing tags are dropped (the prior behaviour was to overwrite
 // the slice, so this keeps the same effective contract for them).
 func (t *Tagger) Run(ctx context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
-	// T-0573: preserve any caller-asserted user tags pre-populated on the
+	// preserve any caller-asserted user tags pre-populated on the
 	// draft (by jobs.worker via Job.UserHints, or by Service.Analyze on
 	// the raw path). They will be merged in below the auto-extracted set.
 	var userTags []storage.Tag
@@ -142,7 +142,7 @@ func (t *Tagger) Run(ctx context.Context, draft *storage.KnowledgeObject) (*stor
 		// On LLM failure, silently fall back to heuristic tags already computed.
 	}
 
-	// T-0573: merge user-asserted tags with auto-extracted ones, dedup by
+	// merge user-asserted tags with auto-extracted ones, dedup by
 	// lowercase label. User tags win on collision — they come first in the
 	// final slice and the auto/llm entry is dropped.
 	merged := mergeUserTags(userTags, tags)
@@ -176,8 +176,8 @@ func (t *Tagger) Run(ctx context.Context, draft *storage.KnowledgeObject) (*stor
 }
 
 // mergeUserTags combines caller-asserted user tags (Source:"user") with
-// auto-extracted tags, with user tags WINNING on lowercase-label collision
-// (T-0573). User tags appear first in the result so downstream consumers
+// auto-extracted tags, with user tags WINNING on lowercase-label collision.
+// User tags appear first in the result so downstream consumers
 // that read positionally see operator intent at the top.
 func mergeUserTags(userTags, autoTags []storage.Tag) []storage.Tag {
 	if len(userTags) == 0 {

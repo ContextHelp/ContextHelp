@@ -291,7 +291,7 @@ func TestSet_OverwritesExisting(t *testing.T) {
 	}
 }
 
-// TestOf_TypedFieldWins pins T-0307: Of returns the typed
+// TestOf_TypedFieldWins pins that Of returns the typed
 // IdentityKey field when set, even when Preview also carries a
 // (different) entry. Migration window precedence — typed wins.
 func TestOf_TypedFieldWins(t *testing.T) {
@@ -305,7 +305,7 @@ func TestOf_TypedFieldWins(t *testing.T) {
 }
 
 // TestOf_FallsBackToPreview pins that with an empty typed field, Of
-// reads the legacy Preview entry (T-0309 backward-compat).
+// reads the legacy Preview entry (backward-compat).
 func TestOf_FallsBackToPreview(t *testing.T) {
 	c := lateral.Candidate{
 		Preview: map[string]any{identitykey.KeyField: "substack/publication/foo"},

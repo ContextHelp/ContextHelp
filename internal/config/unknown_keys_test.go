@@ -75,3 +75,15 @@ func TestLayerFiles(t *testing.T) {
 	// A legacy cfgFile replaces the cascade and leads the extra paths.
 	assert.Equal(t, []string{envFile, extra}, LayerFiles("ctxt", envFile, []string{extra}))
 }
+
+// Config declares no audit: key (nothing forwards the audit log), so an
+// old audit.syslog / audit.webhook block is reported as unknown.
+func TestUnknownKeysAudit(t *testing.T) {
+	dir := t.TempDir()
+	body := "storage:\n  type: sqlite\naudit:\n  syslog:\n    enabled: true\n  webhook:\n    url: https://hooks.example.net/x\n"
+	got, err := UnknownKeys(layerFile(t, dir, "audit.yaml", body))
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Contains(t, got[0], "line 3")
+	assert.Contains(t, got[0], "field audit not found")
+}

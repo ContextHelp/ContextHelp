@@ -1,4 +1,4 @@
-// Package cmd: T-0595 strict-gate regression guard.
+// Package cmd: strict-gate regression guard.
 //
 // Unlike the build-tagged baseline probe in baseline_probe_test.go,
 // this test runs on every `go test ./...` invocation. It mirrors

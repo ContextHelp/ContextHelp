@@ -146,7 +146,7 @@ func isCamelCase(w string) bool {
 }
 
 // filterStopwordsLocal returns only the meaningful (non-stopword) words.
-// TODO: replace with filterStopwords from query_decompose.go once T-0164 is merged.
+// TODO: replace with filterStopwords from query_decompose.go once that lands.
 func filterStopwordsLocal(words []string) []string {
 	out := make([]string, 0, len(words))
 	for _, w := range words {

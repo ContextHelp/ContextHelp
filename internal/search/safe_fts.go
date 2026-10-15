@@ -6,7 +6,7 @@ import "github.com/ideacrafterslabs/ctxt/internal/search/ftsq"
 // SQLite FTS5 MATCH expression. It exists because the previous code passed
 // raw user input straight into `objects_fts MATCH ?`, which exposed FTS5
 // operators (-, :, ", *, AND, OR, NOT, NEAR, parens) as injection-style
-// surface. T-0565 reproduced this with `ctxt find credit-eligible` →
+// surface. Reproduced with `ctxt find credit-eligible` →
 // "no such column: eligible" — FTS5 read the hyphen as a column qualifier.
 //
 // Strategy:

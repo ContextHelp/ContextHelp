@@ -90,7 +90,7 @@ func (p *LocalPusher) Name() string { return p.name }
 // openTarget opens and migrates the target database and its blob store.
 // The caller closes the driver.
 func (p *LocalPusher) openTarget(ctx context.Context) (storage.StorageDriver, storage.BlobStore, error) {
-	// T-0187: federation entries may declare targets as file:// URIs.
+	// federation entries may declare targets as file:// URIs.
 	// SQLite driver expects a bare filesystem path; canonicalPath strips
 	// the scheme + resolves the absolute path (same helper used by
 	// detectCycles in worker.go).
@@ -184,7 +184,7 @@ func (p *LocalPusher) Push(
 				continue
 			}
 		}
-		// T-0189: rows with empty ContentHash (entity_page, etc.) skip the
+		// rows with empty ContentHash (entity_page, etc.) skip the
 		// content-hash dedup above and would fall through to Create, which
 		// fails with UNIQUE-id when the same id already exists at the
 		// target. Pre-check by id so we treat dupes as no-op skips instead

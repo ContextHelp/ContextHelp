@@ -566,7 +566,7 @@ func TestDriver_ObjectStoreUsesDriverEmbeddings(t *testing.T) {
 
 // makeFTSObject builds an object whose projected_fts_body contains the given text.
 // Uses a Graph with a summary node so that ProjectIndex derives the FTS body from
-// the graph (matching the canonical projection path post-T-0195).
+// the graph (matching the canonical projection path).
 func makeFTSObject(id, typ, searchableText string) *storage.KnowledgeObject {
 	now := time.Now().Truncate(time.Second)
 	return &storage.KnowledgeObject{
@@ -615,7 +615,7 @@ func TestFTSSearch(t *testing.T) {
 	assert.Empty(t, results)
 }
 
-// TestFTSSearch_HyphenatedQuerySanitised exercises the T-0565 hyphen-crash
+// TestFTSSearch_HyphenatedQuerySanitised exercises the hyphen-crash
 // regression: before the fix, `credit-eligible` reached SQLite FTS5 raw,
 // where `-` was parsed as NOT / column qualifier and produced
 // "no such column: eligible". The service now passes user input through

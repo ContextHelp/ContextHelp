@@ -408,7 +408,7 @@ func TestWorkerPoolNoObjectCreatedOnFailure(t *testing.T) {
 
 // TestEdgeWriteFailureFails verifies that a failed edge write causes the job to
 // be marked failed rather than completed, and that no object.created event is
-// emitted. This is the regression test for T-0206.
+// emitted.
 func TestEdgeWriteFailureFails(t *testing.T) {
 	base := storageutil.NewTestDriver(t)
 	driver := &failingEdgeDriver{StorageDriver: base}

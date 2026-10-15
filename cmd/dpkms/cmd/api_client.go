@@ -422,7 +422,7 @@ func (c *APIClient) GetJob(ctx context.Context, id string) (*storage.Job, error)
 // Mirrors internal/server/http.HealthzEnvelope; duplicated here so the
 // CLI doesn't import the server package transitively.
 //
-// New top-level fields (e.g. T-0580's `Upgrade`) are tolerated by Go's
+// New top-level fields (e.g. `Upgrade`) are tolerated by Go's
 // JSON decoder; consumers looking for them must either extend this
 // struct or read the raw map via Healthz().
 type HealthzEnvelope struct {

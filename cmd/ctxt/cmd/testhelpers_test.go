@@ -46,7 +46,7 @@ func setupTestDB(t *testing.T, opts ...dpkmstest.Option) *testDB {
 	// Hermeticize env so the CLI's instance-state lookup (RunDir → XDG_DATA_HOME)
 	// can't read the developer's real ~/.local/share/contexthelp/run/current-instance,
 	// which would silently override --config and route the test at the production DB
-	// (T-0186: data-safety hazard, not just a test-correctness bug).
+	// (data-safety hazard, not just a test-correctness bug).
 	//
 	// XDG_* + HOME redirect file-based lookups into the per-test tempdir.
 	// CTXT_DATA_DIR and CTXT_INSTANCE are explicitly cleared because both

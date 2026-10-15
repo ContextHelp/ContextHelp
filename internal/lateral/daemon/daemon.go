@@ -4,7 +4,7 @@ import "errors"
 
 // ErrNotWired is the sentinel returned by daemon entry points whose
 // real implementation has not yet landed. Subsequent tasks
-// (T-0313..T-0321) replace each surface that returns this error with
+// replace each surface that returns this error with
 // real wiring; until they do, callers can grep on the sentinel to
 // triage "still pending" reports without inspecting individual
 // subcommand bodies.

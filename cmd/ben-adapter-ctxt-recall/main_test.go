@@ -10,7 +10,7 @@ import (
 )
 
 func TestTokenizeBulletHyphen(t *testing.T) {
-	// Post-T-0565 behaviour: bullet markers are separators, internal hyphens
+	// text.short behaviour: bullet markers are separators, internal hyphens
 	// are preserved.
 	cases := []struct {
 		in          string

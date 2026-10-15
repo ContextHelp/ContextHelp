@@ -87,7 +87,7 @@ type Candidate struct {
 	//     correctly because the resolver compares strings, not parses
 	//     them.
 	//
-	// During the T-0307/T-0309 migration window the resolver reads the
+	// During the typed-field migration window the resolver reads the
 	// typed field first and falls back to Preview[identity_key] for
 	// candidates emitted by strategies that haven't migrated yet. Empty
 	// when the strategy has no canonical id, in which case the resolver

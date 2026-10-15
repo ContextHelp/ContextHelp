@@ -301,7 +301,7 @@ func TestProbePR_FullClient_EmitsAllTypes(t *testing.T) {
 	}
 }
 
-// TestProbePR_AuthorHints_FiresAuthoredPRs pins T-0308: when
+// TestProbePR_AuthorHints_FiresAuthoredPRs pins that when
 // ActiveContext.AuthorHints["github"] is set, probePR fetches the
 // author's other PRs and emits author_other_pr candidates.
 func TestProbePR_AuthorHints_FiresAuthoredPRs(t *testing.T) {

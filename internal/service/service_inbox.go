@@ -40,11 +40,11 @@ func (s *Service) CaptureToInbox(ctx context.Context, req InboxCaptureRequest) (
 		Status:      inboxStatus,
 		InboxNote:   req.InboxNote,
 		Mentions:    req.Mentions,
-		// T-0573: caller-asserted hints land directly on Tags (Source:"user")
+		// caller-asserted hints land directly on Tags (Source:"user")
 		// since no pipeline runs at inbox-capture time. Triage will re-enqueue
 		// the object via a pipeline job that picks these up via UserHints.
 		Tags: userHintsToTags(req.Hints),
-		// T-0588: caller-asserted profile partitions the inbox item from
+		// caller-asserted profile partitions the inbox item from
 		// the start so list/find queries scoped to a profile see it.
 		ProfileID: req.Profile,
 		CreatedAt: now,
@@ -114,7 +114,7 @@ func (s *Service) TriageInbox(ctx context.Context, id string, req TriageRequest)
 		MaxRetries: 3,
 		CreatedAt:  now,
 		UpdatedAt:  now,
-		// T-0573: forward caller-asserted hints to the worker so the
+		// forward caller-asserted hints to the worker so the
 		// auto-tagger merge preserves them as Tag{Source:"user"}.
 		UserHints: req.Hints,
 	}

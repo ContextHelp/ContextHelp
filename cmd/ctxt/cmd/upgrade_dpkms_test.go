@@ -113,7 +113,7 @@ func TestUpgradeStatusIdleHumanReadable(t *testing.T) {
 }
 
 // TestUpgradeStatusInProgressHumanReadable: in_progress renders the full
-// table view per the T-0580 spec.
+// table view per the upgrade-status spec.
 func TestUpgradeStatusInProgressHumanReadable(t *testing.T) {
 	srv := fakeUpgradeHealthzServer(t, &upgradeEnvelope{
 		State:      "in_progress",

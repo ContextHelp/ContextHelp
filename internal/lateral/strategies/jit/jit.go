@@ -6,10 +6,10 @@
 // events. All collaborators are host-wired at construction time:
 //   - Proposer  → kit/ai/llm.Completer adapter   (host)
 //   - Cache     → MemoryProposalCache            (jit.NewMemoryProposalCache)
-//   - Fetcher   → ibr adapter                    (host, T-0252)
-//   - Publisher → kit bus                        (host, T-0252)
-//   - Outage    → kit/core/breaker adapter       (host, T-0252)
-//   - PageType  → pageshape classifier adapter   (host, T-0252)
+//   - Fetcher   → ibr adapter                    (host)
+//   - Publisher → kit bus                        (host)
+//   - Outage    → kit/core/breaker adapter       (host)
+//   - PageType  → pageshape classifier adapter   (host)
 package jit
 
 import (

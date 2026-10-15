@@ -152,7 +152,7 @@ func TestCapturePositionalFile(t *testing.T) {
 	}
 	// PR #31 review fix: capture sends the absolute file path as `source`
 	// (no "file:" prefix) so server-side prefix-based pipeline detectors
-	// (e.g. /vault/notes/... → watch.file, T-0209) fire correctly.
+	// (e.g. /vault/notes/... → watch.file) fire correctly.
 	if src, _ := recs[0].Body["source"].(string); !filepath.IsAbs(src) || !strings.HasSuffix(src, filepath.Base(f)) {
 		t.Errorf("body.source = %q, want absolute path ending in %q", src, filepath.Base(f))
 	}
@@ -180,9 +180,9 @@ func TestCaptureSourceFlagOverridesAutoDetected(t *testing.T) {
 	}
 }
 
-// TestCaptureProfileAndNoteFlags is the regression for T-0588: --profile
+// TestCaptureProfileAndNoteFlags is a regression guard: --profile
 // and --note are real flags that flow into the request body and reach
-// AnalyzeRequest.Profile / AnalyzeRequest.Note server-side. Pre-T-0588
+// AnalyzeRequest.Profile / AnalyzeRequest.Note server-side. Previously
 // they were declared on capture.go but never read — the values silently
 // vanished before the POST.
 func TestCaptureProfileAndNoteFlags(t *testing.T) {

@@ -1,7 +1,7 @@
 # Query fixture for hop.top/ben recall-vector suite (ADR-071).
 #
 # The query set deliberately stresses semantic proximity over lexical
-# overlap so that, when the real embedding leg lights up (T-0584), the
+# overlap so that, when the real embedding leg lights up, the
 # delta between the lexical baseline and the model-driven score is large
 # enough to detect a regression. Each query has 1-3 expected_ids drawn
 # from vector-corpus.yaml.

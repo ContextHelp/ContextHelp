@@ -1,10 +1,10 @@
 # Corpus fixture for hop.top/ben recall-vector suite — embedding model
-# swap (ADR-071 Phase 3, T-0584).
+# swap (ADR-071 Phase 3).
 #
-# This corpus exists ahead of T-0582/T-0584 so the suite *shape* is in
+# This corpus exists ahead of the vector leg so the suite *shape* is in
 # place when the migration command lands. For now both candidates run
 # the lexical baseline (mode=vector_baseline currently aliases to
-# fts_baseline inside cmd/ben-adapter-ctxt-recall). When T-0582 lands the
+# fts_baseline inside cmd/ben-adapter-ctxt-recall). When the
 # embedding-model registry, this corpus is the seed for the recorded xrr
 # cassettes that drive the real per-model recall comparison.
 #

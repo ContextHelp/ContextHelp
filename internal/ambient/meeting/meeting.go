@@ -23,7 +23,7 @@
 // commits behind GOOS build tags.
 //
 // Per ADR-069, recording is **explicit-trigger only in v1**. There is no
-// always-on / auto-record mode. Auto-detect prompt (T-0517 / Phase 5) is
+// always-on / auto-record mode. Auto-detect prompt (Phase 5) is
 // opt-in and never starts recording without user confirmation.
 package meeting
 
@@ -139,14 +139,14 @@ type Config struct {
 	// Per-recording files land in <MediaDir>/<session_id>/<uuid>.{mov,mp4,webm,m4a}.
 	MediaDir string
 	// MediaRetentionHours controls how long raw media files are kept after
-	// a successful pipeline run. Default: 48. Compaction is run by T-0506.
+	// a successful pipeline run. Default: 48. Compaction is run by the retention tier.
 	MediaRetentionHours int
 	// LocalMaxGB caps total media-file disk usage. LRU eviction within cap.
 	// Default: 20.
 	LocalMaxGB int
 	// S3Archive enables cold-storage retention beyond the local TTL.
 	// Default: false. When true, media files are uploaded to the S3 buffer
-	// backend (T-0510) before local eviction.
+	// backend before local eviction.
 	S3Archive bool
 }
 
@@ -240,7 +240,7 @@ func (s *Source) Stop(_ context.Context) error {
 
 // Trigger starts a recording. Returns ErrAlreadyRecording if one is in
 // flight. The CLI / hotkey listener calls Trigger; auto-detect prompt
-// (T-0517) does the same after user confirmation.
+// does the same after user confirmation.
 //
 // Bus events emitted (per ADR-069 §5):
 //

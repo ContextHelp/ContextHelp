@@ -16,13 +16,13 @@ func (f fixedPageType) Classify(_ context.Context, _ string) (string, error) {
 	return f.label, nil
 }
 
-// TestE2E_NoTierAURLDispatchesToJIT is the T-0251 integration gate: a
+// TestE2E_NoTierAURLDispatchesToJIT is the JIT integration gate: a
 // CapturedEvent on a domain with NO platform/shape strategy registered is
 // dispatched to JIT, which proposes sub-paths via its proposer, fetches
 // them via its executor, and emits candidates with the correct shape.
 //
 // Substrate post-processing (scoring, cap-gate, identity, materialize) is
-// already covered by internal/lateral/integration_test.go (T-0227). The
+// already covered by internal/lateral/integration_test.go. The
 // boundary here is "JIT produces correct candidates from a
 // no-Tier-A URL"; downstream pipelines reuse the proven substrate path.
 func TestE2E_NoTierAURLDispatchesToJIT(t *testing.T) {

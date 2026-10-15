@@ -42,7 +42,7 @@ func TestHealthzReturns200WhenHealthy(t *testing.T) {
 }
 
 // TestHealthzEnvelopeSchemaIsStable asserts every documented top-level
-// key is present so T-0580 (which extends the envelope) can rely on a
+// key is present so extensions (e.g. upgrade) can rely on a
 // fixed base shape.
 func TestHealthzEnvelopeSchemaIsStable(t *testing.T) {
 	ts := newTestServerBundle(t)
@@ -121,7 +121,7 @@ func TestHealthzDegradedWhenQueueHasFailures(t *testing.T) {
 	assert.GreaterOrEqual(t, env.Checks.Queue.Failed, 1)
 }
 
-// TestHealthzUpgradeProbeFlipsHealthAndAttachesEnvelope verifies T-0580's
+// TestHealthzUpgradeProbeFlipsHealthAndAttachesEnvelope verifies the upgrade
 // extension: a probe that reports an in-progress upgrade flips the
 // top-level Health to "upgrading" AND attaches the upgrade envelope to
 // the response.

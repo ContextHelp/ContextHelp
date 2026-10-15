@@ -15,8 +15,8 @@ import (
 // ObservedAt:   when this snapshot was recorded
 //
 // Defining the type here (alongside the dynamic-floor helper) replaces
-// the empty placeholder T-0254 added in api.go for compilation. T-0254
-// reserves the field name; T-0260 fleshes it out.
+// the empty placeholder originally added in api.go for compilation, which
+// only reserved the field name.
 type RateSnapshot struct {
 	Limit      int
 	Remaining  int

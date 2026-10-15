@@ -1,7 +1,7 @@
 # Search response `staleness_warning` contract — Tier-1 deterministic.
 #
 # Locks the JSON shape of the `staleness_warning` envelope embedded in
-# search responses (ADR-070 §5, T-0581). The field is OPTIONAL on the
+# search responses (ADR-070 §5). The field is OPTIONAL on the
 # response (omitempty) — when absent, no objects in the result set are
 # stale; when present, at least one object's pipeline_version is older
 # than the registry's currently-installed version, and the operator is

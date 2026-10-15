@@ -26,7 +26,7 @@ type Graph interface {
 // non-empty) takes precedence over the legacy Preview[identitykey.KeyField]
 // form. Substrate adapters wiring lateral.Candidate -> identity.Candidate
 // should copy lateral.Candidate.IdentityKey into IdentityKey directly;
-// during the one-cycle backward-compat window (T-0307 / T-0309) callers
+// during the one-cycle backward-compat window callers
 // that still set Preview[identity_key] continue to work.
 type Candidate struct {
 	URL         string
@@ -58,9 +58,9 @@ func NewResolver(g Graph) *Resolver { return &Resolver{g: g} }
 // falls back to URL equality. Real graph errors (anything other than
 // ErrNotFound) propagate.
 //
-// The dual-read on identity key is the T-0307 / T-0309 backward-compat
+// The dual-read on identity key is the typed-identity-key backward-compat
 // window: typed field wins (it's the new contract), Preview-map fallback
-// keeps pre-T-0309 strategies working without behavior change.
+// keeps unmigrated strategies working without behavior change.
 func (r *Resolver) Resolve(ctx context.Context, c Candidate) (Result, error) {
 	key := c.IdentityKey
 	if key == "" {

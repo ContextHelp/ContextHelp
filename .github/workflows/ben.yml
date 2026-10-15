@@ -10,7 +10,7 @@ name: Ben Recall Suite
 # consumed via local-path replace and has no published version. CI cannot
 # resolve `make ben` without checking out ben adjacent to ctxt — deferred
 # until the coordinated open-source publish pass resets every kit-powered
-# package to 0.1.0-alpha.0 (T-0196 survey). Re-enable by removing the
+# package to 0.1.0-alpha.0. Re-enable by removing the
 # `if: false` once ben publishes a tag and the Makefile can build it from
 # `go install hop.top/ben/cmd/ben@<tag>` on a clean CI runner.
 #
@@ -70,7 +70,7 @@ jobs:
     name: Recall floor (ADR-070 / ADR-071)
     runs-on: ubuntu-latest
     # Disabled for PR runs until hop.top/ben publishes a tagged version
-    # (post-T-0196 OSS reset). Local-path replace doesn't resolve in CI
+    # (after the OSS version reset). Local-path replace doesn't resolve in CI
     # without checking out ben as a sibling. Remains runnable via the
     # workflow_dispatch entrypoint above for ad-hoc verification on a
     # runner image that has been pre-staged with a ben checkout.

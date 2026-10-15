@@ -43,10 +43,6 @@ federations:
     sync_mode: async
     interval: 1h
     token: FEDERATION-PEER-TOKEN-SECRET-0008
-audit:
-  webhook:
-    enabled: true
-    url: https://hooks.example.net/services/WEBHOOK-CAPABILITY-0011
 security:
   alerts:
     webhook_url: https://hooks.example.net/services/ALERT-CAPABILITY-0012
@@ -62,7 +58,6 @@ var redactFixtureSecrets = []string{
 	"STATIC-AUTH-TOKEN-0006-abcdefghij",
 	"FEDERATION-INBOUND-TOKEN-0007",
 	"FEDERATION-PEER-TOKEN-SECRET-0008",
-	"WEBHOOK-CAPABILITY-0011",
 	"ALERT-CAPABILITY-0012",
 }
 

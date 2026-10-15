@@ -133,7 +133,7 @@ func ArchivePipeline(svc *service.Service) http.HandlerFunc {
 			if writePolicyError(w, r, err) {
 				return
 			}
-			// T-1294 added a Get-before-Update inside the service so
+			// The service does a Get-before-Update inside the service so
 			// the kit pre-events fire on a real entity. That moved the
 			// not-found surface from a silent no-op (storage UPDATE
 			// affecting 0 rows) into an explicit "pipeline %q not
@@ -166,7 +166,7 @@ func UnarchivePipeline(svc *service.Service) http.HandlerFunc {
 			if writePolicyError(w, r, err) {
 				return
 			}
-			// Same not-found surface as ArchivePipeline (T-1294
+			// Same not-found surface as ArchivePipeline (service
 			// Get-before-Update). Map to 404 so a request against a
 			// missing pipeline keeps the prior HTTP contract.
 			if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "no rows") {

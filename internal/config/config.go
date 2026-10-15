@@ -93,9 +93,6 @@ type Config struct {
 	// Resurfacing controls the background resurfacing queue.
 	Resurfacing ResurfacingConfig `mapstructure:"resurfacing" yaml:"resurfacing"`
 
-	// Audit controls SIEM-ready audit log export and forwarding.
-	Audit AuditConfig `mapstructure:"audit" yaml:"audit"`
-
 	// Security configures security alerting hooks.
 	Security SecurityConfig `mapstructure:"security" yaml:"security"`
 
@@ -346,34 +343,6 @@ func FileTargetBlob(dbPath string, set *BlobConfig) BlobConfig {
 		b.Local.Path = filepath.Join(filepath.Dir(dbPath), BlobDirName)
 	}
 	return b
-}
-
-// AuditConfig controls SIEM-ready audit log export and real-time forwarding.
-type AuditConfig struct {
-	// Syslog forwards each audit event to a remote syslog receiver.
-	Syslog AuditSyslogConfig `mapstructure:"syslog" yaml:"syslog"`
-	// Webhook POSTs each audit event as JSON to a configurable URL.
-	Webhook AuditWebhookConfig `mapstructure:"webhook" yaml:"webhook"`
-}
-
-// AuditSyslogConfig holds syslog forwarding settings.
-type AuditSyslogConfig struct {
-	// Enabled activates syslog forwarding. Default: false.
-	Enabled bool `mapstructure:"enabled" yaml:"enabled"`
-	// Protocol is the transport: "udp", "tcp", or "tls". Default: "udp".
-	Protocol string `mapstructure:"protocol" yaml:"protocol"`
-	// Address is host:port of the syslog receiver. Default: "localhost:514".
-	Address string `mapstructure:"address" yaml:"address"`
-	// Facility is the syslog facility name (e.g. "local0"). Default: "local0".
-	Facility string `mapstructure:"facility" yaml:"facility"`
-}
-
-// AuditWebhookConfig holds webhook delivery settings.
-type AuditWebhookConfig struct {
-	// Enabled activates webhook delivery. Default: false.
-	Enabled bool `mapstructure:"enabled" yaml:"enabled"`
-	// URL is the HTTP/HTTPS endpoint that receives POST requests.
-	URL string `mapstructure:"url" yaml:"url" secret:"true"`
 }
 
 // SecurityConfig holds security alerting hook settings.

@@ -10,15 +10,15 @@ import (
 // awaiting enqueue (per ADR-066 §Decision item 5). Backends:
 //
 //	internal/ambient/buffer/memory  — bounded in-memory ring; tests only
-//	internal/ambient/buffer/local   — XDG-compliant filesystem (default)   [T-0506]
-//	internal/ambient/buffer/s3      — S3-compatible (AWS/R2/B2/MinIO)      [T-0510]
+//	internal/ambient/buffer/local   — XDG-compliant filesystem (default)
+//	internal/ambient/buffer/s3      — S3-compatible (AWS/R2/B2/MinIO)
 //
 // The Buffer is goroutine-safe; the Runner appends from its dispatch
 // goroutine, the enqueue worker reads via Drain / Range / Pop, and status /
 // MCP read paths inspect Len + Stats concurrently.
 //
 // The Runner does NOT yet hold a Buffer reference — buffering is wired in
-// Phase 4 (T-0506 retention + T-0510 S3 backend). T-0511 lands the
+// Phase 4 (retention + S3 backend). This file lands the
 // interface + the in-memory backend so Phase 2 substrate tests can exercise
 // the eventual integration without waiting for the FS backend.
 type Buffer interface {

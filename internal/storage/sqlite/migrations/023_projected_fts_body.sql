@@ -1,4 +1,4 @@
--- Migration 023: projected_fts_body column + FTS rebuild (T-0195).
+-- Migration 023: projected_fts_body column + FTS rebuild.
 --
 -- projected_fts_body holds the output of projection.ProjectIndex(ko).FTSBody
 -- so that FTS5 indexes graph-canonical text rather than raw columns.

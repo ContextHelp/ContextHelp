@@ -9,7 +9,7 @@
 //     family by accident is exactly the footgun ADR-070 §1 calls out.
 //
 //   - SQL WHERE: `where:<predicate>`. Escape hatch for selectivity that the
-//     pipeline filter can't express (e.g.
+//     pipeline filter can't express (e.g. the text.short backfill's
 //     `graph_json IS NULL AND pipeline LIKE 'text.short%'`). The `where:`
 //     prefix is mandatory so a typo'd pipeline filter
 //     ("pipline=text.short@v1") falls back to a parse error rather than

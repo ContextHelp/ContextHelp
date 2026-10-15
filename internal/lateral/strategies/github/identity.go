@@ -34,7 +34,7 @@ const (
 // ExtractIdentityKey lifts the identity key from a Candidate. Reads
 // the typed Candidate.IdentityKey field first, falling back to the
 // legacy Preview[PreviewKeyIdentityKey] entry for backward compat
-// during the T-0309 migration window. Returns "" when neither is set.
+// during the typed-field migration window. Returns "" when neither is set.
 //
 // Deprecated: prefer reading lateral.Candidate.IdentityKey directly,
 // or use identitykey.Of(c) for the same dual-read semantics applied

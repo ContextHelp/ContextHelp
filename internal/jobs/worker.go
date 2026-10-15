@@ -25,7 +25,7 @@ import (
 	uri "hop.top/cite/scheme"
 )
 
-// parseUserMentions converts caller-asserted @namespace.slug strings (T-0190)
+// parseUserMentions converts caller-asserted @namespace.slug strings
 // to the URI form draft.Mentions expects. Empty / unparseable tokens are
 // silently dropped — the user's free-form input shouldn't kill the job.
 func parseUserMentions(raw []string) []uri.URI {
@@ -35,7 +35,7 @@ func parseUserMentions(raw []string) []uri.URI {
 	return mentions.ParseSlice(raw)
 }
 
-// parseUserHints converts caller-asserted hint strings (T-0573) into the
+// parseUserHints converts caller-asserted hint strings into the
 // Tag form draft.Tags expects, with Source:"user". Blank / whitespace-only
 // hints are silently dropped — `--hint ""` shouldn't kill the job.
 // The auto-tagger (pipeline/steps/tagger.go) merges with these rather
@@ -199,15 +199,15 @@ func (p *WorkerPool) processWithHops(ctx context.Context, job *storage.Job) (*st
 		Pipeline:   job.Pipeline,
 		Source:     job.Source,
 		CreatedAt:  time.Now(),
-		// T-0190: caller-asserted mentions (`ctxt analyze --mentions`) start
+		// caller-asserted mentions (`ctxt analyze --mentions`) start
 		// life on the draft so entity_extractor's text-scan can merge with
 		// them by slug instead of overwriting them.
 		Mentions: parseUserMentions(job.UserMentions),
-		// T-0573: caller-asserted hints (`ctxt capture --hint`) start life
+		// caller-asserted hints (`ctxt capture --hint`) start life
 		// on the draft so the auto-tagger's heuristic+LLM tags can merge
 		// with them by lowercase label instead of overwriting them.
 		Tags: parseUserHints(job.UserHints),
-		// T-0588: caller-asserted profile + note pre-populate the draft
+		// caller-asserted profile + note pre-populate the draft
 		// so they survive pipeline execution and land on the persisted
 		// KnowledgeObject. Pipeline steps that don't touch these fields
 		// preserve them; steps that overwrite (none today) would need

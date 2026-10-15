@@ -230,7 +230,7 @@ func captureScreen(focus string) ([]byte, error) {
 // TODO: integrate a real OCR engine (e.g. tesseract via go-tesseract or
 // an external process call). Current stub returns empty string.
 func (sw *ScreenWatcher) extractText(_ []byte) (string, error) {
-	// TODO(T-0155): call tesseract or equivalent OCR engine.
+	// TODO: call tesseract or equivalent OCR engine.
 	return "", nil
 }
 

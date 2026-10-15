@@ -109,7 +109,7 @@ func TestMarkdownParserNoGraphOnNoHeadings(t *testing.T) {
 }
 
 // TestHasMarkdownStructure exercises the predicate consumed by the
-// pipeline selector (T-0575). True positives: any heading, or >=5
+// pipeline selector. True positives: any heading, or >=5
 // bullets. True negatives: prose, single-bullet snippets, hyphen-only
 // lines that are not real bullets.
 func TestHasMarkdownStructure(t *testing.T) {

@@ -35,7 +35,7 @@ func TestConfigPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("config path should succeed: %v", err)
 	}
-	// After migration to kit/console/cli/config (T-0596): `path` prints
+	// After migration to kit/console/cli/config: `path` prints
 	// the highest-precedence *existing* file. When no real config is
 	// found, kit emits the "<defaults>" sentinel — also valid output.
 	if !strings.Contains(out, "config.yaml") &&
@@ -45,7 +45,7 @@ func TestConfigPath(t *testing.T) {
 	}
 }
 
-// TestConfigPaths covers the new (T-0597) `paths` subcommand. The full
+// TestConfigPaths covers the new `paths` subcommand. The full
 // resolution chain is emitted one path per line in the default text
 // format and always succeeds (a default sentinel rung means the chain
 // is never empty).

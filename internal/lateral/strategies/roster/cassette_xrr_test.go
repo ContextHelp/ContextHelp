@@ -1,6 +1,6 @@
 package roster
 
-// Migration target for T-0334. When xrr lands, each platform package
+// Migration target for xrr cassettes. When xrr lands, each platform package
 // referenced by roster (google, arxiv, wikipedia, medium, substack,
 // beehiiv, youtube) gets its own loadCassette helper that swaps the
 // stub *Client with an xrr.NewHTTPClient-backed real client.

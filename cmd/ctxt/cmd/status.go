@@ -41,7 +41,7 @@ type statusEnvelope struct {
 	Version       string         `json:"version"`
 	UptimeSeconds int64          `json:"uptime_seconds"`
 	Checks        statusChecks   `json:"checks"`
-	Upgrade       map[string]any `json:"upgrade,omitempty"` // T-0580 extension; rendered raw if present.
+	Upgrade       map[string]any `json:"upgrade,omitempty"` // upgrade-state extension; rendered raw if present.
 }
 
 type statusChecks struct {
@@ -198,7 +198,7 @@ func unavailableBody(err error) ([]byte, bool) {
 
 // renderStatusTable prints a one-row-per-subsystem human-readable view.
 // The shape matches the envelope keys 1:1 so it stays correct as
-// T-0580 adds the `upgrade` field (rendered as a separate trailing
+// the `upgrade` field is added (rendered as a separate trailing
 // row group when populated).
 func renderStatusTable(w io.Writer, env statusEnvelope, serverURL string) {
 	fmt.Fprintf(w, "dpkms %s — %s (uptime %s)\n",

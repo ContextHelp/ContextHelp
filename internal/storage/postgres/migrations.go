@@ -222,6 +222,10 @@ var pgMigrations = []pgMigration{
 	{Version: 25, Name: "drop objects.plugins", Statements: []string{
 		`ALTER TABLE objects DROP COLUMN IF EXISTS plugins`,
 	}},
+	// object_proximity endpoints reference objects with ON DELETE
+	// CASCADE, mirroring SQLite migration 046: deleting an object drops
+	// its proximity pairs. Pairs whose object is already gone go first.
+	{Version: 26, Name: "object_proximity object FKs with cascade", fn: migrateProximityObjectFK},
 }
 
 // migrateAliasesObjectFK deletes aliases whose object is gone, then adds
@@ -250,6 +254,46 @@ func migrateAliasesObjectFK(ctx context.Context, d *Driver) error {
 		if _, err := tx.ExecContext(ctx, `ALTER TABLE aliases ADD CONSTRAINT aliases_object_fk
 			FOREIGN KEY (object_id) REFERENCES objects(id) ON DELETE CASCADE`); err != nil {
 			return fmt.Errorf("add aliases_object_fk: %w", err)
+		}
+	}
+	return tx.Commit()
+}
+
+// migrateProximityObjectFK deletes object_proximity pairs with a missing
+// object on either side, then adds object_proximity_a_fk and
+// object_proximity_b_fk (ON DELETE CASCADE), each guarded by a
+// pg_constraint lookup so a replay is a no-op. One transaction, like
+// migrateAliasesObjectFK.
+func migrateProximityObjectFK(ctx context.Context, d *Driver) error {
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM object_proximity p
+		 WHERE NOT EXISTS (SELECT 1 FROM objects o WHERE o.id = p.object_a)
+		    OR NOT EXISTS (SELECT 1 FROM objects o WHERE o.id = p.object_b)`); err != nil {
+		return fmt.Errorf("delete orphaned proximity pairs: %w", err)
+	}
+	for _, fk := range []struct{ name, column string }{
+		{"object_proximity_a_fk", "object_a"},
+		{"object_proximity_b_fk", "object_b"},
+	} {
+		var exists bool
+		if err := tx.QueryRowContext(ctx, `
+			SELECT EXISTS (SELECT 1 FROM pg_constraint
+			                WHERE conname = $1 AND conrelid = 'object_proximity'::regclass)`,
+			fk.name).Scan(&exists); err != nil {
+			return fmt.Errorf("inspect %s: %w", fk.name, err)
+		}
+		if exists {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `ALTER TABLE object_proximity ADD CONSTRAINT `+fk.name+`
+			FOREIGN KEY (`+fk.column+`) REFERENCES objects(id) ON DELETE CASCADE`); err != nil {
+			return fmt.Errorf("add %s: %w", fk.name, err)
 		}
 	}
 	return tx.Commit()
@@ -947,7 +991,7 @@ var baselineSchema = []string{
 			federation_name TEXT PRIMARY KEY,
 			last_synced_at  TIMESTAMPTZ NOT NULL DEFAULT 'epoch'
 		)`,
-	// ADR-071 Phase 1 (T-0582): embedding_models registry +
+	// ADR-071 Phase 1: embedding_models registry +
 	// composite-key embeddings table. Mirrors the sqlite migration
 	// 032/033 surface; the partial unique index uses postgres'
 	// "WHERE" partial-index syntax and the ON CONFLICT path on
@@ -1032,7 +1076,7 @@ func migrateJobsUserMentions(ctx context.Context, db *sql.DB) error {
 
 // migrateJobsUserHints adds user_hints TEXT column to jobs. Idempotent via
 // information_schema check so re-running on upgraded DBs is a no-op.
-// Mirrors migrateJobsUserMentions exactly (T-0573).
+// Mirrors migrateJobsUserMentions exactly.
 func migrateJobsUserHints(ctx context.Context, db *sql.DB) error {
 	var exists bool
 	err := db.QueryRowContext(ctx, `
@@ -1057,7 +1101,7 @@ func migrateJobsUserHints(ctx context.Context, db *sql.DB) error {
 // migrateJobsUserProfileNote adds user_profile + user_note TEXT columns to
 // jobs. Idempotent per-column via information_schema checks; either
 // column can be missing independently after a partial upgrade. Mirrors
-// migrateJobsUserMentions / migrateJobsUserHints (T-0588).
+// migrateJobsUserMentions / migrateJobsUserHints.
 //
 // Unrolled to two constant ALTER statements (rather than looping with
 // string concatenation) so gosec's G201 SQL-injection lint stays

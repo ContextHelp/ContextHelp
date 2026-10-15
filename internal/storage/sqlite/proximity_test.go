@@ -8,6 +8,19 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
+// newProximityTestDriver returns a fresh driver holding the objects the
+// proximity tests pair up: object_proximity endpoints reference objects.
+func newProximityTestDriver(t *testing.T) *Driver {
+	t.Helper()
+	d := newTestDriver(t)
+	for _, id := range []string{"o-a", "o-b", "o-c", "o-d", "o-aaa", "o-bbb", "o-xxx", "o-yyy"} {
+		if err := d.Objects().Create(context.Background(), makeObject(id, "note")); err != nil {
+			t.Fatalf("create %s: %v", id, err)
+		}
+	}
+	return d
+}
+
 func makeScore(a, b string, score float64, computedAt time.Time) *storage.ProximityScore {
 	// Enforce canonical order
 	if a > b {
@@ -36,7 +49,7 @@ func makeScore(a, b string, score float64, computedAt time.Time) *storage.Proxim
 }
 
 func TestProximityStore_PutAndGet(t *testing.T) {
-	d := newTestDriver(t)
+	d := newProximityTestDriver(t)
 	ctx := context.Background()
 	ps := d.Proximity()
 
@@ -63,7 +76,7 @@ func TestProximityStore_PutAndGet(t *testing.T) {
 }
 
 func TestProximityStore_Get_NormalisesOrder(t *testing.T) {
-	d := newTestDriver(t)
+	d := newProximityTestDriver(t)
 	ctx := context.Background()
 	ps := d.Proximity()
 
@@ -84,7 +97,7 @@ func TestProximityStore_Get_NormalisesOrder(t *testing.T) {
 }
 
 func TestProximityStore_Get_NotFound(t *testing.T) {
-	d := newTestDriver(t)
+	d := newProximityTestDriver(t)
 	ctx := context.Background()
 	ps := d.Proximity()
 
@@ -98,7 +111,7 @@ func TestProximityStore_Get_NotFound(t *testing.T) {
 }
 
 func TestProximityStore_Put_Upsert(t *testing.T) {
-	d := newTestDriver(t)
+	d := newProximityTestDriver(t)
 	ctx := context.Background()
 	ps := d.Proximity()
 
@@ -124,7 +137,7 @@ func TestProximityStore_Put_Upsert(t *testing.T) {
 }
 
 func TestProximityStore_PutBatch(t *testing.T) {
-	d := newTestDriver(t)
+	d := newProximityTestDriver(t)
 	ctx := context.Background()
 	ps := d.Proximity()
 
@@ -148,7 +161,7 @@ func TestProximityStore_PutBatch(t *testing.T) {
 }
 
 func TestProximityStore_GetNeighbors(t *testing.T) {
-	d := newTestDriver(t)
+	d := newProximityTestDriver(t)
 	ctx := context.Background()
 	ps := d.Proximity()
 
@@ -176,7 +189,7 @@ func TestProximityStore_GetNeighbors(t *testing.T) {
 }
 
 func TestProximityStore_GetNeighbors_Limit(t *testing.T) {
-	d := newTestDriver(t)
+	d := newProximityTestDriver(t)
 	ctx := context.Background()
 	ps := d.Proximity()
 
@@ -201,7 +214,7 @@ func TestProximityStore_GetNeighbors_Limit(t *testing.T) {
 
 func TestProximityStore_GetNeighbors_BothDirections(t *testing.T) {
 	// Neighbors stored as (o-a, o-b) should appear in both o-a's and o-b's neighbor lists.
-	d := newTestDriver(t)
+	d := newProximityTestDriver(t)
 	ctx := context.Background()
 	ps := d.Proximity()
 
@@ -222,7 +235,7 @@ func TestProximityStore_GetNeighbors_BothDirections(t *testing.T) {
 }
 
 func TestProximityStore_GetNeighborsAbove(t *testing.T) {
-	d := newTestDriver(t)
+	d := newProximityTestDriver(t)
 	ctx := context.Background()
 	ps := d.Proximity()
 
@@ -252,7 +265,7 @@ func TestProximityStore_GetNeighborsAbove(t *testing.T) {
 }
 
 func TestProximityStore_Delete(t *testing.T) {
-	d := newTestDriver(t)
+	d := newProximityTestDriver(t)
 	ctx := context.Background()
 	ps := d.Proximity()
 
@@ -288,7 +301,7 @@ func TestProximityStore_Delete(t *testing.T) {
 }
 
 func TestProximityStore_FindStale(t *testing.T) {
-	d := newTestDriver(t)
+	d := newProximityTestDriver(t)
 	ctx := context.Background()
 	ps := d.Proximity()
 
@@ -317,7 +330,7 @@ func TestProximityStore_FindStale(t *testing.T) {
 }
 
 func TestProximityStore_Stats(t *testing.T) {
-	d := newTestDriver(t)
+	d := newProximityTestDriver(t)
 	ctx := context.Background()
 	ps := d.Proximity()
 
@@ -353,7 +366,7 @@ func TestProximityStore_Stats(t *testing.T) {
 }
 
 func TestProximityStore_Stats_Empty(t *testing.T) {
-	d := newTestDriver(t)
+	d := newProximityTestDriver(t)
 	ctx := context.Background()
 	ps := d.Proximity()
 

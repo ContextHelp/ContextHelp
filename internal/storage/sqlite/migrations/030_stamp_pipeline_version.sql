@@ -1,4 +1,4 @@
--- Migration 029: stamp existing objects.pipeline rows with @v0 (T-0579, ADR-070 §2).
+-- Migration 029: stamp existing objects.pipeline rows with @v0 (ADR-070 §2).
 --
 -- Per ADR-070 the `objects.pipeline` value gains a "@vN" suffix encoding the
 -- pipeline version. Pre-existing rows have no suffix; the registry treats them

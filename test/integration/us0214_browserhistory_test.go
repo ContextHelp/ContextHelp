@@ -1,6 +1,6 @@
 package integration
 
-// US-0214: Browser-History Ambient Source (per ADR-066 + T-0502).
+// US-0214: Browser-History Ambient Source (per ADR-066).
 //
 // E2E acceptance criteria from docs/stories/capture/US-0214-browser-history-source.md.
 // Verifies: per-browser SQLite-history poll (Chrome / Firefox / Safari /
@@ -9,7 +9,7 @@ package integration
 // last-seen timestamp persistence across daemon restarts, copy-to-temp
 // avoiding lock contention with running browsers.
 //
-// **Status: skeleton.** Substrate (T-0502) is implemented + unit-tested
+// **Status: skeleton.** Substrate is implemented + unit-tested
 // with a fakeBrowserClient. Per-browser SQLite-poll BrowserClient
 // implementations land separately behind build tags (per-OS path
 // resolution: macOS / Linux / Windows differ).

@@ -1,6 +1,6 @@
 package integration
 
-// T-0189: E2E graph-canonical ingest and projected retrieval.
+// E2E graph-canonical ingest and projected retrieval.
 // Proves: canonical graph stored, projections materialize correctly,
 // storage round-trips preserve nodes and edges, FTS/vector/filter
 // behavior works through shared projection helpers.

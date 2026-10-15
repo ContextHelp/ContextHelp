@@ -156,7 +156,7 @@ func TestIntegration_PlatformRoster(t *testing.T) {
 				}
 			}
 			// Every candidate must carry a non-empty identity_key —
-			// post-T-0309 strategies write to the typed field, but
+			// migrated strategies write to the typed field, but
 			// the legacy Preview-map form is also accepted for
 			// one-cycle backward compat.
 			for _, c := range cands {

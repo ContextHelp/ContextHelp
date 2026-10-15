@@ -72,7 +72,7 @@ func TestLifecycleStatesAreDistinct(t *testing.T) {
 }
 
 // recordingDedup tracks fingerprints seen so tests can assert dedup behaviour
-// without depending on the real LRU implementation (T-0499 lands that).
+// without depending on the real LRU implementation.
 type recordingDedup struct {
 	mu   sync.Mutex
 	seen map[string]bool

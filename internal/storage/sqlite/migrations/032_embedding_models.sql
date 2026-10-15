@@ -1,4 +1,4 @@
--- Migration 032: embedding_models registry + embeddings composite-key table (T-0582, ADR-071 Phase 1).
+-- Migration 032: embedding_models registry + embeddings composite-key table (ADR-071 Phase 1).
 --
 -- ADR-071 §"Data model" mandates:
 --   - embedding_models: one row per registered model (model_id PK).

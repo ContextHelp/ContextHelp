@@ -154,7 +154,7 @@ test-docker:
 ## eva: Run hop.top/eva contract tests against the recorded fixture set
 ##
 ## Tier-1 deterministic JSON-Schema contracts for operator-facing JSON
-## shapes (ADR-070 §6, T-0586). Contracts live under contracts/*.eva.yaml
+## shapes (ADR-070 §6). Contracts live under contracts/*.eva.yaml
 ## and are paired with one or more fixtures under
 ## test/integration/testdata/eva-fixtures/<contract-base>*.json.
 ##
@@ -506,7 +506,7 @@ ben-text-short: ben-install ben-adapter
 ## ben-vector: Run the vector-recall suite (ADR-071 Phase 3 gate)
 ##
 ## See suites/recall-vector.ben.yaml for the floor-rationale. The floor
-## is intentionally low while T-0584 hasn't wired the real candidate
+## is intentionally low until the real candidate
 ## model; raise it when the embedding leg lights up.
 BEN_VECTOR_FLOOR := 0.40
 ben-vector: ben-install ben-adapter

@@ -199,7 +199,7 @@ func TestLoadWithI18n(t *testing.T) {
 // TestLoad_EnvOverridesFile asserts that env > file precedence holds for
 // bound env vars. Regression test for kit/core/config.Load adoption: the
 // naive "stage 1 env-into-cfg, stage 2 file-into-cfg" wiring would have
-// silently let files override env vars. T-0199, PR #33 review (Copilot).
+// silently let files override env vars (PR #33 review).
 func TestLoad_EnvOverridesFile(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "ctxt.yaml")

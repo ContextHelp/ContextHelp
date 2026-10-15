@@ -129,7 +129,7 @@ func (f *httpFetcher) LastResponseHeaders() (http.Header, error) {
 
 // TestHTTPAPIClient_ConcurrentSnapshotAccess exercises RateSnapshot()
 // reads against in-flight rateAwareGet writes. Run with -race; without
-// the snapshotMu guard added in T-0270 this test trips the data-race
+// the snapshotMu guard this test trips the data-race
 // detector on lastSnapshot.
 func TestHTTPAPIClient_ConcurrentSnapshotAccess(t *testing.T) {
 	srv := fixturesServer(t, map[string]string{

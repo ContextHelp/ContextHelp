@@ -1,6 +1,6 @@
 //go:build federation_e2e
 
-// dpkms multi-instance lifecycle e2e test for US-0321 (T-0170).
+// dpkms multi-instance lifecycle e2e test for US-0321.
 //
 // AC under test:
 //   - `dpkms ps` lists running instances + cleans stale pidfiles
