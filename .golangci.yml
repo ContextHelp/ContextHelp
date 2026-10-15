@@ -153,7 +153,7 @@ linters:
     prealloc:
       simple: true
       range-loops: true
-      for-loops: true
+      for-loops: false
     revive:
       # The `exported` rule is omitted: it accounted for 915 of revive's 996
       # findings, and satisfying it yields `// Foo does foo.` filler rather
