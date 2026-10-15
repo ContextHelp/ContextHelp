@@ -484,3 +484,33 @@ code, pre { font-family: var(--font-mono); }
 .identity-name { font-size: 12px; color: rgba(255,255,255,.7); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .identity-signout { background: none; border: 0; padding: 2px; color: rgba(255,255,255,.45); display: inline-flex; }
 .identity-signout:hover { color: rgba(255,255,255,.9); }
+
+/* ── Sharing (ADR-080): the banner a shared viewer sees, and the page ───────── */
+.shared-banner {
+  display: flex; align-items: center; gap: 8px;
+  margin: 0 0 16px; padding: 8px 12px;
+  border: 1px solid rgba(0,217,255,.35); border-radius: var(--radius);
+  background: rgba(0,217,255,.08); color: var(--text-h); font-size: 13px;
+}
+.shared-banner strong { font-weight: 600; }
+.share-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; align-items: start; }
+.share-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; }
+.share-form--stack { flex-direction: column; align-items: stretch; }
+.share-input {
+  flex: 1 1 160px; min-width: 0; padding: 6px 8px; font: inherit; font-size: 13px;
+  color: var(--text-h); background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+}
+.share-input--short { flex: 0 0 64px; }
+.share-input:focus { outline: none; border-color: var(--cyan); }
+.share-textarea {
+  width: 100%; padding: 8px; font-family: var(--font-mono); font-size: 12px; line-height: 1.5;
+  color: var(--text-h); background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); resize: vertical;
+}
+.share-list { list-style: none; margin: 0; padding: 0; }
+.share-row { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.share-row:last-child { border-bottom: none; }
+.share-row--inline { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.share-row-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.share-name { font-weight: 500; color: var(--text-h); }
+.share-members { list-style: none; margin: 6px 0 0 12px; padding: 0; font-size: 12px; }
+.share-member { display: flex; align-items: center; gap: 8px; padding: 2px 0; }

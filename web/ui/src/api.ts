@@ -125,6 +125,90 @@ export const system = {
   health: () => req<{ status: string }>(`/../../health`),
 };
 
+// ── Sharing (ADR-080) ─────────────────────────────────────────────────────────
+
+/** Who shares with a non-owner principal, and under which policies. */
+export interface SharedWith {
+  owner: string;
+  policies: string[];
+}
+
+export interface AudienceMember {
+  audience_id: string;
+  principal_id: string;
+  expires_at?: string;
+  added_by: string;
+  added_at: string;
+}
+
+export interface Audience {
+  id: string;
+  name: string;
+  created_at: string;
+  members: AudienceMember[];
+}
+
+export interface SharePolicy {
+  id: string;
+  name: string;
+  version: number;
+  spec: Record<string, unknown>;
+  updated_at: string;
+}
+
+export interface ShareGrant {
+  id: string;
+  audience_id: string;
+  policy_id: string;
+  expires_at?: string;
+  created_by: string;
+  created_at: string;
+  revoked_at?: string;
+  /** Names of what the grant binds, and the policy's current version. */
+  audience: string;
+  policy: string;
+  policy_version: number;
+}
+
+export interface PolicyTemplate {
+  name: string;
+  spec: { data: string; exclude_classes?: string[] };
+}
+
+/** The scope the Sharing page needs; only an admin's session holds it. */
+export const SCOPE_ADMIN_SHARES = 'admin:shares';
+
+const enc = encodeURIComponent;
+const withExpiry = (expiresAt?: string) => JSON.stringify(expiresAt ? { expires_at: expiresAt } : {});
+
+export const sharing = {
+  audiences: () => req<PagedResponse<Audience>>('/share/audiences'),
+  createAudience: (name: string) =>
+    req<Audience>('/share/audiences', { method: 'POST', body: JSON.stringify({ name }) }),
+  addMember: (audience: string, principal: string, expiresAt?: string) =>
+    req<AudienceMember>(`/share/audiences/${enc(audience)}/members/${enc(principal)}`, {
+      method: 'PUT',
+      body: withExpiry(expiresAt),
+    }),
+  removeMember: (audience: string, principal: string) =>
+    req<void>(`/share/audiences/${enc(audience)}/members/${enc(principal)}`, { method: 'DELETE' }),
+  policies: () => req<PagedResponse<SharePolicy>>('/share/policies'),
+  /** `document` is the policy as YAML or JSON text. */
+  createPolicy: (document: string) =>
+    req<SharePolicy>('/share/policies', { method: 'POST', body: JSON.stringify({ document }) }),
+  updatePolicy: (policy: string, document: string) =>
+    req<SharePolicy>(`/share/policies/${enc(policy)}`, { method: 'PUT', body: JSON.stringify({ document }) }),
+  templates: () => req<PagedResponse<PolicyTemplate>>('/share/templates'),
+  installTemplate: (name: string) => req<SharePolicy>(`/share/templates/${enc(name)}`, { method: 'POST' }),
+  grants: () => req<PagedResponse<ShareGrant>>('/share/grants'),
+  createGrant: (audience: string, policy: string, expiresAt?: string) =>
+    req<ShareGrant>('/share/grants', {
+      method: 'POST',
+      body: JSON.stringify({ audience, policy, ...(expiresAt ? { expires_at: expiresAt } : {}) }),
+    }),
+  revokeGrant: (id: string) => req<void>(`/share/grants/${enc(id)}`, { method: 'DELETE' }),
+};
+
 // ── Browser session ───────────────────────────────────────────────────────────
 
 /**
@@ -141,6 +225,8 @@ export interface WhoAmI {
   /** token, session (this browser's sign-in) or none (private instance: nothing to sign in to). */
   via: 'token' | 'session' | 'none';
   session?: { id: string; kind: string; created_at: string; idle_expires_at: string; expires_at: string };
+  /** Set for a shared viewer: who shares with them and the policies in force. */
+  shared?: SharedWith;
 }
 
 /** The code exchange answers the new session's whoami, plus a warning. */

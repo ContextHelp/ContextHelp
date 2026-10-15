@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SigninRouteImport } from './routes/signin'
+import { Route as SharingRouteImport } from './routes/sharing'
 import { Route as SearchRouteImport } from './routes/search'
 import { Route as RegistryRouteImport } from './routes/registry'
 import { Route as InviteRouteImport } from './routes/invite'
@@ -22,6 +23,11 @@ import { Route as ObjectsIdRouteImport } from './routes/objects/$id'
 const SigninRoute = SigninRouteImport.update({
   id: '/signin',
   path: '/signin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SharingRoute = SharingRouteImport.update({
+  id: '/sharing',
+  path: '/sharing',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SearchRoute = SearchRouteImport.update({
@@ -71,6 +77,7 @@ export interface FileRoutesByFullPath {
   '/invite': typeof InviteRoute
   '/registry': typeof RegistryRoute
   '/search': typeof SearchRoute
+  '/sharing': typeof SharingRoute
   '/signin': typeof SigninRoute
   '/objects/$id': typeof ObjectsIdRoute
   '/jobs/': typeof JobsIndexRoute
@@ -82,6 +89,7 @@ export interface FileRoutesByTo {
   '/invite': typeof InviteRoute
   '/registry': typeof RegistryRoute
   '/search': typeof SearchRoute
+  '/sharing': typeof SharingRoute
   '/signin': typeof SigninRoute
   '/objects/$id': typeof ObjectsIdRoute
   '/jobs': typeof JobsIndexRoute
@@ -94,6 +102,7 @@ export interface FileRoutesById {
   '/invite': typeof InviteRoute
   '/registry': typeof RegistryRoute
   '/search': typeof SearchRoute
+  '/sharing': typeof SharingRoute
   '/signin': typeof SigninRoute
   '/objects/$id': typeof ObjectsIdRoute
   '/jobs/': typeof JobsIndexRoute
@@ -107,6 +116,7 @@ export interface FileRouteTypes {
     | '/invite'
     | '/registry'
     | '/search'
+    | '/sharing'
     | '/signin'
     | '/objects/$id'
     | '/jobs/'
@@ -118,6 +128,7 @@ export interface FileRouteTypes {
     | '/invite'
     | '/registry'
     | '/search'
+    | '/sharing'
     | '/signin'
     | '/objects/$id'
     | '/jobs'
@@ -129,6 +140,7 @@ export interface FileRouteTypes {
     | '/invite'
     | '/registry'
     | '/search'
+    | '/sharing'
     | '/signin'
     | '/objects/$id'
     | '/jobs/'
@@ -141,6 +153,7 @@ export interface RootRouteChildren {
   InviteRoute: typeof InviteRoute
   RegistryRoute: typeof RegistryRoute
   SearchRoute: typeof SearchRoute
+  SharingRoute: typeof SharingRoute
   SigninRoute: typeof SigninRoute
   ObjectsIdRoute: typeof ObjectsIdRoute
   JobsIndexRoute: typeof JobsIndexRoute
@@ -154,6 +167,13 @@ declare module '@tanstack/react-router' {
       path: '/signin'
       fullPath: '/signin'
       preLoaderRoute: typeof SigninRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sharing': {
+      id: '/sharing'
+      path: '/sharing'
+      fullPath: '/sharing'
+      preLoaderRoute: typeof SharingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/search': {
@@ -221,6 +241,7 @@ const rootRouteChildren: RootRouteChildren = {
   InviteRoute: InviteRoute,
   RegistryRoute: RegistryRoute,
   SearchRoute: SearchRoute,
+  SharingRoute: SharingRoute,
   SigninRoute: SigninRoute,
   ObjectsIdRoute: ObjectsIdRoute,
   JobsIndexRoute: JobsIndexRoute,
