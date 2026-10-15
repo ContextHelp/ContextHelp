@@ -64,8 +64,12 @@ func (s *Service) checkDuplicates(ctx context.Context, hash, sourceKey string, q
 	}
 
 	// 3. Near-duplicate via vector similarity (score = 1 - cosine distance).
+	// Like the hash and source-key checks it compares against every
+	// object whatever its status: an inbox or discarded twin is still a
+	// duplicate.
 	if cfg.CheckSimilar && len(q.Vector) > 0 {
-		candidates, err := s.Store.Objects().VectorSearch(ctx, q, storage.ObjectFilter{Limit: 1})
+		candidates, err := s.Store.Objects().VectorSearch(ctx, q,
+			storage.ObjectFilter{Limit: 1, Status: storage.ObjectStatusAll})
 		if err != nil {
 			return nil, err
 		}

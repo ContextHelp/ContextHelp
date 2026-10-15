@@ -129,6 +129,50 @@ func RunSearchConformance(t *testing.T, drv storage.StorageDriver, caps SearchCa
 		}, "vecp")
 	})
 
+	t.Run("ListBySQLStatusScope", func(t *testing.T) {
+		seedStatusScopeCorpus(t, drv, "sqls", "sqls-scope", nil)
+		assertStatusScope(t, "ListBySQL", func(status string) ([]*storage.KnowledgeObject, error) {
+			// A predicate every dialect accepts, so the driver's own
+			// status predicate is exercised alongside a caller one; the
+			// type filter keeps the other corpora out.
+			objs, _, err := drv.Objects().ListBySQL(ctx, "1 = 1", nil,
+				storage.ObjectFilter{Type: "sqls-scope", Status: status, Limit: 10})
+			return objs, err
+		}, "sqls")
+
+		// List is the reference the search paths mirror.
+		listed, _, err := drv.Objects().List(ctx, storage.ObjectFilter{Type: "sqls-scope"})
+		if err != nil {
+			t.Fatalf("List: %v", err)
+		}
+		if len(listed) != 1 || listed[0].ID != "sqls-active" {
+			t.Errorf("List with no status: got %v want [sqls-active]", resultIDs(listed))
+		}
+	})
+
+	t.Run("FTSStatusScope", func(t *testing.T) {
+		if !caps.FTS {
+			t.Skip("PARITY GAP: driver declares FTS=false — FTS status scoping unverified")
+		}
+		seedStatusScopeCorpus(t, drv, "ftss", "ftss-scope", nil)
+		assertStatusScope(t, "FTSSearch", func(status string) ([]*storage.KnowledgeObject, error) {
+			return drv.Objects().FTSSearch(ctx, statusScopeToken,
+				storage.ObjectFilter{Type: "ftss-scope", Status: status, Limit: 10})
+		}, "ftss")
+	})
+
+	t.Run("VectorStatusScope", func(t *testing.T) {
+		if !caps.Vectors {
+			t.Skip("PARITY GAP: driver declares Vectors=false — vector status scoping unverified")
+		}
+		SeedVectorModel(t, drv)
+		seedStatusScopeCorpus(t, drv, "vecs", "vecs-scope", []float32{0, 1, 0, 0})
+		assertStatusScope(t, "VectorSearch", func(status string) ([]*storage.KnowledgeObject, error) {
+			return drv.Objects().VectorSearch(ctx, fixtureQuery([]float32{0, 1, 0, 0}),
+				storage.ObjectFilter{Type: "vecs-scope", Status: status, Limit: 10})
+		}, "vecs")
+	})
+
 	t.Run("UnindexedModel", func(t *testing.T) {
 		if !caps.Vectors {
 			t.Skip("PARITY GAP: driver declares Vectors=false — index-missing contract unverified")
@@ -314,6 +358,65 @@ func assertProfileScope(t *testing.T, leg string, search func(profileID string) 
 	}
 	if len(res) != len(profileScopeProfiles) {
 		t.Errorf("%s unscoped: got %v want all %d profiles' objects", leg, resultIDs(res), len(profileScopeProfiles))
+	}
+}
+
+// statusScopeToken is the FTS term every status-scope fixture shares, so
+// only the status filter can tell the rows apart.
+const statusScopeToken = "quillstatus"
+
+// statusScopeStatuses are the statuses of the status-scope fixture rows:
+// one object each, IDs "<prefix>-<status>".
+var statusScopeStatuses = []string{storage.ObjectStatusActive, "inbox", "discarded"}
+
+// seedStatusScopeCorpus stores one object per statusScopeStatuses entry
+// under typ, all with the same text and, when vec is non-nil, the same
+// vector under the fixture model.
+func seedStatusScopeCorpus(t *testing.T, drv storage.StorageDriver, prefix, typ string, vec []float32) {
+	t.Helper()
+	for _, st := range statusScopeStatuses {
+		obj := searchFixtureObject(prefix+"-"+st, typ, statusScopeToken+" shared fixture text")
+		obj.Status = st
+		if err := drv.Objects().Create(context.Background(), obj); err != nil {
+			t.Fatalf("seed %s: %v", obj.ID, err)
+		}
+		if vec != nil {
+			putFixtureVector(t, drv, obj.ID, vec)
+		}
+	}
+}
+
+// assertStatusScope pins the ObjectFilter.Status contract for a read path,
+// the one List honors: no status returns only active objects, a named
+// status only that status's objects, ObjectStatusAll every object. An
+// object that is not active must never be a hit unless asked for.
+func assertStatusScope(t *testing.T, leg string, read func(status string) ([]*storage.KnowledgeObject, error), prefix string) {
+	t.Helper()
+	for _, st := range []string{"", storage.ObjectStatusActive, "inbox", "discarded"} {
+		res, err := read(st)
+		if err != nil {
+			t.Fatalf("%s status %q: %v", leg, st, err)
+		}
+		wantStatus := st
+		if wantStatus == "" {
+			wantStatus = storage.ObjectStatusActive
+		}
+		want := prefix + "-" + wantStatus
+		if len(res) != 1 || res[0].ID != want {
+			t.Errorf("%s status %q: got %v want [%s] (an object outside status %q leaked)",
+				leg, st, resultIDs(res), want, wantStatus)
+			continue
+		}
+		if res[0].Status != wantStatus {
+			t.Errorf("%s status %q: result %s has Status %q", leg, st, res[0].ID, res[0].Status)
+		}
+	}
+	res, err := read(storage.ObjectStatusAll)
+	if err != nil {
+		t.Fatalf("%s status all: %v", leg, err)
+	}
+	if len(res) != len(statusScopeStatuses) {
+		t.Errorf("%s status all: got %v want every status's object (%d)", leg, resultIDs(res), len(statusScopeStatuses))
 	}
 }
 

@@ -102,10 +102,15 @@ func TestAnalyzeRawHintsStoredAsUserTagsAndFTSIndexed(t *testing.T) {
 	assert.Equal(t, storage.Tag{Label: "b", Source: "user", Weight: 1}, obj.Tags[1])
 
 	assert.True(t, obj.FTSIndexed, "raw object must be fts_indexed=true")
-	results, err := ts.svc.Store.Objects().FTSSearch(ctx, "narwhal", storage.ObjectFilter{Limit: 10})
+	// A raw object is indexed but, like List, only a search that asks
+	// for its status reaches it.
+	results, err := ts.svc.Store.Objects().FTSSearch(ctx, "narwhal", storage.ObjectFilter{Limit: 10, Status: "raw"})
 	require.NoError(t, err)
 	require.Len(t, results, 1)
 	assert.Equal(t, objID, results[0].ID)
+	hidden, err := ts.svc.Store.Objects().FTSSearch(ctx, "narwhal", storage.ObjectFilter{Limit: 10})
+	require.NoError(t, err)
+	assert.Empty(t, hidden, "a raw object is not a search hit unless its status is asked for")
 
 	// tag=="a" scoping must work: the tag filter on List sees the user hint.
 	objs, _, err := ts.svc.Store.Objects().List(ctx, storage.ObjectFilter{Tag: "a", Status: "raw"})
@@ -185,7 +190,8 @@ func TestAnalyzeRawThenPipelineSameContentStaysFTSIndexed(t *testing.T) {
 	assert.NotZero(t, auto, "auto tags must be merged: %+v", obj.Tags)
 
 	assert.True(t, obj.FTSIndexed, "reinforced object must stay fts_indexed=true")
-	results, err := ts.svc.Store.Objects().FTSSearch(ctx, "capybara", storage.ObjectFilter{Limit: 10})
+	// Reinforce keeps the raw status, so the search asks for it.
+	results, err := ts.svc.Store.Objects().FTSSearch(ctx, "capybara", storage.ObjectFilter{Limit: 10, Status: "raw"})
 	require.NoError(t, err)
 	require.Len(t, results, 1)
 	assert.Equal(t, objID, results[0].ID)

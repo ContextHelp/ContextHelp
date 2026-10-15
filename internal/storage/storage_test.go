@@ -86,7 +86,7 @@ func (m *mockObjectStore) Update(ctx context.Context, obj *KnowledgeObject) erro
 func (m *mockObjectStore) Delete(ctx context.Context, id string) error            { return nil }
 func (m *mockObjectStore) CountBlobRefs(_ context.Context, _ string) (int, error) { return 0, nil }
 
-func (m *mockObjectStore) ListBySQL(ctx context.Context, where string, args []any, limit, offset int) ([]*KnowledgeObject, int, error) {
+func (m *mockObjectStore) ListBySQL(ctx context.Context, where string, args []any, filter ObjectFilter) ([]*KnowledgeObject, int, error) {
 	return nil, 0, nil
 }
 func (m *mockObjectStore) Reinforce(ctx context.Context, hash string, mergeData *KnowledgeObject) (string, error) {

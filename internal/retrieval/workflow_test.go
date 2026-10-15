@@ -93,7 +93,7 @@ func (m *mockObjectStore2) Update(_ context.Context, _ *storage.KnowledgeObject)
 func (m *mockObjectStore2) Delete(_ context.Context, _ string) error                   { return nil }
 func (m *mockObjectStore2) CountBlobRefs(_ context.Context, _ string) (int, error)     { return 0, nil }
 
-func (m *mockObjectStore2) ListBySQL(_ context.Context, _ string, _ []any, _, _ int) ([]*storage.KnowledgeObject, int, error) {
+func (m *mockObjectStore2) ListBySQL(_ context.Context, _ string, _ []any, _ storage.ObjectFilter) ([]*storage.KnowledgeObject, int, error) {
 	return nil, 0, nil
 }
 func (m *mockObjectStore2) Reinforce(_ context.Context, _ string, _ *storage.KnowledgeObject) (string, error) {

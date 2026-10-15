@@ -224,14 +224,9 @@ func objectListConditions(filter storage.ObjectFilter) ([]string, []any) {
 	var conditions []string
 	var args []any
 
-	// Status filter: default to "active" to avoid breaking existing callers.
-	statusVal := filter.Status
-	if statusVal == "" {
-		statusVal = storage.ObjectStatusActive
-	}
-	if statusVal != "all" {
+	if st, ok := filter.StatusScope(); ok {
 		conditions = append(conditions, "status = ?")
-		args = append(args, statusVal)
+		args = append(args, st)
 	}
 
 	if filter.Type != "" {
@@ -573,17 +568,30 @@ func mentionsToStrings(uris []uri.URI) []string {
 	return s
 }
 
-func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, limit, offset int) ([]*storage.KnowledgeObject, int, error) {
-	countQuery := "SELECT COUNT(*) FROM objects"
+func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, int, error) {
+	// List's predicates (status scope first) follow the caller's so its ?
+	// placeholders keep their positions: SQLite binds args in order.
+	conditions, condArgs := objectListConditions(filter)
 	if where != "" {
-		countQuery += " WHERE " + where
+		conditions = append([]string{"(" + where + ")"}, conditions...)
+	}
+	args = append(append([]any(nil), args...), condArgs...)
+	clause := ""
+	if len(conditions) > 0 {
+		clause = " WHERE " + strings.Join(conditions, " AND ")
 	}
 
 	var total int
-	if err := s.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM objects"+clause, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count by sql: %w", err)
 	}
 
+	// where is a compiled RSQL predicate (internal/search): literals are
+	// already bound as ? placeholders in args, only operators and column
+	// names reach the SQL text. clause adds objectListConditions' fixed
+	// fragments (values in args), order is a ListOrder literal, and
+	// LIMIT/OFFSET are bound below.
+	// #nosec G202 -- see above; caller values travel in args, not the string.
 	query := `SELECT
 		id, type, subtype, raw_content, content_type, text_content,
 		metadata, summaries, sections, tags, mentions,
@@ -591,28 +599,20 @@ func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, l
 		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
 		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq
-	FROM objects`
-	// where is a compiled RSQL predicate (internal/search): literals are
-	// already bound as ? placeholders in args, only operators and column
-	// names reach the SQL text. LIMIT/OFFSET are bound below.
-	// #nosec G202 -- see above; caller values travel in args, not the string.
-	if where != "" {
-		query += " WHERE " + where
-	}
-	query += orderNewestFirst
-	pageArgs := append([]any(nil), args...)
-	if limit > 0 {
+	FROM objects` + clause + " ORDER BY " + filter.ListOrder()
+	pageArgs := args
+	if filter.Limit > 0 {
 		query += " LIMIT ?"
-		pageArgs = append(pageArgs, limit)
+		pageArgs = append(pageArgs, filter.Limit)
 	}
-	if offset > 0 {
+	if filter.Offset > 0 {
 		// SQLite requires LIMIT before OFFSET; supply an unbounded LIMIT
 		// when the caller asked only for an offset.
-		if limit <= 0 {
+		if filter.Limit <= 0 {
 			query += " LIMIT -1"
 		}
 		query += " OFFSET ?"
-		pageArgs = append(pageArgs, offset)
+		pageArgs = append(pageArgs, filter.Offset)
 	}
 
 	rows, err := s.db.QueryContext(ctx, query, pageArgs...)
@@ -883,8 +883,8 @@ func boolToInt(b bool) int {
 }
 
 // vectorOverfetch is the KNN over-fetch factor: the index is searched for
-// limit*vectorOverfetch hits so post-filtering by type, subtype, pipeline
-// and metadata facets can still fill limit.
+// limit*vectorOverfetch hits so post-filtering by status, type, subtype,
+// pipeline, profile and metadata facets can still fill limit.
 const vectorOverfetch = 10
 
 // VectorSearch ranks objects through q.ModelID's per-model index: a KNN
@@ -931,19 +931,7 @@ func (s *ObjectStore) VectorSearch(ctx context.Context, q storage.VectorQuery, f
 			// Object may have been deleted between index and fetch; skip.
 			continue
 		}
-		if filter.Type != "" && obj.Type != filter.Type {
-			continue
-		}
-		if filter.Subtype != "" && obj.Subtype != filter.Subtype {
-			continue
-		}
-		if filter.Pipeline != "" && obj.Pipeline != filter.Pipeline {
-			continue
-		}
-		if filter.ProfileID != "" && obj.ProfileID != filter.ProfileID {
-			continue
-		}
-		if !matchesMetadataFacets(obj, filter) {
+		if !vectorHitMatches(obj, filter) {
 			continue
 		}
 		if obj.Metadata == nil {
@@ -953,6 +941,28 @@ func (s *ObjectStore) VectorSearch(ctx context.Context, q storage.VectorQuery, f
 		out = append(out, obj)
 	}
 	return out, nil
+}
+
+// vectorHitMatches reports whether a hydrated KNN hit satisfies the
+// filters VectorSearch applies in Go: the status scope, type, subtype,
+// pipeline, profile and metadata facets.
+func vectorHitMatches(obj *storage.KnowledgeObject, filter storage.ObjectFilter) bool {
+	if st, ok := filter.StatusScope(); ok && obj.Status != st {
+		return false
+	}
+	if filter.Type != "" && obj.Type != filter.Type {
+		return false
+	}
+	if filter.Subtype != "" && obj.Subtype != filter.Subtype {
+		return false
+	}
+	if filter.Pipeline != "" && obj.Pipeline != filter.Pipeline {
+		return false
+	}
+	if filter.ProfileID != "" && obj.ProfileID != filter.ProfileID {
+		return false
+	}
+	return matchesMetadataFacets(obj, filter)
 }
 
 // isZeroVector reports whether every component is zero.
@@ -999,6 +1009,10 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 		WHERE objects_fts MATCH ?`
 	args := []any{query}
 
+	if st, ok := filter.StatusScope(); ok {
+		q += " AND o.status = ?"
+		args = append(args, st)
+	}
 	if filter.Type != "" {
 		q += " AND o.type = ?"
 		args = append(args, filter.Type)
