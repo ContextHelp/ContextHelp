@@ -173,26 +173,48 @@ func TestRestrictedReadsNameStoreMethods(t *testing.T) {
 	}
 }
 
-// jobWrites are the JobStore methods that are writes. Jobs are
-// owner-only (ADR-080 §6: their payload is raw content), so every other
-// JobStore method must be listed in restrictedReads: a job read added
-// without classifying it fails here.
-var jobWrites = []string{"Create", "AcquireNext", "Complete", "Fail", "Retry", "Cancel", "RecoverStale", "ExtendLease", "ReleaseLease"}
+// ownerOnlyStores are the stores whose every row is the owner's (ADR-080
+// §6: jobs, pipelines, steps, registries, entitlements, metering,
+// feeds, batches, detectors, watches): a restricted viewer may neither
+// read nor write them, so each must have an entry in restrictedWrites.
+var ownerOnlyStores = []string{
+	"Jobs", "Pipelines", "Steps", "Registries", "Entitlements", "Metering",
+	"Feeds", "FeedItems", "Batches", "Detectors", "Watches",
+}
 
-func TestEveryJobReadIsRestricted(t *testing.T) {
-	store := reflect.TypeOf((*JobStore)(nil)).Elem()
-	for i := 0; i < store.NumMethod(); i++ {
-		name := store.Method(i).Name
-		if slices.Contains(jobWrites, name) {
-			continue
-		}
-		if !slices.Contains(restrictedReads["Jobs"], name) {
-			t.Errorf("JobStore.%s is neither a known write nor listed in restrictedReads[\"Jobs\"]: jobs are owner-only", name)
+// Every method of an owner-only store is classified as a refused read
+// (restrictedReads) or a refused write (restrictedWrites): a method
+// added to one of those stores fails here until it is listed, so it
+// cannot reach the driver for a restricted viewer by default.
+func TestOwnerOnlyStoresClassifyEveryMethod(t *testing.T) {
+	for _, accessor := range ownerOnlyStores {
+		if _, ok := restrictedWrites[accessor]; !ok {
+			t.Errorf("owner-only store %s has no entry in restrictedWrites", accessor)
 		}
 	}
-	for _, w := range jobWrites {
-		if _, ok := store.MethodByName(w); !ok {
-			t.Errorf("jobWrites names %s, which JobStore does not have", w)
+	for accessor, writes := range restrictedWrites {
+		if !slices.Contains(ownerOnlyStores, accessor) {
+			t.Errorf("restrictedWrites names %s, which is not an owner-only store", accessor)
+		}
+		m, ok := driverType.MethodByName(accessor)
+		if !ok {
+			t.Errorf("restrictedWrites names accessor %s, which StorageDriver does not have", accessor)
+			continue
+		}
+		store := m.Type.Out(0)
+		for i := 0; i < store.NumMethod(); i++ {
+			name := store.Method(i).Name
+			if !slices.Contains(restrictedReads[accessor], name) && !slices.Contains(writes, name) {
+				t.Errorf("%s.%s is in neither restrictedReads nor restrictedWrites: %s is owner-only", accessor, name, accessor)
+			}
+		}
+		for _, w := range writes {
+			if _, ok := store.MethodByName(w); !ok {
+				t.Errorf("restrictedWrites names %s.%s, which %s does not have", accessor, w, store.Name())
+			}
+			if slices.Contains(restrictedReads[accessor], w) {
+				t.Errorf("%s.%s is listed in both restrictedReads and restrictedWrites", accessor, w)
+			}
 		}
 	}
 }
@@ -262,12 +284,13 @@ func restrictedStoreMethods(t *testing.T, scoped StorageDriver, check func(acces
 }
 
 // For a restricted viewer over a driver whose stores are nil: every
-// refused read fails closed without touching the store, every scoped
-// read fails closed too (the nil store cannot bind to the scope) with
-// ErrNoScopedReads, every per-principal read and write reaches the
-// store, and every other method reaches the store. Both refusals return
-// nothing beside their error.
-func TestRestrictedStoresFailClosedOnReadsAndPassWrites(t *testing.T) {
+// refused read and every owner-only write fails closed without touching
+// the store, every scoped read fails closed too (the nil store cannot
+// bind to the scope) with ErrNoScopedReads, every per-principal read
+// and write reaches the store, and every other method (a write to a
+// scoped store) reaches the store. The refusals return nothing beside
+// their error.
+func TestRestrictedStoresFailClosedAndPassScopedWrites(t *testing.T) {
 	scoped := ScopedDriver(fakeViewer(false), nilDriver{})
 	restrictedStoreMethods(t, scoped, func(accessor string, m reflect.Method, reached bool, err error) {
 		store := reflect.ValueOf(scoped).MethodByName(accessor).Call(nil)[0]
@@ -278,6 +301,15 @@ func TestRestrictedStoresFailClosedOnReadsAndPassWrites(t *testing.T) {
 				t.Errorf("%s.%s: listed as a refused read but reached the store", accessor, m.Name)
 			case !errors.Is(err, ErrRestrictedViewer) || errors.Is(err, ErrNoScopedReads):
 				t.Errorf("%s.%s: refused read returned %v, want ErrRestrictedViewer", accessor, m.Name, err)
+			default:
+				assertZeroResults(t, accessor, store, m)
+			}
+		case slices.Contains(restrictedWrites[accessor], m.Name):
+			switch {
+			case reached:
+				t.Errorf("%s.%s: listed as an owner-only write but reached the store", accessor, m.Name)
+			case !errors.Is(err, ErrRestrictedViewer) || errors.Is(err, ErrNoScopedReads):
+				t.Errorf("%s.%s: owner-only write returned %v, want ErrRestrictedViewer", accessor, m.Name, err)
 			default:
 				assertZeroResults(t, accessor, store, m)
 			}
@@ -296,13 +328,14 @@ func TestRestrictedStoresFailClosedOnReadsAndPassWrites(t *testing.T) {
 	})
 }
 
-// For a nil viewer every read of every table, and every per-principal
-// write, fails closed without touching the store; every other method
-// reaches it.
+// For a nil viewer every read of every table, every owner-only write
+// and every per-principal write fails closed without touching the
+// store; every other method reaches it.
 func TestNilViewerFailsEveryReadClosed(t *testing.T) {
 	scoped := ScopedDriver(nil, nilDriver{})
 	restrictedStoreMethods(t, scoped, func(accessor string, m reflect.Method, reached bool, err error) {
-		ownerOnly := slices.Contains(restrictedReads[accessor], m.Name)
+		ownerOnly := slices.Contains(restrictedReads[accessor], m.Name) ||
+			slices.Contains(restrictedWrites[accessor], m.Name)
 		viewerless := slices.Contains(scopedReads[accessor], m.Name) ||
 			slices.Contains(principalReads[accessor], m.Name) ||
 			slices.Contains(principalWrites[accessor], m.Name)
@@ -346,5 +379,26 @@ func TestRestrictedReadNamesStoreAndMethod(t *testing.T) {
 	err := restrictedRead("Objects", "Get")
 	if !errors.Is(err, ErrRestrictedViewer) || !strings.HasPrefix(err.Error(), "Objects.Get: ") {
 		t.Fatalf("restrictedRead = %v", err)
+	}
+}
+
+func TestRestrictedWriteNamesStoreAndMethod(t *testing.T) {
+	err := restrictedWrite("Entitlements", "Upsert")
+	if !errors.Is(err, ErrRestrictedViewer) || !strings.HasPrefix(err.Error(), "Entitlements.Upsert: ") {
+		t.Fatalf("restrictedWrite = %v", err)
+	}
+	if errors.Is(err, ErrNoViewer) || errors.Is(err, ErrNoScopedReads) {
+		t.Fatalf("restrictedWrite = %v, want a capability refusal, not a missing viewer or scope", err)
+	}
+}
+
+func TestRestrictedWritesExportedCopy(t *testing.T) {
+	got := RestrictedWrites()
+	if !reflect.DeepEqual(got, restrictedWrites) {
+		t.Fatal("RestrictedWrites() differs from the table")
+	}
+	got["Entitlements"][0] = "mutated"
+	if restrictedWrites["Entitlements"][0] == "mutated" {
+		t.Fatal("RestrictedWrites() shares its slices with the table")
 	}
 }
