@@ -166,23 +166,20 @@ echo "UX improvements needed" | ./bin/ctxt
 
 ### 3. Manage Jobs
 
-Monitor and control ingestion jobs with `dpkms job` (ctxt has no job command):
+Monitor and control the instance's jobs with `ctxt job`. It calls the dpkms API, so it works against a remote instance too; cancel needs an admin token:
 
 ```bash
 # List all jobs
-./bin/dpkms job list
+./bin/ctxt job list
 
-# Check job status
-./bin/dpkms job status job_12345678
-
-# View job logs
-./bin/dpkms job log job_12345678
+# Check job status (state, retries, error)
+./bin/ctxt job status job_12345678
 
 # Retry failed job
-./bin/dpkms job retry job_12345678
+./bin/ctxt job retry job_12345678
 
 # Cancel a pending or running job
-./bin/dpkms job cancel job_12345678
+./bin/ctxt job cancel job_12345678 --confirm-token=<token>
 ```
 
 ### 4. Query Knowledge
@@ -509,7 +506,7 @@ mkdir -p ~/.local/share/contexthelp
 
 # Command-specific help
 ./bin/ctxt analyze --help
-./bin/dpkms job --help
+./bin/ctxt job --help
 ./bin/dpkms serve --help
 ```
 

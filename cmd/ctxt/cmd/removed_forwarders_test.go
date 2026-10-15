@@ -6,7 +6,7 @@ import (
 )
 
 // ctxt is unreleased, so it carries no forwarders for commands that live
-// in dpkms (dev, detector, job, key, secret) and no aliases for renamed
+// in dpkms (dev, detector, key, secret) and no aliases for renamed
 // profile verbs (show is view, delete is rm). Each is gone from the
 // tree, and invoking one is an unknown command, not a "moved" notice.
 func TestCompatForwardersRemoved(t *testing.T) {
@@ -17,7 +17,7 @@ func TestCompatForwardersRemoved(t *testing.T) {
 		}
 		return m
 	}
-	gone := children([]string{"dev", "detector", "job", "key", "secret"})
+	gone := children([]string{"dev", "detector", "key", "secret"})
 	for _, c := range rootCmd.Commands() {
 		if gone[c.Name()] {
 			t.Errorf("ctxt %s still registered: it lives in dpkms", c.Name())
@@ -36,7 +36,6 @@ func TestCompatForwardersRemoved(t *testing.T) {
 	for _, args := range [][]string{
 		{"dev", "validate-registry", "foo.yaml"},
 		{"dev", "gen-docs"},
-		{"job", "status", "job_123"},
 		{"key", "init"},
 		{"secret", "list"},
 		{"detector", "list"},

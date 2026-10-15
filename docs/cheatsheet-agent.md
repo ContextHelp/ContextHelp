@@ -30,7 +30,7 @@ dpkms reboot                         # SIGHUP drain+exit (caller must re-launch)
 
 ```
 1. Ingest      →  ctxt analyze / POST /analyze
-2. Poll        →  dpkms job status <id> / GET /jobs/{id}  (gate on "completed")
+2. Poll        →  ctxt job status <id> / GET /jobs/{id}  (gate on "completed")
 3. Retrieve    →  ctxt list --q "<rsql>" / GET /objects?q=  (deterministic first)
 4. Fallback    →  ctxt find "<nlq>" / GET /objects  (hybrid FTS+vector; --fts or --semantic for single-mode)
 5. Compose     →  ctxt make ... / POST /compose
@@ -81,7 +81,7 @@ curl -X POST http://127.0.0.1:8080/analyze \
 ## Poll Jobs
 
 ```bash
-dpkms job status <job_id>             # CLI
+ctxt job status <job_id>              # CLI
 GET /jobs/{id}                       # REST
 ```
 
@@ -89,10 +89,10 @@ States: `pending` → `running` → `completed` | `failed` | `cancelled`
 
 ```bash
 # Wait loop pattern
-until dpkms job status "$JOB_ID" | grep -q completed; do sleep 2; done
+until ctxt job status "$JOB_ID" --format json | grep -q '"status": *"completed"'; do sleep 2; done
 
 # Retry on failure
-dpkms job retry <job_id>
+ctxt job retry <job_id>
 POST /jobs/{id}/retry
 ```
 
@@ -219,9 +219,9 @@ ctxt stats --watch                   # live 3s refresh
 
 | Condition | Handling |
 |-----------|----------|
-| Job stays `pending` | Check `dpkms serve` is running; `dpkms job list --state running` |
+| Job stays `pending` | Check `dpkms serve` is running; `ctxt job list --state running` |
 | Wrong instance targeted | `ctxt instance current`; use `--instance <name>` or `ctxt instance use` |
-| Job `failed` | `dpkms job log <id>` → fix input → `dpkms job retry <id>` |
+| Job `failed` | `ctxt job status <id>` (error) → fix input → `ctxt job retry <id>` |
 | RSQL returns empty | Remove one clause at a time; verify with `ctxt list --type <t>` |
 | Registry latency | Separate local-first and federated runs in agent policy |
 | Compose before job complete | Gate composition on `completed` status — never compose immediately after ingest |

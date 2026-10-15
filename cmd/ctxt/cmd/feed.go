@@ -93,7 +93,7 @@ func init() {
 		{Title: "Sync by feed URL", Command: "ctxt feed sync --url https://example.com/feed.xml"},
 	})
 	cliconv.WithNextSteps(feedSyncCmd, []cliconv.NextStep{
-		{When: "on success", Suggest: "dpkms job status <sync-job-id>", Reason: "follow the spawned sync job to completion"},
+		{When: "on success", Suggest: "ctxt job status <sync-job-id>", Reason: "follow the spawned sync job to completion"},
 	})
 	cliconv.WithSideEffect(feedRemoveCmd, cliconv.SideEffectDestructive)
 	// 12fcc strict-gate: feed delete drops the subscription record on

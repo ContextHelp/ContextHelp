@@ -175,7 +175,7 @@ ctxt registry info core
 | `ctxt [content]` | Capture (default; clipboard fallback) |
 | `ctxt analyze` | Explicit capture alias |
 | `ctxt inbox list/triage/discard/clear` | Inbox triage |
-| `dpkms job list/status/log/retry/cancel` | Job queue ops |
+| `ctxt job list/status/retry/cancel` | Job queue ops (over the API) |
 | `ctxt list` | Query knowledge objects |
 | `ctxt find <query>` | Semantic search |
 | `ctxt open <id>` | Show object detail |
@@ -285,7 +285,7 @@ system clipboard when no content/query/ID argument is given.
 
 `ctxt analyze` returns a **Job ID** immediately.
 Use `--wait` to block and get the **Knowledge Object ID**.
-Or poll: `dpkms job status <job-id>`.
+Or poll: `ctxt job status <job-id>`.
 
 ### Config validation
 
@@ -353,7 +353,7 @@ ctxt make summary --since 2026-02-01
 
 - Never skip `dpkms serve` — pipelines do not run without the worker.
 - Never use `--raw` when enrichment is needed; it bypasses AI entirely.
-- Never assume synchronous processing; use `--wait` or `dpkms job status`.
+- Never assume synchronous processing; use `--wait` or `ctxt job status`.
 - Never pass secrets on CLI: `dpkms secret set KEY` takes the value from stdin,
   `--from-file` or `--prompt`, never an argument.
 - Never filter with both `--tag` and `--q` containing tag filters simultaneously
