@@ -35,7 +35,7 @@ and only commands that read; the flags after the command belong to it.
 Examples:
   ctxt share preview --as prn_01J... find "sarah"
   ctxt share preview --as colleagues-network show <object-id>
-  ctxt share preview --as partners-network list --type contact`,
+  ctxt share preview --as partners-network list`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: runSharePreview,
 }
