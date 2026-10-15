@@ -166,7 +166,7 @@ Rows that pass §4 go through `sharing.Render(viewer, obj)` before any encoder s
 
 Provenance changes this ADR requires:
 
-- `edges.metadata.source_node` on every `mentions` edge, written by `entity_resolver`, `jobs/worker` and `service/fanout`. Today they write empty metadata.
+- `edges.metadata.source_node` and `source_field` on every `mentions` and `mentioned_in` edge. Four writers exist: `entity_resolver`, `jobs/worker`, `service/fanout` and the raw `service.writeUserMentionEdges` path. The first three know the `entity_mention` graph node the extractor created and record it; the raw path has no graph, so it records `source_node: ""` with `source_field: "mentions"`. `source_field` uses the object's JSON field names (`raw_content`, `mentions`). Before this change all four wrote empty metadata.
 - `entity_facts(entity_slug, key, value, source_object_id, source_node_id, span_start, span_end, step, confidence, created_at)` before any step derives entity attributes from content.
 - `metadata.source_ids` on every multi-source derived object (entity page, topic index, future digests), plus `classes: [derived]`. Restricted viewers never receive stored derived objects.
 - `objects.owner_principal` on per-principal rows (§4).
