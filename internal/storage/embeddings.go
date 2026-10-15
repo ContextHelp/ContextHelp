@@ -9,15 +9,41 @@ import (
 	"regexp"
 )
 
+// Embedding variants (ADR-080 §7). The raw variant embeds the owner's
+// text; the masked variant embeds the masked projection (the searchable
+// minimum of a structured type, every classed part removed) and exists
+// only for objects whose masked text differs from the raw one. Restricted
+// viewers search the masked variant and fall back to the raw one where
+// no masked row exists.
+const (
+	EmbeddingVariantRaw    = "raw"
+	EmbeddingVariantMasked = "masked"
+)
+
+// EmbeddingVariants lists every variant an embeddings row may carry.
+var EmbeddingVariants = []string{EmbeddingVariantRaw, EmbeddingVariantMasked}
+
 // ObjectVector is one embedding a registered model produced for one chunk
-// of an object: a row of the embeddings table keyed (object, model, chunk)
-// minus the object ID, which is known only once the object is persisted.
+// of an object: a row of the embeddings table keyed (object, model, chunk,
+// variant) minus the object ID, which is known only once the object is
+// persisted.
 type ObjectVector struct {
 	ModelID  string    `json:"model_id"`
 	ChunkIdx int       `json:"chunk_idx"`
 	Vector   []float32 `json:"vector"`
 	// Text is the chunk text that was embedded (eval and debugging).
 	Text string `json:"text,omitempty"`
+	// Variant is EmbeddingVariantRaw or EmbeddingVariantMasked; empty
+	// means raw.
+	Variant string `json:"variant,omitempty"`
+}
+
+// EffectiveVariant returns v.Variant, raw when empty.
+func (v ObjectVector) EffectiveVariant() string {
+	if v.Variant == "" {
+		return EmbeddingVariantRaw
+	}
+	return v.Variant
 }
 
 // EmbeddingModelSpec is the registry data a per-model vector index is built
@@ -35,6 +61,18 @@ type VectorQuery struct {
 	Vector  []float32
 	// TopK bounds the number of object-level hits; <= 0 means 10.
 	TopK int
+	// Variant selects the rows ranked: EmbeddingVariantRaw (the default
+	// when empty) ranks raw rows only; EmbeddingVariantMasked ranks each
+	// object's masked row where one exists and its raw row otherwise.
+	Variant string
+}
+
+// EffectiveVariant returns q.Variant, raw when empty.
+func (q VectorQuery) EffectiveVariant() string {
+	if q.Variant == "" {
+		return EmbeddingVariantRaw
+	}
+	return q.Variant
 }
 
 // EmbeddingHit is one object-level search hit: the object's closest chunk

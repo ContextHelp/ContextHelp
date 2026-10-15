@@ -130,6 +130,7 @@ func (d *Driver) Watermarks() storage.WatermarkStore          { return &watermar
 func (d *Driver) PendingEntities() storage.PendingEntityStore { return &pendingEntityStore{db: d.db} }
 func (d *Driver) UISessions() storage.UISessionStore          { return &uiSessionStore{db: d.db} }
 func (d *Driver) Auth() storage.AuthStore                     { return &authStore{db: d.db} }
+func (d *Driver) Sharing() storage.SharingStore               { return &sharingStore{db: d.db} }
 
 // SQLDialect implements search.dialectDetector; signals Postgres SQL dialect.
 func (d *Driver) SQLDialect() string { return "postgres" }

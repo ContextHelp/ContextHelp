@@ -333,6 +333,119 @@ var pgMigrations = []pgMigration{
 		`CREATE INDEX IF NOT EXISTS idx_objects_created_at ON objects (created_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_objects_updated_at ON objects (updated_at)`,
 	}},
+	// The sharing registry (ADR-080), mirroring SQLite migration 051:
+	// audiences and their members, share policies, grants and the read
+	// audit; principals.deny_classes, principal_identities.share_policy_id;
+	// objects.classes and the masked shadow projection
+	// (projected_fts_body_masked with its generated fts_masked tsvector
+	// and GIN index); embeddings.variant, extending the primary key. The
+	// masked body is a projection output, so the projection version is
+	// bumped with it (indexsig.ProjectionVersion v5) and the
+	// re-projection fills it.
+	{Version: 31, Name: "sharing registry", fn: migrateSharing},
+}
+
+// sharingRegistryStatements create the sharing registry and add the
+// sharing columns (migration 31). IF NOT EXISTS makes every statement
+// re-runnable.
+var sharingRegistryStatements = []string{
+	`CREATE TABLE IF NOT EXISTS audiences (
+		id         TEXT PRIMARY KEY,
+		name       TEXT NOT NULL UNIQUE,
+		created_at TIMESTAMPTZ NOT NULL
+	)`,
+	`CREATE TABLE IF NOT EXISTS audience_members (
+		audience_id  TEXT NOT NULL REFERENCES audiences(id) ON DELETE CASCADE,
+		principal_id TEXT NOT NULL REFERENCES principals(id),
+		expires_at   TIMESTAMPTZ,
+		added_by     TEXT NOT NULL,
+		added_at     TIMESTAMPTZ NOT NULL,
+		PRIMARY KEY (audience_id, principal_id)
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_audience_members_principal ON audience_members (principal_id)`,
+	`CREATE TABLE IF NOT EXISTS share_policies (
+		id         TEXT PRIMARY KEY,
+		name       TEXT NOT NULL UNIQUE,
+		version    INTEGER NOT NULL,
+		spec       JSONB NOT NULL,
+		updated_at TIMESTAMPTZ NOT NULL
+	)`,
+	`CREATE TABLE IF NOT EXISTS share_grants (
+		id          TEXT PRIMARY KEY,
+		audience_id TEXT NOT NULL REFERENCES audiences(id),
+		policy_id   TEXT NOT NULL REFERENCES share_policies(id),
+		expires_at  TIMESTAMPTZ,
+		created_by  TEXT NOT NULL,
+		created_at  TIMESTAMPTZ NOT NULL,
+		revoked_at  TIMESTAMPTZ
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_share_grants_audience ON share_grants (audience_id)`,
+	`CREATE TABLE IF NOT EXISTS access_log (
+		id              TEXT PRIMARY KEY,
+		at              TIMESTAMPTZ NOT NULL,
+		principal_id    TEXT NOT NULL,
+		identity_id     TEXT,
+		route           TEXT NOT NULL,
+		policy_versions TEXT NOT NULL,
+		object_count    INTEGER NOT NULL,
+		entity_count    INTEGER NOT NULL
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_access_log_principal ON access_log (principal_id, at)`,
+	`CREATE INDEX IF NOT EXISTS idx_access_log_at ON access_log (at)`,
+	`CREATE TABLE IF NOT EXISTS access_log_objects (
+		access_id TEXT NOT NULL REFERENCES access_log(id) ON DELETE CASCADE,
+		object_id TEXT NOT NULL,
+		PRIMARY KEY (access_id, object_id)
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_access_log_objects_object ON access_log_objects (object_id)`,
+	`ALTER TABLE principals ADD COLUMN IF NOT EXISTS deny_classes TEXT NOT NULL DEFAULT '[]'`,
+	`ALTER TABLE principal_identities ADD COLUMN IF NOT EXISTS share_policy_id TEXT REFERENCES share_policies(id)`,
+	`ALTER TABLE objects ADD COLUMN IF NOT EXISTS classes JSONB NOT NULL DEFAULT '[]'::jsonb`,
+	`ALTER TABLE objects ADD COLUMN IF NOT EXISTS projected_fts_body_masked TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE objects ADD COLUMN IF NOT EXISTS fts_masked tsvector
+		GENERATED ALWAYS AS (to_tsvector('` + ftsRegconfig + `', projected_fts_body_masked)) STORED`,
+	`CREATE INDEX IF NOT EXISTS idx_objects_fts_masked ON objects USING GIN (fts_masked)`,
+}
+
+// migrateSharing runs sharingRegistryStatements, then extends the
+// embeddings primary key with variant: the column is added with every
+// existing row raw, and the (object, model, chunk) key is replaced by
+// (object, model, chunk, variant). The key swap happens only while the
+// column is absent, so a replay is a no-op. The per-model partial HNSW
+// indexes are keyed by model_id and unaffected.
+func migrateSharing(ctx context.Context, d *Driver) error {
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, stmt := range sharingRegistryStatements {
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("create sharing registry: %w", err)
+		}
+	}
+	var hasVariant bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM information_schema.columns
+			WHERE table_schema = current_schema()
+			  AND table_name = 'embeddings' AND column_name = 'variant'
+		)`).Scan(&hasVariant); err != nil {
+		return fmt.Errorf("inspect embeddings.variant: %w", err)
+	}
+	if !hasVariant {
+		for _, stmt := range []string{
+			`ALTER TABLE embeddings ADD COLUMN variant TEXT NOT NULL DEFAULT 'raw'
+				CONSTRAINT embeddings_variant_known CHECK (variant IN ('raw', 'masked'))`,
+			`ALTER TABLE embeddings DROP CONSTRAINT IF EXISTS embeddings_pkey`,
+			`ALTER TABLE embeddings ADD CONSTRAINT embeddings_pkey PRIMARY KEY (object_id, model_id, chunk_idx, variant)`,
+		} {
+			if _, err := tx.ExecContext(ctx, stmt); err != nil {
+				return fmt.Errorf("extend embeddings key with variant: %w", err)
+			}
+		}
+	}
+	return tx.Commit()
 }
 
 // migrateAliasesObjectFK deletes aliases whose object is gone, then adds

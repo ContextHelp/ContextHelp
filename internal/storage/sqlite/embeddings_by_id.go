@@ -17,8 +17,9 @@ const embeddingsByIDChunk = 500
 var _ storage.EmbeddingReader = (*EmbeddingStore)(nil)
 
 // EmbeddingsByID implements storage.EmbeddingReader: one query per chunk of
-// ids against the canonical embeddings rows of modelID (the rows its vec0
-// index is built from). Ids without a row under modelID are absent from
+// ids against the canonical embeddings rows of modelID (the raw rows its
+// vec0 index is built from; masked rows are a restricted viewer's search
+// path, not the owner's). Ids without a row under modelID are absent from
 // the result.
 func (s *EmbeddingStore) EmbeddingsByID(ctx context.Context, modelID string, ids []string) (map[string][]storage.ObjectVector, error) {
 	out := make(map[string][]storage.ObjectVector, len(ids))
@@ -44,7 +45,7 @@ func (s *EmbeddingStore) embeddingsChunk(ctx context.Context, modelID string, id
 	// #nosec G202 -- placeholders are literal "?" markers; model and ids are bound.
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT object_id, chunk_idx, vector, text FROM embeddings
-		 WHERE model_id = ? AND object_id IN (`+placeholders+`)
+		 WHERE model_id = ? AND variant = 'raw' AND object_id IN (`+placeholders+`)
 		 ORDER BY object_id, chunk_idx`, args...)
 	if err != nil {
 		return fmt.Errorf("sqlite embeddings by id %s: %w", modelID, err)

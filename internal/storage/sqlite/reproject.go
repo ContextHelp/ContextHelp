@@ -98,7 +98,7 @@ func reindexRowTx(ctx context.Context, tx *sql.Tx, id string) error {
 		decisions, tasks, pipeline, source,
 		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
-		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq
+		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq, classes
 	FROM objects WHERE id = ?`, id))
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
@@ -106,31 +106,28 @@ func reindexRowTx(ctx context.Context, tx *sql.Tx, id string) error {
 		}
 		return fmt.Errorf("load: %w", err)
 	}
-	var stored string
+	var stored, storedMasked string
 	if err := tx.QueryRowContext(ctx,
-		`SELECT projected_fts_body FROM objects WHERE id = ?`, id).Scan(&stored); err != nil {
+		`SELECT projected_fts_body, projected_fts_body_masked FROM objects WHERE id = ?`, id).Scan(&stored, &storedMasked); err != nil {
 		return fmt.Errorf("load body: %w", err)
 	}
 
-	body := projection.ProjectIndex(obj).FTSBody
-	if body != stored {
-		// Same order as Update: drop the entry while the row still holds
-		// the old body, rewrite, then index the new body.
+	index := projection.ProjectIndex(obj)
+	body := index.FTSBody
+	if body != stored || index.MaskedFTSBody != storedMasked {
+		// Same order as Update: drop the entries while the row still holds
+		// the old bodies, rewrite, then index the new bodies.
 		if err := deleteObjectFTSTx(ctx, tx, id); err != nil {
 			return fmt.Errorf("drop fts entry: %w", err)
 		}
 		if _, err := tx.ExecContext(ctx,
-			`UPDATE objects SET projected_fts_body = ?,
+			`UPDATE objects SET projected_fts_body = ?, projected_fts_body_masked = ?,
 			        fts_indexed = CASE WHEN ? != '' THEN 1 ELSE fts_indexed END
-			  WHERE id = ?`, body, body, id); err != nil {
+			  WHERE id = ?`, body, index.MaskedFTSBody, body, id); err != nil {
 			return fmt.Errorf("write body: %w", err)
 		}
-		if body != "" {
-			if _, err := tx.ExecContext(ctx,
-				`INSERT INTO objects_fts(rowid, id, projected_fts_body) VALUES ((SELECT rowid FROM objects WHERE id = ?), ?, ?)`,
-				id, id, body); err != nil {
-				return fmt.Errorf("index body: %w", err)
-			}
+		if err := insertObjectFTSTx(ctx, tx, id, index); err != nil {
+			return fmt.Errorf("index body: %w", err)
 		}
 	}
 	if _, err := tx.ExecContext(ctx,

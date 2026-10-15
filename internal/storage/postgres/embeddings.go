@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/lib/pq"
+
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/indexsig"
 )
@@ -57,7 +59,7 @@ const (
 	pgIndexTmpl = `CREATE INDEX IF NOT EXISTS {INDEX} ON embeddings
   USING hnsw ((vector::vector({DIM})) vector_cosine_ops) WHERE model_id = '{MODEL}'`
 	pgCheckTmpl  = `ALTER TABLE embeddings ADD CONSTRAINT {CHECK} CHECK (model_id <> '{MODEL}' OR vector_dims(vector) = {DIM})`
-	pgSearchTmpl = `SELECT object_id, chunk_idx, vector::vector({DIM}) <=> $1::vector({DIM}) AS distance
+	pgSearchTmpl = `SELECT object_id, chunk_idx, variant, vector::vector({DIM}) <=> $1::vector({DIM}) AS distance
   FROM embeddings
  WHERE model_id = '{MODEL}'
  ORDER BY vector::vector({DIM}) <=> $1::vector({DIM})
@@ -318,9 +320,9 @@ func (s *EmbeddingStore) Put(ctx context.Context, objectID string, vectors []sto
 				text = v.Text
 			}
 			if _, err := tx.ExecContext(ctx, `
-				INSERT INTO embeddings (object_id, model_id, chunk_idx, vector, text, created_at)
-				VALUES ($1, $2, $3, $4::vector, $5, NOW())`,
-				objectID, g.modelID, v.ChunkIdx, pgVectorLiteral(v.Vector), text); err != nil {
+				INSERT INTO embeddings (object_id, model_id, chunk_idx, variant, vector, text, created_at)
+				VALUES ($1, $2, $3, $4, $5::vector, $6, NOW())`,
+				objectID, g.modelID, v.ChunkIdx, v.EffectiveVariant(), pgVectorLiteral(v.Vector), text); err != nil {
 				return fmt.Errorf("postgres embeddings put %s/%s chunk %d: %w", objectID, g.modelID, v.ChunkIdx, err)
 			}
 		}
@@ -373,12 +375,13 @@ func registryDimension(ctx context.Context, q indexsig.DBTX, modelID string) (in
 	return dim, nil
 }
 
-// Get returns objectID's chunks under modelID, ordered by chunk index.
+// Get returns objectID's chunks under modelID: the raw variant first,
+// then the masked one, each ordered by chunk index.
 func (s *EmbeddingStore) Get(ctx context.Context, objectID, modelID string) ([]storage.ObjectVector, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT chunk_idx, vector::text, text FROM embeddings
+		SELECT chunk_idx, variant, vector::text, text FROM embeddings
 		 WHERE object_id = $1 AND model_id = $2
-		 ORDER BY chunk_idx`, objectID, modelID)
+		 ORDER BY CASE variant WHEN 'raw' THEN 0 ELSE 1 END, chunk_idx`, objectID, modelID)
 	if err != nil {
 		return nil, fmt.Errorf("postgres embeddings get %s/%s: %w", objectID, modelID, err)
 	}
@@ -390,7 +393,7 @@ func (s *EmbeddingStore) Get(ctx context.Context, objectID, modelID string) ([]s
 			lit  string
 			text sql.NullString
 		)
-		if err := rows.Scan(&v.ChunkIdx, &lit, &text); err != nil {
+		if err := rows.Scan(&v.ChunkIdx, &v.Variant, &lit, &text); err != nil {
 			return nil, fmt.Errorf("postgres embeddings get %s/%s: %w", objectID, modelID, err)
 		}
 		if v.Vector, err = parsePgVectorLiteral(lit); err != nil {
@@ -443,16 +446,16 @@ func (s *EmbeddingStore) Search(ctx context.Context, q storage.VectorQuery) ([]s
 			k = pgEmbeddingMaxFetch
 		}
 		var (
-			hits    []storage.EmbeddingHit
+			rows    []variantHit
 			fetched int
 		)
-		err := queryVectorRowsTx(ctx, s.db, s.caps, func(rows *sql.Rows) error {
-			for rows.Next() {
+		err := queryVectorRowsTx(ctx, s.db, s.caps, func(rs *sql.Rows) error {
+			for rs.Next() {
 				var (
-					h    storage.EmbeddingHit
+					h    variantHit
 					dist sql.NullFloat64
 				)
-				if err := rows.Scan(&h.ObjectID, &h.ChunkIdx, &dist); err != nil {
+				if err := rs.Scan(&h.ObjectID, &h.ChunkIdx, &h.variant, &dist); err != nil {
 					return err
 				}
 				fetched++
@@ -460,10 +463,14 @@ func (s *EmbeddingStore) Search(ctx context.Context, q storage.VectorQuery) ([]s
 					continue
 				}
 				h.Distance = dist.Float64
-				hits = append(hits, h)
+				rows = append(rows, h)
 			}
 			return nil
 		}, query, lit, k)
+		if err != nil {
+			return nil, fmt.Errorf("postgres embeddings search %s: %w", q.ModelID, err)
+		}
+		hits, err := s.selectVariant(ctx, q, rows)
 		if err != nil {
 			return nil, fmt.Errorf("postgres embeddings search %s: %w", q.ModelID, err)
 		}
@@ -472,6 +479,70 @@ func (s *EmbeddingStore) Search(ctx context.Context, q storage.VectorQuery) ([]s
 			return collapsed, nil
 		}
 	}
+}
+
+// variantHit is a KNN row with the variant of the embeddings row it
+// came from; the per-model index holds both variants.
+type variantHit struct {
+	storage.EmbeddingHit
+	variant string
+}
+
+// chunkKey identifies one chunk of one object under a model.
+type chunkKey struct {
+	objectID string
+	chunkIdx int
+}
+
+// selectVariant keeps the hits of q's variant, in order. For the raw
+// variant that is the raw rows. For the masked variant it is every
+// masked row plus the raw rows of chunks that have no masked row
+// (ADR-080 §7: one vector serves both variants when nothing is
+// withheld), decided by one lookup over the raw candidates so a raw row
+// whose masked twin ranks outside the fetched window is still dropped.
+func (s *EmbeddingStore) selectVariant(ctx context.Context, q storage.VectorQuery, hits []variantHit) ([]storage.EmbeddingHit, error) {
+	want := q.EffectiveVariant()
+	out := make([]storage.EmbeddingHit, 0, len(hits))
+	if want == storage.EmbeddingVariantRaw {
+		for _, h := range hits {
+			if h.variant == storage.EmbeddingVariantRaw {
+				out = append(out, h.EmbeddingHit)
+			}
+		}
+		return out, nil
+	}
+	rawObjects := make([]string, 0, len(hits))
+	for _, h := range hits {
+		if h.variant == storage.EmbeddingVariantRaw {
+			rawObjects = append(rawObjects, h.ObjectID)
+		}
+	}
+	masked := map[chunkKey]bool{}
+	if len(rawObjects) > 0 {
+		rows, err := s.db.QueryContext(ctx, `SELECT object_id, chunk_idx FROM embeddings
+			 WHERE model_id = $1 AND variant = $2 AND object_id = ANY($3)`,
+			q.ModelID, storage.EmbeddingVariantMasked, pq.Array(rawObjects))
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var k chunkKey
+			if err := rows.Scan(&k.objectID, &k.chunkIdx); err != nil {
+				return nil, err
+			}
+			masked[k] = true
+		}
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+	}
+	for _, h := range hits {
+		if h.variant == want || (h.variant == storage.EmbeddingVariantRaw && !masked[chunkKey{h.ObjectID, h.ChunkIdx}]) {
+			out = append(out, h.EmbeddingHit)
+		}
+	}
+	return out, nil
 }
 
 // queryVectorRowsTx runs a KNN query, inside a transaction with
@@ -547,7 +618,7 @@ func (s *EmbeddingStore) ListMissing(ctx context.Context, modelID, afterObjectID
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT o.id FROM objects o
 		 WHERE o.id > $1
-		   AND NOT EXISTS (SELECT 1 FROM embeddings e WHERE e.object_id = o.id AND e.model_id = $2)
+		   AND NOT EXISTS (SELECT 1 FROM embeddings e WHERE e.object_id = o.id AND e.model_id = $2 AND e.variant = 'raw')
 		 ORDER BY o.id
 		 LIMIT $3`, afterObjectID, modelID, lim)
 	if err != nil {

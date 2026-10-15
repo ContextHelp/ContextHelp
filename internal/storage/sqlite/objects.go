@@ -47,8 +47,10 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 	// (projection.BodyText), so stored text and embedded text agree.
 	obj.TextContent = projection.BodyText(obj)
 
-	// Derive FTS body from projection — single source of truth for indexed text.
-	projectedFTSBody := projection.ProjectIndex(obj).FTSBody
+	// Derive FTS bodies from projection — single source of truth for
+	// indexed text: the raw body and its masked shadow (ADR-080 §7).
+	index := projection.ProjectIndex(obj)
+	projectedFTSBody := index.FTSBody
 
 	if projectedFTSBody != "" {
 		obj.FTSIndexed = true
@@ -67,8 +69,8 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
 		remind_at, reminded_at, profile_id, graph_json, projected_fts_body, source_key,
-		projection_version
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		projection_version, classes, projected_fts_body_masked
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		obj.ID, obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
 		f.decisions, f.tasks, obj.Pipeline, obj.Source,
@@ -76,7 +78,7 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		obj.CreatedAt.Format(time.RFC3339), obj.UpdatedAt.Format(time.RFC3339),
 		boolToInt(obj.FTSIndexed), obj.Status, obj.InboxNote,
 		f.remindAt, f.remindedAt, obj.ProfileID, graphJSON, projectedFTSBody, obj.SourceKey,
-		indexsig.ProjectionVersion,
+		indexsig.ProjectionVersion, f.classes, index.MaskedFTSBody,
 	)
 	if err != nil {
 		return fmt.Errorf("create object: %w", err)
@@ -84,16 +86,32 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 	if err := s.upsertObjectNodesTx(ctx, tx, obj.ID, obj.Graph); err != nil {
 		return fmt.Errorf("create object nodes: %w", err)
 	}
-	if projectedFTSBody != "" {
-		_, err = tx.ExecContext(ctx,
-			`INSERT INTO objects_fts(rowid, id, projected_fts_body) VALUES ((SELECT rowid FROM objects WHERE id = ?), ?, ?)`,
-			obj.ID, obj.ID, projectedFTSBody)
-		if err != nil {
-			return fmt.Errorf("create object fts index: %w", err)
-		}
+	if err := insertObjectFTSTx(ctx, tx, obj.ID, index); err != nil {
+		return fmt.Errorf("create object fts index: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("create object: commit: %w", err)
+	}
+	return nil
+}
+
+// insertObjectFTSTx indexes the object's projected bodies: the raw one
+// in objects_fts and the masked one in objects_fts_masked (ADR-080 §7).
+// An empty body is not indexed (see deleteObjectFTSTx).
+func insertObjectFTSTx(ctx context.Context, tx *sql.Tx, id string, index storage.IndexProjection) error {
+	if index.FTSBody != "" {
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO objects_fts(rowid, id, projected_fts_body) VALUES ((SELECT rowid FROM objects WHERE id = ?), ?, ?)`,
+			id, id, index.FTSBody); err != nil {
+			return err
+		}
+	}
+	if index.MaskedFTSBody != "" {
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO objects_fts_masked(rowid, id, projected_fts_body_masked) VALUES ((SELECT rowid FROM objects WHERE id = ?), ?, ?)`,
+			id, id, index.MaskedFTSBody); err != nil {
+			return fmt.Errorf("masked: %w", err)
+		}
 	}
 	return nil
 }
@@ -105,7 +123,7 @@ func (s *ObjectStore) Get(ctx context.Context, id string) (*storage.KnowledgeObj
 		decisions, tasks, pipeline, source,
 		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
-		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq
+		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq, classes
 	FROM objects WHERE id = ?`, id)
 	obj, err := scanObject(row)
 	if err != nil {
@@ -142,7 +160,7 @@ func (s *ObjectStore) GetByContentHash(ctx context.Context, hash string) (*stora
 		decisions, tasks, pipeline, source,
 		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
-		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq
+		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq, classes
 	FROM objects WHERE content_hash = ? LIMIT 1`, hash)
 	obj, err := scanObject(row)
 	if errors.Is(err, errObjectNotFound) {
@@ -161,7 +179,7 @@ func (s *ObjectStore) GetBySourceKey(ctx context.Context, key string) (*storage.
 		decisions, tasks, pipeline, source,
 		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
-		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq
+		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq, classes
 	FROM objects WHERE source_key = ? LIMIT 1`, key)
 	obj, err := scanObject(row)
 	if errors.Is(err, errObjectNotFound) {
@@ -208,7 +226,7 @@ func objectListSQL(filter storage.ObjectFilter) (countSQL, pageSQL string, args 
 		decisions, tasks, pipeline, source,
 		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
-		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq
+		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq, classes
 	FROM objects%s ORDER BY %s`, whereClause(pageConditions), filter.ListOrder())
 	if filter.Limit > 0 {
 		pageSQL += fmt.Sprintf(" LIMIT %d", filter.Limit)
@@ -321,8 +339,10 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		return fmt.Errorf("update object graph: %w", err)
 	}
 
-	// Derive FTS body from projection — single source of truth for indexed text.
-	projectedFTSBody := projection.ProjectIndex(obj).FTSBody
+	// Derive FTS bodies from projection — single source of truth for
+	// indexed text: the raw body and its masked shadow (ADR-080 §7).
+	index := projection.ProjectIndex(obj)
+	projectedFTSBody := index.FTSBody
 
 	if projectedFTSBody != "" {
 		obj.FTSIndexed = true
@@ -334,8 +354,8 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 	}
 	defer tx.Rollback()
 
-	// Drop the old FTS entry while the content row still holds the old
-	// body; the new body is indexed after the UPDATE below.
+	// Drop the old FTS entries while the content row still holds the old
+	// bodies; the new bodies are indexed after the UPDATE below.
 	if err := deleteObjectFTSTx(ctx, tx, obj.ID); err != nil {
 		return fmt.Errorf("update object fts index: %w", err)
 	}
@@ -347,7 +367,7 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		registry_influences=?, content_hash=?, reinforcement_count=?, last_reinforced_at=?,
 		updated_at=?, fts_indexed=?, status=?, inbox_note=?,
 		remind_at=?, reminded_at=?, profile_id=?, graph_json=?, projected_fts_body=?, source_key=?,
-		projection_version=?
+		projection_version=?, classes=?, projected_fts_body_masked=?
 	WHERE id=?`,
 		obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
@@ -356,7 +376,7 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		obj.UpdatedAt.Format(time.RFC3339),
 		boolToInt(obj.FTSIndexed), obj.Status, obj.InboxNote,
 		f.remindAt, f.remindedAt, obj.ProfileID, graphJSON, projectedFTSBody, obj.SourceKey,
-		indexsig.ProjectionVersion, obj.ID,
+		indexsig.ProjectionVersion, f.classes, index.MaskedFTSBody, obj.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("update object: %w", err)
@@ -368,13 +388,8 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 	if err := s.upsertObjectNodesTx(ctx, tx, obj.ID, obj.Graph); err != nil {
 		return fmt.Errorf("update object nodes: %w", err)
 	}
-	if projectedFTSBody != "" {
-		_, err = tx.ExecContext(ctx,
-			`INSERT INTO objects_fts(rowid, id, projected_fts_body) VALUES ((SELECT rowid FROM objects WHERE id = ?), ?, ?)`,
-			obj.ID, obj.ID, projectedFTSBody)
-		if err != nil {
-			return fmt.Errorf("update object fts index: %w", err)
-		}
+	if err := insertObjectFTSTx(ctx, tx, obj.ID, index); err != nil {
+		return fmt.Errorf("update object fts index: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("update object: commit: %w", err)
@@ -444,11 +459,21 @@ func (s *ObjectStore) Delete(ctx context.Context, id string) error {
 // too: deleting a never-indexed rowid decrements FTS5's row/token totals
 // below what the index holds and eventually fails with SQLITE_CORRUPT.
 func deleteObjectFTSTx(ctx context.Context, tx *sql.Tx, id string) error {
-	_, err := tx.ExecContext(ctx,
+	if _, err := tx.ExecContext(ctx,
 		`DELETE FROM objects_fts WHERE rowid = (
 			SELECT rowid FROM objects WHERE id = ? AND projected_fts_body != ''
-		)`, id)
-	return err
+		)`, id); err != nil {
+		return err
+	}
+	// The masked shadow index (ADR-080 §7) is maintained the same way
+	// over projected_fts_body_masked.
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM objects_fts_masked WHERE rowid = (
+			SELECT rowid FROM objects WHERE id = ? AND projected_fts_body_masked != ''
+		)`, id); err != nil {
+		return fmt.Errorf("masked: %w", err)
+	}
+	return nil
 }
 
 func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *storage.KnowledgeObject) (string, error) {
@@ -623,7 +648,7 @@ func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, f
 		decisions, tasks, pipeline, source,
 		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
-		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq
+		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq, classes
 	FROM objects` + whereClause(pageConditions) + " ORDER BY " + filter.ListOrder()
 	pageArgs := args
 	if filter.Limit > 0 {
@@ -655,11 +680,32 @@ func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, f
 
 // scanObject scans a single row into a KnowledgeObject.
 func scanObject(row *sql.Row) (*storage.KnowledgeObject, error) {
+	obj, err := scanObjectRow(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, errObjectNotFound
+		}
+		return nil, fmt.Errorf("scan object: %w", err)
+	}
+	return obj, nil
+}
+
+func scanObjectFromRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
+	obj, err := scanObjectRow(rows)
+	if err != nil {
+		return nil, fmt.Errorf("scan object row: %w", err)
+	}
+	return obj, nil
+}
+
+// scanObjectRow scans one object row in the order of the object select
+// list (see Get). sql.ErrNoRows passes through for scanObject to map.
+func scanObjectRow(row interface{ Scan(...any) error }) (*storage.KnowledgeObject, error) {
 	var obj storage.KnowledgeObject
 	var (
 		metadataJSON, summariesJSON, sectionsJSON, tagsJSON string
 		mentionsJSON, decisionsJSON, tasksJSON              string
-		influencesJSON                                      string
+		influencesJSON, classesJSON                         string
 		createdAt, updatedAt                                string
 		ftsIndexed                                          int
 		lastReinforcedAt, remindAt, remindedAt              sql.NullString
@@ -673,64 +719,20 @@ func scanObject(row *sql.Row) (*storage.KnowledgeObject, error) {
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&createdAt, &updatedAt, &ftsIndexed, &obj.Status, &obj.InboxNote,
-		&remindAt, &remindedAt, &obj.ProfileID, &graphJSON, &sourceKey, &obj.ChangeSeq,
+		&remindAt, &remindedAt, &obj.ProfileID, &graphJSON, &sourceKey, &obj.ChangeSeq, &classesJSON,
 	)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, errObjectNotFound
-		}
-		return nil, fmt.Errorf("scan object: %w", err)
+		return nil, err
 	}
 
 	if err := unmarshalObjectJSON(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
 		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON,
 		createdAt, updatedAt, ftsIndexed, lastReinforcedAt,
 		remindAt, remindedAt); err != nil {
-		return nil, fmt.Errorf("scan object: %w", err)
+		return nil, err
 	}
-	if graphJSON.Valid {
-		g, err := unmarshalGraph(graphJSON.String)
-		if err != nil {
-			return nil, fmt.Errorf("unmarshal graph: %w", err)
-		}
-		obj.Graph = g
-	}
-	if sourceKey.Valid {
-		obj.SourceKey = sourceKey.String
-	}
-	return &obj, nil
-}
-
-func scanObjectFromRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
-	var obj storage.KnowledgeObject
-	var (
-		metadataJSON, summariesJSON, sectionsJSON, tagsJSON string
-		mentionsJSON, decisionsJSON, tasksJSON              string
-		influencesJSON                                      string
-		createdAt, updatedAt                                string
-		ftsIndexed                                          int
-		lastReinforcedAt, remindAt, remindedAt              sql.NullString
-		graphJSON                                           sql.NullString
-		sourceKey                                           sql.NullString
-	)
-
-	err := rows.Scan(
-		&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType, &obj.TextContent,
-		&metadataJSON, &summariesJSON, &sectionsJSON, &tagsJSON, &mentionsJSON,
-		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
-		&influencesJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
-		&createdAt, &updatedAt, &ftsIndexed, &obj.Status, &obj.InboxNote,
-		&remindAt, &remindedAt, &obj.ProfileID, &graphJSON, &sourceKey, &obj.ChangeSeq,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("scan object row: %w", err)
-	}
-
-	if err := unmarshalObjectJSON(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
-		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON,
-		createdAt, updatedAt, ftsIndexed, lastReinforcedAt,
-		remindAt, remindedAt); err != nil {
-		return nil, fmt.Errorf("scan object row: %w", err)
+	if obj.Classes, err = storage.ParseClassesJSON(classesJSON); err != nil {
+		return nil, err
 	}
 	if graphJSON.Valid {
 		g, err := unmarshalGraph(graphJSON.String)
@@ -796,7 +798,7 @@ func unmarshalObjectJSON(obj *storage.KnowledgeObject,
 type objectFields struct {
 	metadata, summaries, sections, tags    string
 	mentions, decisions, tasks             string
-	influences                             string
+	influences, classes                    string
 	lastReinforcedAt, remindAt, remindedAt sql.NullString
 }
 
@@ -823,6 +825,9 @@ func marshalObjectFields(obj *storage.KnowledgeObject) (objectFields, error) {
 	f.decisions = marshal("decisions", obj.Decisions)
 	f.tasks = marshal("tasks", obj.Tasks)
 	f.influences = marshal("influences", obj.RegistryInfluences)
+	if f.classes, err = storage.ClassesJSON(obj.Classes); err != nil {
+		return f, err
+	}
 
 	if obj.LastReinforcedAt != nil {
 		f.lastReinforcedAt = sql.NullString{String: obj.LastReinforcedAt.Format(time.RFC3339), Valid: true}

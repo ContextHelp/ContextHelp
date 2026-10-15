@@ -52,6 +52,7 @@ func (nilDriver) SearchHistory() SearchHistoryStore   { return nil }
 func (nilDriver) Watermarks() WatermarkStore          { return nil }
 func (nilDriver) UISessions() UISessionStore          { return nil }
 func (nilDriver) Auth() AuthStore                     { return nil }
+func (nilDriver) Sharing() SharingStore               { return nil }
 
 var driverType = reflect.TypeOf((*StorageDriver)(nil)).Elem()
 
