@@ -332,10 +332,10 @@ func TestSessions_ScopesIntersectTokenAndUISet(t *testing.T) {
 		auth.ScopeReadRegistries, auth.ScopeReadSystem,
 	}
 	cases := map[string][]auth.Scope{
-		auth.RoleReader: append(append([]auth.Scope{}, uiRead...), auth.ScopeSignoutUI),
+		auth.RoleReader: append(append([]auth.Scope{}, uiRead...), auth.ScopeWriteSelf, auth.ScopeSignoutUI),
 		auth.RoleWriter: {
 			auth.ScopeReadObjects, auth.ScopeReadInbox, auth.ScopeReadFeeds, auth.ScopeReadJobs, auth.ScopeWriteJobs,
-			auth.ScopeReadRegistries, auth.ScopeReadSystem, auth.ScopeSignoutUI,
+			auth.ScopeReadRegistries, auth.ScopeReadSystem, auth.ScopeWriteSelf, auth.ScopeSignoutUI,
 		},
 		auth.RoleAdmin: auth.UISessionScopes,
 	}

@@ -13,8 +13,10 @@ import (
 // at authentication time (see ScopesForRoles).
 type Scope string
 
-// Scopes. Only scopes that guard a route exist here: a new scope lands
-// together with the first route that requires it.
+// Scopes. A scope lands together with the first route that requires
+// it, with one exception: the principal-registry scopes of ADR-079 §5
+// (admin:principals, admin:shares, write:self) are here ahead of their
+// routes, so keys minted before those routes ship already carry them.
 const (
 	// ScopeReadObjects reads knowledge: objects, search and the search
 	// graph, entities, aliases, saved searches, search history,
@@ -76,6 +78,13 @@ const (
 	// ScopeWriteSystem dismisses system reminders.
 	ScopeWriteSystem Scope = "write:system"
 
+	// ScopeWriteSelf lets a principal manage its own credentials and
+	// sessions: its own API keys, passkeys and browser sessions, never
+	// another principal's. Every role bundle and every browser session
+	// holds it; a route under it checks that the target belongs to the
+	// caller (Principal.IsSelf).
+	ScopeWriteSelf Scope = "write:self"
+
 	// ScopeReadPipelines reads pipelines and installed steps.
 	ScopeReadPipelines Scope = "read:pipelines"
 	// ScopeAdminPipelines creates, deletes, archives and unarchives
@@ -93,6 +102,12 @@ const (
 
 	// ScopeAdminAudit reads the audit log.
 	ScopeAdminAudit Scope = "admin:audit"
+	// ScopeAdminPrincipals manages principals, their identities, keys
+	// and invites (ADR-079 §5).
+	ScopeAdminPrincipals Scope = "admin:principals"
+	// ScopeAdminShares manages audiences, share policies and ceilings
+	// (ADR-080).
+	ScopeAdminShares Scope = "admin:shares"
 
 	// ScopeReadUI mints a web UI login code: it signs a browser in as
 	// the caller, never with more than the caller holds. A read scope,
@@ -114,9 +129,10 @@ var AllScopes = []Scope{
 	ScopeReadJobs, ScopeWriteJobs, ScopeCancelJobs,
 	ScopeReadRegistries, ScopeSyncRegistries,
 	ScopeReadSystem, ScopeWriteSystem,
+	ScopeWriteSelf,
 	ScopeReadPipelines, ScopeAdminPipelines, ScopeAdminSteps,
 	ScopeReadWatches, ScopeAdminWatches,
-	ScopeAdminAudit,
+	ScopeAdminAudit, ScopeAdminPrincipals, ScopeAdminShares,
 	ScopeReadUI, ScopeSignoutUI,
 }
 
@@ -125,13 +141,18 @@ var AllScopes = []Scope{
 // principal holds.
 var sessionOnlyScopes = []Scope{ScopeSignoutUI}
 
+// selfScopes are in every role bundle whatever its verbs: a principal
+// of any role manages its own credentials (ADR-079 §5).
+var selfScopes = []Scope{ScopeWriteSelf}
+
 // UISessionScopes is the fixed scope set of a web UI browser session:
 // the reads the web UI makes, its own writes (delete an object, retry a
-// job, sign out) and nothing else. No MCP, pipelines, steps, watches,
-// audit log or login codes (read:ui); no other write. A session's
-// effective scopes are these intersected with its minting principal's
-// scopes, plus signout:ui, which only sessions hold (SessionScopesFor),
-// so a session never holds a scope its token lacks.
+// job, manage its own credentials, sign out) and nothing else. No MCP,
+// pipelines, steps, watches, audit log or login codes (read:ui); no
+// other write. A session's effective scopes are these intersected with
+// its minting principal's scopes, plus signout:ui, which only sessions
+// hold (SessionScopesFor), so a session never holds a scope its
+// principal lacks.
 var UISessionScopes = []Scope{
 	ScopeReadObjects, ScopeDeleteObjects,
 	ScopeReadInbox,
@@ -139,6 +160,7 @@ var UISessionScopes = []Scope{
 	ScopeReadJobs, ScopeWriteJobs,
 	ScopeReadRegistries,
 	ScopeReadSystem,
+	ScopeWriteSelf,
 	ScopeSignoutUI,
 }
 
@@ -171,7 +193,8 @@ const (
 // Roles lists the known roles, most to least privileged.
 var Roles = []string{RoleAdmin, RoleWriter, RoleReader}
 
-// Bundle returns the scopes a role grants, in AllScopes order. ok is
+// Bundle returns the scopes a role grants, in AllScopes order: the
+// role's verbs plus selfScopes, minus the session-only scopes. ok is
 // false for an unknown role.
 func Bundle(role string) (scopes []Scope, ok bool) {
 	var keep func(Scope) bool
@@ -186,7 +209,7 @@ func Bundle(role string) (scopes []Scope, ok bool) {
 		return nil, false
 	}
 	for _, s := range AllScopes {
-		if keep(s) && !slices.Contains(sessionOnlyScopes, s) {
+		if (keep(s) || slices.Contains(selfScopes, s)) && !slices.Contains(sessionOnlyScopes, s) {
 			scopes = append(scopes, s)
 		}
 	}
@@ -245,6 +268,14 @@ func SessionScopesFor(principal []Scope, kind string) []Scope {
 // HasScope reports whether the principal's effective scope set holds s.
 func (p *Principal) HasScope(s Scope) bool {
 	return p != nil && slices.Contains(p.Scopes, s)
+}
+
+// IsSelf reports whether principalID names the caller itself: the
+// owner-of-target check every route under write:self makes before it
+// touches a credential or session, so a principal only ever manages its
+// own. An empty id is never the caller.
+func (p *Principal) IsSelf(principalID string) bool {
+	return p != nil && principalID != "" && p.ID == principalID
 }
 
 // BypassesEntityGate reports whether the principal skips the inbound

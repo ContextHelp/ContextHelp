@@ -23,7 +23,7 @@ func TestRoleBundles(t *testing.T) {
 	cases := map[string][]Scope{
 		RoleReader: {
 			ScopeReadObjects, ScopeReadMCP, ScopeReadInbox, ScopeReadFeeds, ScopeReadJobs,
-			ScopeReadRegistries, ScopeReadSystem, ScopeReadPipelines, ScopeReadWatches,
+			ScopeReadRegistries, ScopeReadSystem, ScopeWriteSelf, ScopeReadPipelines, ScopeReadWatches,
 			ScopeReadUI,
 		},
 		RoleWriter: {
@@ -33,6 +33,7 @@ func TestRoleBundles(t *testing.T) {
 			ScopeReadJobs, ScopeWriteJobs,
 			ScopeReadRegistries,
 			ScopeReadSystem, ScopeWriteSystem,
+			ScopeWriteSelf,
 			ScopeReadPipelines, ScopeReadWatches,
 			ScopeReadUI,
 		},
@@ -56,6 +57,11 @@ func TestWriterBundleExcludesDeleteProcessSyncAdmin(t *testing.T) {
 		case "read", "write":
 		default:
 			t.Errorf("writer bundle holds %q", s)
+		}
+	}
+	for _, s := range []Scope{ScopeAdminPrincipals, ScopeAdminShares} {
+		if slices.Contains(got, s) {
+			t.Errorf("writer bundle must not hold %q", s)
 		}
 	}
 	for _, s := range []Scope{
@@ -96,6 +102,7 @@ func TestUISessionScopesPinned(t *testing.T) {
 		ScopeReadInbox, ScopeReadFeeds,
 		ScopeReadJobs, ScopeWriteJobs,
 		ScopeReadRegistries, ScopeReadSystem,
+		ScopeWriteSelf,
 		ScopeSignoutUI,
 	}
 	if !slices.Equal(UISessionScopes, want) {
@@ -113,6 +120,7 @@ func TestUISessionScopesPinned(t *testing.T) {
 	for _, s := range []Scope{
 		ScopeReadUI, ScopeReadMCP, ScopeWriteObjects, ScopeDeleteEdges, ScopeDeleteAliases, ScopeDeleteSearches,
 		ScopeReadPipelines, ScopeReadWatches, ScopeWriteSystem, ScopeAdminAudit,
+		ScopeAdminPrincipals, ScopeAdminShares,
 	} {
 		if slices.Contains(UISessionScopes, s) {
 			t.Errorf("ui set must not hold %q", s)
@@ -229,6 +237,42 @@ func TestLocalPrincipalHoldsEveryScope(t *testing.T) {
 	p.Scopes[0] = "mutated"
 	if LocalPrincipal().Scopes[0] != AllScopes[0] {
 		t.Error("LocalPrincipal shares its scope slice with AllScopes")
+	}
+}
+
+// ADR-079 §5: write:self is in every role bundle and in the browser
+// session set, so any principal manages its own credentials from a key
+// or a browser; admin:principals and admin:shares are admin-only. The
+// target check every write:self route makes is IsSelf: the caller
+// itself, never another principal, never an empty id.
+func TestSelfAndAdminScopes(t *testing.T) {
+	for _, role := range Roles {
+		b, _ := Bundle(role)
+		if !slices.Contains(b, ScopeWriteSelf) {
+			t.Errorf("role %s lacks %s", role, ScopeWriteSelf)
+		}
+		for _, s := range []Scope{ScopeAdminPrincipals, ScopeAdminShares} {
+			if got, want := slices.Contains(b, s), role == RoleAdmin; got != want {
+				t.Errorf("role %s holds %s = %v, want %v", role, s, got, want)
+			}
+		}
+	}
+	if !slices.Contains(UISessionScopes, ScopeWriteSelf) {
+		t.Errorf("the session ui set lacks %s: a browser could not register a passkey", ScopeWriteSelf)
+	}
+	if got := SessionScopesFor(ScopesForRoles([]string{RoleReader}), SessionKindUI); !slices.Contains(got, ScopeWriteSelf) {
+		t.Errorf("a reader's session lacks %s: %v", ScopeWriteSelf, got)
+	}
+
+	p := &Principal{ID: "prn_alice"}
+	for id, want := range map[string]bool{"prn_alice": true, "prn_bob": false, "": false, "owner": false} {
+		if got := p.IsSelf(id); got != want {
+			t.Errorf("IsSelf(%q) = %v, want %v", id, got, want)
+		}
+	}
+	var none *Principal
+	if none.IsSelf("prn_alice") {
+		t.Error("a nil principal is nobody")
 	}
 }
 
