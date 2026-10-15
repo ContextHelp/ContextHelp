@@ -156,9 +156,16 @@ func findFreePort() (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	port := l.Addr().(*net.TCPAddr).Port
-	l.Close()
-	return port, nil
+	addr, ok := l.Addr().(*net.TCPAddr)
+	if !ok {
+		_ = l.Close() // the address type is the failure being reported
+		return 0, fmt.Errorf("listener address %v is not TCP", l.Addr())
+	}
+	// The port is handed to the daemon only once it is free again.
+	if err := l.Close(); err != nil {
+		return 0, fmt.Errorf("release probe port %d: %w", addr.Port, err)
+	}
+	return addr.Port, nil
 }
 
 func randomToken() (string, error) {
