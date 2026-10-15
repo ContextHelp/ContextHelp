@@ -15,8 +15,9 @@ import (
 // viewer gets d itself and pays nothing. A restricted viewer gets the
 // scoped driver (storage.ScopedDriver: visible rows only) wrapped so
 // that every object it releases is rendered first (Render) and
-// recorded, with every entity, edge, neighbour, hit and alias it
-// releases, in the request's Ledger. A handler therefore cannot obtain
+// recorded in the request's Ledger with every entity and edge it
+// releases; the rows an edge, a neighbour pair or an alias refers to
+// are released through their own scoped reads. A handler therefore cannot obtain
 // an unrendered object: there is no accessor that returns one. A
 // context no transport attached a viewer to gets a driver whose every
 // read refuses. prov supplies the step contracts the render layer
@@ -54,19 +55,47 @@ func (d renderDriver) Entities() storage.EntityStore {
 }
 
 func (d renderDriver) Edges() storage.EdgeStore {
-	return ledgerEdges{EdgeStore: d.StorageDriver.Edges(), l: d.ledger}
+	return ledgerEdges{EdgeStore: d.StorageDriver.Edges(), d: d}
 }
 
 func (d renderDriver) Proximity() storage.ProximityStore {
-	return ledgerProximity{ProximityStore: d.StorageDriver.Proximity(), l: d.ledger}
-}
-
-func (d renderDriver) Embeddings() storage.EmbeddingStore {
-	return ledgerEmbeddings{EmbeddingStore: d.StorageDriver.Embeddings(), l: d.ledger}
+	return ledgerProximity{ProximityStore: d.StorageDriver.Proximity(), d: d}
 }
 
 func (d renderDriver) Aliases() storage.AliasStore {
-	return ledgerAliases{AliasStore: d.StorageDriver.Aliases(), l: d.ledger}
+	return ledgerAliases{AliasStore: d.StorageDriver.Aliases(), d: d}
+}
+
+// releaseObject records object id as released once a scoped read of
+// it succeeds. The ledger's objects come only from object reads, which
+// run the viewer's predicate: a row an edge, a neighbour pair or an
+// alias refers to is checked here, never taken on the referrer's word,
+// so a scoped join that went missing in one store still leaves the
+// backstop something to catch.
+func (d renderDriver) releaseObject(ctx context.Context, id string) {
+	if id == "" || d.ledger.HasObject(id) {
+		return
+	}
+	_, _ = d.Objects().Get(ctx, id)
+}
+
+// releaseEntity is releaseObject for an entity slug or URI.
+func (d renderDriver) releaseEntity(ctx context.Context, slug string) {
+	slug = strings.TrimPrefix(slug, EntityURIPrefix)
+	if slug == "" || d.ledger.HasEntity(slug) {
+		return
+	}
+	_, _ = d.Entities().Get(ctx, slug)
+}
+
+// releaseEndpoint releases an edge end: an entity by URI, else an
+// object.
+func (d renderDriver) releaseEndpoint(ctx context.Context, typ, id string) {
+	if typ == storage.EdgeEndpointEntity {
+		d.releaseEntity(ctx, id)
+		return
+	}
+	d.releaseObject(ctx, id)
 }
 
 // render renders one object and records it.
@@ -278,103 +307,83 @@ func (s ledgerEntities) Resolve(ctx context.Context, mention string) (*storage.E
 	return e, err
 }
 
-// ledgerEdges records every edge, and both of its ends, the scoped edge
-// store releases.
+// ledgerEdges records every edge the scoped edge store releases and
+// releases both of its ends through their own scoped reads.
 type ledgerEdges struct {
 	storage.EdgeStore
-	l *Ledger
+	d renderDriver
 }
 
-func (s ledgerEdges) record(edges []*storage.Edge) {
+func (s ledgerEdges) record(ctx context.Context, edges []*storage.Edge) {
 	for _, e := range edges {
 		if e == nil {
 			continue
 		}
-		s.l.AddEdge(e.ID)
-		s.l.AddEndpoint(e.FromType, e.FromID)
-		s.l.AddEndpoint(e.ToType, e.ToID)
+		s.d.ledger.AddEdge(e.ID)
+		s.d.releaseEndpoint(ctx, e.FromType, e.FromID)
+		s.d.releaseEndpoint(ctx, e.ToType, e.ToID)
 	}
 }
 
 func (s ledgerEdges) ListFrom(ctx context.Context, fromType, fromID string) ([]*storage.Edge, error) {
 	edges, err := s.EdgeStore.ListFrom(ctx, fromType, fromID)
-	s.record(edges)
+	s.record(ctx, edges)
 	return edges, err
 }
 
 func (s ledgerEdges) ListTo(ctx context.Context, toType, toID string) ([]*storage.Edge, error) {
 	edges, err := s.EdgeStore.ListTo(ctx, toType, toID)
-	s.record(edges)
+	s.record(ctx, edges)
 	return edges, err
 }
 
-func (s ledgerEdges) RelatedObjectIDs(ctx context.Context, objectID string, depth, limit int) ([]string, error) {
-	ids, err := s.EdgeStore.RelatedObjectIDs(ctx, objectID, depth, limit)
-	for _, id := range ids {
-		s.l.AddObject(id)
-	}
-	return ids, err
-}
-
-// ledgerProximity records both objects of every neighbour pair released.
+// ledgerProximity releases both objects of every neighbour pair
+// through their scoped reads.
 type ledgerProximity struct {
 	storage.ProximityStore
-	l *Ledger
+	d renderDriver
 }
 
-func (s ledgerProximity) record(scores []*storage.ProximityScore) {
+func (s ledgerProximity) record(ctx context.Context, scores []*storage.ProximityScore) {
 	for _, p := range scores {
 		if p != nil {
-			s.l.AddObject(p.ObjectA)
-			s.l.AddObject(p.ObjectB)
+			s.d.releaseObject(ctx, p.ObjectA)
+			s.d.releaseObject(ctx, p.ObjectB)
 		}
 	}
 }
 
 func (s ledgerProximity) GetNeighbors(ctx context.Context, objectID string, limit int) ([]*storage.ProximityScore, error) {
 	scores, err := s.ProximityStore.GetNeighbors(ctx, objectID, limit)
-	s.record(scores)
+	s.record(ctx, scores)
 	return scores, err
 }
 
 func (s ledgerProximity) GetNeighborsAbove(ctx context.Context, objectID string, threshold float64) ([]*storage.ProximityScore, error) {
 	scores, err := s.ProximityStore.GetNeighborsAbove(ctx, objectID, threshold)
-	s.record(scores)
+	s.record(ctx, scores)
 	return scores, err
 }
 
 func (s ledgerProximity) Get(ctx context.Context, objectA, objectB string) (*storage.ProximityScore, error) {
 	p, err := s.ProximityStore.Get(ctx, objectA, objectB)
 	if p != nil {
-		s.record([]*storage.ProximityScore{p})
+		s.record(ctx, []*storage.ProximityScore{p})
 	}
 	return p, err
 }
 
-// ledgerEmbeddings records the object of every vector hit released.
-type ledgerEmbeddings struct {
-	storage.EmbeddingStore
-	l *Ledger
-}
-
-func (s ledgerEmbeddings) Search(ctx context.Context, q storage.VectorQuery) ([]storage.EmbeddingHit, error) {
-	hits, err := s.EmbeddingStore.Search(ctx, q)
-	for _, h := range hits {
-		s.l.AddObject(h.ObjectID)
-	}
-	return hits, err
-}
-
-// ledgerAliases records the object of every alias released.
+// ledgerAliases releases the object of every alias through its scoped
+// read.
 type ledgerAliases struct {
 	storage.AliasStore
-	l *Ledger
+	d renderDriver
 }
 
 func (s ledgerAliases) Resolve(ctx context.Context, alias, profile string) (string, error) {
 	id, err := s.AliasStore.Resolve(ctx, alias, profile)
 	if err == nil {
-		s.l.AddObject(id)
+		s.d.releaseObject(ctx, id)
 	}
 	return id, err
 }
@@ -383,7 +392,7 @@ func (s ledgerAliases) List(ctx context.Context, filter storage.AliasFilter) ([]
 	as, err := s.AliasStore.List(ctx, filter)
 	for _, a := range as {
 		if a != nil {
-			s.l.AddObject(a.ObjectID)
+			s.d.releaseObject(ctx, a.ObjectID)
 		}
 	}
 	return as, err

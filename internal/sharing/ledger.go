@@ -61,16 +61,6 @@ func (l *Ledger) AddEdge(id string) {
 	l.mu.Unlock()
 }
 
-// AddEndpoint records an edge endpoint the scoped edge store released:
-// an object by ID, or an entity by its ctxt://entity/ URI.
-func (l *Ledger) AddEndpoint(typ, id string) {
-	if typ == "entity" {
-		l.AddEntity(strings.TrimPrefix(id, EntityURIPrefix))
-		return
-	}
-	l.AddObject(id)
-}
-
 // AddWithheld records the values the render layer withheld from a
 // released object.
 func (l *Ledger) AddWithheld(w []Withheld) {

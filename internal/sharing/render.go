@@ -34,6 +34,11 @@ const CanaryMinRunes = 6
 // Withheld is one raw value the render layer kept out of a viewer's
 // view: the field (or the class of the part) it was withheld under,
 // and the value itself. The backstop searches responses for these.
+// Content is withheld this way (text, summaries, sections, decisions,
+// tasks, node contents, a contact's details and note, a title);
+// labels are not (tags, metadata keys and the labels under them),
+// since a label is a short word that recurs in ids and text and would
+// blank legitimate output.
 type Withheld struct {
 	Category string
 	Value    string
@@ -277,7 +282,9 @@ func renderContact(r *renderer, out *storage.KnowledgeObject) {
 
 // contactFields returns the contact fields the viewer sees, in card
 // order: projected, and not of a class the viewer excludes. Every
-// other field's value is withheld under the field's name.
+// other field's value is withheld under the field's name, except the
+// tags: labels, not content, and short words that recur in ids and
+// text (a "client" tag inside a client contact's id).
 func (r *renderer) contactFields() []string {
 	visible := make([]string, 0, len(projection.ContactFields))
 	for _, f := range projection.ContactFields {
@@ -289,7 +296,9 @@ func (r *renderer) contactFields() []string {
 			visible = append(visible, f)
 			continue
 		}
-		r.withhold(f, projection.ContactField(r.obj, f))
+		if f != projection.ContactTags {
+			r.withhold(f, projection.ContactField(r.obj, f))
+		}
 	}
 	return visible
 }

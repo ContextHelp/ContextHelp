@@ -89,6 +89,10 @@ type Inputs struct {
 	// Notes receives startup notes (web UI sign-in availability and
 	// session sweeps). nil discards them.
 	Notes io.Writer
+	// StrictSharing makes the visibility backstop refuse a response it
+	// would otherwise strip (ADR-080 §8): dpkms serve --strict-sharing,
+	// and every test instance.
+	StrictSharing bool
 }
 
 // Stack is the assembled request-serving stack.
@@ -121,6 +125,9 @@ type Stack struct {
 	Security     *security.Emitter
 	Entitlements *registry.InboundGate
 	Router       chi.Router
+	// StrictSharing is Inputs.StrictSharing, for the gRPC server the
+	// caller builds beside the router.
+	StrictSharing bool
 
 	policy *policy.Bootstrap
 }
@@ -321,7 +328,7 @@ func Build(in Inputs) (*Stack, error) {
 		}
 	}
 
-	s := &Stack{Queue: jobs.NewQueue(in.Driver.Jobs())}
+	s := &Stack{Queue: jobs.NewQueue(in.Driver.Jobs()), StrictSharing: in.StrictSharing}
 
 	// Pipeline registry with configured providers and per-pipeline
 	// overrides, validated at enqueue time.
@@ -450,6 +457,7 @@ func Build(in Inputs) (*Stack, error) {
 		RequirePeerPrincipal: access != config.AccessPrivate,
 		RedactHealthz:        access == config.AccessPublic,
 		Hosts:                hosts,
+		StrictSharing:        in.StrictSharing,
 	})
 	return s, nil
 }

@@ -104,6 +104,8 @@ func init() {
 	serveCmd.Flags().Duration("reminder-interval", config.DefaultReminderInterval,
 		"how often to check for due reminders (overrides server.reminder_interval)")
 	serveCmd.Flags().Bool("daemon", false, "run as background daemon (detach from terminal)")
+	serveCmd.Flags().Bool("strict-sharing", false,
+		"answer 500 instead of stripping when the visibility backstop finds data outside a shared viewer's visibility")
 
 	// No flag is bound to viper: serve reads its settings from cfg, a
 	// passed flag overriding (see resolveServeSettings, serveListenSpecs).
@@ -130,6 +132,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	settings := resolveServeSettings(cmd.Flags(), cfg)
 	workers := settings.workers
 	public, _ := cmd.Flags().GetBool("public")
+	strictSharing, _ := cmd.Flags().GetBool("strict-sharing")
 	reminderInterval := settings.reminderInterval
 
 	// Resolve the access class and check server.auth before any
@@ -275,19 +278,20 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// server builds the same stack.
 	embResolver := newEmbeddingResolver()
 	st, err := stack.Build(stack.Inputs{
-		Config:     cfg,
-		Driver:     driver,
-		Access:     access,
-		PolicyBus:  hubBus,
-		Embeddings: embResolver,
-		Browser:    browserClient,
-		StepsPath:  stepsPath,
-		ConfigPath: config.GetConfigPath(binName),
-		Probes:     healthProbes,
-		DevCORS:    settings.dev,
-		HTTPPort:   port,
-		Warnings:   os.Stderr,
-		Notes:      os.Stdout,
+		Config:        cfg,
+		Driver:        driver,
+		Access:        access,
+		PolicyBus:     hubBus,
+		Embeddings:    embResolver,
+		Browser:       browserClient,
+		StepsPath:     stepsPath,
+		ConfigPath:    config.GetConfigPath(binName),
+		Probes:        healthProbes,
+		DevCORS:       settings.dev,
+		HTTPPort:      port,
+		Warnings:      os.Stderr,
+		Notes:         os.Stdout,
+		StrictSharing: strictSharing,
 	})
 	if err != nil {
 		return err
@@ -380,6 +384,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		grpcserver.WithSecurity(st.Security),
 		grpcserver.WithEntitlements(st.Entitlements),
 		grpcserver.WithReflection(access == config.AccessPrivate),
+		grpcserver.WithStrictSharing(st.StrictSharing),
 	)
 
 	// 10c. Write pidfile so dpkms ps can discover this instance.

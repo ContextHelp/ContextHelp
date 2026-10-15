@@ -46,6 +46,10 @@ const (
 	EventQuotaExhausted  = "security.quota_exhausted"
 	EventSigningFailure  = "security.signing_failure"
 	EventWorkerCrashLoop = "security.worker_crash_loop"
+	// EventVisibilityBackstop: a response to a restricted viewer carried
+	// an ID or a value outside its visibility and the backstop stripped
+	// or refused it (ADR-080 §8). Every occurrence is a bug to fix.
+	EventVisibilityBackstop = "security.visibility_backstop"
 )
 
 // AlertLevel classifies the urgency of a security alert.
@@ -361,6 +365,22 @@ func (e *Emitter) RecordSigningFailure(ctx context.Context, detail string) {
 		Count:     1,
 		Meta:      map[string]string{"detail": detail},
 		OccuredAt: time.Now().UTC(),
+	})
+}
+
+// RecordVisibilityBackstop emits a visibility backstop alert for
+// principal, with meta naming the route, the policy versions and the
+// hits. Every occurrence alerts: there is no threshold to reach.
+func (e *Emitter) RecordVisibilityBackstop(ctx context.Context, principal string, meta map[string]string) {
+	e.dispatch(ctx, Alert{
+		ID:        uuid.New().String(),
+		Kind:      EventVisibilityBackstop,
+		Level:     AlertLevelCritical,
+		Principal: principal,
+		Message:   "visibility backstop fired: the response carried data outside the viewer's visibility",
+		Count:     1,
+		Meta:      meta,
+		OccuredAt: time.Now(),
 	})
 }
 

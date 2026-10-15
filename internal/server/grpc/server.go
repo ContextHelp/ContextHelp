@@ -31,10 +31,18 @@ type Server struct {
 type Option func(*serverOptions)
 
 type serverOptions struct {
-	auth         *authn.Chain
-	security     *security.Emitter
-	entitlements *registry.InboundGate
-	reflection   bool
+	auth          *authn.Chain
+	security      *security.Emitter
+	entitlements  *registry.InboundGate
+	reflection    bool
+	strictSharing bool
+}
+
+// WithStrictSharing makes the visibility backstop answer Internal on a
+// hit instead of stripping it (dpkms serve --strict-sharing; every
+// test instance).
+func WithStrictSharing(strict bool) Option {
+	return func(o *serverOptions) { o.strictSharing = strict }
 }
 
 // WithSecurity wires the security event emitter into the auth
@@ -85,6 +93,13 @@ func New(addr string, svc *service.Service, opts ...Option) *Server {
 		unary = append(unary, viewerUnaryInterceptor(sharing.Unrestricted))
 		stream = append(stream, viewerStreamInterceptor(sharing.Unrestricted))
 	}
+
+	// Visibility runs after the viewer is attached and before the
+	// handler: it attaches the ledger, then checks the answer (ADR-080
+	// §8). The owner passes it untouched.
+	vis := visibilityConfig{strict: o.strictSharing, security: o.security}
+	unary = append(unary, visibilityUnaryInterceptor(vis))
+	stream = append(stream, visibilityStreamInterceptor(vis))
 
 	gs := grpc.NewServer(
 		grpc.ChainUnaryInterceptor(unary...),
