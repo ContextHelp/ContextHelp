@@ -253,7 +253,22 @@ func (s *Sessions) Exchange(ctx context.Context, code string, ci ClientInfo) (*M
 	if subtle.ConstantTimeCompare([]byte(lc.CodeHash), []byte(codeHash)) != 1 {
 		return nil, ErrInvalidCredential
 	}
-	p, idn, scopes, err := s.resolve(ctx, lc.IdentityID, lc.PrincipalID)
+	return s.mintFor(ctx, lc.IdentityID, lc.PrincipalID, lc.Scope, ci)
+}
+
+// MintFor opens a new session for principalID through identityID, the
+// credential the sign-in ceremony (an invite, a sign-in link) bound to
+// it. The session carries the principal's role scopes narrowed to the
+// kind's set, since a link identity has no scopes of its own, and ends
+// when the identity or the principal is revoked. An identity or
+// principal that is gone, revoked, suspended or mismatched is
+// ErrInvalidCredential.
+func (s *Sessions) MintFor(ctx context.Context, principalID, identityID string, ci ClientInfo) (*Minted, error) {
+	return s.mintFor(ctx, identityID, principalID, SessionKindUI, ci)
+}
+
+func (s *Sessions) mintFor(ctx context.Context, identityID, principalID, kind string, ci ClientInfo) (*Minted, error) {
+	p, idn, scopes, err := s.resolve(ctx, identityID, principalID)
 	if err != nil {
 		return nil, err
 	}
@@ -265,13 +280,14 @@ func (s *Sessions) Exchange(ctx context.Context, code string, ci ClientInfo) (*M
 	if err != nil {
 		return nil, err
 	}
+	now := s.opts.Now().UTC()
 	expires := now.Add(s.opts.MaxTTL)
 	sess := &storage.UISession{
 		ID:            id,
 		SecretHash:    HashSecret(secret),
 		PrincipalID:   p.ID,
 		IdentityID:    idn.ID,
-		Scope:         lc.Scope,
+		Scope:         kind,
 		UserAgent:     truncate(ci.UserAgent, 256),
 		RemoteAddr:    truncate(ci.RemoteAddr, 64),
 		CreatedAt:     now,
@@ -284,6 +300,17 @@ func (s *Sessions) Exchange(ctx context.Context, code string, ci ClientInfo) (*M
 	}
 	return &Minted{Secret: secret, Session: sess, Principal: sessionPrincipal(p, scopes, sess)}, nil
 }
+
+// ListByPrincipal returns the sessions of principalID, newest first:
+// the active ones only unless all is set.
+func (s *Sessions) ListByPrincipal(ctx context.Context, principalID string, all bool) ([]*storage.UISession, error) {
+	return s.store.List(ctx, storage.UISessionFilter{
+		ActiveOnly: !all, Now: s.opts.Now().UTC(), PrincipalID: principalID,
+	})
+}
+
+// Now returns the session clock's time.
+func (s *Sessions) Now() time.Time { return s.opts.Now().UTC() }
 
 // resolve loads the identity and principal behind a code or session
 // and the scopes the identity's credential holds. An identity or

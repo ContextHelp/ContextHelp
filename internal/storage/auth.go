@@ -62,10 +62,14 @@ const (
 	IdentityMethodProxy   = "proxy"
 	IdentityMethodOIDC    = "oidc"
 	IdentityMethodMTLS    = "mtls"
+	// IdentityMethodLink is a redeemed invite or sign-in link: the
+	// subject is the ticket's hash. The browser session the redemption
+	// minted is bound to it, so revoking the row ends that session.
+	IdentityMethodLink = "link"
 )
 
 // IdentityMethods lists every method an identity row may carry.
-var IdentityMethods = []string{IdentityMethodAPIKey, IdentityMethodPasskey, IdentityMethodProxy, IdentityMethodOIDC, IdentityMethodMTLS}
+var IdentityMethods = []string{IdentityMethodAPIKey, IdentityMethodPasskey, IdentityMethodProxy, IdentityMethodOIDC, IdentityMethodMTLS, IdentityMethodLink}
 
 // IdentityTouchEvery bounds how often IdentityStore.Touch writes
 // last_used_at: a busy key would otherwise write on every request.
