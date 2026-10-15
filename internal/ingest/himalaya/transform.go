@@ -75,7 +75,7 @@ func buildTags(m Message) []string {
 // buildMetadata populates the metadata map for ctxt indexing.
 func buildMetadata(m Message, source string) map[string]string {
 	meta := map[string]string{
-		"source":      "himalaya",
+		"source":      adapterName,
 		"account":     source,
 		"envelope_id": m.EnvelopeID,
 	}
