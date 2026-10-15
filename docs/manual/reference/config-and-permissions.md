@@ -105,7 +105,7 @@ A principal needs at least one known role; an unknown role on a declared key fai
 | `read:jobs` | reader, writer, admin | `GET` jobs, `import/{id}`, `importers/runs/{id}`, `capture/recent`; gRPC `JobService/*` |
 | `read:registries` | reader, writer, admin | `GET /steps/registries` |
 | `read:system` | reader, writer, admin | `GET /whoami`, `GET /system/reminders`; gRPC reflection |
-| `write:self` | reader, writer, admin; browser sessions | a principal's own credentials (`ctxt auth`): `GET`, `POST /self/keys`, `DELETE /self/keys/{key}`, `GET /self/identities`, `DELETE /self/identities/{identity}`, `GET /self/sessions`, `DELETE /self/sessions/{session}`; a target that is another principal's is 403 `NOT_SELF` |
+| `write:self` | reader, writer, admin; browser sessions | a principal's own credentials (`ctxt auth`): `GET`, `POST /self/keys`, `DELETE /self/keys/{key}`, `GET /self/identities`, `DELETE /self/identities/{identity}`, `GET /self/sessions`, `DELETE /self/sessions/{session}`, `PUT /self/keys/{key}/policy` (bind one's own key to a share policy); a target that is another principal's is 403 `NOT_SELF` |
 | `read:pipelines` | reader, writer, admin | `GET` pipelines and steps |
 | `read:watches` | reader, writer, admin | `GET` watches and watch files |
 | `write:objects` | writer, admin | `POST /analyze`, `capture/*`, `import`, `importers/*/run`, `pipelines/enqueue`, `aliases`, `saved-searches`, suggestion approve and reject, `entities/{slug}/pull`; `PATCH /objects/{id}`, `POST /objects/{id}/reprocess`, `POST /edges`; gRPC `AnalyzeService/Analyze` |
@@ -126,7 +126,7 @@ A principal needs at least one known role; an unknown role on a declared key fai
 | `admin:watches` | admin | `POST /watches`, `watches/{id}/pause`, `watches/{id}/resume`; `PATCH` and `DELETE /watches/{id}` |
 | `admin:audit` | admin | `GET /audit-log` |
 | `admin:principals` | admin | the principal registry (`ctxt principal`, `ctxt auth key --principal`): `GET`, `POST /principals`, `GET /principals/{id}`, `POST /principals/{id}/suspend`, `/revoke`, `/links` (a sign-in link); `GET`, `POST /principals/{id}/identities`, `DELETE /principals/{id}/identities/{identity}`; `GET`, `POST /principals/{id}/keys`, `DELETE /principals/{id}/keys/{key}` |
-| `admin:shares` | admin | `POST /share/invites` (`ctxt share invite`); audiences, share policies and ceilings arrive with sharing |
+| `admin:shares` | admin; an admin's browser session | the sharing registry (`ctxt share`): `POST /share/invites` (with `audience`); `GET`, `POST /share/audiences`, `GET /share/audiences/{audience}`, `PUT`, `DELETE /share/audiences/{audience}/members/{principal}`; `GET`, `POST /share/policies`, `GET`, `PUT /share/policies/{policy}`; `GET /share/templates`, `POST /share/templates/{name}`; `GET`, `POST /share/grants`, `DELETE /share/grants/{grant}`; `GET`, `PUT /principals/{id}/ceiling`; `PUT /share/keys/{key}/policy`. Only the `admin` role holds it, and an admin's browser session does too: the Sharing page |
 | `read:ui` | reader, writer, admin; never a browser session | `POST /ui/login-codes` (`ctxt ui open`) |
 | `signout:ui` | browser sessions only | `DELETE /ui/session` |
 
@@ -259,11 +259,14 @@ server:
   on that identity ends the session; revoking the principal also ends it.
 - **Scopes**: the key's scopes narrowed to the web UI's set: `read:objects`,
   `read:inbox`, `read:feeds`, `read:jobs`, `read:registries`,
-  `read:system`, `delete:objects`, `write:jobs`, `write:self`, plus
-  `signout:ui`, which only sessions hold. Apart from signing itself out,
-  a session never holds a scope its key lacks. A reader's session only
-  reads and manages its own credentials. A writer's may also retry jobs.
-  An admin's gets the whole set and nothing more. It never holds
+  `read:system`, `delete:objects`, `write:jobs`, `write:self`,
+  `admin:shares`, plus `signout:ui`, which only sessions hold. Apart from
+  signing itself out, a session never holds a scope its key lacks. A
+  reader's session only reads and manages its own credentials. A
+  writer's may also retry jobs. An admin's gets the whole set and nothing
+  more: `admin:shares` is the one admin scope in the set, so the owner
+  manages sharing from the web UI's Sharing page while a reader's or
+  writer's session never holds it. A session never holds
   `read:ui`, so it cannot mint sign-in links. Every other route
   (pipelines, steps, registry changes, watches, the audit log,
   federation, the MCP mount, login links, other writes) answers `403`

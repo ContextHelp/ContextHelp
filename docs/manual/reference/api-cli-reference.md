@@ -101,7 +101,13 @@ ctxt principal revoke <id> --confirm-token=<sha>
 ctxt principal identity add <id> --method proxy|oidc --subject <subject> [--issuer <issuer>] [--name <label>]
 ctxt principal identity list <id> | remove <id> <identity-id>
 # admin:shares (the owner's key):
-ctxt share invite --name <display name> [--expires 7d]
+ctxt share invite --name <display name> [--expires 7d] [--audience <audience>]
+ctxt share audience create <name> | add <audience> <principal-id> [--expires 90d] | remove <audience> <principal-id> | list
+ctxt share policy create [file] | edit <policy> [file] | show <policy> | list     # YAML from a file or stdin
+ctxt share template list | install colleagues-network|partners-network
+ctxt share grant <audience> <policy> [--expires 30d]
+ctxt share revoke <grant-id>
+ctxt share ceiling <principal-id> --deny-classes personal,financial
 ```
 
 ## REST endpoint map (from current spec)
@@ -141,7 +147,9 @@ Invite and sign-in link routes (same guide):
 - `POST /api/v1/principals/{id}/links` (`admin:principals`): a 10-minute sign-in link under `/ui/signin` for an active principal
 - `POST /ui/invite/session`, `POST /ui/signin/session`: ticket for the session cookie (same-origin, `X-Ctxt-CSRF: 1`; rate limited per client address; refused with a live session)
 
-Principal registry routes (`admin:principals`): `GET`, `POST /api/v1/principals`; `GET /api/v1/principals/{id}`; `POST .../suspend`, `.../revoke`; `GET`, `POST .../identities`, `DELETE .../identities/{identity}`; `GET`, `POST .../keys`, `DELETE .../keys/{key}`. Own credentials (`write:self`): `GET`, `POST /api/v1/self/keys`, `DELETE /api/v1/self/keys/{key}`; `GET /api/v1/self/identities`, `DELETE /api/v1/self/identities/{identity}`; `GET /api/v1/self/sessions`, `DELETE /api/v1/self/sessions/{session}`.
+Principal registry routes (`admin:principals`): `GET`, `POST /api/v1/principals`; `GET /api/v1/principals/{id}`; `POST .../suspend`, `.../revoke`; `GET`, `POST .../identities`, `DELETE .../identities/{identity}`; `GET`, `POST .../keys`, `DELETE .../keys/{key}`. Own credentials (`write:self`): `GET`, `POST /api/v1/self/keys`, `DELETE /api/v1/self/keys/{key}`, `PUT /api/v1/self/keys/{key}/policy`; `GET /api/v1/self/identities`, `DELETE /api/v1/self/identities/{identity}`; `GET /api/v1/self/sessions`, `DELETE /api/v1/self/sessions/{session}`.
+
+Sharing routes (`admin:shares`; see [Share your network](../workflows/sharing.md)): `GET`, `POST /api/v1/share/audiences`, `GET /api/v1/share/audiences/{audience}`, `PUT`, `DELETE .../members/{principal}`; `GET`, `POST /api/v1/share/policies`, `GET`, `PUT /api/v1/share/policies/{policy}`; `GET /api/v1/share/templates`, `POST /api/v1/share/templates/{name}`; `GET`, `POST /api/v1/share/grants`, `DELETE /api/v1/share/grants/{grant}`; `GET`, `PUT /api/v1/principals/{id}/ceiling`; `PUT /api/v1/share/keys/{key}/policy`. Audiences and policies may be named by id or name. A policy document travels as the `document` field of a JSON body (YAML or JSON text), validated on write. An edit bumps the version and never renames. A template installs once. `GET /share/grants?principal=` lists the grants in force for one principal. A non-owner principal with a grant in force sees `shared: {owner, policies}` in `GET /whoami`.
 
 Importer routes (story-target contract):
 

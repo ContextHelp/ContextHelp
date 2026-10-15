@@ -66,7 +66,9 @@ https://dpkms.example.net/ui/invite#t=k2Yx…
 
 The link goes to stdout and the note to stderr. It is built on the instance's `server.public_url`, works once, and expires after 7 days unless `--expires` says otherwise (`48h`, `2d`). The secret sits after `#`, so it never reaches a server log, a proxy or a Referer header. Hand it over on a channel you trust: whoever opens it first becomes Dana.
 
-Opening the link creates a principal of kind `person` named Dana with the `reader` role, binds the link to it as an identity of method `link`, and signs the browser in. The page shows who they are signed in as. Nothing is shared with a new person yet; what they can see grows as you share it. `ctxt principal list --kind person` lists them, and `ctxt principal show <id>` shows the identity the invite created.
+Opening the link creates a principal of kind `person` named Dana with the `reader` role, binds the link to it as an identity of method `link`, and signs the browser in. The page shows who they are signed in as. `ctxt principal list --kind person` lists them, and `ctxt principal show <id>` shows the identity the invite created.
+
+With `--audience <name|id>` the person joins that audience as they accept, so the audience's grants apply from their first request; see [Share your network](sharing.md). Without it they see nothing until you add them to an audience.
 
 A browser that already holds a live session cannot accept an invite. The page offers to sign out and continue, and the refusal does not spend the link. Opening the same link a second time, or after it expired, is refused as invalid.
 
@@ -108,10 +110,10 @@ The session acts as your key's principal, so entitlements and quotas apply as fo
 | Allowed, if your key has it | Refused (`403 INSUFFICIENT_SCOPE`) |
 |---|---|
 | Reading and searching objects, entities, jobs, inbox, feeds, aliases, saved searches, search history, reminders, import runs, and the step registry list (every role) | Pipelines, steps, registry changes, watches, the audit log, federation, the MCP mount |
-| Retrying a job (`writer`, `admin`); deleting an object (`admin`) | Every other write (capture, analyze, inbox triage, feed and alias changes, …) |
+| Retrying a job (`writer`, `admin`); deleting an object (`admin`); the Sharing page: audiences, share policies, grants, ceilings and invites (`admin`) | Every other write (capture, analyze, inbox triage, feed and alias changes, …) |
 | The live event stream (every role); managing your own keys and sessions; signing out (every session) | Minting new sign-in links |
 
-A session signed in with a reader's key only reads. To see what your session holds, open `/api/v1/whoami` in the signed-in browser: it lists the session's `scopes` and its expiry.
+A session signed in with a reader's key only reads. An admin's session also holds `admin:shares`, so the owner manages sharing from the web UI's Sharing page. A reader's or writer's session never holds it. To see what your session holds, open `/api/v1/whoami` in the signed-in browser: it lists the session's `scopes` and its expiry.
 
 The Registry page lists registries in a browser session; to fetch or update one, use `ctxt registry` or `dpkms step registry`.
 
