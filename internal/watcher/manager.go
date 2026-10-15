@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,6 +32,9 @@ type Manager struct {
 
 	initialScan bool
 	scanDone    func(watchID string)
+	// onFSWatcher, when set, gets each fsnotify watcher a watch loop
+	// opens; tests use it to feed the watcher's Errors channel.
+	onFSWatcher func(*fsnotify.Watcher)
 
 	mu      sync.Mutex
 	cancels map[string]context.CancelFunc
@@ -226,6 +230,9 @@ func (m *Manager) watchLoop(ctx context.Context, cfg *WatchConfig) {
 	}
 	// The loop is done with the watcher; a close error leaves nothing to undo.
 	defer func() { _ = fsw.Close() }()
+	if m.onFSWatcher != nil {
+		m.onFSWatcher(fsw)
+	}
 
 	watchTree(fsw, cfg, cfg.Path, nil)
 
@@ -277,11 +284,13 @@ func (m *Manager) watchLoop(ctx context.Context, cfg *WatchConfig) {
 				m.remove(ctx, cfg, absPath)
 			}
 
-		case _, ok := <-fsw.Errors:
+		case err, ok := <-fsw.Errors:
 			if !ok {
 				return
 			}
-			// Log error and continue.
+			// The loop keeps running: an overflow drops events, and a
+			// file whose event was dropped is picked up on its next change.
+			slog.Warn("watcher: file event error", "watch", cfg.ID, "err", err)
 		}
 	}
 }

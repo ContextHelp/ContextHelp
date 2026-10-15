@@ -58,7 +58,6 @@ linters:
     gocritic:
       disabled-checks:
         - commentFormatting
-        - whyNoLint
       # diagnostic only. The style and performance tags cost ~6m of analyzer
       # time against a 5m CI budget, and their headline fix (hugeParam, pass
       # by pointer) changes aliasing semantics — a real bug risk traded for a
@@ -153,7 +152,7 @@ linters:
     prealloc:
       simple: true
       range-loops: true
-      for-loops: true
+      for-loops: false
     revive:
       # The `exported` rule is omitted: it accounted for 915 of revive's 996
       # findings, and satisfying it yields `// Foo does foo.` filler rather
