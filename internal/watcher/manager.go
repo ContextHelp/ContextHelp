@@ -224,21 +224,10 @@ func (m *Manager) watchLoop(ctx context.Context, cfg *WatchConfig) {
 		m.pollLoop(ctx, cfg)
 		return
 	}
-	defer fsw.Close()
+	// The loop is done with the watcher; a close error leaves nothing to undo.
+	defer func() { _ = fsw.Close() }()
 
-	// Walk directory tree and add each subdirectory to the watcher.
-	// A per-entry error (unreadable dir, race with a concurrent delete) skips
-	// that entry only: returning it would abort the whole walk and leave the
-	// remaining subtree unwatched, which is strictly worse than missing one dir.
-	_ = filepath.WalkDir(cfg.Path, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil //nolint:nilerr // skip unreadable entry; aborting the walk would leave the subtree unwatched
-		}
-		if d.IsDir() {
-			_ = fsw.Add(path)
-		}
-		return nil
-	})
+	watchTree(fsw, cfg, cfg.Path, nil)
 
 	// The initial scan runs once the tree is registered, so a file
 	// written during the scan is caught by either the scan or its event;
@@ -250,25 +239,13 @@ func (m *Manager) watchLoop(ctx context.Context, cfg *WatchConfig) {
 		}()
 	}
 
-	// Debounce timers keyed by absolute path.
-	debounce := make(map[string]*time.Timer)
-	defer func() {
-		for _, t := range debounce {
-			t.Stop()
-		}
-	}()
 	debounceDelay := time.Duration(cfg.DebounceMS) * time.Millisecond
 	if debounceDelay <= 0 {
 		debounceDelay = 500 * time.Millisecond
 	}
-	schedule := func(absPath string) {
-		if t, ok := debounce[absPath]; ok {
-			t.Stop()
-		}
-		debounce[absPath] = time.AfterFunc(debounceDelay, func() {
-			m.handOff(ctx, cfg, absPath)
-		})
-	}
+	debounce := newDebouncer(debounceDelay, func(absPath string) { m.handOff(ctx, cfg, absPath) })
+	defer debounce.stop()
+	schedule := debounce.schedule
 
 	for {
 		select {
@@ -288,21 +265,7 @@ func (m *Manager) watchLoop(ctx context.Context, cfg *WatchConfig) {
 				// fsnotify only delivers events for paths registered at
 				// the time the kernel emits them.
 				if fi, err := os.Stat(absPath); err == nil && fi.IsDir() {
-					_ = filepath.WalkDir(absPath, func(p string, d fs.DirEntry, werr error) error {
-						if werr != nil {
-							// Skip this entry; aborting would drop the rest of
-							// the newly created subtree from the watch set.
-							return nil //nolint:nilerr // skip unreadable entry, keep walking the new subtree
-						}
-						if d.IsDir() {
-							_ = fsw.Add(p)
-							return nil
-						}
-						if matches(cfg, relTo(cfg, p)) {
-							schedule(p)
-						}
-						return nil
-					})
+					watchTree(fsw, cfg, absPath, schedule)
 					continue
 				}
 				if matches(cfg, relTo(cfg, absPath)) {
@@ -310,10 +273,7 @@ func (m *Manager) watchLoop(ctx context.Context, cfg *WatchConfig) {
 				}
 
 			} else if event.Has(fsnotify.Remove) || event.Has(fsnotify.Rename) {
-				if t, ok := debounce[absPath]; ok {
-					t.Stop()
-					delete(debounce, absPath)
-				}
+				debounce.cancel(absPath)
 				m.remove(ctx, cfg, absPath)
 			}
 
@@ -324,6 +284,65 @@ func (m *Manager) watchLoop(ctx context.Context, cfg *WatchConfig) {
 			// Log error and continue.
 		}
 	}
+}
+
+// debouncer delays each path's hand-off until no event has touched it
+// for delay. It is used from the watch loop's goroutine only; fire runs
+// on the timer's.
+type debouncer struct {
+	delay  time.Duration
+	fire   func(absPath string)
+	timers map[string]*time.Timer
+}
+
+func newDebouncer(delay time.Duration, fire func(absPath string)) *debouncer {
+	return &debouncer{delay: delay, fire: fire, timers: make(map[string]*time.Timer)}
+}
+
+// schedule (re)starts absPath's timer.
+func (d *debouncer) schedule(absPath string) {
+	if t, ok := d.timers[absPath]; ok {
+		t.Stop()
+	}
+	d.timers[absPath] = time.AfterFunc(d.delay, func() { d.fire(absPath) })
+}
+
+// cancel drops absPath's pending hand-off, if any.
+func (d *debouncer) cancel(absPath string) {
+	if t, ok := d.timers[absPath]; ok {
+		t.Stop()
+		delete(d.timers, absPath)
+	}
+}
+
+// stop drops every pending hand-off.
+func (d *debouncer) stop() {
+	for _, t := range d.timers {
+		t.Stop()
+	}
+}
+
+// watchTree adds root and every directory beneath it to fsw. With a
+// non-nil schedule it also schedules each matching file found, which
+// covers files created in a new directory before it was watched.
+//
+// A per-entry error (unreadable dir, race with a concurrent delete) skips
+// that entry only: returning it would abort the whole walk and leave the
+// remaining subtree unwatched, which is strictly worse than missing one dir.
+func watchTree(fsw *fsnotify.Watcher, cfg *WatchConfig, root string, schedule func(absPath string)) {
+	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil //nolint:nilerr // skip unreadable entry; aborting the walk would leave the subtree unwatched
+		}
+		if d.IsDir() {
+			_ = fsw.Add(p)
+			return nil
+		}
+		if schedule != nil && matches(cfg, relTo(cfg, p)) {
+			schedule(p)
+		}
+		return nil
+	})
 }
 
 // scan hands off every matching file under the watch whose content has
@@ -445,7 +464,7 @@ func (m *Manager) processFile(ctx context.Context, cfg *WatchConfig, absPath str
 		Source:   "watch:" + cfg.Mode + ":" + relTo(cfg, absPath),
 		Pipeline: cfg.PipelineOverride,
 	}
-	if cfg.Mode == "obsidian" || cfg.Mode == "logseq" {
+	if cfg.Mode == ModeObsidian || cfg.Mode == ModeLogseq {
 		if parsed, perr := ParseFile(absPath, cfg.Mode, cfg.Path); perr == nil {
 			parsed.Pipeline = cfg.PipelineOverride
 			req = parsed
@@ -523,13 +542,13 @@ func detectType(absPath string) string {
 	ext := strings.ToLower(filepath.Ext(absPath))
 	switch ext {
 	case ".md", ".markdown":
-		return "text"
+		return contentTypeText
 	case ".pdf":
 		return "pdf"
 	case ".html", ".htm":
 		return "url"
 	default:
-		return "text"
+		return contentTypeText
 	}
 }
 
@@ -542,10 +561,10 @@ func sha256hex(data []byte) string {
 // DetectMode infers the watch mode from the directory structure.
 func DetectMode(path string) string {
 	if fi, err := os.Stat(filepath.Join(path, ".obsidian")); err == nil && fi.IsDir() {
-		return "obsidian"
+		return ModeObsidian
 	}
 	if fi, err := os.Stat(filepath.Join(path, "logseq")); err == nil && fi.IsDir() {
-		return "logseq"
+		return ModeLogseq
 	}
-	return "generic"
+	return ModeGeneric
 }

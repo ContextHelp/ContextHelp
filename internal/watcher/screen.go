@@ -198,7 +198,7 @@ func (sw *ScreenWatcher) tick(ctx context.Context, focus string, minLen int, sta
 	h := sw.contentHash(imgData, text)
 	req := Request{
 		Content:   text,
-		Type:      "text",
+		Type:      contentTypeText,
 		Source:    "watcher/screen",
 		KnownHash: h,
 	}
