@@ -60,6 +60,7 @@ func Validate(c *Config) []ValidationError {
 		}
 	}
 	errs = append(errs, validateRegistryAuth(c)...)
+	errs = append(errs, c.Sharing.Validate()...)
 	if _, err := c.Fetch.Policy(); err != nil {
 		field, msg, _ := strings.Cut(err.Error(), ": ")
 		errs = append(errs, ValidationError{Field: field, Message: msg})

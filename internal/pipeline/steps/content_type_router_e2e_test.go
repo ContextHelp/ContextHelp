@@ -139,8 +139,8 @@ func TestE2E_UnknownContentType_MarkedUnsupported(t *testing.T) {
 
 	out := runURLPipeline(t, srv, srv.URL+"/data.bin")
 
-	if out.Subtype != "unsupported" {
-		t.Errorf("Subtype: got %q, want %q", out.Subtype, "unsupported")
+	if out.Subtype != subtypeUnsupported {
+		t.Errorf("Subtype: got %q, want %q", out.Subtype, subtypeUnsupported)
 	}
 
 	// pdf_extractor must still not error — it skips on anything that isn't "pdf".

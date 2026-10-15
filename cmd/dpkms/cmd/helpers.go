@@ -117,6 +117,8 @@ func registryBuildOpts(driver storage.StorageDriver) builtins.BuildOpts {
 	opts.BlobStore = driver.Blobs()
 	if cfg != nil {
 		opts.BlobThreshold = cfg.Storage.Blob.Threshold
+		opts.Access = cfg.Server.EffectiveAccess()
+		opts.ClassRules = builtins.ClassRulesFromConfig(cfg.Sharing)
 	}
 	opts.FetchGuard = config.FetchGuard(cfg)
 	return opts
