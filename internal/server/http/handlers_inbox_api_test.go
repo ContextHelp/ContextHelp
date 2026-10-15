@@ -1,7 +1,6 @@
 package http_test
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -28,7 +27,7 @@ func TestInboxAPI_SQLite(t *testing.T) {
 // one raw object, and one job per status.
 func seedInboxCorpus(t *testing.T, driver storage.StorageDriver) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := ownerCtx()
 	objs := []*storage.KnowledgeObject{
 		{ID: "i-1", Type: "text", Status: "inbox", RawContent: "one", CreatedAt: day("2026-04-10T09:00:00Z"), UpdatedAt: day("2026-04-10T09:00:00Z")},
 		{ID: "i-2", Type: "text", Status: "inbox", RawContent: "two", CreatedAt: day("2026-04-11T09:00:00Z"), UpdatedAt: day("2026-04-11T09:00:00Z")},
@@ -94,7 +93,7 @@ func (e inboxEnv) queue(t *testing.T, rawQuery string) (ids []string, total int)
 
 func (e inboxEnv) status(t *testing.T, id string) string {
 	t.Helper()
-	obj, err := e.srv.Driver.Objects().Get(context.Background(), id)
+	obj, err := e.srv.Driver.Objects().Get(ownerCtx(), id)
 	require.NoError(t, err, id)
 	return obj.Status
 }
@@ -225,7 +224,7 @@ func testInboxRoles(t *testing.T, env inboxEnv) {
 // currently an inbox item (active, discarded, raw or unknown) and change
 // nothing; inbox items still triage and discard.
 func testInboxTriageDiscardOnlyInbox(t *testing.T, env inboxEnv) {
-	ctx := context.Background()
+	ctx := ownerCtx()
 	jobCount := func() int {
 		_, n, err := env.srv.Driver.Jobs().List(ctx, storage.JobFilter{Limit: 100})
 		require.NoError(t, err)

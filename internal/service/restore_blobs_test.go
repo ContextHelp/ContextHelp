@@ -3,7 +3,6 @@ package service_test
 import (
 	"archive/tar"
 	"compress/gzip"
-	"context"
 	"errors"
 	"io"
 	"os"
@@ -25,7 +24,7 @@ import (
 // lives in the local blob store at blobDir, and returns that content.
 func seedExternalizedStore(t *testing.T, dbPath, blobDir string) string {
 	t.Helper()
-	ctx := context.Background()
+	ctx := ownerCtx()
 	bs, err := local.New(blobDir)
 	if err != nil {
 		t.Fatal(err)
@@ -59,7 +58,7 @@ func seedExternalizedStore(t *testing.T, dbPath, blobDir string) string {
 // seeded object's content.
 func readRestored(t *testing.T, dbPath string, blobs storage.BlobStore) string {
 	t.Helper()
-	ctx := context.Background()
+	ctx := ownerCtx()
 	drv, err := sqlite.New(dbPath, blobs)
 	if err != nil {
 		t.Fatal(err)
@@ -91,7 +90,7 @@ func TestBackupRestoreBlobRoundTrip(t *testing.T) {
 	srcBlobs := filepath.Join(src, "blobs")
 	body := seedExternalizedStore(t, srcDB, srcBlobs)
 
-	bResult, err := service.Backup(context.Background(), service.BackupOpts{
+	bResult, err := service.Backup(ownerCtx(), service.BackupOpts{
 		DBPath:       srcDB,
 		BlobCfg:      config.BlobConfig{Backend: "local", Local: config.BlobLocalConfig{Path: srcBlobs}},
 		IncludeBlobs: true,
@@ -118,7 +117,7 @@ func TestBackupRestoreBlobRoundTrip(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			rResult, err := service.Restore(context.Background(), service.RestoreOpts{
+			rResult, err := service.Restore(ownerCtx(), service.RestoreOpts{
 				Source:      tc.source(t),
 				DBPath:      dstDB,
 				Blobs:       dstBlobs,
@@ -146,7 +145,7 @@ func TestRestoreBlobsWithoutStoreFails(t *testing.T) {
 	srcDB := filepath.Join(src, "db.sqlite")
 	srcBlobs := filepath.Join(src, "blobs")
 	seedExternalizedStore(t, srcDB, srcBlobs)
-	bResult, err := service.Backup(context.Background(), service.BackupOpts{
+	bResult, err := service.Backup(ownerCtx(), service.BackupOpts{
 		DBPath:       srcDB,
 		BlobCfg:      config.BlobConfig{Backend: "local", Local: config.BlobLocalConfig{Path: srcBlobs}},
 		IncludeBlobs: true,
@@ -155,7 +154,7 @@ func TestRestoreBlobsWithoutStoreFails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Backup: %v", err)
 	}
-	if _, err := service.Restore(context.Background(), service.RestoreOpts{
+	if _, err := service.Restore(ownerCtx(), service.RestoreOpts{
 		Source: bResult.Path, DBPath: filepath.Join(t.TempDir(), "db.sqlite"), SkipConfigs: true,
 	}); err == nil {
 		t.Fatal("restore of blobs with no blob store: want error")
@@ -176,7 +175,7 @@ func TestRestoreRejectsBlobPathEscape(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Restore(context.Background(), service.RestoreOpts{
+	if _, err := service.Restore(ownerCtx(), service.RestoreOpts{
 		Source: src, DBPath: filepath.Join(dir, "db.sqlite"), Blobs: bs, SkipConfigs: true,
 	}); err == nil {
 		t.Fatal("blob key with a path separator: want error")
@@ -228,7 +227,7 @@ func TestBackupEmptyBlobBackendIsLocal(t *testing.T) {
 	srcDB := filepath.Join(src, "db.sqlite")
 	srcBlobs := filepath.Join(src, "blobs")
 	seedExternalizedStore(t, srcDB, srcBlobs)
-	res, err := service.Backup(context.Background(), service.BackupOpts{
+	res, err := service.Backup(ownerCtx(), service.BackupOpts{
 		DBPath:       srcDB,
 		BlobCfg:      config.BlobConfig{Local: config.BlobLocalConfig{Path: srcBlobs}},
 		IncludeBlobs: true,

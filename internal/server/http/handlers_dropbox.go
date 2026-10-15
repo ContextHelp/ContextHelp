@@ -80,7 +80,7 @@ func RunDropboxImport(svc *service.Service) http.HandlerFunc {
 			UpdatedAt:  now,
 		}
 
-		if err := svc.Store.Jobs().Create(r.Context(), job); err != nil {
+		if err := svc.Store(r.Context()).Jobs().Create(r.Context(), job); err != nil {
 			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 			return
 		}
@@ -99,7 +99,7 @@ func RunDropboxImport(svc *service.Service) http.HandlerFunc {
 func GetImporterRun(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
-		job, err := svc.Store.Jobs().Get(r.Context(), id)
+		job, err := svc.Store(r.Context()).Jobs().Get(r.Context(), id)
 		if err != nil {
 			WriteError(w, http.StatusNotFound, CodeNotFound, "run not found")
 			return

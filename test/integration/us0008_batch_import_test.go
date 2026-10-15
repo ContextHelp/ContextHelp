@@ -532,7 +532,7 @@ func TestUS0008_ChildObjectsLinkedViaEdges(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	// Children should be linked to parent batch via "batch_contains" edges.
-	edges, err := env.svc.Store.Edges().ListFrom(context.Background(), "batch", batchID)
+	edges, err := env.driver.Edges().ListFrom(ownerCtx(), "batch", batchID)
 	if err == nil {
 		batchContainsCount := 0
 		for _, edge := range edges {
@@ -773,7 +773,7 @@ func TestUS0008_BatchObjectsCreatedViaService(t *testing.T) {
 		Steps:        []pipeline.PipelineStep{&batchProcessorStep{}},
 	})
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	contents := []string{"Batch item A", "Batch item B", "Batch item C"}
 	jobIDs := make([]string, len(contents))
 
@@ -794,7 +794,7 @@ func TestUS0008_BatchObjectsCreatedViaService(t *testing.T) {
 		require.NotEmpty(t, job.ResultID)
 
 		// Verify the object was enriched by the batch processor step.
-		obj, err := env.svc.Store.Objects().Get(ctx, job.ResultID)
+		obj, err := env.driver.Objects().Get(ctx, job.ResultID)
 		require.NoError(t, err)
 		assert.NotNil(t, obj.Metadata)
 		assert.Equal(t, true, obj.Metadata["batch_processed"])

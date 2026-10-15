@@ -1,7 +1,6 @@
 package service
 
 import (
-	"context"
 	"strings"
 	"testing"
 
@@ -25,7 +24,7 @@ func newRoutingService(t *testing.T) *Service {
 
 func jobPipeline(t *testing.T, svc *Service, id string) string {
 	t.Helper()
-	job, err := svc.GetJob(context.Background(), id)
+	job, err := svc.GetJob(ownerCtx(), id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +60,7 @@ func TestAnalyzeRoutesTextByContent(t *testing.T) {
 	sources := []string{"", "argument", "stdin", "clipboard", "file", "watcher/screen"}
 	for _, tc := range cases {
 		for _, source := range sources {
-			id, err := svc.Analyze(context.Background(), AnalyzeRequest{
+			id, err := svc.Analyze(ownerCtx(), AnalyzeRequest{
 				Content: tc.content, Type: "text", Source: source, Force: true,
 			})
 			if err != nil {
@@ -81,7 +80,7 @@ func TestAnalyzeExplicitPipelineWins(t *testing.T) {
 		{routeShort, "text.long"},
 		{"https://example.com/article", "text.short"},
 	} {
-		id, err := svc.Analyze(context.Background(), AnalyzeRequest{
+		id, err := svc.Analyze(ownerCtx(), AnalyzeRequest{
 			Content: tc.content, Type: "text", Source: "argument", Pipeline: tc.pipeline, Force: true,
 		})
 		if err != nil {
@@ -108,7 +107,7 @@ func TestAnalyzeRoutesLocatorsBySource(t *testing.T) {
 		{"pdf path", routeLong, "text", "/vault/papers/bay.pdf", "doc.pdf"},
 	}
 	for _, tc := range cases {
-		id, err := svc.Analyze(context.Background(), AnalyzeRequest{
+		id, err := svc.Analyze(ownerCtx(), AnalyzeRequest{
 			Content: tc.content, Type: tc.typ, Source: tc.source, Force: true,
 		})
 		if err != nil {
@@ -124,7 +123,7 @@ func TestEnqueueRoutesTextByContent(t *testing.T) {
 	svc := newRoutingService(t)
 	for content, want := range map[string]string{routeShort: "text.short", routeLong: "text.long"} {
 		for _, source := range []string{"", "argument", "stdin"} {
-			id, err := svc.Enqueue(context.Background(), AnalyzeRequest{Content: content, Type: "text", Source: source})
+			id, err := svc.Enqueue(ownerCtx(), AnalyzeRequest{Content: content, Type: "text", Source: source})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -137,7 +136,7 @@ func TestEnqueueRoutesTextByContent(t *testing.T) {
 
 func TestTriageInboxRoutesTextByContent(t *testing.T) {
 	svc := newRoutingService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	for content, want := range map[string]string{routeShort: "text.short", routeLong: "text.long"} {
 		for _, source := range []string{"", "argument", "stdin"} {
 			// Inbox objects are unique by content hash; vary it per source.

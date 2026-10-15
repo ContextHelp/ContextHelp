@@ -3,7 +3,6 @@ package integration
 // US-0306: OneDrive / Microsoft Graph import via mocked API.
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -65,7 +64,7 @@ func TestUS0306_OneDriveListFolderItems(t *testing.T) {
 	defer srv.Close()
 
 	client := onedrive.NewClient(nil, srv.URL, "test-token")
-	got, err := client.ListDriveFolderItems(context.Background(), "drive-abc", "/", 0)
+	got, err := client.ListDriveFolderItems(ownerCtx(), "drive-abc", "/", 0)
 	require.NoError(t, err)
 	require.Len(t, got, 2)
 
@@ -82,7 +81,7 @@ func TestUS0306_OneDriveRequiresDriveID(t *testing.T) {
 	defer srv.Close()
 
 	client := onedrive.NewClient(nil, srv.URL, "tok")
-	_, err := client.ListDriveFolderItems(context.Background(), "", "/", 0)
+	_, err := client.ListDriveFolderItems(ownerCtx(), "", "/", 0)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "drive ID")
 }
@@ -95,7 +94,7 @@ func TestUS0306_OneDriveRequiresToken(t *testing.T) {
 	defer srv.Close()
 
 	client := onedrive.NewClient(nil, srv.URL, "")
-	_, err := client.ListDriveFolderItems(context.Background(), "drive-abc", "/", 0)
+	_, err := client.ListDriveFolderItems(ownerCtx(), "drive-abc", "/", 0)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "token")
 }

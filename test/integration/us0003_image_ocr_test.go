@@ -223,7 +223,7 @@ func TestUS0003_JobCompletesWithOCRText(t *testing.T) {
 		&ocrStep{confidence: 0.98, text: ocrText},
 	)
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "simulated-png-image-bytes",
 		Type:     "image",
 		Pipeline: "image.analysis",
@@ -263,7 +263,7 @@ func TestUS0003_ImageAnalysisPipelineSelection(t *testing.T) {
 		&ocrStep{confidence: 0.90, text: "pipeline selection test"},
 	)
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "image-data-for-pipeline-selection",
 		Type:     "image",
 		Pipeline: "image.analysis",
@@ -311,7 +311,7 @@ func TestUS0003_SupportedFormats(t *testing.T) {
 				},
 			})
 
-			jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+			jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 				Content:  fmt.Sprintf("simulated-%s-image-bytes", tc.format),
 				Type:     "image",
 				Pipeline: pipelineName,
@@ -348,7 +348,7 @@ func TestUS0003_GIFFirstFrameOnly(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "simulated-gif-animation-bytes",
 		Type:     "image",
 		Pipeline: "image.gif",
@@ -396,7 +396,7 @@ func TestUS0003_UnsupportedFormatRejectsGracefully(t *testing.T) {
 				},
 			})
 
-			jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+			jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 				Content:  fmt.Sprintf("simulated-%s-file-bytes", tc.format),
 				Type:     "image",
 				Pipeline: pipelineName,
@@ -423,7 +423,7 @@ func TestUS0003_CorruptImageReturnsError(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "CORRUPT_DATA_invalid_image_header",
 		Type:     "image",
 		Pipeline: "image.corrupt",
@@ -450,7 +450,7 @@ func TestUS0003_FileSizeLimitEnforced(t *testing.T) {
 	})
 
 	oversizedContent := strings.Repeat("X", maxBytes+1)
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  oversizedContent,
 		Type:     "image",
 		Pipeline: "image.sizelimit",
@@ -472,7 +472,7 @@ func TestUS0003_OCRTextSearchable(t *testing.T) {
 		&ocrStep{confidence: 0.95, text: "searchable OCR content"},
 	)
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "image-with-searchable-text",
 		Type:     "image",
 		Pipeline: "image.analysis",
@@ -519,7 +519,7 @@ func TestUS0003_LowConfidenceFlaggedForReview(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "low-confidence-image-data",
 		Type:     "image",
 		Pipeline: "image.lowconf",
@@ -558,7 +558,7 @@ func TestUS0003_MetadataStored(t *testing.T) {
 		&ocrStep{confidence: 0.97, text: "metadata test"},
 	)
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "high-res-jpg-image-bytes",
 		Type:     "image",
 		Pipeline: "image.analysis",
@@ -622,7 +622,7 @@ func TestUS0003_ObjectRetrievableViaAPI(t *testing.T) {
 		&ocrStep{confidence: 0.93, text: "retrievable object text"},
 	)
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "retrievable-image-data",
 		Type:     "image",
 		Pipeline: "image.analysis",
@@ -661,7 +661,7 @@ func TestUS0003_AsyncProcessing(t *testing.T) {
 	)
 
 	// Seed an object directly (simulating object created before enrichment finishes).
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now().Truncate(time.Second)
 	preObj := &storage.KnowledgeObject{
 		ID:        "async-image-obj",
@@ -671,7 +671,7 @@ func TestUS0003_AsyncProcessing(t *testing.T) {
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, preObj))
+	require.NoError(t, env.driver.Objects().Create(ctx, preObj))
 
 	// The object should be queryable before enrichment.
 	resp, err := gohttp.Get(fmt.Sprintf("%s/api/v1/objects/%s", env.URL, "async-image-obj"))
@@ -700,7 +700,7 @@ func TestUS0003_WorkerCrashRetry(t *testing.T) {
 	})
 
 	// Enqueue a job using the always-failing pipeline.
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "crash-retry-image-data",
 		Type:     "image",
 		Pipeline: "image.crashretry",
@@ -750,7 +750,7 @@ func TestUS0003_OCRProviderConfigurable(t *testing.T) {
 				},
 			})
 
-			jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+			jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 				Content:  fmt.Sprintf("image-for-%s-provider", tc.provider),
 				Type:     "image",
 				Pipeline: pipelineName,

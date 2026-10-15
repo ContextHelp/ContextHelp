@@ -9,6 +9,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/searchgraph"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -32,7 +33,7 @@ const (
 // (so the alpha pair shares nothing visible), beta-text the secret one.
 func (f *HybridFixture) SeedGraphGateCorpus(t testing.TB) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := sharing.WithViewer(context.Background(), sharing.Unrestricted)
 	f.SeedProfileCorpus(t)
 	now := time.Now().UTC().Truncate(time.Second)
 	for slug, ns := range map[string]string{GraphOpenEntity: GraphOpenNamespace, GraphSecretEntity: GraphSecretNamespace} {
@@ -76,7 +77,7 @@ func NamespaceVisibility(hidden ...string) searchgraph.EntityVisibility {
 // weight it would have created.
 func RunSearchGraphGate(t *testing.T, drv storage.StorageDriver) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := sharing.WithViewer(context.Background(), sharing.Unrestricted)
 	f := NewHybridFixture(t, drv, true)
 	f.SeedGraphGateCorpus(t)
 

@@ -1,7 +1,6 @@
 package http
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"testing"
@@ -31,7 +30,7 @@ func TestListSearchHistory_WithEntries(t *testing.T) {
 	ts := newTestServerBundle(t)
 	defer ts.Close()
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	for i := 0; i < 3; i++ {
 		require.NoError(t, ts.svc.AppendSearchHistory(ctx, "query", "prof_hist", "fts", i))
 	}
@@ -52,7 +51,7 @@ func TestClearSearchHistory(t *testing.T) {
 	ts := newTestServerBundle(t)
 	defer ts.Close()
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	require.NoError(t, ts.svc.AppendSearchHistory(ctx, "q", "prof_clear", "fts", 1))
 
 	req, _ := http.NewRequest(http.MethodDelete, ts.URL+"/api/v1/search-history?profile_id=prof_clear", nil)

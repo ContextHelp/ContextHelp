@@ -20,7 +20,7 @@ func TestUS0409_SchemaEvolution(t *testing.T) {
 	dir := t.TempDir()
 	driver, err := sqlite.New(dir+"/test.db", storageutil.NewTestBlobStore(t))
 	require.NoError(t, err)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	require.NoError(t, driver.Init(ctx))
 	t.Cleanup(func() { driver.Close(ctx) })
 

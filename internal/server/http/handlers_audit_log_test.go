@@ -1,7 +1,6 @@
 package http
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"testing"
@@ -35,10 +34,10 @@ func TestListAuditLog_WithEntries(t *testing.T) {
 	ts := newTestServerBundle(t)
 	defer ts.Close()
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now().UTC().Truncate(time.Second)
 	for _, et := range []string{"object.created", "fanout.completed", "object.deleted"} {
-		require.NoError(t, ts.svc.Store.AuditLog().Append(ctx,
+		require.NoError(t, ts.svc.Store(ownerCtx()).AuditLog().Append(ctx,
 			&storage.AuditEntry{
 				ID: uuid.NewString(), EventType: et,
 				ObjectID: "obj_a", Actor: "system",
@@ -65,10 +64,10 @@ func TestListAuditLog_FilterByType(t *testing.T) {
 	ts := newTestServerBundle(t)
 	defer ts.Close()
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now().UTC().Truncate(time.Second)
 	for _, et := range []string{"object.created", "fanout.completed", "object.created"} {
-		require.NoError(t, ts.svc.Store.AuditLog().Append(ctx,
+		require.NoError(t, ts.svc.Store(ownerCtx()).AuditLog().Append(ctx,
 			&storage.AuditEntry{
 				ID: uuid.NewString(), EventType: et,
 				ObjectID: "obj_b", Actor: "system",
@@ -96,10 +95,10 @@ func TestListAuditLog_FilterByMultipleTypes(t *testing.T) {
 	ts := newTestServerBundle(t)
 	defer ts.Close()
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now().UTC().Truncate(time.Second)
 	for _, et := range []string{"object.created", "fanout.completed", "object.deleted"} {
-		require.NoError(t, ts.svc.Store.AuditLog().Append(ctx,
+		require.NoError(t, ts.svc.Store(ownerCtx()).AuditLog().Append(ctx,
 			&storage.AuditEntry{
 				ID: uuid.NewString(), EventType: et,
 				ObjectID: "obj_mt", Actor: "system",
@@ -124,10 +123,10 @@ func TestListAuditLog_FilterByObjectID(t *testing.T) {
 	ts := newTestServerBundle(t)
 	defer ts.Close()
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now().UTC().Truncate(time.Second)
 	for _, oid := range []string{"obj_x", "obj_y", "obj_x"} {
-		require.NoError(t, ts.svc.Store.AuditLog().Append(ctx,
+		require.NoError(t, ts.svc.Store(ownerCtx()).AuditLog().Append(ctx,
 			&storage.AuditEntry{
 				ID: uuid.NewString(), EventType: "object.created",
 				ObjectID: oid, Actor: "system",
@@ -152,10 +151,10 @@ func TestListAuditLog_FilterByActor(t *testing.T) {
 	ts := newTestServerBundle(t)
 	defer ts.Close()
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now().UTC().Truncate(time.Second)
 	for _, actor := range []string{"system", "user:alice", "system"} {
-		require.NoError(t, ts.svc.Store.AuditLog().Append(ctx,
+		require.NoError(t, ts.svc.Store(ownerCtx()).AuditLog().Append(ctx,
 			&storage.AuditEntry{
 				ID: uuid.NewString(), EventType: "object.created",
 				ObjectID: "obj_act", Actor: actor,
@@ -201,10 +200,10 @@ func TestListAuditLog_Limit(t *testing.T) {
 	ts := newTestServerBundle(t)
 	defer ts.Close()
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now().UTC().Truncate(time.Second)
 	for i := 0; i < 5; i++ {
-		require.NoError(t, ts.svc.Store.AuditLog().Append(ctx,
+		require.NoError(t, ts.svc.Store(ownerCtx()).AuditLog().Append(ctx,
 			&storage.AuditEntry{
 				ID: uuid.NewString(), EventType: "object.created",
 				ObjectID: "obj_lim", Actor: "system",

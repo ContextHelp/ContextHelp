@@ -50,7 +50,7 @@ func (s *providerRecordStep) Run(_ context.Context, draft *storage.KnowledgeObje
 func newTestMockResolver(kv map[string]string) secret.MutableStore {
 	store := memory.New()
 	for k, v := range kv {
-		_ = store.Set(context.Background(), k, []byte(v))
+		_ = store.Set(ownerCtx(), k, []byte(v))
 	}
 	return store
 }
@@ -88,7 +88,7 @@ func TestUS0027_ProviderCalledAndResultStored(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "text requiring enrichment",
 		Type:     "text",
 		Pipeline: "test.provider.record",
@@ -160,7 +160,7 @@ func TestUS0027_NilResolverFallsBackToEnv(t *testing.T) {
 func TestUS0027_EnvResolverReadOnly(t *testing.T) {
 	r, err := secret.Open(secret.Config{Backend: "env"})
 	require.NoError(t, err)
-	err = r.Set(context.Background(), "SOME_KEY", []byte("some-value"))
+	err = r.Set(ownerCtx(), "SOME_KEY", []byte("some-value"))
 	require.Error(t, err, "env backend must return error on Set()")
 }
 

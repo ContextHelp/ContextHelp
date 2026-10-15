@@ -1,7 +1,6 @@
 package service_test
 
 import (
-	"context"
 	"database/sql"
 	"os"
 	"path/filepath"
@@ -45,7 +44,7 @@ func TestBackupIncludeConfigsArchivesActiveConfigOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	res, err := service.Backup(context.Background(), service.BackupOpts{
+	res, err := service.Backup(ownerCtx(), service.BackupOpts{
 		DBPath:         dbPath,
 		OutputDir:      filepath.Join(dir, "out"),
 		ConfigPath:     cfgPath,
@@ -61,7 +60,7 @@ func TestBackupIncludeConfigsArchivesActiveConfigOnce(t *testing.T) {
 	l := newRestoreLayout(t)
 	opts := l.opts(t, res.Path)
 	opts.ConfigFile = "dpkms.yaml"
-	rr, err := service.Restore(context.Background(), opts)
+	rr, err := service.Restore(ownerCtx(), opts)
 	if err != nil {
 		t.Fatalf("Restore: %v", err)
 	}
@@ -95,7 +94,7 @@ func TestBackupIncludeConfigsKeepsConfigDirWhenConfigFileElsewhere(t *testing.T)
 		t.Fatal(err)
 	}
 
-	res, err := service.Backup(context.Background(), service.BackupOpts{
+	res, err := service.Backup(ownerCtx(), service.BackupOpts{
 		DBPath:         dbPath,
 		OutputDir:      filepath.Join(dir, "out"),
 		ConfigPath:     cfgPath,

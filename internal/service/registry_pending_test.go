@@ -1,7 +1,6 @@
 package service
 
 import (
-	"context"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -24,10 +23,10 @@ func pendingSvc(t *testing.T, path, url string, trust config.RegistryTrustLevel)
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := driver.Init(context.Background()); err != nil {
+	if err := driver.Init(ownerCtx()); err != nil {
 		t.Fatalf("init sqlite: %v", err)
 	}
-	t.Cleanup(func() { driver.Close(context.Background()) })
+	t.Cleanup(func() { driver.Close(ownerCtx()) })
 	cfg := config.Config{Registries: []config.RegistryConfig{{
 		Name: "pub", URL: url, SyncMode: config.RegistrySyncModeFull, TrustLevel: trust,
 	}}}
@@ -45,7 +44,7 @@ func queuedFromUntrusted(t *testing.T) (*Service, string, string) {
 	)
 	path := filepath.Join(t.TempDir(), "pending.db")
 	svc, _ := pendingSvc(t, path, url, config.RegistryTrustLevelUntrusted)
-	res, err := svc.SyncRegistryEntities(context.Background(), url)
+	res, err := svc.SyncRegistryEntities(ownerCtx(), url)
 	if err != nil {
 		t.Fatalf("SyncRegistryEntities: %v", err)
 	}
@@ -61,12 +60,12 @@ func idOf(slug string) string { return storage.PendingEntityID("pub", slug, "v1"
 // new service over the same database still lists.
 func TestPendingQueue_PersistsAcrossServices(t *testing.T) {
 	first, path, url := queuedFromUntrusted(t)
-	if err := first.Store.Close(context.Background()); err != nil {
+	if err := first.store.Close(ownerCtx()); err != nil {
 		t.Fatalf("close first store: %v", err)
 	}
 
 	svc, _ := pendingSvc(t, path, url, config.RegistryTrustLevelUntrusted)
-	got, err := svc.ListPendingEntities(context.Background(), "pub")
+	got, err := svc.ListPendingEntities(ownerCtx(), "pub")
 	if err != nil {
 		t.Fatalf("ListPendingEntities: %v", err)
 	}
@@ -74,7 +73,7 @@ func TestPendingQueue_PersistsAcrossServices(t *testing.T) {
 		got[0].SignatureStatus != storage.SignatureUnsigned || got[0].RegistryURL != url {
 		t.Fatalf("queue in a new service = %+v", got)
 	}
-	if other, _ := svc.ListPendingEntities(context.Background(), "other"); len(other) != 0 {
+	if other, _ := svc.ListPendingEntities(ownerCtx(), "other"); len(other) != 0 {
 		t.Errorf("registry filter leaked: %+v", other)
 	}
 }
@@ -83,13 +82,13 @@ func TestPendingQueue_PersistsAcrossServices(t *testing.T) {
 // provenance and only the approved one leaves the queue.
 func TestApprovePending_WritesAndDequeues(t *testing.T) {
 	svc, _, url := queuedFromUntrusted(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	done, err := svc.ApprovePendingEntities(ctx, PendingSelection{IDs: []string{idOf("ai.bert")}})
 	if err != nil || len(done) != 1 {
 		t.Fatalf("ApprovePendingEntities = %d, %v", len(done), err)
 	}
-	e, err := svc.Store.Entities().Get(ctx, "ai.bert")
+	e, err := svc.store.Entities().Get(ctx, "ai.bert")
 	if err != nil {
 		t.Fatalf("approved entity not written: %v", err)
 	}
@@ -100,7 +99,7 @@ func TestApprovePending_WritesAndDequeues(t *testing.T) {
 	if len(left) != 1 || left[0].Slug != "ai.gpt" {
 		t.Errorf("queue after approve = %+v, want ai.gpt only", left)
 	}
-	if ent, err := svc.Store.Entities().Get(ctx, "ai.gpt"); err == nil && ent != nil {
+	if ent, err := svc.store.Entities().Get(ctx, "ai.gpt"); err == nil && ent != nil {
 		t.Errorf("unapproved ai.gpt written")
 	}
 
@@ -120,7 +119,7 @@ func TestApprovePending_WritesAndDequeues(t *testing.T) {
 // registry; --all without a registry is refused.
 func TestApprovePending_AllOfRegistry(t *testing.T) {
 	svc, _, _ := queuedFromUntrusted(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	if _, err := svc.ApprovePendingEntities(ctx, PendingSelection{All: true}); !errors.Is(err, ErrPendingSelection) {
 		t.Errorf("all without registry: err = %v, want ErrPendingSelection", err)
@@ -130,7 +129,7 @@ func TestApprovePending_AllOfRegistry(t *testing.T) {
 		t.Fatalf("approve all = %d, %v; want 2", len(done), err)
 	}
 	for _, slug := range []string{"ai.bert", "ai.gpt"} {
-		if _, err := svc.Store.Entities().Get(ctx, slug); err != nil {
+		if _, err := svc.store.Entities().Get(ctx, slug); err != nil {
 			t.Errorf("%s not written: %v", slug, err)
 		}
 	}
@@ -143,13 +142,13 @@ func TestApprovePending_AllOfRegistry(t *testing.T) {
 // whole approval before anything is written.
 func TestApprovePending_UnknownIDWritesNothing(t *testing.T) {
 	svc, _, _ := queuedFromUntrusted(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	_, err := svc.ApprovePendingEntities(ctx, PendingSelection{IDs: []string{idOf("ai.bert"), "nope"}})
 	if !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("err = %v, want ErrNotFound", err)
 	}
-	if e, err := svc.Store.Entities().Get(ctx, "ai.bert"); err == nil && e != nil {
+	if e, err := svc.store.Entities().Get(ctx, "ai.bert"); err == nil && e != nil {
 		t.Errorf("ai.bert written despite the failed selection")
 	}
 	if left, _ := svc.ListPendingEntities(ctx, ""); len(left) != 2 {
@@ -161,15 +160,15 @@ func TestApprovePending_UnknownIDWritesNothing(t *testing.T) {
 // sandboxed after its entities were queued cannot have them approved.
 func TestApprovePending_RegistryNowSandboxed(t *testing.T) {
 	first, path, url := queuedFromUntrusted(t)
-	_ = first.Store.Close(context.Background())
+	_ = first.store.Close(ownerCtx())
 	svc, _ := pendingSvc(t, path, url, config.RegistryTrustLevelSandboxed)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	_, err := svc.ApprovePendingEntities(ctx, PendingSelection{IDs: []string{idOf("ai.bert")}})
 	if !errors.Is(err, ErrPendingSandboxed) {
 		t.Fatalf("err = %v, want ErrPendingSandboxed", err)
 	}
-	if e, err := svc.Store.Entities().Get(ctx, "ai.bert"); err == nil && e != nil {
+	if e, err := svc.store.Entities().Get(ctx, "ai.bert"); err == nil && e != nil {
 		t.Errorf("sandboxed registry's entity written on approve")
 	}
 }
@@ -177,7 +176,7 @@ func TestApprovePending_RegistryNowSandboxed(t *testing.T) {
 // TestRejectPending_DequeuesWithoutWriting.
 func TestRejectPending_DequeuesWithoutWriting(t *testing.T) {
 	svc, _, _ := queuedFromUntrusted(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	done, err := svc.RejectPendingEntities(ctx, PendingSelection{IDs: []string{idOf("ai.gpt")}})
 	if err != nil || len(done) != 1 {
@@ -187,7 +186,7 @@ func TestRejectPending_DequeuesWithoutWriting(t *testing.T) {
 	if len(left) != 1 || left[0].Slug != "ai.bert" {
 		t.Errorf("queue after reject = %+v, want ai.bert only", left)
 	}
-	if e, err := svc.Store.Entities().Get(ctx, "ai.gpt"); err == nil && e != nil {
+	if e, err := svc.store.Entities().Get(ctx, "ai.gpt"); err == nil && e != nil {
 		t.Errorf("rejected entity written")
 	}
 	if _, err := svc.RejectPendingEntities(ctx, PendingSelection{IDs: []string{idOf("ai.gpt")}}); !errors.Is(err, storage.ErrNotFound) {
@@ -200,7 +199,7 @@ func TestRejectPending_DequeuesWithoutWriting(t *testing.T) {
 func TestSandboxedSyncQueuesNothing(t *testing.T) {
 	url := indexRegistry(t, registrysync.EntityIndexEntry{Slug: "ai.t5", Title: "T5", Namespace: "ai", VersionHash: "v1"})
 	svc, _ := pendingSvc(t, filepath.Join(t.TempDir(), "box.db"), url, config.RegistryTrustLevelSandboxed)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	res, err := svc.SyncRegistryEntities(ctx, url)
 	if err != nil || res.Blocked != 1 {

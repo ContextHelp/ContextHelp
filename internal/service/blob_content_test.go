@@ -33,7 +33,7 @@ func blobTestService(t *testing.T) *Service {
 // the empty TextContent to that ref.
 func seedBlobObject(t *testing.T, svc *Service, id, content string) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := ownerCtx()
 	draft := &storage.KnowledgeObject{
 		ID:          id,
 		Type:        "text",
@@ -44,12 +44,12 @@ func seedBlobObject(t *testing.T, svc *Service, id, content string) {
 		CreatedAt:   time.Now().UTC().Truncate(time.Second),
 		UpdatedAt:   time.Now().UTC().Truncate(time.Second),
 	}
-	out, err := psteps.NewExternalizer(svc.Store.Blobs(), testBlobThreshold).Run(ctx, draft)
+	out, err := psteps.NewExternalizer(svc.store.Blobs(), testBlobThreshold).Run(ctx, draft)
 	require.NoError(t, err)
 	require.True(t, blob.IsBlobRef(out.RawContent), "seed: content not externalized")
-	require.NoError(t, svc.Store.Objects().Create(ctx, out))
+	require.NoError(t, svc.store.Objects().Create(ctx, out))
 
-	stored, err := svc.Store.Objects().Get(ctx, id)
+	stored, err := svc.store.Objects().Get(ctx, id)
 	require.NoError(t, err)
 	require.True(t, blob.IsBlobRef(stored.RawContent), "seed: stored content is not a ref")
 }
@@ -85,7 +85,7 @@ func TestGetObjectResolvesBlobContent(t *testing.T) {
 	body := bigBody(500)
 	seedBlobObject(t, svc, "obj-big", body)
 
-	got, err := svc.GetObject(context.Background(), "obj-big")
+	got, err := svc.GetObject(ownerCtx(), "obj-big")
 	require.NoError(t, err)
 	requireNoRef(t, got)
 	require.Equal(t, body, got.RawContent)
@@ -96,22 +96,22 @@ func TestGetObjectResolvesBlobContent(t *testing.T) {
 func TestGetObjectMissingBlobFails(t *testing.T) {
 	svc := blobTestService(t)
 	seedBlobObject(t, svc, "obj-lost", bigBody(500))
-	stored, err := svc.Store.Objects().Get(context.Background(), "obj-lost")
+	stored, err := svc.store.Objects().Get(ownerCtx(), "obj-lost")
 	require.NoError(t, err)
 	key, _ := blob.BlobKey(stored.RawContent)
-	require.NoError(t, svc.Store.Blobs().Delete(context.Background(), key))
+	require.NoError(t, svc.store.Blobs().Delete(ownerCtx(), key))
 
-	_, err = svc.GetObject(context.Background(), "obj-lost")
+	_, err = svc.GetObject(ownerCtx(), "obj-lost")
 	require.Error(t, err, "a lost blob must fail the read, not answer the ref")
 }
 
 func TestListReadPathsPreviewBlobContent(t *testing.T) {
 	svc := blobTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	body := bigBody(500)
 	seedBlobObject(t, svc, "obj-big", body)
 	small := "short inline body"
-	require.NoError(t, svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+	require.NoError(t, svc.store.Objects().Create(ctx, &storage.KnowledgeObject{
 		ID: "obj-small", Type: "text", RawContent: small, Summaries: []string{"zephyrine small"},
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 	}))
@@ -186,12 +186,12 @@ func TestListReadPathsPreviewBlobContent(t *testing.T) {
 
 func TestRelatedAndBacklinksPreviewBlobContent(t *testing.T) {
 	svc := blobTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	body := bigBody(500)
 	seedBlobObject(t, svc, "obj-big", body)
 	seedBlobObject(t, svc, "obj-big2", bigBody(400))
 	for _, id := range []string{"obj-big", "obj-big2"} {
-		require.NoError(t, svc.Store.Edges().Create(ctx, &storage.Edge{
+		require.NoError(t, svc.store.Edges().Create(ctx, &storage.Edge{
 			ID: "e-" + id, FromType: "object", FromID: id, ToType: "entity", ToID: "ctxt://entity/person/ada", EdgeType: "mentions",
 		}))
 	}
@@ -217,10 +217,10 @@ func TestRelatedAndBacklinksPreviewBlobContent(t *testing.T) {
 // real content back.
 func TestPatchObjectKeepsBlobExternalized(t *testing.T) {
 	svc := blobTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	body := bigBody(500)
 	seedBlobObject(t, svc, "obj-big", body)
-	before, err := svc.Store.Objects().Get(ctx, "obj-big")
+	before, err := svc.store.Objects().Get(ctx, "obj-big")
 	require.NoError(t, err)
 
 	title := "renamed"
@@ -228,7 +228,7 @@ func TestPatchObjectKeepsBlobExternalized(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, body, got.RawContent)
 
-	stored, err := svc.Store.Objects().Get(ctx, "obj-big")
+	stored, err := svc.store.Objects().Get(ctx, "obj-big")
 	require.NoError(t, err)
 	require.Equal(t, before.RawContent, stored.RawContent, "patch inlined externalized content")
 	require.Equal(t, before.TextContent, stored.TextContent, "patch inlined externalized text")
@@ -242,7 +242,7 @@ func TestPatchObjectKeepsBlobExternalized(t *testing.T) {
 // Writing back a list preview must not truncate the stored content.
 func TestUpdateObjectFromPreviewKeepsFullContent(t *testing.T) {
 	svc := blobTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	body := bigBody(500)
 	seedBlobObject(t, svc, "obj-big", body)
 
@@ -265,8 +265,8 @@ func TestUpdateObjectFromPreviewKeepsFullContent(t *testing.T) {
 // externalized like ingest does it.
 func TestUpdateObjectExternalizesLargeContent(t *testing.T) {
 	svc := blobTestService(t)
-	ctx := context.Background()
-	require.NoError(t, svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+	ctx := ownerCtx()
+	require.NoError(t, svc.store.Objects().Create(ctx, &storage.KnowledgeObject{
 		ID: "obj-grow", Type: "text", RawContent: "small", Source: "test://grow",
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 	}))
@@ -277,7 +277,7 @@ func TestUpdateObjectExternalizesLargeContent(t *testing.T) {
 	require.NoError(t, svc.UpdateObject(ctx, obj))
 	require.Equal(t, body, obj.RawContent, "UpdateObject rewrote the caller's object")
 
-	stored, err := svc.Store.Objects().Get(ctx, "obj-grow")
+	stored, err := svc.store.Objects().Get(ctx, "obj-grow")
 	require.NoError(t, err)
 	require.True(t, blob.IsBlobRef(stored.RawContent), "large update stored inline")
 	got, err := svc.GetObject(ctx, "obj-grow")
@@ -301,13 +301,13 @@ func (c *contentRecorder) Run(_ context.Context, d *storage.KnowledgeObject) (*s
 // stores the result externalized again.
 func TestReanalyzeRunsOnResolvedContent(t *testing.T) {
 	svc := blobTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	body := bigBody(500)
 	seedBlobObject(t, svc, "obj-big", body)
-	stored, err := svc.Store.Objects().Get(ctx, "obj-big")
+	stored, err := svc.store.Objects().Get(ctx, "obj-big")
 	require.NoError(t, err)
 	stored.Pipeline = "blobtest@v1"
-	require.NoError(t, svc.Store.Objects().Update(ctx, stored))
+	require.NoError(t, svc.store.Objects().Update(ctx, stored))
 
 	var seen string
 	svc.Pipes.Upsert("blobtest@v1", &pipeline.Pipeline{
@@ -319,7 +319,7 @@ func TestReanalyzeRunsOnResolvedContent(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, body, seen, "pipeline ran on the blob ref")
 
-	after, err := svc.Store.Objects().Get(ctx, "obj-big")
+	after, err := svc.store.Objects().Get(ctx, "obj-big")
 	require.NoError(t, err)
 	require.True(t, blob.IsBlobRef(after.RawContent), "reanalyze stored large content inline")
 	got, err := svc.GetObject(ctx, "obj-big")
@@ -331,7 +331,7 @@ func TestReanalyzeRunsOnResolvedContent(t *testing.T) {
 // its own threshold.
 func TestFederationAcceptExternalizesByReceiverThreshold(t *testing.T) {
 	svc := blobTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	body := bigBody(500)
 	n, err := svc.FederationAccept(ctx, []storage.KnowledgeObject{{
 		ID: "fed-1", Type: "text", RawContent: body, TextContent: body, Source: "peer://x",
@@ -340,7 +340,7 @@ func TestFederationAcceptExternalizesByReceiverThreshold(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, n)
 
-	stored, err := svc.Store.Objects().Get(ctx, "fed-1")
+	stored, err := svc.store.Objects().Get(ctx, "fed-1")
 	require.NoError(t, err)
 	require.True(t, blob.IsBlobRef(stored.RawContent), "accepted content above the threshold stored inline")
 	got, err := svc.GetObject(ctx, "fed-1")
@@ -352,10 +352,10 @@ func TestFederationAcceptExternalizesByReceiverThreshold(t *testing.T) {
 // ref: its words find it, the ref's tokens (the scheme, the key) do not.
 func TestSearchIndexesExternalizedContentNotRef(t *testing.T) {
 	svc := blobTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	body := "quokka marmalade " + bigBody(500)
 	seedBlobObject(t, svc, "obj-big", body)
-	stored, err := svc.Store.Objects().Get(ctx, "obj-big")
+	stored, err := svc.store.Objects().Get(ctx, "obj-big")
 	require.NoError(t, err)
 	key, _ := blob.BlobKey(stored.RawContent)
 	require.False(t, blob.IsBlobRef(stored.TextContent), "stored text_content is the blob ref")
@@ -381,18 +381,18 @@ func TestSearchIndexesExternalizedContentNotRef(t *testing.T) {
 // refers to it.
 func TestDeleteObjectDeletesUnsharedBlob(t *testing.T) {
 	svc := blobTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	seedBlobObject(t, svc, "obj-big", bigBody(500))
-	stored, err := svc.Store.Objects().Get(ctx, "obj-big")
+	stored, err := svc.store.Objects().Get(ctx, "obj-big")
 	require.NoError(t, err)
 	key, _ := blob.BlobKey(stored.RawContent)
 	ageBlob(t, svc, key)
 	twin := *stored
 	twin.ID, twin.ContentHash = "obj-twin", ""
-	require.NoError(t, svc.Store.Objects().Create(ctx, &twin))
+	require.NoError(t, svc.store.Objects().Create(ctx, &twin))
 
 	exists := func() bool {
-		ok, err := svc.Store.Blobs().Exists(ctx, key)
+		ok, err := svc.store.Blobs().Exists(ctx, key)
 		require.NoError(t, err)
 		return ok
 	}
@@ -405,7 +405,7 @@ func TestDeleteObjectDeletesUnsharedBlob(t *testing.T) {
 // storedBlobKey returns the blob key object id's content is stored under.
 func storedBlobKey(t *testing.T, svc *Service, id string) string {
 	t.Helper()
-	stored, err := svc.Store.Objects().Get(context.Background(), id)
+	stored, err := svc.store.Objects().Get(ownerCtx(), id)
 	require.NoError(t, err)
 	key, ok := blob.BlobKey(stored.RawContent)
 	require.True(t, ok, "object %s: content is not externalized", id)
@@ -417,7 +417,7 @@ func storedBlobKey(t *testing.T, svc *Service, id string) string {
 // local backend: its URL is the blob's file.
 func ageBlob(t *testing.T, svc *Service, key string) {
 	t.Helper()
-	u, err := svc.Store.Blobs().URL(context.Background(), key)
+	u, err := svc.store.Blobs().URL(ownerCtx(), key)
 	require.NoError(t, err)
 	at := time.Now().Add(-2 * blob.DefaultSweepGrace)
 	require.NoError(t, os.Chtimes(strings.TrimPrefix(u, "file://"), at, at))
@@ -425,7 +425,7 @@ func ageBlob(t *testing.T, svc *Service, key string) {
 
 func blobExists(t *testing.T, svc *Service, key string) bool {
 	t.Helper()
-	ok, err := svc.Store.Blobs().Exists(context.Background(), key)
+	ok, err := svc.store.Blobs().Exists(ownerCtx(), key)
 	require.NoError(t, err)
 	return ok
 }
@@ -434,7 +434,7 @@ func blobExists(t *testing.T, svc *Service, key string) bool {
 // old content was stored in.
 func TestUpdateObjectReplacingContentDeletesOldBlob(t *testing.T) {
 	svc := blobTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	seedBlobObject(t, svc, "obj-big", bigBody(500))
 	oldKey := storedBlobKey(t, svc, "obj-big")
 	ageBlob(t, svc, oldKey)
@@ -455,14 +455,14 @@ func TestUpdateObjectReplacingContentDeletesOldBlob(t *testing.T) {
 // old content was stored in.
 func TestReanalyzeReplacingContentDeletesOldBlob(t *testing.T) {
 	svc := blobTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	seedBlobObject(t, svc, "obj-big", bigBody(500))
 	oldKey := storedBlobKey(t, svc, "obj-big")
 	ageBlob(t, svc, oldKey)
-	stored, err := svc.Store.Objects().Get(ctx, "obj-big")
+	stored, err := svc.store.Objects().Get(ctx, "obj-big")
 	require.NoError(t, err)
 	stored.Pipeline = "rewrite@v1"
-	require.NoError(t, svc.Store.Objects().Update(ctx, stored))
+	require.NoError(t, svc.store.Objects().Update(ctx, stored))
 	svc.Pipes.Upsert("rewrite@v1", &pipeline.Pipeline{
 		PipelineName: "rewrite@v1",
 		Steps:        []pipeline.PipelineStep{contentRewriter{}},

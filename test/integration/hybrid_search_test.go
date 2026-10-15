@@ -3,7 +3,6 @@
 package integration
 
 import (
-	"context"
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
@@ -16,10 +15,10 @@ import (
 
 func TestHybridSearch_EndToEnd(t *testing.T) {
 	env := startTestEnv(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	// Access the underlying SQLite driver for FTS rebuild.
-	d, ok := env.svc.Store.(*sqlite.Driver)
+	d, ok := env.driver.(*sqlite.Driver)
 	require.True(t, ok, "store must be *sqlite.Driver")
 
 	// Insert graph-canonical objects. ProjectIndex derives FTSBody from graph
@@ -32,7 +31,7 @@ func TestHybridSearch_EndToEnd(t *testing.T) {
 		obj := storageutil.BuildGraphKO(tc.id, "text", tc.summary)
 		obj.CreatedAt = nowTrunc()
 		obj.UpdatedAt = nowTrunc()
-		require.NoError(t, env.svc.Store.Objects().Create(ctx, obj))
+		require.NoError(t, env.driver.Objects().Create(ctx, obj))
 	}
 
 	// Rebuild FTS content table.

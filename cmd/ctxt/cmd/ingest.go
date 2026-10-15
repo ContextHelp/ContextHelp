@@ -84,7 +84,7 @@ func runIngest(cmd *cobra.Command, _ []string) error {
 	}
 	defer cleanup()
 
-	runner := ingest.NewRunner(svc.Store.Objects())
+	runner := ingest.NewRunner(svc.Store(asOwner(cmd.Context())).Objects())
 
 	if fromStdin {
 		res, err := runner.RunFromStdin(cmd.Context(), source, os.Stdin)

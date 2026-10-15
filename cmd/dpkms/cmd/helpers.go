@@ -22,11 +22,20 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/secrets"
 	"github.com/ideacrafterslabs/ctxt/internal/server/stack"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/spf13/cobra"
 	"hop.top/kit/go/storage/secret"
 )
+
+// asSystem returns ctx carrying the unrestricted viewer: a dpkms command
+// at the host's terminal, and the daemon's own loops, act as the
+// instance itself and read the service unscoped (ADR-080 §4). Request
+// handlers never call it; their viewer comes from authentication.
+func asSystem(ctx context.Context) context.Context {
+	return sharing.WithViewer(ctx, sharing.Unrestricted)
+}
 
 // closeStorage closes a storage driver at the end of a command, warning
 // on stderr when the close fails: the command's own result stands.
@@ -92,7 +101,7 @@ func newService() (*service.Service, func(), error) {
 		}))}, *cfg)
 	cleanup := func() { closeStorage(driver) }
 
-	if err := svc.EnsureDefaultRegistry(ctx); err != nil {
+	if err := svc.EnsureDefaultRegistry(asSystem(ctx)); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to load default registry: %v\n", err)
 	}
 

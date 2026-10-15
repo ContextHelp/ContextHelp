@@ -22,7 +22,7 @@ func TestUISession_CSRF(t *testing.T) {
 	f := newUIFixture(t)
 	c := f.signIn()
 	obj := &storage.KnowledgeObject{ID: "obj-csrf", Type: "note", RawContent: "x", CreatedAt: time.Now(), UpdatedAt: time.Now()}
-	require.NoError(t, f.bundle.svc.Store.Objects().Create(context.Background(), obj))
+	require.NoError(t, f.bundle.svc.Store(ownerCtx()).Objects().Create(ownerCtx(), obj))
 
 	cases := []struct {
 		name     string
@@ -221,7 +221,7 @@ func TestUISession_EventStreamWithCookie(t *testing.T) {
 
 	// Revoking the session ends the open stream.
 	sid := decodeBody[whoamiResponse](t, f.do(http.MethodGet, "/api/v1/whoami", nil, withCookie(c), fromUI)).Session.ID
-	require.NoError(t, f.sessions.Revoke(context.Background(), sid, authn.RevokeReasonRevoked))
+	require.NoError(t, f.sessions.Revoke(ownerCtx(), sid, authn.RevokeReasonRevoked))
 	done := make(chan error, 1)
 	go func() {
 		_, err := io.Copy(io.Discard, bufio.NewReader(resp.Body))

@@ -1,7 +1,6 @@
 package http
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -28,7 +27,7 @@ func edgeServer(t *testing.T) (*httptest.Server, storage.StorageDriver) {
 	driver := storageutil.NewTestDriver(t)
 	now := time.Now().Truncate(time.Second)
 	for _, id := range []string{"a", "b", "c"} {
-		require.NoError(t, driver.Objects().Create(context.Background(), &storage.KnowledgeObject{
+		require.NoError(t, driver.Objects().Create(ownerCtx(), &storage.KnowledgeObject{
 			ID: id, Type: "text", CreatedAt: now, UpdatedAt: now,
 		}))
 	}
@@ -50,7 +49,7 @@ func storedLinks(t *testing.T, driver storage.StorageDriver) []string {
 	t.Helper()
 	var out []string
 	for _, id := range []string{"a", "b", "c"} {
-		edges, err := driver.Edges().ListFrom(context.Background(), "object", id)
+		edges, err := driver.Edges().ListFrom(ownerCtx(), "object", id)
 		require.NoError(t, err)
 		for _, e := range edges {
 			out = append(out, e.FromID+" "+e.EdgeType+" "+e.ToID)

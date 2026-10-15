@@ -1,7 +1,6 @@
 package integration
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -15,7 +14,7 @@ import (
 
 func TestUS0402_LintOrphan(t *testing.T) {
 	driver := storageutil.NewTestDriver(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	orphan := &storage.KnowledgeObject{
 		ID:         "orphan-obj",
@@ -39,7 +38,7 @@ func TestUS0402_LintOrphan(t *testing.T) {
 
 func TestUS0402_LintMissingMetadata(t *testing.T) {
 	driver := storageutil.NewTestDriver(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	obj := &storage.KnowledgeObject{
 		ID:         "no-meta",
@@ -62,7 +61,7 @@ func TestUS0402_LintMissingMetadata(t *testing.T) {
 
 func TestUS0402_LintCheckFilter(t *testing.T) {
 	driver := storageutil.NewTestDriver(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	// create an orphan that would also be flagged as missing_metadata
 	obj := &storage.KnowledgeObject{
@@ -87,7 +86,7 @@ func TestUS0402_LintCheckFilter(t *testing.T) {
 
 func TestUS0402_LintAuditLog(t *testing.T) {
 	driver := storageutil.NewTestDriver(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	cfg := lint.DefaultConfig()
 	report, err := lint.New(driver, cfg).Run(ctx)

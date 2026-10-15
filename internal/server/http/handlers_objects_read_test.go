@@ -1,7 +1,6 @@
 package http_test
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -61,7 +60,7 @@ func mentionURIs(t *testing.T, ms ...string) []uri.URI {
 // o-a reaches o-b at depth 1 and o-c at depth 2.
 func seedObjectReadCorpus(t *testing.T, driver storage.StorageDriver) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := ownerCtx()
 	objs := []*storage.KnowledgeObject{
 		{
 			ID: "o-a", Type: "article", Subtype: "article.long", Status: "active", Pipeline: "p-web",

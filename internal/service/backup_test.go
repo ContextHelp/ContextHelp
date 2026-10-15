@@ -3,7 +3,6 @@ package service_test
 import (
 	"archive/tar"
 	"compress/gzip"
-	"context"
 	"database/sql"
 	"encoding/json"
 	"io"
@@ -42,7 +41,7 @@ func TestBackupCreatesArchive(t *testing.T) {
 		OutputDir:    outDir,
 	}
 
-	result, err := service.Backup(context.Background(), opts)
+	result, err := service.Backup(ownerCtx(), opts)
 	if err != nil {
 		t.Fatalf("Backup: %v", err)
 	}
@@ -83,7 +82,7 @@ func TestBackupFailsOnNonEmptyOutputDir(t *testing.T) {
 		OutputDir: outDir,
 	}
 
-	_, err = service.Backup(context.Background(), opts)
+	_, err = service.Backup(ownerCtx(), opts)
 	if err == nil {
 		t.Fatal("expected error for non-empty output dir")
 	}
@@ -123,7 +122,7 @@ func TestBackupIncludesConfigFile(t *testing.T) {
 		ConfigPath: cfgPath,
 	}
 
-	result, err := service.Backup(context.Background(), opts)
+	result, err := service.Backup(ownerCtx(), opts)
 	if err != nil {
 		t.Fatalf("Backup: %v", err)
 	}
@@ -160,7 +159,7 @@ func TestBackupNoConfigPath(t *testing.T) {
 		OutputDir: outDir,
 	}
 
-	result, err := service.Backup(context.Background(), opts)
+	result, err := service.Backup(ownerCtx(), opts)
 	if err != nil {
 		t.Fatalf("Backup without config: %v", err)
 	}
@@ -195,7 +194,7 @@ func TestBackupMissingConfigFileIsNonFatal(t *testing.T) {
 		ConfigPath: filepath.Join(dir, "nonexistent.yaml"),
 	}
 
-	result, err := service.Backup(context.Background(), opts)
+	result, err := service.Backup(ownerCtx(), opts)
 	if err != nil {
 		t.Fatalf("Backup with missing config should be non-fatal: %v", err)
 	}
@@ -224,7 +223,7 @@ func TestBackupAutoCreatesOutputDir(t *testing.T) {
 		OutputDir: outDir,
 	}
 
-	result, err := service.Backup(context.Background(), opts)
+	result, err := service.Backup(ownerCtx(), opts)
 	if err != nil {
 		t.Fatalf("Backup should auto-create dir: %v", err)
 	}
@@ -261,7 +260,7 @@ func TestBackupIncludesConfigDir(t *testing.T) {
 		ConfigDir:      cfgDir,
 	}
 
-	result, err := service.Backup(context.Background(), opts)
+	result, err := service.Backup(ownerCtx(), opts)
 	if err != nil {
 		t.Fatalf("Backup: %v", err)
 	}
@@ -297,7 +296,7 @@ func TestBackupManifestV2HasEmbeddingInfo(t *testing.T) {
 		},
 	}
 
-	result, err := service.Backup(context.Background(), opts)
+	result, err := service.Backup(ownerCtx(), opts)
 	if err != nil {
 		t.Fatalf("Backup: %v", err)
 	}
@@ -345,7 +344,7 @@ func TestRestoreFromArchive(t *testing.T) {
 	os.MkdirAll(cfgDir, 0755)
 	os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte("port: 8080\n"), 0644)
 
-	bResult, err := service.Backup(context.Background(), service.BackupOpts{
+	bResult, err := service.Backup(ownerCtx(), service.BackupOpts{
 		DBPath:         dbPath,
 		OutputDir:      backupDir,
 		IncludeConfigs: true,
@@ -360,7 +359,7 @@ func TestRestoreFromArchive(t *testing.T) {
 	restoreDB := filepath.Join(restoreDir, "ctxt.db")
 	restoreCfg := filepath.Join(restoreDir, "config")
 
-	rResult, err := service.Restore(context.Background(), service.RestoreOpts{
+	rResult, err := service.Restore(ownerCtx(), service.RestoreOpts{
 		Source:    bResult.Path,
 		DBPath:    restoreDB,
 		ConfigDir: restoreCfg,
@@ -391,7 +390,7 @@ func TestRestoreDryRun(t *testing.T) {
 	}
 	db.Close()
 
-	bResult, err := service.Backup(context.Background(), service.BackupOpts{
+	bResult, err := service.Backup(ownerCtx(), service.BackupOpts{
 		DBPath:    dbPath,
 		OutputDir: backupDir,
 	})
@@ -402,7 +401,7 @@ func TestRestoreDryRun(t *testing.T) {
 	restoreDir := filepath.Join(dir, "restored")
 	restoreDB := filepath.Join(restoreDir, "ctxt.db")
 
-	rResult, err := service.Restore(context.Background(), service.RestoreOpts{
+	rResult, err := service.Restore(ownerCtx(), service.RestoreOpts{
 		Source: bResult.Path,
 		DBPath: restoreDB,
 		DryRun: true,
@@ -443,7 +442,7 @@ func TestRestoreFromDir(t *testing.T) {
 	restoreDB := filepath.Join(restoreDir, "ctxt.db")
 	restoreCfg := filepath.Join(restoreDir, "config")
 
-	rResult, err := service.Restore(context.Background(), service.RestoreOpts{
+	rResult, err := service.Restore(ownerCtx(), service.RestoreOpts{
 		Source:    backupDir,
 		DBPath:    restoreDB,
 		ConfigDir: restoreCfg,
@@ -478,7 +477,7 @@ func TestRestoreSkipConfigs(t *testing.T) {
 	os.MkdirAll(cfgDir, 0755)
 	os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte("x: 1\n"), 0644)
 
-	bResult, err := service.Backup(context.Background(), service.BackupOpts{
+	bResult, err := service.Backup(ownerCtx(), service.BackupOpts{
 		DBPath:         dbPath,
 		OutputDir:      backupDir,
 		IncludeConfigs: true,
@@ -492,7 +491,7 @@ func TestRestoreSkipConfigs(t *testing.T) {
 	restoreDB := filepath.Join(restoreDir, "ctxt.db")
 	restoreCfg := filepath.Join(restoreDir, "config")
 
-	rResult, err := service.Restore(context.Background(), service.RestoreOpts{
+	rResult, err := service.Restore(ownerCtx(), service.RestoreOpts{
 		Source:      bResult.Path,
 		DBPath:      restoreDB,
 		ConfigDir:   restoreCfg,

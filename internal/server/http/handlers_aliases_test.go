@@ -2,7 +2,6 @@ package http
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -23,7 +22,7 @@ import (
 func seedAliasObject(t *testing.T, ts *testServerBundle, id string) {
 	t.Helper()
 	now := time.Now().Truncate(time.Second)
-	require.NoError(t, ts.svc.Store.Objects().Create(context.Background(), &storage.KnowledgeObject{
+	require.NoError(t, ts.svc.Store(ownerCtx()).Objects().Create(ownerCtx(), &storage.KnowledgeObject{
 		ID: id, Type: "note", CreatedAt: now, UpdatedAt: now,
 	}))
 }
@@ -73,7 +72,7 @@ func TestAliases_RoundTrip(t *testing.T) {
 	assert.Equal(t, "global", created.Scope)
 
 	// The row is in the store itself.
-	id, err := ts.svc.Store.Aliases().Resolve(context.Background(), "charter", "")
+	id, err := ts.svc.Store(ownerCtx()).Aliases().Resolve(ownerCtx(), "charter", "")
 	require.NoError(t, err)
 	assert.Equal(t, "obj-1", id)
 
@@ -126,7 +125,7 @@ func TestCreateAlias_Duplicate(t *testing.T) {
 	assert.Equal(t, http.StatusConflict, resp.StatusCode)
 	assert.Equal(t, "CONFLICT", aliasErrorCode(t, resp))
 
-	id, err := ts.svc.Store.Aliases().Resolve(context.Background(), "charter", "")
+	id, err := ts.svc.Store(ownerCtx()).Aliases().Resolve(ownerCtx(), "charter", "")
 	require.NoError(t, err)
 	assert.Equal(t, "obj-1", id, "the first alias must survive the rejected duplicate")
 }
@@ -149,7 +148,7 @@ func TestCreateAlias_Validation(t *testing.T) {
 			assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 		})
 	}
-	all, err := ts.svc.Store.Aliases().List(context.Background(), storage.AliasFilter{})
+	all, err := ts.svc.Store(ownerCtx()).Aliases().List(ownerCtx(), storage.AliasFilter{})
 	require.NoError(t, err)
 	assert.Empty(t, all)
 }

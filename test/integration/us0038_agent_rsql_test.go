@@ -9,7 +9,6 @@ package integration
 // Gate: INTEGRATION=1 env var required to run.
 
 import (
-	"context"
 	"fmt"
 	gohttp "net/http"
 	"os"
@@ -30,7 +29,7 @@ func TestUS0038_AgentRSQLTypeEquality(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 
 	for _, tc := range []struct{ id, typ string }{
@@ -38,7 +37,7 @@ func TestUS0038_AgentRSQLTypeEquality(t *testing.T) {
 		{"rsql38-dec-2", "decision"},
 		{"rsql38-art-1", "article"},
 	} {
-		require.NoError(t, env.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+		require.NoError(t, env.driver.Objects().Create(ctx, &storage.KnowledgeObject{
 			ID:        tc.id,
 			Type:      tc.typ,
 			CreatedAt: now,
@@ -68,7 +67,7 @@ func TestUS0038_AgentRSQLAndOperator(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 
 	objects := []storage.KnowledgeObject{
@@ -77,7 +76,7 @@ func TestUS0038_AgentRSQLAndOperator(t *testing.T) {
 		{ID: "rsql38-and-3", Type: "note", Source: "agent", CreatedAt: now, UpdatedAt: now},
 	}
 	for i := range objects {
-		require.NoError(t, env.svc.Store.Objects().Create(ctx, &objects[i]))
+		require.NoError(t, env.driver.Objects().Create(ctx, &objects[i]))
 	}
 
 	// AND: type==article;source==agent — only rsql38-and-1 matches.
@@ -96,7 +95,7 @@ func TestUS0038_AgentRSQLOrOperator(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 
 	for _, tc := range []struct{ id, typ string }{
@@ -104,7 +103,7 @@ func TestUS0038_AgentRSQLOrOperator(t *testing.T) {
 		{"rsql38-or-2", "decision"},
 		{"rsql38-or-3", "note"},
 	} {
-		require.NoError(t, env.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+		require.NoError(t, env.driver.Objects().Create(ctx, &storage.KnowledgeObject{
 			ID:        tc.id,
 			Type:      tc.typ,
 			CreatedAt: now,
@@ -135,7 +134,7 @@ func TestUS0038_AgentRSQLInOperator(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 
 	for _, tc := range []struct{ id, typ string }{
@@ -143,7 +142,7 @@ func TestUS0038_AgentRSQLInOperator(t *testing.T) {
 		{"rsql38-in-2", "note"},
 		{"rsql38-in-3", "video"},
 	} {
-		require.NoError(t, env.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+		require.NoError(t, env.driver.Objects().Create(ctx, &storage.KnowledgeObject{
 			ID:        tc.id,
 			Type:      tc.typ,
 			CreatedAt: now,
@@ -203,11 +202,11 @@ func TestUS0038_AgentRSQLDeterministicOrdering(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 
 	for _, id := range []string{"rsql38-det-c", "rsql38-det-a", "rsql38-det-b"} {
-		require.NoError(t, env.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+		require.NoError(t, env.driver.Objects().Create(ctx, &storage.KnowledgeObject{
 			ID:        id,
 			Type:      "article",
 			CreatedAt: now,
@@ -243,10 +242,10 @@ func TestUS0038_AgentRSQLObjectMetadataPresent(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+	require.NoError(t, env.driver.Objects().Create(ctx, &storage.KnowledgeObject{
 		ID:        "rsql38-meta-1",
 		Type:      "article",
 		Source:    "agent-test",
@@ -289,10 +288,10 @@ func TestUS0038_AgentRSQLViaHTTPQueryMode(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+	require.NoError(t, env.driver.Objects().Create(ctx, &storage.KnowledgeObject{
 		ID: "rsql38-qm-1", Type: "note", CreatedAt: now, UpdatedAt: now,
 	}))
 
@@ -313,10 +312,10 @@ func TestUS0038_AgentRSQLObjectRetrievableByID(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+	require.NoError(t, env.driver.Objects().Create(ctx, &storage.KnowledgeObject{
 		ID:        "rsql38-rt-1",
 		Type:      "decision",
 		Source:    "agent-test",
@@ -351,11 +350,11 @@ func TestUS0038_AgentRSQLPerformanceLocal(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 
 	for i := 0; i < 10; i++ {
-		require.NoError(t, env.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+		require.NoError(t, env.driver.Objects().Create(ctx, &storage.KnowledgeObject{
 			ID:        fmt.Sprintf("rsql38-perf-%d", i),
 			Type:      "article",
 			CreatedAt: now,

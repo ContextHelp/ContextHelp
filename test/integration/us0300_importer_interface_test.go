@@ -7,7 +7,6 @@ package integration
 //   - source attribution preserved end-to-end through analyze + store pipeline
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	gohttp "net/http"
@@ -78,7 +77,7 @@ func TestUS0300_SourceAttributionEndToEnd(t *testing.T) {
 	defer env.stop(t)
 
 	const importerSource = "chrome:bookmarks"
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	jobID, err := env.svc.Analyze(ctx, service.AnalyzeRequest{
 		Content: "Bookmark: https://go.dev/doc — Go Documentation",

@@ -71,7 +71,7 @@ func (f *uiFixture) start(toks ...authn.StaticToken) {
 	}
 	static, err := authn.NewStatic(toks)
 	require.NoError(f.t, err)
-	f.sessions, err = authn.NewSessions(f.bundle.svc.Store.UISessions(), static, authn.SessionOptions{Now: f.clock.now})
+	f.sessions, err = authn.NewSessions(f.bundle.svc.Store(ownerCtx()).UISessions(), static, authn.SessionOptions{Now: f.clock.now})
 	require.NoError(f.t, err)
 	if f.ts != nil {
 		f.ts.Close()

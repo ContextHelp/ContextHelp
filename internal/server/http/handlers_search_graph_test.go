@@ -2,7 +2,6 @@ package http
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -45,7 +44,7 @@ func graphFixture(t *testing.T, withModel bool) *servicetest.HybridFixture {
 func gatedGraphServer(t *testing.T, f *servicetest.HybridFixture) *httptest.Server {
 	t.Helper()
 	for _, principal := range []string{"ops", "owner"} {
-		require.NoError(t, f.Drv.Entitlements().Upsert(context.Background(), &storage.RegistryEntitlement{
+		require.NoError(t, f.Drv.Entitlements().Upsert(ownerCtx(), &storage.RegistryEntitlement{
 			RegistryName: principal, Plan: "inbound", Namespaces: []string{servicetest.GraphOpenNamespace},
 			FetchedAt: time.Now().Truncate(time.Second),
 		}))

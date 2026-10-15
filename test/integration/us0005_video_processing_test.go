@@ -202,7 +202,7 @@ func TestUS0005_JobCompletesWithTimestampedSections(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "simulated-video-bytes",
 		Type:     "video",
 		Pipeline: "video.full",
@@ -244,7 +244,7 @@ func TestUS0005_TranscriptInRawContent(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "simulated-video-bytes",
 		Type:     "video",
 		Pipeline: "video.full",
@@ -278,7 +278,7 @@ func TestUS0005_VideoMetadataStored(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "simulated-video-bytes",
 		Type:     "video",
 		Pipeline: "video.full",
@@ -332,7 +332,7 @@ func TestUS0005_FullPipelineStepOrder(t *testing.T) {
 		Steps:        steps,
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "simulated-video-bytes",
 		Type:     "video",
 		Pipeline: "video.full",
@@ -391,7 +391,7 @@ func TestUS0005_AudioOnlyPipelineSkipsVisual(t *testing.T) {
 		Steps:        steps,
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "simulated-audio-only-video",
 		Type:     "video",
 		Pipeline: "video.audio_only",
@@ -450,7 +450,7 @@ func TestUS0005_SupportedFormats(t *testing.T) {
 				},
 			})
 
-			jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+			jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 				Content:  fmt.Sprintf("simulated-%s-bytes", tc.format),
 				Type:     "video",
 				Pipeline: pipelineName,
@@ -485,7 +485,7 @@ func TestUS0005_UnsupportedCodecRejectsGracefully(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "simulated-rv40-video-bytes",
 		Type:     "video",
 		Pipeline: "video.unsupported_codec",
@@ -510,7 +510,7 @@ func TestUS0005_CorruptVideoReturnsError(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "NOT_A_VALID_VIDEO_FILE",
 		Type:     "video",
 		Pipeline: "video.corrupt",
@@ -539,7 +539,7 @@ func TestUS0005_FileSizeLimitEnforced(t *testing.T) {
 	})
 
 	// Simulate oversized content by marking size in metadata rather than sending 2GB of actual data.
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "SIZE:2200000000", // Simulated payload indicating >2GB
 		Type:     "video",
 		Pipeline: "video.size_check",
@@ -586,7 +586,7 @@ func TestUS0005_ProcessingTimeoutEnforced(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "simulated-long-video",
 		Type:     "video",
 		Pipeline: "video.timeout",
@@ -649,7 +649,7 @@ func TestUS0005_ChunkedUploadFlow(t *testing.T) {
 	chunks := []string{"chunk-1-header", "chunk-2-body", "chunk-3-footer"}
 	assembled := strings.Join(chunks, "")
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  assembled,
 		Type:     "video",
 		Pipeline: "video.chunked",
@@ -683,7 +683,7 @@ func TestUS0005_TranscriptTextSearchable(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "simulated-video",
 		Type:     "video",
 		Pipeline: "video.searchable",
@@ -732,7 +732,7 @@ func TestUS0005_FrameOCRTextSearchable(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "simulated-video-with-slides",
 		Type:     "video",
 		Pipeline: "video.ocr",
@@ -786,7 +786,7 @@ func TestUS0005_FrameSamplingIntervalConfigurable(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "simulated-video",
 		Type:     "video",
 		Pipeline: "video.custom_sampling",
@@ -828,7 +828,7 @@ func TestUS0005_SceneDetectionThresholdConfigurable(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "simulated-video",
 		Type:     "video",
 		Pipeline: "video.custom_threshold",

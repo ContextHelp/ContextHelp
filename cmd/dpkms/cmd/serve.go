@@ -358,7 +358,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// 10a. Wire fan-out enrichment (bidirectional edges + audit log).
 	if cfg.FanOut.Enabled {
 		pool.SetFanOut(func(ctx context.Context, objectID string) error {
-			_, err := svc.FanOut(ctx, objectID)
+			_, err := svc.FanOut(asSystem(ctx), objectID)
 			return err
 		})
 	}
@@ -437,7 +437,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// Reminder checker.
 	reminderBackend := &remind.ServiceBackend{
 		ListDue: func(ctx context.Context, now time.Time) ([]*remind.DueReminder, error) {
-			objs, err := svc.ListDueReminders(ctx, now)
+			objs, err := svc.ListDueReminders(asSystem(ctx), now)
 			if err != nil {
 				return nil, err
 			}
@@ -460,7 +460,9 @@ func runServe(cmd *cobra.Command, args []string) error {
 			}
 			return dues, nil
 		},
-		MarkDone: svc.MarkReminded,
+		MarkDone: func(ctx context.Context, id string, now time.Time) error {
+			return svc.MarkReminded(asSystem(ctx), id, now)
+		},
 	}
 	checker := remind.NewChecker(reminderBackend, reminderInterval)
 

@@ -57,7 +57,7 @@ func TestUS0015_NObjectsEnqueuedAndAllComplete(t *testing.T) {
 
 	jobIDs := make([]string, n)
 	for i := 0; i < n; i++ {
-		jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+		jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 			Content:  fmt.Sprintf("Batch enrichment object %d: content about distributed systems and architecture", i),
 			Type:     "text",
 			Pipeline: "text.batch-enrich",
@@ -100,7 +100,7 @@ func TestUS0015_AllEnrichedObjectsHaveEnrichmentMetadata(t *testing.T) {
 
 	resultIDs := make([]string, n)
 	for i := 0; i < n; i++ {
-		jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+		jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 			Content:  fmt.Sprintf("Document %d with metadata verification content", i),
 			Type:     "text",
 			Pipeline: "text.batch-meta",
@@ -142,7 +142,7 @@ func TestUS0015_DistinctObjectIDsForBatchItems(t *testing.T) {
 
 	resultIDSet := make(map[string]struct{}, n)
 	for i := 0; i < n; i++ {
-		jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+		jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 			Content:  fmt.Sprintf("Unique batch object %d with distinct content", i),
 			Type:     "text",
 			Pipeline: "text.batch-ids",
@@ -175,7 +175,7 @@ func TestUS0015_JobsProcessedIndependently(t *testing.T) {
 
 	jobIDs := make([]string, n)
 	for i := 0; i < n; i++ {
-		jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+		jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 			Content:  fmt.Sprintf("Independent batch job %d content", i),
 			Type:     "text",
 			Pipeline: "text.batch-independent",
@@ -221,7 +221,7 @@ func TestUS0015_BatchProgressCountsConsistent(t *testing.T) {
 
 	jobIDs := make([]string, n)
 	for i := 0; i < n; i++ {
-		jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+		jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 			Content:  fmt.Sprintf("Progress tracking content for object %d", i),
 			Type:     "text",
 			Pipeline: "text.batch-progress",

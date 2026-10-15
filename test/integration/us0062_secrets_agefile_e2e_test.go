@@ -1,7 +1,6 @@
 package integration
 
 import (
-	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -52,11 +51,11 @@ func TestUS0062_AgeFileBackendRoundTrip(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	got, err := r.Get(context.Background(), "openai_api_key")
+	got, err := r.Get(ownerCtx(), "openai_api_key")
 	require.NoError(t, err)
 	assert.Equal(t, "sk-test-1234", string(got.Value))
 
-	got, err = r.Get(context.Background(), "anthropic_api_key")
+	got, err = r.Get(ownerCtx(), "anthropic_api_key")
 	require.NoError(t, err)
 	assert.Equal(t, "sk-ant-9876", string(got.Value))
 }
@@ -76,7 +75,7 @@ func TestUS0062_AgeFileBackendListKeys(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	keys, err := r.List(context.Background(), "")
+	keys, err := r.List(ownerCtx(), "")
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{"k1", "k2", "k3"}, keys)
 }
@@ -94,7 +93,7 @@ func TestUS0062_AgeFileBackendMissingKeyReturnsErrNotFound(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, err = r.Get(context.Background(), "absent")
+	_, err = r.Get(ownerCtx(), "absent")
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, secret.ErrNotFound), "want ErrNotFound, got %v", err)
 }
@@ -112,7 +111,7 @@ func TestUS0062_AgeFileBackendSetReturnsNotSupported(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	err = r.Set(context.Background(), "k2", []byte("v2"))
+	err = r.Set(ownerCtx(), "k2", []byte("v2"))
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, secret.ErrNotSupported), "want ErrNotSupported, got %v", err)
 }

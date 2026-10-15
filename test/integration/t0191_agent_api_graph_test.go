@@ -30,7 +30,7 @@ import (
 func seedGraphKO(t *testing.T, env *testEnv, id, typ, content string, tags ...string) {
 	t.Helper()
 	ko := storageutil.BuildGraphKO(id, typ, content, tags...)
-	err := env.svc.Store.Objects().Create(context.Background(), ko)
+	err := env.driver.Objects().Create(ownerCtx(), ko)
 	require.NoError(t, err, "seedGraphKO %s", id)
 }
 
@@ -48,7 +48,7 @@ func startGRPCTestServer(t *testing.T, svc *service.Service) *grpc.ClientConn {
 	ln.Close()
 
 	srv := grpcserver.New(addr, svc)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ownerCtx())
 	t.Cleanup(cancel)
 
 	go func() {
@@ -245,7 +245,7 @@ func TestT0191_GRPC_GetObject_GraphPresent(t *testing.T) {
 	conn := startGRPCTestServer(t, env.svc)
 	c := pb.NewQueryServiceClient(conn)
 
-	protoObj, err := c.GetObject(context.Background(), &pb.GetObjectRequest{Id: objID})
+	protoObj, err := c.GetObject(ownerCtx(), &pb.GetObjectRequest{Id: objID})
 	require.NoError(t, err, "GetObject RPC failed")
 
 	assert.Equal(t, objID, protoObj.Id)
@@ -270,7 +270,7 @@ func TestT0191_GRPC_GetObject_NodeIDsStable(t *testing.T) {
 	conn := startGRPCTestServer(t, env.svc)
 	c := pb.NewQueryServiceClient(conn)
 
-	protoObj, err := c.GetObject(context.Background(), &pb.GetObjectRequest{Id: objID})
+	protoObj, err := c.GetObject(ownerCtx(), &pb.GetObjectRequest{Id: objID})
 	require.NoError(t, err)
 	require.NotNil(t, protoObj.Graph)
 
@@ -296,7 +296,7 @@ func TestT0191_GRPC_NodeAwareSearch_DocumentView(t *testing.T) {
 	conn := startGRPCTestServer(t, env.svc)
 	c := pb.NewQueryServiceClient(conn)
 
-	resp, err := c.NodeAwareSearch(context.Background(), &pb.NodeAwareSearchRequest{
+	resp, err := c.NodeAwareSearch(ownerCtx(), &pb.NodeAwareSearchRequest{
 		Query: "type==post",
 		Limit: 10,
 	})
@@ -324,7 +324,7 @@ func TestT0191_GRPC_NodeAwareSearch_NodeHits(t *testing.T) {
 	conn := startGRPCTestServer(t, env.svc)
 	c := pb.NewQueryServiceClient(conn)
 
-	resp, err := c.NodeAwareSearch(context.Background(), &pb.NodeAwareSearchRequest{
+	resp, err := c.NodeAwareSearch(ownerCtx(), &pb.NodeAwareSearchRequest{
 		Query: "type==insight",
 		Limit: 10,
 		Filter: &pb.NodeAwareFilter{
@@ -362,7 +362,7 @@ func TestT0191_GRPC_NodeAwareSearch_NodeTypeFilter(t *testing.T) {
 	conn := startGRPCTestServer(t, env.svc)
 	c := pb.NewQueryServiceClient(conn)
 
-	resp, err := c.NodeAwareSearch(context.Background(), &pb.NodeAwareSearchRequest{
+	resp, err := c.NodeAwareSearch(ownerCtx(), &pb.NodeAwareSearchRequest{
 		Query: "type==spec",
 		Limit: 10,
 		Filter: &pb.NodeAwareFilter{

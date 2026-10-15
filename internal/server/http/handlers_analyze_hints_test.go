@@ -36,9 +36,9 @@ func postAnalyze(t *testing.T, ts *testServerBundle, body map[string]any) string
 // the given job reaches a terminal status.
 func runWorkerUntilDone(t *testing.T, ts *testServerBundle, jobID string) *storage.Job {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(ownerCtx(), 10*time.Second)
 	defer cancel()
-	pool := jobs.NewWorkerPool(ts.svc.Queue, ts.svc.Pipes, ts.svc.Store, 1, nil, config.JobsConfig{
+	pool := jobs.NewWorkerPool(ts.svc.Queue, ts.svc.Pipes, ts.svc.Store(ownerCtx()), 1, nil, config.JobsConfig{
 		PollInterval: 50 * time.Millisecond,
 		StaleTimeout: 30 * time.Minute,
 		MaxRetries:   3,
@@ -59,7 +59,7 @@ func runWorkerUntilDone(t *testing.T, ts *testServerBundle, jobID string) *stora
 		}
 	}()
 	pool.Start(ctx)
-	got, err := ts.svc.Queue.Get(context.Background(), jobID)
+	got, err := ts.svc.Queue.Get(ownerCtx(), jobID)
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	return got
@@ -91,8 +91,8 @@ func TestAnalyzeRawHintsStoredAsUserTagsAndFTSIndexed(t *testing.T) {
 		"source":  "test",
 	})
 
-	ctx := context.Background()
-	obj, err := ts.svc.Store.Objects().Get(ctx, objID)
+	ctx := ownerCtx()
+	obj, err := ts.svc.Store(ownerCtx()).Objects().Get(ctx, objID)
 	require.NoError(t, err)
 	require.NotNil(t, obj)
 
@@ -104,16 +104,16 @@ func TestAnalyzeRawHintsStoredAsUserTagsAndFTSIndexed(t *testing.T) {
 	assert.True(t, obj.FTSIndexed, "raw object must be fts_indexed=true")
 	// A raw object is indexed but, like List, only a search that asks
 	// for its status reaches it.
-	results, err := ts.svc.Store.Objects().FTSSearch(ctx, "narwhal", storage.ObjectFilter{Limit: 10, Status: "raw"})
+	results, err := ts.svc.Store(ownerCtx()).Objects().FTSSearch(ctx, "narwhal", storage.ObjectFilter{Limit: 10, Status: "raw"})
 	require.NoError(t, err)
 	require.Len(t, results, 1)
 	assert.Equal(t, objID, results[0].ID)
-	hidden, err := ts.svc.Store.Objects().FTSSearch(ctx, "narwhal", storage.ObjectFilter{Limit: 10})
+	hidden, err := ts.svc.Store(ownerCtx()).Objects().FTSSearch(ctx, "narwhal", storage.ObjectFilter{Limit: 10})
 	require.NoError(t, err)
 	assert.Empty(t, hidden, "a raw object is not a search hit unless its status is asked for")
 
 	// tag=="a" scoping must work: the tag filter on List sees the user hint.
-	objs, _, err := ts.svc.Store.Objects().List(ctx, storage.ObjectFilter{Tag: "a", Status: "raw"})
+	objs, _, err := ts.svc.Store(ownerCtx()).Objects().List(ctx, storage.ObjectFilter{Tag: "a", Status: "raw"})
 	require.NoError(t, err)
 	require.Len(t, objs, 1)
 	assert.Equal(t, objID, objs[0].ID)
@@ -137,8 +137,8 @@ func TestAnalyzePipelineHintsSurviveWorkerAndFTSIndexed(t *testing.T) {
 	require.Equal(t, storage.JobCompleted, job.Status, "job error: %s", job.Error)
 	require.NotEmpty(t, job.ResultID)
 
-	ctx := context.Background()
-	obj, err := ts.svc.Store.Objects().Get(ctx, job.ResultID)
+	ctx := ownerCtx()
+	obj, err := ts.svc.Store(ownerCtx()).Objects().Get(ctx, job.ResultID)
 	require.NoError(t, err)
 
 	user, auto := userAndAutoTags(obj.Tags)
@@ -146,12 +146,12 @@ func TestAnalyzePipelineHintsSurviveWorkerAndFTSIndexed(t *testing.T) {
 	assert.NotZero(t, auto, "auto tags must be merged alongside user hints: %+v", obj.Tags)
 
 	assert.True(t, obj.FTSIndexed, "pipeline object must be fts_indexed=true")
-	results, err := ts.svc.Store.Objects().FTSSearch(ctx, "axolotl", storage.ObjectFilter{Limit: 10})
+	results, err := ts.svc.Store(ownerCtx()).Objects().FTSSearch(ctx, "axolotl", storage.ObjectFilter{Limit: 10})
 	require.NoError(t, err)
 	require.Len(t, results, 1)
 	assert.Equal(t, obj.ID, results[0].ID)
 
-	objs, _, err := ts.svc.Store.Objects().List(ctx, storage.ObjectFilter{Tag: "a"})
+	objs, _, err := ts.svc.Store(ownerCtx()).Objects().List(ctx, storage.ObjectFilter{Tag: "a"})
 	require.NoError(t, err)
 	require.Len(t, objs, 1)
 	assert.Equal(t, obj.ID, objs[0].ID)
@@ -181,8 +181,8 @@ func TestAnalyzeRawThenPipelineSameContentStaysFTSIndexed(t *testing.T) {
 	require.Equal(t, storage.JobCompleted, job.Status, "job error: %s", job.Error)
 	require.Equal(t, objID, job.ResultID, "same content must reinforce the raw object")
 
-	ctx := context.Background()
-	obj, err := ts.svc.Store.Objects().Get(ctx, objID)
+	ctx := ownerCtx()
+	obj, err := ts.svc.Store(ownerCtx()).Objects().Get(ctx, objID)
 	require.NoError(t, err)
 
 	user, auto := userAndAutoTags(obj.Tags)
@@ -191,7 +191,7 @@ func TestAnalyzeRawThenPipelineSameContentStaysFTSIndexed(t *testing.T) {
 
 	assert.True(t, obj.FTSIndexed, "reinforced object must stay fts_indexed=true")
 	// Reinforce keeps the raw status, so the search asks for it.
-	results, err := ts.svc.Store.Objects().FTSSearch(ctx, "capybara", storage.ObjectFilter{Limit: 10, Status: "raw"})
+	results, err := ts.svc.Store(ownerCtx()).Objects().FTSSearch(ctx, "capybara", storage.ObjectFilter{Limit: 10, Status: "raw"})
 	require.NoError(t, err)
 	require.Len(t, results, 1)
 	assert.Equal(t, objID, results[0].ID)

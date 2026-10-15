@@ -1,7 +1,6 @@
 package http
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -153,7 +152,7 @@ func TestEnqueue_StoreBackedPipelineAccepted(t *testing.T) {
 	engine := search.NewEngine(driver)
 	svc := service.New(driver, q, pipeline.DefaultRegistry(), engine, "", nil)
 	now := time.Now().Truncate(time.Second)
-	if err := driver.Pipelines().Create(context.Background(), &storage.Pipeline{
+	if err := driver.Pipelines().Create(ownerCtx(), &storage.Pipeline{
 		ID:        "pipeline-user-custom",
 		Name:      "user.custom",
 		CreatedAt: now,

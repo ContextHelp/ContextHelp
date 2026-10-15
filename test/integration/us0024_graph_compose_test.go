@@ -58,7 +58,7 @@ func TestUS0024_GraphEdgesCreatedForMentions(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	entityURIs := []uri.URI{
 		{Scheme: "ctxt", Namespace: "entity", ID: "team/backend"},
@@ -84,7 +84,7 @@ func TestUS0024_GraphEdgesCreatedForMentions(t *testing.T) {
 	require.NotEmpty(t, job.ResultID)
 
 	// Verify edges created from the root object.
-	edges, err := env.svc.Store.Edges().ListFrom(ctx, "object", job.ResultID)
+	edges, err := env.driver.Edges().ListFrom(ctx, "object", job.ResultID)
 	require.NoError(t, err)
 	assert.Len(t, edges, 2, "root object should have 2 outbound edges")
 }
@@ -95,7 +95,7 @@ func TestUS0024_GraphTraversalDepth1ReturnsDirectNeighbors(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	env.svc.Pipes.Upsert("graph.depth1", &pipeline.Pipeline{
 		PipelineName: "graph.depth1",
@@ -144,7 +144,7 @@ func TestUS0024_GraphCompositionIncludesRelatedObjects(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	labels := []string{"root", "neighbor-A", "neighbor-B"}
 	var objects []*storage.KnowledgeObject
@@ -195,7 +195,7 @@ func TestUS0024_GraphBacklinksReachable(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	env.svc.Pipes.Upsert("graph.backlink", &pipeline.Pipeline{
 		PipelineName: "graph.backlink",

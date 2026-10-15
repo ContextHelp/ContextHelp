@@ -53,7 +53,7 @@ func (f *fakeAliasStore) Delete(context.Context, string, string, string) error {
 // skipped, a known one expands to its siblings.
 func TestStorageAliasResolver_NotFoundSkipsTerm(t *testing.T) {
 	r := newStorageAliasResolver(&fakeAliasStore{byAlias: map[string]string{"k8s": "obj-1", "kubernetes": "obj-1"}}, "")
-	got, err := r.ResolveAliases(context.Background(), []string{"k8s", "deploy"})
+	got, err := r.ResolveAliases(ownerCtx(), []string{"k8s", "deploy"})
 	require.NoError(t, err)
 	assert.Equal(t, map[string][]string{"k8s": {"kubernetes"}}, got)
 }
@@ -66,7 +66,7 @@ func TestStorageAliasResolver_StoreErrorsPropagate(t *testing.T) {
 		"list":    {byAlias: map[string]string{"k8s": "obj-1"}, listErr: cause},
 	} {
 		t.Run(name, func(t *testing.T) {
-			got, err := newStorageAliasResolver(store, "").ResolveAliases(context.Background(), []string{"k8s"})
+			got, err := newStorageAliasResolver(store, "").ResolveAliases(ownerCtx(), []string{"k8s"})
 			require.ErrorIs(t, err, cause)
 			assert.Nil(t, got)
 		})
@@ -88,9 +88,9 @@ func (d aliasFailDriver) Aliases() storage.AliasStore {
 func TestHybridSearch_AliasStoreErrorFailsSearch(t *testing.T) {
 	svc := newTestService(t)
 	cause := errors.New("aliases table unreadable")
-	svc.Store = aliasFailDriver{StorageDriver: svc.Store, err: cause}
+	svc.store = aliasFailDriver{StorageDriver: svc.store, err: cause}
 	cfg := config.SearchConfig{DefaultMode: "hybrid", FallbackToFTS: true}
 
-	_, err := svc.HybridSearch(context.Background(), "anything", 10, retrieval.SemanticSource{}, cfg)
+	_, err := svc.HybridSearch(ownerCtx(), "anything", 10, retrieval.SemanticSource{}, cfg)
 	require.ErrorIs(t, err, cause)
 }

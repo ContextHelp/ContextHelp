@@ -7,7 +7,6 @@ package integration
 // EmbeddingStore is implemented; skips until then.
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -37,14 +36,14 @@ func vectorModelID(dim int) string { return fmt.Sprintf("it-vectors-%d", dim) }
 // as soon as the per-model index lands.
 func requireVectorIndex(t *testing.T, env *testEnv, dim int) {
 	t.Helper()
-	ctx := context.Background()
-	reg, err := registry.ForDriver(env.svc.Store)
+	ctx := ownerCtx()
+	reg, err := registry.ForDriver(env.driver)
 	require.NoError(t, err)
 	m := registry.Model{ModelID: vectorModelID(dim), Provider: "fixture", Dimension: dim, ConfigJSON: "{}"}
 	if err := reg.Register(ctx, m, false); err != nil && !errors.Is(err, registry.ErrModelAlreadyRegistered) {
 		t.Fatalf("register %s: %v", m.ModelID, err)
 	}
-	err = env.svc.Store.Embeddings().EnsureIndex(ctx, storage.EmbeddingModelSpec{ModelID: m.ModelID, Provider: m.Provider, Dimension: dim})
+	err = env.driver.Embeddings().EnsureIndex(ctx, storage.EmbeddingModelSpec{ModelID: m.ModelID, Provider: m.Provider, Dimension: dim})
 	if errors.Is(err, errors.ErrUnsupported) {
 		t.Skip("EmbeddingStore not implemented by the driver yet (per-model index)")
 	}
@@ -55,9 +54,9 @@ func requireVectorIndex(t *testing.T, env *testEnv, dim int) {
 // model for len(vec).
 func createWithVector(t *testing.T, env *testEnv, obj *storage.KnowledgeObject, vec []float32) {
 	t.Helper()
-	ctx := context.Background()
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, obj))
-	require.NoError(t, env.svc.Store.Embeddings().Put(ctx, obj.ID, []storage.ObjectVector{
+	ctx := ownerCtx()
+	require.NoError(t, env.driver.Objects().Create(ctx, obj))
+	require.NoError(t, env.driver.Embeddings().Put(ctx, obj.ID, []storage.ObjectVector{
 		{ModelID: vectorModelID(len(vec)), Vector: vec},
 	}))
 }
@@ -74,7 +73,7 @@ func TestUS0051_VectorSearchReturnsSimilarObjects(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 	const dim = 4
 	requireVectorIndex(t, env, dim)
@@ -101,7 +100,7 @@ func TestUS0051_VectorSearchReturnsSimilarObjects(t *testing.T) {
 
 	// Query vector closely aligned with "similar" object.
 	queryVec := makeEmbedding(dim, 1.0)
-	results, err := env.svc.Store.Objects().VectorSearch(ctx, vq(queryVec), storage.ObjectFilter{Limit: 5})
+	results, err := env.driver.Objects().VectorSearch(ctx, vq(queryVec), storage.ObjectFilter{Limit: 5})
 	require.NoError(t, err)
 	require.NotEmpty(t, results, "vector search must return results when embeddings are present")
 
@@ -116,7 +115,7 @@ func TestUS0051_VectorSearchSkipsObjectsWithoutEmbeddings(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 	const dim = 4
 	requireVectorIndex(t, env, dim)
@@ -135,10 +134,10 @@ func TestUS0051_VectorSearchSkipsObjectsWithoutEmbeddings(t *testing.T) {
 	}
 
 	createWithVector(t, env, withEmbedding, makeEmbedding(dim, 1.0))
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, withoutEmbedding))
+	require.NoError(t, env.driver.Objects().Create(ctx, withoutEmbedding))
 
 	queryVec := makeEmbedding(dim, 1.0)
-	results, err := env.svc.Store.Objects().VectorSearch(ctx, vq(queryVec), storage.ObjectFilter{Limit: 5})
+	results, err := env.driver.Objects().VectorSearch(ctx, vq(queryVec), storage.ObjectFilter{Limit: 5})
 	require.NoError(t, err)
 
 	assert.True(t, containsIDPtr(results, "sem-has-01"), "object with embedding must appear")
@@ -151,7 +150,7 @@ func TestUS0051_VectorSearchLimitHonoured(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 	const dim = 4
 	requireVectorIndex(t, env, dim)
@@ -167,7 +166,7 @@ func TestUS0051_VectorSearchLimitHonoured(t *testing.T) {
 	}
 
 	queryVec := makeEmbedding(dim, 1.0)
-	results, err := env.svc.Store.Objects().VectorSearch(ctx, vq(queryVec), storage.ObjectFilter{Limit: 3})
+	results, err := env.driver.Objects().VectorSearch(ctx, vq(queryVec), storage.ObjectFilter{Limit: 3})
 	require.NoError(t, err)
 	assert.LessOrEqual(t, len(results), 3, "result count must not exceed requested limit")
 }

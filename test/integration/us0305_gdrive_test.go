@@ -6,7 +6,6 @@ package integration
 // No real credentials required.
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -65,7 +64,7 @@ func TestUS0305_GDriveListFiles(t *testing.T) {
 	defer srv.Close()
 
 	client := gdrive.NewClient(nil, srv.URL, "test-token")
-	files, err := client.ListFiles(context.Background(), gdrive.ListOptions{})
+	files, err := client.ListFiles(ownerCtx(), gdrive.ListOptions{})
 	require.NoError(t, err)
 	require.Len(t, files, 2)
 
@@ -82,7 +81,7 @@ func TestUS0305_GDriveListFilesRequiresToken(t *testing.T) {
 	defer srv.Close()
 
 	client := gdrive.NewClient(nil, srv.URL, "") // empty token
-	_, err := client.ListFiles(context.Background(), gdrive.ListOptions{})
+	_, err := client.ListFiles(ownerCtx(), gdrive.ListOptions{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "token")
 }
@@ -101,7 +100,7 @@ func TestUS0305_GDriveMaxItemsRespected(t *testing.T) {
 	defer srv.Close()
 
 	client := gdrive.NewClient(nil, srv.URL, "tok")
-	files, err := client.ListFiles(context.Background(), gdrive.ListOptions{MaxItems: 2})
+	files, err := client.ListFiles(ownerCtx(), gdrive.ListOptions{MaxItems: 2})
 	require.NoError(t, err)
 	assert.LessOrEqual(t, len(files), 2, "MaxItems must be respected")
 }
@@ -118,7 +117,7 @@ func TestUS0305_GDriveModifiedTimeDecoded(t *testing.T) {
 	defer srv.Close()
 
 	client := gdrive.NewClient(nil, srv.URL, "tok")
-	files, err := client.ListFiles(context.Background(), gdrive.ListOptions{})
+	files, err := client.ListFiles(ownerCtx(), gdrive.ListOptions{})
 	require.NoError(t, err)
 	require.Len(t, files, 1)
 	assert.Equal(t, fixed, files[0].ModifiedTime)

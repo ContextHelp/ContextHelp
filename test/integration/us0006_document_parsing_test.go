@@ -239,7 +239,7 @@ func TestUS0006_JobCompletesWithHierarchicalSections(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "simulated-pdf-bytes",
 		Type:     "document",
 		Pipeline: "document.pdf",
@@ -287,7 +287,7 @@ func TestUS0006_PDFEmbeddedImagesAsChildObjects(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "simulated-pdf-with-images",
 		Type:     "document",
 		Pipeline: "document.pdf_images",
@@ -309,7 +309,7 @@ func TestUS0006_PDFEmbeddedImagesAsChildObjects(t *testing.T) {
 	assert.Equal(t, 3.0, obj.Metadata["image_count"], "should have 3 embedded images")
 
 	// Verify edges were created for the child image entities.
-	edges, err := env.svc.Store.Edges().ListFrom(context.Background(), "object", job.ResultID)
+	edges, err := env.driver.Edges().ListFrom(ownerCtx(), "object", job.ResultID)
 	require.NoError(t, err)
 	assert.Len(t, edges, 3, "should have 3 edges linking to image entities")
 }
@@ -329,7 +329,7 @@ func TestUS0006_PDFTablesExtracted(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "simulated-pdf-with-tables",
 		Type:     "document",
 		Pipeline: "document.pdf_tables",
@@ -376,7 +376,7 @@ func TestUS0006_PasswordProtectedPDFRejected(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "simulated-encrypted-pdf",
 		Type:     "document",
 		Pipeline: "document.pdf_protected",
@@ -407,7 +407,7 @@ func TestUS0006_MarkdownHeadingHierarchy(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "# Top Level\n\nH1 content\n\n## Second Level\n\nH2 content\n\n### Third Level\n\nH3 content\n\n## Another Second Level\n\nAnother H2",
 		Type:     "document",
 		Pipeline: "document.markdown",
@@ -456,7 +456,7 @@ func TestUS0006_MarkdownCodeBlocksExtracted(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "# README\n\n```go\nfunc main() {}\n```\n\n```python\ndef greet(): pass\n```",
 		Type:     "document",
 		Pipeline: "document.markdown_code",
@@ -501,7 +501,7 @@ func TestUS0006_GoCodeParsedToFunctions(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "package service\n\nfunc NewService(...) *Service {}\nfunc (s *Service) Analyze(...) {}\nfunc (s *Service) GetObject(...) {}",
 		Type:     "document",
 		Pipeline: "document.go",
@@ -550,7 +550,7 @@ func TestUS0006_PythonCodeParsedToClasses(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "class DataProcessor:\n    def __init__(self, path): pass\n    def process(self): pass\n\nclass DataExporter(DataProcessor): pass",
 		Type:     "document",
 		Pipeline: "document.python",
@@ -595,7 +595,7 @@ func TestUS0006_CodeTODOAnnotationsExtracted(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "// TODO: refactor this\n// FIXME: race condition\n// TODO: add tests",
 		Type:     "document",
 		Pipeline: "document.annotated",
@@ -653,7 +653,7 @@ func TestUS0006_UnsupportedLanguageFallback(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "+++++++++[>++++++++<-]>.\n++++++++++.",
 		Type:     "document",
 		Pipeline: "document.unknown_lang",
@@ -700,7 +700,7 @@ func TestUS0006_DOCXParsedLikePDF(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "simulated-docx-bytes",
 		Type:     "document",
 		Pipeline: "document.docx",
@@ -749,7 +749,7 @@ func TestUS0006_CorruptFileReturnsError(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "NOT_A_VALID_DOCUMENT",
 		Type:     "document",
 		Pipeline: "document.corrupt",
@@ -776,7 +776,7 @@ func TestUS0006_FileSizeLimitEnforced(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "SIZE:150000000", // Simulated 150MB payload
 		Type:     "document",
 		Pipeline: "document.size_check",
@@ -839,7 +839,7 @@ func TestUS0006_SectionLevelSearch(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "simulated-research-pdf",
 		Type:     "document",
 		Pipeline: "document.searchable",
@@ -896,7 +896,7 @@ func TestUS0006_HierarchyTraversableViaAPI(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "simulated-hierarchical-pdf",
 		Type:     "document",
 		Pipeline: "document.hierarchy",
@@ -908,7 +908,7 @@ func TestUS0006_HierarchyTraversableViaAPI(t *testing.T) {
 	require.NotEmpty(t, job.ResultID)
 
 	// Verify edges from the parent document.
-	edges, err := env.svc.Store.Edges().ListFrom(context.Background(), "object", job.ResultID)
+	edges, err := env.driver.Edges().ListFrom(ownerCtx(), "object", job.ResultID)
 	require.NoError(t, err)
 	require.Len(t, edges, 2, "parent should have 2 edges to child sections")
 
@@ -980,7 +980,7 @@ func TestUS0006_DecompositionDepthConfigurable(t *testing.T) {
 				},
 			})
 
-			jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+			jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 				Content:  "simulated-deep-pdf",
 				Type:     "document",
 				Pipeline: pipelineName,

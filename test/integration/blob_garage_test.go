@@ -26,7 +26,6 @@ package integration
 
 import (
 	"bytes"
-	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -70,7 +69,7 @@ func TestGarageBlobRoundTrip(t *testing.T) {
 		t.Fatalf("blob.New: %v", err)
 	}
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	key := randomHex(t, 16)
 	payload := []byte("ctxt → garage round-trip\nline 2\n")
 	meta := storage.BlobMeta{

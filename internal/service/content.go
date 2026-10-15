@@ -38,11 +38,11 @@ func (s *Service) resolveContent(ctx context.Context, obj *storage.KnowledgeObje
 	if obj == nil || !hasBlobRef(obj) {
 		return nil
 	}
-	raw, err := blob.Content(ctx, s.Store.Blobs(), obj.RawContent)
+	raw, err := blob.Content(ctx, s.Store(ctx).Blobs(), obj.RawContent)
 	if err != nil {
 		return fmt.Errorf("object %s: %w", obj.ID, err)
 	}
-	text, err := blob.Content(ctx, s.Store.Blobs(), obj.TextContent)
+	text, err := blob.Content(ctx, s.Store(ctx).Blobs(), obj.TextContent)
 	if err != nil {
 		return fmt.Errorf("object %s: %w", obj.ID, err)
 	}
@@ -64,11 +64,11 @@ func (s *Service) previewContent(ctx context.Context, objs []*storage.KnowledgeO
 		if obj == nil || !hasBlobRef(obj) {
 			continue
 		}
-		raw, rawCut, err := blob.Preview(ctx, s.Store.Blobs(), obj.RawContent, limit)
+		raw, rawCut, err := blob.Preview(ctx, s.Store(ctx).Blobs(), obj.RawContent, limit)
 		if err != nil {
 			return fmt.Errorf("object %s: %w", obj.ID, err)
 		}
-		text, textCut, err := blob.Preview(ctx, s.Store.Blobs(), obj.TextContent, limit)
+		text, textCut, err := blob.Preview(ctx, s.Store(ctx).Blobs(), obj.TextContent, limit)
 		if err != nil {
 			return fmt.Errorf("object %s: %w", obj.ID, err)
 		}
@@ -124,13 +124,13 @@ func (s *Service) storable(ctx context.Context, obj *storage.KnowledgeObject) (*
 	delete(cp.Metadata, MetaContentTruncated)
 
 	threshold := s.Cfg.Storage.Blob.Threshold
-	if threshold <= 0 || s.Store.Blobs() == nil || blob.IsBlobRef(cp.RawContent) || int64(len(cp.RawContent)) <= threshold {
+	if threshold <= 0 || s.Store(ctx).Blobs() == nil || blob.IsBlobRef(cp.RawContent) || int64(len(cp.RawContent)) <= threshold {
 		if textTruncated && blob.IsBlobRef(cp.RawContent) {
 			cp.Metadata[psteps.MetaTextTruncated] = true
 		}
 		return &cp, nil
 	}
-	out, err := psteps.NewExternalizer(s.Store.Blobs(), threshold).Run(ctx, &cp)
+	out, err := psteps.NewExternalizer(s.Store(ctx).Blobs(), threshold).Run(ctx, &cp)
 	if err != nil {
 		return nil, fmt.Errorf("object %s: %w", obj.ID, err)
 	}

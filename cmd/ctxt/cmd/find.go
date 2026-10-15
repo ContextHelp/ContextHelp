@@ -193,7 +193,7 @@ func runFind(cmd *cobra.Command, args []string) error {
 
 	// --graph always runs the traced hybrid search, whatever the mode.
 	if graph {
-		return runFindGraphLocal(ctx, cmd, findGraphQuery{text: query, filter: buildFindFilter(cmd, limit), search: searchCfg}, graphOpts, graphTo)
+		return runFindGraphLocal(asOwner(ctx), cmd, findGraphQuery{text: query, filter: buildFindFilter(cmd, limit), search: searchCfg}, graphOpts, graphTo)
 	}
 
 	mode := findMode(searchCfg)
@@ -491,7 +491,7 @@ func runFindGraphLocal(ctx context.Context, cmd *cobra.Command, q findGraphQuery
 	// service before it starts serving, which may last minutes.
 	release := sync.OnceFunc(cleanup)
 	defer release()
-	if q.sem, err = findSemanticSource(svc.Store); err != nil {
+	if q.sem, err = findSemanticSource(svc.Store(asOwner(ctx))); err != nil {
 		return fmt.Errorf("find: %w", err)
 	}
 	return runFindGraph(ctx, cmd, svc, release, q, opts, d)

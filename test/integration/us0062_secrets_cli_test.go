@@ -1,7 +1,6 @@
 package integration
 
 import (
-	"context"
 	"errors"
 	"runtime"
 	"testing"
@@ -31,15 +30,15 @@ func TestUS0062_EnvBackendGetSet(t *testing.T) {
 	r, err := secrets.New(config.SecretsConfig{Backend: "env"})
 	require.NoError(t, err)
 
-	err = r.Set(context.Background(), "TEST_ENV_KEY_0062", []byte("my-value"))
+	err = r.Set(ownerCtx(), "TEST_ENV_KEY_0062", []byte("my-value"))
 	require.True(t, errors.Is(err, secret.ErrNotSupported), "want ErrNotSupported, got %v", err)
 
 	t.Setenv("TEST_ENV_KEY_0062", "expected-value")
-	got, err := r.Get(context.Background(), "TEST_ENV_KEY_0062")
+	got, err := r.Get(ownerCtx(), "TEST_ENV_KEY_0062")
 	require.NoError(t, err)
 	assert.Equal(t, "expected-value", string(got.Value))
 
-	_, err = r.Get(context.Background(), "TEST_ENV_MISSING_KEY_XYZZY_0062")
+	_, err = r.Get(ownerCtx(), "TEST_ENV_MISSING_KEY_XYZZY_0062")
 	require.True(t, errors.Is(err, secret.ErrNotFound), "want ErrNotFound, got %v", err)
 }
 
@@ -49,7 +48,7 @@ func TestUS0062_EnvBackendBareValue(t *testing.T) {
 
 	r, err := secrets.New(config.SecretsConfig{Backend: "env"})
 	require.NoError(t, err)
-	got, err := r.Get(context.Background(), "CTXT_TEST_JSON_KEY")
+	got, err := r.Get(ownerCtx(), "CTXT_TEST_JSON_KEY")
 	require.NoError(t, err)
 	assert.Equal(t, "sk-bare-value", string(got.Value))
 }
@@ -61,7 +60,7 @@ func TestUS0062_FactoryEnvBackend(t *testing.T) {
 	require.NotNil(t, r)
 
 	t.Setenv("CTXT_FACTORY_TEST_KEY", "factory-value")
-	got, err := r.Get(context.Background(), "CTXT_FACTORY_TEST_KEY")
+	got, err := r.Get(ownerCtx(), "CTXT_FACTORY_TEST_KEY")
 	require.NoError(t, err)
 	assert.Equal(t, "factory-value", string(got.Value))
 }
@@ -80,7 +79,7 @@ func TestUS0062_KeychainBackendSkippedInCI(t *testing.T) {
 	}
 	require.NotNil(t, r)
 
-	_, getErr := r.Get(context.Background(), "CTXT_E2E_NONEXISTENT_KEY_0062")
+	_, getErr := r.Get(ownerCtx(), "CTXT_E2E_NONEXISTENT_KEY_0062")
 	if getErr != nil && !errors.Is(getErr, secret.ErrNotFound) {
 		t.Skipf("keychain Get failed (expected in CI): %v", getErr)
 	}
@@ -131,7 +130,7 @@ func TestUS0062_GHSecretsBackendEnvFallback(t *testing.T) {
 	require.NotNil(t, r)
 
 	t.Setenv("CTXT_GH_FALLBACK_KEY", "gh-env-fallback-value")
-	got, err := r.Get(context.Background(), "CTXT_GH_FALLBACK_KEY")
+	got, err := r.Get(ownerCtx(), "CTXT_GH_FALLBACK_KEY")
 	require.NoError(t, err)
 	assert.Equal(t, "gh-env-fallback-value", string(got.Value))
 }

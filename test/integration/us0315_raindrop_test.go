@@ -3,7 +3,6 @@ package integration
 // US-0315: Raindrop import (API client mocked).
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -65,7 +64,7 @@ func TestUS0315_RaindropListCollections(t *testing.T) {
 	defer srv.Close()
 
 	client := raindrop.NewClient(nil, srv.URL, "test-token")
-	collections, err := client.ListCollections(context.Background())
+	collections, err := client.ListCollections(ownerCtx())
 	require.NoError(t, err)
 	require.Len(t, collections, 1)
 	assert.Equal(t, int64(100), collections[0].ID)
@@ -86,7 +85,7 @@ func TestUS0315_RaindropListItems(t *testing.T) {
 	defer srv.Close()
 
 	client := raindrop.NewClient(nil, srv.URL, "test-token")
-	got, err := client.ListItems(context.Background(), raindrop.ListOptions{
+	got, err := client.ListItems(ownerCtx(), raindrop.ListOptions{
 		CollectionIDs: []int64{100},
 	})
 	require.NoError(t, err)
@@ -105,7 +104,7 @@ func TestUS0315_RaindropRequiresToken(t *testing.T) {
 	defer srv.Close()
 
 	client := raindrop.NewClient(nil, srv.URL, "")
-	_, err := client.ListCollections(context.Background())
+	_, err := client.ListCollections(ownerCtx())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "token")
 }
@@ -118,7 +117,7 @@ func TestUS0315_RaindropRequiresCollectionID(t *testing.T) {
 	defer srv.Close()
 
 	client := raindrop.NewClient(nil, srv.URL, "tok")
-	_, err := client.ListItems(context.Background(), raindrop.ListOptions{})
+	_, err := client.ListItems(ownerCtx(), raindrop.ListOptions{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "collection")
 }

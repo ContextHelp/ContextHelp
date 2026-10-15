@@ -270,7 +270,7 @@ func TestUS0203_TitleAbstractAuthorsStored(t *testing.T) {
 	})
 
 	sourceURL := fmt.Sprintf("https://arxiv.org/abs/%s", arxivID)
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  sourceURL,
 		Type:     "url",
 		Pipeline: "academic.arxiv",
@@ -329,7 +329,7 @@ func TestUS0203_ArxivIDStoredInMetadata(t *testing.T) {
 	})
 
 	sourceURL := fmt.Sprintf("https://arxiv.org/abs/%s", arxivID)
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  sourceURL,
 		Type:     "url",
 		Pipeline: "academic.arxiv",
@@ -373,7 +373,7 @@ func TestUS0203_CaptureIsAsync(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "https://arxiv.org/abs/" + arxivAsyncPaperID,
 		Type:     "url",
 		Pipeline: "academic.arxiv",

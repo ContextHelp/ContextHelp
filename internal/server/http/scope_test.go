@@ -113,7 +113,7 @@ func TestRouteCoverageScopelessPrincipalDeniedEverywhere(t *testing.T) {
 		method, pattern, _ := strings.Cut(w, " ")
 		// Bounded so a route that wrongly reaches a streaming handler
 		// (SSE) fails the assertion instead of hanging the run.
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(ownerCtx(), 2*time.Second)
 		req := httptest.NewRequestWithContext(ctx, method, urlParam.ReplaceAllString(pattern, "x"), nil)
 		req.Header.Set("Authorization", "Bearer any")
 		rec := httptest.NewRecorder()

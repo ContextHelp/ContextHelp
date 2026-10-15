@@ -72,7 +72,7 @@ func BenchmarkOwner(b *testing.B) {
 	if benchObjectsErr != nil {
 		b.Fatal(benchObjectsErr)
 	}
-	ctx := context.Background()
+	ctx := ownerCtx()
 	svc, c := newBenchService(ctx, b)
 	queries := c.Queries()
 	find := func(q string) error {
@@ -124,7 +124,7 @@ func newBenchService(ctx context.Context, b *testing.B) (*service.Service, *corp
 	if err := drv.Init(ctx); err != nil {
 		b.Fatalf("init store: %v", err)
 	}
-	b.Cleanup(func() { _ = drv.Close(context.Background()) })
+	b.Cleanup(func() { _ = drv.Close(ownerCtx()) })
 
 	c, err := corpus.Build(ctx, drv, corpus.Spec{
 		Objects: benchObjects, Seed: benchSeed,

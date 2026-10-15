@@ -83,11 +83,11 @@ func newSimDriver(t testing.TB) *sqlite.Driver {
 	if err != nil {
 		t.Fatalf("new sim driver: %v", err)
 	}
-	ctx := context.Background()
+	ctx := ownerCtx()
 	if err := d.Init(ctx); err != nil {
 		t.Fatalf("init sim driver: %v", err)
 	}
-	t.Cleanup(func() { d.Close(context.Background()) })
+	t.Cleanup(func() { d.Close(ownerCtx()) })
 	m := registry.Model{ModelID: simModelID, Provider: "fixture", Dimension: simDim, ConfigJSON: "{}"}
 	if err := registry.New(d.DB()).Register(ctx, m, true); err != nil {
 		t.Fatalf("register sim model: %v", err)
@@ -147,7 +147,7 @@ func makeSimObject(rng *rand.Rand, i int, entitySlugs []string) *storage.Knowled
 // seedEntities inserts simEntityCount synthetic entities and returns their slugs.
 func seedEntities(t testing.TB, d *sqlite.Driver) []string {
 	t.Helper()
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now()
 	slugs := make([]string, simEntityCount)
 	for i := 0; i < simEntityCount; i++ {
@@ -170,7 +170,7 @@ func seedEntities(t testing.TB, d *sqlite.Driver) []string {
 // ingestObjects creates count objects in the driver and returns wall time elapsed.
 func ingestObjects(t testing.TB, d *sqlite.Driver, count int, entitySlugs []string) time.Duration {
 	t.Helper()
-	ctx := context.Background()
+	ctx := ownerCtx()
 	rng := rand.New(rand.NewSource(42)) //nolint:gosec
 	start := time.Now()
 	for i := 0; i < count; i++ {
@@ -189,7 +189,7 @@ func ingestObjects(t testing.TB, d *sqlite.Driver, count int, entitySlugs []stri
 // rebuildFTS triggers an FTS5 content-table rebuild.
 func rebuildFTS(t testing.TB, d *sqlite.Driver) {
 	t.Helper()
-	_, err := d.DB().ExecContext(context.Background(),
+	_, err := d.DB().ExecContext(ownerCtx(),
 		"INSERT INTO objects_fts(objects_fts) VALUES('rebuild')")
 	if err != nil {
 		t.Fatalf("fts rebuild: %v", err)
@@ -245,7 +245,7 @@ func TestSimulation_100k(t *testing.T) {
 	checkIntegration(t)
 
 	d := newSimDriver(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	t.Log("seeding entities...")
 	entitySlugs := seedEntities(t, d)
@@ -335,7 +335,7 @@ func BenchmarkFTS_100k(b *testing.B) {
 	ingestObjects(b, d, simObjectCount, slugs)
 	rebuildFTS(b, d)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
@@ -356,7 +356,7 @@ func BenchmarkVectorSearch_100k(b *testing.B) {
 	slugs := seedEntities(b, d)
 	ingestObjects(b, d, simObjectCount, slugs)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	rng := rand.New(rand.NewSource(7)) //nolint:gosec
 	queryVec := randVec(rng, simDim)
 
@@ -392,7 +392,7 @@ func BenchmarkHybridSearch_100k(b *testing.B) {
 	svc := service.New(d, nil, nil, eng, "", nil)
 	sem := simSemantic(d, queryVec)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {

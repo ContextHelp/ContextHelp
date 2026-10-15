@@ -63,7 +63,7 @@ func TestSuggestSchemaEvolution(t *testing.T) {
 	}
 
 	svc := &Service{
-		Store: &mockDriverForSchema{
+		store: &mockDriverForSchema{
 			objStore: &mockObjectStoreForSchema{objects: objects},
 		},
 	}
@@ -75,7 +75,7 @@ func TestSuggestSchemaEvolution(t *testing.T) {
 	}
 
 	result, err := svc.SuggestSchemaEvolution(
-		context.Background(), "ops", schema)
+		ownerCtx(), "ops", schema)
 	require.NoError(t, err)
 	assert.Equal(t, "ops", result.Profile)
 
@@ -119,7 +119,7 @@ func TestSuggestSchemaEvolutionFrequent(t *testing.T) {
 	}
 
 	svc := &Service{
-		Store: &mockDriverForSchema{
+		store: &mockDriverForSchema{
 			objStore: &mockObjectStoreForSchema{objects: objects},
 		},
 	}
@@ -130,7 +130,7 @@ func TestSuggestSchemaEvolutionFrequent(t *testing.T) {
 	}
 
 	result, err := svc.SuggestSchemaEvolution(
-		context.Background(), "dev", schema)
+		ownerCtx(), "dev", schema)
 	require.NoError(t, err)
 
 	// "incident" seen 2x → suggested.
@@ -169,13 +169,13 @@ func TestSuggestSchemaEvolutionMapMetadata(t *testing.T) {
 	}
 
 	svc := &Service{
-		Store: &mockDriverForSchema{
+		store: &mockDriverForSchema{
 			objStore: &mockObjectStoreForSchema{objects: objects},
 		},
 	}
 
 	result, err := svc.SuggestSchemaEvolution(
-		context.Background(), "ci", config.ProfileSchema{})
+		ownerCtx(), "ci", config.ProfileSchema{})
 	require.NoError(t, err)
 
 	require.Len(t, result.NewTypes, 1)
@@ -187,13 +187,13 @@ func TestSuggestSchemaEvolutionMapMetadata(t *testing.T) {
 
 func TestSuggestSchemaEvolutionEmpty(t *testing.T) {
 	svc := &Service{
-		Store: &mockDriverForSchema{
+		store: &mockDriverForSchema{
 			objStore: &mockObjectStoreForSchema{objects: nil},
 		},
 	}
 
 	result, err := svc.SuggestSchemaEvolution(
-		context.Background(), "empty", config.ProfileSchema{})
+		ownerCtx(), "empty", config.ProfileSchema{})
 	require.NoError(t, err)
 	assert.Empty(t, result.NewTypes)
 	assert.Empty(t, result.NewTopics)

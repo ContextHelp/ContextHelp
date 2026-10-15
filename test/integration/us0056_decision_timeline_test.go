@@ -48,7 +48,7 @@ func TestUS0056_DecisionObjectsRetainTimestamp(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	dates := []time.Time{
 		time.Date(2025, 1, 5, 9, 0, 0, 0, time.UTC),
@@ -106,7 +106,7 @@ func TestUS0056_TimelineCompositionPreservesChronologicalOrder(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	type entry struct {
 		title string
@@ -183,7 +183,7 @@ func TestUS0056_EmptyDecisionSetProducesEmptyTimeline(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	timeline, err := env.svc.Compose(context.Background(), []*storage.KnowledgeObject{}, "timeline")
+	timeline, err := env.svc.Compose(ownerCtx(), []*storage.KnowledgeObject{}, "timeline")
 	require.NoError(t, err)
 	assert.Contains(t, timeline, "0 knowledge objects",
 		"empty timeline should note zero objects")
@@ -195,7 +195,7 @@ func TestUS0056_DecisionStatusPreservedInTimeline(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	env.svc.Pipes.Upsert("timeline.status", &pipeline.Pipeline{
 		PipelineName: "timeline.status",

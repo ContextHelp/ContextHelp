@@ -5,7 +5,6 @@ package integration
 // and de-duplicated when multiple strategies return the same object.
 
 import (
-	"context"
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
@@ -22,7 +21,7 @@ func TestUS0018_FTSAndRSQLPathsBothReturn(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 
 	obj := &storage.KnowledgeObject{
@@ -32,7 +31,7 @@ func TestUS0018_FTSAndRSQLPathsBothReturn(t *testing.T) {
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, obj))
+	require.NoError(t, env.driver.Objects().Create(ctx, obj))
 	rebuildFTSIntegration(t, env)
 
 	// FTS path.
@@ -59,7 +58,7 @@ func TestUS0018_HybridSearchDeduplicate(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 
 	// Insert objects with distinct content.
@@ -68,7 +67,7 @@ func TestUS0018_HybridSearchDeduplicate(t *testing.T) {
 		{"ms-dup-2", "saga pattern distributed transactions"},
 		{"ms-dup-3", "outbox pattern reliable messaging"},
 	} {
-		require.NoError(t, env.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+		require.NoError(t, env.driver.Objects().Create(ctx, &storage.KnowledgeObject{
 			ID:        tc.id,
 			Type:      "text",
 			Summaries: []string{tc.summary},
@@ -102,10 +101,10 @@ func TestUS0018_ExplainContainsScoreBreakdown(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+	require.NoError(t, env.driver.Objects().Create(ctx, &storage.KnowledgeObject{
 		ID:        "ms-explain-01",
 		Type:      "text",
 		Summaries: []string{"circuit breaker resilience fault tolerance"},

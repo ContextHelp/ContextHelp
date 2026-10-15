@@ -92,7 +92,7 @@ func SearchGraph(svc *service.Service, sem retrieval.SemanticSource, visibility 
 			return
 		}
 
-		doc, err := searchgraph.Build(r.Context(), res.Trace, searchgraph.SourceFrom(svc.Store), opts)
+		doc, err := searchgraph.Build(r.Context(), res.Trace, searchgraph.SourceFrom(svc.Store(r.Context())), opts)
 		switch {
 		case errors.Is(err, searchgraph.ErrSimilarUnsupported):
 			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "similar edges need stored embeddings, and this store cannot read them")

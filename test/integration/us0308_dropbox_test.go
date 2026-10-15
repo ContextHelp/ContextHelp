@@ -3,7 +3,6 @@ package integration
 // US-0308: Dropbox import via mocked API.
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -70,7 +69,7 @@ func TestUS0308_DropboxListFiles(t *testing.T) {
 	defer srv.Close()
 
 	client := dropbox.NewClient(nil, srv.URL, srv.URL, "test-token")
-	result, err := client.ListFiles(context.Background(), dropbox.ListOptions{})
+	result, err := client.ListFiles(ownerCtx(), dropbox.ListOptions{})
 	require.NoError(t, err)
 
 	files := result.Files
@@ -97,7 +96,7 @@ func TestUS0308_DropboxRequiresToken(t *testing.T) {
 	defer srv.Close()
 
 	client := dropbox.NewClient(nil, srv.URL, srv.URL, "")
-	_, err := client.ListFiles(context.Background(), dropbox.ListOptions{})
+	_, err := client.ListFiles(ownerCtx(), dropbox.ListOptions{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "access token")
 }
@@ -116,7 +115,7 @@ func TestUS0308_DropboxCursorReturned(t *testing.T) {
 	defer srv.Close()
 
 	client := dropbox.NewClient(nil, srv.URL, srv.URL, "tok")
-	result, err := client.ListFiles(context.Background(), dropbox.ListOptions{})
+	result, err := client.ListFiles(ownerCtx(), dropbox.ListOptions{})
 	require.NoError(t, err)
 	assert.NotEmpty(t, result.Cursor, "cursor must be returned for incremental sync")
 }

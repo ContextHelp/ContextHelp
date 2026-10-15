@@ -1,7 +1,6 @@
 package http
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -17,7 +16,7 @@ import (
 // and decoded error code (empty on a non-error answer).
 func sendJSON(t *testing.T, ts *testServerBundle, method, path, body string) (int, string) {
 	t.Helper()
-	req, err := http.NewRequestWithContext(context.Background(), method, ts.URL+path, strings.NewReader(body))
+	req, err := http.NewRequestWithContext(ownerCtx(), method, ts.URL+path, strings.NewReader(body))
 	require.NoError(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
@@ -47,8 +46,8 @@ func TestTriageInbox_MalformedBody(t *testing.T) {
 func TestUpdateWatch_MalformedBody(t *testing.T) {
 	ts := newTestServerBundle(t)
 	defer ts.Close()
-	ctx := context.Background()
-	watches := ts.svc.Store.Watches()
+	ctx := ownerCtx()
+	watches := ts.svc.Store(ownerCtx()).Watches()
 	require.NoError(t, watches.CreateWatch(ctx, &storage.WatchConfig{
 		ID: "w-1", Path: t.TempDir(), Mode: "generic", Status: "active",
 		IncludePatterns: []string{"*.md"}, DebounceMS: 500,

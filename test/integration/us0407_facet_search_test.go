@@ -3,7 +3,6 @@
 package integration
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -18,9 +17,9 @@ import (
 
 func TestFacetSearch_MetadataType(t *testing.T) {
 	env := startTestEnv(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
-	d, ok := env.svc.Store.(*sqlite.Driver)
+	d, ok := env.driver.(*sqlite.Driver)
 	require.True(t, ok)
 
 	for _, tc := range []struct {
@@ -34,7 +33,7 @@ func TestFacetSearch_MetadataType(t *testing.T) {
 		obj.Metadata = map[string]any{"type": tc.metaType}
 		obj.CreatedAt = nowTrunc()
 		obj.UpdatedAt = nowTrunc()
-		require.NoError(t, env.svc.Store.Objects().Create(ctx, obj))
+		require.NoError(t, env.driver.Objects().Create(ctx, obj))
 	}
 
 	_, _ = d.DB().ExecContext(ctx, "INSERT INTO objects_fts(objects_fts) VALUES('rebuild')")
@@ -54,7 +53,7 @@ func TestFacetSearch_MetadataType(t *testing.T) {
 
 func TestFacetSearch_Person(t *testing.T) {
 	env := startTestEnv(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	obj := storageutil.BuildGraphKO("fs-person-1", "text", "person facet")
 	obj.Metadata = map[string]any{
@@ -62,13 +61,13 @@ func TestFacetSearch_Person(t *testing.T) {
 	}
 	obj.CreatedAt = nowTrunc()
 	obj.UpdatedAt = nowTrunc()
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, obj))
+	require.NoError(t, env.driver.Objects().Create(ctx, obj))
 
 	obj2 := storageutil.BuildGraphKO("fs-person-2", "text", "no person")
 	obj2.Metadata = map[string]any{}
 	obj2.CreatedAt = nowTrunc()
 	obj2.UpdatedAt = nowTrunc()
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, obj2))
+	require.NoError(t, env.driver.Objects().Create(ctx, obj2))
 
 	objs, _, err := env.svc.ListObjects(ctx, storage.ObjectFilter{
 		MetadataPerson: "alice-chen",
@@ -81,7 +80,7 @@ func TestFacetSearch_Person(t *testing.T) {
 
 func TestFacetSearch_SinceUntil(t *testing.T) {
 	env := startTestEnv(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	obj := storageutil.BuildGraphKO("fs-date-1", "text", "date facet")
 	obj.Metadata = map[string]any{
@@ -89,7 +88,7 @@ func TestFacetSearch_SinceUntil(t *testing.T) {
 	}
 	obj.CreatedAt = nowTrunc()
 	obj.UpdatedAt = nowTrunc()
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, obj))
+	require.NoError(t, env.driver.Objects().Create(ctx, obj))
 
 	// Since 2026-04-01: object has 2026-04-10 >= 2026-04-01.
 	since := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
@@ -121,7 +120,7 @@ func TestFacetSearch_SinceUntil(t *testing.T) {
 
 func TestFacetSearch_CombinedFilters(t *testing.T) {
 	env := startTestEnv(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	for _, tc := range []struct {
 		id       string
@@ -141,7 +140,7 @@ func TestFacetSearch_CombinedFilters(t *testing.T) {
 		}
 		obj.CreatedAt = nowTrunc()
 		obj.UpdatedAt = nowTrunc()
-		require.NoError(t, env.svc.Store.Objects().Create(ctx, obj))
+		require.NoError(t, env.driver.Objects().Create(ctx, obj))
 	}
 
 	// type=task AND topic=auth AND source_type=slack → only fs-combo-1.
@@ -158,7 +157,7 @@ func TestFacetSearch_CombinedFilters(t *testing.T) {
 
 func TestFacetSearch_FacetCounts(t *testing.T) {
 	env := startTestEnv(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	for _, tc := range []struct {
 		id       string
@@ -176,7 +175,7 @@ func TestFacetSearch_FacetCounts(t *testing.T) {
 		}
 		obj.CreatedAt = nowTrunc()
 		obj.UpdatedAt = nowTrunc()
-		require.NoError(t, env.svc.Store.Objects().Create(ctx, obj))
+		require.NoError(t, env.driver.Objects().Create(ctx, obj))
 	}
 
 	counts, err := env.svc.FacetCounts(ctx, storage.ObjectFilter{Status: "all"})
@@ -188,9 +187,9 @@ func TestFacetSearch_FacetCounts(t *testing.T) {
 
 func TestFacetSearch_HybridWithFilter(t *testing.T) {
 	env := startTestEnv(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
-	d, ok := env.svc.Store.(*sqlite.Driver)
+	d, ok := env.driver.(*sqlite.Driver)
 	require.True(t, ok)
 
 	for _, tc := range []struct {
@@ -205,7 +204,7 @@ func TestFacetSearch_HybridWithFilter(t *testing.T) {
 		obj.Metadata = map[string]any{"type": tc.metaType}
 		obj.CreatedAt = nowTrunc()
 		obj.UpdatedAt = nowTrunc()
-		require.NoError(t, env.svc.Store.Objects().Create(ctx, obj))
+		require.NoError(t, env.driver.Objects().Create(ctx, obj))
 	}
 
 	_, _ = d.DB().ExecContext(ctx, "INSERT INTO objects_fts(objects_fts) VALUES('rebuild')")

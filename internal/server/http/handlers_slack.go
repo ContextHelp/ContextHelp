@@ -91,7 +91,7 @@ func RunSlackImport(svc *service.Service) http.HandlerFunc {
 			UpdatedAt:  now,
 		}
 
-		if err := svc.Store.Jobs().Create(r.Context(), job); err != nil {
+		if err := svc.Store(r.Context()).Jobs().Create(r.Context(), job); err != nil {
 			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 			return
 		}

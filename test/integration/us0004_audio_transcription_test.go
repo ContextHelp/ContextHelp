@@ -285,7 +285,7 @@ func TestUS0004_JobCompletesWithTranscript(t *testing.T) {
 		&transcribeStep{transcript: transcript, language: "en"},
 	)
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "simulated-mp3-audio-bytes",
 		Type:     "audio",
 		Pipeline: "audio.transcribe",
@@ -318,7 +318,7 @@ func TestUS0004_PipelineSelection(t *testing.T) {
 		&transcribeStep{transcript: "pipeline selection test", language: "en"},
 	)
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "audio-data-for-pipeline-selection",
 		Type:     "audio",
 		Pipeline: "audio.transcribe",
@@ -366,7 +366,7 @@ func TestUS0004_SupportedFormats(t *testing.T) {
 				},
 			})
 
-			jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+			jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 				Content:  fmt.Sprintf("simulated-%s-audio-bytes", tc.format),
 				Type:     "audio",
 				Pipeline: pipelineName,
@@ -415,7 +415,7 @@ func TestUS0004_UnsupportedFormatRejects(t *testing.T) {
 				},
 			})
 
-			jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+			jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 				Content:  fmt.Sprintf("simulated-%s-audio-bytes", tc.format),
 				Type:     "audio",
 				Pipeline: pipelineName,
@@ -442,7 +442,7 @@ func TestUS0004_CorruptAudioReturnsError(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "CORRUPT_AUDIO_invalid_header",
 		Type:     "audio",
 		Pipeline: "audio.corrupt",
@@ -469,7 +469,7 @@ func TestUS0004_FileSizeLimitEnforced(t *testing.T) {
 	})
 
 	oversizedContent := strings.Repeat("A", maxBytes+1)
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  oversizedContent,
 		Type:     "audio",
 		Pipeline: "audio.sizelimit",
@@ -496,7 +496,7 @@ func TestUS0004_DurationLimitEnforced(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "over-duration-audio-bytes",
 		Type:     "audio",
 		Pipeline: "audio.durationlimit",
@@ -518,7 +518,7 @@ func TestUS0004_TranscriptSearchable(t *testing.T) {
 		&transcribeStep{transcript: "searchable audio transcript content", language: "en"},
 	)
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "audio-with-searchable-transcript",
 		Type:     "audio",
 		Pipeline: "audio.transcribe",
@@ -565,7 +565,7 @@ func TestUS0004_TimestampedSections(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "timestamped-audio-bytes",
 		Type:     "audio",
 		Pipeline: "audio.timestamps",
@@ -614,7 +614,7 @@ func TestUS0004_DiarizationEnabled(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "meeting-audio-with-speakers",
 		Type:     "audio",
 		Pipeline: "audio.diarize.on",
@@ -651,7 +651,7 @@ func TestUS0004_DiarizationDisabled(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "solo-speaker-audio",
 		Type:     "audio",
 		Pipeline: "audio.diarize.off",
@@ -688,7 +688,7 @@ func TestUS0004_LanguageHint(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "french-audio-bytes",
 		Type:     "audio",
 		Pipeline: "audio.lang",
@@ -748,7 +748,7 @@ func TestUS0004_ObjectRetrievableViaAPI(t *testing.T) {
 		&transcribeStep{transcript: "retrievable audio transcript", language: "en"},
 	)
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "retrievable-audio-data",
 		Type:     "audio",
 		Pipeline: "audio.transcribe",
@@ -787,7 +787,7 @@ func TestUS0004_AsyncProcessing(t *testing.T) {
 	)
 
 	// Seed an object directly (simulating object created before enrichment finishes).
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now().Truncate(time.Second)
 	preObj := &storage.KnowledgeObject{
 		ID:        "async-audio-obj",
@@ -797,7 +797,7 @@ func TestUS0004_AsyncProcessing(t *testing.T) {
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, preObj))
+	require.NoError(t, env.driver.Objects().Create(ctx, preObj))
 
 	// The object should be queryable before enrichment.
 	resp, err := gohttp.Get(fmt.Sprintf("%s/api/v1/objects/%s", env.URL, "async-audio-obj"))
@@ -826,7 +826,7 @@ func TestUS0004_WorkerCrashRetry(t *testing.T) {
 	})
 
 	// Enqueue a job using the always-failing pipeline.
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "crash-retry-audio-data",
 		Type:     "audio",
 		Pipeline: "audio.crashretry",
@@ -876,7 +876,7 @@ func TestUS0004_TranscriptionProviderConfigurable(t *testing.T) {
 				},
 			})
 
-			jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+			jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 				Content:  fmt.Sprintf("audio-for-%s-provider", tc.provider),
 				Type:     "audio",
 				Pipeline: pipelineName,

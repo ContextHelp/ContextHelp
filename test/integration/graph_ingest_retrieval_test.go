@@ -6,7 +6,6 @@ package integration
 // behavior works through shared projection helpers.
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -81,7 +80,7 @@ func buildGraphKO(objectID, typ, sectionContent, tagLabel, entitySlug string) *s
 // it, and asserts node count, stable node IDs, ProjectDocument, ProjectIndex.
 func TestGraphIngest_RoundTrip(t *testing.T) {
 	driver := storageutil.NewTestDriver(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	ko := buildGraphKO("girt-01", "note", "graph canonical round trip content", "graph", "girt-entity")
 	require.NoError(t, driver.Objects().Create(ctx, ko))
@@ -122,12 +121,12 @@ func TestGraphIngest_FTSSearch(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	const uniqueTerm = "xryptographicUniqueTermForT0189"
 
 	ko := buildGraphKO("gifts-01", "article",
 		"content about "+uniqueTerm+" key management", "crypto", "crypto-entity")
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, ko))
+	require.NoError(t, env.driver.Objects().Create(ctx, ko))
 	rebuildFTSIntegration(t, env)
 
 	cfg := config.SearchConfig{
@@ -148,7 +147,7 @@ func TestGraphIngest_FTSSearch(t *testing.T) {
 // ProjectDocument / ProjectIndex fall back to flat fields without panic.
 func TestGraphIngest_ProjectionFallback(t *testing.T) {
 	driver := storageutil.NewTestDriver(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	now := time.Now().Truncate(time.Second)
 	flat := &storage.KnowledgeObject{
@@ -188,7 +187,7 @@ func TestGraphIngest_ProjectionFallback(t *testing.T) {
 // retrieves it, and asserts edges are present with the correct From/To/Type.
 func TestGraphIngest_EdgePreservation(t *testing.T) {
 	driver := storageutil.NewTestDriver(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	ko := buildGraphKO("giep-01", "decision",
 		"adopt event-driven architecture for async messaging", "architecture", "event-broker")

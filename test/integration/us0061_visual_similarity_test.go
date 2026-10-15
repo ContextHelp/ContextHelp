@@ -12,7 +12,6 @@ package integration
 // environment.
 
 import (
-	"context"
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -39,7 +38,7 @@ func TestUS0061_VisuallySimialrImageRanksHigher(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 	const dim = 8
 	requireVectorIndex(t, env, dim)
@@ -68,7 +67,7 @@ func TestUS0061_VisuallySimialrImageRanksHigher(t *testing.T) {
 
 	// Query vector aligned with "similar" image.
 	queryVec := makeVisualEmbedding(dim, map[int]float32{0: 1.0})
-	results, err := env.svc.Store.Objects().VectorSearch(ctx, vq(queryVec), storage.ObjectFilter{Limit: 5})
+	results, err := env.driver.Objects().VectorSearch(ctx, vq(queryVec), storage.ObjectFilter{Limit: 5})
 	require.NoError(t, err)
 	require.NotEmpty(t, results, "vector search must return results for image embeddings")
 	assert.Equal(t, "vis-sim-01", results[0].ID,
@@ -82,7 +81,7 @@ func TestUS0061_DualEmbeddingImageAndTextCoexist(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 	const dim = 4
 	requireVectorIndex(t, env, dim)
@@ -107,7 +106,7 @@ func TestUS0061_DualEmbeddingImageAndTextCoexist(t *testing.T) {
 
 	// Vector search path must also find it.
 	queryVec := makeVisualEmbedding(dim, map[int]float32{0: 1.0})
-	vecResults, err := env.svc.Store.Objects().VectorSearch(ctx, vq(queryVec), storage.ObjectFilter{Limit: 5})
+	vecResults, err := env.driver.Objects().VectorSearch(ctx, vq(queryVec), storage.ObjectFilter{Limit: 5})
 	require.NoError(t, err)
 	assert.True(t, containsIDPtr(vecResults, "vis-dual-01"), "image must be findable via vector search")
 }
@@ -119,7 +118,7 @@ func TestUS0061_ImageTypeFilterRestrictsVectorResults(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 	const dim = 4
 	requireVectorIndex(t, env, dim)
@@ -142,7 +141,7 @@ func TestUS0061_ImageTypeFilterRestrictsVectorResults(t *testing.T) {
 
 	// Vector search filtered to type==image.
 	queryVec := makeVisualEmbedding(dim, map[int]float32{0: 1.0})
-	results, err := env.svc.Store.Objects().VectorSearch(ctx, vq(queryVec), storage.ObjectFilter{
+	results, err := env.driver.Objects().VectorSearch(ctx, vq(queryVec), storage.ObjectFilter{
 		Limit: 10,
 		Type:  "image",
 	})
@@ -158,7 +157,7 @@ func TestUS0061_NoEmbeddingImageExcludedFromVectorSearch(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 	const dim = 4
 	requireVectorIndex(t, env, dim)
@@ -177,10 +176,10 @@ func TestUS0061_NoEmbeddingImageExcludedFromVectorSearch(t *testing.T) {
 	}
 
 	createWithVector(t, env, withEmb, makeVisualEmbedding(dim, map[int]float32{0: 1.0}))
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, noEmb))
+	require.NoError(t, env.driver.Objects().Create(ctx, noEmb))
 
 	queryVec := makeVisualEmbedding(dim, map[int]float32{0: 1.0})
-	results, err := env.svc.Store.Objects().VectorSearch(ctx, vq(queryVec), storage.ObjectFilter{Limit: 10})
+	results, err := env.driver.Objects().VectorSearch(ctx, vq(queryVec), storage.ObjectFilter{Limit: 10})
 	require.NoError(t, err)
 	assert.True(t, containsIDPtr(results, "vis-emb-yes"), "image with embedding must appear")
 	assert.False(t, containsIDPtr(results, "vis-emb-no"), "image without embedding must be excluded")

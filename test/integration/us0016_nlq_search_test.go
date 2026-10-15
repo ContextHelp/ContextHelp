@@ -5,7 +5,6 @@ package integration
 // include expected object IDs.
 
 import (
-	"context"
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
@@ -20,9 +19,9 @@ import (
 // inserted objects are searchable.
 func rebuildFTSIntegration(t *testing.T, env *testEnv) {
 	t.Helper()
-	d, ok := env.svc.Store.(*sqlite.Driver)
+	d, ok := env.driver.(*sqlite.Driver)
 	require.True(t, ok, "store must be *sqlite.Driver for FTS rebuild")
-	_, err := d.DB().ExecContext(context.Background(), "INSERT INTO objects_fts(objects_fts) VALUES('rebuild')")
+	_, err := d.DB().ExecContext(ownerCtx(), "INSERT INTO objects_fts(objects_fts) VALUES('rebuild')")
 	require.NoError(t, err)
 }
 
@@ -32,7 +31,7 @@ func TestUS0016_NLQSearchReturnsMatchingObjects(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 
 	objects := []struct {
@@ -52,7 +51,7 @@ func TestUS0016_NLQSearchReturnsMatchingObjects(t *testing.T) {
 			CreatedAt: now,
 			UpdatedAt: now,
 		}
-		require.NoError(t, env.svc.Store.Objects().Create(ctx, obj))
+		require.NoError(t, env.driver.Objects().Create(ctx, obj))
 	}
 	rebuildFTSIntegration(t, env)
 
@@ -82,7 +81,7 @@ func TestUS0016_NLQSearchViaHTTPReturnsResults(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 
 	obj := &storage.KnowledgeObject{
@@ -93,7 +92,7 @@ func TestUS0016_NLQSearchViaHTTPReturnsResults(t *testing.T) {
 		CreatedAt:  now,
 		UpdatedAt:  now,
 	}
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, obj))
+	require.NoError(t, env.driver.Objects().Create(ctx, obj))
 	rebuildFTSIntegration(t, env)
 
 	// REST search via RSQL (type filter) — NLQ intent is a superset; verifying
@@ -113,7 +112,7 @@ func TestUS0016_NLQNoResults(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	cfg := config.SearchConfig{
 		DefaultMode:   "hybrid",
 		FallbackToFTS: true,

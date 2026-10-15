@@ -76,7 +76,7 @@ func TestUS0013_FencedCodeBlocksExtracted(t *testing.T) {
 
 	markdownContent := "# Notes\n\nHere is a Go snippet:\n\n```go\nfunc main() {\n\tfmt.Println(\"hello\")\n}\n```\n\nAnd Python:\n\n```python\ndef greet(name):\n    print(f'Hello, {name}')\n```"
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  markdownContent,
 		Type:     "text",
 		Pipeline: "text.code-extract",
@@ -125,7 +125,7 @@ func TestUS0013_CodeObjectsCreatedWithLanguageTag(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "Multi-language code document with bash, SQL, and TypeScript examples",
 		Type:     "text",
 		Pipeline: "text.code-lang",
@@ -171,7 +171,7 @@ func TestUS0013_UnlabeledFencedBlocksGetUnknownLanguage(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "```\nsome unlabeled code here\n```",
 		Type:     "text",
 		Pipeline: "text.code-unknown-lang",
@@ -211,7 +211,7 @@ func TestUS0013_NoCodeContentReturnsEmptySnippets(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "Plain prose with no code blocks whatsoever.",
 		Type:     "text",
 		Pipeline: "text.code-empty",
@@ -250,7 +250,7 @@ func TestUS0013_DetectionMethodRecordedInMetadata(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "```go\nvar x = 1\n```",
 		Type:     "text",
 		Pipeline: "text.code-method",

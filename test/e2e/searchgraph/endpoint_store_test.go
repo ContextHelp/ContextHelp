@@ -25,6 +25,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
@@ -132,7 +133,7 @@ func (s *graphStore) alias(v string) string {
 // default and stores the corpus vectors under it.
 func seedGraphStore(t *testing.T, typ, path string, withModel bool) *graphStore {
 	t.Helper()
-	ctx := context.Background()
+	ctx := sharing.WithViewer(context.Background(), sharing.Unrestricted)
 	drv, err := storageutil.NewDriver(typ, path, storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatal(err)

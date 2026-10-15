@@ -63,16 +63,16 @@ func traceSemantic(ep fixedEmbedder) retrieval.SemanticSource {
 //	note-1          FTS + vector hit, type "note" → excluded by Type filter
 func seedTraceFixture(t *testing.T, svc *Service) {
 	t.Helper()
-	ctx := context.Background()
-	reg, err := registry.ForDriver(svc.Store)
+	ctx := ownerCtx()
+	reg, err := registry.ForDriver(svc.store)
 	require.NoError(t, err)
 	require.NoError(t, reg.Register(ctx, traceModels[0], true))
-	store := svc.Store.Embeddings()
+	store := svc.store.Embeddings()
 	require.NoError(t, store.EnsureIndex(ctx, embeddings.SpecFor(traceModels[0])))
 	add := func(id, typ, text string, emb []float32) {
 		obj := makeSearchObject(id, []string{text}, "")
 		obj.Type = typ
-		require.NoError(t, svc.Store.Objects().Create(ctx, obj))
+		require.NoError(t, svc.store.Objects().Create(ctx, obj))
 		if emb != nil {
 			require.NoError(t, store.Put(ctx, id, []storage.ObjectVector{{ModelID: traceModel, Vector: emb}}))
 		}
@@ -109,7 +109,7 @@ func traceByID(tr *SearchTrace) map[string]TraceCandidate {
 func TestHybridSearchTrace_StagesLegsAndScores(t *testing.T) {
 	svc := newTestService(t)
 	seedTraceFixture(t, svc)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	cfg := traceFixtureConfig()
 	ep := traceSemantic(fixedEmbedder{vec: []float32{1, 0, 0}})
 	filter := storage.ObjectFilter{Limit: 2, Type: "text"}
@@ -215,7 +215,7 @@ func TestHybridSearchTrace_StagesLegsAndScores(t *testing.T) {
 func TestHybridSearchTrace_NonTracePathUnchanged(t *testing.T) {
 	svc := newTestService(t)
 	seedTraceFixture(t, svc)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	cfg := traceFixtureConfig()
 	ep := traceSemantic(fixedEmbedder{vec: []float32{1, 0, 0}})
 	filter := storage.ObjectFilter{Limit: 2, Type: "text"}
@@ -250,7 +250,7 @@ func TestHybridSearchTrace_NonTracePathUnchanged(t *testing.T) {
 func TestHybridSearchTrace_CutScoresMatchUncutExplain(t *testing.T) {
 	svc := newTestService(t)
 	seedTraceFixture(t, svc)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	ep := traceSemantic(fixedEmbedder{vec: []float32{1, 0, 0}})
 
 	cfg := traceFixtureConfig()
@@ -275,7 +275,7 @@ func TestHybridSearchTrace_CutScoresMatchUncutExplain(t *testing.T) {
 func TestHybridSearchTrace_FTSOnlyModes(t *testing.T) {
 	svc := newTestService(t)
 	seedTraceFixture(t, svc)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	cfg := traceFixtureConfig()
 	filter := storage.ObjectFilter{Limit: 10, Type: "text"}
 
@@ -329,7 +329,7 @@ func TestHybridSearchTrace_FTSOnlyModes(t *testing.T) {
 func TestHybridSearchTrace_JSONShape(t *testing.T) {
 	svc := newTestService(t)
 	seedTraceFixture(t, svc)
-	env, err := svc.HybridSearchExplainFilteredWithTrace(context.Background(), "quantum",
+	env, err := svc.HybridSearchExplainFilteredWithTrace(ownerCtx(), "quantum",
 		storage.ObjectFilter{Limit: 2, Type: "text"}, traceSemantic(fixedEmbedder{vec: []float32{1, 0, 0}}), traceFixtureConfig())
 	require.NoError(t, err)
 

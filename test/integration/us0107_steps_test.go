@@ -1,7 +1,6 @@
 package integration
 
 import (
-	"context"
 	"encoding/json"
 	gohttp "net/http"
 	"testing"
@@ -17,10 +16,10 @@ func TestUS0107_ListAvailableSteps(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now()
 	for _, name := range []string{"list-a", "list-b", "list-c"} {
-		require.NoError(t, env.svc.Store.Steps().Create(ctx, &storage.RegisteredStep{
+		require.NoError(t, env.driver.Steps().Create(ctx, &storage.RegisteredStep{
 			Name: name, Source: "local", Metadata: &storage.StepMetadata{Name: name},
 			InstalledAt: now, UpdatedAt: now,
 		}))
@@ -44,7 +43,7 @@ func TestUS0107_GetByName(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now()
 	step := &storage.RegisteredStep{
 		Name:   "test-extractor",
@@ -58,7 +57,7 @@ func TestUS0107_GetByName(t *testing.T) {
 		InstalledAt: now,
 		UpdatedAt:   now,
 	}
-	err := env.svc.Store.Steps().Create(ctx, step)
+	err := env.driver.Steps().Create(ctx, step)
 	require.NoError(t, err)
 
 	t.Run("existing step", func(t *testing.T) {
@@ -97,7 +96,7 @@ func TestUS0107_FilterBySource(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now()
 
 	builtinStep := &storage.RegisteredStep{
@@ -105,14 +104,14 @@ func TestUS0107_FilterBySource(t *testing.T) {
 		Metadata:    &storage.StepMetadata{Name: "filter-builtin-step", Description: "A builtin step"},
 		InstalledAt: now, UpdatedAt: now,
 	}
-	require.NoError(t, env.svc.Store.Steps().Create(ctx, builtinStep))
+	require.NoError(t, env.driver.Steps().Create(ctx, builtinStep))
 
 	localStep := &storage.RegisteredStep{
 		Name: "filter-local-step", Source: "local:/tmp/custom", Path: "/tmp/custom/step",
 		Metadata:    &storage.StepMetadata{Name: "filter-local-step", Description: "A local step"},
 		InstalledAt: now, UpdatedAt: now,
 	}
-	require.NoError(t, env.svc.Store.Steps().Create(ctx, localStep))
+	require.NoError(t, env.driver.Steps().Create(ctx, localStep))
 
 	t.Run("filter by builtin", func(t *testing.T) {
 		resp, err := gohttp.Get(env.URL + "/api/v1/steps?source=builtin")
@@ -149,7 +148,7 @@ func TestUS0107_MetadataAllFields(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now()
 	step := &storage.RegisteredStep{
 		Name: "full-meta-step", Source: "builtin", Path: "/steps/full",
@@ -159,7 +158,7 @@ func TestUS0107_MetadataAllFields(t *testing.T) {
 		},
 		InstalledAt: now, UpdatedAt: now,
 	}
-	require.NoError(t, env.svc.Store.Steps().Create(ctx, step))
+	require.NoError(t, env.driver.Steps().Create(ctx, step))
 
 	resp, err := gohttp.Get(env.URL + "/api/v1/steps/full-meta-step")
 	require.NoError(t, err)
@@ -183,14 +182,14 @@ func TestUS0107_UpdateMetadata(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now()
 	step := &storage.RegisteredStep{
 		Name: "updatable-step", Source: "builtin", Path: "",
 		Metadata:    &storage.StepMetadata{Name: "updatable-step", Description: "Updatable", Version: "1.0.0"},
 		InstalledAt: now, UpdatedAt: now,
 	}
-	require.NoError(t, env.svc.Store.Steps().Create(ctx, step))
+	require.NoError(t, env.driver.Steps().Create(ctx, step))
 
 	resp, err := gohttp.Get(env.URL + "/api/v1/steps/updatable-step")
 	require.NoError(t, err)
@@ -202,7 +201,7 @@ func TestUS0107_UpdateMetadata(t *testing.T) {
 
 	step.Metadata.Version = "2.0.0"
 	step.UpdatedAt = time.Now()
-	require.NoError(t, env.svc.Store.Steps().Update(ctx, step))
+	require.NoError(t, env.driver.Steps().Update(ctx, step))
 
 	resp2, err := gohttp.Get(env.URL + "/api/v1/steps/updatable-step")
 	require.NoError(t, err)
@@ -217,14 +216,14 @@ func TestUS0107_Uninstall(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now()
 	step := &storage.RegisteredStep{
 		Name: "removable-step", Source: "local:/tmp/test", Path: "/tmp/test/step",
 		Metadata:    &storage.StepMetadata{Name: "removable-step", Description: "Will be uninstalled"},
 		InstalledAt: now, UpdatedAt: now,
 	}
-	require.NoError(t, env.svc.Store.Steps().Create(ctx, step))
+	require.NoError(t, env.driver.Steps().Create(ctx, step))
 
 	respGet, err := gohttp.Get(env.URL + "/api/v1/steps/removable-step")
 	require.NoError(t, err)

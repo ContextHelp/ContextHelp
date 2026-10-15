@@ -24,9 +24,9 @@ func (s *Service) FederationAccept(
 	edges []storage.Edge,
 	entities []storage.Entity,
 ) (int, error) {
-	objs := s.Store.Objects()
-	edgeStore := s.Store.Edges()
-	entityStore := s.Store.Entities()
+	objs := s.Store(ctx).Objects()
+	edgeStore := s.Store(ctx).Edges()
+	entityStore := s.Store(ctx).Entities()
 
 	for i := range entities {
 		ent := &entities[i]
@@ -60,7 +60,7 @@ func (s *Service) FederationAccept(
 			return created, fmt.Errorf("federation accept: create object %q: %w", obj.ID, err)
 		}
 		created++
-		if err := blob.Ensure(ctx, s.Store.Blobs(), row); err != nil {
+		if err := blob.Ensure(ctx, s.Store(ctx).Blobs(), row); err != nil {
 			return created, fmt.Errorf("federation accept: object %q: %w", obj.ID, err)
 		}
 

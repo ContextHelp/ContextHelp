@@ -114,7 +114,7 @@ func TestUS0041_ConstrainedEntitiesConformToPattern(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "Alice worked on the backend-api project, applying event-sourcing.",
 		Type:     "text",
 		Pipeline: pipeName,
@@ -125,7 +125,7 @@ func TestUS0041_ConstrainedEntitiesConformToPattern(t *testing.T) {
 	job := waitForJob(t, env.URL, jobID, storage.JobCompleted)
 	require.NotEmpty(t, job.ResultID)
 
-	obj, err := env.svc.Store.Objects().Get(context.Background(), job.ResultID)
+	obj, err := env.driver.Objects().Get(ownerCtx(), job.ResultID)
 	require.NoError(t, err)
 
 	assert.Len(t, obj.Mentions, 3, "only 3 of 5 raw mentions pass the @namespace.slug constraint")
@@ -169,7 +169,7 @@ func TestUS0041_ConstrainedTagsAreSubsetOfAllowedList(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "Content with constrained tag extraction",
 		Type:     "text",
 		Pipeline: pipeName,
@@ -180,7 +180,7 @@ func TestUS0041_ConstrainedTagsAreSubsetOfAllowedList(t *testing.T) {
 	job := waitForJob(t, env.URL, jobID, storage.JobCompleted)
 	require.NotEmpty(t, job.ResultID)
 
-	obj, err := env.svc.Store.Objects().Get(context.Background(), job.ResultID)
+	obj, err := env.driver.Objects().Get(ownerCtx(), job.ResultID)
 	require.NoError(t, err)
 
 	assert.Len(t, obj.Tags, 2, "only 2 of 4 raw tags pass the vocabulary constraint")
@@ -212,7 +212,7 @@ func TestUS0041_EnrichmentResultIsDurable(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "Bob is leading project delta.",
 		Type:     "text",
 		Pipeline: pipeName,
@@ -223,16 +223,16 @@ func TestUS0041_EnrichmentResultIsDurable(t *testing.T) {
 	job := waitForJob(t, env.URL, jobID, storage.JobCompleted)
 	require.NotEmpty(t, job.ResultID)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	// First retrieval.
-	obj1, err := env.svc.Store.Objects().Get(ctx, job.ResultID)
+	obj1, err := env.driver.Objects().Get(ctx, job.ResultID)
 	require.NoError(t, err)
 	require.Len(t, obj1.Mentions, 2)
 	require.Len(t, obj1.Tags, 1)
 
 	// Second retrieval — must return identical data.
-	obj2, err := env.svc.Store.Objects().Get(ctx, job.ResultID)
+	obj2, err := env.driver.Objects().Get(ctx, job.ResultID)
 	require.NoError(t, err)
 	require.Len(t, obj2.Mentions, 2, "mentions must be stable on second read")
 	require.Len(t, obj2.Tags, 1, "tags must be stable on second read")
@@ -258,7 +258,7 @@ func TestUS0041_EnrichmentUpdatesObjectViaHTTP(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "Carol presented microservices architecture.",
 		Type:     "text",
 		Pipeline: pipeName,
@@ -305,7 +305,7 @@ func TestUS0041_PipelineFieldReflectsEnrichmentPipeline(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "Dave reviewed the infrastructure changes.",
 		Type:     "text",
 		Pipeline: pipeName,
@@ -316,7 +316,7 @@ func TestUS0041_PipelineFieldReflectsEnrichmentPipeline(t *testing.T) {
 	job := waitForJob(t, env.URL, jobID, storage.JobCompleted)
 	require.NotEmpty(t, job.ResultID)
 
-	obj, err := env.svc.Store.Objects().Get(context.Background(), job.ResultID)
+	obj, err := env.driver.Objects().Get(ownerCtx(), job.ResultID)
 	require.NoError(t, err)
 
 	assert.Equal(t, pipeName, obj.Pipeline,

@@ -1,7 +1,6 @@
 package integration
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
 	"time"
@@ -87,7 +86,7 @@ func TestUS0030_ObjectWithProfileIDStoredAndRetrievable(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now().Truncate(time.Second)
 
 	obj := &storage.KnowledgeObject{
@@ -97,10 +96,10 @@ func TestUS0030_ObjectWithProfileIDStoredAndRetrievable(t *testing.T) {
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	err := env.svc.Store.Objects().Create(ctx, obj)
+	err := env.driver.Objects().Create(ctx, obj)
 	require.NoError(t, err)
 
-	got, err := env.svc.Store.Objects().Get(ctx, "profile-obj-001")
+	got, err := env.driver.Objects().Get(ctx, "profile-obj-001")
 	require.NoError(t, err)
 
 	assert.Equal(t, "founder", got.ProfileID, "ProfileID must be stored and retrieved")
@@ -112,7 +111,7 @@ func TestUS0030_EmptyProfileIDIsGlobal(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now().Truncate(time.Second)
 
 	obj := &storage.KnowledgeObject{
@@ -121,10 +120,10 @@ func TestUS0030_EmptyProfileIDIsGlobal(t *testing.T) {
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	err := env.svc.Store.Objects().Create(ctx, obj)
+	err := env.driver.Objects().Create(ctx, obj)
 	require.NoError(t, err)
 
-	got, err := env.svc.Store.Objects().Get(ctx, "global-obj-001")
+	got, err := env.driver.Objects().Get(ctx, "global-obj-001")
 	require.NoError(t, err)
 
 	assert.Empty(t, got.ProfileID, "object without profile must have empty ProfileID")
@@ -136,7 +135,7 @@ func TestUS0030_SearchFilteredByProfileReturnsCorrectObjects(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now().Truncate(time.Second)
 
 	// Seed a profile-scoped object and a global object.
@@ -153,8 +152,8 @@ func TestUS0030_SearchFilteredByProfileReturnsCorrectObjects(t *testing.T) {
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, founderObj))
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, globalObj))
+	require.NoError(t, env.driver.Objects().Create(ctx, founderObj))
+	require.NoError(t, env.driver.Objects().Create(ctx, globalObj))
 
 	// SearchObjects with profileID="founder" should return only founder-scoped objects.
 	results, total, err := env.svc.SearchObjects(ctx, "type==article", 100, 0, "founder")
@@ -174,7 +173,7 @@ func TestUS0030_MultipleProfilesCoexistIndependently(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now().Truncate(time.Second)
 
 	profiles := []string{"founder", "engineer", "sales"}
@@ -187,11 +186,11 @@ func TestUS0030_MultipleProfilesCoexistIndependently(t *testing.T) {
 			CreatedAt: now.Add(time.Duration(i) * time.Second),
 			UpdatedAt: now.Add(time.Duration(i) * time.Second),
 		}
-		require.NoError(t, env.svc.Store.Objects().Create(ctx, obj), "create for profile %s", prof)
+		require.NoError(t, env.driver.Objects().Create(ctx, obj), "create for profile %s", prof)
 	}
 
 	for _, prof := range profiles {
-		got, err := env.svc.Store.Objects().Get(ctx, "multi-profile-obj-"+prof)
+		got, err := env.driver.Objects().Get(ctx, "multi-profile-obj-"+prof)
 		require.NoError(t, err, "get for profile %s", prof)
 		assert.Equal(t, prof, got.ProfileID, "object for profile %s must have matching ProfileID", prof)
 	}

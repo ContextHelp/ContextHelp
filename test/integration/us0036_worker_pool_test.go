@@ -32,8 +32,8 @@ func newWorkerTestDriver(t *testing.T) storage.StorageDriver {
 	dsn := filepath.Join(dir, "test.db") + "?_pragma=busy_timeout(5000)"
 	driver, err := sqlite.New(dsn, storageutil.NewTestBlobStore(t))
 	require.NoError(t, err)
-	require.NoError(t, driver.Init(context.Background()))
-	t.Cleanup(func() { driver.Close(context.Background()) })
+	require.NoError(t, driver.Init(ownerCtx()))
+	t.Cleanup(func() { driver.Close(ownerCtx()) })
 	return driver
 }
 
@@ -48,7 +48,7 @@ func startWorkerPool(
 	workers int,
 ) (context.Context, context.CancelFunc) {
 	t.Helper()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ownerCtx())
 	pool := jobs.NewWorkerPool(queue, pipes, driver, workers, nil, config.JobsConfig{
 		PollInterval: 30 * time.Millisecond,
 		StaleTimeout: 30 * time.Minute,
@@ -63,7 +63,7 @@ func startWorkerPool(
 // or the timeout expires.
 func waitAllJobsCompleted(t *testing.T, queue *jobs.Queue, ids []string, timeout time.Duration) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(ownerCtx(), timeout)
 	defer cancel()
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
@@ -74,7 +74,7 @@ func waitAllJobsCompleted(t *testing.T, queue *jobs.Queue, ids []string, timeout
 		case <-ticker.C:
 			done := 0
 			for _, id := range ids {
-				job, err := queue.Get(context.Background(), id)
+				job, err := queue.Get(ownerCtx(), id)
 				if err != nil {
 					continue
 				}
@@ -104,7 +104,7 @@ func TestUS0036_BurstJobsAllComplete(t *testing.T) {
 	const nJobs = 20
 	jobIDs := make([]string, nJobs)
 	for i := 0; i < nJobs; i++ {
-		id, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+		id, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 			Content: fmt.Sprintf("burst content %d", i),
 			Type:    "text",
 			Source:  "e2e-test",
@@ -119,7 +119,7 @@ func TestUS0036_BurstJobsAllComplete(t *testing.T) {
 	}
 
 	// Verify distinct result IDs.
-	_, total, err := env.svc.ListJobs(context.Background(), storage.JobFilter{
+	_, total, err := env.svc.ListJobs(ownerCtx(), storage.JobFilter{
 		Status: storage.JobCompleted,
 		Limit:  1000,
 	})
@@ -153,13 +153,13 @@ func TestUS0036_MaxWorkersHonored(t *testing.T) {
 			CreatedAt:  time.Now(),
 			UpdatedAt:  time.Now(),
 		}
-		require.NoError(t, queue.Enqueue(context.Background(), j), "enqueue job %d", i)
+		require.NoError(t, queue.Enqueue(ownerCtx(), j), "enqueue job %d", i)
 		ids[i] = jobID
 	}
 
 	waitAllJobsCompleted(t, queue, ids, 30*time.Second)
 
-	_, total, err := queue.List(context.Background(), storage.JobFilter{
+	_, total, err := queue.List(ownerCtx(), storage.JobFilter{
 		Status: storage.JobCompleted,
 		Limit:  1000,
 	})
@@ -197,14 +197,14 @@ func TestUS0036_ConcurrentIngestViaService(t *testing.T) {
 			CreatedAt:  time.Now(),
 			UpdatedAt:  time.Now(),
 		}
-		require.NoError(t, queue.Enqueue(context.Background(), j), "enqueue job %d", i)
+		require.NoError(t, queue.Enqueue(ownerCtx(), j), "enqueue job %d", i)
 		ids[i] = jobID
 	}
 
 	waitAllJobsCompleted(t, queue, ids, 30*time.Second)
 
 	// Verify via listing.
-	_, total, err := queue.List(context.Background(), storage.JobFilter{
+	_, total, err := queue.List(ownerCtx(), storage.JobFilter{
 		Status: storage.JobCompleted,
 		Limit:  1000,
 	})
@@ -239,7 +239,7 @@ func TestUS0036_NoDataRaceOnJobListDuringProcessing(t *testing.T) {
 			CreatedAt:  time.Now(),
 			UpdatedAt:  time.Now(),
 		}
-		require.NoError(t, queue.Enqueue(context.Background(), j))
+		require.NoError(t, queue.Enqueue(ownerCtx(), j))
 		ids[i] = jobID
 	}
 
@@ -248,7 +248,7 @@ func TestUS0036_NoDataRaceOnJobListDuringProcessing(t *testing.T) {
 	go func() {
 		defer close(done)
 		for i := 0; i < 50; i++ {
-			queue.List(context.Background(), storage.JobFilter{Limit: 100}) //nolint:errcheck
+			queue.List(ownerCtx(), storage.JobFilter{Limit: 100}) //nolint:errcheck
 			time.Sleep(10 * time.Millisecond)
 		}
 	}()
@@ -257,7 +257,7 @@ func TestUS0036_NoDataRaceOnJobListDuringProcessing(t *testing.T) {
 
 	waitAllJobsCompleted(t, queue, ids, 30*time.Second)
 
-	_, total, err := queue.List(context.Background(), storage.JobFilter{
+	_, total, err := queue.List(ownerCtx(), storage.JobFilter{
 		Status: storage.JobCompleted,
 		Limit:  1000,
 	})

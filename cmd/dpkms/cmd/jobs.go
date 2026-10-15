@@ -117,7 +117,7 @@ func runJobsList(cmd *cobra.Command, _ []string) error {
 	}
 	defer cleanup()
 
-	ctx := context.Background()
+	ctx := asSystem(context.Background())
 	filter := storage.JobFilter{
 		Status: storage.JobStatus(viper.GetString("jobs.state")),
 		Limit:  viper.GetInt("jobs.limit"),
@@ -206,7 +206,7 @@ func runJobsStatus(cmd *cobra.Command, args []string) error {
 	}
 	defer cleanup()
 
-	ctx := context.Background()
+	ctx := asSystem(context.Background())
 	job, err := svc.GetJob(ctx, jobID)
 	if err != nil {
 		return fmt.Errorf("get job: %w", err)
@@ -246,7 +246,7 @@ func runJobsLogs(cmd *cobra.Command, args []string) error {
 	}
 	defer cleanup()
 
-	ctx := context.Background()
+	ctx := asSystem(context.Background())
 	job, err := svc.GetJob(ctx, jobID)
 	if err != nil {
 		return fmt.Errorf("get job: %w", err)
@@ -278,7 +278,7 @@ func runJobsRetry(cmd *cobra.Command, args []string) error {
 	}
 	defer cleanup()
 
-	ctx := context.Background()
+	ctx := asSystem(context.Background())
 	if err := svc.RetryJob(ctx, jobID); err != nil {
 		return fmt.Errorf("retry job: %w", err)
 	}
@@ -296,7 +296,7 @@ func runJobsCancel(cmd *cobra.Command, args []string) error {
 	}
 	defer cleanup()
 
-	ctx := context.Background()
+	ctx := asSystem(context.Background())
 	if err := svc.CancelJob(ctx, jobID); err != nil {
 		return fmt.Errorf("cancel job: %w", err)
 	}

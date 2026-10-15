@@ -1,7 +1,6 @@
 package integration
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -59,7 +58,7 @@ func TestUS0031_EnvBackendResolvesFromEnv(t *testing.T) {
 
 	r, err := secrets.New(config.SecretsConfig{Backend: "env"})
 	require.NoError(t, err)
-	got, err := r.Get(context.Background(), "CTXT_TEST_SECRET_KEY")
+	got, err := r.Get(ownerCtx(), "CTXT_TEST_SECRET_KEY")
 	require.NoError(t, err)
 	assert.Equal(t, "sk-test-resolved-value", string(got.Value))
 }
@@ -69,7 +68,7 @@ func TestUS0031_EnvBackendResolvesFromEnv(t *testing.T) {
 func TestUS0031_EnvBackendMissingKeyReturnsError(t *testing.T) {
 	r, err := secrets.New(config.SecretsConfig{Backend: "env"})
 	require.NoError(t, err)
-	_, err = r.Get(context.Background(), "CTXT_TEST_DEFINITELY_NOT_SET_XYZZY")
+	_, err = r.Get(ownerCtx(), "CTXT_TEST_DEFINITELY_NOT_SET_XYZZY")
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, secret.ErrNotFound), "want ErrNotFound, got %v", err)
 }
@@ -79,7 +78,7 @@ func TestUS0031_EnvBackendMissingKeyReturnsError(t *testing.T) {
 func TestUS0031_EnvBackendSetReturnsNotSupported(t *testing.T) {
 	r, err := secrets.New(config.SecretsConfig{Backend: "env"})
 	require.NoError(t, err)
-	err = r.Set(context.Background(), "CTXT_TEST_KEY", []byte("some-value"))
+	err = r.Set(ownerCtx(), "CTXT_TEST_KEY", []byte("some-value"))
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, secret.ErrNotSupported), "want ErrNotSupported, got %v", err)
 }

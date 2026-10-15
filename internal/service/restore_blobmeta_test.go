@@ -2,7 +2,6 @@ package service_test
 
 import (
 	"archive/tar"
-	"context"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -17,7 +16,7 @@ import (
 
 // A blob's metadata survives backup and restore, in both forms.
 func TestBackupRestoreKeepsBlobMeta(t *testing.T) {
-	ctx := context.Background()
+	ctx := ownerCtx()
 	src := t.TempDir()
 	srcDB := filepath.Join(src, "db.sqlite")
 	srcBlobs := filepath.Join(src, "blobs")
@@ -101,7 +100,7 @@ func TestRestoreRefusesBadBlobMeta(t *testing.T) {
 				tc.entry,
 				{name: "ctxt-backup/blobs/abcdef", body: "blob"},
 			})
-			if _, err := service.Restore(context.Background(), l.opts(t, archive)); err == nil {
+			if _, err := service.Restore(ownerCtx(), l.opts(t, archive)); err == nil {
 				t.Error("want error")
 			}
 			l.assertNothingWritten(t)

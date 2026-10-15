@@ -175,10 +175,10 @@ type HealthzProbes struct {
 // failure as "queue: ok with zero depth" rather than poisoning the
 // envelope.
 func queueDepthsFromService(ctx context.Context, svc *service.Service) QueueCheck {
-	if svc == nil || svc.Store == nil {
+	if svc == nil {
 		return QueueCheck{}
 	}
-	jobStore := svc.Store.Jobs()
+	jobStore := svc.Store(ctx).Jobs()
 	if jobStore == nil {
 		return QueueCheck{}
 	}
@@ -261,9 +261,9 @@ func healthzBuilder(svc *service.Service, probes HealthzProbes) func(context.Con
 
 		// DB probe — failed DB is the canonical "failed" signal.
 		dbStatus := checkOK
-		if svc == nil || svc.Store == nil {
+		if svc == nil {
 			dbStatus = checkFailed
-		} else if err := svc.Store.Health(ctx); err != nil {
+		} else if err := svc.Store(ctx).Health(ctx); err != nil {
 			dbStatus = checkFailed
 		}
 		env.Checks.DB = DBCheck{Status: dbStatus}

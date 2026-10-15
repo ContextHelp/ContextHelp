@@ -72,7 +72,7 @@ func TestUS0002_URLIngestReturnsJobID(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "https://example.com/article",
 		Type:     "url",
 		Pipeline: "url.article",
@@ -101,7 +101,7 @@ func TestUS0002_TitleAndBodyExtracted(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  sourceURL,
 		Type:     "url",
 		Pipeline: "url.article",
@@ -141,7 +141,7 @@ func TestUS0002_SourceURLStoredOnObject(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  sourceURL,
 		Type:     "url",
 		Pipeline: "url.article",
@@ -182,7 +182,7 @@ func TestUS0002_DedupOnReIngestSameURL(t *testing.T) {
 	})
 
 	// First ingest.
-	jobID1, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID1, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  sourceURL,
 		Type:     "url",
 		Pipeline: "url.article",
@@ -193,7 +193,7 @@ func TestUS0002_DedupOnReIngestSameURL(t *testing.T) {
 	require.NotEmpty(t, job1.ResultID)
 
 	// Second ingest of the same URL.
-	jobID2, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID2, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  sourceURL,
 		Type:     "url",
 		Pipeline: "url.article",
@@ -237,7 +237,7 @@ func TestUS0002_URLPipelineAssigned(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "https://example.com/pipeline-test",
 		Type:     "url",
 		Pipeline: "url.article",

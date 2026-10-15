@@ -51,7 +51,7 @@ func TestUS0025_MarkdownExportContainsSectionsAndHeadings(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	env.svc.Pipes.Upsert("export.markdown", &pipeline.Pipeline{
 		PipelineName: "export.markdown",
@@ -107,7 +107,7 @@ func TestUS0025_BriefExportContainsProvenance(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	env.svc.Pipes.Upsert("export.provenance", &pipeline.Pipeline{
 		PipelineName: "export.provenance",
@@ -160,7 +160,7 @@ func TestUS0025_MultiSectionBriefPreservesOrder(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	env.svc.Pipes.Upsert("export.sections", &pipeline.Pipeline{
 		PipelineName: "export.sections",

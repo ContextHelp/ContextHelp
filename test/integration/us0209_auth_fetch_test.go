@@ -120,7 +120,7 @@ func TestUS0209_CookieAuthSentToServer(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  srv.URL + "/private",
 		Type:     "url",
 		Pipeline: "web.authenticated",
@@ -180,7 +180,7 @@ func TestUS0209_APIKeyAuthSentToServer(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  srv.URL + "/report",
 		Type:     "url",
 		Pipeline: "web.authenticated.api",
@@ -232,7 +232,7 @@ func TestUS0209_AuthMethodStoredInMetadata(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  srv.URL + "/data",
 		Type:     "url",
 		Pipeline: "web.authenticated.bearer",

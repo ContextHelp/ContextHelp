@@ -2,7 +2,6 @@ package http
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -47,7 +46,7 @@ func TestCaptureInbox_PersistsProfileAndNote(t *testing.T) {
 
 	// Round-trip via the storage layer to confirm the values landed
 	// where Service.CaptureToInbox is supposed to write them.
-	obj, err := ts.svc.Store.Objects().Get(context.Background(), id)
+	obj, err := ts.svc.Store(ownerCtx()).Objects().Get(ownerCtx(), id)
 	if err != nil {
 		t.Fatalf("get persisted object: %v", err)
 	}

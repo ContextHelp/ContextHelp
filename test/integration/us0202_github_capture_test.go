@@ -307,7 +307,7 @@ func TestUS0202_RepoTitleDescriptionStored(t *testing.T) {
 	})
 
 	sourceURL := fmt.Sprintf("https://github.com/%s/%s", owner, repo)
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  sourceURL,
 		Type:     "url",
 		Pipeline: "code.github.repo",
@@ -361,7 +361,7 @@ func TestUS0202_IssueTitleBodyLabelsStored(t *testing.T) {
 	})
 
 	sourceURL := fmt.Sprintf("https://github.com/%s/%s/issues/%d", owner, repo, issueNum)
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  sourceURL,
 		Type:     "url",
 		Pipeline: "code.github.issue",
@@ -422,7 +422,7 @@ func TestUS0202_PRTitleBodyStored(t *testing.T) {
 	})
 
 	sourceURL := fmt.Sprintf("https://github.com/%s/%s/pull/%d", owner, repo, prNum)
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  sourceURL,
 		Type:     "url",
 		Pipeline: "code.github.pr",
