@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 )
 
@@ -44,7 +45,7 @@ func restrictedViewer(t *testing.T) sharing.Viewer {
 // viewer and returns the recorded answer.
 func serveVisibility(t *testing.T, v sharing.Viewer, strict bool, pattern string, handler http.HandlerFunc) *httptest.ResponseRecorder {
 	t.Helper()
-	h := Visibility(http.MethodGet, pattern, VisibilityConfig{Strict: strict})(handler)
+	h := Visibility(http.MethodGet, pattern, authn.ScopeReadObjects, VisibilityConfig{Strict: strict})(handler)
 	req := httptest.NewRequestWithContext(sharing.WithViewer(context.Background(), v), http.MethodGet, "/api/v1"+pattern, nil)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)

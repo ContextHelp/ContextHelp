@@ -8,6 +8,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/ideacrafterslabs/ctxt/internal/pidfile"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/spf13/cobra"
 )
 
@@ -78,5 +79,31 @@ func newDpkmsClient(cmd *cobra.Command, timeout time.Duration) (*dpkmsclient.Cli
 	if err != nil {
 		return nil, err
 	}
-	return dpkmsclient.New(r.Endpoint, dpkmsclient.WithTimeout(timeout))
+	return dpkmsclient.New(r.Endpoint, clientOptions(cmd, dpkmsclient.WithTimeout(timeout))...)
+}
+
+// previewAs is the viewer `ctxt share preview` runs its command as; it
+// overrides the --as global while that command runs.
+var previewAs string
+
+// viewAs returns the viewer this invocation runs as (ADR-080 §2, owner
+// bypass): the share preview target, else the --as global; "" runs as
+// the caller.
+func viewAs(cmd *cobra.Command) string {
+	if previewAs != "" {
+		return previewAs
+	}
+	if f := cmd.Root().PersistentFlags().Lookup("as"); f != nil {
+		return strings.TrimSpace(f.Value.String())
+	}
+	return ""
+}
+
+// clientOptions returns opts plus, when the invocation runs as another
+// viewer, the X-Ctxt-View-As header on every request.
+func clientOptions(cmd *cobra.Command, opts ...dpkmsclient.Option) []dpkmsclient.Option {
+	if as := viewAs(cmd); as != "" {
+		opts = append(opts, dpkmsclient.WithHeader(sharing.HeaderViewAs, as))
+	}
+	return opts
 }

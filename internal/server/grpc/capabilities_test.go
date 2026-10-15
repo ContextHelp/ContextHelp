@@ -50,8 +50,10 @@ func bearer(token string) context.Context {
 // methods with PermissionDenied NOT_SHARED before the handler runs,
 // reaches the open ones, and the owner reaches everything.
 func TestInterceptorsCloseCapabilityGatedMethods(t *testing.T) {
-	unary := authUnaryInterceptor(capChain(), nil, nil)
-	stream := authStreamInterceptor(capChain(), nil, nil)
+	// The capability check runs in the visibility interceptor, behind
+	// auth, so the two are chained as the server chains them.
+	unary := chainUnary(authUnaryInterceptor(capChain(), nil, nil), visibilityUnaryInterceptor(visibilityConfig{}))
+	stream := chainStream(authStreamInterceptor(capChain(), nil, nil), visibilityStreamInterceptor(visibilityConfig{}))
 	call := func(token, method string) (bool, error) {
 		ran := false
 		_, err := unary(bearer(token), nil, unaryInfo(method), func(context.Context, any) (any, error) { ran = true; return "ok", nil })
@@ -79,5 +81,19 @@ func TestInterceptorsCloseCapabilityGatedMethods(t *testing.T) {
 		func(any, grpc.ServerStream) error { ran = true; return nil })
 	if st, _ := status.FromError(err); ran || st.Code() != codes.PermissionDenied {
 		t.Errorf("person WatchJob: ran=%v err=%v, want PermissionDenied", ran, err)
+	}
+}
+
+// chainUnary runs a, then b, then the handler.
+func chainUnary(a, b grpc.UnaryServerInterceptor) grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+		return a(ctx, req, info, func(ctx context.Context, req any) (any, error) { return b(ctx, req, info, handler) })
+	}
+}
+
+// chainStream runs a, then b, then the handler.
+func chainStream(a, b grpc.StreamServerInterceptor) grpc.StreamServerInterceptor {
+	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		return a(srv, ss, info, func(srv any, ss grpc.ServerStream) error { return b(srv, ss, info, handler) })
 	}
 }

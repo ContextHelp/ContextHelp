@@ -77,9 +77,11 @@ func TestVisibilityInterceptorStripsOrRefuses(t *testing.T) {
 		t.Errorf("absent root: err %v, want NotFound", err)
 	}
 
+	// An unclassified method is refused by the capability check, which
+	// runs here, before the handler.
 	_, err = visibilityUnaryInterceptor(visibilityConfig{})(restrictedCtx(t), nil, unaryInfo("/no.Such/Method"), leak)
-	if st, _ := status.FromError(err); st.Code() != codes.Internal {
-		t.Errorf("unclassified: err %v, want Internal", err)
+	if st, _ := status.FromError(err); st.Code() != codes.PermissionDenied {
+		t.Errorf("unclassified: err %v, want PermissionDenied", err)
 	}
 }
 

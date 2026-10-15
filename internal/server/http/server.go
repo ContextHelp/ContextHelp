@@ -198,7 +198,7 @@ func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
 			r.Use(WithViewer(sharing.Unrestricted))
 		}
 		r.Use(UpgradeHeader(probes.Upgrade))
-		mountAPIRoutes(r, apiRoutes(svc, rc), rc)
+		mountAPIRoutes(r, apiRoutes(svc, rc), rc, svc.Viewers())
 	})
 
 	return r
@@ -213,14 +213,14 @@ func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
 // viewer passes at no cost. Outermost, Visibility wraps a restricted
 // viewer's request with its ledger and checks the response before it
 // leaves (§8); the owner passes it untouched.
-func mountAPIRoutes(r chi.Router, routes []apiRoute, rc RouterConfig) {
-	vis := VisibilityConfig{Strict: rc.StrictSharing, Security: rc.Security, Audit: rc.Audit}
+func mountAPIRoutes(r chi.Router, routes []apiRoute, rc RouterConfig, viewers *sharing.Resolver) {
+	vis := VisibilityConfig{Strict: rc.StrictSharing, Security: rc.Security, Audit: rc.Audit, Viewers: viewers}
 	for _, rt := range routes {
 		h := RequireCapability(rt.Method, rt.Pattern)(rt.Handler)
 		if rc.Auth != nil {
 			h = RequireScope(rt.Scope, rc.Security)(h)
 		}
-		h = Visibility(rt.Method, rt.Pattern, vis)(h)
+		h = Visibility(rt.Method, rt.Pattern, rt.Scope, vis)(h)
 		if rt.Method == "" {
 			r.Handle(rt.Pattern, h)
 			continue

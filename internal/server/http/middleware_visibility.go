@@ -2,14 +2,18 @@ package http
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/security"
 	"github.com/ideacrafterslabs/ctxt/internal/sharing"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 // CodeVisibilityBackstop is the error code of the 500 a strict
@@ -17,6 +21,16 @@ import (
 // ID or a value the viewer may not see, which is a bug in the scoped
 // reads or the render layer.
 const CodeVisibilityBackstop = "VISIBILITY_BACKSTOP"
+
+// View-as refusals (ADR-080 §2, owner bypass).
+const (
+	// CodeViewAsOwnerOnly is the 403 a non-owner gets for sending
+	// X-Ctxt-View-As.
+	CodeViewAsOwnerOnly = "VIEW_AS_OWNER_ONLY"
+	// CodeViewAsReadOnly is the 400 the owner gets for sending
+	// X-Ctxt-View-As on a route that writes.
+	CodeViewAsReadOnly = "VIEW_AS_READ_ONLY"
+)
 
 // VisibilityConfig is what the visibility middleware needs beyond the
 // route table.
@@ -30,6 +44,9 @@ type VisibilityConfig struct {
 	// Audit receives the read audit entry of every restricted request
 	// (ADR-080 §9); nil-safe.
 	Audit *sharing.AuditWriter
+	// Viewers resolves X-Ctxt-View-As targets; nil answers every
+	// target as unknown.
+	Viewers *sharing.Resolver
 }
 
 // Visibility returns the middleware that wraps a restricted viewer's
@@ -42,12 +59,28 @@ type VisibilityConfig struct {
 // hit. An unrestricted viewer
 // passes through untouched and unbuffered: the owner pays nothing.
 // A route with no declared shape fails closed for a restricted viewer.
-func Visibility(method, pattern string, cfg VisibilityConfig) func(http.Handler) http.Handler {
+//
+// The owner previewing another viewer (X-Ctxt-View-As: a principal id
+// or a share policy name) has its viewer swapped here, before the
+// ledger, so the request runs through that view, render, backstop and
+// audit included (§2, owner bypass); the audit names the owner. Only
+// the owner may send the header, and only on a route that reads
+// (scope verb read, or a safe method).
+func Visibility(method, pattern string, scope authn.Scope, cfg VisibilityConfig) func(http.Handler) http.Handler {
 	shape, known := RouteShape(method, pattern)
 	route := routeKey(method, pattern)
+	reads := method == "" || isSafeMethod(method) || scope.Verb() == "read"
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			v, ok := sharing.FromContext(r.Context())
+			if target := strings.TrimSpace(r.Header.Get(sharing.HeaderViewAs)); target != "" {
+				pv, done := viewAs(w, r, cfg.Viewers, v, ok, reads, target)
+				if done {
+					return
+				}
+				v, ok = pv, true
+				r = r.WithContext(previewContext(r.Context(), pv, target))
+			}
 			if ok && v.IsUnrestricted() {
 				next.ServeHTTP(w, r)
 				return
@@ -89,6 +122,42 @@ func Visibility(method, pattern string, cfg VisibilityConfig) func(http.Handler)
 			_, _ = w.Write(body)
 		})
 	}
+}
+
+// viewAs resolves an X-Ctxt-View-As target for the owner, writing the
+// refusal and reporting done when the request may not go on: a
+// non-owner sender (403), a route that writes (400), an unknown target
+// (404) or a resolution failure (500).
+func viewAs(w http.ResponseWriter, r *http.Request, viewers *sharing.Resolver, v sharing.Viewer, ok, reads bool, target string) (sharing.Viewer, bool) {
+	if !ok || !v.IsUnrestricted() {
+		WriteError(w, http.StatusForbidden, CodeViewAsOwnerOnly, sharing.HeaderViewAs+" is for the owner")
+		return v, true
+	}
+	if !reads {
+		WriteError(w, http.StatusBadRequest, CodeViewAsReadOnly, sharing.HeaderViewAs+" previews read routes only")
+		return v, true
+	}
+	pv, err := viewers.ViewAs(r.Context(), target)
+	switch {
+	case errors.Is(err, sharing.ErrViewAsUnknown):
+		WriteError(w, http.StatusNotFound, CodeNotFound, "no principal or share policy named "+strconv.Quote(target))
+		return v, true
+	case err != nil:
+		slog.Error("view-as: resolve failed", "target", target, "err", err)
+		WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "view-as resolution failed")
+		return v, true
+	}
+	return pv, false
+}
+
+// previewContext attaches the previewed viewer and the preview marker
+// (the owner's own principal and credential, for the audit).
+func previewContext(ctx context.Context, pv sharing.Viewer, target string) context.Context {
+	p := sharing.Preview{Target: target, Principal: storage.OwnerPrincipal}
+	if owner, ok := authn.FromContext(ctx); ok {
+		p.Principal, p.Identity = owner.ID, owner.Meta[authn.MetaIdentityID]
+	}
+	return sharing.WithPreview(sharing.WithViewer(ctx, pv), p)
 }
 
 // recordBackstop logs and emits a security.visibility_backstop event

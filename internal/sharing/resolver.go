@@ -30,6 +30,9 @@ const resolverCacheMax = 1024
 // cache.
 type Resolver struct {
 	store storage.SharingStore
+	// registry is the principal registry ViewAs looks principals up
+	// in; nil resolves previews by policy name only.
+	registry storage.AuthStore
 	// now is the clock; nil means time.Now.
 	now func() time.Time
 

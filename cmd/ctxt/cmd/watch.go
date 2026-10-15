@@ -202,7 +202,7 @@ func runWatchStart(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	client, err := dpkmsclient.New(r.Endpoint)
+	client, err := dpkmsclient.New(r.Endpoint, clientOptions(cmd)...)
 	if err != nil {
 		return err
 	}

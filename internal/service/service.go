@@ -151,7 +151,7 @@ func NewWithOptions(store storage.StorageDriver, queue *jobs.Queue, pipes pipeli
 	}
 	if store != nil {
 		s.pipelineSvc = newPipelineService(store.Pipelines(), s.policyPub)
-		s.viewers = sharing.NewResolver(store.Sharing())
+		s.viewers = sharing.NewResolver(store.Sharing()).WithRegistry(store.Auth())
 	}
 	return s
 }

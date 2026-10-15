@@ -29,7 +29,9 @@ const (
 const healthMethodPrefix = "/grpc.health.v1.Health/"
 
 // authUnaryInterceptor authenticates every unary call through the
-// method chain, then checks the method's scope (methodScopes).
+// method chain, then checks the method's scope (methodScopes). The
+// capability check (authorizeCapability) runs in the visibility
+// interceptor behind it, after an owner's view-as swap.
 // Method-agnostic: it only lifts credentials out of metadata and
 // forwards them; gRPC carries no cookie, so only carried methods can
 // match. Authentication failures are recorded on the security emitter
@@ -50,9 +52,6 @@ func authUnaryInterceptor(chain *authn.Chain, sec *security.Emitter, viewers *sh
 			return nil, err
 		}
 		if err := authorizeMethod(ctx, info.FullMethod, sec); err != nil {
-			return nil, err
-		}
-		if err := authorizeCapability(ctx, info.FullMethod); err != nil {
 			return nil, err
 		}
 		return handler(ctx, req)
@@ -108,9 +107,6 @@ func authStreamInterceptor(chain *authn.Chain, sec *security.Emitter, viewers *s
 			return err
 		}
 		if err := authorizeMethod(ctx, info.FullMethod, sec); err != nil {
-			return err
-		}
-		if err := authorizeCapability(ctx, info.FullMethod); err != nil {
 			return err
 		}
 		return handler(srv, &authenticatedStream{ServerStream: ss, ctx: ctx})

@@ -104,7 +104,7 @@ func New(addr string, svc *service.Service, opts ...Option) *Server {
 	// Visibility runs after the viewer is attached and before the
 	// handler: it attaches the ledger, then checks the answer (ADR-080
 	// §8). The owner passes it untouched.
-	vis := visibilityConfig{strict: o.strictSharing, security: o.security, audit: o.audit}
+	vis := visibilityConfig{strict: o.strictSharing, security: o.security, audit: o.audit, viewers: svc.Viewers()}
 	unary = append(unary, visibilityUnaryInterceptor(vis))
 	stream = append(stream, visibilityStreamInterceptor(vis))
 
