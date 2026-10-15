@@ -33,6 +33,7 @@ import (
 	httpserver "github.com/ideacrafterslabs/ctxt/internal/server/http"
 	"github.com/ideacrafterslabs/ctxt/internal/server/stack"
 	wsserver "github.com/ideacrafterslabs/ctxt/internal/server/ws"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/indexsig"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
@@ -231,7 +232,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	// 5b. Init federation worker set. Cycle detection runs here; an
 	// invalid topology fails serve before any port is bound (US-0318 AC).
-	fedSet, err := federation.New(*cfg, driver)
+	fedSet, err := federation.New(*cfg, storage.System(driver))
 	if err != nil {
 		return fmt.Errorf("federation: %w", err)
 	}
@@ -350,9 +351,11 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 
 	// 10. Init worker pool.
-	pool := jobs.NewWorkerPool(queue, pipes, driver, workers, svc.Bus, cfg.Jobs)
-	handleEmbeddingsMigrate(pool, driver, upgradeMgr, svc.Bus)
-	handleReproject(pool, driver, upgradeMgr, svc.Bus, cfg.Storage.Blob.Threshold)
+	// The worker pool and the upgrade jobs run as the system: they read
+	// and write every row, so they name the unscoped driver.
+	pool := jobs.NewWorkerPool(queue, pipes, storage.System(driver), workers, svc.Bus, cfg.Jobs)
+	handleEmbeddingsMigrate(pool, storage.System(driver), upgradeMgr, svc.Bus)
+	handleReproject(pool, storage.System(driver), upgradeMgr, svc.Bus, cfg.Storage.Blob.Threshold)
 	handleReprocess(pool, st)
 
 	// 10a. Wire fan-out enrichment (bidirectional edges + audit log).
