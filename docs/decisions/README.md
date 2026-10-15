@@ -516,14 +516,14 @@ ctxt and dpkms load no plugins, now or later; there is no plugin API, registry, 
 - **Auth.** Extended through a trusted proxy or OIDC, to be designed as an ADR-023 extension.
 - **Model.** The knowledge-object types live in `internal/storage`; the step contract in `internal/pipeline`.
 
-### **ADR-079 – Authentication Methods, Principals and the kit/ctxt Split (Proposed)**
+### **ADR-079 – Authentication Methods, Principals and the kit/ctxt Split (Accepted)**
 Extends ADR-023. dpkms authenticates through an ordered chain of methods, each resolving to a principal in an instance-local registry. Plan: [`docs/plans/2026-10-14-auth-and-sharing.md`](../plans/2026-10-14-auth-and-sharing.md).
 - **Principals.** `owner` (one per instance), `person`, `agent`, `device`, `peer`; each can have several identities, bound only by an explicit act.
 - **Core methods (no external IdP).** Owner-local, API keys (replace static tokens), invite links, magic links, passkeys, trusted proxy identity (Tailscale, forward auth). Later and opt-in: mTLS, enterprise OIDC, social login. Passwords stay rejected.
 - **Chain.** Stops on the first match and on the first refusal; proxy headers count only from `trusted_proxies`.
 - **Split.** Generic verification (chain, proxy identity, passkeys, tickets, sessions, OIDC sign-in) goes to kit as proposals K1–K6; principals, scopes, audiences and sharing stay in ctxt.
 
-### **ADR-080 – Sharing: Audiences, Share Policies and Per-Viewer Visibility (Proposed)**
+### **ADR-080 – Sharing: Audiences, Share Policies and Per-Viewer Visibility (Accepted)**
 Named share policies (RSQL data filter, class exclusions, field projection, redaction, capabilities) granted to audiences of principals; owner bypass with preview. Plan: [`docs/plans/2026-10-14-auth-and-sharing.md`](../plans/2026-10-14-auth-and-sharing.md).
 - **Rows.** A scoped storage driver ANDs the viewer predicate into every read, so counts, ranking and pagination never see hidden objects.
 - **Fields.** A render layer projects fields, rebuilds structured types (contacts) from visible fields, drops derived fields whose inputs are hidden, and masks detected PII spans.

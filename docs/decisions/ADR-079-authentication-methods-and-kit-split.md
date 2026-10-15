@@ -1,6 +1,6 @@
 # ADR-079 – Authentication Methods, Principals and the kit/ctxt Split
 
-> **Status:** Proposed
+> **Status:** Accepted (2026-10-14; decisions D1–D15 as recommended in the plan)
 > **Date:** 2026-10-14
 > **Author:** jadb
 > **Applies to:** dPKMS, ctxt

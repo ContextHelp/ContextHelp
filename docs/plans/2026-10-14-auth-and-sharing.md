@@ -190,9 +190,11 @@ Isolation rules for every test that starts dpkms or ctxt: data dirs under `t.Tem
 | The refactor touches every storage interface | Phase 0 lands it with no behaviour change, behind conformance tests |
 | Summaries of contacts disappear for viewers | Accepted in Phase 2 (they derive from content that includes hidden fields); D7 revisits |
 
-## Decisions needed
+## Decisions
 
-| # | Decision | Recommendation |
+All fifteen accepted as recommended on 2026-10-14.
+
+| # | Decision | Accepted |
 |---|---|---|
 | D1 | Remove static config tokens entirely? | **Yes.** DB-backed API keys. Config accepts only `sha256:` hashes, for infrastructure as code. Plaintext keys refused. |
 | D2 | Which methods are core, and in which order? | **Phase 1:** API keys, invite links, owner-minted sign-in links, sessions. **Phase 3:** passkeys, trusted proxy (Tailscale, forward auth), emailed magic links. **Later:** mTLS, OIDC, social. Passwords stay rejected. If partners are already on the owner's tailnet, Tailscale proxy identity could move into Phase 1: it is the cheapest method. |
