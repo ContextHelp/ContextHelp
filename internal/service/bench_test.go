@@ -14,6 +14,8 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/retrieval"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing/sharingtest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/storagetest/corpus"
@@ -113,9 +115,80 @@ func BenchmarkOwner(b *testing.B) {
 	})
 }
 
+// BenchmarkColleague is a restricted viewer's find over the same corpus:
+// a person principal granted the colleagues template (work and client
+// contacts, no personal class), so every read runs through the viewer's
+// predicate, the masked full-text index and the scoped rerank
+// (ADR-080 §4, §7). It reports the same p95-ms; the plan's exit
+// criterion is under 2x the owner's find.
+//
+//	CTXT_BENCH_OBJECTS=100000 go test -tags fts5 -run '^$' -bench 'BenchmarkOwner|BenchmarkColleague' -benchtime 10s ./internal/service/
+func BenchmarkColleague(b *testing.B) {
+	if testing.Short() {
+		b.Skip("corpus benchmark skipped under -short")
+	}
+	if benchObjectsErr != nil {
+		b.Fatal(benchObjectsErr)
+	}
+	svc, c, drv := newBenchServiceWithDriver(ownerCtx(), b)
+	const colleague = "prn_bench_colleague"
+	sharingtest.EnsurePrincipal(b, drv, colleague, storage.PrincipalKindPerson, "reader")
+	tpl, _ := sharing.Template(sharing.TemplateColleagues)
+	sharingtest.Grant(b, drv, tpl, colleague)
+	viewer, err := sharing.CompileFor(ownerCtx(), drv.Sharing(), colleague, "", time.Now())
+	if err != nil {
+		b.Fatalf("compile viewer: %v", err)
+	}
+	if viewer.MatchesNothing() {
+		b.Fatal("colleague viewer matches nothing")
+	}
+	ctx := sharing.WithViewer(context.Background(), viewer)
+	queries := c.Queries()
+
+	b.Run("find", func(b *testing.B) {
+		seen := 0
+		for _, q := range queries {
+			res, err := svc.Find(ctx, service.FindRequest{Query: q, Mode: service.FindModeFTS}, retrieval.SemanticSource{})
+			if err != nil {
+				b.Fatal(err)
+			}
+			seen += res.Total
+		}
+		if seen == 0 {
+			b.Fatal("colleague find: no results for any query")
+		}
+		i := 0
+		benchP95(b, c, func() error {
+			q := queries[i%len(queries)]
+			i++
+			_, err := svc.Find(ctx, service.FindRequest{Query: q, Mode: service.FindModeFTS}, retrieval.SemanticSource{})
+			return err
+		})
+	})
+	b.Run("list", func(b *testing.B) {
+		benchP95(b, c, func() error {
+			_, total, err := svc.ListObjects(ctx, storage.ObjectFilter{Limit: benchPage})
+			if err != nil {
+				return err
+			}
+			if total == 0 || total >= c.Spec.Objects {
+				return fmt.Errorf("list: total %d of %d, want a strict subset", total, c.Spec.Objects)
+			}
+			return nil
+		})
+	})
+}
+
 // newBenchService opens a SQLite store in b.TempDir(), builds the corpus
 // into it and returns a service over it.
 func newBenchService(ctx context.Context, b *testing.B) (*service.Service, *corpus.Corpus) {
+	b.Helper()
+	svc, c, _ := newBenchServiceWithDriver(ctx, b)
+	return svc, c
+}
+
+// newBenchServiceWithDriver is newBenchService returning the driver too.
+func newBenchServiceWithDriver(ctx context.Context, b *testing.B) (*service.Service, *corpus.Corpus, *sqlite.Driver) {
 	b.Helper()
 	drv, err := sqlite.New(filepath.Join(b.TempDir(), "corpus.db"), storageutil.NewTestBlobStore(b))
 	if err != nil {
@@ -135,7 +208,7 @@ func newBenchService(ctx context.Context, b *testing.B) (*service.Service, *corp
 	}
 	b.Logf("corpus: %d objects (%d contacts, %d notes), %d edges, built in %s",
 		c.Spec.Objects, len(c.Contacts), len(c.NoteIDs), c.Edges, c.BuildTime.Round(time.Millisecond))
-	return service.New(drv, nil, nil, search.NewEngine(drv), "", nil), c
+	return service.New(drv, nil, nil, search.NewEngine(drv), "", nil), c, drv
 }
 
 // benchP95 runs op for b's iterations over c and reports the 95th

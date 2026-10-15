@@ -550,9 +550,9 @@ func restrictedConfPrincipalQueues(t *testing.T, scoped, drv storage.StorageDriv
 // the masked variant, and widen past the hidden ones.
 func restrictedConfVectors(t *testing.T, scoped storage.StorageDriver, drv EmbeddingConformanceDriver, f *restrictedFixture) {
 	ctx := context.Background()
-	dialect := "sqlite"
-	if d, ok := drv.(interface{ SQLDialect() string }); ok && d.SQLDialect() == "postgres" {
-		dialect = "postgres"
+	dialect := storage.SQLDialectSQLite
+	if d, ok := drv.(interface{ SQLDialect() string }); ok && d.SQLDialect() == storage.SQLDialectPostgres {
+		dialect = storage.SQLDialectPostgres
 	}
 	reg := registry.NewFor(drv.DB(), dialect)
 	if err := reg.Register(ctx, registry.Model{ModelID: restrictedModel, Provider: "conformance", Dimension: 3}, false); err != nil {

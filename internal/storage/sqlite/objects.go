@@ -120,6 +120,7 @@ func insertObjectFTSTx(ctx context.Context, tx *sql.Tx, id string, index storage
 }
 
 func (s *ObjectStore) Get(ctx context.Context, id string) (*storage.KnowledgeObject, error) {
+	// #nosec G202 -- andScope is the viewer's compiled predicate; its values are bound in scopeArgs.
 	row := s.db.QueryRowContext(ctx, `SELECT
 		id, type, subtype, raw_content, content_type, text_content,
 		metadata, summaries, sections, tags, mentions,
@@ -175,6 +176,7 @@ func (s *ObjectStore) GetByContentHash(ctx context.Context, hash, profileID stri
 	if hash == "" {
 		return nil, nil
 	}
+	// #nosec G202 -- andScope is the viewer's compiled predicate; its values are bound in scopeArgs.
 	row := s.db.QueryRowContext(ctx, `SELECT
 		id, type, subtype, raw_content, content_type, text_content,
 		metadata, summaries, sections, tags, mentions,
@@ -195,6 +197,7 @@ func (s *ObjectStore) GetBySourceKey(ctx context.Context, key string) (*storage.
 	if key == "" {
 		return nil, nil
 	}
+	// #nosec G202 -- andScope is the viewer's compiled predicate; its values are bound in scopeArgs.
 	row := s.db.QueryRowContext(ctx, `SELECT
 		id, type, subtype, raw_content, content_type, text_content,
 		metadata, summaries, sections, tags, mentions,
