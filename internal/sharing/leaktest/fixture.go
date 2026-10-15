@@ -135,7 +135,7 @@ func (f *Fixture) seedPrincipals(t testing.TB) {
 		}
 		sharingtest.Grant(t, driver, tpl, id)
 		if err := driver.Entitlements().Upsert(ctx, &storage.RegistryEntitlement{
-			RegistryName: id, Plan: "inbound", Namespaces: []string{"*"}, FetchedAt: time.Now(),
+			Kind: storage.EntitlementInbound, RegistryName: id, Plan: "inbound", Namespaces: []string{"*"}, FetchedAt: time.Now(),
 		}); err != nil {
 			t.Fatalf("leaktest: entitle %s: %v", id, err)
 		}

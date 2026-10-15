@@ -16,7 +16,10 @@ import (
 // seedGRPCPagingEntities adds five ungranted entities that sort ahead of
 // every granted one, and five more granted ones, to the gated fixture
 // (which already holds ai.bert in ai.models and med.claims in
-// med.records). "ops" is entitled to ai.bert plus ai.m1..ai.m5.
+// med.records). "ops" is entitled to ai.bert plus ai.m1..ai.m5. They
+// are registry-served like the fixture's, so the share grant shows
+// them without a mention (ADR-080 §6) and only the namespace
+// entitlement decides.
 func seedGRPCPagingEntities(t *testing.T, driver storage.StorageDriver) {
 	t.Helper()
 	now := time.Now().Truncate(time.Second)
@@ -25,7 +28,7 @@ func seedGRPCPagingEntities(t *testing.T, driver storage.StorageDriver) {
 			{Slug: fmt.Sprintf("aa.x%d", i), Namespace: "aa.restricted"},
 			{Slug: fmt.Sprintf("ai.m%d", i), Namespace: "ai.models"},
 		} {
-			e.Title, e.CreatedAt, e.UpdatedAt = e.Slug, now, now
+			e.Title, e.RegistryURL, e.CreatedAt, e.UpdatedAt = e.Slug, "https://registry.test", now, now
 			if err := driver.Entities().Upsert(context.Background(), e); err != nil {
 				t.Fatalf("seed %s: %v", e.Slug, err)
 			}

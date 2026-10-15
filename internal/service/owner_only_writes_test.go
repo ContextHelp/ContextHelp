@@ -133,7 +133,7 @@ func TestSyncRegistryEntitiesRestrictedViewerStoresNoEntitlement(t *testing.T) {
 		SyncMode: config.RegistrySyncModeFull,
 	}}
 	stored := func() bool {
-		got, err := svc.store.Entitlements().Get(ownerCtx(), "paid")
+		got, err := svc.store.Entitlements().Get(ownerCtx(), storage.EntitlementOutbound, "paid")
 		return err == nil && got != nil
 	}
 
