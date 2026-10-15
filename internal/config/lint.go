@@ -34,13 +34,6 @@ func (f LintFinding) String() string {
 	return fmt.Sprintf("%-5s %s: %s", f.Severity, f.Field, f.Message)
 }
 
-// deprecatedKeys maps old config field paths to their replacement.
-// Add entries here when fields are removed or renamed.
-var deprecatedKeys = map[string]string{
-	// Example (uncomment when deprecated):
-	// "storage.blob.s3.endpoint_url": "storage.blob.s3.endpoint",
-}
-
 // LintConfig runs all lint checks on the given Config loaded from configPath.
 // It combines schema validation, secret scanning, file permission checks,
 // and deprecated key detection.
@@ -53,7 +46,6 @@ func LintConfig(cfg *Config, configPath string) []LintFinding {
 	findings = append(findings, lintSchema(cfg)...)
 	findings = append(findings, lintSecrets(cfg)...)
 	findings = append(findings, lintPermissions(configPath)...)
-	findings = append(findings, lintDeprecated(cfg)...)
 	findings = append(findings, lintAccess(cfg)...)
 
 	return findings
@@ -156,21 +148,6 @@ func lintPermissions(configPath string) []LintFinding {
 		}}
 	}
 	return nil
-}
-
-// lintDeprecated checks for deprecated config keys (by checking known field paths).
-// Currently a stub — add deprecated key mappings to deprecatedKeys above.
-func lintDeprecated(_ *Config) []LintFinding {
-	// deprecatedKeys is checked against raw YAML in RunE; here we surface any
-	// entries that are still non-empty in the struct (future use).
-	// When fields are actually removed, add struct checks here.
-	var findings []LintFinding
-	for old, replacement := range deprecatedKeys {
-		// Placeholder — future deprecated fields will be detected via reflection.
-		_ = old
-		_ = replacement
-	}
-	return findings
 }
 
 // FixPermissions applies the safe auto-fix for world/group-readable config files.

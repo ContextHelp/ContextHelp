@@ -38,18 +38,7 @@ func Validate(c *Config) []ValidationError {
 		errs = append(errs, ValidationError{Field: "storage.type", Message: fmt.Sprintf("unknown storage type %q", c.Storage.Type)})
 	}
 
-	if c.Server.Port != 0 && (c.Server.Port < 1024 || c.Server.Port > 65535) {
-		errs = append(errs, ValidationError{Field: "server.port", Message: fmt.Sprintf("must be 1024–65535, got %d", c.Server.Port)})
-	}
-
-	if c.Server.GRPCPort != 0 && (c.Server.GRPCPort < 1024 || c.Server.GRPCPort > 65535) {
-		errs = append(errs, ValidationError{Field: "server.grpc_port", Message: fmt.Sprintf("must be 1024–65535, got %d", c.Server.GRPCPort)})
-	}
-
-	if c.Server.CookieBridgePort != 0 && (c.Server.CookieBridgePort < 1024 || c.Server.CookieBridgePort > 65535) {
-		errs = append(errs, ValidationError{Field: "server.cookie_bridge_port", Message: fmt.Sprintf("must be 1024–65535, got %d", c.Server.CookieBridgePort)})
-	}
-
+	errs = append(errs, validateServerPorts(&c.Server)...)
 	errs = append(errs, validateBlob(c.Storage.Blob, "storage.blob")...)
 	errs = append(errs, validateAccess(c)...)
 	errs = append(errs, validateAuthRoles(c)...)
@@ -93,18 +82,43 @@ func Validate(c *Config) []ValidationError {
 		}
 	}
 
-	switch c.Secrets.Backend {
+	errs = append(errs, validateSecretsBackend(c.Secrets.Backend)...)
+
+	return errs
+}
+
+// validateServerPorts checks each explicitly set listener port lies in
+// the unprivileged range; 0 means "use the default".
+func validateServerPorts(s *ServerConfig) []ValidationError {
+	var errs []ValidationError
+	for _, p := range []struct {
+		field string
+		port  int
+	}{
+		{"server.port", s.Port},
+		{"server.grpc_port", s.GRPCPort},
+		{"server.cookie_bridge_port", s.CookieBridgePort},
+	} {
+		if p.port != 0 && (p.port < 1024 || p.port > 65535) {
+			errs = append(errs, ValidationError{Field: p.field, Message: fmt.Sprintf("must be 1024–65535, got %d", p.port)})
+		}
+	}
+	return errs
+}
+
+// validateSecretsBackend accepts kit's canonical secrets backend names
+// and their deprecated aliases.
+func validateSecretsBackend(backend string) []ValidationError {
+	switch backend {
 	case "", "env",
 		// kit canonical names (preferred)
 		"keyring", "agefile", "onepassword", "ghsecrets",
 		// deprecated aliases (still accepted; emit deprecation warning at runtime)
 		"keychain", "age-file", "1password", "gh-secrets":
-		// valid
+		return nil
 	default:
-		errs = append(errs, ValidationError{Field: "secrets.backend", Message: fmt.Sprintf("unknown backend %q; must be one of env, keyring, agefile, onepassword, ghsecrets", c.Secrets.Backend)})
+		return []ValidationError{{Field: "secrets.backend", Message: fmt.Sprintf("unknown backend %q; must be one of env, keyring, agefile, onepassword, ghsecrets", backend)}}
 	}
-
-	return errs
 }
 
 // validateAccess enforces the server.access class rules:
@@ -319,7 +333,11 @@ func validateEnvRefs(c *Config) []ValidationError {
 
 // blobBackends are the storage.blob.backend values the blob factory
 // builds; empty selects local.
-var blobBackends = []string{"local", "s3", "garage"}
+// blobBackendLocal is the storage.blob.backend that keeps blobs on the
+// local filesystem; it is also the default when the backend is unset.
+const blobBackendLocal = "local"
+
+var blobBackends = []string{blobBackendLocal, "s3", "garage"}
 
 // Validate checks storage.blob: a known backend, and the S3 fields the
 // s3 and garage backends cannot start without. The blob factory calls
@@ -341,7 +359,7 @@ func (b BlobConfig) Validate() error {
 func validateBlob(b BlobConfig, field string) []ValidationError {
 	backend := b.Backend
 	if backend == "" {
-		backend = "local"
+		backend = blobBackendLocal
 	}
 	if !slices.Contains(blobBackends, backend) {
 		return []ValidationError{{

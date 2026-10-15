@@ -103,7 +103,8 @@ func (in *Installer) InstallArchive(ctx context.Context, name string, archive []
 	}
 
 	// Readable by the unprivileged user container isolation runs as.
-	if err := os.Chmod(stage, 0o755); err != nil { // #nosec G302 -- step files are not secret; containers read them as another uid
+	// #nosec G302 -- step files are not secret; containers read them as another uid
+	if err := os.Chmod(stage, 0o755); err != nil {
 		return nil, fmt.Errorf("stage step: %w", err)
 	}
 	if err := os.Rename(stage, final); err != nil {
