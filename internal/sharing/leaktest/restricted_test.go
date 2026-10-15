@@ -34,13 +34,16 @@ func TestRestrictedReadsEveryRoute(t *testing.T) {
 	}
 }
 
-// Timestamps and request ids differ between two instances; nothing
-// else may.
+// Timestamps, request ids and the credentials each instance mints for
+// its principals (login codes, key ids, identity and registry ULIDs)
+// differ between two instances; nothing else may.
 var volatile = []*regexp.Regexp{
 	regexp.MustCompile(`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})`),
 	regexp.MustCompile(`"request_id":"[^"]*"`),
 	regexp.MustCompile(`"code":"[^"]*"`),
 	regexp.MustCompile(`127\.0\.0\.1:\d+`),
+	regexp.MustCompile(`"(id|subject|identity_id)":"[0-9a-f]{16}"`),
+	regexp.MustCompile(`(idn|aud|pol|grt|acc)_[0-9A-HJKMNP-TV-Z]{26}`),
 }
 
 func normalize(b []byte) string {

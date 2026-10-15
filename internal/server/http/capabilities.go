@@ -159,6 +159,51 @@ var routeAccessTable = map[string]routeAccess{
 
 	"POST /federation/push": routeOpen,
 
+	// The principal registry, a principal's own credentials and the
+	// sharing registry are governed by their scopes (admin:principals,
+	// admin:shares, write:self), not by share policies: they read no
+	// knowledge object, so a restricted viewer reaches them at the
+	// capability layer and the scope middleware stays the gate
+	// (ADR-079 §3, ADR-080 §1).
+	"GET /principals":                                        routeOpen,
+	"POST /principals":                                       routeOpen,
+	"GET /principals/{id}":                                   routeOpen,
+	"POST /principals/{id}/suspend":                          routeOpen,
+	"POST /principals/{id}/revoke":                           routeOpen,
+	"POST /principals/{id}/links":                            routeOpen,
+	"GET /principals/{id}/identities":                        routeOpen,
+	"POST /principals/{id}/identities":                       routeOpen,
+	"DELETE /principals/{id}/identities/{identity}":          routeOpen,
+	"GET /principals/{id}/keys":                              routeOpen,
+	"POST /principals/{id}/keys":                             routeOpen,
+	"DELETE /principals/{id}/keys/{key}":                     routeOpen,
+	"GET /principals/{id}/ceiling":                           routeOpen,
+	"PUT /principals/{id}/ceiling":                           routeOpen,
+	"GET /self/keys":                                         routeOpen,
+	"POST /self/keys":                                        routeOpen,
+	"DELETE /self/keys/{key}":                                routeOpen,
+	"PUT /self/keys/{key}/policy":                            routeOpen,
+	"GET /self/identities":                                   routeOpen,
+	"DELETE /self/identities/{identity}":                     routeOpen,
+	"GET /self/sessions":                                     routeOpen,
+	"DELETE /self/sessions/{session}":                        routeOpen,
+	"POST /share/invites":                                    routeOpen,
+	"GET /share/audiences":                                   routeOpen,
+	"POST /share/audiences":                                  routeOpen,
+	"GET /share/audiences/{audience}":                        routeOpen,
+	"PUT /share/audiences/{audience}/members/{principal}":    routeOpen,
+	"DELETE /share/audiences/{audience}/members/{principal}": routeOpen,
+	"GET /share/policies":                                    routeOpen,
+	"POST /share/policies":                                   routeOpen,
+	"GET /share/policies/{policy}":                           routeOpen,
+	"PUT /share/policies/{policy}":                           routeOpen,
+	"GET /share/templates":                                   routeOpen,
+	"POST /share/templates/{name}":                           routeOpen,
+	"GET /share/grants":                                      routeOpen,
+	"POST /share/grants":                                     routeOpen,
+	"DELETE /share/grants/{grant}":                           routeOpen,
+	"PUT /share/keys/{key}/policy":                           routeOpen,
+
 	"ANY /mcp/": needs(storage.CapabilityMCP),
 	"ANY /mcp":  needs(storage.CapabilityMCP),
 
