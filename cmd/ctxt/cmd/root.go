@@ -222,7 +222,7 @@ var commandGroups = map[string]string{
 
 	// ORGANIZE — taxonomy + scoping
 	"entity": "organize", "index": "organize", "profile": "organize",
-	"registry": "organize", "doctor": "organize",
+	"registry": "organize", "doctor": "organize", "share": "organize",
 
 	// INTERACT — interactive surfaces
 	"shell": "interact", "tui": "interact", "setup": "interact",
@@ -230,6 +230,7 @@ var commandGroups = map[string]string{
 
 	// INSTANCE — talk to a specific dpkms
 	"instance": "instance", "audit": "instance",
+	"auth": "instance", "principal": "instance",
 
 	// MANAGEMENT — hidden by default; --help-all to show
 	"config": "management", "uri": "management", "version": "management",

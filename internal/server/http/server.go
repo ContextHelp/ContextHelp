@@ -15,6 +15,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/security"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/sharing"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/ui"
 	"github.com/ideacrafterslabs/ctxt/internal/watcher"
 )
@@ -65,6 +66,21 @@ type RouterConfig struct {
 	// SessionRecheck is how often an open event stream re-checks its
 	// session; zero means DefaultSessionRecheck.
 	SessionRecheck time.Duration
+	// Registry is the principal registry the principal, identity and
+	// key routes read and write (ADR-079 §5), and Keys mints and
+	// revokes the registry's API keys. nil = those routes answer 404.
+	Registry storage.AuthStore
+	Keys     *authn.Keys
+	// Tickets mints and redeems invite and sign-in links; SignIn lists
+	// the ceremonies server.auth.sign_in allows and PublicURL is the
+	// base of every link. nil Tickets = no link ceremony.
+	Tickets   *authn.Tickets
+	SignIn    []string
+	PublicURL string
+	// CeremonyLimiter rate limits the sign-in ceremonies (login-code
+	// exchange, invite and link redemption) per client address; nil
+	// means NewAddrLimiter's defaults.
+	CeremonyLimiter *AddrLimiter
 }
 
 // NewRouter creates the HTTP router with all routes and middleware.
@@ -116,9 +132,18 @@ func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
 	}
 	r.Get("/manifest.json", ManifestJSON())
 
-	// Web UI sign-in: login code → session cookie (see ui_session.go).
+	// Web UI sign-in ceremonies, each rate limited per client address:
+	// login code → session cookie (ui_session.go), invite and sign-in
+	// link → session cookie (ui_ceremony.go).
 	uiSessions := newUISessionRoutes(rc)
-	r.Post("/ui/auth/session", uiSessions.exchange)
+	limiter := rc.CeremonyLimiter
+	if limiter == nil {
+		limiter = NewAddrLimiter(0, 0, nil)
+	}
+	limited := r.With(LimitByAddr(limiter, rc.Security))
+	limited.Post("/ui/auth/session", uiSessions.exchange)
+	limited.Post(InvitePath+"/session", uiSessions.redeemInvite)
+	limited.Post(SignInPath+"/session", uiSessions.redeemLink)
 
 	// GET|HEAD /ui → redirect to /ui/
 	uiRoot := func(w http.ResponseWriter, r *http.Request) {

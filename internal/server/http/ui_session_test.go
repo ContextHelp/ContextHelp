@@ -59,6 +59,9 @@ type uiFixture struct {
 	tokens map[string]string
 	// ops and other are the default principals' keys.
 	ops, other string
+	// requirePeer makes the federation push route take peer keys only
+	// (startCeremonies).
+	requirePeer bool
 }
 
 func newUIFixture(t *testing.T, principals ...uiPrincipal) *uiFixture {
@@ -104,6 +107,9 @@ func (f *uiFixture) start() {
 		Auth:           authn.NewChain(authn.NewAPIKeyMethod(f.keys, nil), f.sessions.Method()),
 		Sessions:       f.sessions,
 		SessionRecheck: 20 * time.Millisecond,
+		// The exchange tests run many ceremonies from one address; the
+		// limit itself is tested with startCeremonies.
+		CeremonyLimiter: NewAddrLimiter(1000, time.Minute, f.clock.now),
 	}))
 	f.t.Cleanup(f.ts.Close)
 	f.origin = f.ts.URL

@@ -151,22 +151,39 @@ export interface SignedIn extends WhoAmI {
 
 /** Where `ctxt ui open` links point; the code rides in the fragment. */
 export const LOGIN_PATH = '/ui/auth';
+/** Where `ctxt share invite` links point; the ticket rides in the fragment. */
+export const INVITE_PATH = '/ui/invite';
+/** Where `ctxt principal link` links point; the ticket rides in the fragment. */
+export const SIGNIN_PATH = '/ui/signin';
+
+/** The server refused a sign-in because this browser already holds a live session. */
+export const SESSION_ACTIVE = 'SESSION_ACTIVE';
+
+/**
+ * Runs a sign-in ceremony (outside /api/v1: the caller has no credential
+ * yet): POSTs body to path and answers the new session's whoami.
+ */
+async function ceremony(path: string, body: Record<string, string>): Promise<SignedIn> {
+  const res = await fetch(path, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', [CSRF_HEADER]: '1' },
+    body: JSON.stringify(body),
+  });
+  const parsed = (await res.json().catch(() => ({}))) as SignedIn & ErrorEnvelope;
+  if (!res.ok) {
+    throw new ApiError(res.status, parsed.error?.code, parsed.error?.message ?? res.statusText);
+  }
+  return parsed;
+}
 
 export const session = {
   whoami: () => req<WhoAmI>('/whoami'),
   signOut: () => req<void>('/ui/session', { method: 'DELETE' }),
-  /** Trades a login code for the session cookie (outside /api/v1). */
-  exchange: async (code: string): Promise<SignedIn> => {
-    const res = await fetch('/ui/auth/session', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json', [CSRF_HEADER]: '1' },
-      body: JSON.stringify({ code }),
-    });
-    const body = (await res.json().catch(() => ({}))) as SignedIn & ErrorEnvelope;
-    if (!res.ok) {
-      throw new ApiError(res.status, body.error?.code, body.error?.message ?? res.statusText);
-    }
-    return body;
-  },
+  /** Trades a login code for the session cookie. */
+  exchange: (code: string) => ceremony(LOGIN_PATH + '/session', { code }),
+  /** Accepts an invite: creates the person and signs the browser in as them. */
+  acceptInvite: (ticket: string) => ceremony(INVITE_PATH + '/session', { ticket }),
+  /** Redeems a sign-in link for an existing principal. */
+  redeemLink: (ticket: string) => ceremony(SIGNIN_PATH + '/session', { ticket }),
 };

@@ -119,7 +119,7 @@ func (f *Factory) Document() DocumentProvider {
 	switch f.cfg.Document.Backend {
 	case pdftotextTool:
 		return f.mustPdftotext()
-	case "golib":
+	case backendGolib:
 		return f.newGolib()
 	case backendStub:
 		return NewStubDocumentProvider()

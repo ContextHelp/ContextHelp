@@ -106,14 +106,18 @@ type Stack struct {
 	// RouteAuth is the authentication chain guarding the route table
 	// and gRPC; nil on private instances.
 	RouteAuth *authn.Chain
-	// Keys mints and verifies the registry API keys RouteAuth accepts;
-	// nil on private instances.
+	// Keys mints and verifies the registry API keys RouteAuth accepts.
+	// A private instance authenticates nothing but still manages keys
+	// over the API, so it holds one too.
 	Keys *authn.Keys
 	// UISessions is the web UI sign-in session manager; nil when the
 	// instance offers no browser sign-in (private instances, a
 	// server.auth.methods without session). Only the HTTP chain runs
 	// the session method: gRPC carries no cookies.
-	UISessions   *authn.Sessions
+	UISessions *authn.Sessions
+	// Tickets mints and redeems invite and sign-in links; nil when no
+	// ceremony may mint a session (no UISessions, or sign_in: []).
+	Tickets      *authn.Tickets
 	Security     *security.Emitter
 	Entitlements *registry.InboundGate
 	Router       chi.Router
@@ -401,16 +405,9 @@ func Build(in Inputs) (*Stack, error) {
 	if notes == nil {
 		notes = io.Discard
 	}
-	if access != config.AccessPrivate {
-		chain, keys, sessions, err := buildAuth(context.Background(), notes, in.Driver, cfg, access)
-		if err != nil {
-			s.Close()
-			return nil, err
-		}
-		s.RouteAuth, s.Keys, s.UISessions = chain, keys, sessions
-		if in.Auth != nil {
-			s.RouteAuth = in.Auth
-		}
+	if err := s.wireAuth(in, access, notes); err != nil {
+		s.Close()
+		return nil, err
 	}
 	// Auth failures and ACL denials feed the audit log
 	// (event_class=security) plus optional webhook/SMTP alerting. Wired
@@ -440,6 +437,13 @@ func Build(in Inputs) (*Stack, error) {
 		Sessions:     s.UISessions,
 		Security:     s.Security,
 		Entitlements: s.Entitlements,
+		// The principal registry routes and the link ceremonies
+		// (ADR-079 §5): links are built on server.public_url.
+		Registry:  in.Driver.Auth(),
+		Keys:      s.Keys,
+		Tickets:   s.Tickets,
+		SignIn:    cfg.Server.Auth.EffectiveSignIn(),
+		PublicURL: cfg.Server.PublicURL,
 		// On non-private instances the federation push route takes a
 		// peer principal's key, never any authenticated principal.
 		RequirePeerPrincipal: access != config.AccessPrivate,

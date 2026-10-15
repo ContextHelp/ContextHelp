@@ -108,10 +108,63 @@ type uiSessionRoutes struct {
 	cop      *http.CrossOriginProtection
 	// warn receives operator warnings (plain-HTTP sign-in).
 	warn io.Writer
+	// tickets, signIn and publicURL serve the invite and sign-in link
+	// ceremonies (ui_ceremony.go); tickets is nil when none may run.
+	// reg is the registry a sign-in link's principal is read from.
+	tickets   *authn.Tickets
+	signIn    []string
+	publicURL string
+	reg       storage.AuthStore
 }
 
 func newUISessionRoutes(rc RouterConfig) *uiSessionRoutes {
-	return &uiSessionRoutes{sessions: rc.Sessions, sec: rc.Security, cop: newSessionCOP(rc.DevCORS), warn: os.Stderr}
+	return &uiSessionRoutes{
+		sessions: rc.Sessions, sec: rc.Security, cop: newSessionCOP(rc.DevCORS), warn: os.Stderr,
+		tickets: rc.Tickets, signIn: rc.SignIn, publicURL: rc.PublicURL, reg: rc.Registry,
+	}
+}
+
+// browserChecks applies the rules every sign-in ceremony shares: the
+// request must come from this instance's own pages and carry the CSRF
+// header, and it must not already ride on a live session (ADR-079 §3:
+// the caller signs out first, so a code or ticket can never bind to a
+// browser that is someone else). A stale cookie is not a session: it
+// is cleared and the ceremony goes on.
+func (u *uiSessionRoutes) browserChecks(w http.ResponseWriter, r *http.Request) bool {
+	if !sameOriginWrite(u.cop, r) {
+		WriteError(w, http.StatusForbidden, "CROSS_ORIGIN_REQUEST", "sign-in must come from this instance's own web UI")
+		return false
+	}
+	if r.Header.Get(HeaderCSRF) != "1" {
+		WriteError(w, http.StatusForbidden, "CSRF_HEADER_REQUIRED", "sign-in must send "+HeaderCSRF+": 1")
+		return false
+	}
+	c, err := r.Cookie(SessionCookieName(r.Host))
+	if err != nil || c.Value == "" {
+		return true
+	}
+	if p, _, err := u.sessions.Authenticate(r.Context(), c.Value); err == nil {
+		WriteError(w, http.StatusConflict, CodeSessionActive,
+			"this browser is already signed in as "+p.ID+": sign out first, then open the link again")
+		return false
+	}
+	http.SetCookie(w, sessionCookie(r, "", time.Time{}))
+	return true
+}
+
+// finishSignIn sets the session cookie for m and answers the new
+// session's whoami, warning when the cookie will not stick.
+func (u *uiSessionRoutes) finishSignIn(w http.ResponseWriter, r *http.Request, m *authn.Minted) {
+	http.SetCookie(w, sessionCookie(r, m.Secret, m.Session.ExpiresAt))
+	who := whoamiFor(r, m.Principal, viaSession, nil)
+	who.Session = toSessionInfo(m.Session)
+	resp := exchangeResponse{whoamiResponse: who}
+	if plainHTTPRemote(r) {
+		resp.Warning = plainHTTPWarning
+		fmt.Fprintf(u.warn, "warning: web UI sign-in over plain HTTP from %s to %s: browsers drop the Secure session cookie there; serve dpkms behind TLS\n",
+			remoteHost(r), r.Host)
+	}
+	WriteJSON(w, http.StatusOK, resp)
 }
 
 type loginCodeResponse struct {
@@ -211,12 +264,7 @@ func (u *uiSessionRoutes) exchange(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusNotFound, CodeNotFound, "this instance needs no sign-in; open /ui/")
 		return
 	}
-	if !sameOriginWrite(u.cop, r) {
-		WriteError(w, http.StatusForbidden, "CROSS_ORIGIN_REQUEST", "sign-in must come from this instance's own web UI")
-		return
-	}
-	if r.Header.Get(HeaderCSRF) != "1" {
-		WriteError(w, http.StatusForbidden, "CSRF_HEADER_REQUIRED", "sign-in must send "+HeaderCSRF+": 1")
+	if !u.browserChecks(w, r) {
 		return
 	}
 	var req struct {
@@ -242,16 +290,7 @@ func (u *uiSessionRoutes) exchange(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "could not start a session")
 		return
 	}
-	http.SetCookie(w, sessionCookie(r, m.Secret, m.Session.ExpiresAt))
-	who := whoamiFor(r, m.Principal, viaSession, nil)
-	who.Session = toSessionInfo(m.Session)
-	resp := exchangeResponse{whoamiResponse: who}
-	if plainHTTPRemote(r) {
-		resp.Warning = plainHTTPWarning
-		fmt.Fprintf(u.warn, "warning: web UI sign-in over plain HTTP from %s to %s: browsers drop the Secure session cookie there; serve dpkms behind TLS\n",
-			remoteHost(r), r.Host)
-	}
-	WriteJSON(w, http.StatusOK, resp)
+	u.finishSignIn(w, r, m)
 }
 
 const plainHTTPWarning = "this instance is reached over plain HTTP: browsers keep the Secure session cookie only over HTTPS or on localhost, so the sign-in will not stick"

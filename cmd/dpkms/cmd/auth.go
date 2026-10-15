@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
+	"github.com/ideacrafterslabs/ctxt/internal/cli"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 )
 
@@ -74,27 +75,11 @@ func init() {
 	cliconv.WithIdempotency(authKeyCreateCmd, cliconv.IdempotencyNo)
 }
 
-// parseKeyExpiry reads --expires: empty never expires, a Go duration
-// counts from now, a date (2006-01-02) expires at the end of that UTC
-// day, an RFC 3339 time is taken as given.
+// parseKeyExpiry reads --expires: empty never expires, a duration (720h,
+// 30d) counts from now, a date (2006-01-02) expires at the end of that
+// UTC day, an RFC 3339 time is taken as given.
 func parseKeyExpiry(s string, now time.Time) (time.Time, error) {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return time.Time{}, nil
-	}
-	if d, err := time.ParseDuration(s); err == nil {
-		if d <= 0 {
-			return time.Time{}, fmt.Errorf("--expires %q: the duration must be positive", s)
-		}
-		return now.Add(d), nil
-	}
-	if day, err := time.Parse(time.DateOnly, s); err == nil {
-		return day.AddDate(0, 0, 1), nil
-	}
-	if at, err := time.Parse(time.RFC3339, s); err == nil {
-		return at.UTC(), nil
-	}
-	return time.Time{}, fmt.Errorf("--expires %q: give a duration (720h), a date (2026-12-31) or an RFC 3339 time", s)
+	return cli.ParseExpiry(s, now)
 }
 
 func runAuthKeyCreate(cmd *cobra.Command, _ []string) error {

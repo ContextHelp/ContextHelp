@@ -46,7 +46,9 @@ function Shell() {
   const loc = useLocation();
   const qc = useQueryClient();
   const who = useQuery({ queryKey: ['whoami'], queryFn: () => session.whoami(), retry: false });
-  const onSignIn = loc.pathname === '/auth';
+  // The sign-in pages render whatever the session state: a login code,
+  // an invite or a sign-in link each lands on its own.
+  const onSignIn = ['/auth', '/invite', '/signin'].includes(loc.pathname);
   const needsSignIn = isAuthRequired(who.error);
   const live = useLiveEvents(who.isSuccess);
 

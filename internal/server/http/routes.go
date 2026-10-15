@@ -51,6 +51,7 @@ func APIRouteSpecs() []RouteSpec {
 func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 	mgr := rc.Watcher
 	ui := newUISessionRoutes(rc)
+	reg := newRegistryRoutes(rc)
 	get, post, patch, del := http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodDelete
 	return []apiRoute{
 		// Identity
@@ -221,5 +222,32 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		// session.
 		{Method: post, Pattern: "/ui/login-codes", Scope: authn.ScopeReadUI, Handler: http.HandlerFunc(ui.mintCode)},
 		{Method: del, Pattern: "/ui/session", Scope: authn.ScopeSignoutUI, Handler: http.HandlerFunc(ui.signOut)},
+
+		// Principal registry (ADR-079 §5). admin:principals manages
+		// every principal, its identities and keys, and mints sign-in
+		// links; admin:shares mints invites (ADR-080).
+		{Method: get, Pattern: "/principals", Scope: authn.ScopeAdminPrincipals, Handler: http.HandlerFunc(reg.ListPrincipals)},
+		{Method: post, Pattern: "/principals", Scope: authn.ScopeAdminPrincipals, Handler: http.HandlerFunc(reg.CreatePrincipal)},
+		{Method: get, Pattern: "/principals/{id}", Scope: authn.ScopeAdminPrincipals, Handler: http.HandlerFunc(reg.GetPrincipal)},
+		{Method: post, Pattern: "/principals/{id}/suspend", Scope: authn.ScopeAdminPrincipals, Handler: http.HandlerFunc(reg.SuspendPrincipal)},
+		{Method: post, Pattern: "/principals/{id}/revoke", Scope: authn.ScopeAdminPrincipals, Handler: http.HandlerFunc(reg.RevokePrincipal)},
+		{Method: post, Pattern: "/principals/{id}/links", Scope: authn.ScopeAdminPrincipals, Handler: http.HandlerFunc(ui.mintLink)},
+		{Method: get, Pattern: "/principals/{id}/identities", Scope: authn.ScopeAdminPrincipals, Handler: http.HandlerFunc(reg.ListIdentities)},
+		{Method: post, Pattern: "/principals/{id}/identities", Scope: authn.ScopeAdminPrincipals, Handler: http.HandlerFunc(reg.AddIdentity)},
+		{Method: del, Pattern: "/principals/{id}/identities/{identity}", Scope: authn.ScopeAdminPrincipals, Handler: http.HandlerFunc(reg.RemoveIdentity)},
+		{Method: get, Pattern: "/principals/{id}/keys", Scope: authn.ScopeAdminPrincipals, Handler: http.HandlerFunc(reg.ListPrincipalKeys)},
+		{Method: post, Pattern: "/principals/{id}/keys", Scope: authn.ScopeAdminPrincipals, Handler: http.HandlerFunc(reg.CreatePrincipalKey)},
+		{Method: del, Pattern: "/principals/{id}/keys/{key}", Scope: authn.ScopeAdminPrincipals, Handler: http.HandlerFunc(reg.RevokePrincipalKey)},
+		{Method: post, Pattern: "/share/invites", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(ui.mintInvite)},
+
+		// A principal's own credentials and sessions (write:self): the
+		// handlers check the target is the caller's.
+		{Method: get, Pattern: "/self/keys", Scope: authn.ScopeWriteSelf, Handler: http.HandlerFunc(reg.ListOwnKeys)},
+		{Method: post, Pattern: "/self/keys", Scope: authn.ScopeWriteSelf, Handler: http.HandlerFunc(reg.CreateOwnKey)},
+		{Method: del, Pattern: "/self/keys/{key}", Scope: authn.ScopeWriteSelf, Handler: http.HandlerFunc(reg.RevokeOwnKey)},
+		{Method: get, Pattern: "/self/identities", Scope: authn.ScopeWriteSelf, Handler: http.HandlerFunc(reg.ListOwnIdentities)},
+		{Method: del, Pattern: "/self/identities/{identity}", Scope: authn.ScopeWriteSelf, Handler: http.HandlerFunc(reg.RemoveOwnIdentity)},
+		{Method: get, Pattern: "/self/sessions", Scope: authn.ScopeWriteSelf, Handler: http.HandlerFunc(reg.ListOwnSessions)},
+		{Method: del, Pattern: "/self/sessions/{session}", Scope: authn.ScopeWriteSelf, Handler: http.HandlerFunc(reg.EndOwnSession)},
 	}
 }

@@ -175,13 +175,18 @@ func TestBuildMethodsFollowConfig(t *testing.T) {
 }
 
 // TestBuildPrivateLeavesRouteTableOpen: a private stack serves without a
-// key and constructs no chain, registry keys or entitlement gate.
+// key and constructs no chain, session manager, ticket ceremony or
+// entitlement gate. It keeps registry keys, so the owner can mint keys
+// over the API before promoting the instance.
 func TestBuildPrivateLeavesRouteTableOpen(t *testing.T) {
 	st := build(t, &config.Config{}, storageutil.NewTestDriver(t))
 
-	if st.RouteAuth != nil || st.Keys != nil || st.UISessions != nil || st.Entitlements != nil {
-		t.Fatalf("private stack: RouteAuth=%v Keys=%v UISessions=%v Entitlements=%v; want nil",
-			st.RouteAuth, st.Keys, st.UISessions, st.Entitlements)
+	if st.RouteAuth != nil || st.UISessions != nil || st.Tickets != nil || st.Entitlements != nil {
+		t.Fatalf("private stack: RouteAuth=%v UISessions=%v Tickets=%v Entitlements=%v; want nil",
+			st.RouteAuth, st.UISessions, st.Tickets, st.Entitlements)
+	}
+	if st.Keys == nil {
+		t.Fatal("private stack: Keys is nil; the key routes need it")
 	}
 	if got := status(t, st, ""); got != http.StatusOK {
 		t.Errorf("no key: status %d, want 200", got)

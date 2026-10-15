@@ -269,6 +269,70 @@ func (k *Keys) OwnerHasActiveKey(ctx context.Context, now time.Time) (bool, erro
 	return false, nil
 }
 
+// KeyInfo describes a stored key together with its identity row:
+// everything but the secret.
+type KeyInfo struct {
+	IssuedKey
+	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
+	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
+}
+
+// Get returns the key with id and its identity row. An id with no
+// record, or whose record has no identity row, is storage.ErrNotFound.
+func (k *Keys) Get(ctx context.Context, id string) (*KeyInfo, error) {
+	rec, err := k.issuer.Get(ctx, id)
+	if errors.Is(err, ErrAPIKeyNotFound) {
+		return nil, fmt.Errorf("api key %s: %w", id, storage.ErrNotFound)
+	}
+	if err != nil {
+		return nil, err
+	}
+	idn, err := k.auth.Identities().Find(ctx, storage.IdentityMethodAPIKey, "", rec.ID)
+	if err != nil {
+		return nil, err
+	}
+	return keyInfo(rec, idn), nil
+}
+
+// ListByPrincipal returns every key of principalID, revoked ones
+// included, oldest first. A key whose record is gone is left out.
+func (k *Keys) ListByPrincipal(ctx context.Context, principalID string) ([]KeyInfo, error) {
+	idns, err := k.auth.Identities().ListByPrincipal(ctx, principalID)
+	if err != nil {
+		return nil, err
+	}
+	out := []KeyInfo{}
+	for _, idn := range idns {
+		if idn.Method != storage.IdentityMethodAPIKey {
+			continue
+		}
+		rec, err := k.issuer.Get(ctx, idn.Subject)
+		if errors.Is(err, ErrAPIKeyNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *keyInfo(rec, idn))
+	}
+	return out, nil
+}
+
+func keyInfo(rec *APIKey, idn *storage.Identity) *KeyInfo {
+	info := &KeyInfo{IssuedKey: IssuedKey{
+		ID: rec.ID, PrincipalID: idn.PrincipalID, IdentityID: idn.ID, Name: idn.Name,
+		Scopes: scopesNamed(rec.Scopes), CreatedAt: rec.CreatedAt, ExpiresAt: rec.ExpiresAt,
+	}, LastUsedAt: idn.LastUsedAt}
+	switch {
+	case idn.RevokedAt != nil:
+		info.RevokedAt = idn.RevokedAt
+	case !rec.RevokedAt.IsZero():
+		at := rec.RevokedAt
+		info.RevokedAt = &at
+	}
+	return info
+}
+
 // Revoke ends the key with id: its record stops verifying and its
 // identity row is revoked. An unknown id is storage.ErrNotFound;
 // revoking a revoked key changes nothing.
