@@ -141,24 +141,30 @@ func (cw *ClipboardWatcher) Run(ctx context.Context) {
 			if !cw.cfg.AutoIngest || cw.analyzer == nil {
 				continue
 			}
+			cw.handOff(ctx, text, h)
+		}
+	}
+}
 
-			req := Request{
-				Content:   text,
-				Type:      detectClipboardType(text),
-				Source:    "watcher/clipboard",
-				KnownHash: h,
-			}
-			if _, err := cw.analyzer.Analyze(ctx, req); err != nil {
-				if ctx.Err() == nil && cw.cfg.OnError != nil {
-					cw.cfg.OnError(fmt.Errorf("clipboard: enqueue: %w", err))
-				}
-				continue
-			}
-			if cw.cfg.Dedup != nil {
-				if err := cw.cfg.Dedup.SetClipboardHash(h); err != nil && cw.cfg.OnError != nil {
-					cw.cfg.OnError(fmt.Errorf("clipboard: record hash: %w", err))
-				}
-			}
+// handOff enqueues a qualifying clip whose hash is h, then records h
+// through Dedup so the next start does not send it again. A failed
+// enqueue records nothing.
+func (cw *ClipboardWatcher) handOff(ctx context.Context, text, h string) {
+	req := Request{
+		Content:   text,
+		Type:      detectClipboardType(text),
+		Source:    "watcher/clipboard",
+		KnownHash: h,
+	}
+	if _, err := cw.analyzer.Analyze(ctx, req); err != nil {
+		if ctx.Err() == nil && cw.cfg.OnError != nil {
+			cw.cfg.OnError(fmt.Errorf("clipboard: enqueue: %w", err))
+		}
+		return
+	}
+	if cw.cfg.Dedup != nil {
+		if err := cw.cfg.Dedup.SetClipboardHash(h); err != nil && cw.cfg.OnError != nil {
+			cw.cfg.OnError(fmt.Errorf("clipboard: record hash: %w", err))
 		}
 	}
 }
@@ -169,5 +175,5 @@ func detectClipboardType(text string) string {
 	if urlRE.MatchString(trimmed) {
 		return "url"
 	}
-	return "text"
+	return contentTypeText
 }

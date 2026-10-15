@@ -41,7 +41,7 @@ func (c *SufficiencyChecker) Check(
 		rewritten = query
 	}
 
-	return decision == "RETRIEVE", rewritten, nil
+	return decision == decisionRetrieve, rewritten, nil
 }
 
 // buildSufficiencyPrompt combines the system + user templates into a single
@@ -59,25 +59,32 @@ func buildSufficiencyPrompt(query string, history []string, content, systemPromp
 	return systemPrompt + "\n\n" + userPart
 }
 
+// The sufficiency check's decisions, as the LLM writes them in its
+// <decision> tag.
+const (
+	decisionRetrieve   = "RETRIEVE"
+	decisionNoRetrieve = "NO_RETRIEVE"
+)
+
 // extractDecision parses the <decision>…</decision> tag from the LLM response.
 func extractDecision(response string) string {
 	re := regexp.MustCompile(`(?i)<decision>\s*(.*?)\s*</decision>`)
 	if match := re.FindStringSubmatch(response); match != nil {
 		decision := strings.ToUpper(strings.TrimSpace(match[1]))
-		if strings.Contains(decision, "NO_RETRIEVE") {
-			return "NO_RETRIEVE"
+		if strings.Contains(decision, decisionNoRetrieve) {
+			return decisionNoRetrieve
 		}
-		if strings.Contains(decision, "RETRIEVE") {
-			return "RETRIEVE"
+		if strings.Contains(decision, decisionRetrieve) {
+			return decisionRetrieve
 		}
 	}
 
 	// Fallback: scan the raw text.
 	upper := strings.ToUpper(response)
-	if strings.Contains(upper, "NO_RETRIEVE") {
-		return "NO_RETRIEVE"
+	if strings.Contains(upper, decisionNoRetrieve) {
+		return decisionNoRetrieve
 	}
-	return "RETRIEVE"
+	return decisionRetrieve
 }
 
 // extractRewrittenQuery parses the <rewritten_query>…</rewritten_query> tag.

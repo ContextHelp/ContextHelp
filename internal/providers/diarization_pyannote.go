@@ -80,8 +80,9 @@ type speakerRegion struct {
 // parseRTTM parses RTTM (Rich Transcription Time Marked) format.
 // Format: SPEAKER <file> <channel> <start> <dur> <na> <na> <speaker> <na> <na>
 func parseRTTM(output string) []speakerRegion {
-	var regions []speakerRegion
-	for _, line := range strings.Split(output, "\n") {
+	lines := strings.Split(output, "\n")
+	regions := make([]speakerRegion, 0, len(lines))
+	for _, line := range lines {
 		fields := strings.Fields(line)
 		if len(fields) < 8 || fields[0] != "SPEAKER" {
 			continue

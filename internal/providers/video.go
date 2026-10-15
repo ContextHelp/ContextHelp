@@ -47,7 +47,7 @@ type StubVideoProvider struct{}
 
 func NewStubVideoProvider() *StubVideoProvider { return &StubVideoProvider{} }
 
-func (p *StubVideoProvider) Name() string { return "stub" }
+func (p *StubVideoProvider) Name() string { return backendStub }
 
 func (p *StubVideoProvider) ProbeMetadata(_ context.Context, videoPath string) (*VideoMetadata, error) {
 	return &VideoMetadata{

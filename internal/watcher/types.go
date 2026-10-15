@@ -1,3 +1,6 @@
+// Package watcher turns local activity into dpkms ingest requests: directory
+// watches (Manager), the clipboard and screen captures. Each hands content
+// to an Analyzer or Ingester and never links the service layer itself.
 package watcher
 
 import (

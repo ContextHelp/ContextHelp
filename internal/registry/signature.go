@@ -2,6 +2,7 @@
 package registry
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/base64"
@@ -126,11 +127,12 @@ func VerifyResponseSignature(
 }
 
 // FetchSigSidecar fetches <manifestURL>.sig and returns its body.
-// Returns (nil, nil) when the sidecar is absent (404).
-func FetchSigSidecar(client interface {
+// Returns (nil, nil) when the sidecar is absent (404). The request ends
+// with ctx, as the sync that needs the signature does.
+func FetchSigSidecar(ctx context.Context, client interface {
 	Do(*http.Request) (*http.Response, error)
 }, sigURL string) ([]byte, error) {
-	req, err := http.NewRequest(http.MethodGet, sigURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sigURL, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("create .sig request: %w", err)
 	}

@@ -1,3 +1,5 @@
+// Package cardamum ingests contacts from an addressbook through the
+// cardamum CLI.
 package cardamum
 
 import (
@@ -16,6 +18,10 @@ type card struct {
 	AddressbookID string `json:"addressbook_id"`
 	VCard         string `json:"vcard"`
 }
+
+// adapterName names the adapter after the cardamum CLI it runs, which is
+// also the default binary.
+const adapterName = "cardamum"
 
 // Adapter fetches contacts from cardamum.
 type Adapter struct {
@@ -40,7 +46,7 @@ func WithAccount(name string) Option {
 // New creates a cardamum adapter for the given addressbook.
 func New(addressbook string, opts ...Option) *Adapter {
 	a := &Adapter{
-		binary:      "cardamum",
+		binary:      adapterName,
 		addressbook: addressbook,
 	}
 	for _, o := range opts {
@@ -49,7 +55,7 @@ func New(addressbook string, opts ...Option) *Adapter {
 	return a
 }
 
-func (a *Adapter) Name() string { return "cardamum" }
+func (a *Adapter) Name() string { return adapterName }
 
 func (a *Adapter) Fetch(ctx context.Context) ([]ingest.Object, error) {
 	cards, err := a.listCards(ctx)

@@ -1,3 +1,5 @@
+// Package ingest defines the contract external ingestion adapters
+// implement (Adapter, Object) and the runner that stores what they fetch.
 package ingest
 
 import (

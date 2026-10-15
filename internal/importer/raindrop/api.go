@@ -1,3 +1,4 @@
+// Package raindrop is a minimal Raindrop.io API client for bookmark imports.
 package raindrop
 
 import (
@@ -131,13 +132,7 @@ func (c *Client) ListItems(ctx context.Context, opts ListOptions) ([]Item, error
 				seenByID[item.ID] = struct{}{}
 			}
 
-			if opts.Since != nil && !item.LastUpdate.IsZero() && item.LastUpdate.Before(*opts.Since) {
-				continue
-			}
-			if tag != "" && !itemHasTag(item, tag) {
-				continue
-			}
-			if query != "" && !itemMatchesQuery(item, query) {
+			if !itemPassesFilters(item, opts.Since, tag, query) {
 				continue
 			}
 
@@ -153,6 +148,19 @@ func (c *Client) ListItems(ctx context.Context, opts ListOptions) ([]Item, error
 	}
 
 	return out, nil
+}
+
+// itemPassesFilters applies ListItems' client-side filters: updated no
+// earlier than since (an item with no update time passes), carrying tag,
+// matching query. An empty tag or query, or a nil since, filters nothing.
+func itemPassesFilters(item Item, since *time.Time, tag, query string) bool {
+	if since != nil && !item.LastUpdate.IsZero() && item.LastUpdate.Before(*since) {
+		return false
+	}
+	if tag != "" && !itemHasTag(item, tag) {
+		return false
+	}
+	return query == "" || itemMatchesQuery(item, query)
 }
 
 // BuildCollectionPathMap resolves collection IDs to display paths (for example "Engineering/Research").

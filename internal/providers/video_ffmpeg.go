@@ -17,7 +17,7 @@ func NewFFmpegVideoProvider() *FFmpegVideoProvider {
 	return &FFmpegVideoProvider{}
 }
 
-func (p *FFmpegVideoProvider) Name() string { return "ffmpeg" }
+func (p *FFmpegVideoProvider) Name() string { return backendFFmpeg }
 
 // ffprobeOutput maps the JSON output of ffprobe -show_format -show_streams.
 type ffprobeOutput struct {
@@ -85,7 +85,7 @@ func (p *FFmpegVideoProvider) ProbeMetadata(ctx context.Context, videoPath strin
 
 func (p *FFmpegVideoProvider) ExtractAudio(ctx context.Context, videoPath string) (*ExtractedAudio, error) {
 	outPath := videoPath + ".audio.wav"
-	_, err := RunCommand(ctx, "ffmpeg",
+	_, err := RunCommand(ctx, toolFFmpeg,
 		"-i", videoPath,
 		"-vn",
 		"-acodec", "pcm_s16le",
@@ -126,7 +126,7 @@ func (p *FFmpegVideoProvider) SampleFrames(ctx context.Context, videoPath string
 		ts := time.Duration(i) * interval
 		outPath := filepath.Join(dir, fmt.Sprintf("%s.frame.%d.png", base, i))
 
-		_, err := RunCommand(ctx, "ffmpeg",
+		_, err := RunCommand(ctx, toolFFmpeg,
 			"-ss", formatDuration(ts),
 			"-i", videoPath,
 			"-frames:v", "1",

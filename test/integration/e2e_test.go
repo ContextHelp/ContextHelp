@@ -209,6 +209,36 @@ func waitForJob(t *testing.T, url, jobID string, wantStatus storage.JobStatus) *
 	return waitForJobTimeout(t, url, jobID, wantStatus, jobWaitTimeout(t))
 }
 
+// getObject fetches GET /objects/{id}, requires 200 OK (msgAndArgs label
+// a failure) and returns the decoded object. The body is closed before it
+// returns, so callers can fetch in a loop.
+func getObject(t *testing.T, url, id string, msgAndArgs ...any) storage.KnowledgeObject {
+	t.Helper()
+	resp, err := gohttp.Get(fmt.Sprintf("%s/api/v1/objects/%s", url, id))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, gohttp.StatusOK, resp.StatusCode, msgAndArgs...)
+
+	var obj storage.KnowledgeObject
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&obj))
+	return obj
+}
+
+// postForJobID POSTs body as JSON to url, requires 202 Accepted and
+// returns the job_id the response names. The body is closed before it
+// returns, so callers can post in a loop.
+func postForJobID(t *testing.T, url string, body []byte) string {
+	t.Helper()
+	resp, err := gohttp.Post(url, "application/json", bytes.NewReader(body))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, gohttp.StatusAccepted, resp.StatusCode)
+
+	var result map[string]string
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	return result["job_id"]
+}
+
 // waitForJobTimeout is waitForJob with an explicit budget, for the rare
 // test that knows its own bound.
 func waitForJobTimeout(t *testing.T, url, jobID string, wantStatus storage.JobStatus, timeout time.Duration) *storage.Job {

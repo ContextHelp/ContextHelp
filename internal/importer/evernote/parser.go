@@ -1,3 +1,4 @@
+// Package evernote parses Evernote exports (ENEX or HTML) into notes.
 package evernote
 
 import (

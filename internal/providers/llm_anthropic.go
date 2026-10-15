@@ -35,7 +35,7 @@ func (p *AnthropicLLMProvider) WithHTTPClient(c *http.Client) *AnthropicLLMProvi
 	return &cp
 }
 
-func (p *AnthropicLLMProvider) Name() string { return "anthropic" }
+func (p *AnthropicLLMProvider) Name() string { return backendAnthropic }
 
 func (p *AnthropicLLMProvider) Generate(ctx context.Context, prompt string) (string, error) {
 	if p.apiKey == "" {

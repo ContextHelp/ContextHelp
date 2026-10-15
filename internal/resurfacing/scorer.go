@@ -41,7 +41,7 @@ func Score(in ScoreInput) ScoreResult {
 	recency := recencyDecay(in.Object.CreatedAt, in.Now)
 
 	score := (entity + tag + recency) / 3.0
-	reason := buildReason(entity, tag, recency, in.Profile)
+	reason := buildReason(entity, tag, recency)
 
 	return ScoreResult{Score: score, Reason: reason}
 }
@@ -160,7 +160,7 @@ func recencyDecay(createdAt, now time.Time) float64 {
 	return math.Exp(-math.Log(2) * days / halfLifeDays)
 }
 
-func buildReason(entity, tag, recency float64, profile config.FocusProfile) string {
+func buildReason(entity, tag, recency float64) string {
 	parts := make([]string, 0, 3)
 	if entity > 0 {
 		parts = append(parts, "entity_overlap")

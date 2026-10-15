@@ -1,3 +1,6 @@
+// Package browser runs and talks to the IBR browser daemon: Manager starts
+// it as a subprocess on a loopback port with a per-run token, and Client
+// calls its HTTP API to run intent-driven page extraction.
 package browser
 
 import (

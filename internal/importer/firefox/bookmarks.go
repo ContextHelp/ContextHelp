@@ -1,3 +1,4 @@
+// Package firefox imports Firefox bookmark HTML exports.
 package firefox
 
 import (

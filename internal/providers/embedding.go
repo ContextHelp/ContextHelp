@@ -14,7 +14,7 @@ func NewStubEmbeddingProvider() EmbeddingProvider { return &stubEmbeddingProvide
 
 type stubEmbeddingProvider struct{}
 
-func (s *stubEmbeddingProvider) Name() string    { return "stub" }
+func (s *stubEmbeddingProvider) Name() string    { return backendStub }
 func (s *stubEmbeddingProvider) Dimensions() int { return 0 }
 func (s *stubEmbeddingProvider) Embed(_ context.Context, _ string) ([]float32, error) {
 	return nil, nil

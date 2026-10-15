@@ -40,7 +40,7 @@ func NewStubTranscriptionProvider() *StubTranscriptionProvider {
 	return &StubTranscriptionProvider{}
 }
 
-func (p *StubTranscriptionProvider) Name() string { return "stub" }
+func (p *StubTranscriptionProvider) Name() string { return backendStub }
 
 func (p *StubTranscriptionProvider) Transcribe(_ context.Context, audioPath string, opts TranscribeOptions) (*TranscriptResult, error) {
 	return &TranscriptResult{
@@ -73,7 +73,7 @@ func NewStubDiarizationProvider() *StubDiarizationProvider {
 	return &StubDiarizationProvider{}
 }
 
-func (p *StubDiarizationProvider) Name() string { return "stub" }
+func (p *StubDiarizationProvider) Name() string { return backendStub }
 
 func (p *StubDiarizationProvider) Diarize(_ context.Context, _ string, segments []TranscriptSegment) (*DiarizedResult, error) {
 	return &DiarizedResult{

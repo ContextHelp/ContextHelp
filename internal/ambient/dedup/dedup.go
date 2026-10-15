@@ -21,6 +21,7 @@ package dedup
 
 import (
 	"container/list"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -132,7 +133,7 @@ func (c *Cache) IsDuplicate(fingerprint string) bool {
 	defer c.mu.Unlock()
 	now := c.now()
 	if elem, ok := c.index[fingerprint]; ok {
-		ent := elem.Value.(*entry)
+		ent := entryOf(elem)
 		if now.Sub(ent.insertedAt) <= c.window {
 			// Within window — refresh LRU position, report duplicate.
 			c.order.MoveToFront(elem)
@@ -174,7 +175,7 @@ func (c *Cache) Sweep() int {
 		if elem == nil {
 			break
 		}
-		ent := elem.Value.(*entry)
+		ent := entryOf(elem)
 		if now.Sub(ent.insertedAt) <= c.window {
 			break // ordered by recency; nothing older
 		}
@@ -185,13 +186,23 @@ func (c *Cache) Sweep() int {
 	return removed
 }
 
+// entryOf returns the cache entry elem holds. The list only ever holds
+// *entry values, so any other value is a broken invariant.
+func entryOf(elem *list.Element) *entry {
+	ent, ok := elem.Value.(*entry)
+	if !ok {
+		panic(fmt.Sprintf("dedup: list element holds %T, want *entry", elem.Value))
+	}
+	return ent
+}
+
 // evictLRULocked removes the oldest entry. Caller MUST hold c.mu.
 func (c *Cache) evictLRULocked() {
 	elem := c.order.Back()
 	if elem == nil {
 		return
 	}
-	ent := elem.Value.(*entry)
+	ent := entryOf(elem)
 	c.order.Remove(elem)
 	delete(c.index, ent.fingerprint)
 }

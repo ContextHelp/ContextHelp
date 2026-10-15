@@ -1,3 +1,7 @@
+// Package providers supplies the media and model backends pipeline steps
+// call (LLM, vision, OCR, transcription, diarization, video, document);
+// Factory picks each from config, falling back to a stub when none is
+// available.
 package providers
 
 import (
@@ -26,6 +30,24 @@ type Factory struct {
 	// Nil means each client's default.
 	httpClient *http.Client
 }
+
+// Backend names: the values a providers.<kind>.backend key selects, and
+// what each provider's Name reports.
+const (
+	backendStub      = "stub"
+	backendOllama    = "ollama"
+	backendOpenAI    = "openai"
+	backendAnthropic = "anthropic"
+	backendFFmpeg    = "ffmpeg"
+	backendTesseract = "tesseract"
+	backendWhisper   = "whisper-cli"
+)
+
+// defaultOllamaEndpoint is where a local Ollama listens unless configured.
+const defaultOllamaEndpoint = "http://localhost:11434"
+
+// defaultOCRLanguage is tesseract's language when none is configured.
+const defaultOCRLanguage = "eng"
 
 // NewFactory creates a Factory from the providers configuration.
 // If store is nil, an env-backed store is used.
@@ -79,9 +101,9 @@ func (f *Factory) apiKey(name string) string {
 // Video returns the best available VideoProvider.
 func (f *Factory) Video() VideoProvider {
 	switch f.cfg.Video.Backend {
-	case "ffmpeg":
+	case backendFFmpeg:
 		return f.mustFFmpeg()
-	case "stub":
+	case backendStub:
 		return NewStubVideoProvider()
 	default: // "auto" or empty
 		if p := f.tryFFmpeg(); p != nil {
@@ -99,7 +121,7 @@ func (f *Factory) Document() DocumentProvider {
 		return f.mustPdftotext()
 	case "golib":
 		return f.newGolib()
-	case "stub":
+	case backendStub:
 		return NewStubDocumentProvider()
 	default: // "auto"
 		// Prefer golib (pure Go, always available), then pdftotext for PDF
@@ -110,9 +132,9 @@ func (f *Factory) Document() DocumentProvider {
 // OCR returns the best available OCRProvider.
 func (f *Factory) OCR() OCRProvider {
 	switch f.cfg.OCR.Backend {
-	case "tesseract":
+	case backendTesseract:
 		return f.mustTesseract()
-	case "stub":
+	case backendStub:
 		return NewStubOCRProvider()
 	default: // "auto"
 		if p := f.tryTesseract(); p != nil {
@@ -126,11 +148,11 @@ func (f *Factory) OCR() OCRProvider {
 // Transcription returns the best available TranscriptionProvider.
 func (f *Factory) Transcription() TranscriptionProvider {
 	switch f.cfg.Transcription.Backend {
-	case "whisper-cli":
+	case backendWhisper:
 		return f.mustWhisper()
-	case "ollama":
+	case backendOllama:
 		return f.newOllamaTranscription()
-	case "stub":
+	case backendStub:
 		return NewStubTranscriptionProvider()
 	default: // "auto"
 		if p := f.tryWhisper(); p != nil {
@@ -144,17 +166,17 @@ func (f *Factory) Transcription() TranscriptionProvider {
 // Vision returns the best available vision.Provider.
 func (f *Factory) Vision() vision.Provider {
 	switch f.cfg.Vision.Backend {
-	case "ollama":
+	case backendOllama:
 		return f.newOllamaVision()
-	case "openai":
+	case backendOpenAI:
 		return f.openAIVision(f.apiKey(keyOpenAI))
-	case "anthropic":
+	case backendAnthropic:
 		return f.anthropicVision(f.apiKey(keyAnthropic))
 	case "gemini":
 		return f.geminiVision(f.apiKey(keyGemini))
 	case "openrouter":
 		return f.openRouterVision(f.apiKey(keyOpenRouter))
-	case "stub":
+	case backendStub:
 		return vision.NewStubProvider()
 	default: // "auto"
 		if p := f.tryOllamaVision(); p != nil {
@@ -182,7 +204,7 @@ func (f *Factory) Diarization() DiarizationProvider {
 	switch f.cfg.Diarization.Backend {
 	case "pyannote":
 		return f.mustPyannote()
-	case "stub":
+	case backendStub:
 		return NewStubDiarizationProvider()
 	default: // "auto"
 		if p := f.tryPyannote(); p != nil {
@@ -196,13 +218,13 @@ func (f *Factory) Diarization() DiarizationProvider {
 // LLM returns the best available LLMProvider.
 func (f *Factory) LLM() LLMProvider {
 	switch f.cfg.LLM.Backend {
-	case "openai":
+	case backendOpenAI:
 		return f.openAILLM(f.apiKey(keyOpenAI))
-	case "anthropic":
+	case backendAnthropic:
 		return f.anthropicLLM(f.apiKey(keyAnthropic))
-	case "ollama":
+	case backendOllama:
 		return NewOllamaLLMProvider(f.cfg.LLM.Endpoint, f.cfg.LLM.Model)
-	case "stub":
+	case backendStub:
 		return NewStubLLMProvider()
 	default: // "auto" or empty
 		// A resolved key selects the hosted provider, in priority order.
@@ -215,7 +237,7 @@ func (f *Factory) LLM() LLMProvider {
 		// Fall back to Ollama (local).
 		endpoint := f.cfg.LLM.Endpoint
 		if endpoint == "" {
-			endpoint = "http://localhost:11434"
+			endpoint = defaultOllamaEndpoint
 		}
 		return NewOllamaLLMProvider(endpoint, f.cfg.LLM.Model)
 	}
@@ -245,7 +267,7 @@ func (f *Factory) tryFFmpeg() VideoProvider {
 	if _, err := LookupTool("ffprobe"); err != nil {
 		return nil
 	}
-	if _, err := LookupTool("ffmpeg"); err != nil {
+	if _, err := LookupTool(toolFFmpeg); err != nil {
 		return nil
 	}
 	return NewFFmpegVideoProvider()
@@ -285,12 +307,12 @@ func (f *Factory) mustPdftotext() DocumentProvider {
 // --- Tesseract ---
 
 func (f *Factory) tryTesseract() OCRProvider {
-	if _, err := LookupTool("tesseract"); err != nil {
+	if _, err := LookupTool(toolTesseract); err != nil {
 		return nil
 	}
 	lang := f.cfg.OCR.Language
 	if lang == "" {
-		lang = "eng"
+		lang = defaultOCRLanguage
 	}
 	return NewTesseractOCRProvider(lang)
 }
@@ -338,18 +360,26 @@ func (f *Factory) ollamaVisionEndpoint() string {
 	if f.cfg.Vision.Endpoint != "" {
 		return f.cfg.Vision.Endpoint
 	}
-	return "http://localhost:11434"
+	return defaultOllamaEndpoint
 }
 
 // tryOllamaVision probes the Ollama endpoint. Returns nil if unreachable.
 func (f *Factory) tryOllamaVision() vision.Provider {
 	endpoint := f.ollamaVisionEndpoint()
 	client := &http.Client{Timeout: 2 * time.Second}
-	resp, err := client.Get(strings.TrimRight(endpoint, "/") + "/api/tags")
-	if err != nil || resp.StatusCode != http.StatusOK {
+	// Vision() takes no context; the client timeout bounds the probe.
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, strings.TrimRight(endpoint, "/")+"/api/tags", http.NoBody)
+	if err != nil {
+		return nil
+	}
+	resp, err := client.Do(req)
+	if err != nil {
 		return nil
 	}
 	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
 	model := f.cfg.Vision.Model
 	if model == "" {
 		model = "llava"

@@ -203,7 +203,7 @@ func (s *Store) List(ctx context.Context) ([]Model, error) {
 	}
 	defer rows.Close()
 
-	var out []Model
+	var out []Model //nolint:prealloc // row count unknown until the cursor ends
 	for rows.Next() {
 		m, err := scanModel(rows)
 		if err != nil {

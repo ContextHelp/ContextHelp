@@ -1,3 +1,7 @@
+// Package events defines ctxt's domain event topics, payloads and
+// CloudEvents envelope, the in-memory LocalBus, a Publisher onto kit's
+// runtime bus, and the Subscriber that keeps focus profiles in step with
+// profile events.
 package events
 
 import (

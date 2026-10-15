@@ -19,7 +19,7 @@ type StubOCRProvider struct{}
 
 func NewStubOCRProvider() *StubOCRProvider { return &StubOCRProvider{} }
 
-func (p *StubOCRProvider) Name() string { return "stub" }
+func (p *StubOCRProvider) Name() string { return backendStub }
 
 func (p *StubOCRProvider) Extract(_ context.Context, imageData []byte, contentType string) (*OCRResult, error) {
 	return &OCRResult{

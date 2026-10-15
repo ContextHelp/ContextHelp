@@ -1,3 +1,4 @@
+// Package slack parses Slack workspace export directories into messages.
 package slack
 
 import (

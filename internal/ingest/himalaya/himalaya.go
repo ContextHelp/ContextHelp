@@ -1,3 +1,5 @@
+// Package himalaya ingests email through the himalaya CLI, grouping
+// messages into threads before they become ingest objects.
 package himalaya
 
 import (
@@ -55,7 +57,7 @@ func (a *Adapter) Fetch(
 	}
 
 	// Read each message body
-	var msgs []Message
+	msgs := make([]Message, 0, len(envelopes))
 	for _, env := range envelopes {
 		readArgs := []string{"message", "read", env.ID, "-o", "json"}
 		if a.Account != "" {

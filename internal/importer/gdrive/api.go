@@ -1,3 +1,4 @@
+// Package gdrive is a minimal Google Drive API client for imports.
 package gdrive
 
 import (

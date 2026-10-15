@@ -1,3 +1,6 @@
+// Package vision analyzes images beyond OCR (scene description, labels)
+// through a local Ollama model or a hosted API (OpenAI, Anthropic, Gemini,
+// OpenRouter).
 package vision
 
 import (

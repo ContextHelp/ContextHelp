@@ -556,7 +556,7 @@ func (s *Syncer) fetchAndVerifyEntityIndex(ctx context.Context, registryURL stri
 	// Try Content-Signature header first; fall back to .sig sidecar.
 	var sigBody []byte
 	if resp.Header.Get("Content-Signature") == "" {
-		sigBody, _ = FetchSigSidecar(s.client, indexURL+".sig")
+		sigBody, _ = FetchSigSidecar(ctx, s.client, indexURL+".sig")
 	}
 
 	// Compute fingerprint for logging even if verification fails.

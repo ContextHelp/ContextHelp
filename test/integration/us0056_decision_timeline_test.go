@@ -82,13 +82,7 @@ func TestUS0056_DecisionObjectsRetainTimestamp(t *testing.T) {
 		job := waitForJob(t, env.URL, jobID, storage.JobCompleted)
 		require.NotEmpty(t, job.ResultID)
 
-		resp, err := gohttp.Get(fmt.Sprintf("%s/api/v1/objects/%s", env.URL, job.ResultID))
-		require.NoError(t, err)
-		defer resp.Body.Close()
-		require.Equal(t, gohttp.StatusOK, resp.StatusCode)
-
-		var obj storage.KnowledgeObject
-		require.NoError(t, json.NewDecoder(resp.Body).Decode(&obj))
+		obj := getObject(t, env.URL, job.ResultID)
 		objects = append(objects, &obj)
 	}
 
@@ -150,12 +144,7 @@ func TestUS0056_TimelineCompositionPreservesChronologicalOrder(t *testing.T) {
 		job := waitForJob(t, env.URL, jobID, storage.JobCompleted)
 		require.NotEmpty(t, job.ResultID)
 
-		resp, err := gohttp.Get(fmt.Sprintf("%s/api/v1/objects/%s", env.URL, job.ResultID))
-		require.NoError(t, err)
-		defer resp.Body.Close()
-
-		var obj storage.KnowledgeObject
-		require.NoError(t, json.NewDecoder(resp.Body).Decode(&obj))
+		obj := getObject(t, env.URL, job.ResultID)
 		resultObjects = append(resultObjects, &obj)
 	}
 

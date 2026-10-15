@@ -18,7 +18,7 @@ type OllamaLLMProvider struct {
 // NewOllamaLLMProvider creates an Ollama LLM provider with the given endpoint and model.
 func NewOllamaLLMProvider(endpoint, model string) *OllamaLLMProvider {
 	if endpoint == "" {
-		endpoint = "http://localhost:11434"
+		endpoint = defaultOllamaEndpoint
 	}
 	if model == "" {
 		model = "llama3"
@@ -26,7 +26,7 @@ func NewOllamaLLMProvider(endpoint, model string) *OllamaLLMProvider {
 	return &OllamaLLMProvider{endpoint: endpoint, model: model, client: &http.Client{}}
 }
 
-func (p *OllamaLLMProvider) Name() string { return "ollama" }
+func (p *OllamaLLMProvider) Name() string { return backendOllama }
 
 func (p *OllamaLLMProvider) Generate(ctx context.Context, prompt string) (string, error) {
 	reqBody := map[string]interface{}{

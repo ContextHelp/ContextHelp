@@ -59,20 +59,28 @@ func IsDeprecatedBackendAlias(name string) bool {
 	return ok
 }
 
-// deprecationOnce ensures we warn at most once per process per alias,
-// to avoid noisy logs when New is called repeatedly with the same config.
-var deprecationOnce sync.Map // map[string]*sync.Once
+// deprecationWarned records the aliases already warned about: at most
+// one warning per process per alias, to avoid noisy logs when New is
+// called repeatedly with the same config.
+var (
+	deprecationMu     sync.Mutex
+	deprecationWarned = map[string]bool{}
+)
 
 func warnDeprecatedAlias(alias, canonical string) {
-	v, _ := deprecationOnce.LoadOrStore(alias, &sync.Once{})
-	v.(*sync.Once).Do(func() {
-		fmt.Fprintf(os.Stderr,
-			"warning: secrets backend %q is deprecated; use canonical name %q (will be removed in a future release)\n",
-			alias, canonical)
-		slog.Warn("secrets: deprecated backend alias",
-			"alias", alias,
-			"canonical", canonical)
-	})
+	deprecationMu.Lock()
+	warned := deprecationWarned[alias]
+	deprecationWarned[alias] = true
+	deprecationMu.Unlock()
+	if warned {
+		return
+	}
+	fmt.Fprintf(os.Stderr,
+		"warning: secrets backend %q is deprecated; use canonical name %q (will be removed in a future release)\n",
+		alias, canonical)
+	slog.Warn("secrets: deprecated backend alias",
+		"alias", alias,
+		"canonical", canonical)
 }
 
 // New returns a kit secret store configured from cfg. Backend names

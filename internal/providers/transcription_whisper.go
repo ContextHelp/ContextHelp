@@ -17,7 +17,7 @@ func NewWhisperTranscriptionProvider(binary string) *WhisperTranscriptionProvide
 	return &WhisperTranscriptionProvider{binary: binary}
 }
 
-func (p *WhisperTranscriptionProvider) Name() string { return "whisper-cli" }
+func (p *WhisperTranscriptionProvider) Name() string { return backendWhisper }
 
 // whisperSegment maps a single segment from whisper JSON output.
 type whisperSegment struct {

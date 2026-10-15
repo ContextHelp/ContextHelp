@@ -1,3 +1,4 @@
+// Package notion is a minimal Notion API client for page imports.
 package notion
 
 import (

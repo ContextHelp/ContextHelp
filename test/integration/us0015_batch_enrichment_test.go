@@ -2,7 +2,6 @@ package integration
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	gohttp "net/http"
 	"testing"
@@ -78,13 +77,7 @@ func TestUS0015_NObjectsEnqueuedAndAllComplete(t *testing.T) {
 
 	// Verify all N result objects are enriched.
 	for i, resultID := range resultIDs {
-		resp, err := gohttp.Get(fmt.Sprintf("%s/api/v1/objects/%s", env.URL, resultID))
-		require.NoError(t, err)
-		defer resp.Body.Close()
-		require.Equal(t, gohttp.StatusOK, resp.StatusCode, "object %d must be retrievable", i)
-
-		var obj storage.KnowledgeObject
-		require.NoError(t, json.NewDecoder(resp.Body).Decode(&obj))
+		obj := getObject(t, env.URL, resultID, "object %d must be retrievable", i)
 		assert.Equal(t, true, obj.Metadata["enriched"],
 			"object %d must be marked enriched", i)
 	}
@@ -121,12 +114,7 @@ func TestUS0015_AllEnrichedObjectsHaveEnrichmentMetadata(t *testing.T) {
 	}
 
 	for i, resultID := range resultIDs {
-		resp, err := gohttp.Get(fmt.Sprintf("%s/api/v1/objects/%s", env.URL, resultID))
-		require.NoError(t, err)
-		defer resp.Body.Close()
-
-		var obj storage.KnowledgeObject
-		require.NoError(t, json.NewDecoder(resp.Body).Decode(&obj))
+		obj := getObject(t, env.URL, resultID)
 
 		assert.NotNil(t, obj.Metadata, "object %d must have metadata", i)
 		assert.Equal(t, true, obj.Metadata["enriched"], "object %d: enriched=true", i)
@@ -210,7 +198,7 @@ func TestUS0015_JobsProcessedIndependently(t *testing.T) {
 		// Verify job is queryable via API.
 		resp, err := gohttp.Get(fmt.Sprintf("%s/api/v1/jobs/%s", env.URL, jobID))
 		require.NoError(t, err)
-		defer resp.Body.Close()
+		resp.Body.Close()
 		assert.Equal(t, gohttp.StatusOK, resp.StatusCode,
 			"job %d must be individually queryable via GET /jobs/{id}", i)
 	}

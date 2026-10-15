@@ -1,3 +1,5 @@
+// Package bookmarks parses Netscape-format bookmark HTML exports, the
+// format Chrome, Firefox, Safari and Edge all export.
 package bookmarks
 
 import (
