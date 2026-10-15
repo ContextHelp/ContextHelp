@@ -222,6 +222,10 @@ var pgMigrations = []pgMigration{
 	{Version: 25, Name: "drop objects.plugins", Statements: []string{
 		`ALTER TABLE objects DROP COLUMN IF EXISTS plugins`,
 	}},
+	// object_proximity endpoints reference objects with ON DELETE
+	// CASCADE, mirroring SQLite migration 046: deleting an object drops
+	// its proximity pairs. Pairs whose object is already gone go first.
+	{Version: 26, Name: "object_proximity object FKs with cascade", fn: migrateProximityObjectFK},
 }
 
 // migrateAliasesObjectFK deletes aliases whose object is gone, then adds
@@ -250,6 +254,46 @@ func migrateAliasesObjectFK(ctx context.Context, d *Driver) error {
 		if _, err := tx.ExecContext(ctx, `ALTER TABLE aliases ADD CONSTRAINT aliases_object_fk
 			FOREIGN KEY (object_id) REFERENCES objects(id) ON DELETE CASCADE`); err != nil {
 			return fmt.Errorf("add aliases_object_fk: %w", err)
+		}
+	}
+	return tx.Commit()
+}
+
+// migrateProximityObjectFK deletes object_proximity pairs with a missing
+// object on either side, then adds object_proximity_a_fk and
+// object_proximity_b_fk (ON DELETE CASCADE), each guarded by a
+// pg_constraint lookup so a replay is a no-op. One transaction, like
+// migrateAliasesObjectFK.
+func migrateProximityObjectFK(ctx context.Context, d *Driver) error {
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM object_proximity p
+		 WHERE NOT EXISTS (SELECT 1 FROM objects o WHERE o.id = p.object_a)
+		    OR NOT EXISTS (SELECT 1 FROM objects o WHERE o.id = p.object_b)`); err != nil {
+		return fmt.Errorf("delete orphaned proximity pairs: %w", err)
+	}
+	for _, fk := range []struct{ name, column string }{
+		{"object_proximity_a_fk", "object_a"},
+		{"object_proximity_b_fk", "object_b"},
+	} {
+		var exists bool
+		if err := tx.QueryRowContext(ctx, `
+			SELECT EXISTS (SELECT 1 FROM pg_constraint
+			                WHERE conname = $1 AND conrelid = 'object_proximity'::regclass)`,
+			fk.name).Scan(&exists); err != nil {
+			return fmt.Errorf("inspect %s: %w", fk.name, err)
+		}
+		if exists {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `ALTER TABLE object_proximity ADD CONSTRAINT `+fk.name+`
+			FOREIGN KEY (`+fk.column+`) REFERENCES objects(id) ON DELETE CASCADE`); err != nil {
+			return fmt.Errorf("add %s: %w", fk.name, err)
 		}
 	}
 	return tx.Commit()

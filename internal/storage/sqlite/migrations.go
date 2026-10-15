@@ -240,6 +240,12 @@ var migrations = []migration{
 	// (ADR-078) and no code reads or writes the column. Not part of the
 	// FTS input, so no re-projection follows.
 	{Version: 45, fn: migrate045DropObjectsPlugins},
+	// Migration 046: object_proximity endpoints reference objects with
+	// ON DELETE CASCADE, so deleting an object drops its proximity pairs
+	// like its aliases and object_nodes. Rebuilds the table (SQLite
+	// cannot add a foreign key in place) and drops pairs whose object is
+	// already gone.
+	{Version: 46, fn: migrate046ProximityObjectFK},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
@@ -863,6 +869,64 @@ func migrate045DropObjectsPlugins(ctx context.Context, d *Driver) error {
 	defer func() { _ = tx.Rollback() }()
 	if err := dropObjectsColumn(ctx, tx, "plugins"); err != nil {
 		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+	return nil
+}
+
+// migrate046ProximityObjectFK rebuilds object_proximity with both
+// endpoints referencing objects(id) ON DELETE CASCADE, copying only the
+// pairs whose two objects still exist. One transaction; a table that
+// already carries the foreign keys is left alone, so a replay is a
+// no-op.
+func migrate046ProximityObjectFK(ctx context.Context, d *Driver) error {
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var fks int
+	if err := tx.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM pragma_foreign_key_list('object_proximity') WHERE "table" = 'objects'`,
+	).Scan(&fks); err != nil {
+		return fmt.Errorf("inspect object_proximity foreign keys: %w", err)
+	}
+	if fks >= 2 {
+		return nil
+	}
+	for _, stmt := range []string{
+		`CREATE TABLE object_proximity_fk (
+			object_a    TEXT NOT NULL REFERENCES objects(id) ON DELETE CASCADE,
+			object_b    TEXT NOT NULL REFERENCES objects(id) ON DELETE CASCADE,
+			score       REAL NOT NULL,
+			semantic    REAL NOT NULL DEFAULT 0,
+			temporal    REAL NOT NULL DEFAULT 0,
+			entity      REAL NOT NULL DEFAULT 0,
+			origin      REAL NOT NULL DEFAULT 0,
+			behavioral  REAL NOT NULL DEFAULT 0,
+			computed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+			PRIMARY KEY (object_a, object_b),
+			CHECK (object_a < object_b)
+		)`,
+		`INSERT INTO object_proximity_fk
+		 SELECT p.object_a, p.object_b, p.score, p.semantic, p.temporal, p.entity,
+		        p.origin, p.behavioral, p.computed_at
+		   FROM object_proximity p
+		  WHERE EXISTS (SELECT 1 FROM objects o WHERE o.id = p.object_a)
+		    AND EXISTS (SELECT 1 FROM objects o WHERE o.id = p.object_b)`,
+		`DROP TABLE object_proximity`,
+		`ALTER TABLE object_proximity_fk RENAME TO object_proximity`,
+		`CREATE INDEX IF NOT EXISTS idx_proximity_a_score ON object_proximity(object_a, score DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_proximity_b_score ON object_proximity(object_b, score DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_proximity_score ON object_proximity(score DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_proximity_computed ON object_proximity(computed_at)`,
+	} {
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("rebuild object_proximity: %w", err)
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit: %w", err)

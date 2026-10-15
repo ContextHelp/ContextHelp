@@ -128,10 +128,9 @@ Every hard delete (`DELETE /api/v1/objects/{id}`, which `ctxt delete` calls, and
 | `objects` row (with its tags and mentions) and its full-text index entry | Hard delete |
 | `attachments` | Deleted with the row |
 | `embeddings` and the per-model vector indexes | Cascade delete |
-| `aliases`, `object_nodes`, `resurfacing_queue` | Cascade delete |
+| `aliases`, `object_nodes`, `resurfacing_queue`, `object_proximity` | Cascade delete |
 | `edges` from or to the object (backlinks, mention links) | Deleted before the row |
 | Blobs holding the object's content | Deleted when no other object refers to them and they are over an hour old; younger ones are left for `dpkms housekeeping run` |
-| `object_proximity` | Not deleted |
 | Entities | Kept |
 | `audit_log` | Untouched; no deletion event is written |
 
