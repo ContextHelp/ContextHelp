@@ -159,3 +159,49 @@ func TestFanOut_ObjectNotFound(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "get object")
 }
+
+// TestFanOut_EdgesCarryProvenance pins the provenance both directions of
+// a mention edge carry: the entity_mention node of the stored graph that
+// holds the mention and the field it came from, or the mentions field
+// alone when the graph has no node for it.
+func TestFanOut_EdgesCarryProvenance(t *testing.T) {
+	svc := newFanOutService(t)
+	ctx := context.Background()
+
+	alice := uri.URI{Scheme: "ctxt", Namespace: "person", ID: "alice"}
+	mobile := uri.URI{Scheme: "ctxt", Namespace: "project", ID: "mobile"}
+	nodeID := storage.NewNodeID("obj-fan-7", storage.NodeTypeEntityMention, 0)
+	obj := &storage.KnowledgeObject{
+		ID:         "obj-fan-7",
+		Type:       "text",
+		RawContent: "test content with entities",
+		Mentions:   []uri.URI{alice, mobile},
+		Graph: &storage.ObjectGraph{Nodes: []storage.GraphNode{{
+			ID:       nodeID,
+			NodeType: storage.NodeTypeEntityMention,
+			Label:    alice.String(),
+			Metadata: map[string]any{storage.ProvenanceSourceField: storage.MentionSourceRawContent},
+		}}},
+	}
+	require.NoError(t, svc.Store.Objects().Create(ctx, obj))
+
+	_, err := svc.FanOut(ctx, "obj-fan-7")
+	require.NoError(t, err)
+
+	want := map[string]map[string]any{
+		alice.String():  {storage.ProvenanceSourceNode: nodeID, storage.ProvenanceSourceField: storage.MentionSourceRawContent},
+		mobile.String(): {storage.ProvenanceSourceNode: "", storage.ProvenanceSourceField: storage.MentionSourceMentions},
+	}
+	fwd, err := svc.Store.Edges().ListFrom(ctx, "object", "obj-fan-7")
+	require.NoError(t, err)
+	require.Len(t, fwd, 2)
+	for _, e := range fwd {
+		assert.Equal(t, want[e.ToID], e.Metadata, "mentions edge to %s", e.ToID)
+	}
+	rev, err := svc.Store.Edges().ListTo(ctx, "object", "obj-fan-7")
+	require.NoError(t, err)
+	require.Len(t, rev, 2)
+	for _, e := range rev {
+		assert.Equal(t, want[e.FromID], e.Metadata, "mentioned_in edge from %s", e.FromID)
+	}
+}

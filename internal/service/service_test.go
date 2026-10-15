@@ -1030,13 +1030,19 @@ func TestAnalyze_HonorsExplicitMentions(t *testing.T) {
 			"caller-asserted mentions create thin entities (full record may exist later)")
 	}
 
-	// Two object→entity 'mentions' edges exist, one per slug.
+	// Two object→entity 'mentions' edges exist, one per slug, each
+	// recording that the raw path knows the mention from the mentions
+	// field only: no pipeline ran, so no entity_mention node holds it.
 	edges, err := svc.Store.Edges().ListFrom(ctx, "object", objID)
 	require.NoError(t, err)
 	mentionTargets := map[string]bool{}
 	for _, e := range edges {
 		if e.EdgeType == "mentions" && e.ToType == "entity" {
 			mentionTargets[e.ToID] = true
+			assert.Equal(t, map[string]any{
+				storage.ProvenanceSourceNode:  "",
+				storage.ProvenanceSourceField: storage.MentionSourceMentions,
+			}, e.Metadata, "provenance of the mention edge to %q", e.ToID)
 		}
 	}
 	for _, slug := range []string{"client/acme", "project/foo"} {

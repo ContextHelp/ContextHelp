@@ -3,6 +3,7 @@ package steps
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"testing"
 	"time"
 
@@ -356,6 +357,47 @@ func TestMentionSlug(t *testing.T) {
 		got := mentionSlug(u)
 		if got != tc.want {
 			t.Errorf("mentionSlug(%q) = %q, want %q", tc.uriStr, got, tc.want)
+		}
+	}
+}
+
+// TestEntityResolverRecordsProvenance pins the provenance each mention
+// edge carries: the entity_mention node of the draft's graph that holds
+// the mention and the field that node recorded, or the mentions field
+// alone when the graph has no node for it.
+func TestEntityResolverRecordsProvenance(t *testing.T) {
+	entities := newStubEntityStore()
+	edges := &stubEdgeStore{}
+	step := NewEntityResolverWithStores(entities, edges)
+
+	nodeID := storage.NewNodeID("obj-3", storage.NodeTypeEntityMention, 0)
+	draft := &storage.KnowledgeObject{
+		ID: "obj-3",
+		Mentions: []uri.URI{
+			mustURI(t, "ctxt://entity/person/alice"),
+			mustURI(t, "ctxt://entity/org/acme"),
+		},
+		Graph: &storage.ObjectGraph{Nodes: []storage.GraphNode{{
+			ID:       nodeID,
+			NodeType: storage.NodeTypeEntityMention,
+			Label:    "ctxt://entity/person/alice",
+			Metadata: map[string]any{storage.ProvenanceSourceField: storage.MentionSourceRawContent},
+		}}},
+	}
+	if _, err := step.Run(context.Background(), draft); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []map[string]any{
+		{storage.ProvenanceSourceNode: nodeID, storage.ProvenanceSourceField: storage.MentionSourceRawContent},
+		{storage.ProvenanceSourceNode: "", storage.ProvenanceSourceField: storage.MentionSourceMentions},
+	}
+	if len(edges.created) != len(want) {
+		t.Fatalf("expected %d edges, got %d", len(want), len(edges.created))
+	}
+	for i, e := range edges.created {
+		if !reflect.DeepEqual(e.Metadata, want[i]) {
+			t.Errorf("edge[%d] %s metadata = %v, want %v", i, e.ToID, e.Metadata, want[i])
 		}
 	}
 }

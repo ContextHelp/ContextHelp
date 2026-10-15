@@ -303,7 +303,7 @@ func (s *Service) analyzeRaw(ctx context.Context, req AnalyzeRequest, detectedTy
 	// caller-asserted mentions become thin entity rows + mention
 	// edges even on the raw path so partitioning by @client/@project
 	// works without the pipeline running.
-	if err := s.writeUserMentionEdges(ctx, obj.ID, obj.Mentions); err != nil {
+	if err := s.writeUserMentionEdges(ctx, obj); err != nil {
 		return "", fmt.Errorf("analyze raw: user mentions: %w", err)
 	}
 	if ev, err := events.NewEvent("service.analyze", string(events.TopicObjectRawStored), obj); err == nil {
@@ -367,21 +367,20 @@ func userHintsToTags(hints []string) []storage.Tag {
 }
 
 // writeUserMentionEdges persists thin entity rows + object→entity 'mentions'
-// edges for caller-asserted mentions. Mirrors the entity_resolver
+// edges for the caller-asserted mentions on obj. Mirrors the entity_resolver
 // pipeline step but runs at analyze-time so even Raw-mode and pipeline-mode
 // captures land partitioning data uniformly. Idempotent: thin upsert on
-// entities + UNIQUE-tolerant edge insert.
-func (s *Service) writeUserMentionEdges(
-	ctx context.Context,
-	objectID string,
-	uris []uri.URI,
-) error {
-	if len(uris) == 0 || objectID == "" {
+// entities + UNIQUE-tolerant edge insert. The raw path runs no pipeline,
+// so obj.Graph holds no entity_mention node and each edge's provenance is
+// the mentions field alone.
+func (s *Service) writeUserMentionEdges(ctx context.Context, obj *storage.KnowledgeObject) error {
+	if obj == nil || len(obj.Mentions) == 0 || obj.ID == "" {
 		return nil
 	}
 	now := time.Now().UTC()
-	for i := range uris {
-		slug := mentionURISlug(&uris[i])
+	for i := range obj.Mentions {
+		mention := &obj.Mentions[i]
+		slug := mentionURISlug(mention)
 		if slug == "" {
 			continue
 		}
@@ -400,11 +399,12 @@ func (s *Service) writeUserMentionEdges(
 		edge := &storage.Edge{
 			ID:        uuid.NewString(),
 			FromType:  nodeObject,
-			FromID:    objectID,
+			FromID:    obj.ID,
 			ToType:    "entity",
 			ToID:      slug,
 			EdgeType:  "mentions",
 			Weight:    1.0,
+			Metadata:  storage.MentionProvenance(obj.Graph, mention.String()),
 			CreatedAt: now,
 		}
 		if err := s.Store.Edges().Create(ctx, edge); err != nil {

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	uri "hop.top/cite/scheme"
 )
 
 func TestEntityExtractorLiteralMentions(t *testing.T) {
@@ -147,5 +148,35 @@ func TestEntityExtractorNoGraphWhenNoMentions(t *testing.T) {
 	}
 	if got.Graph != nil {
 		t.Error("expected nil graph when no mentions found")
+	}
+}
+
+// TestEntityExtractorRecordsMentionSourceField pins what each
+// entity_mention node records about where its mention came from: the
+// mentions field for a caller-asserted one, raw_content for one found in
+// the text. The mention edges written later carry it as their provenance.
+func TestEntityExtractorRecordsMentionSourceField(t *testing.T) {
+	step := NewEntityExtractor()
+	draft := &storage.KnowledgeObject{
+		ID:         "obj-ee3",
+		RawContent: "Call with @person.alice about the roadmap.",
+		Mentions:   []uri.URI{mustURI(t, "ctxt://entity/client/acme")}, // caller-asserted
+	}
+	got, err := step.Run(context.Background(), draft)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	want := map[string]string{
+		"ctxt://entity/client/acme":  storage.MentionSourceMentions,
+		"ctxt://entity/person/alice": storage.MentionSourceRawContent,
+	}
+	if got.Graph == nil || len(got.Graph.Nodes) != len(want) {
+		t.Fatalf("graph = %+v, want %d entity_mention nodes", got.Graph, len(want))
+	}
+	for _, n := range got.Graph.Nodes {
+		field, _ := n.Metadata[storage.ProvenanceSourceField].(string)
+		if field != want[n.Label] {
+			t.Errorf("node %s source_field = %q, want %q", n.Label, field, want[n.Label])
+		}
 	}
 }
