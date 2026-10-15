@@ -22,16 +22,16 @@
 
 Compose does not read `docker/.env.prod` on its own: every `docker compose` command below passes `--env-file docker/.env.prod`. The file only feeds `${VAR}` interpolation in `docker-compose.yml` (image tag, Caddy's domain and ACME email, the bus token); dpkms settings live in its config files. Compose's default `.env` at the repo root is left to the host dev environment (`.env.example`).
 
-**3. Create the auth secret**
+**3. Create the auth file and the owner's key**
 
-The image's config sets `server.access: public`, and a public instance refuses to start without inbound auth. See [Secrets](#secrets).
+The image's config sets `server.access: public`. A public instance refuses to start without an owner credential and needs `server.public_url` for its sign-in links. Copy the auth example, set `public_url` to the address people open (Caddy's `DOMAIN`), then create the owner's key against the container's data volume before the first start; the key is printed once. Keep it for the CLI config (`server.token`) or the proxy. Nothing goes into the auth file unless you want keys declared by hash for infrastructure as code. See [Secrets](#secrets).
 
     openssl rand -hex 32    # bus token: DPKMS_BUS_TOKEN= in the env file
-    openssl rand -hex 32    # API token: one per device or person
     cp docker/dpkms-auth.example.yaml docker/dpkms-auth.yaml
-    $EDITOR docker/dpkms-auth.yaml   # replace each REPLACE_ME with a token
+    $EDITOR docker/dpkms-auth.yaml   # set public_url; drop the keys block or fill in real hashes
+    docker compose --env-file docker/.env.prod run --rm dpkms auth key create --principal owner --name "laptop CLI"
 
-serve refuses to start on the copied example as is: a `REPLACE_ME` token, or any token under 32 characters, stops it at startup.
+serve refuses to start on the copied example as is: its `keys` block still holds the `REPLACE_ME` placeholder.
 
 **4. Create the settings file**
 
@@ -64,31 +64,27 @@ dpkms needs these secrets, none of which the image or the repo carries.
 | Secret | Where | Read by |
 |--------|-------|---------|
 | Bus token | `DPKMS_BUS_TOKEN` in the env file | the bus hub at `/ws/bus`; serve exits without it |
-| API tokens | `docker/dpkms-auth.yaml` (`server.auth`) | every `/api/v1` request and the web UI sign-in |
+| API keys | the instance database, created with `dpkms auth key create` and stored as hashes; `docker/dpkms-auth.yaml` holds `server.public_url` and, optionally, keys declared by hash under `server.auth.keys` | every `/api/v1` request and the web UI sign-in |
 | S3 credentials | `docker/dpkms-local.yaml` (`storage.blob.s3`) | the blob store, when `storage.blob.backend: s3` |
 | Provider API keys | `OPENAI_API_KEY` etc. in the env file | the AI providers; see [Blob storage and providers](#blob-storage-and-providers) |
 
 Generate each token with `openssl rand -hex 32`. Compose refuses to start the stack while `DPKMS_BUS_TOKEN` is unset or empty.
 
-`docker/dpkms-auth.yaml` is gitignored. Copy it from `docker/dpkms-auth.example.yaml`, which holds only `server.auth`:
+`docker/dpkms-auth.yaml` is gitignored. Copy it from `docker/dpkms-auth.example.yaml`, which holds `server.public_url` and an optional `server.auth.keys` block:
 
 ```yaml
 server:
+  public_url: https://dpkms.example.com
   auth:
-    provider: static
-    static:
-      tokens:
-        - token: 3f9c...   # openssl rand -hex 32
-          principal: admin
-          roles: [admin]
-        - token: 8a1d...
-          principal: phone
-          roles: [writer]   # capture only
+    keys:                      # optional: infrastructure as code
+      - hash: sha256:3f9c...   # printf %s "$KEY" | sha256sum
+        principal: owner
+        roles: [admin]
 ```
 
-Each token needs at least one role: `admin`, `writer` or `reader`. Write the token itself: config files do not expand `${VAR}`.
+API keys live in the instance database, created with `dpkms auth key create` and stored as hashes. The `docker/dpkms-auth.yaml` file holds `server.public_url` and, optionally, keys declared by hash under `server.auth.keys`.
 
-serve refuses to start while any token still contains `REPLACE_ME` (the example's placeholder, public in this repo) or is shorter than 32 characters. The error names the entry, for example `auth: static token [0]: token is the example placeholder (contains REPLACE_ME)`; replace that token with `openssl rand -hex 32` output and start again.
+Write values themselves: config files do not expand `${VAR}`. serve refuses to start while a declared hash still contains `REPLACE_ME` (the example's placeholder, public in this repo) or is not `sha256:` followed by 64 hex digits; the error names the entry. Replace it with the hash of a real key, or remove the `keys` block and create the owner's key with the command above.
 
 Compose mounts the file as the `dpkms-auth` secret at `/run/secrets/dpkms-auth.yaml`, and `docker/dpkms-local.yaml` as the `dpkms-local` secret at `/run/secrets/dpkms-local.yaml`. The image's command loads them as further `--config` layers after `/app/config.yaml`; later files win:
 
@@ -107,7 +103,7 @@ Without compose, mount them yourself:
 
 serve exits at config load when either file is missing. Compose also refuses to start without them.
 
-To rotate a token, edit the file and `docker compose --env-file docker/.env.prod --profile prod restart dpkms`.
+To rotate a key, create a new one with `dpkms auth key create` and revoke the old one. A running dpkms accepts the new key on its next request, and a key declared by hash changes on restart (`docker compose --env-file docker/.env.prod --profile prod restart dpkms`).
 
 ## Blob storage and providers
 

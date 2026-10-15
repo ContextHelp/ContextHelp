@@ -115,8 +115,8 @@ out of the shared config file:
   OPENAI_API_KEY`) or the env var of the same name; the store wins.
 - **S3 blob credentials**: `CTXT_BLOB_S3_ACCESS_KEY` /
   `CTXT_BLOB_S3_SECRET_KEY`.
-- **Everything else** (`server.auth` tokens, `federation.token`): the
-  literal value in a gitignored secrets file loaded as a second
+- **Everything else** (`server.auth.keys` hashes, `federations[].token`):
+  the literal value in a gitignored secrets file loaded as a second
   `--config`. Container pattern:
   [deployment/docker.md#secrets](deployment/docker.md#secrets) and
   `docker/dpkms-auth.example.yaml`.
@@ -224,7 +224,7 @@ registry/<name>` (value on stdin); see
 | `fanout` | Post-ingest fan-out enrichment |
 | `resurfacing` | Background resurfacing queue |
 | `federations` | Remote dPKMS peers to sync with |
-| `federation` | Receive-side federation `token` |
+| `federation` | Receive-side federation limits (`max_request_bytes`); inbound pushes authenticate with a peer principal's API key |
 | `security` | Security alert thresholds and delivery (`alerts`) |
 | `backup` | `ctxt config backup`: `dir`, `encrypt_by_default` |
 | `privacy` | `telemetry` (`CH_DISABLE_TELEMETRY` forces it off) |

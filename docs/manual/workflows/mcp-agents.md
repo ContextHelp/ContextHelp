@@ -40,11 +40,11 @@ Add the URL as an HTTP (streamable HTTP) MCP server in your client's own MCP set
 claude mcp add --transport http ctxt-graph http://127.0.0.1:8080/api/v1/mcp/
 ```
 
-On a private instance (`server.access: private`, the default) no token is needed. On a `protected` or `public` instance, send a static token whose roles include any of `reader`, `writer` or `admin`:
+On a private instance (`server.access: private`, the default) no key is needed. On a `protected` or `public` instance, send an API key whose principal holds any of `reader`, `writer` or `admin`; create one on the dpkms host with `dpkms auth key create`:
 
 ```bash
 claude mcp add --transport http ctxt-graph https://dpkms.example.com/api/v1/mcp/ \
-  --header "Authorization: Bearer <token from server.auth.static.tokens>"
+  --header "Authorization: Bearer <key from dpkms auth key create>"
 ```
 
 Tokens and roles: [Inbound auth, roles and scopes](../reference/config-and-permissions.md#inbound-auth-roles-and-scopes).
@@ -92,8 +92,8 @@ Without `profile`, `search` covers every profile.
 ### "Agent client can't connect"
 
 - The client must support streamable-HTTP MCP servers; there is no stdio fallback.
-- `401`: the instance is not private and the request carries no token, or an unknown one. Check `server.access` and `server.auth.static.tokens`.
-- `403 INSUFFICIENT_SCOPE`: the request authenticated with a web UI browser session, which never holds `read:mcp`. Use a token.
+- `401`: the instance is not private and the request carries no key, or an unknown, expired or revoked one. Check `server.access` and the key.
+- `403 INSUFFICIENT_SCOPE`: the request authenticated with a web UI browser session, which never holds `read:mcp`. Use a key.
 - `405`: the client sent `GET`. The endpoint only answers `POST`.
 - Connection refused: dpkms is not running, or listens on another port or host (`ctxt status` shows the instance ctxt resolves).
 
