@@ -57,6 +57,11 @@ const (
 	ScopeReadJobs Scope = "read:jobs"
 	// ScopeWriteJobs retries jobs.
 	ScopeWriteJobs Scope = "write:jobs"
+	// ScopeCancelJobs cancels pending and running jobs. Split from
+	// write:jobs: a cancel abandons work in flight, so like the other
+	// destructive verbs only the admin role holds it, and a web UI
+	// session never does.
+	ScopeCancelJobs Scope = "cancel:jobs"
 
 	// ScopeReadRegistries lists subscribed knowledge registries.
 	ScopeReadRegistries Scope = "read:registries"
@@ -106,7 +111,7 @@ var AllScopes = []Scope{
 	ScopeDeleteAliases, ScopeDeleteSearches, ScopeReadMCP,
 	ScopeReadInbox, ScopeWriteInbox, ScopeProcessInbox,
 	ScopeReadFeeds, ScopeWriteFeeds, ScopeDeleteFeeds,
-	ScopeReadJobs, ScopeWriteJobs,
+	ScopeReadJobs, ScopeWriteJobs, ScopeCancelJobs,
 	ScopeReadRegistries, ScopeSyncRegistries,
 	ScopeReadSystem, ScopeWriteSystem,
 	ScopeReadPipelines, ScopeAdminPipelines, ScopeAdminSteps,
@@ -144,7 +149,7 @@ const (
 )
 
 // Verb returns the part of the scope before the colon (read, write,
-// delete, process, sync, admin, signout).
+// delete, cancel, process, sync, admin, signout).
 func (s Scope) Verb() string {
 	verb, _, _ := strings.Cut(string(s), ":")
 	return verb

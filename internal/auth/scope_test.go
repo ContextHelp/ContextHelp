@@ -60,7 +60,7 @@ func TestWriterBundleExcludesDeleteProcessSyncAdmin(t *testing.T) {
 	}
 	for _, s := range []Scope{
 		ScopeDeleteObjects, ScopeDeleteEdges, ScopeDeleteAliases, ScopeDeleteSearches, ScopeProcessInbox,
-		ScopeSyncRegistries, ScopeAdminAudit, ScopeSignoutUI,
+		ScopeCancelJobs, ScopeSyncRegistries, ScopeAdminAudit, ScopeSignoutUI,
 	} {
 		if slices.Contains(got, s) {
 			t.Errorf("writer bundle must not hold %q", s)
