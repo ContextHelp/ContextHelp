@@ -2,8 +2,9 @@
 
 package http
 
-// Postgres parity for the admin entity-gate bypass: the metering rows the
-// test asserts on live in the store. Reads the POSTGRES_* env block the
+// Postgres parity for the entity gate: the admin bypass and the
+// non-admin metering and quota both read and write metering rows in the
+// store. Reads the POSTGRES_* env block the
 // other integration suites use:
 //
 //	POSTGRES_HOST=localhost POSTGRES_USER=contexthelp POSTGRES_PASSWORD=test_password \
@@ -79,5 +80,9 @@ func freshPostgres(t *testing.T) storage.StorageDriver {
 }
 
 func TestAdminBypassesEntityGate_Postgres(t *testing.T) {
-	runAdminEntityGateBypass(t, freshPostgres(t), false)
+	runAdminEntityGateBypass(t, freshPostgres(t))
+}
+
+func TestEntityGateMetersNonAdmin_Postgres(t *testing.T) {
+	runNonAdminEntityGateMetering(t, freshPostgres(t))
 }

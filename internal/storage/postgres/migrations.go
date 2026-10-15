@@ -333,6 +333,24 @@ var pgMigrations = []pgMigration{
 		`CREATE INDEX IF NOT EXISTS idx_objects_created_at ON objects (created_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_objects_updated_at ON objects (updated_at)`,
 	}},
+	// metering_events, mirroring SQLite migration 019: the MeteringStore
+	// the inbound entitlement gate charges every non-admin entity read
+	// to. Postgres never had the table (its store was a placeholder), so
+	// a gated read failed closed with a 500. New table and indexes only;
+	// IF NOT EXISTS makes a replay a no-op.
+	{Version: 31, Name: "metering_events", Statements: []string{
+		`CREATE TABLE IF NOT EXISTS metering_events (
+			id            TEXT PRIMARY KEY,
+			registry_name TEXT NOT NULL,
+			event_type    TEXT NOT NULL,
+			namespace     TEXT NOT NULL DEFAULT '',
+			count         INTEGER NOT NULL DEFAULT 1,
+			occurred_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_metering_events_registry_name ON metering_events (registry_name)`,
+		`CREATE INDEX IF NOT EXISTS idx_metering_events_occurred_at ON metering_events (occurred_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_metering_events_registry_event ON metering_events (registry_name, event_type)`,
+	}},
 }
 
 // migrateAliasesObjectFK deletes aliases whose object is gone, then adds
