@@ -10,7 +10,12 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
-type AliasStore struct{ db *sql.DB }
+type AliasStore struct {
+	db *sql.DB
+	// scope, when set, keeps every read to the aliases of objects the
+	// viewer may see (see scope.go).
+	scope *storage.Scope
+}
 
 func (s *AliasStore) Create(ctx context.Context, a *storage.Alias) error {
 	_, err := s.db.ExecContext(ctx,
@@ -30,9 +35,12 @@ func (s *AliasStore) Create(ctx context.Context, a *storage.Alias) error {
 func (s *AliasStore) Resolve(ctx context.Context, alias, profile string) (string, error) {
 	if profile != "" {
 		var id string
+		idx := 3
+		clause, sargs := andObjectIn("object_id", s.scope, &idx)
+		// #nosec G202 -- clause is fixed SQL over compiled predicates; values are bound.
 		err := s.db.QueryRowContext(ctx,
-			`SELECT object_id FROM aliases WHERE alias=$1 AND scope='profile' AND profile=$2`,
-			alias, profile,
+			`SELECT object_id FROM aliases WHERE alias=$1 AND scope='profile' AND profile=$2`+clause,
+			append([]any{alias, profile}, sargs...)...,
 		).Scan(&id)
 		if err == nil {
 			return id, nil
@@ -42,9 +50,12 @@ func (s *AliasStore) Resolve(ctx context.Context, alias, profile string) (string
 		}
 	}
 	var id string
+	idx := 2
+	clause, sargs := andObjectIn("object_id", s.scope, &idx)
+	// #nosec G202 -- clause is fixed SQL over compiled predicates; values are bound.
 	err := s.db.QueryRowContext(ctx,
-		`SELECT object_id FROM aliases WHERE alias=$1 AND scope='global'`,
-		alias,
+		`SELECT object_id FROM aliases WHERE alias=$1 AND scope='global'`+clause,
+		append([]any{alias}, sargs...)...,
 	).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", fmt.Errorf("alias %q: %w", alias, storage.ErrNotFound)
@@ -70,6 +81,12 @@ func (s *AliasStore) List(ctx context.Context, filter storage.AliasFilter) ([]*s
 	if filter.Profile != "" {
 		query += fmt.Sprintf(` AND profile=$%d`, idx) // #nosec G202 -- idx is a parameterized placeholder index
 		args = append(args, filter.Profile)
+		idx++
+	}
+	if clause, sargs := andObjectIn("object_id", s.scope, &idx); clause != "" {
+		// #nosec G202 -- clause is fixed SQL over compiled predicates; values are bound.
+		query += clause
+		args = append(args, sargs...)
 	}
 
 	rows, err := s.db.QueryContext(ctx, query, args...)

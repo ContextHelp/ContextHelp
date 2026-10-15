@@ -13,15 +13,30 @@ import (
 // ProximityStore implements storage.ProximityStore for SQLite.
 type ProximityStore struct {
 	db *sql.DB
+	// scope, when set, keeps every neighbour read to pairs whose both
+	// objects the viewer may see (see scope.go).
+	scope *storage.Scope
+}
+
+// pairScope is " AND object_a IN visible AND object_b IN visible" with
+// its arguments, empty without a scope.
+func (s *ProximityStore) pairScope() (string, []any) {
+	if s.scope == nil {
+		return "", nil
+	}
+	vis, args := visibleObjects(*s.scope)
+	return " AND object_a IN " + vis + " AND object_b IN " + vis, append(args, args...)
 }
 
 func (s *ProximityStore) GetNeighbors(ctx context.Context, objectID string, limit int) ([]*storage.ProximityScore, error) {
+	clause, sargs := s.pairScope()
+	// #nosec G202 -- clause is fixed SQL over compiled predicates; values are bound.
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT object_a, object_b, score, semantic, temporal, entity, origin, behavioral, computed_at
 		FROM object_proximity
-		WHERE object_a = ? OR object_b = ?
+		WHERE (object_a = ? OR object_b = ?)`+clause+`
 		ORDER BY score DESC
-		LIMIT ?`, objectID, objectID, limit)
+		LIMIT ?`, append(append([]any{objectID, objectID}, sargs...), limit)...)
 	if err != nil {
 		return nil, fmt.Errorf("proximity.GetNeighbors: %w", err)
 	}
@@ -30,11 +45,13 @@ func (s *ProximityStore) GetNeighbors(ctx context.Context, objectID string, limi
 }
 
 func (s *ProximityStore) GetNeighborsAbove(ctx context.Context, objectID string, threshold float64) ([]*storage.ProximityScore, error) {
+	clause, sargs := s.pairScope()
+	// #nosec G202 -- clause is fixed SQL over compiled predicates; values are bound.
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT object_a, object_b, score, semantic, temporal, entity, origin, behavioral, computed_at
 		FROM object_proximity
-		WHERE (object_a = ? OR object_b = ?) AND score >= ?
-		ORDER BY score DESC`, objectID, objectID, threshold)
+		WHERE (object_a = ? OR object_b = ?) AND score >= ?`+clause+`
+		ORDER BY score DESC`, append([]any{objectID, objectID, threshold}, sargs...)...)
 	if err != nil {
 		return nil, fmt.Errorf("proximity.GetNeighborsAbove: %w", err)
 	}
@@ -48,10 +65,12 @@ func (s *ProximityStore) Get(ctx context.Context, objectA, objectB string) (*sto
 	}
 	var p storage.ProximityScore
 	var computedAt string
+	clause, sargs := s.pairScope()
+	// #nosec G202 -- clause is fixed SQL over compiled predicates; values are bound.
 	err := s.db.QueryRowContext(ctx, `
 		SELECT object_a, object_b, score, semantic, temporal, entity, origin, behavioral, computed_at
 		FROM object_proximity
-		WHERE object_a = ? AND object_b = ?`, objectA, objectB).Scan(
+		WHERE object_a = ? AND object_b = ?`+clause, append([]any{objectA, objectB}, sargs...)...).Scan(
 		&p.ObjectA, &p.ObjectB, &p.Score,
 		&p.Factors.Semantic, &p.Factors.Temporal, &p.Factors.Entity,
 		&p.Factors.Origin, &p.Factors.Behavioral,

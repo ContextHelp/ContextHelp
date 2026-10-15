@@ -143,9 +143,12 @@ func insertMissingEdge(ctx context.Context, db edgeExecer, edge *storage.Edge) (
 }
 
 func (s *EdgeStore) ListFrom(ctx context.Context, fromType, fromID string) ([]*storage.Edge, error) {
+	idx := 3
+	clause, sargs := edgeScope(s.scope, &idx)
+	// #nosec G202 -- clause is fixed SQL over compiled predicates; values are bound.
 	rows, err := s.db.QueryContext(ctx, `SELECT
 		id, from_type, from_id, to_type, to_id, edge_type, weight, metadata, created_at
-	FROM edges WHERE from_type = $1 AND from_id = $2`, fromType, fromID)
+	FROM edges WHERE from_type = $1 AND from_id = $2`+clause, append([]any{fromType, fromID}, sargs...)...)
 	if err != nil {
 		return nil, fmt.Errorf("list edges from: %w", err)
 	}
@@ -154,9 +157,12 @@ func (s *EdgeStore) ListFrom(ctx context.Context, fromType, fromID string) ([]*s
 }
 
 func (s *EdgeStore) ListTo(ctx context.Context, toType, toID string) ([]*storage.Edge, error) {
+	idx := 3
+	clause, sargs := edgeScope(s.scope, &idx)
+	// #nosec G202 -- clause is fixed SQL over compiled predicates; values are bound.
 	rows, err := s.db.QueryContext(ctx, `SELECT
 		id, from_type, from_id, to_type, to_id, edge_type, weight, metadata, created_at
-	FROM edges WHERE to_type = $1 AND to_id = $2`, toType, toID)
+	FROM edges WHERE to_type = $1 AND to_id = $2`+clause, append([]any{toType, toID}, sargs...)...)
 	if err != nil {
 		return nil, fmt.Errorf("list edges to: %w", err)
 	}
@@ -186,11 +192,16 @@ func (s *EdgeStore) DeleteByObject(ctx context.Context, objectID string) error {
 	return nil
 }
 
-// CountMentionsTo returns the count of edges pointing to the given node (toType, toID).
+// CountMentionsTo returns the count of edges pointing to the given node
+// (toType, toID); a scoped store counts the edges from visible objects
+// (ADR-080 §6: rerank signals over visible objects).
 func (s *EdgeStore) CountMentionsTo(ctx context.Context, toType, toID string) (int, error) {
 	var count int
+	idx := 3
+	clause, sargs := edgeScope(s.scope, &idx)
+	// #nosec G202 -- clause is fixed SQL over compiled predicates; values are bound.
 	err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM edges WHERE to_type = $1 AND to_id = $2`, toType, toID).Scan(&count)
+		`SELECT COUNT(*) FROM edges WHERE to_type = $1 AND to_id = $2`+clause, append([]any{toType, toID}, sargs...)...).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("count mentions to: %w", err)
 	}
@@ -238,6 +249,13 @@ func (s *EdgeStore) RelatedObjectIDs(ctx context.Context, objectID string, depth
 			  AND e2.edge_type = 'mentions'`,
 			strings.Join(placeholders, ","),
 		)
+		// Both sides of the traversal stay among visible objects: the
+		// seed and the neighbour (ADR-080 §6).
+		if s.scope != nil {
+			vis, vargs := visibleObjects(*s.scope, &i)
+			query += " AND e1.from_id IN " + vis + " AND e2.from_id IN " + vis
+			ids = append(ids, vargs...)
+		}
 
 		nextFrontier, done, err := s.relatedHop(ctx, query, ids, visited, &result, limit)
 		if err != nil {

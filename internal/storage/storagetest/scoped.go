@@ -36,6 +36,11 @@ var (
 	viewerNothing      = scopedViewer{predicate: "(1 = 0)", principal: "prn_nothing"}
 )
 
+// viewerOfType sees the active objects of type typ.
+func viewerOfType(typ, principal string) scopedViewer {
+	return scopedViewer{predicate: "type = ?", args: []any{typ}, principal: principal}
+}
+
 // ScopedDriverConformance pins storage.ScopedDriver's contract over drv
 // (a fresh database): an unrestricted viewer reads the driver itself,
 // results included; a nil viewer's every read fails closed with
@@ -151,6 +156,16 @@ func scopedRestrictedWritesLand(t *testing.T, drv storage.StorageDriver, now tim
 	}
 	if _, err := scoped.Objects().Get(ctx, written.ID); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("Get of the own write outside the predicate = %v, want ErrNotFound", err)
+	}
+	alias := &storage.Alias{Alias: "scoped-alias", ObjectID: written.ID, Scope: "global", CreatedAt: now, UpdatedAt: now}
+	if err := scoped.Aliases().Create(ctx, alias); err != nil {
+		t.Fatalf("alias Create through restricted: %v", err)
+	}
+	if id, err := drv.Aliases().Resolve(ctx, alias.Alias, ""); err != nil || id != written.ID {
+		t.Fatalf("alias Resolve through driver = (%q, %v), want %q", id, err, written.ID)
+	}
+	if _, err := scoped.Aliases().Resolve(ctx, alias.Alias, ""); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("alias Resolve of a hidden object through restricted = %v, want ErrNotFound", err)
 	}
 }
 

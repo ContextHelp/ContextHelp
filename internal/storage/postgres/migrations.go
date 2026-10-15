@@ -1485,8 +1485,18 @@ type ObjectStore struct {
 	scope *storage.Scope
 }
 type (
-	EntityStore   struct{ db *sql.DB }
-	EdgeStore     struct{ db *sql.DB }
+	EntityStore struct {
+		db *sql.DB
+		// scope, when set, keeps every read to the entities the viewer
+		// may see (see scope.go).
+		scope *storage.Scope
+	}
+	EdgeStore struct {
+		db *sql.DB
+		// scope, when set, keeps every read to the edges whose object
+		// ends the viewer may see (see scope.go).
+		scope *storage.Scope
+	}
 	JobStore      struct{ db *sql.DB }
 	PipelineStore struct{ db *sql.DB }
 	StepStore     struct{ db *sql.DB }

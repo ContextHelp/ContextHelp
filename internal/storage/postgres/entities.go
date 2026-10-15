@@ -86,16 +86,32 @@ func (s *EntityStore) SetContentStatus(ctx context.Context, slug string, status 
 	return nil
 }
 
+// errEntityNotFound is the answer for a missing entity and for one the
+// scope hides alike.
+var errEntityNotFound = fmt.Errorf("entity %w", storage.ErrNotFound)
+
+// noEntities reports whether the scope admits no entity at all.
+func (s *EntityStore) noEntities() bool { return s.scope != nil && !s.scope.Entities }
+
 func (s *EntityStore) Get(ctx context.Context, slug string) (*storage.Entity, error) {
+	if s.noEntities() {
+		return nil, errEntityNotFound
+	}
+	idx := 2
+	clause, sargs := entityScope(s.scope, &idx)
+	// #nosec G202 -- clause is fixed SQL over compiled predicates; values are bound.
 	row := s.db.QueryRowContext(ctx, `SELECT
 		slug, title, description, namespace, aliases, metadata,
 		content_status, version_hash, registry_url,
 		created_at, updated_at
-	FROM entities WHERE slug = $1`, slug)
+	FROM entities WHERE slug = $1`+clause, append([]any{slug}, sargs...)...)
 	return scanEntity(row)
 }
 
 func (s *EntityStore) List(ctx context.Context, filter storage.EntityFilter) ([]*storage.Entity, error) {
+	if s.noEntities() {
+		return []*storage.Entity{}, nil
+	}
 	query := `SELECT slug, title, description, namespace, aliases, metadata,
 		content_status, version_hash, registry_url,
 		created_at, updated_at FROM entities WHERE 1=1`
@@ -120,6 +136,12 @@ func (s *EntityStore) List(ctx context.Context, filter storage.EntityFilter) ([]
 				CASE WHEN jsonb_typeof(aliases) = 'array' THEN aliases ELSE '[]'::jsonb END) AS a(v)
 				WHERE lower(a.v) LIKE $%[1]d ESCAPE '\'))`, argIdx)
 		args = append(args, storage.ContainsPattern(filter.Query))
+		argIdx++
+	}
+	if clause, sargs := entityScope(s.scope, &argIdx); clause != "" {
+		// #nosec G202 -- clause is fixed SQL over compiled predicates; values are bound.
+		query += clause
+		args = append(args, sargs...)
 	}
 
 	query += " ORDER BY slug ASC"
@@ -140,12 +162,18 @@ func (s *EntityStore) List(ctx context.Context, filter storage.EntityFilter) ([]
 }
 
 func (s *EntityStore) Resolve(ctx context.Context, mention string) (*storage.Entity, error) {
+	if s.noEntities() {
+		return nil, errEntityNotFound
+	}
+	idx := 2
+	clause, sargs := entityScope(s.scope, &idx)
 	// Try exact slug match first.
+	// #nosec G202 -- clause is fixed SQL over compiled predicates; values are bound.
 	row := s.db.QueryRowContext(ctx, `SELECT
 		slug, title, description, namespace, aliases, metadata,
 		content_status, version_hash, registry_url,
 		created_at, updated_at
-	FROM entities WHERE slug = $1`, mention)
+	FROM entities WHERE slug = $1`+clause, append([]any{mention}, sargs...)...)
 	entity, err := scanEntity(row)
 	if err == nil {
 		return entity, nil
@@ -157,11 +185,12 @@ func (s *EntityStore) Resolve(ctx context.Context, mention string) (*storage.Ent
 	if err != nil {
 		return nil, fmt.Errorf("resolve entity: %w", err)
 	}
+	// #nosec G202 -- clause is fixed SQL over compiled predicates; values are bound.
 	row = s.db.QueryRowContext(ctx, `SELECT
 		slug, title, description, namespace, aliases, metadata,
 		content_status, version_hash, registry_url,
 		created_at, updated_at
-	FROM entities WHERE aliases @> $1::jsonb`, string(probe))
+	FROM entities WHERE aliases @> $1::jsonb`+clause, append([]any{string(probe)}, sargs...)...)
 	return scanEntity(row)
 }
 
