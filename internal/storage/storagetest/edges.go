@@ -2,6 +2,7 @@ package storagetest
 
 import (
 	"context"
+	"reflect"
 	"slices"
 	"testing"
 
@@ -13,6 +14,67 @@ func objectEdge(id, from, typ, to string) *storage.Edge {
 		ID: id, FromType: "object", FromID: from, ToType: "object", ToID: to,
 		EdgeType: typ, Weight: 1, Metadata: map[string]any{"context": "c-" + id},
 		CreatedAt: fixtureTime(),
+	}
+}
+
+// EdgeMetadataConformance pins that Edge.Metadata round-trips through
+// Create, ListFrom and ListTo on every driver, and that an edge created
+// without metadata reads back without any. Mention provenance
+// (source_node, source_field) rides on it.
+func EdgeMetadataConformance(t *testing.T, drv storage.StorageDriver) {
+	t.Helper()
+	ctx := context.Background()
+	es := drv.Edges()
+
+	meta := map[string]any{
+		storage.ProvenanceSourceNode:  storage.NewNodeID("m-src", storage.NodeTypeEntityMention, 0),
+		storage.ProvenanceSourceField: storage.MentionSourceRawContent,
+	}
+	mention := func(id, to string, metadata map[string]any) *storage.Edge {
+		return &storage.Edge{
+			ID: id, FromType: "object", FromID: "m-src", ToType: "entity", ToID: to,
+			EdgeType: "mentions", Weight: 1, Metadata: metadata, CreatedAt: fixtureTime(),
+		}
+	}
+	if err := es.Create(ctx, mention("m-prov", "person/alice", meta)); err != nil {
+		t.Fatalf("Create with metadata: %v", err)
+	}
+	if err := es.Create(ctx, mention("m-bare", "org/acme", nil)); err != nil {
+		t.Fatalf("Create without metadata: %v", err)
+	}
+
+	reads := []struct {
+		name string
+		list func() ([]*storage.Edge, error)
+	}{
+		{"ListFrom", func() ([]*storage.Edge, error) { return es.ListFrom(ctx, "object", "m-src") }},
+		{"ListTo", func() ([]*storage.Edge, error) { return es.ListTo(ctx, "entity", "person/alice") }},
+	}
+	for _, r := range reads {
+		got, err := r.list()
+		if err != nil {
+			t.Fatalf("%s: %v", r.name, err)
+		}
+		var prov *storage.Edge
+		for _, e := range got {
+			if e.ID == "m-prov" {
+				prov = e
+			}
+		}
+		if prov == nil {
+			t.Fatalf("%s: m-prov missing from %d edges", r.name, len(got))
+		}
+		if !reflect.DeepEqual(prov.Metadata, meta) {
+			t.Errorf("%s: m-prov metadata = %v, want %v", r.name, prov.Metadata, meta)
+		}
+	}
+
+	got, err := es.ListTo(ctx, "entity", "org/acme")
+	if err != nil || len(got) != 1 {
+		t.Fatalf("ListTo org/acme = %v, %v; want the bare edge", got, err)
+	}
+	if len(got[0].Metadata) != 0 {
+		t.Errorf("bare edge metadata = %v, want none", got[0].Metadata)
 	}
 }
 

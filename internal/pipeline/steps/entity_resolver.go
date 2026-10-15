@@ -81,7 +81,8 @@ func (r *EntityResolver) Run(ctx context.Context, draft *storage.KnowledgeObject
 		}
 
 		// Inter-object layer only: write backlink edge to the edges table (ADR-049/ADR-063).
-		// Intra-object NodeTypeEntityMention nodes live in ko.Graph and are written by entity_extractor.
+		// Intra-object NodeTypeEntityMention nodes live in ko.Graph and are written by
+		// entity_extractor; the edge names the one holding this mention as its provenance.
 		if draft.ID != "" {
 			edge := &storage.Edge{
 				ID:        uuid.NewString(),
@@ -91,6 +92,7 @@ func (r *EntityResolver) Run(ctx context.Context, draft *storage.KnowledgeObject
 				ToID:      entity.Slug,
 				EdgeType:  "mentions",
 				Weight:    1.0,
+				Metadata:  storage.MentionProvenance(draft.Graph, u.String()),
 				CreatedAt: time.Now().UTC(),
 			}
 			if err := r.edges.Create(ctx, edge); err != nil {

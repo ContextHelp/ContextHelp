@@ -51,7 +51,9 @@ func (e *EntityExtractor) Run(ctx context.Context, draft *storage.KnowledgeObjec
 	//    "@client.acme"`) are pre-populated on draft.Mentions by the worker
 	//    before the pipeline runs. Seed `seen` with their slugs so steps 1+2
 	//    don't double-insert when the same slug is also detected from text.
-	//    Caller-supplied wins on conflict.
+	//    Caller-supplied wins on conflict. They stay first on draft.Mentions;
+	//    the boundary tells each node below which field its mention came from.
+	userMentions := len(draft.Mentions)
 	for _, u := range draft.Mentions {
 		s := u.String()
 		const prefix = "ctxt://entity/"
@@ -103,7 +105,9 @@ func (e *EntityExtractor) Run(ctx context.Context, draft *storage.KnowledgeObjec
 	draft.Mentions = append(draft.Mentions, mentions.ParseSlice(slugs)...)
 
 	// Intra-object graph: one NodeTypeEntityMention node per mention with an
-	// EdgeTypeReferences edge pointing to the entity URI.
+	// EdgeTypeReferences edge pointing to the entity URI. The node records
+	// the field the mention came from: the mention edges written later
+	// (entity_resolver, the worker, fan-out) carry it as their provenance.
 	// Inter-object edges (object → entity in the edges table) are written by
 	// entity_resolver, NOT here — that is the layer boundary (ADR-063).
 	if draft.ID != "" && len(draft.Mentions) > 0 {
@@ -115,11 +119,16 @@ func (e *EntityExtractor) Run(ctx context.Context, draft *storage.KnowledgeObjec
 			if draft.Graph.FindNode(nodeID) != nil {
 				continue
 			}
+			field := storage.MentionSourceRawContent
+			if i < userMentions {
+				field = storage.MentionSourceMentions
+			}
 			draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
 				ID:       nodeID,
 				NodeType: storage.NodeTypeEntityMention,
 				Label:    u.String(),
 				Order:    i,
+				Metadata: map[string]any{storage.ProvenanceSourceField: field},
 			})
 			draft.Graph.Edges = append(draft.Graph.Edges, storage.GraphEdge{
 				ID:       fmt.Sprintf("%s->%s", nodeID, u.String()),

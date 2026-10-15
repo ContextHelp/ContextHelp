@@ -64,7 +64,9 @@ func (s *Service) FanOut(ctx context.Context, objectID string) (*FanOutResult, e
 		slug := mention.String()
 		result.EntitySlugs = append(result.EntitySlugs, slug)
 
-		// Forward edge: object -> entity.
+		// Forward edge: object -> entity. Both directions name the
+		// entity_mention node of obj.Graph that holds the mention and the
+		// field it came from.
 		fwdKey := edgeKey(nodeObject, objectID, "entity", slug, "mentions")
 		if !edgeIndex[fwdKey] {
 			edge := &storage.Edge{
@@ -75,6 +77,7 @@ func (s *Service) FanOut(ctx context.Context, objectID string) (*FanOutResult, e
 				ToID:      slug,
 				EdgeType:  "mentions",
 				Weight:    1.0,
+				Metadata:  storage.MentionProvenance(obj.Graph, slug),
 				CreatedAt: now,
 			}
 			if err := s.Store.Edges().Create(ctx, edge); err != nil {
@@ -97,6 +100,7 @@ func (s *Service) FanOut(ctx context.Context, objectID string) (*FanOutResult, e
 				ToID:      objectID,
 				EdgeType:  "mentioned_in",
 				Weight:    1.0,
+				Metadata:  storage.MentionProvenance(obj.Graph, slug),
 				CreatedAt: now,
 			}
 			if err := s.Store.Edges().Create(ctx, edge); err != nil {

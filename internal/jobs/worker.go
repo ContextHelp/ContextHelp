@@ -314,7 +314,8 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 	}
 	p.putVectors(ctx, draft.ID, draft)
 
-	// Write edges for mentions (ADR-049).
+	// Write edges for mentions (ADR-049), each naming the entity_mention
+	// node of draft.Graph that holds its mention and the field it came from.
 	// Any edge write failure rolls back by failing the job; the object has
 	// already been persisted but no edges exist yet, so the job is retryable
 	// and a subsequent run will re-create the object (content-hash dedup) and
@@ -328,6 +329,7 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 			ToID:      mention.String(),
 			EdgeType:  "mentions",
 			Weight:    1.0,
+			Metadata:  storage.MentionProvenance(draft.Graph, mention.String()),
 			CreatedAt: time.Now(),
 		}
 		if err := p.store.Edges().Create(ctx, edge); err != nil {

@@ -14,6 +14,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/events"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/stretchr/testify/assert"
@@ -189,8 +190,14 @@ func TestProcessJobCreatesEdges(t *testing.T) {
 		t.Fatalf("list edges: %v", err)
 	}
 	if len(edges) != 1 {
-		t.Errorf("edges: got %d, want 1", len(edges))
+		t.Fatalf("edges: got %d, want 1", len(edges))
 	}
+	// mentionStep sets Mentions without a graph: the edge knows the
+	// mention from the mentions field only.
+	assert.Equal(t, map[string]any{
+		storage.ProvenanceSourceNode:  "",
+		storage.ProvenanceSourceField: storage.MentionSourceMentions,
+	}, edges[0].Metadata)
 }
 
 func TestProcessJobFailure(t *testing.T) {
@@ -588,4 +595,57 @@ type failingEdgeStore struct {
 
 func (s *failingEdgeStore) Create(_ context.Context, _ *storage.Edge) error {
 	return errors.New("simulated edge write failure")
+}
+
+// TestProcessJobMentionEdgesCarryProvenance pins the provenance a mention
+// edge carries when entity_extractor found the mention in the text: the
+// entity_mention node it produced and the raw_content field.
+func TestProcessJobMentionEdgesCarryProvenance(t *testing.T) {
+	driver := storageutil.NewTestDriver(t)
+	q := NewQueue(driver.Jobs())
+
+	pipes := pipeline.NewRegistry()
+	pipes.Register("test.extract", &pipeline.Pipeline{
+		PipelineName: "test.extract",
+		Steps:        []pipeline.PipelineStep{steps.NewEntityExtractor()},
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	job := makeJob("job-prov-1")
+	job.Pipeline = "test.extract"
+	job.Payload = "Met @person.alice about the roadmap"
+	q.Enqueue(ctx, job)
+
+	pool := NewWorkerPool(q, pipes, driver, 1, nil, defaultTestJobsCfg())
+
+	go func() {
+		for {
+			got, _ := q.Get(ctx, "job-prov-1")
+			if got != nil && got.Status == storage.JobCompleted {
+				cancel()
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	}()
+	pool.Start(ctx)
+
+	got, _ := q.Get(context.Background(), "job-prov-1")
+	if got == nil || got.ResultID == "" {
+		t.Fatalf("job = %+v; want completed with a result_id", got)
+	}
+
+	edges, err := driver.Edges().ListFrom(context.Background(), "object", got.ResultID)
+	if err != nil {
+		t.Fatalf("list edges: %v", err)
+	}
+	if len(edges) != 1 {
+		t.Fatalf("edges: got %d, want 1", len(edges))
+	}
+	assert.Equal(t, map[string]any{
+		storage.ProvenanceSourceNode:  storage.NewNodeID(got.ResultID, storage.NodeTypeEntityMention, 0),
+		storage.ProvenanceSourceField: storage.MentionSourceRawContent,
+	}, edges[0].Metadata)
 }
