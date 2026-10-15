@@ -30,7 +30,7 @@ func (s *Stack) wireAuth(in Inputs, access string, notes io.Writer) error {
 	// Invite and sign-in links need a session to end in and a ceremony
 	// server.auth.sign_in allows.
 	if sessions != nil && len(cfg.Server.Auth.EffectiveSignIn()) > 0 {
-		if s.Tickets, err = authn.NewTickets(in.Driver.Auth(), sessions, nil); err != nil {
+		if s.Tickets, err = authn.NewTickets(in.Driver.Auth(), sessions, nil, authn.WithAudiences(in.Driver.Sharing())); err != nil {
 			return err
 		}
 	}

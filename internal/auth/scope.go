@@ -149,12 +149,14 @@ var selfScopes = []Scope{ScopeWriteSelf}
 
 // UISessionScopes is the fixed scope set of a web UI browser session:
 // the reads the web UI makes, its own writes (delete an object, retry a
-// job, manage its own credentials, sign out) and nothing else. No MCP,
-// pipelines, steps, watches, audit log or login codes (read:ui); no
-// other write. A session's effective scopes are these intersected with
-// its minting principal's scopes, plus signout:ui, which only sessions
-// hold (SessionScopesFor), so a session never holds a scope its
-// principal lacks.
+// job, manage its own credentials, sign out), the Sharing page
+// (admin:shares, ADR-080 §11: audiences, policies, grants, ceilings and
+// invites, which only an admin's session reaches) and nothing else. No
+// MCP, pipelines, steps, watches, audit log, principal registry or
+// login codes (read:ui); no other write. A session's effective scopes
+// are these intersected with its minting principal's scopes, plus
+// signout:ui, which only sessions hold (SessionScopesFor), so a session
+// never holds a scope its principal lacks.
 var UISessionScopes = []Scope{
 	ScopeReadObjects, ScopeDeleteObjects,
 	ScopeReadInbox,
@@ -163,6 +165,7 @@ var UISessionScopes = []Scope{
 	ScopeReadRegistries,
 	ScopeReadSystem,
 	ScopeWriteSelf,
+	ScopeAdminShares,
 	ScopeSignoutUI,
 }
 

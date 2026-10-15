@@ -34,7 +34,7 @@ func (f *uiFixture) startCeremonies(signIn ...string) {
 	var err error
 	f.sessions, err = authn.NewSessions(store.UISessions(), store.Auth(), f.keys, authn.SessionOptions{Now: f.clock.now})
 	require.NoError(f.t, err)
-	tickets, err := authn.NewTickets(store.Auth(), f.sessions, f.clock.now)
+	tickets, err := authn.NewTickets(store.Auth(), f.sessions, f.clock.now, authn.WithAudiences(store.Sharing()))
 	require.NoError(f.t, err)
 	if f.ts != nil {
 		f.ts.Close()
@@ -45,6 +45,7 @@ func (f *uiFixture) startCeremonies(signIn ...string) {
 		SessionRecheck:  20 * time.Millisecond,
 		Registry:        store.Auth(),
 		Keys:            f.keys,
+		Sharing:         store.Sharing(),
 		Tickets:         tickets,
 		SignIn:          signIn,
 		PublicURL:       publicURL,

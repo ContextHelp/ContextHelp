@@ -97,6 +97,9 @@ type inviteRequest struct {
 	// ExpiresIn is the link's lifetime in seconds; 0 means the default
 	// (7 days).
 	ExpiresIn int `json:"expires_in"`
+	// Audience, by id or name, is the audience the person joins when
+	// they accept (ADR-080 §11); empty for none.
+	Audience string `json:"audience"`
 }
 
 // mintInvite handles POST /api/v1/share/invites, behind admin:shares.
@@ -114,8 +117,25 @@ func (u *uiSessionRoutes) mintInvite(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "expires_in must be positive")
 		return
 	}
+	inv := authn.Invite{DisplayName: req.DisplayName, TTL: time.Duration(req.ExpiresIn) * time.Second}
+	if ref := strings.TrimSpace(req.Audience); ref != "" {
+		if u.sharing == nil {
+			WriteError(w, http.StatusNotFound, CodeNotFound, "this instance has no sharing registry")
+			return
+		}
+		a, err := resolveAudienceIn(r.Context(), u.sharing.Audiences(), ref)
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "audience: no such audience "+ref)
+				return
+			}
+			writeRegistryError(w, err, "audience")
+			return
+		}
+		inv.AudienceID = a.ID
+	}
 	p, _ := authn.FromContext(r.Context())
-	issued, err := u.tickets.MintInvite(r.Context(), p, req.DisplayName, time.Duration(req.ExpiresIn)*time.Second)
+	issued, err := u.tickets.MintInvite(r.Context(), p, inv)
 	switch {
 	case errors.Is(err, authn.ErrNoCredential):
 		WriteError(w, http.StatusUnauthorized, "UNAUTHORIZED", "authentication required")

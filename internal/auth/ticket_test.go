@@ -28,7 +28,7 @@ func TestTickets_InviteCreatesPersonWithLinkIdentityAndSession(t *testing.T) {
 	tk := f.tickets()
 	owner := f.principalOf(f.ownerKey)
 
-	issued, err := tk.MintInvite(ctx, owner, "  Bob Partner ", 0)
+	issued, err := tk.MintInvite(ctx, owner, auth.Invite{DisplayName: "  Bob Partner "})
 	require.NoError(t, err)
 	assert.Len(t, issued.Secret, 43, "256-bit base64url secret")
 	assert.Equal(t, f.clock.t.Add(auth.DefaultInviteTTL), issued.ExpiresAt)
@@ -60,7 +60,7 @@ func TestTickets_InviteIsSingleUse(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
 	tk := f.tickets()
-	issued, err := tk.MintInvite(ctx, f.principalOf(f.ownerKey), "Bob", time.Hour)
+	issued, err := tk.MintInvite(ctx, f.principalOf(f.ownerKey), auth.Invite{DisplayName: "Bob", TTL: time.Hour})
 	require.NoError(t, err)
 
 	_, err = tk.RedeemInvite(ctx, issued.Secret, browser)
@@ -78,7 +78,7 @@ func TestTickets_InviteExpires(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
 	tk := f.tickets()
-	issued, err := tk.MintInvite(ctx, f.principalOf(f.ownerKey), "Bob", time.Hour)
+	issued, err := tk.MintInvite(ctx, f.principalOf(f.ownerKey), auth.Invite{DisplayName: "Bob", TTL: time.Hour})
 	require.NoError(t, err)
 	f.clock.advance(time.Hour)
 	_, err = tk.RedeemInvite(ctx, issued.Secret, browser)
@@ -91,11 +91,11 @@ func TestTickets_InviteRefusals(t *testing.T) {
 	tk := f.tickets()
 	owner := f.principalOf(f.ownerKey)
 
-	_, err := tk.MintInvite(ctx, owner, "   ", time.Hour)
+	_, err := tk.MintInvite(ctx, owner, auth.Invite{DisplayName: "   ", TTL: time.Hour})
 	assert.ErrorContains(t, err, "display name")
-	_, err = tk.MintInvite(ctx, owner, "Bob", -time.Hour)
+	_, err = tk.MintInvite(ctx, owner, auth.Invite{DisplayName: "Bob", TTL: -time.Hour})
 	assert.ErrorContains(t, err, "positive")
-	_, err = tk.MintInvite(ctx, nil, "Bob", time.Hour)
+	_, err = tk.MintInvite(ctx, nil, auth.Invite{DisplayName: "Bob", TTL: time.Hour})
 	assert.ErrorIs(t, err, auth.ErrNoCredential)
 
 	_, err = tk.RedeemInvite(ctx, "", browser)
@@ -183,4 +183,45 @@ func TestNewTickets_NeedsRegistryAndSessions(t *testing.T) {
 	assert.Error(t, err)
 	_, err = auth.NewTickets(f.drv.Auth(), nil, nil)
 	assert.Error(t, err)
+}
+
+// An invite minted into an audience lands the redeemed person in it,
+// added by the minter with no expiry (ADR-080 §11). Naming an audience
+// needs the sharing registry and an audience that exists.
+func TestTickets_InviteIntoAudience(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	owner := f.principalOf(f.ownerKey)
+	aud := &storage.Audience{Name: "partners"}
+	require.NoError(t, f.drv.Sharing().Audiences().Create(ctx, aud))
+
+	bare := f.tickets()
+	_, err := bare.MintInvite(ctx, owner, auth.Invite{DisplayName: "Bob", AudienceID: aud.ID})
+	assert.ErrorContains(t, err, "no sharing registry")
+
+	tk, err := auth.NewTickets(f.drv.Auth(), f.sessions, f.clock.now, auth.WithAudiences(f.drv.Sharing()))
+	require.NoError(t, err)
+	_, err = tk.MintInvite(ctx, owner, auth.Invite{DisplayName: "Bob", AudienceID: "aud_missing"})
+	assert.ErrorIs(t, err, storage.ErrNotFound)
+
+	issued, err := tk.MintInvite(ctx, owner, auth.Invite{DisplayName: "Bob", AudienceID: aud.ID})
+	require.NoError(t, err)
+	m, err := tk.RedeemInvite(ctx, issued.Secret, browser)
+	require.NoError(t, err)
+
+	members, err := f.drv.Sharing().Audiences().ListMembers(ctx, aud.ID)
+	require.NoError(t, err)
+	require.Len(t, members, 1)
+	assert.Equal(t, m.Principal.ID, members[0].PrincipalID)
+	assert.Equal(t, owner.ID, members[0].AddedBy, "added by the invite's minter")
+	assert.Nil(t, members[0].ExpiresAt)
+
+	// Without an audience nothing joins.
+	issued, err = tk.MintInvite(ctx, owner, auth.Invite{DisplayName: "Sam"})
+	require.NoError(t, err)
+	m, err = tk.RedeemInvite(ctx, issued.Secret, browser)
+	require.NoError(t, err)
+	got, err := f.drv.Sharing().Audiences().ListMemberships(ctx, m.Principal.ID, f.clock.now())
+	require.NoError(t, err)
+	assert.Empty(t, got)
 }

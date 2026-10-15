@@ -338,6 +338,18 @@ var uiSessionRouteSet = []string{
 	"GET /api/v1/self/keys", "POST /api/v1/self/keys", "DELETE /api/v1/self/keys/{key}",
 	"GET /api/v1/self/identities", "DELETE /api/v1/self/identities/{identity}",
 	"GET /api/v1/self/sessions", "DELETE /api/v1/self/sessions/{session}",
+	"PUT /api/v1/self/keys/{key}/policy",
+	// admin:shares: the Sharing page (ADR-080 §11), which only an
+	// admin's session holds.
+	"POST /api/v1/share/invites",
+	"GET /api/v1/share/audiences", "POST /api/v1/share/audiences", "GET /api/v1/share/audiences/{audience}",
+	"PUT /api/v1/share/audiences/{audience}/members/{principal}", "DELETE /api/v1/share/audiences/{audience}/members/{principal}",
+	"GET /api/v1/share/policies", "POST /api/v1/share/policies",
+	"GET /api/v1/share/policies/{policy}", "PUT /api/v1/share/policies/{policy}",
+	"GET /api/v1/share/templates", "POST /api/v1/share/templates/{name}",
+	"GET /api/v1/share/grants", "POST /api/v1/share/grants", "DELETE /api/v1/share/grants/{grant}",
+	"GET /api/v1/principals/{id}/ceiling", "PUT /api/v1/principals/{id}/ceiling",
+	"PUT /api/v1/share/keys/{key}/policy",
 }
 
 // The ui scope set, applied to the route table, yields exactly the web

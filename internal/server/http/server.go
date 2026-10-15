@@ -71,6 +71,10 @@ type RouterConfig struct {
 	// revokes the registry's API keys. nil = those routes answer 404.
 	Registry storage.AuthStore
 	Keys     *authn.Keys
+	// Sharing is the sharing registry the audience, policy, grant and
+	// ceiling routes manage (ADR-080 §11) and whoami reports grants
+	// from. nil = those routes answer 404.
+	Sharing storage.SharingStore
 	// Tickets mints and redeems invite and sign-in links; SignIn lists
 	// the ceremonies server.auth.sign_in allows and PublicURL is the
 	// base of every link. nil Tickets = no link ceremony.

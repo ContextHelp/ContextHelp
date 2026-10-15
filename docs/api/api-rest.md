@@ -55,6 +55,8 @@ Invite and sign-in links (`ctxt share invite`, `ctxt principal link`) open the w
 
 The sign-in ceremonies (`POST /ui/auth/session`, `/ui/invite/session` and `/ui/signin/session`) share one budget per client address: ten attempts a minute, then 429 `RATE_LIMITED` with a `Retry-After`. A ceremony on a request that already carries a live session is refused with 409 `SESSION_ACTIVE`: the browser signs out first. Every ticket is single use; a second redemption is 401 `INVALID_TICKET`.
 
+Sharing routes (see [Share your network](../manual/workflows/sharing.md)): audiences, share policies, grants and the ceiling under `admin:shares`; a key's own policy binding under `write:self`. Audiences and policies may be named by id or by name in a path or a body. A policy document goes in the `document` field of a JSON body, as YAML or JSON text. The instance validates it and refuses one that does not parse with 400 naming the field. Every response is the plain record with its id. `POST /share/invites` takes an optional `audience` the person joins on accepting, and `GET /whoami` reports `shared: {owner, policies}` for a non-owner principal with a grant in force.
+
 ## Content Types
 
 - JSON: `application/json`
@@ -167,7 +169,10 @@ Core endpoints:
 - `GET|POST /principals/{id}/identities`, `DELETE /principals/{id}/identities/{identity}`
 - `GET|POST /principals/{id}/keys`, `DELETE /principals/{id}/keys/{key}`
 - `POST /share/invites`
-- `GET|POST /self/keys`, `DELETE /self/keys/{key}`, `GET /self/identities`, `DELETE /self/identities/{identity}`, `GET /self/sessions`, `DELETE /self/sessions/{session}`
+- `GET|POST /share/audiences`, `GET /share/audiences/{audience}`, `PUT|DELETE /share/audiences/{audience}/members/{principal}`
+- `GET|POST /share/policies`, `GET|PUT /share/policies/{policy}`, `GET /share/templates`, `POST /share/templates/{name}`
+- `GET|POST /share/grants`, `DELETE /share/grants/{grant}`, `GET|PUT /principals/{id}/ceiling`, `PUT /share/keys/{key}/policy`
+- `GET|POST /self/keys`, `DELETE /self/keys/{key}`, `PUT /self/keys/{key}/policy`, `GET /self/identities`, `DELETE /self/identities/{identity}`, `GET /self/sessions`, `DELETE /self/sessions/{session}`
 
 ---
 

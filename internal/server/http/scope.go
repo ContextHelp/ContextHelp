@@ -4,9 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
+	"time"
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/security"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 // CodeInsufficientScope is the error code of a 403 caused by a missing
@@ -79,14 +82,27 @@ type whoamiResponse struct {
 	Via string `json:"via"`
 	// Session describes the browser session of a session caller.
 	Session *sessionInfo `json:"session,omitempty"`
+	// Shared is set for a principal other than the owner that at least
+	// one grant applies to: who shares with it and under which policies
+	// (ADR-080 §11, the shared-viewer banner).
+	Shared *sharedInfo `json:"shared,omitempty"`
+}
+
+// sharedInfo is what a shared viewer sees of its grants.
+type sharedInfo struct {
+	// Owner is the instance owner's display name.
+	Owner string `json:"owner"`
+	// Policies names the policies in force, by name, without repeats.
+	Policies []string `json:"policies"`
 }
 
 // Whoami handles GET /api/v1/whoami: the caller's principal, roles and
-// effective scopes, how it authenticated and, for a web UI browser
-// session, the session itself (sessions, nil-safe, supplies its
-// times). A private instance (authEnabled false) reports
-// authn.LocalPrincipal, which holds every scope.
-func Whoami(authEnabled bool, sessions *authn.Sessions) http.HandlerFunc {
+// effective scopes, how it authenticated, for a web UI browser session
+// the session itself (sessions, nil-safe, supplies its times) and, for
+// a shared viewer, its grants (reg and shares, nil-safe). A private
+// instance (authEnabled false) reports authn.LocalPrincipal, which
+// holds every scope.
+func Whoami(authEnabled bool, sessions *authn.Sessions, reg storage.AuthStore, shares storage.SharingStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		via := viaToken
@@ -98,7 +114,9 @@ func Whoami(authEnabled bool, sessions *authn.Sessions) http.HandlerFunc {
 			}
 			p, via = authn.LocalPrincipal(), viaNone
 		}
-		WriteJSON(w, http.StatusOK, whoamiFor(r, p, via, sessions))
+		resp := whoamiFor(r, p, via, sessions)
+		resp.Shared = sharedWith(r, p, reg, shares)
+		WriteJSON(w, http.StatusOK, resp)
 	}
 }
 
@@ -121,4 +139,30 @@ func whoamiFor(r *http.Request, p *authn.Principal, via string, sessions *authn.
 		}
 	}
 	return resp
+}
+
+// sharedWith describes the grants in force for p: nil for the owner,
+// for an instance without a sharing registry, and when no grant
+// applies. A registry read that fails leaves the field out rather than
+// failing whoami.
+func sharedWith(r *http.Request, p *authn.Principal, reg storage.AuthStore, shares storage.SharingStore) *sharedInfo {
+	if p.ID == storage.OwnerPrincipal || shares == nil {
+		return nil
+	}
+	active, err := shares.Grants().ListActiveForPrincipal(r.Context(), p.ID, time.Now().UTC())
+	if err != nil || len(active) == 0 {
+		return nil
+	}
+	info := &sharedInfo{Owner: storage.OwnerPrincipal, Policies: []string{}}
+	if reg != nil {
+		if owner, err := reg.Principals().Get(r.Context(), storage.OwnerPrincipal); err == nil && owner.DisplayName != "" {
+			info.Owner = owner.DisplayName
+		}
+	}
+	for _, g := range active {
+		if !slices.Contains(info.Policies, g.Policy.Name) {
+			info.Policies = append(info.Policies, g.Policy.Name)
+		}
+	}
+	return info
 }

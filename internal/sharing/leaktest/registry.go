@@ -74,9 +74,9 @@ type Case struct {
 }
 
 // Registry returns every registered case: HTTP cases in route-table
-// order, then RPC cases.
+// order (the sharing registry's after the rest), then RPC cases.
 func Registry() []Case {
-	return append(httpCases(), rpcCases()...)
+	return append(append(httpCases(), shareCases()...), rpcCases()...)
 }
 
 // Coverage compares routes with cases. missing names the routes with
