@@ -166,3 +166,60 @@ func EdgeBatchConformance(t *testing.T, drv storage.StorageDriver) {
 		t.Errorf("DeleteMatching of nothing = %d, %v; want 0, nil", n, err)
 	}
 }
+
+// EdgeCreateMissingConformance pins EdgeStore.CreateMissing, the write
+// the mention-edge writers share: an edge whose (from, to, type) is
+// stored already is not stored again and the stored one keeps its ID
+// and metadata, a repeat within one call goes in once, another type
+// between the same pair is a new edge, and the count is the rows stored.
+func EdgeCreateMissingConformance(t *testing.T, drv storage.StorageDriver) {
+	t.Helper()
+	ctx := context.Background()
+	es := drv.Edges()
+
+	n, err := es.CreateMissing(ctx, nil)
+	if err != nil || n != 0 {
+		t.Fatalf("CreateMissing(nil) = %d, %v; want 0, nil", n, err)
+	}
+
+	meta := map[string]any{storage.ProvenanceSourceNode: "", storage.ProvenanceSourceField: storage.MentionSourceMentions}
+	mention := func(id, to, typ string, metadata map[string]any) *storage.Edge {
+		return &storage.Edge{
+			ID: id, FromType: "object", FromID: "cm-src", ToType: "entity", ToID: to,
+			EdgeType: typ, Weight: 1, Metadata: metadata, CreatedAt: fixtureTime(),
+		}
+	}
+	n, err = es.CreateMissing(ctx, []*storage.Edge{
+		mention("cm-alice", "person/alice", "mentions", meta),
+		mention("cm-alice-again", "person/alice", "mentions", nil),
+		mention("cm-acme", "org/acme", "mentions", nil),
+	})
+	if err != nil || n != 2 {
+		t.Fatalf("CreateMissing = %d, %v; want 2 (the repeat goes in once)", n, err)
+	}
+	if ids := edgeIDs(t, drv, "cm-src"); !slices.Equal(ids, []string{"cm-acme", "cm-alice"}) {
+		t.Fatalf("after the first CreateMissing: %v", ids)
+	}
+
+	other := map[string]any{
+		storage.ProvenanceSourceNode:  storage.NewNodeID("cm-src", storage.NodeTypeEntityMention, 0),
+		storage.ProvenanceSourceField: storage.MentionSourceRawContent,
+	}
+	n, err = es.CreateMissing(ctx, []*storage.Edge{
+		mention("cm-alice-later", "person/alice", "mentions", other),
+		mention("cm-acme-ref", "org/acme", "references", nil),
+	})
+	if err != nil || n != 1 {
+		t.Fatalf("CreateMissing again = %d, %v; want 1 (the other type only)", n, err)
+	}
+	if ids := edgeIDs(t, drv, "cm-src"); !slices.Equal(ids, []string{"cm-acme", "cm-acme-ref", "cm-alice"}) {
+		t.Fatalf("after the second CreateMissing: %v", ids)
+	}
+	got, err := es.ListTo(ctx, "entity", "person/alice")
+	if err != nil || len(got) != 1 {
+		t.Fatalf("ListTo person/alice = %v, %v; want the first edge", got, err)
+	}
+	if got[0].ID != "cm-alice" || !reflect.DeepEqual(got[0].Metadata, meta) {
+		t.Errorf("stored edge = %+v; want cm-alice with its metadata kept", got[0])
+	}
+}

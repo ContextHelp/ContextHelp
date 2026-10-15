@@ -21,3 +21,10 @@ func TestConformance_EdgeMetadata(t *testing.T) {
 	drv, _ := freshIntegrationDriver(t)
 	storagetest.EdgeMetadataConformance(t, drv)
 }
+
+// TestConformance_EdgeCreateMissing runs the cross-driver CreateMissing
+// contract against a fresh Postgres database.
+func TestConformance_EdgeCreateMissing(t *testing.T) {
+	drv, _ := freshIntegrationDriver(t)
+	storagetest.EdgeCreateMissingConformance(t, drv)
+}

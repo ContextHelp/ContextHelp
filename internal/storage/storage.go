@@ -274,6 +274,12 @@ type EdgeStore interface {
 	// CreateAll stores every edge in one transaction: all of them or,
 	// on any error, none. A typed link and its inverse go in this way.
 	CreateAll(ctx context.Context, edges []*Edge) error
+	// CreateMissing stores, in one transaction, every edge in edges that
+	// no stored edge matches on (from, to, edge type), and returns how
+	// many it stored. An edge the call has just stored counts as stored,
+	// so a repeat within edges goes in once. The stored edge of a matched
+	// pair keeps its ID and metadata. The mention-edge writers share it.
+	CreateMissing(ctx context.Context, edges []*Edge) (int, error)
 	// DeleteMatching deletes, in one transaction, every edge a match
 	// selects and returns how many it deleted. A match with no edge
 	// types is an error, and nothing is deleted.

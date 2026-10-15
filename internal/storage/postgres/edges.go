@@ -44,6 +44,31 @@ func (s *EdgeStore) CreateAll(ctx context.Context, edges []*storage.Edge) error 
 	return nil
 }
 
+// CreateMissing stores, in one transaction, the edges no stored edge
+// matches on (from, to, edge type) and returns how many it stored.
+func (s *EdgeStore) CreateMissing(ctx context.Context, edges []*storage.Edge) (int, error) {
+	if len(edges) == 0 {
+		return 0, nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("create missing edges: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	stored := 0
+	for _, e := range edges {
+		n, err := insertMissingEdge(ctx, tx, e)
+		if err != nil {
+			return 0, err
+		}
+		stored += n
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("create missing edges: commit: %w", err)
+	}
+	return stored, nil
+}
+
 // DeleteMatching deletes every edge the matches select in one
 // transaction.
 func (s *EdgeStore) DeleteMatching(ctx context.Context, matches []storage.EdgeMatch) (int, error) {
@@ -90,6 +115,31 @@ func insertEdge(ctx context.Context, db edgeExecer, edge *storage.Edge) error {
 		return fmt.Errorf("create edge: %w", err)
 	}
 	return nil
+}
+
+// insertMissingEdge inserts edge unless an edge between the same nodes
+// with the same type is stored, and returns 1 when it inserted.
+func insertMissingEdge(ctx context.Context, db edgeExecer, edge *storage.Edge) (int, error) {
+	metadata, _ := json.Marshal(edge.Metadata)
+	res, err := db.ExecContext(ctx, `INSERT INTO edges (
+		id, from_type, from_id, to_type, to_id, edge_type, weight, metadata, created_at
+	) SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9
+	WHERE NOT EXISTS (
+		SELECT 1 FROM edges
+		WHERE from_type = $10 AND from_id = $11 AND to_type = $12 AND to_id = $13 AND edge_type = $14
+	)`,
+		edge.ID, edge.FromType, edge.FromID, edge.ToType, edge.ToID,
+		edge.EdgeType, edge.Weight, metadata, edge.CreatedAt.UTC(),
+		edge.FromType, edge.FromID, edge.ToType, edge.ToID, edge.EdgeType,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("create missing edge: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("create missing edge: %w", err)
+	}
+	return int(n), nil
 }
 
 func (s *EdgeStore) ListFrom(ctx context.Context, fromType, fromID string) ([]*storage.Edge, error) {

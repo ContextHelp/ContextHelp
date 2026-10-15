@@ -191,6 +191,10 @@ type Entity struct {
 // endpoint that is an entity rather than an object.
 const EdgeEndpointEntity = "entity"
 
+// EdgeEndpointObject is the Edge.FromType / Edge.ToType value for an
+// endpoint that is a knowledge object.
+const EdgeEndpointObject = "object"
+
 // ObjectStatusActive is the status a KnowledgeObject is created with when it
 // carries none, and the status an ObjectFilter with no Status matches.
 const ObjectStatusActive = "active"

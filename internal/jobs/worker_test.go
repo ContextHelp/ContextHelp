@@ -192,6 +192,11 @@ func TestProcessJobCreatesEdges(t *testing.T) {
 	if len(edges) != 1 {
 		t.Fatalf("edges: got %d, want 1", len(edges))
 	}
+	// The edge names the entity by the mention's canonical URI, as every
+	// mention-edge writer does.
+	assert.Equal(t, "entity", edges[0].ToType)
+	assert.Equal(t, "ctxt://entity/test/entity", edges[0].ToID)
+	assert.Equal(t, "mentions", edges[0].EdgeType)
 	// mentionStep sets Mentions without a graph: the edge knows the
 	// mention from the mentions field only.
 	assert.Equal(t, map[string]any{
@@ -595,6 +600,10 @@ type failingEdgeStore struct {
 
 func (s *failingEdgeStore) Create(_ context.Context, _ *storage.Edge) error {
 	return errors.New("simulated edge write failure")
+}
+
+func (s *failingEdgeStore) CreateMissing(_ context.Context, _ []*storage.Edge) (int, error) {
+	return 0, errors.New("simulated edge write failure")
 }
 
 // TestProcessJobMentionEdgesCarryProvenance pins the provenance a mention

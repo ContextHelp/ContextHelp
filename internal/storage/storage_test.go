@@ -157,6 +157,9 @@ func (m *mockEdgeStore) RelatedObjectIDs(ctx context.Context, objectID string, d
 	return nil, nil
 }
 func (m *mockEdgeStore) CreateAll(ctx context.Context, edges []*Edge) error { return nil }
+func (m *mockEdgeStore) CreateMissing(ctx context.Context, edges []*Edge) (int, error) {
+	return 0, nil
+}
 func (m *mockEdgeStore) DeleteMatching(ctx context.Context, matches []EdgeMatch) (int, error) {
 	return 0, nil
 }
