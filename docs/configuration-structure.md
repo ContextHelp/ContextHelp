@@ -209,7 +209,7 @@ registry/<name>` (value on stdin); see
 | `registries` | List of registries: `name`, `url`, `auth`, `sync_mode`, `trust_level`, `entitlement_url` |
 | `registries_global` | `require_signatures` |
 | `providers` | Backend per provider: `video`, `document`, `ocr`, `transcription`, `vision`, `diarization`, `llm`, `embedding` |
-| `pipelines` | `overrides.<pipeline>`: `providers`, `skip_steps`, `extra_steps` |
+| `pipelines` | `overrides.<pipeline>`: `providers`, `skip_steps`, `insert_steps` |
 | `retrieval` | Progressive retrieval: `method`, tier `top_k`s. Not read |
 | `search` | Hybrid search: `default_mode`, `rrf`, `candidate_pool`, `min_score`, `fallback_to_fts`, `reranker` |
 | `duplicates` | Duplicate detection: `policy`, `similarity_threshold`, `check_exact`, `check_similar` |

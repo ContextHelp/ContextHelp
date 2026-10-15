@@ -4,7 +4,7 @@ This document provides a complete specification for all built-in pipelines in Co
 
 Pipelines share the unified `Pipeline` interface and the `PipelineContext`, which includes access to registries, configuration snapshots, semantic metadata layers (tags, hints, mentions), and entity-resolution services.
 
-A pipeline never writes a bookmark directly. It emits structured output only through the job system upon completion. Extra steps (`pipelines.overrides.<pipeline>.extra_steps`, or steps installed from a step registry) extend a pipeline without modifying core pipeline logic. There is no plugin system ([ADR-078](../decisions/ADR-078-no-plugin-system.md)).
+A pipeline never writes a bookmark directly. It emits structured output only through the job system upon completion. Inserted steps (`pipelines.overrides.<pipeline>.insert_steps`: built-in steps, or steps installed with `dpkms pipeline step install`) extend a pipeline without modifying core pipeline logic. There is no plugin system ([ADR-078](../decisions/ADR-078-no-plugin-system.md)).
 
 ---
 
@@ -28,7 +28,7 @@ flowchart TD
 
 The mention stages (`M1 → M2`) are mandatory for all pipelines unless explicitly disabled.
 
-Extra steps run **after the built-in stages** (`pipelines.overrides.<pipeline>.extra_steps`).
+Inserted steps run **where `insert_steps` places them**: before or after a named step, or appended after the built-in stages (`pipelines.overrides.<pipeline>.insert_steps`, see [Add a custom step](../manual/admin-extensibility/custom-steps.md)).
 
 ---
 

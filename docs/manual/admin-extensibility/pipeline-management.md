@@ -55,9 +55,12 @@ dpkms job log <job_id>
 ```bash
 dpkms pipeline step list
 dpkms pipeline step list --source registry
+dpkms pipeline step install <step-name> --path <step-dir>
 dpkms pipeline step install <step-name> --registry <registry-url>
 dpkms pipeline step uninstall <step-name>
 ```
+
+An installed step runs where `pipelines.overrides.<pipeline>.insert_steps` places it; uninstall deletes its files. See [`custom-steps.md`](./custom-steps.md).
 
 ### 5. Registry management
 
@@ -91,8 +94,9 @@ dpkms pipeline remove <name>
 ### Step installation fails
 
 - Verify registry URL availability.
-- Update manifest and retry.
-- Confirm step name matches registry listing.
+- `UNTRUSTED_REGISTRY`: set `trust_level: trusted` or `sandboxed` on the registry's `registries` entry.
+- `DIGEST_MISMATCH`: the archive does not match the manifest's `sha256`; fix the manifest or the archive.
+- Confirm step name matches registry listing and the `name` in its `SKILL.md`.
 
 ### Pipeline regressions after registry updates
 

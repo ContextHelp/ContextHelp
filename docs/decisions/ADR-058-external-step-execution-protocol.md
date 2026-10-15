@@ -1,6 +1,6 @@
 # ADR-058 – External Step Execution Protocol
 
-> **Status:** Accepted
+> **Status:** Accepted (amended 2026-10-14: see [Amendment](#amendment-2026-10-14-implementation))
 > **Date:** 2026-02-18
 > **Author:** @jadb
 > **Applies to:** dPKMS
@@ -470,3 +470,47 @@ dPKMS validates before executing external step:
 - **US-0108** – Install Step from Registry (user story for step installation)
 
 ---
+
+## Amendment (2026-10-14): implementation
+
+Installed steps now run in pipelines. This amendment records where the implementation departs from or pins down the decision above, and why. Where the two disagree, this amendment wins. Operator walkthrough: [Add a custom step (PII masking)](../manual/admin-extensibility/custom-steps.md).
+
+### Placement
+
+- Steps run where `pipelines.overrides.<pipeline>.insert_steps` puts them: before or after a named step, or appended. `extra_steps` (append only) is gone. A masking step must run before indexing, embedding, and provider steps, which appending cannot do.
+- Unknown pipelines, steps, `skip_steps` names, and anchors are errors at `dpkms serve` start and in `dpkms config validate`. They are never ignored and never a panic.
+- An installed step resolves through the built-in step registry, so the worker runs it like any step. Custom pipelines (`dpkms pipeline create`) still do not run installed steps.
+
+### Input and output
+
+- Stdin is the knowledge object JSON (as decided). The earlier implementation's `{"config": ..., "object": ...}` envelope is dropped; config comes only through `DPKMS_STEP_CONFIG_PATH`.
+- The output object is a patch: a field it omits keeps its value. The decision's own example omitted `id`; with replace semantics every step would have to echo the whole object.
+- Writable fields: `type`, `subtype`, `raw_content`, `text_content`, `content_type`, `metadata`, `summaries`, `sections`, `tags`, `mentions`, `decisions`, `tasks`, `graph`, `inbox_note`. Every other field (identity, provenance, lifecycle) may be repeated but not changed. An unknown field or a changed read-only field fails the object. "Should not modify id" was advice; it is now enforced.
+- `error` is an object `{code, message, details}` as decided, plus optional `retryable` (default false). The earlier implementation's string error is dropped.
+- Stdout is capped by `resource_requirements.max_output` (default 64MB). Stderr is never parsed or stored; its tail goes to the debug log.
+
+### Failure
+
+- Fail closed: any failure fails the object, nothing is stored, and the job fails. Protocol violations, oversized output, a reported error, and a changed executable are permanent. A crash or timeout follows the job's retries; `retryable: true` asks for a retry.
+- `on_error: continue` per insert is the only way to pass an object on after a failure.
+- Default timeout 30s; `insert_steps[].timeout` overrides SKILL.md.
+
+### Environment and isolation
+
+- The step gets only the protocol variables (`SANDBOX_*`, `DPKMS_*`). Under process isolation it also gets `PATH=/usr/bin:/bin`, `LC_ALL=C`, and `HOME` and `TMPDIR` pointing at a private working directory that is removed after the run. Nothing from dpkms's environment is inherited, because that environment holds provider keys.
+- Process isolation sets rlimits in the child through `/bin/sh` before exec: CPU seconds, open files, file size, and address space on Linux only (macOS rejects `RLIMIT_AS`). The earlier implementation set them on the dpkms process itself. `max_cpu` is a share, which no rlimit expresses, so it applies to containers only. Process isolation enforces neither filesystem nor network policy; `SANDBOX_NETWORK` is advisory there.
+- Container isolation needs `container_image` in SKILL.md; there is no default image (the decision suggested `alpine:3`). Choosing a base image for third-party code is the step author's call. The container runs with `--network none` unless SKILL.md sets `network: true`, read-only root and step mount, all capabilities dropped, `no-new-privileges`, user 65534, a pids limit, and the step's memory and CPU limits. The image name the earlier implementation invented (`contexthelp/step-<name>`) is dropped.
+- Effective isolation is the strictest of SKILL.md `minimum_isolation`, the registry trust level (`sandboxed` forces container, and no network), and `insert_steps[].isolation`. There is no per-pipeline `sandbox.isolation_level` to compare against.
+
+### Packaging and install
+
+- A step is a directory: SKILL.md (with the `execution` block, `executable` relative to the directory) plus its files. `config_schema` is under `execution` and is enforced at serve start against the insert's `config`.
+- Local install sends the directory as a gzipped tar (`dpkms pipeline step install <name> --path <dir>`); the server unpacks it into `steps.path/<name>`.
+- Registry manifest steps declare `archive` (relative to the registry URL) and `sha256`, replacing `path` to a bare SKILL.md, which installed nothing runnable. Install verifies the digest before unpacking.
+- Registry `trust_level` gates install: `untrusted` (the default) is refused rather than queued for approval. The approval queue holds inert data and approving code needs a decision about the registry, which is config. `sandboxed` installs for container isolation only; `trusted` installs as is.
+- Install records the executable's sha256; each run refuses an executable that no longer matches.
+- Uninstall deletes the step directory and its record, and is refused while `insert_steps` names the step.
+
+### Not covered
+
+- The job record keeps the submitted content after the job completes, `ctxt analyze --raw` bypasses pipelines, and media providers see the original media. A step cannot mask those.

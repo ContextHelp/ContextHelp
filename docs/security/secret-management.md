@@ -669,19 +669,23 @@ secret-scan:
 
 ## For Step Developers
 
-Installed steps are designed to run out of process and get their
-configuration as JSON on stdin (ADR-058). Never hardcode secrets in a step; read them from the environment the
-step runs in, or from a file with restricted permissions:
+Installed steps run out of process (ADR-058). dpkms passes a step no
+secrets: its environment holds only the protocol variables, and its
+`config` (the file `DPKMS_STEP_CONFIG_PATH` names) is printed by
+`config show`. Never hardcode secrets in a step; under process isolation,
+read them from a file with restricted permissions that the step owns:
 
 ```go
 // BAD - Never do this
 const apiKey = "sk-proj-hardcoded" // DON'T
 
-// GOOD - Get from environment
-apiKey := os.Getenv("MYSTEP_API_KEY")
-if apiKey == "" {
-    return fmt.Errorf("MYSTEP_API_KEY not set")
+// GOOD - Read a key file the step's operator created (mode 0600).
+// dpkms passes no environment through, so os.Getenv finds nothing.
+key, err := os.ReadFile("/etc/mystep/api-key")
+if err != nil {
+    return fmt.Errorf("read api key: %w", err)
 }
+apiKey := strings.TrimSpace(string(key))
 ```
 
 ## Monitoring & Audit

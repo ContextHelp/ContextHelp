@@ -1,6 +1,6 @@
 # ADR-078 – No Plugin System
 
-> **Status:** Accepted
+> **Status:** Accepted. Installed steps run in pipelines since the [ADR-058 amendment](ADR-058-external-step-execution-protocol.md#amendment-2026-10-14-implementation) (2026-10-14).
 > **Date:** 2026-10-14
 > **Author:** jadb
 > **Applies to:** dPKMS, ctxt
@@ -25,8 +25,8 @@ Meanwhile the extension surfaces people actually use grew outside that model: pi
 
 ctxt and dpkms are extended through:
 
-- **Pipelines**: `pipelines.overrides.<pipeline>` (`providers`, `skip_steps`, `extra_steps`) and custom pipelines (`dpkms pipeline create`, `POST /api/v1/pipelines`).
-- **Steps**: built-in steps, plus steps installed from a step registry (`dpkms pipeline step install`). Installed steps are designed to run out of process under ADR-058; no pipeline executes them yet.
+- **Pipelines**: `pipelines.overrides.<pipeline>` (`providers`, `skip_steps`, `insert_steps`) and custom pipelines (`dpkms pipeline create`, `POST /api/v1/pipelines`).
+- **Steps**: built-in steps, plus steps installed from a step registry (`dpkms pipeline step install`). Installed steps run out of process under ADR-058 wherever `insert_steps` places them (since 2026-10-14; see the ADR-058 amendment).
 - **Registries**: entity, taxonomy and step registries (`registries:` config and `ctxt registry` for knowledge registries, `dpkms pipeline step registry` for step registries).
 - **Hooks**: ADR-075 pre and post hooks for applications that react to ctxt and dpkms events (accepted, not implemented yet).
 
@@ -37,7 +37,7 @@ Authentication is extended by putting dpkms behind a trusted proxy or an OIDC pr
 ## Rationale
 
 - Nothing used the plugin layer. Keeping it cost a public Go package, a config key that did nothing, docs describing behaviour that did not exist, and tests for code with no caller.
-- Every concrete plugin use case is covered by another surface: extra steps and custom pipelines for processing (working today), registries for vocabularies (working today), hooks for integrations (designed in ADR-075).
+- Every concrete plugin use case is covered by another surface: inserted steps and custom pipelines for processing (working today), registries for vocabularies (working today), hooks for integrations (designed in ADR-075).
 - Out-of-process steps (ADR-058) and hooks (ADR-075) are designed to keep third-party code outside the daemon. In-process plugins would have needed the ADR-027 sandbox to get the same isolation.
 - ctxt is unreleased, so removing the layer breaks no one.
 
@@ -57,7 +57,7 @@ Authentication is extended by putting dpkms behind a trusted proxy or an OIDC pr
 
 - **Keep the interfaces, load nothing.** This was the state before this ADR. Rejected: it documented an extension model that did not work.
 - **Implement in-process loading (Go `plugin` package or embedded modules).** Rejected: the Go `plugin` package ties plugins to the exact toolchain and dependency versions of the binary, compiled-in modules are not plugins, and both run third-party code inside the daemon.
-- **Out-of-process plugins over RPC.** Rejected: external steps (ADR-058) and hooks (ADR-075) are designed as that, scoped to the places where extension is needed.
+- **Out-of-process plugins over RPC.** Rejected: external steps (ADR-058, running since its 2026-10-14 amendment) and hooks (ADR-075, designed) cover that, scoped to the places where extension is needed.
 
 ---
 
