@@ -12,6 +12,7 @@ linters:
     - bodyclose
     - dupl
     - errorlint
+    - forbidigo
     - goconst
     - gocritic
     - gocyclo
@@ -52,6 +53,19 @@ linters:
         - (*os.File).Close
         - os.Remove
         - os.RemoveAll
+    forbidigo:
+      # ADR-080 §4: request handlers read through the viewer-scoped
+      # driver; only the pipeline, jobs and housekeeping may name the
+      # raw driver, and they do so through storage.System. The pattern
+      # is type-aware and package-qualified so an import alias or an
+      # unrelated package with a System function cannot dodge or trip
+      # it. Scoped to internal/server and internal/mcp by the
+      # path-except exclusion below.
+      analyze-types: true
+      forbid:
+        - pattern: ^storage\.System$
+          pkg: ^github\.com/ideacrafterslabs/ctxt/internal/storage$
+          msg: handlers take the viewer-scoped driver; storage.System is for pipeline, jobs and housekeeping (ADR-080 §4)
     goconst:
       min-len: 3
       min-occurrences: 3
@@ -188,6 +202,13 @@ linters:
       - linters:
           - all
         path: (.*)/generated/(.*)\.go
+      # ADR-080 §4: the raw-driver ban applies to request handlers
+      # only. Everywhere else storage.System is the sanctioned way to
+      # name the unscoped driver, so its findings are dropped outside
+      # internal/server and internal/mcp.
+      - linters:
+          - forbidigo
+        path-except: ^internal/(server|mcp)/
       - linters:
           - gocyclo
         path: cmd/
