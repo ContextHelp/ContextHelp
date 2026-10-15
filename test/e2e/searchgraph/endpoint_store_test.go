@@ -18,6 +18,7 @@ import (
 
 	"github.com/google/uuid"
 
+	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/graph"
@@ -99,14 +100,13 @@ var endpointLinks = []fixtureLink{
 	{"capacity", "supports", "runbook"},
 }
 
-// Principals of the protected instances. The gated one holds an inbound
-// grant for every namespace but vault; the open one holds none, which
-// leaves it unrestricted.
+// Principals of the protected instances, created in each seeded
+// store's registry with one API key each. The gated one holds an
+// inbound grant for every namespace but vault; the open one holds none,
+// which leaves it unrestricted. Both are readers.
 const (
 	gatedPrincipal  = "e2e-graph-gated"
-	gatedToken      = "e2e-graph-gated-token-7c1d0a4f9e2b"
 	openPrincipal   = "e2e-graph-open"
-	openToken       = "e2e-graph-open-token-2b9e41c7d05a"
 	hiddenNamespace = "vault"
 	hiddenEntity    = "vault/codename"
 )
@@ -114,10 +114,39 @@ const (
 var gatedNamespaces = []string{"project", "person", "team"}
 
 // graphStore is a seeded store: storage type and path (a file or a DSN)
-// as both binaries' configs name them, and the id of each object.
+// as both binaries' configs name them, the id of each object, and the
+// API keys of the two principals (the owner's, which a protected
+// instance needs to start, is minted and not kept).
 type graphStore struct {
 	typ, path string
 	ids       map[string]string // alias -> object id
+	// gatedToken and openToken are the principals' API keys.
+	gatedToken, openToken string
+}
+
+// seedGraphPrincipals creates the gated and open principals in drv's
+// registry and mints one key each, kept on st, plus the owner's key a
+// protected instance needs to start.
+func seedGraphPrincipals(ctx context.Context, t *testing.T, drv storage.StorageDriver, st *graphStore) {
+	t.Helper()
+	for _, id := range []string{gatedPrincipal, openPrincipal} {
+		if err := drv.Auth().Principals().Create(ctx, &storage.Principal{
+			ID: id, Kind: storage.PrincipalKindPerson, DisplayName: id, Roles: []string{authn.RoleReader},
+		}); err != nil {
+			t.Fatalf("create principal %s: %v", id, err)
+		}
+	}
+	keys := authn.NewKeysOver(drv.Auth(), nil)
+	for _, k := range []struct {
+		principal string
+		into      *string
+	}{{storage.OwnerPrincipal, new(string)}, {gatedPrincipal, &st.gatedToken}, {openPrincipal, &st.openToken}} {
+		secret, _, err := keys.Mint(ctx, authn.MintKey{PrincipalID: k.principal, Name: "e2e"})
+		if err != nil {
+			t.Fatalf("mint key for %s: %v", k.principal, err)
+		}
+		*k.into = secret
+	}
 }
 
 // alias rewrites every object id in s to its alias.
@@ -182,6 +211,7 @@ func seedGraphStore(t *testing.T, typ, path string, withModel bool) *graphStore 
 	}); err != nil {
 		t.Fatalf("grant %s: %v", gatedPrincipal, err)
 	}
+	seedGraphPrincipals(ctx, t, drv, st)
 
 	if !withModel {
 		return st
@@ -239,7 +269,7 @@ func newSwitchableProvider(t *testing.T) *switchableProvider {
 type instanceConfig struct {
 	store     *graphStore
 	embedURL  string
-	protected bool     // static bearer auth for both principals; private otherwise
+	protected bool     // key-backed principals from the store; private otherwise
 	hosts     []string // server.allowed_hosts beyond loopback
 }
 
@@ -251,24 +281,16 @@ func (e *env) writeDpkmsConfig(name string, c instanceConfig) string {
 	fmt.Fprintf(&b, "providers:\n  embedding:\n    backend: ollama\n    endpoint: %q\n", c.embedURL)
 	b.WriteString("browser:\n  enabled: false\n")
 	if c.protected {
-		b.WriteString("server:\n  access: protected\n")
+		// The principals and their keys live in the seeded store's
+		// registry. The instance mints no sign-in links, so it needs no
+		// public_url.
+		b.WriteString("server:\n  access: protected\n  auth:\n    sign_in: []\n")
 		if len(c.hosts) > 0 {
 			b.WriteString("  allowed_hosts:\n")
 			for _, h := range c.hosts {
 				fmt.Fprintf(&b, "    - %q\n", h)
 			}
 		}
-		fmt.Fprintf(&b, `  auth:
-    provider: static
-    static:
-      tokens:
-        - token: %q
-          principal: %q
-          roles: [reader]
-        - token: %q
-          principal: %q
-          roles: [reader]
-`, gatedToken, gatedPrincipal, openToken, openPrincipal)
 	}
 	return e.writeConfig(name, b.String())
 }
