@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -23,15 +24,36 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
+	"github.com/spf13/cobra"
 	"hop.top/kit/go/storage/secret"
 )
+
+// closeStorage closes a storage driver at the end of a command, warning
+// on stderr when the close fails: the command's own result stands.
+func closeStorage(d interface{ Close(context.Context) error }) {
+	if err := d.Close(context.Background()); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to close storage: %v\n", err)
+	}
+}
+
+// markFlagsRequired marks each named flag on cmd required. Cobra only
+// fails here when no such flag is defined, which is a wiring bug in the
+// command's init — so it panics at startup instead of silently leaving
+// the flag optional.
+func markFlagsRequired(cmd *cobra.Command, names ...string) {
+	for _, name := range names {
+		if err := cmd.MarkFlagRequired(name); err != nil {
+			panic(fmt.Sprintf("%s: mark --%s required: %v", cmd.CommandPath(), name, err))
+		}
+	}
+}
 
 // newService creates a Service wired to the configured storage backend.
 // Returns the service and a cleanup function that must be deferred.
 func newService() (*service.Service, func(), error) {
 	storageType := cfg.Storage.Type
 	if storageType == "" {
-		storageType = "sqlite"
+		storageType = storageTypeSQLite
 	}
 	storagePath := cfg.Storage.Path
 	if storagePath == "" {
@@ -45,8 +67,7 @@ func newService() (*service.Service, func(), error) {
 	}
 	ctx := context.Background()
 	if err := driver.Init(ctx); err != nil {
-		driver.Close(ctx)
-		return nil, nil, fmt.Errorf("init storage: %w", err)
+		return nil, nil, errors.Join(fmt.Errorf("init storage: %w", err), driver.Close(ctx))
 	}
 
 	queue := jobs.NewQueue(driver.Jobs())
@@ -69,7 +90,7 @@ func newService() (*service.Service, func(), error) {
 		[]service.Option{service.WithRegistryTokens(registry.SecretTokens(func() (secret.Store, error) {
 			return secrets.New(secretsCfg)
 		}))}, *cfg)
-	cleanup := func() { driver.Close(context.Background()) }
+	cleanup := func() { closeStorage(driver) }
 
 	if err := svc.EnsureDefaultRegistry(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to load default registry: %v\n", err)

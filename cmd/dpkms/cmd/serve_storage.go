@@ -16,13 +16,20 @@ import (
 )
 
 // serveStorageTarget returns the storage type and path serve opens.
+// Storage defaults when the config leaves storage.type or storage.path
+// unset.
+const (
+	storageTypeSQLite = "sqlite"
+	fallbackDBPath    = "dpkms.db"
+)
+
 func serveStorageTarget(c *config.Config) (typ, path string) {
 	typ, path = c.Storage.Type, c.Storage.Path
 	if typ == "" {
-		typ = "sqlite"
+		typ = storageTypeSQLite
 	}
 	if path == "" {
-		path = "dpkms.db"
+		path = fallbackDBPath
 	}
 	return typ, path
 }
@@ -50,7 +57,7 @@ func openServeStorage(ctx context.Context, c *config.Config) (storage.StorageDri
 // guard; they get a nil lock and no error.
 func acquireServeLock(c *config.Config, instance string) (*dblock.Lock, error) {
 	typ, path := serveStorageTarget(c)
-	if typ != "sqlite" || sqlite.IsMemoryPath(path) {
+	if typ != storageTypeSQLite || sqlite.IsMemoryPath(path) {
 		return nil, nil
 	}
 	l, err := dblock.Acquire(path, dblock.Info{Role: dblock.RoleDaemon, Instance: instance})

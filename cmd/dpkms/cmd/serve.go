@@ -3,7 +3,9 @@ package cmd
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"io/fs"
 	gohttp "net/http"
 	"os"
 	"os/exec"
@@ -106,10 +108,13 @@ func init() {
 	// passed flag overriding (see resolveServeSettings, serveListenSpecs).
 }
 
+// loopbackHost is the address a private instance's listeners bind.
+const loopbackHost = "127.0.0.1"
+
 func runServe(cmd *cobra.Command, args []string) error {
 	// --daemon: re-exec self in background, detached from terminal.
 	if daemon, _ := cmd.Flags().GetBool("daemon"); daemon {
-		return daemonize(cmd)
+		return daemonize()
 	}
 
 	// Resolve instance name: flag > derive from DB basename.
@@ -119,9 +124,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 
 	// Resolve default profile: flag > config default > inline bool > interactive.
-	if err := resolveDefaultProfile(cmd); err != nil {
-		return err
-	}
+	resolveDefaultProfile(cmd)
 
 	settings := resolveServeSettings(cmd.Flags(), cfg)
 	workers := settings.workers
@@ -221,7 +224,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// 5a. Determine bind address. Only private instances stay on
 	// loopback; protected/public bind all interfaces (and are already
 	// guaranteed to have inbound auth configured above).
-	bind := "127.0.0.1"
+	bind := loopbackHost
 	if access != config.AccessPrivate {
 		bind = "0.0.0.0"
 	}
@@ -405,7 +408,12 @@ func runServe(cmd *cobra.Command, args []string) error {
 		// Non-fatal: ps won't show this instance but serve still works.
 		fmt.Fprintf(os.Stderr, "warning: could not write pidfile: %v\n", err)
 	}
-	defer pidfile.Remove(runDir, port)
+	defer func() {
+		// A pidfile that was never written is not a removal failure.
+		if err := pidfile.Remove(runDir, port); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			fmt.Fprintf(os.Stderr, "warning: could not remove pidfile: %v\n", err)
+		}
+	}()
 
 	// 10d. Crash recovery: reset any jobs left in "running" state from a
 	// previous crash back to "pending" so they are picked up immediately.
@@ -566,7 +574,7 @@ func serveListenSpecs(flags *pflag.FlagSet, srv config.ServerConfig, bind string
 	return []listenSpec{
 		spec("HTTP", bind, "port", srv.Port, srv.PortSet()),
 		spec("gRPC", bind, "grpc-port", srv.GRPCPort, srv.GRPCPortSet()),
-		spec("cookie bridge", "127.0.0.1", "cookie-bridge-port", srv.CookieBridgePort, srv.CookieBridgePortSet()),
+		spec("cookie bridge", loopbackHost, "cookie-bridge-port", srv.CookieBridgePort, srv.CookieBridgePortSet()),
 	}
 }
 
@@ -579,7 +587,7 @@ func resolveInstanceName(cmd *cobra.Command) (string, error) {
 		// Derive from DB path: strip directory and known extensions, then slugify.
 		dbPath := cfg.Storage.Path
 		if dbPath == "" {
-			dbPath = "dpkms.db"
+			dbPath = fallbackDBPath
 		}
 		name = instanceNameFromDBPath(dbPath)
 	}
@@ -625,7 +633,7 @@ func instanceNameFromDBPath(dbPath string) string {
 // daemonize re-executes the current binary in the background without the
 // --daemon flag, redirecting stdin/stdout/stderr to /dev/null, then returns
 // immediately so the calling process (the user's terminal) exits.
-func daemonize(cmd *cobra.Command) error {
+func daemonize() error {
 	self, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("daemon: resolve executable: %w", err)
@@ -669,17 +677,17 @@ func daemonize(cmd *cobra.Command) error {
 // Steps 1-2 are config.ProfileConfig.Active, the rule ctxt's commands share.
 // Non-interactive contexts (no TTY) fall through without error if no default is
 // set — the server starts with no active profile.
-func resolveDefaultProfile(cmd *cobra.Command) error {
+func resolveDefaultProfile(cmd *cobra.Command) {
 	flag, _ := cmd.Flags().GetString("profile")
 	flagSet := cmd.Flags().Changed("profile")
 	cfg.Profile.Default = cfg.Profile.Active(flag, flagSet)
 	if flagSet || cfg.Profile.Default != "" {
-		return nil
+		return
 	}
 
 	profiles := cfg.Profile.Profiles
 	if len(profiles) == 0 {
-		return nil // no profiles defined; nothing to resolve
+		return // no profiles defined; nothing to resolve
 	}
 
 	names := make([]string, 0, len(profiles))
@@ -691,12 +699,12 @@ func resolveDefaultProfile(cmd *cobra.Command) error {
 	// Single profile: use it automatically.
 	if len(names) == 1 {
 		cfg.Profile.Default = names[0]
-		return nil
+		return
 	}
 
 	// Multiple profiles, no default — interactive picker (requires a TTY).
 	if !isTTY() {
-		return nil // headless: start without a default profile
+		return // headless: start without a default profile
 	}
 
 	// Build huh select options: one per profile + a "(none)" option.
@@ -725,13 +733,12 @@ func resolveDefaultProfile(cmd *cobra.Command) error {
 		// User canceled (Ctrl+C / Esc) — proceed without a profile. The
 		// prompt is a convenience for picking a default; declining it is a
 		// valid choice, not a startup failure.
-		return nil //nolint:nilerr // declining the optional profile prompt is not a startup failure
+		return
 	}
 
 	if selected != "" {
 		cfg.Profile.Default = selected
 	}
-	return nil
 }
 
 // isTTY reports whether stdin is an interactive terminal.

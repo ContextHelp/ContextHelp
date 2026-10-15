@@ -78,7 +78,7 @@ func runRestore(cmd *cobra.Command, args []string) error {
 
 	dbPath := cfg.Storage.Path
 	if dbPath == "" {
-		dbPath = "dpkms.db"
+		dbPath = fallbackDBPath
 	}
 
 	// Running instances of this data dir record their database in

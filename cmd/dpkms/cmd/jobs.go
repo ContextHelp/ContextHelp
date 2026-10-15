@@ -141,7 +141,7 @@ func runJobsList(cmd *cobra.Command, _ []string) error {
 
 	fmt.Printf("Jobs (%d total)\n\n", total)
 	headers := []string{"ID", "Type", "Status", "Pipeline", "Created"}
-	var rows [][]string
+	rows := make([][]string, 0, len(jobs))
 	for _, j := range jobs {
 		rows = append(rows, []string{
 			j.ID,

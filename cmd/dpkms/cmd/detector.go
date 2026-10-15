@@ -94,8 +94,7 @@ func init() {
 	detectorAddCmd.Flags().String("name", "", "human-readable label")
 	detectorAddCmd.Flags().Int("priority", 100,
 		"priority (lower = higher, default 100)")
-	detectorAddCmd.MarkFlagRequired("kind")
-	detectorAddCmd.MarkFlagRequired("pipeline")
+	markFlagsRequired(detectorAddCmd, "kind", "pipeline")
 
 	// add creates a routing rule; enable/disable flip a boolean. All three
 	// are reversible by the opposite command, so Write, not Destructive.
