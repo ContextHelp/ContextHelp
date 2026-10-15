@@ -105,7 +105,7 @@ A principal needs at least one known role; an unknown role on a declared key fai
 | `read:jobs` | reader, writer, admin | `GET` jobs, `import/{id}`, `importers/runs/{id}`, `capture/recent`; gRPC `JobService/*` |
 | `read:registries` | reader, writer, admin | `GET /steps/registries` |
 | `read:system` | reader, writer, admin | `GET /whoami`, `GET /system/reminders`; gRPC reflection |
-| `write:self` | reader, writer, admin; browser sessions | a principal's own keys, identities and sessions (routes arrive with the principal CLI) |
+| `write:self` | reader, writer, admin; browser sessions | a principal's own credentials (`ctxt auth`): `GET`, `POST /self/keys`, `DELETE /self/keys/{key}`, `GET /self/identities`, `DELETE /self/identities/{identity}`, `GET /self/sessions`, `DELETE /self/sessions/{session}`; a target that is another principal's is 403 `NOT_SELF` |
 | `read:pipelines` | reader, writer, admin | `GET` pipelines and steps |
 | `read:watches` | reader, writer, admin | `GET` watches and watch files |
 | `write:objects` | writer, admin | `POST /analyze`, `capture/*`, `import`, `importers/*/run`, `pipelines/enqueue`, `aliases`, `saved-searches`, suggestion approve and reject, `entities/{slug}/pull`; `PATCH /objects/{id}`, `POST /objects/{id}/reprocess`, `POST /edges`; gRPC `AnalyzeService/Analyze` |
@@ -125,12 +125,16 @@ A principal needs at least one known role; an unknown role on a declared key fai
 | `admin:steps` | admin | `POST /steps/install`; `DELETE /steps/{name}` |
 | `admin:watches` | admin | `POST /watches`, `watches/{id}/pause`, `watches/{id}/resume`; `PATCH` and `DELETE /watches/{id}` |
 | `admin:audit` | admin | `GET /audit-log` |
-| `admin:principals` | admin | principals, their identities, keys and invites (routes arrive with the principal CLI) |
-| `admin:shares` | admin | audiences, share policies and ceilings (routes arrive with sharing) |
+| `admin:principals` | admin | the principal registry (`ctxt principal`, `ctxt auth key --principal`): `GET`, `POST /principals`, `GET /principals/{id}`, `POST /principals/{id}/suspend`, `/revoke`, `/links` (a sign-in link); `GET`, `POST /principals/{id}/identities`, `DELETE /principals/{id}/identities/{identity}`; `GET`, `POST /principals/{id}/keys`, `DELETE /principals/{id}/keys/{key}` |
+| `admin:shares` | admin | `POST /share/invites` (`ctxt share invite`); audiences, share policies and ceilings arrive with sharing |
 | `read:ui` | reader, writer, admin; never a browser session | `POST /ui/login-codes` (`ctxt ui open`) |
 | `signout:ui` | browser sessions only | `DELETE /ui/session` |
 
 `POST /api/v1/federation/push` needs `write:objects` and, on non-private instances, the key of a principal of kind `peer`; any other principal gets 403 `PEER_REQUIRED`. `/health`, `/healthz` and gRPC health are open.
+
+Two rules hold on every route that yields a credential. Nothing widens: a principal created, an identity bound, a sign-in link or a key minted over the API holds at most the effective scopes of the caller that asked for it, so a narrowed admin key or a browser session cannot mint its way up or take over a more privileged principal (403 `SCOPE_NOT_HELD`; a key scope the principal's roles do not grant is 400 `INVALID_SCOPE`). The owner is protected: only the owner's own key touches the owner's keys, identities and sign-in links over the API; another admin gets 403 `OWNER_PROTECTED`, and `dpkms auth key create --principal owner` on the host stays the way back in.
+
+The sign-in ceremonies (`POST /ui/auth/session`, `/ui/invite/session` and `/ui/signin/session`) share one budget per client address: ten attempts a minute, then 429 `RATE_LIMITED` with a `Retry-After`. A ceremony on a request that already carries a live session is refused with 409 `SESSION_ACTIVE`: the browser signs out first. Every ticket is single use; a second redemption is 401 `INVALID_TICKET`.
 
 ### Reach dpkms by another host name
 
@@ -248,7 +252,11 @@ server:
   with its roles. The session ends the moment that key, or the
   principal, is revoked: the store ends it in the same transaction, and
   the next request with the cookie gets `401` and the cookie cleared. A
-  key declared in `server.auth.keys` cannot mint a link.
+  key declared in `server.auth.keys` cannot mint a link. For a browser
+  signed in through an invite or a sign-in link, the session is bound to
+  the `link` identity the redemption created, with the principal's role
+  scopes narrowed to the web UI's set. `ctxt principal identity remove`
+  on that identity ends the session; revoking the principal also ends it.
 - **Scopes**: the key's scopes narrowed to the web UI's set: `read:objects`,
   `read:inbox`, `read:feeds`, `read:jobs`, `read:registries`,
   `read:system`, `delete:objects`, `write:jobs`, `write:self`, plus

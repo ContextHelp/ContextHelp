@@ -84,6 +84,26 @@ dpkms session list [--all] [--principal <p>] | revoke <id> | revoke --principal 
 ctxt ui open [--server <url> | --instance <name>] [--no-browser]
 ```
 
+### Identity, principals and sharing
+
+```bash
+ctxt auth whoami
+ctxt auth key create [--name <label>] [--expires 30d|2026-12-31] [--scope <scope>]... [--principal <id>]
+ctxt auth key list [--principal <id>]
+ctxt auth key revoke <key-id> [--principal <id>]
+ctxt auth identity list | remove <identity-id>
+ctxt auth session list [--all] | end <session-id>
+# admin:principals (the owner's key):
+ctxt principal list [--kind person|device|peer] [--status active|suspended|revoked]
+ctxt principal show|suspend|link <id>
+ctxt principal create --kind person|device|peer --name <name> [--role admin|writer|reader]...
+ctxt principal revoke <id> --confirm-token=<sha>
+ctxt principal identity add <id> --method proxy|oidc --subject <subject> [--issuer <issuer>] [--name <label>]
+ctxt principal identity list <id> | remove <id> <identity-id>
+# admin:shares (the owner's key):
+ctxt share invite --name <display name> [--expires 7d]
+```
+
 ## REST endpoint map (from current spec)
 
 Core routes:
@@ -114,6 +134,14 @@ Web UI sign-in routes (see [Sign in to the web UI](../workflows/web-ui-sign-in.m
 - `POST /ui/auth/session`: login code for the session cookie (same-origin, `X-Ctxt-CSRF: 1`)
 - `GET /api/v1/whoami`: who the caller is (`via`: `token`, `session` or `none`), its scopes and, for a session, the session
 - `DELETE /api/v1/ui/session` (`signout:ui`, browser sessions only): sign the browser out
+
+Invite and sign-in link routes (same guide):
+
+- `POST /api/v1/share/invites` (`admin:shares`): `{display_name, expires_in}` → `{url, expires_at, expires_in}`, the link under `/ui/invite`, single use, 7 days by default
+- `POST /api/v1/principals/{id}/links` (`admin:principals`): a 10-minute sign-in link under `/ui/signin` for an active principal
+- `POST /ui/invite/session`, `POST /ui/signin/session`: ticket for the session cookie (same-origin, `X-Ctxt-CSRF: 1`; rate limited per client address; refused with a live session)
+
+Principal registry routes (`admin:principals`): `GET`, `POST /api/v1/principals`; `GET /api/v1/principals/{id}`; `POST .../suspend`, `.../revoke`; `GET`, `POST .../identities`, `DELETE .../identities/{identity}`; `GET`, `POST .../keys`, `DELETE .../keys/{key}`. Own credentials (`write:self`): `GET`, `POST /api/v1/self/keys`, `DELETE /api/v1/self/keys/{key}`; `GET /api/v1/self/identities`, `DELETE /api/v1/self/identities/{identity}`; `GET /api/v1/self/sessions`, `DELETE /api/v1/self/sessions/{session}`.
 
 Importer routes (story-target contract):
 

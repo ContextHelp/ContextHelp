@@ -51,6 +51,10 @@ A web UI session cookie reports the session's narrowed scopes and the session it
  "session": {"id": "uis_3f2a…", "kind": "ui", "created_at": "…", "idle_expires_at": "…", "expires_at": "…"}}
 ```
 
+Invite and sign-in links (`ctxt share invite`, `ctxt principal link`) open the web UI at `/ui/invite` and `/ui/signin` with the ticket in the fragment; the page redeems it for the session cookie. For a browser signed in through an invite or a sign-in link, the session is bound to the `link` identity the redemption created, with the principal's role scopes narrowed to the web UI's set. `ctxt principal identity remove` on that identity ends the session; revoking the principal also ends it.
+
+The sign-in ceremonies (`POST /ui/auth/session`, `/ui/invite/session` and `/ui/signin/session`) share one budget per client address: ten attempts a minute, then 429 `RATE_LIMITED` with a `Retry-After`. A ceremony on a request that already carries a live session is refused with 409 `SESSION_ACTIVE`: the browser signs out first. Every ticket is single use; a second redemption is 401 `INVALID_TICKET`.
+
 ## Content Types
 
 - JSON: `application/json`
@@ -158,6 +162,12 @@ Core endpoints:
 - `GET /stats`
 - `GET /suggest/tags` (optional)
 - `GET /suggest/mentions` (optional)
+- `GET /whoami`
+- `GET|POST /principals`, `GET /principals/{id}`, `POST /principals/{id}/suspend`, `POST /principals/{id}/revoke`, `POST /principals/{id}/links`
+- `GET|POST /principals/{id}/identities`, `DELETE /principals/{id}/identities/{identity}`
+- `GET|POST /principals/{id}/keys`, `DELETE /principals/{id}/keys/{key}`
+- `POST /share/invites`
+- `GET|POST /self/keys`, `DELETE /self/keys/{key}`, `GET /self/identities`, `DELETE /self/identities/{identity}`, `GET /self/sessions`, `DELETE /self/sessions/{session}`
 
 ---
 
