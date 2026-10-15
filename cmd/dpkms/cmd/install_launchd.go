@@ -1,4 +1,4 @@
-// Package cmd: dpkms install — registers the dpkms binary as a managed
+// dpkms install registers the dpkms binary as a managed
 // service so the daemon auto-starts on login and auto-restarts on crash.
 //
 // Platforms:
@@ -12,6 +12,7 @@
 // The command is intentionally additive: it does not touch stored
 // knowledge or the pipeline contract, only registers the running binary
 // with the host service manager.
+
 package cmd
 
 import (
@@ -189,9 +190,9 @@ func newInstaller() (installer, error) {
 	}
 
 	switch runtime.GOOS {
-	case "darwin":
+	case goosDarwin:
 		return &darwinInstaller{binary: bin, home: home}, nil
-	case "linux":
+	case goosLinux:
 		return &linuxInstaller{binary: bin, home: home}, nil
 	default:
 		return nil, fmt.Errorf("unsupported platform: %s (only darwin and linux are supported)", runtime.GOOS)
@@ -269,10 +270,12 @@ func (d *darwinInstaller) IsRunning() (bool, error) {
 }
 
 func (d *darwinInstaller) Install(force bool) error {
+	// #nosec G301 -- ~/Library/Logs/dpkms holds service logs, no secrets; mode matches ~/Library/Logs
 	if err := os.MkdirAll(d.logDir(), 0o755); err != nil {
 		return fmt.Errorf("create log dir: %w", err)
 	}
 	plistPath, _ := d.UnitPath()
+	// #nosec G301 -- ~/Library/LaunchAgents is a standard per-user directory, 0755 by convention
 	if err := os.MkdirAll(filepath.Dir(plistPath), 0o755); err != nil {
 		return fmt.Errorf("create LaunchAgents dir: %w", err)
 	}
@@ -294,9 +297,10 @@ func (d *darwinInstaller) Install(force bool) error {
 	if force {
 		// best-effort unload before overwrite — the agent must not be
 		// holding the binary open when we re-render.
-		_ = d.bootout(plistPath)
+		d.bootout(plistPath)
 	}
 
+	// #nosec G306 -- a LaunchAgent plist holds no secrets; launchd expects the conventional 0644
 	if err := os.WriteFile(plistPath, []byte(rendered), 0o644); err != nil {
 		return fmt.Errorf("write plist: %w", err)
 	}
@@ -306,7 +310,7 @@ func (d *darwinInstaller) Install(force bool) error {
 
 func (d *darwinInstaller) Uninstall() error {
 	plistPath, _ := d.UnitPath()
-	_ = d.bootout(plistPath)
+	d.bootout(plistPath)
 	if err := os.Remove(plistPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove plist: %w", err)
 	}
@@ -335,11 +339,11 @@ func (d *darwinInstaller) bootstrap(plistPath string) error {
 	return nil
 }
 
-func (d *darwinInstaller) bootout(plistPath string) error {
+func (d *darwinInstaller) bootout(plistPath string) {
 	// Teardown is idempotent: with no launchctl there is no agent to unload,
 	// so the desired end state already holds.
 	if _, err := exec.LookPath("launchctl"); err != nil {
-		return nil //nolint:nilerr // no launchctl means no agent to unload; desired state already holds
+		return
 	}
 	uid := strconv.Itoa(os.Getuid())
 	// Prefer the modern bootout target. If that fails (e.g. the agent
@@ -347,11 +351,10 @@ func (d *darwinInstaller) bootout(plistPath string) error {
 	// #nosec G204 -- literal binary; uid is process-local and
 	// LaunchdLabel is a compile-time const.
 	if err := exec.Command("launchctl", "bootout", "gui/"+uid+"/"+LaunchdLabel).Run(); err == nil {
-		return nil
+		return
 	}
 	// #nosec G204 -- literal binary; plistPath is process-local.
 	_ = exec.Command("launchctl", "unload", plistPath).Run()
-	return nil
 }
 
 // ─── linux ───────────────────────────────────────────────────────────
@@ -397,10 +400,12 @@ func (l *linuxInstaller) IsRunning() (bool, error) {
 }
 
 func (l *linuxInstaller) Install(force bool) error {
+	// #nosec G301 -- ~/.local/share/dpkms holds service logs, no secrets; mode matches its parent
 	if err := os.MkdirAll(l.logDir(), 0o755); err != nil {
 		return fmt.Errorf("create log dir: %w", err)
 	}
 	unitPath, _ := l.UnitPath()
+	// #nosec G301 -- ~/.config/systemd/user is a standard per-user directory, 0755 by convention
 	if err := os.MkdirAll(filepath.Dir(unitPath), 0o755); err != nil {
 		return fmt.Errorf("create systemd user dir: %w", err)
 	}
@@ -418,9 +423,10 @@ func (l *linuxInstaller) Install(force bool) error {
 	}
 
 	if force {
-		_ = l.disable()
+		l.disable()
 	}
 
+	// #nosec G306 -- a systemd user unit holds no secrets; 0644 is the convention
 	if err := os.WriteFile(unitPath, []byte(rendered), 0o644); err != nil {
 		return fmt.Errorf("write unit: %w", err)
 	}
@@ -429,7 +435,7 @@ func (l *linuxInstaller) Install(force bool) error {
 }
 
 func (l *linuxInstaller) Uninstall() error {
-	_ = l.disable()
+	l.disable()
 	unitPath, _ := l.UnitPath()
 	if err := os.Remove(unitPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove unit: %w", err)
@@ -453,14 +459,13 @@ func (l *linuxInstaller) enable() error {
 	return nil
 }
 
-func (l *linuxInstaller) disable() error {
+func (l *linuxInstaller) disable() {
 	// Teardown is idempotent: with no systemctl there is no unit to disable,
 	// so the desired end state already holds.
 	if _, err := exec.LookPath("systemctl"); err != nil {
-		return nil //nolint:nilerr // no systemctl means no unit to disable; desired state already holds
+		return
 	}
 	_ = exec.Command("systemctl", "--user", "disable", "--now", SystemdUnitName).Run()
-	return nil
 }
 
 // ─── rendering helpers (exported for testing) ───────────────────────

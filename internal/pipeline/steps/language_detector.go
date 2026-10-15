@@ -55,7 +55,11 @@ func NewLanguageDetector() *LanguageDetector {
 	}
 }
 
-func (s *LanguageDetector) Name() string { return "language_detector" }
+// languageDetectorName is the step's name, also the source it stamps
+// on the language nodes it adds.
+const languageDetectorName = "language_detector"
+
+func (s *LanguageDetector) Name() string { return languageDetectorName }
 
 func (s *LanguageDetector) Run(ctx context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
 	if draft.Metadata == nil {
@@ -88,7 +92,7 @@ func (s *LanguageDetector) Run(ctx context.Context, draft *storage.KnowledgeObje
 				Label:    "lang:" + lang,
 				Order:    0,
 				Metadata: map[string]any{
-					"source": "language_detector",
+					"source": languageDetectorName,
 					"lang":   lang,
 				},
 			})

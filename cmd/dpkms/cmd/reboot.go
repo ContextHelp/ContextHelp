@@ -1,15 +1,11 @@
 package cmd
 
 import (
-	"fmt"
-	"os"
 	"syscall"
 
 	"github.com/spf13/cobra"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
-	"github.com/ideacrafterslabs/ctxt/internal/config"
-	"github.com/ideacrafterslabs/ctxt/internal/pidfile"
 )
 
 var rebootCmd = &cobra.Command{
@@ -41,34 +37,5 @@ func init() {
 }
 
 func runReboot(cmd *cobra.Command, _ []string) error {
-	port, _ := cmd.Flags().GetInt("port")
-	if port == 0 {
-		port = cfg.Server.Port
-	}
-
-	runDir, err := config.RunDirPath(dataDir())
-	if err != nil {
-		return fmt.Errorf("run dir: %w", err)
-	}
-
-	instances, err := pidfile.Scan(runDir)
-	if err != nil {
-		return fmt.Errorf("scan: %w", err)
-	}
-
-	for _, info := range instances {
-		if info.Port == port {
-			proc, err := os.FindProcess(info.PID)
-			if err != nil {
-				return fmt.Errorf("find process %d: %w", info.PID, err)
-			}
-			if err := proc.Signal(syscall.SIGHUP); err != nil {
-				return fmt.Errorf("signal pid %d: %w", info.PID, err)
-			}
-			fmt.Printf("Sent SIGHUP to dpkms (pid %d, port %d)\n", info.PID, port)
-			return nil
-		}
-	}
-
-	return fmt.Errorf("no running dpkms instance found on port %d", port)
+	return signalInstance(cmd, syscall.SIGHUP, "SIGHUP")
 }

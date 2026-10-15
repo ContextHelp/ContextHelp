@@ -205,7 +205,7 @@ func (u *uiSessionRoutes) signOut(w http.ResponseWriter, r *http.Request) {
 func (u *uiSessionRoutes) exchange(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	if u.sessions == nil {
-		WriteError(w, http.StatusNotFound, "NOT_FOUND", "this instance needs no sign-in; open /ui/")
+		WriteError(w, http.StatusNotFound, CodeNotFound, "this instance needs no sign-in; open /ui/")
 		return
 	}
 	if !sameOriginWrite(u.cop, r) {

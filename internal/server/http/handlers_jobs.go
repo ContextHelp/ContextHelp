@@ -40,7 +40,7 @@ func GetJob(svc *service.Service) http.HandlerFunc {
 		id := chi.URLParam(r, "id")
 		job, err := svc.GetJob(r.Context(), id)
 		if err != nil {
-			WriteError(w, http.StatusNotFound, "NOT_FOUND", "job not found")
+			WriteError(w, http.StatusNotFound, CodeNotFound, "job not found")
 			return
 		}
 		WriteJSON(w, http.StatusOK, job)
@@ -58,7 +58,7 @@ func RetryJob(svc *service.Service) http.HandlerFunc {
 
 		job, err := svc.GetJob(r.Context(), id)
 		if err != nil {
-			WriteError(w, http.StatusNotFound, "NOT_FOUND", "job not found")
+			WriteError(w, http.StatusNotFound, CodeNotFound, "job not found")
 			return
 		}
 		WriteJSON(w, http.StatusOK, job)
@@ -73,7 +73,7 @@ func CancelJob(svc *service.Service) http.HandlerFunc {
 		id := chi.URLParam(r, "id")
 		job, err := svc.GetJob(r.Context(), id)
 		if err != nil {
-			WriteError(w, http.StatusNotFound, "NOT_FOUND", "job not found")
+			WriteError(w, http.StatusNotFound, CodeNotFound, "job not found")
 			return
 		}
 		if job.Status != storage.JobPending && job.Status != storage.JobRunning {
@@ -89,7 +89,7 @@ func CancelJob(svc *service.Service) http.HandlerFunc {
 		}
 		job, err = svc.GetJob(r.Context(), id)
 		if err != nil {
-			WriteError(w, http.StatusNotFound, "NOT_FOUND", "job not found")
+			WriteError(w, http.StatusNotFound, CodeNotFound, "job not found")
 			return
 		}
 		WriteJSON(w, http.StatusOK, job)

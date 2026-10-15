@@ -144,9 +144,9 @@ func extractContent(extract map[string]any) (string, string) {
 		if v, ok := extract[key]; ok {
 			if s, ok := v.(string); ok && s != "" {
 				if htmlKeys[key] {
-					return s, "text/html"
+					return s, mediaTextHTML
 				}
-				return s, "text/plain"
+				return s, mediaTextPlain
 			}
 		}
 	}

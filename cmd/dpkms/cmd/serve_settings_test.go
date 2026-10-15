@@ -151,9 +151,7 @@ func TestResolveDefaultProfile(t *testing.T) {
 			if err := serveCmd.ParseFlags(tc.args); err != nil {
 				t.Fatalf("parse %v: %v", tc.args, err)
 			}
-			if err := resolveDefaultProfile(serveCmd); err != nil {
-				t.Fatalf("resolveDefaultProfile: %v", err)
-			}
+			resolveDefaultProfile(serveCmd)
 			if cfg.Profile.Default != tc.want {
 				t.Errorf("cfg.Profile.Default = %q, want %q", cfg.Profile.Default, tc.want)
 			}

@@ -95,7 +95,7 @@ func GetWatch(svc *service.Service) http.HandlerFunc {
 			if strings.Contains(err.Error(), "not found") {
 				statusCode = http.StatusNotFound
 			}
-			WriteError(w, statusCode, "NOT_FOUND", err.Error())
+			WriteError(w, statusCode, CodeNotFound, err.Error())
 			return
 		}
 		WriteJSON(w, http.StatusOK, cfg)
@@ -108,7 +108,7 @@ func UpdateWatch(svc *service.Service, mgr *watcher.Manager) http.HandlerFunc {
 		id := chi.URLParam(r, "id")
 		cfg, err := svc.Store.Watches().GetWatch(r.Context(), id)
 		if err != nil {
-			WriteError(w, http.StatusNotFound, "NOT_FOUND", err.Error())
+			WriteError(w, http.StatusNotFound, CodeNotFound, err.Error())
 			return
 		}
 		var patch struct {
@@ -117,7 +117,10 @@ func UpdateWatch(svc *service.Service, mgr *watcher.Manager) http.HandlerFunc {
 			DebounceMS       *int      `json:"debounce_ms"`
 			PipelineOverride *string   `json:"pipeline_override"`
 		}
-		json.NewDecoder(r.Body).Decode(&patch)
+		if err := decodeOptionalBody(r, &patch); err != nil {
+			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid JSON body")
+			return
+		}
 		if patch.IncludePatterns != nil {
 			cfg.IncludePatterns = *patch.IncludePatterns
 		}

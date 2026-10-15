@@ -77,7 +77,7 @@ func GetSavedSearch(svc *service.Service) http.HandlerFunc {
 			return
 		}
 		if ss == nil {
-			WriteError(w, http.StatusNotFound, "NOT_FOUND", "saved search not found")
+			WriteError(w, http.StatusNotFound, CodeNotFound, "saved search not found")
 			return
 		}
 		WriteJSON(w, http.StatusOK, ss)

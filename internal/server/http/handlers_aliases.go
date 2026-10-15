@@ -23,7 +23,7 @@ func writeAliasError(w http.ResponseWriter, err error, notFound string) {
 		WriteError(w, http.StatusNotImplemented, "NOT_IMPLEMENTED",
 			"aliases are not supported by this storage backend")
 	case errors.Is(err, storage.ErrNotFound):
-		WriteError(w, http.StatusNotFound, "NOT_FOUND", notFound)
+		WriteError(w, http.StatusNotFound, CodeNotFound, notFound)
 	default:
 		WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 	}

@@ -1,3 +1,6 @@
+// Package builtins declares dpkms's built-in pipelines and the step
+// constructors they resolve to, and builds them into a pipeline
+// registry with config overrides and installed external steps applied.
 package builtins
 
 import (
@@ -92,7 +95,7 @@ var stepConstructors = map[string]func() pipeline.PipelineStep{
 	"linkedin_articles_parser": func() pipeline.PipelineStep { return steps.NewLinkedInArticlesParser() },
 	// Email pipeline steps.
 	"email_parser":   func() pipeline.PipelineStep { return steps.NewEmailParser() },
-	"email_filter":   func() pipeline.PipelineStep { return newDefaultEmailFilter() },
+	"email_filter":   newDefaultEmailFilter,
 	"email_enqueuer": func() pipeline.PipelineStep { return steps.NewEmailEnqueuer() },
 	// Graph enrichment: detects "alternative" relationships and creates proximity edges.
 	// Registered with nil stores (passthrough mode); stores are injected at runtime.

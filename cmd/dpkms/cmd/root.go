@@ -1,3 +1,6 @@
+// Package cmd implements the dpkms command tree: serve and its daemon
+// lifecycle, storage maintenance (backup, restore, housekeeping), the
+// pipeline and step clients, and host service installation.
 package cmd
 
 import (
@@ -266,7 +269,7 @@ func prepareTree() {
 	applyCommandGroups()
 	root.ApplyGroupVisibility()
 	for _, c := range rootCmd.Commands() {
-		if c.Name() == "completion" {
+		if c.Name() == completionCmd.Name() {
 			c.GroupID = "management"
 			break
 		}
@@ -307,11 +310,12 @@ func printVersion(cmd *cobra.Command) {
 		}
 		if check {
 			r := internalversion.Check(version, nil)
-			if r.FetchErr != nil {
+			switch {
+			case r.FetchErr != nil:
 				payload["update_check"] = "error: " + r.FetchErr.Error()
-			} else if r.UpToDate {
+			case r.UpToDate:
 				payload["update_check"] = "up_to_date"
-			} else {
+			default:
 				payload["update_check"] = r.Latest
 			}
 		}

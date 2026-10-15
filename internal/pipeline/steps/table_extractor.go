@@ -49,10 +49,8 @@ func (s *TableExtractor) Run(ctx context.Context, draft *storage.KnowledgeObject
 		if strings.HasPrefix(trimmed, "|") && strings.HasSuffix(trimmed, "|") {
 			inTable = true
 			tableLines = append(tableLines, line)
-		} else {
-			if inTable {
-				flushTable()
-			}
+		} else if inTable {
+			flushTable()
 		}
 	}
 	if inTable {

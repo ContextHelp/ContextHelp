@@ -122,7 +122,7 @@ type sessionRow struct {
 func openSessionStore(ctx context.Context) (storage.StorageDriver, error) {
 	storageType := cfg.Storage.Type
 	if storageType == "" {
-		storageType = "sqlite"
+		storageType = storageTypeSQLite
 	}
 	if cfg.Storage.Path == "" {
 		return nil, errors.New("storage path not configured")

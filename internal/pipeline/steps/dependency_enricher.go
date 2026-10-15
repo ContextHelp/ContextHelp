@@ -223,7 +223,7 @@ func parsePackageJSON(content string) ([]depEntry, error) {
 	if err := json.Unmarshal([]byte(content), &pkg); err != nil {
 		return nil, fmt.Errorf("package.json: %w", err)
 	}
-	var deps []depEntry
+	deps := make([]depEntry, 0, len(pkg.Dependencies)+len(pkg.DevDependencies))
 	for name := range pkg.Dependencies {
 		deps = append(deps, npmEntry(name))
 	}
@@ -289,9 +289,10 @@ var requirementsEntryRe = regexp.MustCompile(`^([a-zA-Z][a-zA-Z0-9_.-]+)`)
 
 // parseRequirementsTxt parses pip requirements.txt.
 func parseRequirementsTxt(content string) ([]depEntry, error) {
-	var deps []depEntry
+	lines := strings.Split(content, "\n")
+	deps := make([]depEntry, 0, len(lines))
 	seen := make(map[string]bool)
-	for _, line := range strings.Split(content, "\n") {
+	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "-") {
 			continue
@@ -323,7 +324,7 @@ var gemfileEntryRe = regexp.MustCompile(`(?m)^\s*gem\s+['"]([^'"]+)['"]`)
 // parseGemfile parses a Ruby Gemfile.
 func parseGemfile(content string) ([]depEntry, error) {
 	matches := gemfileEntryRe.FindAllStringSubmatch(content, -1)
-	var deps []depEntry
+	deps := make([]depEntry, 0, len(matches))
 	seen := make(map[string]bool)
 	for _, m := range matches {
 		if len(m) < 2 {

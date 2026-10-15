@@ -1,3 +1,6 @@
+// Package config loads, validates and lints the configuration shared by ctxt
+// and dpkms: built-in defaults, the system/user/project file cascade,
+// environment overrides and -c layers.
 package config
 
 import (
@@ -339,7 +342,7 @@ func FileTargetBlob(dbPath string, set *BlobConfig) BlobConfig {
 	if set != nil {
 		b = *set
 	}
-	if (b.Backend == "" || b.Backend == "local") && b.Local.Path == "" {
+	if (b.Backend == "" || b.Backend == blobBackendLocal) && b.Local.Path == "" {
 		b.Local.Path = filepath.Join(filepath.Dir(dbPath), BlobDirName)
 	}
 	return b
@@ -1189,7 +1192,12 @@ func LoadWithOverrides(bin, cfgFile string, extraPaths []string, overrides map[s
 	// preserving viper's "env > file" precedence. Without this, a yaml file
 	// with `server.port: 4242` would silently override `CH_SERVER_PORT=9999`.
 	envOverride := func(dst any) {
-		applyEnvOverrides(v, dst.(*Config))
+		c, ok := dst.(*Config)
+		if !ok {
+			// kitconfig.Load hands back the dst it was given (&cfg below).
+			panic(fmt.Sprintf("config: EnvOverride got %T, want *Config", dst))
+		}
+		applyEnvOverrides(v, c)
 	}
 
 	if err := kitconfig.Load(&cfg, kitconfig.Options{
@@ -1289,7 +1297,7 @@ func cascadeSlots(bin string) (system, user, project string) {
 // short-circuit it. Callers building a resolver for `config path(s)` must
 // prepend those overrides before this chain.
 func CascadeSlots(bin string) (system, user, project string) {
-	system = filepath.Join("/etc", xdgTool, bin+".yaml")
+	system = filepath.Join(filepath.FromSlash("/etc"), xdgTool, bin+".yaml")
 	if dir, err := configDirXDG(); err == nil && dir != "" {
 		user = filepath.Join(dir, bin+".yaml")
 	}
@@ -1358,7 +1366,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("storage.migrate_snapshot", true)
 
 	// Blob storage defaults
-	v.SetDefault("storage.blob.backend", "local")
+	v.SetDefault("storage.blob.backend", blobBackendLocal)
 	v.SetDefault("storage.blob.threshold", int64(65536))
 	v.SetDefault("storage.blob.s3.region", "us-east-1")
 	v.SetDefault("storage.blob.s3.use_path_style", false)

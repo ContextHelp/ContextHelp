@@ -276,37 +276,28 @@ func runPipelineCreate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	var config map[string]any
 	switch ext {
 	case ".json":
-		var config map[string]any
-		if err := json.Unmarshal(content, &config); err != nil {
-			return err
-		}
-		req.Name = config["name"].(string)
-		req.Description = config["description"].(string)
-		stepsJSON, _ := json.Marshal(config["steps"])
-		req.Steps = string(stepsJSON)
+		err = json.Unmarshal(content, &config)
 	case ".yaml", ".yml":
-		var config map[string]any
-		if err := yaml.Unmarshal(content, &config); err != nil {
-			return err
-		}
-		req.Name = config["name"].(string)
-		req.Description = config["description"].(string)
-		stepsJSON, _ := json.Marshal(config["steps"])
-		req.Steps = string(stepsJSON)
+		err = yaml.Unmarshal(content, &config)
 	case ".toml":
-		var config map[string]any
-		if err := toml.Unmarshal(content, &config); err != nil {
-			return err
-		}
-		req.Name = config["name"].(string)
-		req.Description = config["description"].(string)
-		stepsJSON, _ := json.Marshal(config["steps"])
-		req.Steps = string(stepsJSON)
+		err = toml.Unmarshal(content, &config)
 	default:
 		return fmt.Errorf("unsupported config format: %s", ext)
 	}
+	if err != nil {
+		return err
+	}
+	name, ok := config["name"].(string)
+	if !ok {
+		return fmt.Errorf("pipeline config %s: name must be a string, got %T", filePath, config["name"])
+	}
+	req.Name = name
+	req.Description, _ = config["description"].(string) // optional
+	stepsJSON, _ := json.Marshal(config["steps"])
+	req.Steps = string(stepsJSON)
 
 	if pipelineShowRaw {
 		return printJSON(req)
@@ -317,8 +308,7 @@ func runPipelineCreate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	printJSON(map[string]string{"id": id})
-	return nil
+	return printJSON(map[string]string{"id": id})
 }
 
 func runPipelineRemove(cmd *cobra.Command, args []string) error {
@@ -408,8 +398,7 @@ func runPipelineEnqueue(cmd *cobra.Command, args []string) error {
 		return waitForJob(cmd.Context(), jobID)
 	}
 
-	printJSON(map[string]string{"job_id": jobID})
-	return nil
+	return printJSON(map[string]string{"job_id": jobID})
 }
 
 func runStepList(cmd *cobra.Command, _ []string) error {

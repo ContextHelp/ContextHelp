@@ -42,6 +42,13 @@ func init() {
 }
 
 func runShutdown(cmd *cobra.Command, _ []string) error {
+	return signalInstance(cmd, syscall.SIGTERM, "SIGTERM")
+}
+
+// signalInstance sends sig (named sigName in the confirmation) to the
+// running dpkms instance on --port, or on server.port when the flag is
+// unset.
+func signalInstance(cmd *cobra.Command, sig syscall.Signal, sigName string) error {
 	port, _ := cmd.Flags().GetInt("port")
 	if port == 0 {
 		port = cfg.Server.Port
@@ -63,10 +70,10 @@ func runShutdown(cmd *cobra.Command, _ []string) error {
 			if err != nil {
 				return fmt.Errorf("find process %d: %w", info.PID, err)
 			}
-			if err := proc.Signal(syscall.SIGTERM); err != nil {
+			if err := proc.Signal(sig); err != nil {
 				return fmt.Errorf("signal pid %d: %w", info.PID, err)
 			}
-			fmt.Printf("Sent SIGTERM to dpkms (pid %d, port %d)\n", info.PID, port)
+			fmt.Printf("Sent %s to dpkms (pid %d, port %d)\n", sigName, info.PID, port)
 			return nil
 		}
 	}

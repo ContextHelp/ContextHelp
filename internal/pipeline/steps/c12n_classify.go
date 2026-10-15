@@ -58,7 +58,7 @@ func (s *C12nClassifier) Run(
 		// built the object is passed through marked unavailable, the miss
 		// is logged, and ingestion proceeds unclassified.
 		log.Printf("c12n_classify: pipeline unavailable, skipping: %v", s.initErr)
-		draft.Metadata["c12n_status"] = "unavailable"
+		draft.Metadata["c12n_status"] = enrichUnavailable
 		return draft, nil //nolint:nilerr // optional step; logged and marked c12n_status=unavailable
 	}
 
@@ -77,14 +77,14 @@ func (s *C12nClassifier) Run(
 	raw, err := s.pipe.Evaluate(cctx)
 	if err != nil {
 		log.Printf("c12n_classify: evaluate failed, skipping: %v", err)
-		draft.Metadata["c12n_status"] = "error"
+		draft.Metadata["c12n_status"] = enrichError
 		return draft, nil
 	}
 
 	result, err := c12n.ParseResult(raw)
 	if err != nil {
 		log.Printf("c12n_classify: parse failed, skipping: %v", err)
-		draft.Metadata["c12n_status"] = "error"
+		draft.Metadata["c12n_status"] = enrichError
 		return draft, nil
 	}
 
@@ -104,6 +104,6 @@ func (s *C12nClassifier) Run(
 		"duration_ns": result.DurationNs,
 		"has_errors":  result.HasErrors(),
 	}
-	draft.Metadata["c12n_status"] = "complete"
+	draft.Metadata["c12n_status"] = enrichComplete
 	return draft, nil
 }

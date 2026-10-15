@@ -120,7 +120,8 @@ func (s *IMAPFetcher) fetchMessages(ctx context.Context, cfg IMAPConfig) (*IMAPF
 	if err != nil {
 		return nil, fmt.Errorf("connect: %w", err)
 	}
-	defer conn.Close()
+	// The session's own errors are reported; closing after it is cleanup.
+	defer func() { _ = conn.Close() }()
 	return fetchMessagesOnConn(conn, cfg)
 }
 
@@ -130,7 +131,7 @@ func fetchMessagesOnConn(conn net.Conn, cfg IMAPConfig) (*IMAPFetchResult, error
 	c := newIMAPConn(conn)
 
 	// Read server greeting.
-	if _, err := c.readLine(); err != nil {
+	if err := c.skipLine(); err != nil {
 		return nil, fmt.Errorf("greeting: %w", err)
 	}
 
@@ -264,35 +265,36 @@ func (s *IMAPFetcher) connect(ctx context.Context, cfg IMAPConfig) (net.Conn, er
 		return nil, err
 	}
 
+	// fail closes the half-open connection on a setup error; that error,
+	// not a close error, is the one to report.
+	fail := func(err error) (net.Conn, error) {
+		_ = conn.Close()
+		return nil, err
+	}
+
 	if cfg.UseTLS {
-		tlsCfg := newIMAPTLSConfig(host)
-		conn = tls.Client(conn, tlsCfg)
-		if err := conn.(*tls.Conn).Handshake(); err != nil {
-			conn.Close()
-			return nil, fmt.Errorf("TLS handshake: %w", err)
+		tlsConn := tls.Client(conn, newIMAPTLSConfig(host))
+		if err := tlsConn.Handshake(); err != nil {
+			return fail(fmt.Errorf("TLS handshake: %w", err))
 		}
-		return conn, nil
+		return tlsConn, nil
 	}
 
 	// STARTTLS: read greeting, send STARTTLS, upgrade.
 	c := newIMAPConn(conn)
-	if _, err := c.readLine(); err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("greeting: %w", err)
+	if err := c.skipLine(); err != nil {
+		return fail(fmt.Errorf("greeting: %w", err))
 	}
 	if err := c.cmd("S001", "STARTTLS"); err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("STARTTLS command: %w", err)
+		return fail(fmt.Errorf("STARTTLS command: %w", err))
 	}
 	lines, err := c.readUntilTagged("S001")
 	if err != nil || !containsOK(lines) {
-		conn.Close()
-		return nil, fmt.Errorf("STARTTLS response: not OK")
+		return fail(fmt.Errorf("STARTTLS response: not OK"))
 	}
 	tlsConn := tls.Client(conn, newIMAPTLSConfig(host))
 	if err := tlsConn.Handshake(); err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("STARTTLS handshake: %w", err)
+		return fail(fmt.Errorf("STARTTLS handshake: %w", err))
 	}
 	// Return a wrapper that redirects reads through the new TLS connection.
 	return tlsConn, nil
@@ -321,9 +323,10 @@ func (c *imapConn) cmd(tag, command string) error {
 	return c.w.Flush()
 }
 
-func (c *imapConn) readLine() (string, error) {
-	line, err := c.r.ReadString('\n')
-	return strings.TrimRight(line, "\r\n"), err
+// skipLine reads and discards one response line (the server greeting).
+func (c *imapConn) skipLine() error {
+	_, err := c.r.ReadString('\n')
+	return err
 }
 
 // readUntilTagged reads IMAP response lines until a tagged response for tag is found.

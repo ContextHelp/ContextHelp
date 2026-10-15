@@ -25,7 +25,7 @@ func CreateEdge(svc *service.Service) http.HandlerFunc {
 			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
 			return
 		case errors.Is(err, storage.ErrNotFound):
-			WriteError(w, http.StatusNotFound, "NOT_FOUND", err.Error())
+			WriteError(w, http.StatusNotFound, CodeNotFound, err.Error())
 			return
 		case err != nil:
 			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
@@ -62,7 +62,7 @@ func ObjectEdges(svc *service.Service) http.HandlerFunc {
 		})
 		switch {
 		case errors.Is(err, storage.ErrNotFound):
-			WriteError(w, http.StatusNotFound, "NOT_FOUND", "object not found")
+			WriteError(w, http.StatusNotFound, CodeNotFound, "object not found")
 			return
 		case err != nil:
 			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())

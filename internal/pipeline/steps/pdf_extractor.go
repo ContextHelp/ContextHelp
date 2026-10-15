@@ -41,7 +41,7 @@ func NewPDFExtractor(opts ...PDFExtractorOption) *PDFExtractor {
 func (s *PDFExtractor) Name() string { return "pdf_extractor" }
 
 func (s *PDFExtractor) Run(ctx context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
-	if draft.Subtype != "pdf" {
+	if draft.Subtype != subtypePDF {
 		return draft, nil
 	}
 

@@ -531,7 +531,7 @@ func TestEntityBacklinks(t *testing.T) {
 	}
 }
 
-func seedEntities(t *testing.T, ctx context.Context, svc *Service) {
+func seedEntities(ctx context.Context, t *testing.T, svc *Service) {
 	t.Helper()
 	now := time.Now().Truncate(time.Second)
 	entities := []*storage.Entity{
@@ -547,7 +547,7 @@ func seedEntities(t *testing.T, ctx context.Context, svc *Service) {
 func TestListEntities(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
-	seedEntities(t, ctx, svc)
+	seedEntities(ctx, t, svc)
 
 	got, err := svc.ListEntities(ctx, storage.EntityFilter{})
 	require.NoError(t, err)
@@ -564,7 +564,7 @@ func TestListEntities(t *testing.T) {
 func TestListEntitiesFilterByNamespace(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
-	seedEntities(t, ctx, svc)
+	seedEntities(ctx, t, svc)
 
 	got, err := svc.ListEntities(ctx, storage.EntityFilter{Namespace: "ui"})
 	require.NoError(t, err)
@@ -578,7 +578,7 @@ func TestListEntitiesFilterByNamespace(t *testing.T) {
 func TestListEntitiesWithLimit(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
-	seedEntities(t, ctx, svc)
+	seedEntities(ctx, t, svc)
 
 	got, err := svc.ListEntities(ctx, storage.EntityFilter{Limit: 1})
 	require.NoError(t, err)
@@ -600,7 +600,7 @@ func TestListEntitiesEmpty(t *testing.T) {
 // Compose / ComposeWithCitations
 // ---------------------------------------------------------------------------
 
-func seedObjectsForCompose(t *testing.T, ctx context.Context, svc *Service) []*storage.KnowledgeObject {
+func seedObjectsForCompose(ctx context.Context, t *testing.T, svc *Service) []*storage.KnowledgeObject {
 	t.Helper()
 	now := time.Now().Truncate(time.Second)
 
@@ -626,7 +626,7 @@ func seedObjectsForCompose(t *testing.T, ctx context.Context, svc *Service) []*s
 func TestCompose_BasicOutput(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
-	objs := seedObjectsForCompose(t, ctx, svc)
+	objs := seedObjectsForCompose(ctx, t, svc)
 
 	result, err := svc.Compose(ctx, objs, "brief")
 	require.NoError(t, err)
@@ -647,7 +647,7 @@ func TestCompose_EmptyObjects(t *testing.T) {
 func TestComposeWithCitations_ReturnsCitationResult(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
-	objs := seedObjectsForCompose(t, ctx, svc)
+	objs := seedObjectsForCompose(ctx, t, svc)
 
 	result, err := svc.ComposeWithCitations(ctx, objs, "brief")
 	require.NoError(t, err)
@@ -660,7 +660,7 @@ func TestComposeWithCitations_ReturnsCitationResult(t *testing.T) {
 func TestComposeWithCitations_IncludesReferenceTable(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
-	objs := seedObjectsForCompose(t, ctx, svc)
+	objs := seedObjectsForCompose(ctx, t, svc)
 
 	result, err := svc.ComposeWithCitations(ctx, objs, "brief")
 	require.NoError(t, err)
@@ -672,7 +672,7 @@ func TestComposeWithCitations_IncludesReferenceTable(t *testing.T) {
 func TestComposeWithCitations_CitationsSlice(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
-	objs := seedObjectsForCompose(t, ctx, svc)
+	objs := seedObjectsForCompose(ctx, t, svc)
 
 	result, err := svc.ComposeWithCitations(ctx, objs, "brief")
 	require.NoError(t, err)
@@ -683,7 +683,7 @@ func TestComposeWithCitations_CitationsSlice(t *testing.T) {
 func TestComposeWithCitations_EntitiesEnriched(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
-	objs := seedObjectsForCompose(t, ctx, svc)
+	objs := seedObjectsForCompose(ctx, t, svc)
 
 	result, err := svc.ComposeWithCitations(ctx, objs, "brief")
 	require.NoError(t, err)
@@ -702,7 +702,7 @@ func TestComposeWithCitations_EntitiesEnriched(t *testing.T) {
 func TestComposeWithCitations_SourceIDs(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
-	objs := seedObjectsForCompose(t, ctx, svc)
+	objs := seedObjectsForCompose(ctx, t, svc)
 
 	result, err := svc.ComposeWithCitations(ctx, objs, "brief")
 	require.NoError(t, err)
@@ -713,7 +713,7 @@ func TestComposeWithCitations_SourceIDs(t *testing.T) {
 func TestComposeWithCitations_CompositionType(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
-	objs := seedObjectsForCompose(t, ctx, svc)
+	objs := seedObjectsForCompose(ctx, t, svc)
 
 	result, err := svc.ComposeWithCitations(ctx, objs, "plan")
 	require.NoError(t, err)

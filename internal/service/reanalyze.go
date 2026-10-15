@@ -1,4 +1,4 @@
-// Package service: ReanalyzeObject re-runs the active pipeline against an
+// ReanalyzeObject re-runs the active pipeline against an
 // existing object's RawContent and atomically replaces its projection.
 // Used by the reingest_selective worker (ADR-070 §1) to upgrade
 // objects whose stored projection was produced by an older pipeline version.
@@ -7,6 +7,7 @@
 // a worker job), ReanalyzeObject runs the pipeline steps inline so the
 // caller can drive a deterministic for-loop over a selector's matching set
 // without coordinating with the queue. The object's ID is preserved.
+
 package service
 
 import (

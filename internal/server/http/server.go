@@ -136,7 +136,7 @@ func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
 	mountSearchGraphViewer(r)
 
 	r.NotFound(func(w http.ResponseWriter, req *http.Request) {
-		WriteError(w, http.StatusNotFound, "NOT_FOUND", "resource not found")
+		WriteError(w, http.StatusNotFound, CodeNotFound, "resource not found")
 	})
 
 	r.Route("/api/v1", func(r chi.Router) {

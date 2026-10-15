@@ -96,3 +96,27 @@ func TestAPIClient_ParseError_NonJSONBody_ReportsRawBody(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "gateway exploded")
 }
+
+// A listing whose total is missing or not a number is reported as a
+// decode error; before, the unchecked float64 assertion panicked the CLI.
+func TestAPIClient_Listings_BadTotal_Errors(t *testing.T) {
+	for _, body := range []string{
+		`{"pipelines":[],"steps":[],"registries":[]}`,
+		`{"pipelines":[],"steps":[],"registries":[],"total":"3"}`,
+	} {
+		ts := jsonServer(t, body)
+		c := NewAPIClient(ts.URL)
+
+		_, _, err := c.ListPipelines(t.Context(), storage.PipelineFilter{})
+		require.Error(t, err, body)
+		assert.Contains(t, err.Error(), "decode total")
+
+		_, _, err = c.ListSteps(t.Context(), "")
+		require.Error(t, err, body)
+		assert.Contains(t, err.Error(), "decode total")
+
+		_, _, err = c.ListRegistries(t.Context())
+		require.Error(t, err, body)
+		assert.Contains(t, err.Error(), "decode total")
+	}
+}

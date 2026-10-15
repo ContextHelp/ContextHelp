@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -87,9 +88,9 @@ func (l *lineWriter) println(args ...any) {
 func openDB() (*sqlite.Driver, func(), error) {
 	storageType := cfg.Storage.Type
 	if storageType == "" {
-		storageType = "sqlite"
+		storageType = storageTypeSQLite
 	}
-	if storageType != "sqlite" {
+	if storageType != storageTypeSQLite {
 		return nil, nil, fmt.Errorf("housekeeping only supports sqlite storage (got %s)", storageType)
 	}
 	storagePath := cfg.Storage.Path
@@ -109,10 +110,9 @@ func openDB() (*sqlite.Driver, func(), error) {
 		return nil, nil, fmt.Errorf("open database: %T is not a sqlite driver", opened)
 	}
 	if err := driver.Init(ctx); err != nil {
-		driver.Close(ctx)
-		return nil, nil, fmt.Errorf("init database: %w", err)
+		return nil, nil, errors.Join(fmt.Errorf("init database: %w", err), driver.Close(ctx))
 	}
-	cleanup := func() { driver.Close(context.Background()) }
+	cleanup := func() { closeStorage(driver) }
 	return driver, cleanup, nil
 }
 
@@ -512,7 +512,8 @@ func runPrune(cmd *cobra.Command, args []string) error {
 
 	fmt.Print("Proceed with deletion? (y/N): ")
 	var response string
-	fmt.Scanln(&response)
+	// No answer (EOF, empty line) leaves response empty: not confirmed.
+	_, _ = fmt.Scanln(&response)
 	if response != "y" && response != "Y" {
 		fmt.Println("Pruning cancelled.")
 		return nil

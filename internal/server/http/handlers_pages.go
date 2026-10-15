@@ -49,7 +49,7 @@ func GetPage(svc *service.Service) http.HandlerFunc {
 			return
 		}
 		if page == nil {
-			WriteError(w, http.StatusNotFound, "NOT_FOUND", "entity page not found")
+			WriteError(w, http.StatusNotFound, CodeNotFound, "entity page not found")
 			return
 		}
 		WriteJSON(w, http.StatusOK, page)
@@ -62,7 +62,7 @@ func RefreshPage(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		page, err := svc.RefreshEntityPage(r.Context(), chi.URLParam(r, "slug"))
 		if errors.Is(err, storage.ErrNotFound) {
-			WriteError(w, http.StatusNotFound, "NOT_FOUND", "entity page not found")
+			WriteError(w, http.StatusNotFound, CodeNotFound, "entity page not found")
 			return
 		}
 		if err != nil {

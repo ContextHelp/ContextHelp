@@ -24,7 +24,9 @@ func ensureToolPath() {
 			path = p + string(os.PathListSeparator) + path
 		}
 	}
-	os.Setenv("PATH", path)
+	// Setenv fails only on a NUL byte, which neither the inherited PATH
+	// nor these directories can hold.
+	_ = os.Setenv("PATH", path)
 }
 
 func contains(path, sub string) bool {

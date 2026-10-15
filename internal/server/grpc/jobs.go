@@ -3,7 +3,6 @@ package grpc
 import (
 	"context"
 	"encoding/json"
-	"math"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -61,10 +60,7 @@ func (h *jobHandler) ListJobs(ctx context.Context, req *pb.ListJobsRequest) (*pb
 		out = append(out, jobToProto(j))
 	}
 
-	if total > math.MaxInt32 {
-		total = math.MaxInt32
-	}
-	return &pb.ListJobsResponse{Jobs: out, Total: int32(total)}, nil
+	return &pb.ListJobsResponse{Jobs: out, Total: clampInt32(total)}, nil
 }
 
 // WatchJob streams job status updates until the job reaches a terminal state

@@ -1,3 +1,7 @@
+// Package steps installs, discovers and runs external pipeline steps:
+// registry discovery and update checks, checksum- and trust-gated
+// installation, and the process and container runners that execute an
+// installed step during a pipeline run.
 package steps
 
 import (

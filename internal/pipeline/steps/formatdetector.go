@@ -11,6 +11,65 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
+// MIME types several steps assign or match.
+const (
+	mediaTextPlain = "text/plain"
+	mediaTextHTML  = "text/html"
+)
+
+// subtypePDF is the document subtype FormatDetector gives .pdf files and
+// PDFExtractor runs on.
+const subtypePDF = "pdf"
+
+// fileFormat is what a file extension says about its content. An empty
+// subtype leaves the draft's own.
+type fileFormat struct {
+	contentType, typ, subtype string
+}
+
+// formatsByExt maps every lower-case file extension FormatDetector
+// accepts to its format.
+var formatsByExt = func() map[string]fileFormat {
+	m := map[string]fileFormat{
+		// Images
+		".png":  {"image/png", "image", ""},
+		".jpg":  {"image/jpeg", "image", ""},
+		".jpeg": {"image/jpeg", "image", ""},
+		".webp": {"image/webp", "image", ""},
+		".tiff": {"image/tiff", "image", ""},
+		".tif":  {"image/tiff", "image", ""},
+		".bmp":  {"image/bmp", "image", ""},
+		".gif":  {"image/gif", "image", ""},
+
+		// Audio
+		".mp3":  {"audio/mpeg", "audio", ""},
+		".wav":  {"audio/wav", "audio", ""},
+		".ogg":  {"audio/ogg", "audio", ""},
+		".flac": {"audio/flac", "audio", ""},
+		".m4a":  {"audio/mp4", "audio", ""},
+		".webm": {"audio/webm", "audio", ""},
+
+		// Video
+		".mp4": {"video/mp4", "video", ""},
+		".mov": {"video/quicktime", "video", ""},
+		".avi": {"video/x-msvideo", "video", ""},
+		".mkv": {"video/x-matroska", "video", ""},
+
+		// Documents
+		".pdf":      {"application/pdf", "document", subtypePDF},
+		".md":       {"text/markdown", "document", "markdown"},
+		".markdown": {"text/markdown", "document", "markdown"},
+		".docx":     {"application/vnd.openxmlformats-officedocument.wordprocessingml.document", "document", "office"},
+		".epub":     {"application/epub+zip", "document", "epub"},
+		".html":     {mediaTextHTML, "document", "html"},
+		".htm":      {mediaTextHTML, "document", "html"},
+	}
+	for _, ext := range []string{".go", ".py", ".js", ".ts", ".rs", ".java", ".rb", ".cpp", ".c", ".cs"} {
+		m[ext] = fileFormat{mediaTextPlain, "document", "code"}
+	}
+	return m
+}()
+
 type FormatDetector struct {
 	pipeline.BaseContract
 }
@@ -42,89 +101,14 @@ func (s *FormatDetector) Run(_ context.Context, draft *storage.KnowledgeObject) 
 		ext := strings.ToLower(filepath.Ext(draft.Source))
 		draft.Metadata["file_extension"] = ext
 
-		switch ext {
-		// Images
-		case ".png":
-			draft.ContentType = "image/png"
-			draft.Type = "image"
-		case ".jpg", ".jpeg":
-			draft.ContentType = "image/jpeg"
-			draft.Type = "image"
-		case ".webp":
-			draft.ContentType = "image/webp"
-			draft.Type = "image"
-		case ".tiff", ".tif":
-			draft.ContentType = "image/tiff"
-			draft.Type = "image"
-		case ".bmp":
-			draft.ContentType = "image/bmp"
-			draft.Type = "image"
-		case ".gif":
-			draft.ContentType = "image/gif"
-			draft.Type = "image"
-
-		// Audio
-		case ".mp3":
-			draft.ContentType = "audio/mpeg"
-			draft.Type = "audio"
-		case ".wav":
-			draft.ContentType = "audio/wav"
-			draft.Type = "audio"
-		case ".ogg":
-			draft.ContentType = "audio/ogg"
-			draft.Type = "audio"
-		case ".flac":
-			draft.ContentType = "audio/flac"
-			draft.Type = "audio"
-		case ".m4a":
-			draft.ContentType = "audio/mp4"
-			draft.Type = "audio"
-		case ".webm":
-			draft.ContentType = "audio/webm"
-			draft.Type = "audio"
-
-		// Video
-		case ".mp4":
-			draft.ContentType = "video/mp4"
-			draft.Type = "video"
-		case ".mov":
-			draft.ContentType = "video/quicktime"
-			draft.Type = "video"
-		case ".avi":
-			draft.ContentType = "video/x-msvideo"
-			draft.Type = "video"
-		case ".mkv":
-			draft.ContentType = "video/x-matroska"
-			draft.Type = "video"
-
-		// Documents
-		case ".pdf":
-			draft.ContentType = "application/pdf"
-			draft.Type = "document"
-			draft.Subtype = "pdf"
-		case ".md", ".markdown":
-			draft.ContentType = "text/markdown"
-			draft.Type = "document"
-			draft.Subtype = "markdown"
-		case ".go", ".py", ".js", ".ts", ".rs", ".java", ".rb", ".cpp", ".c", ".cs":
-			draft.ContentType = "text/plain"
-			draft.Type = "document"
-			draft.Subtype = "code"
-		case ".docx":
-			draft.ContentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-			draft.Type = "document"
-			draft.Subtype = "office"
-		case ".epub":
-			draft.ContentType = "application/epub+zip"
-			draft.Type = "document"
-			draft.Subtype = "epub"
-		case ".html", ".htm":
-			draft.ContentType = "text/html"
-			draft.Type = "document"
-			draft.Subtype = "html"
-
-		default:
+		f, ok := formatsByExt[ext]
+		if !ok {
 			return nil, fmt.Errorf("format_detector: unsupported format %q", ext)
+		}
+		draft.ContentType = f.contentType
+		draft.Type = f.typ
+		if f.subtype != "" {
+			draft.Subtype = f.subtype
 		}
 	}
 

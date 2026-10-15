@@ -38,7 +38,7 @@ func GetStep(svc *service.Service) http.HandlerFunc {
 
 		step, err := svc.GetStep(r.Context(), name)
 		if err != nil {
-			WriteError(w, http.StatusNotFound, "NOT_FOUND", "step not found")
+			WriteError(w, http.StatusNotFound, CodeNotFound, "step not found")
 			return
 		}
 
@@ -113,7 +113,7 @@ func stepErrorStatus(err error) (int, string) {
 	case errors.Is(err, service.ErrStepInUse):
 		return http.StatusConflict, "STEP_IN_USE"
 	case errors.Is(err, steps.ErrStepNotFound), errors.Is(err, steps.ErrNotInRegistry):
-		return http.StatusNotFound, "NOT_FOUND"
+		return http.StatusNotFound, CodeNotFound
 	case errors.Is(err, steps.ErrUntrustedRegistry):
 		return http.StatusUnprocessableEntity, "UNTRUSTED_REGISTRY"
 	case errors.Is(err, steps.ErrDigestMismatch):

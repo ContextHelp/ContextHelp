@@ -12,24 +12,39 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
+// Enrichment status values steps record under metadata_status and
+// c12n_status.
+const (
+	enrichPending     = "pending"
+	enrichComplete    = "complete"
+	enrichUnavailable = "unavailable"
+	enrichError       = "error"
+)
+
+// Fallbacks when the model's answer or the source says nothing better.
+const (
+	defaultContentType = "observation"
+	defaultSourceType  = "text"
+)
+
 // Valid content types for structured metadata classification.
 var validContentTypes = map[string]bool{
-	"observation": true,
-	"task":        true,
-	"idea":        true,
-	"reference":   true,
-	"person_note": true,
-	"decision":    true,
-	"question":    true,
+	defaultContentType: true,
+	"task":             true,
+	"idea":             true,
+	"reference":        true,
+	"person_note":      true,
+	"decision":         true,
+	"question":         true,
 }
 
 // Valid source types.
 var validSourceTypes = map[string]bool{
-	"text":    true,
-	"url":     true,
-	"file":    true,
-	"api":     true,
-	"webhook": true,
+	defaultSourceType: true,
+	"url":             true,
+	"file":            true,
+	"api":             true,
+	"webhook":         true,
 }
 
 // StructuredMetadata holds extracted metadata for a knowledge object.
@@ -105,13 +120,13 @@ func (s *StructuredMetadataExtractor) Run(
 	}
 
 	if s.llm == nil {
-		draft.Metadata["metadata_status"] = "pending"
+		draft.Metadata["metadata_status"] = enrichPending
 		return draft, nil
 	}
 
 	content := strings.TrimSpace(draft.RawContent)
 	if content == "" {
-		draft.Metadata["metadata_status"] = "pending"
+		draft.Metadata["metadata_status"] = enrichPending
 		return draft, nil
 	}
 
@@ -125,7 +140,7 @@ func (s *StructuredMetadataExtractor) Run(
 		// Optional enrichment: record the miss as metadata_status=pending so
 		// a later pass can retry, and let the object continue un-enriched
 		// rather than failing ingestion on an unavailable LLM.
-		draft.Metadata["metadata_status"] = "pending"
+		draft.Metadata["metadata_status"] = enrichPending
 		return draft, nil //nolint:nilerr // optional enrichment; recorded as metadata_status=pending for retry
 	}
 
@@ -133,7 +148,7 @@ func (s *StructuredMetadataExtractor) Run(
 	if err != nil {
 		// Unparseable LLM output is an expected outcome, not a fault; marked
 		// pending for retry on the same terms as a generation failure.
-		draft.Metadata["metadata_status"] = "pending"
+		draft.Metadata["metadata_status"] = enrichPending
 		return draft, nil //nolint:nilerr // optional enrichment; recorded as metadata_status=pending for retry
 	}
 
@@ -148,7 +163,7 @@ func (s *StructuredMetadataExtractor) Run(
 	}
 
 	draft.Metadata["enrichment.structured_metadata"] = meta
-	draft.Metadata["metadata_status"] = "complete"
+	draft.Metadata["metadata_status"] = enrichComplete
 	return draft, nil
 }
 
@@ -169,7 +184,7 @@ func parseStructuredMetadata(raw string) (*StructuredMetadata, error) {
 
 	// Constrain type to vocabulary.
 	if !validContentTypes[meta.Type] {
-		meta.Type = "observation"
+		meta.Type = defaultContentType
 	}
 
 	// Constrain confidence.
@@ -260,5 +275,5 @@ func inferSourceType(draft *storage.KnowledgeObject) string {
 		}
 		return "api"
 	}
-	return "text"
+	return defaultSourceType
 }

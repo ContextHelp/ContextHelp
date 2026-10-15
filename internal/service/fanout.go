@@ -40,7 +40,7 @@ func (s *Service) FanOut(ctx context.Context, objectID string) (*FanOutResult, e
 	}
 
 	// Collect existing outbound edges to avoid duplicates.
-	existing, err := s.Store.Edges().ListFrom(ctx, "object", objectID)
+	existing, err := s.Store.Edges().ListFrom(ctx, nodeObject, objectID)
 	if err != nil {
 		return nil, fmt.Errorf("fanout: list edges: %w", err)
 	}
@@ -50,7 +50,7 @@ func (s *Service) FanOut(ctx context.Context, objectID string) (*FanOutResult, e
 	}
 
 	// Collect existing inbound edges for reverse dedup.
-	existingInbound, err := s.Store.Edges().ListTo(ctx, "object", objectID)
+	existingInbound, err := s.Store.Edges().ListTo(ctx, nodeObject, objectID)
 	if err != nil {
 		return nil, fmt.Errorf("fanout: list inbound edges: %w", err)
 	}
@@ -65,11 +65,11 @@ func (s *Service) FanOut(ctx context.Context, objectID string) (*FanOutResult, e
 		result.EntitySlugs = append(result.EntitySlugs, slug)
 
 		// Forward edge: object -> entity.
-		fwdKey := edgeKey("object", objectID, "entity", slug, "mentions")
+		fwdKey := edgeKey(nodeObject, objectID, "entity", slug, "mentions")
 		if !edgeIndex[fwdKey] {
 			edge := &storage.Edge{
 				ID:        uuid.New().String(),
-				FromType:  "object",
+				FromType:  nodeObject,
 				FromID:    objectID,
 				ToType:    "entity",
 				ToID:      slug,
@@ -87,13 +87,13 @@ func (s *Service) FanOut(ctx context.Context, objectID string) (*FanOutResult, e
 		}
 
 		// Reverse edge: entity -> object.
-		revKey := edgeKey("entity", slug, "object", objectID, "mentioned_in")
+		revKey := edgeKey("entity", slug, nodeObject, objectID, "mentioned_in")
 		if !edgeIndex[revKey] {
 			edge := &storage.Edge{
 				ID:        uuid.New().String(),
 				FromType:  "entity",
 				FromID:    slug,
-				ToType:    "object",
+				ToType:    nodeObject,
 				ToID:      objectID,
 				EdgeType:  "mentioned_in",
 				Weight:    1.0,

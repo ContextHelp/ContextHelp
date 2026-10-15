@@ -1,4 +1,4 @@
-// Package cmd: dpkms healthcheck — operator-facing healthcheck called
+// dpkms healthcheck is the operator-facing healthcheck called
 // directly on the dpkms host (e.g. from launchd or systemd). Identical
 // semantics to `ctxt status` but available without the user-facing CLI
 // installed.
@@ -9,6 +9,7 @@
 //	1 — server unreachable, returned 503, or response could not be parsed
 //
 // The envelope schema is defined in internal/server/http/handlers_healthz.go.
+
 package cmd
 
 import (

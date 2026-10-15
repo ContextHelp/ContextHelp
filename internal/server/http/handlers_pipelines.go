@@ -54,8 +54,8 @@ func ListPipelines(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		filter := storage.PipelineFilter{
 			Name:            r.URL.Query().Get("name"),
-			IncludeArchived: r.URL.Query().Get("include_archived") == "true",
-			OnlyArchived:    r.URL.Query().Get("only_archived") == "true",
+			IncludeArchived: flagParam(r.URL.Query(), "include_archived"),
+			OnlyArchived:    flagParam(r.URL.Query(), "only_archived"),
 		}
 
 		pipelines, total, err := svc.ListPipelines(r.Context(), filter)
@@ -82,7 +82,7 @@ func GetPipeline(svc *service.Service) http.HandlerFunc {
 
 		pipeline, err := svc.GetPipeline(r.Context(), name)
 		if err != nil {
-			WriteError(w, http.StatusNotFound, "NOT_FOUND", "pipeline not found")
+			WriteError(w, http.StatusNotFound, CodeNotFound, "pipeline not found")
 			return
 		}
 
@@ -110,7 +110,7 @@ func DeletePipeline(svc *service.Service) http.HandlerFunc {
 				errCode = "PROTECTED_PIPELINE"
 			} else if strings.Contains(err.Error(), "no rows") || strings.Contains(err.Error(), "not found") {
 				statusCode = http.StatusNotFound
-				errCode = "NOT_FOUND"
+				errCode = CodeNotFound
 			}
 			WriteError(w, statusCode, errCode, err.Error())
 			return
@@ -140,7 +140,7 @@ func ArchivePipeline(svc *service.Service) http.HandlerFunc {
 			// found" error. Mirror DeletePipeline's mapping so the
 			// HTTP contract stays at 404 instead of regressing to 500.
 			if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "no rows") {
-				WriteError(w, http.StatusNotFound, "NOT_FOUND", err.Error())
+				WriteError(w, http.StatusNotFound, CodeNotFound, err.Error())
 				return
 			}
 			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
@@ -170,7 +170,7 @@ func UnarchivePipeline(svc *service.Service) http.HandlerFunc {
 			// Get-before-Update). Map to 404 so a request against a
 			// missing pipeline keeps the prior HTTP contract.
 			if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "no rows") {
-				WriteError(w, http.StatusNotFound, "NOT_FOUND", err.Error())
+				WriteError(w, http.StatusNotFound, CodeNotFound, err.Error())
 				return
 			}
 			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())

@@ -60,6 +60,14 @@ const (
 	HealthUpgrading HealthStatus = "upgrading" // set while an upgrade runs
 )
 
+// Per-subsystem signals in HealthChecks (process, rest_api, grpc_api,
+// db.status).
+const (
+	checkOK      = "ok"
+	checkFailed  = "failed"
+	checkUnknown = "unknown"
+)
+
 // HealthzEnvelope is the wire shape of a GET /healthz response.
 //
 // New top-level fields (e.g. `Upgrade`) MUST be added with
@@ -244,19 +252,19 @@ func healthzBuilder(svc *service.Service, probes HealthzProbes) func(context.Con
 			Version:       probes.Version,
 			UptimeSeconds: int64(time.Since(time.Unix(0, startedRef.Load())).Seconds()),
 			Checks: HealthChecks{
-				Process:  "ok",
-				RESTAPI:  "ok",
-				GRPCAPI:  "unknown",
+				Process:  checkOK,
+				RESTAPI:  checkOK,
+				GRPCAPI:  checkUnknown,
 				Watchers: []WatcherCheck{},
 			},
 		}
 
 		// DB probe — failed DB is the canonical "failed" signal.
-		dbStatus := "ok"
+		dbStatus := checkOK
 		if svc == nil || svc.Store == nil {
-			dbStatus = "failed"
+			dbStatus = checkFailed
 		} else if err := svc.Store.Health(ctx); err != nil {
-			dbStatus = "failed"
+			dbStatus = checkFailed
 		}
 		env.Checks.DB = DBCheck{Status: dbStatus}
 
@@ -266,9 +274,9 @@ func healthzBuilder(svc *service.Service, probes HealthzProbes) func(context.Con
 		// gRPC probe — optional.
 		if probes.GRPC != nil {
 			if probes.GRPC(ctx) {
-				env.Checks.GRPCAPI = "ok"
+				env.Checks.GRPCAPI = checkOK
 			} else {
-				env.Checks.GRPCAPI = "failed"
+				env.Checks.GRPCAPI = checkFailed
 			}
 		}
 
@@ -307,10 +315,10 @@ func healthzBuilder(svc *service.Service, probes HealthzProbes) func(context.Con
 //     is stale OR gRPC reports "unknown" while a probe was supplied).
 //   - healthy  = everything green.
 func computeHealth(c HealthChecks) HealthStatus {
-	if c.DB.Status != "ok" {
+	if c.DB.Status != checkOK {
 		return HealthFailed
 	}
-	if c.GRPCAPI == "failed" {
+	if c.GRPCAPI == checkFailed {
 		return HealthFailed
 	}
 	if c.Queue.Failed > 0 {
