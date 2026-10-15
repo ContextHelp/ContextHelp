@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"errors"
 	"net"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/security"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 )
 
 // HeaderAPIKey is the API-key header accepted alongside Authorization:
@@ -19,10 +21,11 @@ const HeaderAPIKey = "X-API-Key"
 // through the configured provider and rejects unauthenticated calls
 // with 401. The concrete scheme lives behind the authn.Provider
 // interface — this middleware only extracts transport credentials and
-// forwards them. On success the principal is attached to the request
-// context for handlers, the policy engine, and metering. Failures are
-// recorded on the security emitter (nil-safe), keyed by remote host
-// since no principal exists yet.
+// forwards them. On success the principal and its viewer are attached
+// to the request context (attachCaller) for handlers, the policy
+// engine, metering and scoped storage reads. Failures are recorded on
+// the security emitter (nil-safe), keyed by remote host since no
+// principal exists yet.
 func RequireAuth(provider authn.Provider, sec *security.Emitter) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -39,9 +42,17 @@ func RequireAuth(provider authn.Provider, sec *security.Emitter) func(http.Handl
 				WriteError(w, http.StatusUnauthorized, "UNAUTHORIZED", msg)
 				return
 			}
-			next.ServeHTTP(w, r.WithContext(authn.Attach(r.Context(), princ)))
+			next.ServeHTTP(w, r.WithContext(attachCaller(r.Context(), princ)))
 		})
 	}
+}
+
+// attachCaller binds an authenticated principal and its viewer to ctx
+// in one step, so no request reaches a handler authenticated but
+// unscoped. Every authenticated principal is Unrestricted until share
+// policies resolve a narrower viewer per principal (ADR-080 §4).
+func attachCaller(ctx context.Context, princ *authn.Principal) context.Context {
+	return sharing.WithViewer(authn.Attach(ctx, princ), sharing.Unrestricted)
 }
 
 // remoteHost extracts the peer host from RemoteAddr for security-event

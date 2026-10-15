@@ -14,6 +14,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/retrieval"
 	"github.com/ideacrafterslabs/ctxt/internal/security"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/ui"
 	"github.com/ideacrafterslabs/ctxt/internal/watcher"
 )
@@ -147,6 +148,12 @@ func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
 		if rc.Auth != nil {
 			r.Use(RequireAuth(rc.Auth, rc.Security))
 			r.Use(SessionGuard(rc.Sessions, rc.DevCORS, rc.SessionRecheck))
+		} else {
+			// Private instance: no principal, but every caller is the
+			// owner and reads unscoped. The viewer is attached here,
+			// where RequireAuth would attach it, so the route table
+			// below (MCP mount included) never runs without one.
+			r.Use(WithViewer(sharing.Unrestricted))
 		}
 		r.Use(UpgradeHeader(probes.Upgrade))
 		mountAPIRoutes(r, apiRoutes(svc, rc), rc)

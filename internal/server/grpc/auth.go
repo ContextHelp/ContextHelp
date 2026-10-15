@@ -13,6 +13,7 @@ import (
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/security"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 )
 
 // Metadata keys carrying inbound credentials. gRPC metadata keys are
@@ -42,11 +43,36 @@ func authUnaryInterceptor(provider authn.Provider, sec *security.Emitter) grpc.U
 			recordAuthFailure(ctx, sec)
 			return nil, unauthenticatedStatus(err)
 		}
-		ctx = authn.Attach(ctx, princ)
+		ctx = attachCaller(ctx, princ)
 		if err := authorizeMethod(ctx, info.FullMethod, sec); err != nil {
 			return nil, err
 		}
 		return handler(ctx, req)
+	}
+}
+
+// attachCaller binds an authenticated principal and its viewer to ctx
+// in one step, so no RPC reaches a handler authenticated but unscoped.
+// Every authenticated principal is Unrestricted until share policies
+// resolve a narrower viewer per principal (ADR-080 §4).
+func attachCaller(ctx context.Context, princ *authn.Principal) context.Context {
+	return sharing.WithViewer(authn.Attach(ctx, princ), sharing.Unrestricted)
+}
+
+// viewerUnaryInterceptor attaches v to every unary call. It is the
+// private instance's counterpart of authUnaryInterceptor: with no
+// provider there is no principal, every caller is the owner (ADR-079
+// §1) and reads unscoped (sharing.Unrestricted).
+func viewerUnaryInterceptor(v sharing.Viewer) grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+		return handler(sharing.WithViewer(ctx, v), req)
+	}
+}
+
+// viewerStreamInterceptor mirrors viewerUnaryInterceptor for streams.
+func viewerStreamInterceptor(v sharing.Viewer) grpc.StreamServerInterceptor {
+	return func(srv any, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		return handler(srv, &authenticatedStream{ServerStream: ss, ctx: sharing.WithViewer(ss.Context(), v)})
 	}
 }
 
@@ -62,7 +88,7 @@ func authStreamInterceptor(provider authn.Provider, sec *security.Emitter) grpc.
 			recordAuthFailure(ss.Context(), sec)
 			return unauthenticatedStatus(err)
 		}
-		ctx := authn.Attach(ss.Context(), princ)
+		ctx := attachCaller(ss.Context(), princ)
 		if err := authorizeMethod(ctx, info.FullMethod, sec); err != nil {
 			return err
 		}

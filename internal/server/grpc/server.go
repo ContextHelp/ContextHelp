@@ -17,6 +17,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/security"
 	pb "github.com/ideacrafterslabs/ctxt/internal/server/grpc/pb"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 )
 
 // Server wraps a gRPC server with all registered services.
@@ -77,6 +78,12 @@ func New(addr string, svc *service.Service, opts ...Option) *Server {
 	if o.auth != nil {
 		unary = append(unary, authUnaryInterceptor(o.auth, o.security))
 		stream = append(stream, authStreamInterceptor(o.auth, o.security))
+	} else {
+		// Private instance: no principal, but every caller is the
+		// owner and reads unscoped. Attached where the auth
+		// interceptors would attach it, so no RPC runs without a viewer.
+		unary = append(unary, viewerUnaryInterceptor(sharing.Unrestricted))
+		stream = append(stream, viewerStreamInterceptor(sharing.Unrestricted))
 	}
 
 	gs := grpc.NewServer(
