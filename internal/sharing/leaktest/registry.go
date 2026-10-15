@@ -28,10 +28,19 @@ type Principal struct {
 	ID string
 	// Token is the bearer token it presents, over HTTP and gRPC alike.
 	Token string
+	// Header holds extra request headers (gRPC metadata) the principal
+	// sends: the owner previewing sets X-Ctxt-View-As here.
+	Header http.Header
+	// Revoked marks a principal the instance refuses outright: every
+	// route answers 401 (Unauthenticated), never a body.
+	Revoked bool
 	// viewer is the viewer the instance compiles for it; the zero
 	// viewer for the owner, whose checks are the no-server-error one.
 	viewer sharing.Viewer
 }
+
+// Viewer is the viewer the fixture compiled for p.
+func (p Principal) Viewer() sharing.Viewer { return p.viewer }
 
 // Restricted reports whether p is a non-owner principal, whose
 // answers the leak checks apply to.

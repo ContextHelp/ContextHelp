@@ -76,6 +76,13 @@ type RenderPlan struct {
 	// stays masked only if every matching grant masks it). Inert until
 	// span masking lands.
 	Masked []string
+	// PartExclusions are the classes the render layer drops parts
+	// (graph nodes, classed fields) for: the ceiling, every grant's
+	// exclusions and the key policy's. Exclusions apply per grant at the
+	// row level, where the predicate knows which grant matched; a part
+	// cannot tell, so the union is applied and a class any applying
+	// policy excludes is withheld (fail closed).
+	PartExclusions []string
 }
 
 // FieldsFor returns the fields the plan renders for type typ.
@@ -84,6 +91,16 @@ func (p RenderPlan) FieldsFor(typ string) []string {
 		return f
 	}
 	return p.Fields["*"]
+}
+
+// ExcludesAny reports whether any of classes is in PartExclusions.
+func (p RenderPlan) ExcludesAny(classes []string) bool {
+	for _, c := range classes {
+		if slices.Contains(p.PartExclusions, c) {
+			return true
+		}
+	}
+	return false
 }
 
 // view is a compiled restricted viewer.
@@ -138,6 +155,10 @@ func Compile(in Input) (Viewer, error) {
 	}
 	v.plan.DenyClasses = storage.NormalizeClasses(in.DenyClasses)
 	v.plan.Fields, v.plan.Capabilities, v.plan.Masked = unionPlan(grants)
+	exclusions := slices.Clone(in.DenyClasses)
+	for _, g := range grants {
+		exclusions = append(exclusions, g.Policy.ExcludeClasses...)
+	}
 
 	var keyNode search.Node
 	if in.KeyPolicy != nil {
@@ -148,7 +169,9 @@ func Compile(in Input) (Viewer, error) {
 		keyNode = andNot(node, in.KeyPolicy.ExcludeClasses)
 		v.plan.Fields = intersectFields(v.plan.Fields, *in.KeyPolicy)
 		v.plan.Capabilities = intersectCapabilities(v.plan.Capabilities, in.KeyPolicy.Capabilities)
+		exclusions = append(exclusions, in.KeyPolicy.ExcludeClasses...)
 	}
+	v.plan.PartExclusions = storage.NormalizeClasses(exclusions)
 
 	if len(union) > 0 {
 		v.node = buildPredicate(union, v.plan.DenyClasses, keyNode)
@@ -205,7 +228,8 @@ func classOut(classes []string) search.Node {
 }
 
 // unionPlan unions the grants' fields per type, their capabilities and
-// intersects their mask lists.
+// intersects their mask lists. A type one grant projects every field
+// of (FieldAll) is every field in the union.
 func unionPlan(grants []Grant) (map[string][]string, Capabilities, []string) {
 	fields := map[string][]string{}
 	var caps Capabilities
@@ -216,6 +240,9 @@ func unionPlan(grants []Grant) (map[string][]string, Capabilities, []string) {
 				if !slices.Contains(fields[typ], f) {
 					fields[typ] = append(fields[typ], f)
 				}
+			}
+			if slices.Contains(fs, FieldAll) {
+				fields[typ] = []string{FieldAll}
 			}
 		}
 		caps = unionCapabilities(caps, g.Policy.Capabilities)
@@ -232,12 +259,22 @@ func unionPlan(grants []Grant) (map[string][]string, Capabilities, []string) {
 }
 
 // intersectFields keeps, per type of fields, the fields key renders for
-// that type; a type key renders nothing for is dropped.
+// that type; a type key renders nothing for is dropped. FieldAll on
+// either side yields the other side's list.
 func intersectFields(fields map[string][]string, key Policy) map[string][]string {
 	out := map[string][]string{}
 	for typ, fs := range fields {
 		allowed := key.FieldsFor(typ)
-		if kept := intersect(fs, allowed); len(kept) > 0 {
+		var kept []string
+		switch {
+		case slices.Contains(allowed, FieldAll):
+			kept = slices.Clone(fs)
+		case slices.Contains(fs, FieldAll):
+			kept = slices.Clone(allowed)
+		default:
+			kept = intersect(fs, allowed)
+		}
+		if len(kept) > 0 {
 			out[typ] = kept
 		}
 	}

@@ -164,5 +164,8 @@ func sharedWith(r *http.Request, p *authn.Principal, reg storage.AuthStore, shar
 			info.Policies = append(info.Policies, g.Policy.Name)
 		}
 	}
+	// Grants created in one instant list in no fixed order; the body
+	// is the same whatever the order.
+	slices.Sort(info.Policies)
 	return info
 }

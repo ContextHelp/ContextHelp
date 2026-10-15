@@ -164,17 +164,42 @@ func NewWithOptions(store storage.StorageDriver, queue *jobs.Queue, pipes pipeli
 func (s *Service) Viewers() *sharing.Resolver { return s.viewers }
 
 // Store returns the storage driver as the caller of ctx may see it:
-// the driver itself for an unrestricted viewer, a driver whose reads
-// answer through the viewer's predicate for a restricted one (hidden
-// rows are absent, owner-only stores refuse), and a driver whose every
-// read fails closed for a context no transport attached a viewer to,
-// which is a transport bug and stays loud (ADR-080 §4). Every read the
-// service performs on a caller's behalf goes through it; callers that
-// act as the system (pipeline, jobs, housekeeping, the CLI at the
-// owner's terminal) attach sharing.Unrestricted to their context, and
-// say so.
+// the driver itself for an unrestricted viewer; for a restricted one a
+// driver whose reads answer through the viewer's predicate (hidden
+// rows are absent, owner-only stores refuse) and whose every released
+// object is rendered (ADR-080 §5) and recorded in the request's ledger
+// (§8) before a handler can touch it; and a driver whose every read
+// fails closed for a context no transport attached a viewer to, which
+// is a transport bug and stays loud (§4). Every read the service
+// performs on a caller's behalf goes through it; callers that act as
+// the system (pipeline, jobs, housekeeping, the CLI at the owner's
+// terminal) attach sharing.Unrestricted to their context, and say so.
 func (s *Service) Store(ctx context.Context) storage.StorageDriver {
-	return storage.ScopedDriver(s.viewer(ctx), s.store)
+	return sharing.Scoped(ctx, s.store, s.provenance)
+}
+
+// provenance adapts the pipeline registry to the render layer: the
+// step contracts of the pipeline named name, with or without its @vN
+// suffix, so the derived rule can tell what each stored field was
+// computed from.
+func (s *Service) provenance(name string) ([]sharing.StepContract, bool) {
+	if s.Pipes == nil || name == "" {
+		return nil, false
+	}
+	p, err := s.Pipes.Get(name)
+	if err != nil {
+		if base, _, ok := strings.Cut(name, "@"); !ok || base == name {
+			return nil, false
+		} else if p, err = s.Pipes.Get(base); err != nil {
+			return nil, false
+		}
+	}
+	steps := make([]sharing.StepContract, 0, len(p.Steps))
+	for _, st := range p.Steps {
+		c := st.Contract()
+		steps = append(steps, sharing.StepContract{Name: st.Name(), Requires: c.Requires, Produces: c.Produces})
+	}
+	return steps, true
 }
 
 // viewer is the viewer attached to ctx as storage sees it: nil when

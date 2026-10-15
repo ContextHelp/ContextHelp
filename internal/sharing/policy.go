@@ -30,8 +30,9 @@ type Policy struct {
 	// ExcludeClasses removes objects and parts carrying any of these
 	// classes from what Data matched.
 	ExcludeClasses []string `yaml:"exclude_classes,omitempty" json:"exclude_classes,omitempty"`
-	// Fields is the per-type allowlist of rendered fields; "*" covers
-	// every type without its own entry.
+	// Fields is the per-type allowlist of rendered fields; the "*" type
+	// covers every type without its own entry, and the "*" field, alone
+	// in a list, renders every field of the type (FieldAll).
 	Fields map[string][]string `yaml:"fields,omitempty" json:"fields,omitempty"`
 	// Redact is accepted and stored but inert until span masking lands
 	// (plan Phase 4).
@@ -170,6 +171,12 @@ func (p Policy) validateFields() []error {
 			errs = append(errs, fmt.Errorf("fields: type %q: list at least one field", typ))
 		}
 		for _, f := range fields {
+			if f == FieldAll {
+				if len(fields) != 1 {
+					errs = append(errs, fmt.Errorf("fields: type %q: %q renders every field and must be the only entry", typ, FieldAll))
+				}
+				continue
+			}
 			if !fieldNamePattern.MatchString(f) {
 				errs = append(errs, fmt.Errorf("fields: type %q: field %q: want a lowercase field name", typ, f))
 			}
