@@ -2,6 +2,7 @@ package search
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/search/ftsq"
@@ -19,6 +20,22 @@ var dateColumns = map[string]bool{
 	"created_at": true,
 	"updated_at": true,
 }
+
+// columnAliases map query fields to the object columns they compare
+// against when the two names differ: a share policy filters by
+// `profile` (ADR-080 §2) and the column is profile_id.
+var columnAliases = map[string]string{
+	"profile": "profile_id",
+}
+
+// metadataPrefix introduces a comparison against one key of the object's
+// metadata: `metadata.<key>`, nested keys dotted (`metadata.a.b`). The
+// key is bound as a JSON path argument, never spliced into the SQL.
+const metadataPrefix = "metadata."
+
+// metadataKeyPattern bounds a metadata key to path components the two
+// JSON path syntaxes read alike.
+var metadataKeyPattern = regexp.MustCompile(`^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$`)
 
 // Compile converts an AST node into a SQL WHERE clause and arguments.
 // It targets SQLite (? placeholders, json_each, FTS5 MATCH).
@@ -92,15 +109,31 @@ func compileComparison(d Dialect, n ComparisonNode) (string, []any, error) {
 		return compileSimilar(d, n)
 	}
 
-	// Direct columns.
+	// Class field: JSON array membership over objects.classes.
+	if n.Field == "class" {
+		return compileClass(d, n)
+	}
+
+	// Metadata keys: a JSON path into objects.metadata.
+	if strings.HasPrefix(n.Field, metadataPrefix) {
+		return compileMetadata(d, n)
+	}
+
+	// Direct columns, by their own name or an alias.
+	if column, ok := columnAliases[n.Field]; ok {
+		return compileColumn(column, n)
+	}
 	if directColumns[n.Field] || dateColumns[n.Field] {
-		return compileDirect(n)
+		return compileColumn(n.Field, n)
 	}
 
 	return "", nil, fmt.Errorf("unknown field: %q", n.Field)
 }
 
-func compileDirect(n ComparisonNode) (string, []any, error) {
+// compileColumn compares one SQL expression (a column name, or a JSON
+// path expression whose own arguments come first in pathArgs) with the
+// node's value under its operator.
+func compileColumn(expr string, n ComparisonNode, pathArgs ...any) (string, []any, error) {
 	sqlOp, err := sqlOperator(n.Operator)
 	if err != nil {
 		return "", nil, err
@@ -112,19 +145,77 @@ func compileDirect(n ComparisonNode) (string, []any, error) {
 			return "", nil, fmt.Errorf("IN/OUT requires []string value")
 		}
 		placeholders := make([]string, len(vals))
-		args := make([]any, len(vals))
+		args := append([]any(nil), pathArgs...)
 		for i, v := range vals {
 			placeholders[i] = "?"
-			args[i] = v
+			args = append(args, v)
 		}
 		not := ""
 		if n.Operator == OpOut {
 			not = "NOT "
 		}
-		return fmt.Sprintf("%s %sIN (%s)", n.Field, not, strings.Join(placeholders, ",")), args, nil
+		return fmt.Sprintf("%s %sIN (%s)", expr, not, strings.Join(placeholders, ",")), args, nil
 	}
 
-	return fmt.Sprintf("%s %s ?", n.Field, sqlOp), []any{n.Value}, nil
+	return fmt.Sprintf("%s %s ?", expr, sqlOp), append(append([]any(nil), pathArgs...), n.Value), nil
+}
+
+// compileClass emits a membership check over the classes JSON array:
+// == and =in= hold when any class matches, != and =out= when none does
+// (a policy's exclude_classes and a principal's deny_classes compile to
+// the latter, ADR-080 §2). SQLite uses json_each; Postgres
+// jsonb_array_elements_text.
+func compileClass(d Dialect, n ComparisonNode) (string, []any, error) {
+	jsonFunc, member := "json_each(classes)", "json_each.value"
+	if d == DialectPostgres {
+		jsonFunc, member = "jsonb_array_elements_text(classes) AS c", "c"
+	}
+	var vals []string
+	switch n.Operator {
+	case OpEq, OpNeq:
+		v, ok := n.Value.(string)
+		if !ok {
+			return "", nil, fmt.Errorf("class ==/!= requires a string value")
+		}
+		vals = []string{v}
+	case OpIn, OpOut:
+		v, ok := n.Value.([]string)
+		if !ok {
+			return "", nil, fmt.Errorf("class IN/OUT requires []string value")
+		}
+		vals = v
+	default:
+		return "", nil, fmt.Errorf("unsupported operator %v for class field", n.Operator)
+	}
+	if len(vals) == 0 {
+		return "", nil, fmt.Errorf("class %v requires at least one class", n.Operator)
+	}
+	placeholders := make([]string, len(vals))
+	args := make([]any, len(vals))
+	for i, v := range vals {
+		placeholders[i] = "?"
+		args[i] = v
+	}
+	not := ""
+	if n.Operator == OpNeq || n.Operator == OpOut {
+		not = "NOT "
+	}
+	return fmt.Sprintf("%sEXISTS (SELECT 1 FROM %s WHERE %s IN (%s))",
+		not, jsonFunc, member, strings.Join(placeholders, ",")), args, nil
+}
+
+// compileMetadata compares one metadata key, read as text, with the
+// node's value. The key travels as a bound JSON path: `$.a.b` for
+// SQLite's json_extract, `{a,b}` for Postgres's #>> operator.
+func compileMetadata(d Dialect, n ComparisonNode) (string, []any, error) {
+	key := strings.TrimPrefix(n.Field, metadataPrefix)
+	if !metadataKeyPattern.MatchString(key) {
+		return "", nil, fmt.Errorf("metadata key %q: want dotted path components of [A-Za-z0-9_-]", key)
+	}
+	if d == DialectPostgres {
+		return compileColumn("(metadata #>> ?::text[])", n, "{"+strings.ReplaceAll(key, ".", ",")+"}")
+	}
+	return compileColumn("json_extract(metadata, ?)", n, "$."+key)
 }
 
 // compileTag emits a JSON tag existence check.
