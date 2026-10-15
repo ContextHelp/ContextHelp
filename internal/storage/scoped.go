@@ -8,7 +8,8 @@ import (
 // ErrRestrictedViewer is returned by a read of a ScopedDriver that a
 // restricted viewer may not run at all: the reads of the owner-only
 // stores (jobs, pipelines, watches, ...) and the system reads of the
-// scoped stores (reminders due, stale proximity, blob listings). Such a
+// scoped stores (reminders due, stale proximity, blob listings). A
+// write to an owner-only store wraps it too (restrictedWrite). Such a
 // read fails closed instead of answering unscoped rows; the transports
 // answer it as a capability refusal, never as a row. A read a restricted
 // viewer may run (RestrictedReads lists what it may not) answers through
@@ -20,6 +21,16 @@ var ErrRestrictedViewer = errors.New("restricted viewer: scoped reads not suppor
 // traced to the read that refused.
 func restrictedRead(store, method string) error {
 	return fmt.Errorf("%s.%s: %w", store, method, ErrRestrictedViewer)
+}
+
+// restrictedWrite is the error a write method of an owner-only store
+// returns for a restricted or nil viewer, naming the store and method
+// like restrictedRead. It wraps ErrRestrictedViewer, so the transports
+// answer it as the same capability refusal: the route that reaches the
+// write should have been closed to the viewer, and this is the
+// backstop behind it.
+func restrictedWrite(store, method string) error {
+	return fmt.Errorf("%s.%s: owner-only write: %w", store, method, ErrRestrictedViewer)
 }
 
 // ErrNoViewer is the cause of every refusal of a ScopedDriver built
@@ -43,9 +54,10 @@ func refuseRead(store, method string, cause error) error {
 // reads answer through the viewer's scope (ViewerScope): object reads
 // AND the viewer's predicate into their SQL, derived data follows the
 // visibility of its source objects (ADR-080 §6), per-principal rows
-// are kept to the viewer's principal, the owner-only stores refuse with
-// ErrRestrictedViewer, and writes reach d unchanged. A nil viewer gets
-// a driver whose every read refuses.
+// are kept to the viewer's principal, the owner-only stores refuse
+// every read and write with ErrRestrictedViewer (restrictedWrites), and
+// the other writes reach d unchanged. A nil viewer gets a driver whose
+// every read, and every owner-only write, refuses.
 //
 // Request handlers reach storage only through this function, via the
 // service's Store(ctx); the unscoped driver is named with System by the
@@ -309,12 +321,13 @@ var scopedAccessors = map[string]accessorKind{
 // payloads, pipelines, watches, registries, feeds, the audit log, ...)
 // and the system reads of the scoped stores (reminders due, blob
 // listings, stale proximity, missing embeddings). The store's other
-// methods are writes, which reach the driver, or scoped reads
-// (scopedReads), which answer through the viewer's scope. The
-// restricted wrappers are written by hand against both tables; the
-// conformance suite (storagetest) walks them to check each listed read
-// refuses, each scoped read answers visible rows only and each other
-// method reaches the driver.
+// methods are owner-only writes (restrictedWrites), which refuse too,
+// other writes, which reach the driver, or scoped reads (scopedReads),
+// which answer through the viewer's scope. The restricted wrappers are
+// written by hand against these tables; the conformance suite
+// (storagetest) walks them to check each listed read and owner-only
+// write refuses, each scoped read answers visible rows only and each
+// other method reaches the driver.
 var restrictedReads = map[string][]string{
 	"Attachments":     {"GetAttachment", "ListAttachments"},
 	"AuditLog":        {"List", "GetObjectHistory"},
@@ -337,6 +350,33 @@ var restrictedReads = map[string][]string{
 	"UISessions":      {"Lookup", "Get", "List"},
 	"Watches":         {"GetWatch", "ListWatches", "GetFileRecord", "ListFileRecords"},
 	"Watermarks":      {"GetWatermark"},
+}
+
+// restrictedWrites names, per owner-only store, the store methods that
+// write and fail closed with ErrRestrictedViewer for every restricted
+// or nil viewer, without reaching the driver. An owner-only store
+// (ADR-080 §6) holds rows no share policy covers: jobs, pipelines,
+// steps, registries, entitlements (a restricted principal writing one
+// would grant itself namespaces), metering, feeds, batches, detectors
+// and watches. No route open to a restricted viewer writes them; the
+// system (worker, pipeline, inbound gate, CLI) writes them through the
+// unscoped driver or an Unrestricted viewer. Every method of these
+// stores is either here or in restrictedReads; the package's tests
+// fail on one that is neither. Writes to the scoped stores (objects,
+// entities, edges, aliases, ...) are not listed: they reach the driver,
+// and the scoped reads decide what the viewer sees of them.
+var restrictedWrites = map[string][]string{
+	"Batches":      {"Create", "Update"},
+	"Detectors":    {"Create", "Update", "Delete", "Enable", "Disable"},
+	"Entitlements": {"Upsert"},
+	"FeedItems":    {"Create"},
+	"Feeds":        {"Create", "Update", "Delete"},
+	"Jobs":         {"Create", "AcquireNext", "Complete", "Fail", "Retry", "Cancel", "RecoverStale", "ExtendLease", "ReleaseLease"},
+	"Metering":     {"Record", "RecordCapped"},
+	"Pipelines":    {"Create", "Update", "Delete", "Archive", "Unarchive"},
+	"Registries":   {"CacheManifest", "UpdateETag", "Delete"},
+	"Steps":        {"Create", "Unregister", "Update"},
+	"Watches":      {"CreateWatch", "UpdateWatch", "DeleteWatch", "UpsertFileRecord", "DeleteFileRecord"},
 }
 
 // scopedReads names, per scoped accessor, the store methods that answer
@@ -370,6 +410,13 @@ var principalReads = map[string][]string{
 // the conformance suite checks every driver's scoped reads against.
 func RestrictedReads() map[string][]string {
 	return cloneReads(restrictedReads)
+}
+
+// RestrictedWrites returns, per owner-only store accessor, the write
+// methods a restricted viewer may not run at all. The conformance
+// suite checks every driver's owner-only writes refuse against it.
+func RestrictedWrites() map[string][]string {
+	return cloneReads(restrictedWrites)
 }
 
 // ScopedReads returns, per StorageDriver store accessor, the store

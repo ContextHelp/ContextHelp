@@ -47,8 +47,10 @@ func viewerOfType(typ, principal string) scopedViewer {
 // ErrRestrictedViewer and no rows; a restricted viewer's refused reads
 // (storage.RestrictedReads) fail closed the same way while its scoped
 // reads answer only what its predicate selects (a hidden row is
-// ErrNotFound, exactly as a missing one) and its writes reach the
-// driver. RestrictedViewerConformance pins what the scoped reads
+// ErrNotFound, exactly as a missing one), its writes to the scoped
+// stores reach the driver and its writes to the owner-only stores
+// (storage.RestrictedWrites) refuse without reaching it.
+// RestrictedViewerConformance pins what the scoped reads
 // answer.
 func ScopedDriverConformance(t *testing.T, drv storage.StorageDriver) {
 	t.Helper()
@@ -88,8 +90,17 @@ func ScopedDriverConformance(t *testing.T, drv storage.StorageDriver) {
 	t.Run("restricted viewer fails every refused read closed", func(t *testing.T) {
 		restrictedReadsFailClosed(t, storage.ScopedDriver(viewerNothing, drv), storage.RestrictedReads())
 	})
+	t.Run("nil viewer fails every owner-only write closed", func(t *testing.T) {
+		restrictedReadsFailClosed(t, storage.ScopedDriver(nil, drv), storage.RestrictedWrites())
+	})
+	t.Run("restricted viewer fails every owner-only write closed", func(t *testing.T) {
+		restrictedReadsFailClosed(t, storage.ScopedDriver(viewerNothing, drv), storage.RestrictedWrites())
+	})
 	t.Run("restricted viewer writes reach the driver", func(t *testing.T) {
 		scopedRestrictedWritesLand(t, drv, now)
+	})
+	t.Run("owner-only writes land for the owner only", func(t *testing.T) {
+		scopedOwnerOnlyWritesRefused(t, drv, now)
 	})
 	t.Run("restricted viewer loses optional capabilities", func(t *testing.T) {
 		scoped := storage.ScopedDriver(viewerNothing, drv)
@@ -169,9 +180,93 @@ func scopedRestrictedWritesLand(t *testing.T, drv storage.StorageDriver, now tim
 	}
 }
 
-// restrictedReadsFailClosed calls every read of table on scoped, with
-// zero arguments, and checks each refuses with ErrRestrictedViewer and
-// returns nothing else.
+// scopedOwnerOnlyWritesRefused checks a restricted viewer's writes to
+// owner-only stores refuse with ErrRestrictedViewer and leave no row in
+// drv, while the same writes by the owner land. The entitlement row is
+// the one that matters most: it is keyed by principal, so a restricted
+// principal that could write it would grant itself namespaces.
+func scopedOwnerOnlyWritesRefused(t *testing.T, drv storage.StorageDriver, now time.Time) {
+	t.Helper()
+	ctx := context.Background()
+	writes := []struct {
+		name   string
+		write  func(storage.StorageDriver) error
+		landed func() bool
+	}{
+		{
+			name: "Entitlements.Upsert",
+			write: func(d storage.StorageDriver) error {
+				return d.Entitlements().Upsert(ctx, &storage.RegistryEntitlement{
+					RegistryName: viewerNothing.principal, Plan: "inbound", Namespaces: []string{"*"}, FetchedAt: now,
+				})
+			},
+			landed: func() bool {
+				got, err := drv.Entitlements().Get(ctx, viewerNothing.principal)
+				return err == nil && got != nil
+			},
+		},
+		{
+			name: "Pipelines.Create",
+			write: func(d storage.StorageDriver) error {
+				return d.Pipelines().Create(ctx, &storage.Pipeline{
+					ID: "scoped-owner-only-pipeline", Name: "scoped.owner-only", CreatedAt: now, UpdatedAt: now,
+				})
+			},
+			landed: func() bool {
+				got, err := drv.Pipelines().Get(ctx, "scoped.owner-only")
+				return err == nil && got != nil
+			},
+		},
+		{
+			name: "Jobs.Create",
+			write: func(d storage.StorageDriver) error {
+				return d.Jobs().Create(ctx, &storage.Job{
+					ID: "scoped-owner-only-job", Type: "analyze", Status: storage.JobPending,
+					Pipeline: "text.short", Payload: "owner-only", CreatedAt: now, UpdatedAt: now,
+				})
+			},
+			landed: func() bool {
+				got, err := drv.Jobs().Get(ctx, "scoped-owner-only-job")
+				return err == nil && got != nil
+			},
+		},
+		{
+			name: "Registries.CacheManifest",
+			write: func(d storage.StorageDriver) error {
+				return d.Registries().CacheManifest(ctx, &storage.RegistryCache{
+					RegistryURL: "https://scoped-owner-only.example", LastFetched: now,
+				})
+			},
+			landed: func() bool {
+				got, err := drv.Registries().GetCachedManifest(ctx, "https://scoped-owner-only.example")
+				return err == nil && got != nil
+			},
+		},
+	}
+	for _, w := range writes {
+		for _, v := range []struct {
+			name   string
+			viewer storage.Viewer
+		}{{"restricted", viewerNothing}, {"nil", nil}} {
+			if err := w.write(storage.ScopedDriver(v.viewer, drv)); !errors.Is(err, storage.ErrRestrictedViewer) {
+				t.Errorf("%s by a %s viewer: err = %v, want ErrRestrictedViewer", w.name, v.name, err)
+			}
+			if w.landed() {
+				t.Fatalf("%s by a %s viewer reached the driver", w.name, v.name)
+			}
+		}
+		if err := w.write(storage.ScopedDriver(viewerUnrestricted, drv)); err != nil {
+			t.Fatalf("%s by the owner: %v", w.name, err)
+		}
+		if !w.landed() {
+			t.Errorf("%s by the owner did not reach the driver", w.name)
+		}
+	}
+}
+
+// restrictedReadsFailClosed calls every method of table (refused reads,
+// or owner-only writes) on scoped, with zero arguments, and checks each
+// refuses with ErrRestrictedViewer and returns nothing else.
 func restrictedReadsFailClosed(t *testing.T, scoped storage.StorageDriver, table map[string][]string) {
 	t.Helper()
 	ctxType := reflect.TypeOf((*context.Context)(nil)).Elem()
