@@ -122,6 +122,10 @@ func (v restrictedEntities) List(_ context.Context, _ EntityFilter) ([]*Entity, 
 	return nil, restrictedRead("Entities", "List")
 }
 
+func (v restrictedEntities) Namespaces(_ context.Context) ([]string, error) {
+	return nil, restrictedRead("Entities", "Namespaces")
+}
+
 func (v restrictedEntities) Resolve(_ context.Context, _ string) (*Entity, error) {
 	return nil, restrictedRead("Entities", "Resolve")
 }

@@ -41,6 +41,8 @@ func (s *stubEntityStore) List(_ context.Context, _ storage.EntityFilter) ([]*st
 	return nil, nil
 }
 
+func (s *stubEntityStore) Namespaces(_ context.Context) ([]string, error) { return nil, nil }
+
 func (s *stubEntityStore) Resolve(_ context.Context, _ string) (*storage.Entity, error) {
 	return nil, nil
 }
