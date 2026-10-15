@@ -32,7 +32,7 @@ type StubDocumentProvider struct{}
 
 func NewStubDocumentProvider() *StubDocumentProvider { return &StubDocumentProvider{} }
 
-func (p *StubDocumentProvider) Name() string { return "stub" }
+func (p *StubDocumentProvider) Name() string { return backendStub }
 
 func (p *StubDocumentProvider) ExtractPDF(_ context.Context, pdfPath string) (*DocumentResult, error) {
 	return &DocumentResult{

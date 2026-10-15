@@ -16,12 +16,12 @@ type TesseractOCRProvider struct {
 
 func NewTesseractOCRProvider(language string) *TesseractOCRProvider {
 	if language == "" {
-		language = "eng"
+		language = defaultOCRLanguage
 	}
 	return &TesseractOCRProvider{language: language}
 }
 
-func (p *TesseractOCRProvider) Name() string { return "tesseract" }
+func (p *TesseractOCRProvider) Name() string { return backendTesseract }
 
 func (p *TesseractOCRProvider) Extract(ctx context.Context, imageData []byte, contentType string) (*OCRResult, error) {
 	// Write image data to a temp file.
@@ -39,7 +39,7 @@ func (p *TesseractOCRProvider) Extract(ctx context.Context, imageData []byte, co
 	tmpFile.Close()
 
 	// Run tesseract to get plain text.
-	result, err := RunCommand(ctx, "tesseract", tmpFile.Name(), "stdout", "-l", p.language)
+	result, err := RunCommand(ctx, toolTesseract, tmpFile.Name(), "stdout", "-l", p.language)
 	if err != nil {
 		return nil, fmt.Errorf("tesseract: %w", err)
 	}
@@ -57,7 +57,7 @@ func (p *TesseractOCRProvider) Extract(ctx context.Context, imageData []byte, co
 
 // estimateConfidence runs tesseract with tsv output to extract word confidences.
 func estimateConfidence(ctx context.Context, imagePath, language string) float64 {
-	result, err := RunCommand(ctx, "tesseract", imagePath, "stdout", "-l", language, "tsv")
+	result, err := RunCommand(ctx, toolTesseract, imagePath, "stdout", "-l", language, "tsv")
 	if err != nil {
 		return 0.0
 	}

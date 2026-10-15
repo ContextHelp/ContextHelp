@@ -16,7 +16,7 @@ type StubLLMProvider = stubLLMProvider
 
 type stubLLMProvider struct{}
 
-func (s *stubLLMProvider) Name() string { return "stub" }
+func (s *stubLLMProvider) Name() string { return backendStub }
 func (s *stubLLMProvider) Generate(_ context.Context, prompt string) (string, error) {
 	end := len(prompt)
 	if end > 50 {

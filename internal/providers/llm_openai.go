@@ -36,7 +36,7 @@ func (p *OpenAILLMProvider) WithHTTPClient(c *http.Client) *OpenAILLMProvider {
 	return &copy
 }
 
-func (p *OpenAILLMProvider) Name() string { return "openai" }
+func (p *OpenAILLMProvider) Name() string { return backendOpenAI }
 
 func (p *OpenAILLMProvider) Generate(ctx context.Context, prompt string) (string, error) {
 	if p.apiKey == "" {
