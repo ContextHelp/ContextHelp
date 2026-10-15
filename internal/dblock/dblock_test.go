@@ -123,7 +123,9 @@ func TestRelease_MakesLockReacquirable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("re-Acquire after Release: %v", err)
 	}
-	defer l2.Release()
+	if err := l2.Release(); err != nil {
+		t.Errorf("Release: %v", err)
+	}
 }
 
 func TestRelease_NeverUnlinksLockfile(t *testing.T) {
@@ -197,7 +199,9 @@ func TestHolderProcessExit_ReleasesLock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Acquire after holder exit: %v — kernel should have released the flock", err)
 	}
-	defer l.Release()
+	if err := l.Release(); err != nil {
+		t.Errorf("Release: %v", err)
+	}
 }
 
 // TestHelperHoldLock is not a test: it is the subprocess body for
@@ -235,7 +239,9 @@ func TestAcquireRetry_SucceedsWhenHolderReleasesWithinBudget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AcquireRetry within budget: %v", err)
 	}
-	defer l2.Release()
+	if err := l2.Release(); err != nil {
+		t.Errorf("Release: %v", err)
+	}
 }
 
 func TestAcquireRetry_FailsWithHolderIdentityAfterBudget(t *testing.T) {

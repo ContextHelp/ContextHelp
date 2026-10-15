@@ -45,7 +45,7 @@ func (e *RepoHealthEnricher) Enrich(snap *RepoSnapshot) RepoHealth {
 
 	activityScore := computeActivityScore(snap, now)
 	releaseFreq := computeReleaseFrequency(snap.Releases)
-	label := computeHealthLabel(snap, isStale, activityScore, now)
+	label := computeHealthLabel(snap, isStale, now)
 
 	return RepoHealth{
 		ActivityScore:    activityScore,
@@ -111,9 +111,8 @@ func computeReleaseFrequency(releases []Release) float64 {
 //  1. "archived" if IsArchived
 //  2. "stale"    if IsStale
 //  3. "new"      if repo is < 6 months old
-//  4. "healthy"  if ActivityScore > 0.5
-//  5. default "healthy"
-func computeHealthLabel(snap *RepoSnapshot, isStale bool, score float64, now time.Time) string {
+//  4. "healthy"  otherwise, whatever the activity score
+func computeHealthLabel(snap *RepoSnapshot, isStale bool, now time.Time) string {
 	if snap.IsArchived {
 		return "archived"
 	}
