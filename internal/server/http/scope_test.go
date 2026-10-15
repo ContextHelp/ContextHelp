@@ -334,6 +334,10 @@ var uiSessionRouteSet = []string{
 	"GET /api/v1/topic-index/{topic}",
 	"GET /api/v1/stats",
 	"DELETE /api/v1/ui/session",
+	// write:self: a session manages its own credentials.
+	"GET /api/v1/self/keys", "POST /api/v1/self/keys", "DELETE /api/v1/self/keys/{key}",
+	"GET /api/v1/self/identities", "DELETE /api/v1/self/identities/{identity}",
+	"GET /api/v1/self/sessions", "DELETE /api/v1/self/sessions/{session}",
 }
 
 // The ui scope set, applied to the route table, yields exactly the web

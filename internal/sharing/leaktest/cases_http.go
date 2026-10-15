@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"strings"
+
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 // Placeholders in a case's path for what the fixture seeded.
@@ -136,5 +138,15 @@ func httpCases() []Case {
 		mcp("/mcp/"),
 		mcp("/mcp"),
 		post("/ui/login-codes", nil),
+
+		// The principal registry: the owner's own rows, and the
+		// owner as the principal every admin route names.
+		get("/principals"),
+		getAt("/principals/{id}", "/principals/"+storage.OwnerPrincipal),
+		getAt("/principals/{id}/identities", "/principals/"+storage.OwnerPrincipal+"/identities"),
+		getAt("/principals/{id}/keys", "/principals/"+storage.OwnerPrincipal+"/keys"),
+		get("/self/keys"),
+		get("/self/identities"),
+		get("/self/sessions"),
 	}
 }
