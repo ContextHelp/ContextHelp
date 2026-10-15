@@ -88,20 +88,13 @@ func (w *Workflow) Retrieve(
 			return nil, fmt.Errorf("retrieve categories: %w", err)
 		}
 
-		if w.config.EnableSufficiencyCheck && w.llm != nil && len(state.CategoryHits) > 0 {
-			needsMore, rewritten, err := w.checkSufficiency(ctx, state, conversationHistory)
-			if err != nil {
-				return nil, fmt.Errorf("sufficiency check after categories: %w", err)
-			}
-			state.ProceedToItems = needsMore
-			state.ActiveQuery = rewritten
-			state.NextStepQuery = rewritten
-
-			if !needsMore {
-				return w.buildResult(state), nil
-			}
-		} else {
-			state.ProceedToItems = true
+		more, err := w.gateAfterTier(ctx, state, conversationHistory, len(state.CategoryHits), "categories")
+		if err != nil {
+			return nil, err
+		}
+		state.ProceedToItems = more
+		if !more {
+			return w.buildResult(state), nil
 		}
 	}
 
@@ -111,20 +104,13 @@ func (w *Workflow) Retrieve(
 			return nil, fmt.Errorf("retrieve items: %w", err)
 		}
 
-		if w.config.EnableSufficiencyCheck && w.llm != nil && len(state.ItemHits) > 0 {
-			needsMore, rewritten, err := w.checkSufficiency(ctx, state, conversationHistory)
-			if err != nil {
-				return nil, fmt.Errorf("sufficiency check after items: %w", err)
-			}
-			state.ProceedToResources = needsMore
-			state.ActiveQuery = rewritten
-			state.NextStepQuery = rewritten
-
-			if !needsMore {
-				return w.buildResult(state), nil
-			}
-		} else {
-			state.ProceedToResources = true
+		more, err := w.gateAfterTier(ctx, state, conversationHistory, len(state.ItemHits), "items")
+		if err != nil {
+			return nil, err
+		}
+		state.ProceedToResources = more
+		if !more {
+			return w.buildResult(state), nil
 		}
 	}
 
@@ -136,6 +122,23 @@ func (w *Workflow) Retrieve(
 	}
 
 	return w.buildResult(state), nil
+}
+
+// gateAfterTier decides whether retrieval continues past a tier that
+// returned hits results. Without the sufficiency check (disabled, no LLM,
+// or no hits) it always continues; otherwise the check decides, and its
+// rewritten query becomes the active and next-step query.
+func (w *Workflow) gateAfterTier(ctx context.Context, state *State, history []string, hits int, tier string) (bool, error) {
+	if !w.config.EnableSufficiencyCheck || w.llm == nil || hits == 0 {
+		return true, nil
+	}
+	needsMore, rewritten, err := w.checkSufficiency(ctx, state, history)
+	if err != nil {
+		return false, fmt.Errorf("sufficiency check after %s: %w", tier, err)
+	}
+	state.ActiveQuery = rewritten
+	state.NextStepQuery = rewritten
+	return needsMore, nil
 }
 
 func (w *Workflow) checkRouteIntention(
