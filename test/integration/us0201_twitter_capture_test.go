@@ -228,7 +228,7 @@ func TestUS0201_TweetTextAuthorTimestampStored(t *testing.T) {
 	})
 
 	sourceURL := fmt.Sprintf("https://x.com/%s/status/%s", wantAuthorUsername, tweetID)
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  sourceURL,
 		Type:     "url",
 		Pipeline: "social.x.post",
@@ -279,7 +279,7 @@ func TestUS0201_TweetSourceURLStored(t *testing.T) {
 	})
 
 	const sourceURL = "https://x.com/testuser/status/9999"
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  sourceURL,
 		Type:     "url",
 		Pipeline: "social.x.post",
@@ -323,7 +323,7 @@ func TestUS0201_CaptureIsAsync(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "https://x.com/u/status/1",
 		Type:     "url",
 		Pipeline: "social.x.post",

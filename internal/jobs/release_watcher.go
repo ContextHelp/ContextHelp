@@ -61,7 +61,7 @@ func (w *ReleaseWatcher) Run(ctx context.Context) error {
 			continue // nothing new
 		}
 
-		if err := w.enqueue(ctx, repo, rel); err != nil {
+		if err := w.enqueue(ctx, rel); err != nil {
 			slog.Warn("release_watcher: enqueue failed", "repo", repo, "tag", rel.TagName, "err", err)
 			continue
 		}
@@ -135,7 +135,7 @@ func (w *ReleaseWatcher) fetchLatest(ctx context.Context, client *http.Client, t
 }
 
 // enqueue adds a pipeline job for a newly detected release.
-func (w *ReleaseWatcher) enqueue(ctx context.Context, repo string, rel *ghRelease) error {
+func (w *ReleaseWatcher) enqueue(ctx context.Context, rel *ghRelease) error {
 	return w.Queue.EnqueueIngestJob(ctx, "ingest:github_release", rel.HTMLURL, "github.release", rel.HTMLURL, w.maxRetries())
 }
 

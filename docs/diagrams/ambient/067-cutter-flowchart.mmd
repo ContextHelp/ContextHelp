@@ -1,4 +1,7 @@
 ```mermaid
+---
+title: "Design only (ADR-067): the cutter is library code no command runs"
+---
 flowchart TB
     tick[check_cuts tick or OnEvent] --> active{is_active?}
     active -->|no| done([no-op])

@@ -366,7 +366,7 @@ func runCaptureHistory(cmd *cobra.Command, _ []string) error {
 	if opts.dryRun {
 		report.Visits = historySample(all)
 	} else {
-		focusProfile, _ := cmd.Flags().GetString("profile")
+		focusProfile := activeProfileName(cmd)
 		sendErr = sendVisits(ctx, api, focusProfile, all, &report.Summary)
 		for _, o := range all {
 			if o.Status == tabStatusSent || o.Status == tabStatusFailed {

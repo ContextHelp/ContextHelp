@@ -2,7 +2,7 @@
   "scenario_id": "delete-preview",
   "schema_version": "1",
   "verdict": "pass",
-  "scored_at": "2026-09-20T14:34:28.467694Z",
+  "scored_at": "2026-10-15T00:21:59.219074Z",
   "grader_version": "1.0.0",
   "rules_version": "2026.05.12.1",
   "tier": 3,

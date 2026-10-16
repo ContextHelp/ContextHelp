@@ -1,5 +1,5 @@
-// Package upgrade: Worker — selective re-ingest worker for ADR-070
-// reingest_selective upgrades (T-0581).
+// Worker — selective re-ingest worker for ADR-070
+// reingest_selective upgrades.
 //
 // Lifecycle:
 //
@@ -15,6 +15,7 @@
 // All work is in-process and synchronous. Cancelling ctx aborts cleanly:
 // the manager moves to "failed" with reason "context cancelled" so the
 // `ctxt upgrade status` banner reflects the abort.
+
 package upgrade
 
 import (
@@ -142,14 +143,10 @@ func (w *Worker) Run(ctx context.Context, sel *Selector, opts WorkerOpts) error 
 		progressEvery = 1
 	}
 
+	run := &reingestRun{w: w, sel: sel, total: total}
 	ids, iterErrs, err := sel.IterateMatching(ctx, w.db)
 	if err != nil {
-		_ = w.mgr.Fail(fmt.Errorf("iterate: %w", err))
-		w.publish(ctx, events.TopicDpkmsUpgradeReingestFailed, events.UpgradeReingestFailedPayload{
-			Selector: sel.Raw(),
-			Total:    total,
-			Reason:   err.Error(),
-		})
+		run.fail(ctx, fmt.Errorf("iterate: %w", err), err.Error())
 		return fmt.Errorf("upgrade run: iterate: %w", err)
 	}
 
@@ -158,69 +155,17 @@ func (w *Worker) Run(ctx context.Context, sel *Selector, opts WorkerOpts) error 
 		sleepInterval = time.Second / time.Duration(opts.RateLimit)
 	}
 
-	var (
-		done    int
-		costUSD float64
-	)
 	for {
 		select {
 		case <-ctx.Done():
-			reason := ctx.Err().Error()
-			_ = w.mgr.Fail(fmt.Errorf("context cancelled: %w", ctx.Err()))
-			w.publish(ctx, events.TopicDpkmsUpgradeReingestFailed, events.UpgradeReingestFailedPayload{
-				Selector: sel.Raw(),
-				Done:     done,
-				Total:    total,
-				CostUSD:  costUSD,
-				Reason:   reason,
-			})
+			run.fail(ctx, fmt.Errorf("context cancelled: %w", ctx.Err()), ctx.Err().Error())
 			return ctx.Err()
 		case id, ok := <-ids:
 			if !ok {
 				goto completed
 			}
-			_, cost, rerr := w.svc.ReanalyzeObject(ctx, id)
-			if rerr != nil {
-				_ = w.mgr.Fail(rerr)
-				w.publish(ctx, events.TopicDpkmsUpgradeReingestFailed, events.UpgradeReingestFailedPayload{
-					Selector: sel.Raw(),
-					Done:     done,
-					Total:    total,
-					CostUSD:  costUSD,
-					Reason:   rerr.Error(),
-				})
-				return fmt.Errorf("upgrade run: reanalyze %s: %w", id, rerr)
-			}
-			costUSD += cost
-			done++
-
-			if opts.BudgetUSD > 0 && costUSD > opts.BudgetUSD {
-				_ = w.mgr.Fail(ErrBudgetExceeded)
-				w.publish(ctx, events.TopicDpkmsUpgradeReingestFailed, events.UpgradeReingestFailedPayload{
-					Selector: sel.Raw(),
-					Done:     done,
-					Total:    total,
-					CostUSD:  costUSD,
-					Reason:   ErrBudgetExceeded.Error(),
-				})
-				return ErrBudgetExceeded
-			}
-
-			if err := w.mgr.Tick(done); err != nil {
-				// ErrNotRunning here means the manager was forcibly
-				// reset out from under us — bail rather than silently
-				// continuing without progress reporting.
-				return fmt.Errorf("upgrade run: tick: %w", err)
-			}
-
-			if done%progressEvery == 0 || done == total {
-				w.publish(ctx, events.TopicDpkmsUpgradeReingestProgress, events.UpgradeReingestProgressPayload{
-					Selector:  sel.Raw(),
-					Done:      done,
-					Total:     total,
-					CostUSD:   costUSD,
-					BudgetUSD: opts.BudgetUSD,
-				})
+			if err := run.step(ctx, id, opts, progressEvery); err != nil {
+				return err
 			}
 
 			if sleepInterval > 0 {
@@ -239,14 +184,7 @@ completed:
 	// driver error truncates the stream the same way a clean end does. Fail
 	// the run rather than reporting a partial reingest as complete.
 	if iterErr := <-iterErrs; iterErr != nil {
-		_ = w.mgr.Fail(iterErr)
-		w.publish(ctx, events.TopicDpkmsUpgradeReingestFailed, events.UpgradeReingestFailedPayload{
-			Selector: sel.Raw(),
-			Done:     done,
-			Total:    total,
-			CostUSD:  costUSD,
-			Reason:   iterErr.Error(),
-		})
+		run.fail(ctx, iterErr, iterErr.Error())
 		return fmt.Errorf("upgrade run: iterate: %w", iterErr)
 	}
 	if err := w.mgr.Complete(); err != nil {
@@ -254,12 +192,72 @@ completed:
 	}
 	w.publish(ctx, events.TopicDpkmsUpgradeReingestCompleted, events.UpgradeReingestCompletedPayload{
 		Selector:   sel.Raw(),
-		Done:       done,
+		Done:       run.done,
 		Total:      total,
-		CostUSD:    costUSD,
+		CostUSD:    run.costUSD,
 		DurationMs: time.Since(startedAt).Milliseconds(),
 	})
 	return nil
+}
+
+// reingestRun is one Run's progress, carried into its events.
+type reingestRun struct {
+	w       *Worker
+	sel     *Selector
+	total   int
+	done    int
+	costUSD float64
+}
+
+// step reanalyzes one object, charges its cost against the budget and
+// reports progress. A non-nil error ends the run; the manager and the
+// failure event already record it.
+func (r *reingestRun) step(ctx context.Context, id string, opts WorkerOpts, progressEvery int) error {
+	_, cost, err := r.w.svc.ReanalyzeObject(ctx, id)
+	if err != nil {
+		r.fail(ctx, err, err.Error())
+		return fmt.Errorf("upgrade run: reanalyze %s: %w", id, err)
+	}
+	r.costUSD += cost
+	r.done++
+
+	if opts.BudgetUSD > 0 && r.costUSD > opts.BudgetUSD {
+		r.fail(ctx, ErrBudgetExceeded, ErrBudgetExceeded.Error())
+		return ErrBudgetExceeded
+	}
+
+	if err := r.w.mgr.Tick(r.done); err != nil {
+		// ErrNotRunning here means the manager was forcibly
+		// reset out from under us — bail rather than silently
+		// continuing without progress reporting.
+		return fmt.Errorf("upgrade run: tick: %w", err)
+	}
+
+	if r.done%progressEvery == 0 || r.done == r.total {
+		r.w.publish(ctx, events.TopicDpkmsUpgradeReingestProgress, events.UpgradeReingestProgressPayload{
+			Selector:  r.sel.Raw(),
+			Done:      r.done,
+			Total:     r.total,
+			CostUSD:   r.costUSD,
+			BudgetUSD: opts.BudgetUSD,
+		})
+	}
+	return nil
+}
+
+// fail moves the manager to failed with cause and publishes the failure
+// event with reason and the progress so far.
+func (r *reingestRun) fail(ctx context.Context, cause error, reason string) {
+	// The run is already failing with cause; a manager that cannot record
+	// it (not running, state write error) changes nothing the caller does.
+	_ = r.w.mgr.Fail(cause)
+	r.w.publish(ctx, events.TopicDpkmsUpgradeReingestFailed, events.UpgradeReingestFailedPayload{
+		Selector: r.sel.Raw(),
+		Done:     r.done,
+		Total:    r.total,
+		CostUSD:  r.costUSD,
+		Reason:   reason,
+	})
 }
 
 // publish wraps events.Bus.Publish with a CloudEvent envelope. nil bus is a

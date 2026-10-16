@@ -12,7 +12,7 @@
 - Ingests company git repos
 - Already uses **Private Agent Profile** with `internal-docs` registry
 
-**His pain point:** Marcus needs to learn from his team's collective wisdom embedded in PR reviews, but he can't use cloud-based AI tools. The GitHub PR Review Watcher plugin would let him capture team conventions, security patterns, and code quality insights **locally** without ever sending data to external services.
+**His pain point:** Marcus needs to learn from his team's collective wisdom embedded in PR reviews, but he can't use cloud-based AI tools. A GitHub PR review importer (with the GitHub capture adapter and extraction steps) would let him capture team conventions, security patterns, and code quality insights **locally** without ever sending data to external services.
 
 ## Secondary Persona
 
@@ -39,12 +39,12 @@
 
 ---
 
-## Plugin Implementation
+## Implementation
 
-The GitHub PR Review Watcher plugin perfectly serves Marcus's world:
+A GitHub PR review importer, built from the GitHub capture adapter and extraction steps, serves Marcus's world:
 - **Local-first**: No data leaves his machine
 - **Privacy-preserving**: Complies with FinTech security requirements
 - **Extracts valuable team knowledge**: Captures conventions, patterns, and expert opinions
 - **Proprietary codebase friendly**: Helps understand the bank's internal patterns
 
-See [plugins-github-pr-review-watcher.md](../plugins/plugins-github-pr-review-watcher.md) for full plugin specification.
+The earlier PR Review Watcher plugin specification was dropped with the plugin layer ([ADR-078](../decisions/ADR-078-no-plugin-system.md)).

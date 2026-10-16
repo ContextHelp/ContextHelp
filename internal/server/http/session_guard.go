@@ -19,22 +19,13 @@ var streamRoutes = map[string]bool{"GET /api/v1/events": true}
 // session.
 const DefaultSessionRecheck = 30 * time.Second
 
-// SessionGuard confines browser-session requests, after RequireAuth.
-// What a session may reach is not its business: every route requires a
-// scope (RequireScope), and a session holds its token's scopes
-// intersected with authn.UISessionScopes. The guard adds what a cookie
-// needs on top:
-//
-//   - CSRF: a write must come from this instance's own pages
-//     (Sec-Fetch-Site or Origin, see sameOriginWrite) and carry
-//     X-Ctxt-CSRF: 1; a read sent by another site (Sec-Fetch-Site
-//     same-site or cross-site, e.g. another port on this host) is
-//     refused too;
-//   - lifetime: an event stream ends once its session does.
-//
-// Token-authenticated requests pass untouched.
-func SessionGuard(sessions *authn.Sessions, devCORS bool, recheck time.Duration) func(http.Handler) http.Handler {
-	cop := newSessionCOP(devCORS)
+// SessionGuard returns middleware that ends a long-lived request (the
+// event stream) once the browser session it runs under stops being
+// active: revoked, expired, or its identity or principal revoked. The
+// browser rules a cookie needs (Origin check, CSRF header) are applied
+// by RequireAuth, where the chain knows which method authenticated the
+// request. Requests not authenticated by a session pass untouched.
+func SessionGuard(sessions *authn.Sessions, recheck time.Duration) func(http.Handler) http.Handler {
 	if recheck <= 0 {
 		recheck = DefaultSessionRecheck
 	}
@@ -44,24 +35,6 @@ func SessionGuard(sessions *authn.Sessions, devCORS bool, recheck time.Duration)
 			if !p.IsSession() {
 				next.ServeHTTP(w, r)
 				return
-			}
-			if isSafeMethod(r.Method) {
-				if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
-					WriteError(w, http.StatusForbidden, "CROSS_ORIGIN_REQUEST",
-						"cross-origin request refused: the web UI session answers this instance's own pages only")
-					return
-				}
-			} else {
-				if !sameOriginWrite(cop, r) {
-					WriteError(w, http.StatusForbidden, "CROSS_ORIGIN_REQUEST",
-						"cross-origin request refused: changes must come from this instance's own pages")
-					return
-				}
-				if r.Header.Get(HeaderCSRF) != "1" {
-					WriteError(w, http.StatusForbidden, "CSRF_HEADER_REQUIRED",
-						"web UI session writes must send "+HeaderCSRF+": 1")
-					return
-				}
 			}
 			if streamRoutes[r.Method+" "+routePattern(r)] && sessions != nil {
 				if c, err := r.Cookie(SessionCookieName(r.Host)); err == nil {

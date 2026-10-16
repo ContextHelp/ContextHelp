@@ -10,9 +10,9 @@
 #                   Single expected_id ⇒ binary "found / not found" recall.
 #   - k             optional per-query top-k cutoff (defaults to file-level k)
 #
-# Coverage rationale (T-0587 deliverable #4):
-#   - hyphenated compound terms (auth-flow, uri-scheme) — T-0565 regression class
-#   - bullet-list items — T-0565 invisibility class
+# Coverage rationale:
+#   - hyphenated compound terms (auth-flow, uri-scheme) — hyphen-crash regression class
+#   - bullet-list items — FTS invisibility class
 #   - prose → tag boost — verifies tagger contribution to FTS
 #   - upgrade-taxonomy queries — exercise ADR-070 vocabulary
 #   - typo / fuzzy-edge queries — exercise stemmer fallback

@@ -1,4 +1,4 @@
-.PHONY: all build build-ctxt build-dpkms clean install deps test test-unit test-integration test-integration-services test-smoke test-e2e test-all test-cover test-gate test-docker toolchain-check lint gosec fmt help docs docs-dev docker-build docker-dev docker-prod docker-down docker-logs docker-ps docker-shell security-scan install-hooks install-gitleaks secret-scan-local vuln-scan trivy-scan eva check ben ben-text-short ben-vector ben-install ben-adapter
+.PHONY: all build build-ctxt build-dpkms clean install deps test test-unit test-integration test-integration-services test-smoke test-e2e test-all test-cover test-gate test-docker toolchain-check goreleaser-check lint gosec fmt help docs docs-dev docker-build docker-dev docker-prod docker-down docker-logs docker-ps docker-shell security-scan install-hooks install-gitleaks secret-scan-local vuln-scan trivy-scan eva check ben ben-text-short ben-vector ben-install ben-adapter
 
 # Version information
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -9,6 +9,37 @@ GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 # FTS5 support requires the fts5 build tag with mattn/go-sqlite3.
 export CGO_ENABLED := 1
 BUILD_TAGS := -tags fts5
+
+# Every cgo compile sees the sqlite3.h of the SQLite the binaries link.
+# sqlite-vec's cgo package compiles with -DSQLITE_CORE and #includes
+# "sqlite3.h"; without -I it takes the system header (macOS SDK, distro
+# libsqlite3-dev, none at all in mingw-w64), a different SQLite release
+# from the amalgamation github.com/mattn/go-sqlite3 compiles and links.
+# scripts/ci/sqlite3-include.sh copies that module's header, at the go.mod
+# version, into CGO_INCLUDE. The header is the same for every GOOS, so one
+# directory serves the native and the windows builds. Exported, so go
+# build/test/vet, golangci-lint's type-check and gosec all see it, here and
+# in CI alike; every target that compiles Go lists $(CGO_SQLITE3_H) as a
+# prerequisite (CGO_TARGETS), which regenerates it when go.mod changes.
+# .goreleaser.yaml passes the same flag to its builds.
+CGO_INCLUDE := $(CURDIR)/build/cgo-include
+CGO_SQLITE3_H := $(CGO_INCLUDE)/sqlite3.h
+export CGO_CFLAGS := -O2 -g -I$(CGO_INCLUDE)
+
+# Pinned tools. scripts/ci/tools.sh runs each command with the version
+# mise.toml (or packageManager, for pnpm) pins, and fails loudly when it is
+# missing or another version is first on PATH. CI targets and every lint
+# path go through these; see docs/ci-cd.md#local-parity.
+CI_TOOLS := $(CURDIR)/scripts/ci/tools.sh
+GO := $(CI_TOOLS) go -- go
+GOLANGCI := $(CI_TOOLS) golangci-lint,go -- golangci-lint
+GITLEAKS := $(CI_TOOLS) gitleaks -- gitleaks
+PNPM := $(CI_TOOLS) node,pnpm -- pnpm
+GORELEASER := $(CI_TOOLS) goreleaser -- goreleaser
+# Tools mise.toml does not pin; `go run pkg@version` builds exactly this
+# release with the pinned Go, here and in CI.
+GOSEC_VERSION := v2.29.0
+GOVULNCHECK_VERSION := v1.8.0
 
 # Build flags
 LDFLAGS := -ldflags "\
@@ -62,60 +93,46 @@ clean:
 	rm -rf $(BUILD_DIR)
 	@echo "✓ Cleaned"
 
-## test: Run tests
+## test: Run every test CI runs, stopping at the first failure
+##
+## Runs the CI jobs in CI_TEST_JOBS (unit and e2e, viewer JS, Postgres
+## integration) through their ci-<job> targets, so the commands, flags and
+## order are CI's. Integration needs the Postgres service CI provides; without
+## one it fails and prints the docker command. scripts/check-ci-parity.sh
+## fails when a ci.yml job that runs tests is missing from CI_TEST_JOBS.
 test:
-	@echo "Running tests..."
-	go test $(BUILD_TAGS) -race -count=1 -cover ./...
+	@for job in $(CI_TEST_JOBS); do $(CI_STEP) ci-$$job || exit 1; done
 
 ## test-unit: Run unit tests only
 test-unit:
 	@echo "Running unit tests..."
-	go test $(BUILD_TAGS) -race -count=1 ./cmd/... ./internal/...
+	go test -failfast $(BUILD_TAGS) -race -count=1 ./cmd/... ./internal/...
 
 ## test-integration: Run integration tests
 test-integration:
 	@echo "Running integration tests..."
-	go test $(BUILD_TAGS) -race -count=1 ./test/integration/...
+	go test -failfast $(BUILD_TAGS) -race -count=1 ./test/integration/...
 
-## test-integration-services: Run integration tests needing Postgres/Redis
-#
-# The build-tagged integration suites are split across three trees: the ones
-# under test/integration/ plus the Postgres driver and embeddings registry
-# conformance suites, which live next to the code they cover. All three read
-# the same POSTGRES_* env block, so all three must be listed or the Postgres
-# coverage never runs. The embeddings journey's Postgres variant lives in
-# cmd/ctxt/cmd and the task-job claim tests in internal/jobs; both run by
-# name, as does the search-graph endpoint's Postgres e2e run (e2e tag too).
-# Mirrors the integration job in
-# .github/workflows/ci.yml; the devcontainer supplies the env block.
-test-integration-services:
-	@echo "Running integration tests (requires Postgres + Redis)..."
-	go test -v -tags=integration,fts5 -count=1 \
-		./test/integration/... \
-		./internal/storage/postgres/... \
-		./internal/embeddings/registry/...
-	go test -v -tags=integration,fts5 -count=1 \
-		-run 'TestClaim_.*_Postgres' ./internal/jobs/
-	go test -v -tags=integration,fts5 -count=1 \
-		-run TestEmbeddingsJourney_Postgres ./cmd/ctxt/cmd/
-	CGO_ENABLED=1 go test -v -tags 'fts5 e2e integration' -count=1 \
-		-run TestDpkmsGraph_Postgres ./test/e2e/searchgraph/
+## test-integration-services: Run the CI integration job's tests (needs Postgres)
+##
+## Same as `make ci-integration`, which runs the integration job's commands,
+## Postgres env and order. See the CI parity section below.
+test-integration-services: ci-integration
 
 ## test-smoke: Run binary smoke tests
 test-smoke:
 	@echo "Running smoke tests..."
-	CGO_ENABLED=1 go test -count=1 -tags 'fts5 smoke' ./test/smoke/...
+	CGO_ENABLED=1 go test -failfast -count=1 -tags 'fts5 smoke' ./test/smoke/...
 
 ## test-e2e: Run black-box e2e tests against a freshly built ctxt binary
 ##
 ## Suites under test/e2e/ carrying the e2e build tag; each builds its own
 ## binary and runs in a throwaway HOME. Headless-browser smoke tests run
 ## when Chrome/Chromium is found (CTXT_CHROME picks one; CTXT_CHROME=off
-## skips them).
-## Mirrors the e2e step of the test job in .github/workflows/ci.yml.
+## skips them). The CI test job's e2e step is `make ci-test-e2e` (verbose).
 test-e2e:
 	@echo "Running e2e tests..."
-	CGO_ENABLED=1 go test -count=1 -tags 'fts5 e2e' ./test/e2e/...
+	CGO_ENABLED=1 go test -failfast -count=1 -tags 'fts5 e2e' ./test/e2e/...
 
 ## test-all: Run all test tiers (Go tiers + search-graph viewer JS unit tests)
 test-all: test-unit test-searchgraph-viewer-js test-integration test-smoke test-e2e
@@ -123,13 +140,13 @@ test-all: test-unit test-searchgraph-viewer-js test-integration test-smoke test-
 ## test-cover: Generate coverage report
 test-cover:
 	@echo "Running tests with coverage..."
-	go test $(BUILD_TAGS) -race -coverprofile=coverage.out ./...
+	go test -failfast $(BUILD_TAGS) -race -coverprofile=coverage.out ./...
 
 ## test-gate: Run all tests and print coverage summary
 test-gate: test-all
 	@echo ""
 	@echo "Coverage summary:"
-	@go test $(BUILD_TAGS) -race -coverprofile=coverage.out ./internal/... ./cmd/... 2>&1 | grep -E 'coverage:|FAIL'
+	@go test -failfast $(BUILD_TAGS) -race -coverprofile=coverage.out ./internal/... ./cmd/... 2>&1 | grep -E 'coverage:|FAIL'
 	@echo ""
 	@go tool cover -func=coverage.out | grep total:
 	@echo ""
@@ -152,14 +169,15 @@ test-docker:
 		-v ctxt_test_gomod:/go/pkg/mod \
 		-w /app \
 		-e CGO_ENABLED=1 \
+		-e CGO_CFLAGS='-O2 -g -I/app/build/cgo-include' \
 		-e GOWORK=off \
 		ctxt/test:latest \
-		go test $(BUILD_TAGS) -race -count=1 ./...
+		go test -failfast $(BUILD_TAGS) -race -count=1 ./...
 
 ## eva: Run hop.top/eva contract tests against the recorded fixture set
 ##
 ## Tier-1 deterministic JSON-Schema contracts for operator-facing JSON
-## shapes (ADR-070 §6, T-0586). Contracts live under contracts/*.eva.yaml
+## shapes (ADR-070 §6). Contracts live under contracts/*.eva.yaml
 ## and are paired with one or more fixtures under
 ## test/integration/testdata/eva-fixtures/<contract-base>*.json.
 ##
@@ -178,51 +196,75 @@ eva:
 check: test eva
 
 ## vuln-scan: Run govulncheck + nancy dependency vulnerability scans
-vuln-scan:
-	@echo "Running govulncheck..."
-	@if ! command -v govulncheck >/dev/null 2>&1; then \
-		echo "Installing govulncheck..."; \
-		go install golang.org/x/vuln/cmd/govulncheck@latest; \
-	fi
-	govulncheck -tags fts5 ./...
+vuln-scan: govulncheck
 	@echo "Running nancy (Sonatype OSS Index)..."
 	@if ! command -v nancy >/dev/null 2>&1; then \
 		echo "Installing nancy..."; \
-		go install github.com/sonatype-nexus-community/nancy@latest; \
+		go install github.com/sonatype-nexus-community/nancy@v1.2.0; \
 	fi
 	go list -json -deps ./... | nancy sleuth --exclude-vulnerability-file .nancy-ignore
 	@echo "✓ Vulnerability scan complete"
+
+## govulncheck: Report known vulnerabilities in reachable code (CI security job)
+govulncheck:
+	$(GO) run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) -tags fts5 ./...
+
+$(CGO_SQLITE3_H): go.mod go.sum scripts/ci/sqlite3-include.sh
+	@$(CI_TOOLS) go -- scripts/ci/sqlite3-include.sh $(CGO_INCLUDE)
 
 ## toolchain-check: Assert mise.toml, Dockerfiles and go.mod agree on versions
 toolchain-check:
 	@scripts/check-toolchain-pins.sh
 
-## lint: Run linters (golangci-lint + gosec)
-lint: gosec
-	@echo "Running linters..."
-	@if command -v golangci-lint >/dev/null 2>&1; then \
-		golangci-lint run; \
-	else \
-		echo "golangci-lint not installed. Install the pinned version with:"; \
-		echo "  mise install"; \
-		echo "(mise.toml pins the version CI uses; go install @latest drifts)"; \
-		exit 1; \
+## goreleaser-check: Validate .goreleaser.yaml with the GoReleaser release.yml runs
+##
+## A field the pinned GoReleaser does not know (a Pro-only one, say) only
+## fails at tag time otherwise. `goreleaser check` exits 1 for an invalid
+## config and 2 for a valid one that uses deprecated properties; the
+## deprecations are printed and pass, an invalid config fails. CI's
+## toolchain job runs this target.
+goreleaser-check:
+	@$(GORELEASER) check; s=$$?; \
+	if [ $$s -eq 2 ]; then \
+		echo "goreleaser-check: config is valid; migrate the DEPRECATED properties above before the next GoReleaser major"; \
+	elif [ $$s -ne 0 ]; then \
+		exit $$s; \
 	fi
 
+## lint: Run linters (golangci-lint full scan + gosec), pinned versions
+##
+## The full scan is the blocking gate in CI (make ci-lint-full); the tree is
+## at zero findings at the pinned version. make lint-new narrows it to your
+## branch for a faster loop.
+lint: gosec
+	@echo "Running linters..."
+	$(GOLANGCI) run
+
 ## gosec: Run gosec static security analysis (fails on medium+ severity)
+##
+## -tags fts5 is required, not cosmetic. The storage layer is compiled
+## against SQLite's FTS5 module and guards the tag with a build sentinel,
+## so without it 34 packages fail to type-check and gosec logs "skipping
+## SSA analysis" and moves on: it reports success for code it never looked
+## at.
+##
+## install_launchd.go writes to ~/Library/LaunchAgents and
+## ~/.config/systemd/user. launchd and systemd must traverse those
+## directories and read the unit file, so 0755/0644 is required there
+## rather than an oversight. Scoped to the one file so the rules stay live
+## everywhere else.
+##
+## Prints findings as text and writes gosec-results.sarif, which the CI
+## security job uploads to GitHub code scanning.
 gosec:
 	@echo "Running gosec security scan..."
-	@if command -v gosec >/dev/null 2>&1; then \
-		gosec -tags fts5 -severity medium -confidence medium \
-			-exclude G104,G304,G307 \
-			-exclude-rules "cmd/dpkms/cmd/install_launchd.go:G301,G306" \
-			-exclude-dir vendor -exclude-dir docs -exclude-dir test/fixtures \
-			-fmt text ./...; \
-	else \
-		echo "gosec not installed. Install with:"; \
-		echo "  go install github.com/securego/gosec/v2/cmd/gosec@v2.29.0"; \
-		exit 1; \
-	fi
+	$(GO) run github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION) \
+		-tags fts5 -severity medium -confidence medium \
+		-exclude G104,G304,G307 \
+		-exclude-rules "cmd/dpkms/cmd/install_launchd.go:G301,G306" \
+		-exclude-dir vendor -exclude-dir docs -exclude-dir test/fixtures \
+		-fmt sarif -out gosec-results.sarif -stdout -verbose text \
+		./...
 
 ## fmt: Format Go code
 fmt:
@@ -261,36 +303,40 @@ docs-dev:
 	@echo "Starting docs dev server..."
 	@cd docs/public && pnpm dev
 
+# Compose env file (docker/.env.<profile>.example): every compose command
+# needs one, since DPKMS_BUS_TOKEN is required. docker-dev uses the dev file.
+DOCKER_ENV_FILE ?= docker/.env.prod
+
 ## docker-build: Build production runtime image
 docker-build:
 	@echo "Building ctxt runtime image..."
-	docker compose build dpkms
+	docker compose --env-file $(DOCKER_ENV_FILE) build dpkms
 	@echo "✓ Image built: ctxt/dpkms:latest"
 
 ## docker-dev: Start dev environment (hot-reload API + Vite UI)
 docker-dev:
 	@echo "Starting ctxt dev environment..."
-	docker compose --profile dev up
+	docker compose --env-file docker/.env.dev --profile dev up
 
 ## docker-prod: Start production stack in background (Caddy + dpkms)
 docker-prod:
 	@echo "Starting ctxt production stack..."
-	docker compose --profile prod up -d
+	docker compose --env-file $(DOCKER_ENV_FILE) --profile prod up -d
 	@echo "✓ Running. Check status: make docker-ps"
 
 ## docker-down: Stop all ctxt containers
 docker-down:
 	@echo "Stopping ctxt containers..."
-	docker compose --profile dev --profile prod down
+	docker compose --env-file $(DOCKER_ENV_FILE) --profile dev --profile prod down
 	@echo "✓ Stopped"
 
 ## docker-logs: Tail logs from all running ctxt containers
 docker-logs:
-	docker compose logs -f
+	docker compose --env-file $(DOCKER_ENV_FILE) logs -f
 
 ## docker-ps: Show status of all ctxt containers
 docker-ps:
-	docker compose ps
+	docker compose --env-file $(DOCKER_ENV_FILE) ps
 
 ## docker-shell: Open a shell in the running dpkms container
 docker-shell:
@@ -322,15 +368,14 @@ trivy-scan:
 ## no web/ui/dist. web/ui pins pnpm via packageManager and carries its own
 ## pnpm-workspace.yaml, so pnpm never resolves an enclosing workspace.
 build-ui:
-	cd web/ui && pnpm install --frozen-lockfile && pnpm run build
+	cd web/ui && $(PNPM) install --frozen-lockfile && $(PNPM) run build
 
 ## check-ui-dist: Rebuild the web UI; fail if the committed bundle drifts
 ##
 ## Rebuilds internal/ui/dist in place, then compares it with the index:
 ## unstaged edits or new untracked files mean the committed bundle does not
 ## match web/ui. Overwrites any unstaged dist edits. Fix a failure with
-## `make build-ui` and commit the result. Mirrors the webui job in
-## .github/workflows/ci.yml.
+## `make build-ui` and commit the result. CI's webui job runs this target.
 UI_DIST := internal/ui/dist
 check-ui-dist: build-ui
 	@untracked=$$(git ls-files --others --exclude-standard -- $(UI_DIST)); \
@@ -346,17 +391,17 @@ check-ui-dist: build-ui
 
 ## build-searchgraph-viewer: Rebuild the embedded search-graph viewer into internal/searchgraph/viewer/dist
 build-searchgraph-viewer:
-	cd web/searchgraph && pnpm install --frozen-lockfile && pnpm run build
+	cd web/searchgraph && $(PNPM) install --frozen-lockfile && $(PNPM) run build
 
 ## test-searchgraph-viewer-js: Run the search-graph viewer's JS unit tests
 ##
 ## Dependency-free `node --test` over web/searchgraph/src/*.test.js, so no
 ## install step. web/searchgraph pins pnpm via packageManager and carries its
 ## own pnpm-workspace.yaml, so pnpm never resolves an enclosing workspace.
-## Mirrors the viewer job in .github/workflows/ci.yml.
+## CI's viewer job runs this target.
 test-searchgraph-viewer-js:
 	@echo "Running search-graph viewer JS tests..."
-	cd web/searchgraph && pnpm test
+	cd web/searchgraph && $(PNPM) test
 
 ## check-searchgraph-viewer-dist: Rebuild the viewer; fail if the committed bundle drifts
 ##
@@ -364,7 +409,7 @@ test-searchgraph-viewer-js:
 ## the index: unstaged edits or new untracked files mean the committed bundle
 ## does not match its sources. Overwrites any unstaged dist edits. Fix a
 ## failure with `make build-searchgraph-viewer` and commit the result.
-## Mirrors the viewer job in .github/workflows/ci.yml.
+## CI's viewer job runs this target.
 SEARCHGRAPH_VIEWER_DIST := internal/searchgraph/viewer/dist
 check-searchgraph-viewer-dist: build-searchgraph-viewer
 	@untracked=$$(git ls-files --others --exclude-standard -- $(SEARCHGRAPH_VIEWER_DIST)); \
@@ -378,17 +423,18 @@ check-searchgraph-viewer-dist: build-searchgraph-viewer
 
 .PHONY: build-searchgraph-viewer test-searchgraph-viewer-js check-searchgraph-viewer-dist
 
-## security-scan: Run gitleaks secret scanning on entire repo history
-security-scan:
-	@echo "Running gitleaks secret scan..."
-	@if command -v gitleaks >/dev/null 2>&1; then \
-		gitleaks detect --source . --config .gitleaks.toml --verbose; \
-	else \
-		echo "gitleaks not installed. Install with:"; \
-		echo "  brew install gitleaks"; \
-		echo "  or: https://github.com/gitleaks/gitleaks#installing"; \
-		exit 1; \
-	fi
+## security-scan: Scan git history for secrets not in the baseline
+##
+## Scans every commit reachable from SCAN_REFS (default HEAD; pass
+## SCAN_REFS=--all for every local ref). .gitleaksignore is the baseline:
+## reviewed findings in past commits, skipped by fingerprint, so only new
+## findings fail the scan. CI's secret-scan job runs this target.
+SCAN_REFS ?= HEAD
+security-scan: install-gitleaks
+	@echo "Scanning git history ($(SCAN_REFS)) for secrets..."
+	$(GITLEAKS) git . --config .gitleaks.toml --gitleaks-ignore-path .gitleaksignore \
+		--log-opts="$(SCAN_REFS)" --redact --verbose --no-banner
+	@echo "✓ No new secrets in history"
 
 ## install-hooks: Point git at the repo's .githooks directory
 ##
@@ -407,25 +453,31 @@ install-hooks:
 		&& pre-commit install-hooks \
 		|| echo "  NOTE: pre-commit not installed; lint gate will be skipped. See https://pre-commit.com"
 
-## install-gitleaks: Install the gitleaks secret scanner locally
+## install-gitleaks: Install the gitleaks version pinned in mise.toml
 ##
-## Secret scanning runs locally rather than in CI: gitleaks-action requires
-## a license for organization-owned repos. See .github/workflows/ci.yml.
+## Installs through mise (the pin's home); brew cannot pin a version. CI
+## installs the same release from GitHub (.github/workflows/ci.yml).
+GITLEAKS_VERSION := $(shell sed -n 's/^gitleaks = "\(.*\)"$$/\1/p' mise.toml)
 install-gitleaks:
-	@if command -v gitleaks >/dev/null 2>&1; then \
-		echo "✓ gitleaks already installed ($$(gitleaks version 2>/dev/null))"; \
-	elif command -v brew >/dev/null 2>&1; then \
-		echo "Installing gitleaks via brew..."; \
-		brew install gitleaks; \
+	@have=$$(gitleaks version 2>/dev/null || true); have=$${have#v}; \
+	if [ "$$have" = "$(GITLEAKS_VERSION)" ]; then \
+		echo "✓ gitleaks $$have installed (mise.toml pin)"; \
+	elif command -v mise >/dev/null 2>&1; then \
+		echo "Installing gitleaks $(GITLEAKS_VERSION) via mise..."; \
+		mise install gitleaks@$(GITLEAKS_VERSION); \
 	else \
-		echo "Installing gitleaks via go install..."; \
-		go install github.com/zricethezav/gitleaks/v8@latest; \
+		echo "gitleaks $(GITLEAKS_VERSION) required (found: $${have:-none})."; \
+		echo "Install mise (https://mise.jdx.dev), then rerun, or fetch the"; \
+		echo "v$(GITLEAKS_VERSION) release: https://github.com/gitleaks/gitleaks/releases"; \
+		exit 1; \
 	fi
 
 ## secret-scan-local: Scan the working tree for secrets with gitleaks
+##
+## Tracked files plus untracked, non-ignored ones; history is `security-scan`.
 secret-scan-local: install-gitleaks
 	@echo "Scanning working tree for secrets..."
-	gitleaks detect --config .gitleaks.toml --redact --verbose
+	scripts/secret-scan-tree.sh
 	@echo "✓ No secrets detected"
 
 ## ben: Run all hop.top/ben recall suites (text-short + vector)
@@ -495,7 +547,7 @@ ben-text-short: ben-install ben-adapter
 ## ben-vector: Run the vector-recall suite (ADR-071 Phase 3 gate)
 ##
 ## See suites/recall-vector.ben.yaml for the floor-rationale. The floor
-## is intentionally low while T-0584 hasn't wired the real candidate
+## is intentionally low until the real candidate
 ## model; raise it when the embedding leg lights up.
 BEN_VECTOR_FLOOR := 0.40
 ben-vector: ben-install ben-adapter
@@ -505,6 +557,255 @@ ben-vector: ben-install ben-adapter
 		--suite suites/recall-vector.ben.yaml \
 		--format json > $(BEN_RUN_DIR)/recall-vector.json
 	@bash scripts/ben-floor.sh $(BEN_RUN_DIR)/recall-vector.json $(BEN_VECTOR_FLOOR)
+
+# ─── CI parity ───────────────────────────────────────────────────────────────
+#
+# Every check .github/workflows/ci.yml runs is a target here: each CI step
+# is `make <target>`, and ci-<job> runs the same targets in the same order,
+# so a local run executes CI's commands with CI's flags, tags, env and tool
+# versions. scripts/check-ci-parity.sh (make ci-parity-check, run by CI's
+# toolchain job) fails when the two drift apart. To change what CI runs,
+# change the target; add a CI step by adding a target, then a
+# `$(CI_STEP) <target>` line to ci-<job>.
+#
+# What a laptop cannot reproduce (Linux and macOS runners, the Postgres
+# service, mingw-w64, Chrome, CI-only uploads) is listed in docs/ci-cd.md
+# (#local-parity); scripts/ci/prereq.sh reports each missing one instead
+# of letting a step pass without it.
+
+# CI's jobs, in workflow order.
+CI_JOBS := toolchain secret-scan lint windows security test viewer webui integration build
+# The CI_JOBS that run tests, in workflow order; `make test` runs exactly these.
+CI_TEST_JOBS := test viewer integration
+CI_STEP := $(MAKE) --no-print-directory
+CI_PREREQ := $(CURDIR)/scripts/ci/prereq.sh
+CI_WORKFLOW := .github/workflows/ci.yml
+
+## ci: Run every CI job locally, then print a per-job verdict
+##
+## Jobs run in CI_JOBS order and a failure does not stop the rest, as in
+## CI. A job whose runner-provided prerequisite is missing (Postgres,
+## mingw-w64) is SKIPPED with how to run it, and the run ends INCOMPLETE;
+## CI_STRICT=1 makes that exit non-zero. For one job, make ci-<job>.
+ci:
+	@scripts/ci/run-all.sh $(CI_JOBS)
+
+## ci-<job>: Run one CI job locally (ci-toolchain, ci-lint, ci-test, ...; see CI_JOBS)
+
+## check-operator-impact: The release-notes check CI runs on a PR, over this branch
+##
+## Every commit since the merge base with LINT_BASE_REF needs a valid
+## Operator-Impact trailer, and a non-none bucket a release-notes row naming
+## its short SHA (ADR-070). Same script as the Release Notes Check workflow.
+check-operator-impact:
+	@scripts/ci/check-operator-impact.sh "$$(git merge-base HEAD $(LINT_BASE_REF))" HEAD
+
+## ci-parity-check: Fail when ci.yml and the ci-<job> targets disagree
+ci-parity-check:
+	@scripts/check-ci-parity.sh
+
+# go.mod may carry local-path replace directives for these sibling modules
+# (developer convenience); CI drops them so the published versions build.
+CI_DROP_REPLACES := hop.top/kit hop.top/c12n
+
+## ci-drop-replaces: CI drops local-path replaces; a local run refuses them
+##
+## On GitHub Actions this edits go.mod. A local run must not, so it fails
+## instead when the edit would change go.mod: with such a replace in place
+## the local build is not the one CI tests.
+ci-drop-replaces:
+	@args="$(foreach m,$(CI_DROP_REPLACES),-dropreplace=$(m))"; \
+	if [ "$$GITHUB_ACTIONS" = true ]; then \
+		$(GO) mod edit $$args; \
+	elif [ "$$($(GO) mod edit -print)" != "$$($(GO) mod edit $$args -print)" ]; then \
+		echo "ERROR: go.mod replaces $(CI_DROP_REPLACES) with a local path; CI drops that" >&2; \
+		echo "and builds the published version. Remove it (go mod edit $$args)" >&2; \
+		echo "or run from a clean clone." >&2; \
+		exit 1; \
+	fi
+
+ci-toolchain:
+	$(CI_STEP) toolchain-check
+	$(CI_STEP) ci-parity-check
+	$(CI_STEP) goreleaser-check
+
+ci-secret-scan:
+	$(CI_STEP) security-scan
+
+# Findings new since LINT_BASE fail. CI passes the PR's base commit (HEAD~1
+# on a push); locally it defaults to the merge base with LINT_BASE_REF, the
+# branch a PR would target.
+LINT_BASE ?=
+LINT_BASE_REF ?= origin/next
+
+ci-lint:
+	$(CI_STEP) ci-drop-replaces
+	$(CI_STEP) ci-lint-full
+	$(CI_STEP) ci-gofmt
+	$(CI_STEP) ci-vet
+
+# Local only: findings your branch introduces, for a faster loop. CI runs
+# the full scan (ci-lint-full), which is a superset of this.
+lint-new:
+	@base="$(LINT_BASE)"; \
+	if [ -z "$$base" ]; then \
+		base=$$(git merge-base HEAD $(LINT_BASE_REF)) || { \
+			echo "ERROR: no merge base with $(LINT_BASE_REF); pass LINT_BASE=<commit> (CI uses the PR base)" >&2; \
+			exit 1; \
+		}; \
+		echo "lint base: $$base (merge base with $(LINT_BASE_REF))"; \
+	fi; \
+	echo "$(GOLANGCI) run --timeout=10m --new-from-rev=$$base"; \
+	$(GOLANGCI) run --timeout=10m --new-from-rev="$$base"
+
+# Blocking in CI and in ci-lint: the whole repo is at zero findings at the
+# pinned version, so every finding is new.
+ci-lint-full:
+	$(GOLANGCI) run --timeout=10m
+
+ci-gofmt:
+	$(CI_TOOLS) go -- sh -c 'if [ -n "$$(gofmt -l .)" ]; then echo "Go code is not formatted. Run: gofmt -w ."; gofmt -d .; exit 1; fi'
+
+ci-vet:
+	$(GO) vet -tags fts5 ./...
+
+# GoReleaser ships windows/amd64 binaries, cross-compiled with CGO and
+# mingw-w64. Type-check every package, tests included, for that target,
+# then build the two binaries as GoReleaser does. mingw-w64 ships no
+# sqlite3.h at all; the exported CGO_CFLAGS (CGO_INCLUDE above) supply it.
+CI_WINDOWS_ENV := GOOS=windows GOARCH=amd64 CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc
+CI_WINDOWS_PREP := $(CI_PREREQ) mingw
+
+ci-windows:
+	$(CI_STEP) ci-drop-replaces
+	$(CI_STEP) ci-windows-vet
+	$(CI_STEP) ci-windows-build
+
+ci-windows-vet:
+	@$(CI_WINDOWS_PREP)
+	$(CI_WINDOWS_ENV) $(GO) vet -tags fts5 ./...
+
+ci-windows-build:
+	@$(CI_WINDOWS_PREP)
+	$(CI_WINDOWS_ENV) $(GO) build -tags fts5 ./cmd/ctxt ./cmd/dpkms
+
+ci-security:
+	$(CI_STEP) ci-drop-replaces
+	$(CI_STEP) gosec
+	$(CI_STEP) govulncheck
+
+ci-test:
+	$(CI_STEP) ci-drop-replaces
+	$(CI_STEP) ci-test-unit
+	$(CI_STEP) ci-test-e2e
+
+# -timeout 30m: cmd/ctxt/cmd alone runs ~5 min under -race on a laptop and
+# runners are slower; the default 10 min per package is too close.
+
+ci-test-unit:
+	$(GO) test -failfast -v -short -race -timeout 30m -tags fts5 -coverprofile=coverage.out -covermode=atomic ./...
+
+# Black-box suites under test/e2e/ tagged e2e: each builds ctxt, seeds a
+# throwaway store through the binary and asserts exit codes, output and
+# files. Headless-browser checks run when Chrome is found and skip
+# otherwise. Other test/e2e suites carry their own tags.
+ci-test-e2e:
+	@$(CI_PREREQ) chrome
+	$(GO) test -failfast -v -count=1 -tags 'fts5 e2e' ./test/e2e/...
+
+ci-viewer:
+	$(CI_STEP) test-searchgraph-viewer-js
+	$(CI_STEP) check-searchgraph-viewer-dist
+
+ci-webui:
+	$(CI_STEP) check-ui-dist
+
+# Postgres the integration job's service runs. Credentials default to the
+# service's env block in ci.yml; export POSTGRES_* to point elsewhere.
+CI_INTEGRATION_STEPS := ci-integration-suites ci-integration-jobs ci-integration-http ci-integration-journey ci-integration-searchgraph
+ci_service_env = $(shell sed -n 's/^ *$(1): *//p' $(CI_WORKFLOW) | head -1)
+$(CI_INTEGRATION_STEPS): export POSTGRES_HOST ?= localhost
+$(CI_INTEGRATION_STEPS): export POSTGRES_PORT ?= 5432
+$(CI_INTEGRATION_STEPS): export POSTGRES_USER ?= $(call ci_service_env,POSTGRES_USER)
+$(CI_INTEGRATION_STEPS): export POSTGRES_PASSWORD ?= $(call ci_service_env,POSTGRES_PASSWORD)
+$(CI_INTEGRATION_STEPS): export POSTGRES_DB ?= $(call ci_service_env,POSTGRES_DB)
+
+ci-integration:
+	$(CI_STEP) ci-drop-replaces
+	$(CI_STEP) ci-integration-suites
+	$(CI_STEP) ci-integration-jobs
+	$(CI_STEP) ci-integration-http
+	$(CI_STEP) ci-integration-journey
+	$(CI_STEP) ci-integration-searchgraph
+
+# The build-tagged suites under test/integration/ plus the Postgres driver,
+# storage factory and embeddings registry suites, which live next to their
+# code; all read the POSTGRES_* env, so each tree must be listed or its
+# Postgres coverage never runs.
+ci-integration-suites:
+	@$(CI_PREREQ) postgres
+	$(GO) test -failfast -v -tags=integration,fts5 \
+		./test/integration/... \
+		./internal/storage/postgres/... \
+		./internal/storageutil/... \
+		./internal/embeddings/registry/...
+
+# Task-job claim and re-projection on Postgres (the SQLite variants run in
+# the test job).
+ci-integration-jobs:
+	@$(CI_PREREQ) postgres
+	$(GO) test -failfast -v -tags=integration,fts5 -count=1 \
+		-run 'Test(Claim|Reproject)_.*_Postgres' ./internal/jobs/
+
+# HTTP handlers against a Postgres store; the package's other tests run in
+# the test job.
+ci-integration-http:
+	@$(CI_PREREQ) postgres
+	$(GO) test -failfast -v -tags=integration,fts5 -count=1 \
+		-run '_Postgres$$' ./internal/server/http/
+
+# The embeddings journey drives the built ctxt and dpkms binaries.
+ci-integration-journey:
+	@$(CI_PREREQ) postgres
+	$(GO) test -failfast -v -tags=integration,fts5 -count=1 \
+		-run TestEmbeddingsJourney_Postgres ./cmd/ctxt/cmd/
+
+# The search-graph endpoint's Postgres run needs the e2e and integration
+# tags (its SQLite run is part of ci-test-e2e).
+ci-integration-searchgraph:
+	@$(CI_PREREQ) postgres
+	$(GO) test -failfast -v -count=1 -tags 'fts5 e2e integration' \
+		-run TestDpkmsGraph_Postgres ./test/e2e/searchgraph/
+
+ci-build:
+	$(CI_STEP) ci-drop-replaces
+	$(CI_STEP) ci-build-dpkms
+	$(CI_STEP) ci-build-ctxt
+	$(CI_STEP) ci-build-verify
+
+ci-build-dpkms:
+	$(GO) build -v -tags fts5 -o bin/dpkms ./cmd/dpkms
+
+ci-build-ctxt:
+	$(GO) build -v -tags fts5 -o bin/ctxt ./cmd/ctxt
+
+ci-build-verify:
+	./bin/dpkms version || echo "dpkms built successfully"
+	./bin/ctxt version || echo "ctxt built successfully"
+
+# Every target that compiles Go (build, test, vet, lint, gosec, govulncheck).
+# scripts/cgo_include_test.go fails when a target whose recipe runs go or
+# golangci-lint is missing here.
+CGO_TARGETS := build-ctxt build-dpkms install test-unit test-integration test-smoke \
+	test-e2e test-cover test-gate test-docker vuln-scan govulncheck lint gosec lint-new \
+	ci-lint-full ci-vet ci-windows-vet ci-windows-build ci-test-unit ci-test-e2e \
+	$(CI_INTEGRATION_STEPS) ci-build-dpkms ci-build-ctxt $(BEN_BINARY) $(BEN_ADAPTER)
+$(CGO_TARGETS): $(CGO_SQLITE3_H)
+
+.PHONY: ci ci-parity-check check-operator-impact ci-drop-replaces govulncheck \
+	$(addprefix ci-,$(CI_JOBS)) $(CI_INTEGRATION_STEPS) \
+	lint-new ci-lint-full ci-gofmt ci-vet ci-windows-vet ci-windows-build \
+	ci-test-unit ci-test-e2e ci-build-dpkms ci-build-ctxt ci-build-verify
 
 ## help: Show this help message
 help:

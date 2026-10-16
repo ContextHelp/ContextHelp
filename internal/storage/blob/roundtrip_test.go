@@ -1,4 +1,4 @@
-package blob
+package blob_test
 
 import (
 	"bytes"
@@ -9,6 +9,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob/local"
 )
 
@@ -30,12 +31,12 @@ func TestRoundTrip(t *testing.T) {
 		t.Fatalf("externalize: %v", err)
 	}
 
-	if !IsBlobRef(got.RawContent) {
+	if !blob.IsBlobRef(got.RawContent) {
 		t.Fatalf("expected blob ref, got %q", got.RawContent[:50])
 	}
 
 	// Resolve.
-	rc, err := Resolve(ctx, bs, got)
+	rc, err := blob.Resolve(ctx, bs, got)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}

@@ -33,7 +33,7 @@ func (h *analyzeHandler) Analyze(ctx context.Context, req *pb.AnalyzeRequest) (*
 		Raw:         req.Raw,
 	})
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "analyze: %v", err)
+		return nil, toStatus(ctx, "analyze", err)
 	}
 
 	return &pb.AnalyzeResponse{JobId: jobID}, nil

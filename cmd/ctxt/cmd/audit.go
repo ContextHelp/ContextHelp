@@ -131,7 +131,8 @@ func runAuditList(cmd *cobra.Command, _ []string) error {
 	}
 	defer cleanup()
 
-	entries, total, err := svc.Store.AuditLog().List(context.Background(), filter)
+	ctx := asOwner(context.Background())
+	entries, total, err := svc.Store(ctx).AuditLog().List(ctx, filter)
 	if err != nil {
 		return fmt.Errorf("audit list: %w", err)
 	}
@@ -165,9 +166,9 @@ func runAuditExport(cmd *cobra.Command, _ []string) error {
 	// explicitly set --format to a SIEM-compatible value.
 	fmtStr := mustGetString(cmd, "format")
 	if fmtStr == "" || !cmd.Flags().Changed("format") {
-		fmtStr = "json"
+		fmtStr = formatJSON
 	}
-	fmt_, err := audit.ParseFormat(fmtStr)
+	format, err := audit.ParseFormat(fmtStr)
 	if err != nil {
 		return err
 	}
@@ -187,12 +188,13 @@ func runAuditExport(cmd *cobra.Command, _ []string) error {
 	}
 	defer cleanup()
 
-	entries, _, err := svc.Store.AuditLog().List(context.Background(), filter)
+	ctx := asOwner(context.Background())
+	entries, _, err := svc.Store(ctx).AuditLog().List(ctx, filter)
 	if err != nil {
 		return fmt.Errorf("audit export: %w", err)
 	}
 
-	return writeExport(os.Stdout, entries, fmt_)
+	return writeExport(os.Stdout, entries, format)
 }
 
 // writeExport serialises entries in the requested format to w, one record per line.

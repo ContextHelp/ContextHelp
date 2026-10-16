@@ -1,7 +1,6 @@
 ---
 status: paper
 adr: ADR-068
-task: T-0497-impl
 ---
 
 # US-0219: MCP Agent Integration (dpkms-side)
@@ -97,7 +96,7 @@ All wrap existing service-layer queries. Profile defaults to `profile.default`; 
 
 ### Read-only enforcement
 
-- [ ] No tool mutates. Hard guarantee at compile time — server imports only read-side service interfaces; mutation methods are not in scope (matches OpenChronicle's discipline per `~/.p/sandbox/OpenChronicle/docs/mcp.md` line 433)
+- [ ] No tool mutates. Hard guarantee at compile time — server imports only read-side service interfaces; mutation methods are not in scope (matches OpenChronicle's discipline per `docs/mcp.md` line 433)
 
 ---
 
@@ -174,7 +173,7 @@ Use the official Go MCP SDK (`github.com/modelcontextprotocol/go-sdk` or current
 ## Sprint
 
 **Skeleton 9.5 — Ambient Capture + Sessions + Agent-Native MCP**
-Implements ADR-068 dpkms-side surface — see `tlc track show ambient-capture`, task **T-0497** (ADR) and substrate work in Phase 5.
+Implements ADR-068 dpkms-side surface; substrate work in Phase 5.
 
 ---
 

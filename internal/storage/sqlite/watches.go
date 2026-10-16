@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 // WatchStore implements storage.WatchStore for SQLite.
@@ -61,15 +62,7 @@ func (s *WatchStore) ListWatches(ctx context.Context, status string) ([]*storage
 	}
 	defer rows.Close()
 
-	var watches []*storage.WatchConfig
-	for rows.Next() {
-		w, err := scanWatchRow(rows)
-		if err != nil {
-			return nil, err
-		}
-		watches = append(watches, w)
-	}
-	return watches, rows.Err()
+	return rowscan.All(rows, scanWatchRow)
 }
 
 // UpdateWatch replaces all mutable fields for the given watch ID.
@@ -161,17 +154,15 @@ func (s *WatchStore) ListFileRecords(ctx context.Context, watchID string) ([]*st
 	}
 	defer rows.Close()
 
-	var records []*storage.WatchFileRecord
-	for rows.Next() {
+	return rowscan.All(rows, func(rows *sql.Rows) (*storage.WatchFileRecord, error) {
 		var r storage.WatchFileRecord
 		var lastSeen string
 		if err := rows.Scan(&r.WatchID, &r.FilePath, &r.ObjectID, &r.ContentHash, &lastSeen); err != nil {
 			return nil, fmt.Errorf("scan file record: %w", err)
 		}
 		r.LastSeen, _ = time.Parse(time.RFC3339, lastSeen)
-		records = append(records, &r)
-	}
-	return records, rows.Err()
+		return &r, nil
+	})
 }
 
 // scanWatch scans a single *sql.Row into a WatchConfig.

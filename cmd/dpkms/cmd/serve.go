@@ -3,7 +3,9 @@ package cmd
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"io/fs"
 	gohttp "net/http"
 	"os"
 	"os/exec"
@@ -17,7 +19,7 @@ import (
 
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
+	"github.com/spf13/pflag"
 
 	"github.com/ideacrafterslabs/ctxt/internal/browser"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
@@ -31,10 +33,10 @@ import (
 	httpserver "github.com/ideacrafterslabs/ctxt/internal/server/http"
 	"github.com/ideacrafterslabs/ctxt/internal/server/stack"
 	wsserver "github.com/ideacrafterslabs/ctxt/internal/server/ws"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/indexsig"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
-	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/ideacrafterslabs/ctxt/internal/upgrade"
 
 	kitbus "hop.top/kit/go/runtime/bus"
@@ -62,6 +64,9 @@ Examples:
   # Start with custom ports
   dpkms serve --port 8080 --grpc-port 9090
 
+  # Throwaway instance: every listener on an OS-assigned port
+  dpkms serve --port 0 --grpc-port 0 --cookie-bridge-port 0
+
   # Start with more workers
   dpkms serve --workers 8
 
@@ -86,31 +91,33 @@ func init() {
 
 	// Server flags
 	serveCmd.Flags().String("name", "", "instance name (URI-safe slug, e.g. 'work'); defaults to DB basename")
-	serveCmd.Flags().Int("port", 8080, "HTTP port")
-	serveCmd.Flags().Int("grpc-port", 9090, "gRPC port")
-	serveCmd.Flags().Int("workers", 4, "number of worker threads")
+	serveCmd.Flags().Int("port", config.DefaultServerPort, "HTTP port (overrides server.port and CH_SERVER_PORT)")
+	serveCmd.Flags().Int("grpc-port", config.DefaultGRPCPort, "gRPC port (overrides server.grpc_port and CH_GRPC_PORT)")
+	serveCmd.Flags().Int("cookie-bridge-port", config.DefaultCookieBridgePort,
+		"browser-extension cookie bridge port, loopback only (overrides server.cookie_bridge_port and CH_COOKIE_BRIDGE_PORT)")
+	serveCmd.Flags().Int("workers", config.DefaultServerWorkers,
+		"number of worker threads (overrides server.workers and "+config.EnvDPKMSWorkers+")")
 	serveCmd.Flags().Bool("public", false, "allow remote connections")
-	serveCmd.Flags().String("profile", "", "default focus profile")
-	serveCmd.Flags().String("steps-path", "", "path to external steps directory")
-	serveCmd.Flags().Bool("dev", false, "enable CORS for Vite dev server (http://localhost:5173)")
-	serveCmd.Flags().Duration("reminder-interval", time.Minute, "how often to check for due reminders")
+	serveCmd.Flags().String("profile", "", "default focus profile (overrides profile.default and "+config.EnvProfile+")")
+	serveCmd.Flags().String("steps-path", "", "path to external steps directory (overrides steps.path)")
+	serveCmd.Flags().Bool("dev", false, "enable CORS for the Vite dev server at http://localhost:5173 (overrides server.dev)")
+	serveCmd.Flags().Duration("reminder-interval", config.DefaultReminderInterval,
+		"how often to check for due reminders (overrides server.reminder_interval)")
 	serveCmd.Flags().Bool("daemon", false, "run as background daemon (detach from terminal)")
+	serveCmd.Flags().Bool("strict-sharing", false,
+		"answer 500 instead of stripping when the visibility backstop finds data outside a shared viewer's visibility")
 
-	// Bind flags to viper
-	viper.BindPFlag("server.port", serveCmd.Flags().Lookup("port"))
-	viper.BindPFlag("server.grpc_port", serveCmd.Flags().Lookup("grpc-port"))
-	viper.BindPFlag("server.workers", serveCmd.Flags().Lookup("workers"))
-	viper.BindPFlag("server.public", serveCmd.Flags().Lookup("public"))
-	viper.BindPFlag("profile.default", serveCmd.Flags().Lookup("profile"))
-	viper.BindPFlag("steps.path", serveCmd.Flags().Lookup("steps-path"))
-	viper.BindPFlag("server.dev", serveCmd.Flags().Lookup("dev"))
-	viper.BindPFlag("server.reminder_interval", serveCmd.Flags().Lookup("reminder-interval"))
+	// No flag is bound to viper: serve reads its settings from cfg, a
+	// passed flag overriding (see resolveServeSettings, serveListenSpecs).
 }
+
+// loopbackHost is the address a private instance's listeners bind.
+const loopbackHost = "127.0.0.1"
 
 func runServe(cmd *cobra.Command, args []string) error {
 	// --daemon: re-exec self in background, detached from terminal.
 	if daemon, _ := cmd.Flags().GetBool("daemon"); daemon {
-		return daemonize(cmd)
+		return daemonize()
 	}
 
 	// Resolve instance name: flag > derive from DB basename.
@@ -120,21 +127,20 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 
 	// Resolve default profile: flag > config default > inline bool > interactive.
-	if err := resolveDefaultProfile(cmd); err != nil {
-		return err
-	}
+	resolveDefaultProfile(cmd)
 
-	port := viper.GetInt("server.port")
-	grpcPort := viper.GetInt("server.grpc_port")
-	workers := viper.GetInt("server.workers")
-	public := viper.GetBool("server.public")
-	reminderInterval := viper.GetDuration("server.reminder_interval")
+	settings := resolveServeSettings(cmd.Flags(), cfg)
+	workers := settings.workers
+	public, _ := cmd.Flags().GetBool("public")
+	strictSharing, _ := cmd.Flags().GetBool("strict-sharing")
+	reminderInterval := settings.reminderInterval
 
-	// Resolve the access class and inbound auth provider before any
-	// resource is initialized: a protected/public instance with no
-	// credentials refuses to start rather than exposing an open
-	// listener.
-	access, authProvider, err := stack.ResolveInboundAuth(cfg, public)
+	// Resolve the access class and check server.auth before any
+	// resource is initialized: a protected/public instance with a
+	// broken auth config refuses to start rather than exposing an open
+	// listener. Whether an owner credential exists is checked against
+	// the registry once storage is open (stack.Build).
+	access, err := stack.ResolveInboundAuth(cfg, public)
 	if err != nil {
 		return err
 	}
@@ -142,25 +148,21 @@ func runServe(cmd *cobra.Command, args []string) error {
 		fmt.Println("note: --public/server.public is deprecated shorthand for server.access: public; set server.access explicitly")
 	}
 	if access != config.AccessPrivate {
-		fmt.Printf("Inbound auth: %s provider (%s access)\n", authProvider.Name(), access)
+		fmt.Printf("Inbound auth: %s (%s access)\n", strings.Join(cfg.Server.Auth.EffectiveMethods(), ", "), access)
 	}
 
-	// 1. Init storage.
-	storageType := cfg.Storage.Type
-	if storageType == "" {
-		storageType = "sqlite"
-	}
-	storagePath := cfg.Storage.Path
-	if storagePath == "" {
-		storagePath = "dpkms.db"
-	}
-
-	driver, err := storageutil.NewDriver(storageType, storagePath)
+	// 1. Init storage, under the database lock: held until serve
+	// returns (the kernel drops it if the process dies), it refuses a
+	// second serve or a restore on this database.
+	dbLock, err := acquireServeLock(cfg, instanceName)
 	if err != nil {
-		return fmt.Errorf("init storage: %w", err)
+		return err
 	}
-	if err := driver.Init(context.Background()); err != nil {
-		return fmt.Errorf("init storage: %w", err)
+	defer func() { _ = dbLock.Release() }()
+	_, dbPath := serveStorageTarget(cfg)
+	driver, err := openServeStorage(context.Background(), cfg)
+	if err != nil {
+		return err
 	}
 	fmt.Println("Storage initialized")
 
@@ -198,7 +200,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}()
 
 	// 4. Get steps path.
-	stepsPath := viper.GetString("steps.path")
+	stepsPath := settings.stepsPath
 	if stepsPath == "" {
 		homeDir, _ := os.UserHomeDir()
 		stepsPath = homeDir + "/.config/contexthelp/steps"
@@ -209,7 +211,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// banners read. It still writes the shadow file next to the pidfiles,
 	// though nothing reads it any more; RunDir errors just disable it.
 	var upgradeMgr *upgrade.Manager
-	if runDir, runDirErr := config.RunDir(); runDirErr == nil {
+	if runDir, runDirErr := config.RunDir(dataDir()); runDirErr == nil {
 		upgradeMgr = upgrade.NewManager(filepath.Join(runDir, "upgrade-state.json"))
 	} else {
 		upgradeMgr = upgrade.NewManager("")
@@ -227,14 +229,14 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// 5a. Determine bind address. Only private instances stay on
 	// loopback; protected/public bind all interfaces (and are already
 	// guaranteed to have inbound auth configured above).
-	bind := "127.0.0.1"
+	bind := loopbackHost
 	if access != config.AccessPrivate {
 		bind = "0.0.0.0"
 	}
 
 	// 5b. Init federation worker set. Cycle detection runs here; an
 	// invalid topology fails serve before any port is bound (US-0318 AC).
-	fedSet, err := federation.New(*cfg, driver)
+	fedSet, err := federation.New(*cfg, storage.System(driver))
 	if err != nil {
 		return fmt.Errorf("federation: %w", err)
 	}
@@ -247,21 +249,17 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// background goroutine, and hand each bound listener to its server.
 	// Nothing probes a port and re-binds it later: two instances started
 	// together can no longer both be told a port is free. Ports the
-	// operator set (--port, --grpc-port) are bound exactly or serve
-	// fails; built-in defaults fall back to an OS-assigned port. The
-	// deferred close releases every port on an early return; after a
+	// operator set (flag, CH_* env var or config file) are bound exactly
+	// or serve fails; built-in defaults fall back to an OS-assigned port.
+	// The deferred close releases every port on an early return; after a
 	// server has taken its listener the extra Close is a no-op.
-	lns, err := acquireListeners(os.Stderr, []listenSpec{
-		{name: "HTTP", bind: bind, port: port, explicit: cmd.Flags().Changed("port")},
-		{name: "gRPC", bind: bind, port: grpcPort, explicit: cmd.Flags().Changed("grpc-port")},
-		{name: "cookie bridge", bind: "127.0.0.1", port: wsserver.DefaultCookieBridgePort},
-	})
+	lns, err := acquireListeners(os.Stderr, serveListenSpecs(cmd.Flags(), cfg.Server, bind))
 	if err != nil {
 		return err
 	}
 	defer closeListeners(lns)
 	httpLn, grpcLn, cookieLn := lns[0], lns[1], lns[2]
-	port, grpcPort = listenerPort(httpLn), listenerPort(grpcLn)
+	port, grpcPort := listenerPort(httpLn), listenerPort(grpcLn)
 	cookieBridgePort := listenerPort(cookieLn)
 	addr := httpLn.Addr().String()
 	grpcBind := grpcLn.Addr().String()
@@ -280,20 +278,20 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// server builds the same stack.
 	embResolver := newEmbeddingResolver()
 	st, err := stack.Build(stack.Inputs{
-		Config:     cfg,
-		Driver:     driver,
-		Access:     access,
-		Auth:       authProvider,
-		PolicyBus:  hubBus,
-		Embeddings: embResolver,
-		Browser:    browserClient,
-		StepsPath:  stepsPath,
-		ConfigPath: config.GetConfigPath(binName),
-		Probes:     healthProbes,
-		DevCORS:    viper.GetBool("server.dev"),
-		HTTPPort:   port,
-		Warnings:   os.Stderr,
-		Notes:      os.Stdout,
+		Config:        cfg,
+		Driver:        driver,
+		Access:        access,
+		PolicyBus:     hubBus,
+		Embeddings:    embResolver,
+		Browser:       browserClient,
+		StepsPath:     stepsPath,
+		ConfigPath:    config.GetConfigPath(binName),
+		Probes:        healthProbes,
+		DevCORS:       settings.dev,
+		HTTPPort:      port,
+		Warnings:      os.Stderr,
+		Notes:         os.Stdout,
+		StrictSharing: strictSharing,
 	})
 	if err != nil {
 		return err
@@ -349,23 +347,24 @@ func runServe(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Serve-time federation-credential validation: on non-private
-	// instances the push route is gated per federation.token, never by
-	// a principal token alone; without one the route refuses requests.
-	if access != config.AccessPrivate && cfg.Federation.Token == "" {
-		fmt.Printf("Federation push: refused — no federation.token configured (mandatory on %s instances)\n", access)
+	// On non-private instances the push route takes a peer principal's
+	// API key, never any authenticated principal's (ADR-079 §1).
+	if access != config.AccessPrivate {
+		fmt.Printf("Federation push: accepts the API key of a peer principal (%s access)\n", access)
 	}
 
 	// 10. Init worker pool.
-	pool := jobs.NewWorkerPool(queue, pipes, driver, workers, svc.Bus, cfg.Jobs)
-	handleEmbeddingsMigrate(pool, driver, upgradeMgr, svc.Bus)
-	handleReproject(pool, driver, upgradeMgr, svc.Bus)
+	// The worker pool and the upgrade jobs run as the system: they read
+	// and write every row, so they name the unscoped driver.
+	pool := jobs.NewWorkerPool(queue, pipes, storage.System(driver), workers, svc.Bus, cfg.Jobs)
+	handleEmbeddingsMigrate(pool, storage.System(driver), upgradeMgr, svc.Bus)
+	handleReproject(pool, storage.System(driver), upgradeMgr, svc.Bus, cfg.Storage.Blob.Threshold)
 	handleReprocess(pool, st)
 
 	// 10a. Wire fan-out enrichment (bidirectional edges + audit log).
 	if cfg.FanOut.Enabled {
 		pool.SetFanOut(func(ctx context.Context, objectID string) error {
-			_, err := svc.FanOut(ctx, objectID)
+			_, err := svc.FanOut(asSystem(ctx), objectID)
 			return err
 		})
 	}
@@ -385,11 +384,13 @@ func runServe(cmd *cobra.Command, args []string) error {
 		grpcserver.WithSecurity(st.Security),
 		grpcserver.WithEntitlements(st.Entitlements),
 		grpcserver.WithReflection(access == config.AccessPrivate),
+		grpcserver.WithStrictSharing(st.StrictSharing),
+		grpcserver.WithAudit(st.Audit),
 	)
 
 	// 10c. Write pidfile so dpkms ps can discover this instance.
 	// Deferred removal covers both clean shutdown and error paths.
-	runDir, err := config.RunDir()
+	runDir, err := config.RunDir(dataDir())
 	if err != nil {
 		return fmt.Errorf("run dir: %w", err)
 	}
@@ -409,13 +410,18 @@ func runServe(cmd *cobra.Command, args []string) error {
 		GRPCPort:         grpcPort,
 		CookieBridgePort: cookieBridgePort,
 		BrowserPort:      browserPort,
-		DBPath:           storagePath,
+		DBPath:           dbPath,
 		StartedAt:        time.Now(),
 	}); err != nil {
 		// Non-fatal: ps won't show this instance but serve still works.
 		fmt.Fprintf(os.Stderr, "warning: could not write pidfile: %v\n", err)
 	}
-	defer pidfile.Remove(runDir, port)
+	defer func() {
+		// A pidfile that was never written is not a removal failure.
+		if err := pidfile.Remove(runDir, port); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			fmt.Fprintf(os.Stderr, "warning: could not remove pidfile: %v\n", err)
+		}
+	}()
 
 	// 10d. Crash recovery: reset any jobs left in "running" state from a
 	// previous crash back to "pending" so they are picked up immediately.
@@ -439,7 +445,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// Reminder checker.
 	reminderBackend := &remind.ServiceBackend{
 		ListDue: func(ctx context.Context, now time.Time) ([]*remind.DueReminder, error) {
-			objs, err := svc.ListDueReminders(ctx, now)
+			objs, err := svc.ListDueReminders(asSystem(ctx), now)
 			if err != nil {
 				return nil, err
 			}
@@ -462,7 +468,9 @@ func runServe(cmd *cobra.Command, args []string) error {
 			}
 			return dues, nil
 		},
-		MarkDone: svc.MarkReminded,
+		MarkDone: func(ctx context.Context, id string, now time.Time) error {
+			return svc.MarkReminded(asSystem(ctx), id, now)
+		},
 	}
 	checker := remind.NewChecker(reminderBackend, reminderInterval)
 
@@ -517,11 +525,67 @@ func runServe(cmd *cobra.Command, args []string) error {
 	runErr := runner.run(context.Background())
 	signal.Stop(sigCh)
 
-	// Cleanup.
-	driver.Close(context.Background())
+	// Cleanup: stack first (it drains the queued security audit rows),
+	// then the store.
+	closeServeStack(os.Stderr, st, driver, drainTimeout)
 	fmt.Println("Storage closed")
 
 	return runErr
+}
+
+// serveSettings are serve's settings other than its listeners.
+type serveSettings struct {
+	workers          int
+	dev              bool
+	reminderInterval time.Duration
+	stepsPath        string
+}
+
+// resolveServeSettings returns c's serve settings (env var over config
+// file over built-in default, as Load resolved them), each replaced by
+// its flag when passed.
+func resolveServeSettings(flags *pflag.FlagSet, c *config.Config) serveSettings {
+	s := serveSettings{
+		workers:          c.Server.Workers,
+		dev:              c.Server.Dev,
+		reminderInterval: c.Server.ReminderInterval,
+		stepsPath:        c.Steps.Path,
+	}
+	if flags.Changed("workers") {
+		s.workers, _ = flags.GetInt("workers")
+	}
+	if flags.Changed("dev") {
+		s.dev, _ = flags.GetBool("dev")
+	}
+	if flags.Changed("reminder-interval") {
+		s.reminderInterval, _ = flags.GetDuration("reminder-interval")
+	}
+	if flags.Changed("steps-path") {
+		s.stepsPath, _ = flags.GetString("steps-path")
+	}
+	return s
+}
+
+// serveListenSpecs lists the listeners serve binds, in order: HTTP and
+// gRPC on bind, then the cookie bridge, which stays on loopback whatever
+// the access class. Each port is its flag when passed, else srv's value
+// (CH_* env var over config file over built-in default). A port the
+// operator set, by any of the three, is explicit: bound exactly or serve
+// fails. Only an untouched built-in default falls back when busy. Port 0
+// binds an OS-assigned port.
+func serveListenSpecs(flags *pflag.FlagSet, srv config.ServerConfig, bind string) []listenSpec {
+	spec := func(name, bind, flag string, port int, set bool) listenSpec {
+		if flags.Changed(flag) {
+			port, _ = flags.GetInt(flag)
+			set = true
+		}
+		return listenSpec{name: name, bind: bind, port: port, explicit: set}
+	}
+	return []listenSpec{
+		spec("HTTP", bind, "port", srv.Port, srv.PortSet()),
+		spec("gRPC", bind, "grpc-port", srv.GRPCPort, srv.GRPCPortSet()),
+		spec("cookie bridge", loopbackHost, "cookie-bridge-port", srv.CookieBridgePort, srv.CookieBridgePortSet()),
+	}
 }
 
 // resolveInstanceName returns the instance name for this serve invocation.
@@ -533,7 +597,7 @@ func resolveInstanceName(cmd *cobra.Command) (string, error) {
 		// Derive from DB path: strip directory and known extensions, then slugify.
 		dbPath := cfg.Storage.Path
 		if dbPath == "" {
-			dbPath = "dpkms.db"
+			dbPath = fallbackDBPath
 		}
 		name = instanceNameFromDBPath(dbPath)
 	}
@@ -579,7 +643,7 @@ func instanceNameFromDBPath(dbPath string) string {
 // daemonize re-executes the current binary in the background without the
 // --daemon flag, redirecting stdin/stdout/stderr to /dev/null, then returns
 // immediately so the calling process (the user's terminal) exits.
-func daemonize(cmd *cobra.Command) error {
+func daemonize() error {
 	self, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("daemon: resolve executable: %w", err)
@@ -603,7 +667,7 @@ func daemonize(cmd *cobra.Command) error {
 	c.Stdin = devNull
 	c.Stdout = devNull
 	c.Stderr = devNull
-	c.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	c.SysProcAttr = detachedProcAttr()
 
 	if err := c.Start(); err != nil {
 		return fmt.Errorf("daemon: start: %w", err)
@@ -615,22 +679,25 @@ func daemonize(cmd *cobra.Command) error {
 
 // resolveDefaultProfile ensures cfg.Profile.Default is set before the server
 // starts. Priority:
-//  1. --profile flag (already bound to viper "profile.default" in init())
-//  2. profile.default from config file (via cfg.Profile.Default, set by Load())
+//  1. --profile flag, even empty (no default profile)
+//  2. profile.default from CTXT_PROFILE or config file (cfg.Profile.Default, set by Load())
 //  3. If exactly one profile is defined, use it automatically.
 //  4. If multiple profiles and none flagged as default, prompt the user to pick.
 //
+// Steps 1-2 are config.ProfileConfig.Active, the rule ctxt's commands share.
 // Non-interactive contexts (no TTY) fall through without error if no default is
 // set — the server starts with no active profile.
-func resolveDefaultProfile(cmd *cobra.Command) error {
-	// Already set via flag or config?
-	if viper.GetString("profile.default") != "" {
-		return nil
+func resolveDefaultProfile(cmd *cobra.Command) {
+	flag, _ := cmd.Flags().GetString("profile")
+	flagSet := cmd.Flags().Changed("profile")
+	cfg.Profile.Default = cfg.Profile.Active(flag, flagSet)
+	if flagSet || cfg.Profile.Default != "" {
+		return
 	}
 
 	profiles := cfg.Profile.Profiles
 	if len(profiles) == 0 {
-		return nil // no profiles defined; nothing to resolve
+		return // no profiles defined; nothing to resolve
 	}
 
 	names := make([]string, 0, len(profiles))
@@ -641,13 +708,13 @@ func resolveDefaultProfile(cmd *cobra.Command) error {
 
 	// Single profile: use it automatically.
 	if len(names) == 1 {
-		viper.Set("profile.default", names[0])
-		return nil
+		cfg.Profile.Default = names[0]
+		return
 	}
 
 	// Multiple profiles, no default — interactive picker (requires a TTY).
 	if !isTTY() {
-		return nil // headless: start without a default profile
+		return // headless: start without a default profile
 	}
 
 	// Build huh select options: one per profile + a "(none)" option.
@@ -676,13 +743,12 @@ func resolveDefaultProfile(cmd *cobra.Command) error {
 		// User canceled (Ctrl+C / Esc) — proceed without a profile. The
 		// prompt is a convenience for picking a default; declining it is a
 		// valid choice, not a startup failure.
-		return nil //nolint:nilerr // declining the optional profile prompt is not a startup failure
+		return
 	}
 
 	if selected != "" {
-		viper.Set("profile.default", selected)
+		cfg.Profile.Default = selected
 	}
-	return nil
 }
 
 // isTTY reports whether stdin is an interactive terminal.

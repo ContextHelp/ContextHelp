@@ -1,789 +1,324 @@
-# CLI Flag Binding, Precedence, and Configuration Loading
+# CLI Flags, Environment Variables and Config Precedence
 
-This document explains how ContextHelp binds CLI flags to configuration values, the order of precedence when the same setting is specified multiple ways, and the operational details of how Cobra and Viper work together in the `ctxt` and `dpkms` commands.
+How `ctxt` and `dpkms` resolve a setting that can come from a config file,
+an environment variable, a `-c` override or a command flag.
+
+Source of truth: `internal/config/config.go` (`LoadWithOverrides`,
+`envBindings`) on top of kit's layered loader (`hop.top/kit/go/core/config`).
 
 ---
 
 ## Table of Contents
 
-1. [Configuration Loading Order](#configuration-loading-order)
-2. [Flag-to-Config Mapping Table](#flag-to-config-mapping-table)
-3. [Environment Variable Mapping](#environment-variable-mapping)
-4. [Precedence Resolution Examples](#precedence-resolution-examples)
-5. [Persistent vs Command-Specific Flags](#persistent-vs-command-specific-flags)
-6. [Configuration Validation](#configuration-validation)
-7. [Profile-Specific Overrides](#profile-specific-overrides)
+1. [Precedence](#precedence)
+2. [Config Files](#config-files)
+3. [The `-c` / `--config` Flag](#the--c----config-flag)
+4. [Environment Variables Bound to Config Keys](#environment-variables-bound-to-config-keys)
+5. [Other Environment Variables Read at Startup](#other-environment-variables-read-at-startup)
+6. [Flags That Override Config](#flags-that-override-config)
+7. [Profiles](#profiles)
+8. [Examples](#examples)
+9. [Debugging Resolution](#debugging-resolution)
 
 ---
 
-## Configuration Loading Order
+## Precedence
 
-ContextHelp uses a layered configuration system where higher layers override lower layers. The loading order is:
+Highest wins:
 
-```
-1. Defaults (compiled into binary)
-   ↓
-2. System config (/etc/contexthelp/config.yaml)
-   ↓
-3. User config (~/.config/contexthelp/config.yaml)
-   ↓
-4. Environment variables (CH_*, CTXT_*, DPKMS_*, OPENAI_*, ANTHROPIC_*)
-   ↓
-5. Runtime flags (--flag value)
-```
+| # | Layer | Example |
+|---|-------|---------|
+| 1 | Command flag, when passed (only on commands that read it over config) | `dpkms serve --port 8181` |
+| 2 | `-c key=value` overrides | `dpkms serve -c server.port=8181` |
+| 3 | Bound environment variables | `CH_SERVER_PORT=8181` |
+| 4 | `-c <path>` files, later paths win | `-c ./extra.yaml` |
+| 5 | Project file | `.contexthelp/dpkms.yaml` |
+| 6 | User file | `$XDG_CONFIG_HOME/contexthelp/dpkms.yaml` |
+| 7 | System file | `/etc/contexthelp/dpkms.yaml` |
+| 8 | Built-in defaults | `server.port` = `8080` |
 
-### How It Works
+Notes:
 
-When you run a command, Viper:
-
-1. **Loads defaults** from the code
-2. **Reads system config** if `/etc/contexthelp/config.yaml` exists
-3. **Reads user config** from `~/.config/contexthelp/config.yaml` (or `$CTXT_CONFIG`)
-4. **Applies environment variables** that match configured prefixes
-5. **Binds CLI flags** via Cobra, which take precedence over everything
-
-### Example: Value Override Chain
-
-Given this configuration state:
-
-```yaml
-# ~/.config/contexthelp/config.yaml
-ctxt:
-  profiles:
-    default: engineer
-  cli:
-    output_format: yaml
-```
-
-And these environment variables:
-
-```bash
-export CTXT_PROFILE=founder
-export CH_PROFILE=research  # CH_ prefix also supported
-```
-
-And this command:
-
-```bash
-ctxt analyze "content" --profile data-scientist --output json
-```
-
-**Resolution:**
-
-| Setting | Default | Config File | Environment | Flag | Final Value |
-|---------|---------|-------------|-------------|------|-------------|
-| profile | `general` | `engineer` | `research` | `data-scientist` | `data-scientist` |
-| output | `text` | `yaml` | _(not set)_ | `json` | `json` |
-
-**Result:** The command uses the `data-scientist` profile with `json` output format.
+- Env sits **above every file**, including `-c <path>` files. A file with
+  `server.port: 4242` does not beat `CH_SERVER_PORT=9999`.
+- `-c key=value` sits **above env**.
+- A flag beats config only where the command is written to prefer it
+  (see [Flags That Override Config](#flags-that-override-config)). Most
+  flags are per-invocation options with no config key behind them.
+- Files merge as YAML: scalars and lists are replaced, maps are merged.
 
 ---
 
-## Flag-to-Config Mapping Table
+## Config Files
 
-This table shows how CLI flags map to Viper configuration keys. Viper uses dot notation (e.g., `ctxt.profiles.default`) to access nested YAML structures.
+Each binary reads its own file name in the shared `contexthelp/`
+namespace: `ctxt` reads `ctxt.yaml`, `dpkms` reads `dpkms.yaml`.
 
-### Global Persistent Flags (Available on all commands)
+| Slot | Path | Missing file |
+|------|------|--------------|
+| System | `/etc/contexthelp/<bin>.yaml` | skipped |
+| User | `$XDG_CONFIG_HOME/contexthelp/<bin>.yaml` (`~/.config/...` by default) | skipped |
+| Project | nearest `.contexthelp/<bin>.yaml`, walking up from the working directory, stopping at `$HOME` or `/` | skipped |
+| `-c <path>` | each path given, in order | error |
 
-| Short Flag | Long Flag | Viper Config Key | Type | Description |
-|------------|-----------|-----------------|------|-------------|
-| `-c` | `--config` | _(special)_ | string | Path to config file (bypasses default search) |
-| | `--profile` | `ctxt.profiles.default` | string | Active focus profile |
-| `-v` | `--version` | _(special)_ | bool | Print version and exit |
-| `-V` | `--verbose` | `ctxt.cli.verbose` | bool | Enable verbose output |
-| | `--output` | `ctxt.cli.output_format` | string | Output format (text, json, yaml) |
-| | `--color` | `ctxt.cli.color` | string | Color mode (auto, always, never) |
-| | `--no-color` | `ctxt.cli.color` | bool | Disable color (sets color=never) |
-
-### `ctxt analyze` Command Flags
-
-| Short Flag | Long Flag | Viper Config Key | Type | Description |
-|------------|-----------|-----------------|------|-------------|
-| | `--type` | _(runtime only)_ | string | Input type override (text, url, image, etc.) |
-| | `--hints` | _(runtime only)_ | string | Semantic hints for tagging |
-| | `--mentions` | _(runtime only)_ | string | Explicit entity mentions |
-| `-f` | `--file` | _(runtime only)_ | string | Read input from file |
-| | `--pipeline` | `ctxt.pipelines.default_timeout` | string | Force specific pipeline |
-| | `--lang` | `ctxt.i18n.preferred_languages[0]` | string | Input language override |
-| | `--translate` | `ctxt.i18n.auto_translate` | string | Translation mode (none/auto) |
-| | `--raw` | _(runtime only)_ | bool | Disable AI processing |
-| | `--wait` | _(runtime only)_ | bool | Block until job completes |
-
-### `ctxt list` Command Flags
-
-| Short Flag | Long Flag | Viper Config Key | Type | Description |
-|------------|-----------|-----------------|------|-------------|
-| | `--type` | _(filter only)_ | string | Filter by object type |
-| | `--tag` | _(filter only)_ | string | Filter by tags |
-| | `--hint` | _(filter only)_ | string | Filter by hints |
-| | `--mention` | _(filter only)_ | string | Filter by mention |
-| | `--pipeline` | _(filter only)_ | string | Filter by pipeline |
-| | `--before` | _(filter only)_ | string | Created before date |
-| | `--after` | _(filter only)_ | string | Created after date |
-| `-l` | `--limit` | `dpkms.query.default_limit` | int | Max results per page |
-| | `--start` | _(pagination only)_ | int | Pagination offset |
-| | `--sort` | _(runtime only)_ | string | Sort mode (recent, match, weight) |
-| | `--no-track` | _(runtime only)_ | bool | Skip match tracking |
-
-### `ctxt find` Command Flags
-
-| Short Flag | Long Flag | Viper Config Key | Type | Description |
-|------------|-----------|-----------------|------|-------------|
-| | `--profile` | `ctxt.profiles.default` | string | Use focus profile |
-| `-l` | `--limit` | `ctxt.search.default_limit` | int | Max search results |
-| | `--json` | `ctxt.cli.output_format` | bool | JSON output (sets format=json) |
-| | `--yaml` | `ctxt.cli.output_format` | bool | YAML output (sets format=yaml) |
-
-### `ctxt make` Command Flags
-
-| Short Flag | Long Flag | Viper Config Key | Type | Description |
-|------------|-----------|-----------------|------|-------------|
-| | `--profile` | `ctxt.profiles.default` | string | Use focus profile |
-| | `--mention` | _(filter only)_ | string | Focus on specific mentions |
-| | `--tag` | _(filter only)_ | string | Focus on specific tags |
-| | `--since` | _(filter only)_ | string | Include knowledge since date |
-| `-o` | `--output` | _(runtime only)_ | string | Write to file (different from format) |
-
-### `dpkms serve` Command Flags
-
-| Short Flag | Long Flag | Viper Config Key | Type | Description |
-|------------|-----------|-----------------|------|-------------|
-| `-p` | `--port` | `dpkms.api.rest.port` | int | HTTP API port |
-| | `--grpc-port` | `dpkms.api.grpc.port` | int | gRPC API port |
-| | `--profile` | `ctxt.profiles.default` | string | Default focus profile |
-| | `--public` | `dpkms.api.rest.public` | bool | Allow remote connections |
-| `-c` | `--config` | _(special)_ | string | Custom config file path |
-| `-w` | `--workers` | `dpkms.jobs.workers` | int | Number of worker threads |
-
-### Flag Binding Implementation
-
-In Cobra/Viper, flags are bound like this:
-
-```go
-// Persistent flag (available on all commands)
-rootCmd.PersistentFlags().StringP("profile", "", "", "Active focus profile")
-viper.BindPFlag("ctxt.profiles.default", rootCmd.PersistentFlags().Lookup("profile"))
-
-// Command-specific flag
-analyzeCmd.Flags().StringP("hints", "", "", "Semantic hints for tagging")
-// Note: Not bound to viper, accessed via cmd.Flags().GetString("hints")
-
-// Flag with default from config
-listCmd.Flags().IntP("limit", "l", viper.GetInt("dpkms.query.default_limit"), "Max results")
-viper.BindPFlag("dpkms.query.default_limit", listCmd.Flags().Lookup("limit"))
-```
+`CTXT_CONFIG=<path>` replaces the system, user and project slots with that
+single file. It is tolerated when missing (first run, before `ctxt setup`
+creates it). `-c <path>` files still layer on top of it.
 
 ---
 
-## Environment Variable Mapping
+## The `-c` / `--config` Flag
 
-ContextHelp reads environment variables with specific prefixes. Viper automatically maps these to config keys.
+Global on both binaries, repeatable. Each token is one of:
 
-### Prefix Conventions
-
-| Prefix | Scope | Example |
-|--------|-------|---------|
-| `CH_` | Cross-cutting (both dPKMS and ctxt) | `CH_STORAGE_TYPE`, `CH_WORKERS` |
-| `CTXT_` | ctxt-specific | `CTXT_PROFILE`, `CTXT_DATA_DIR` |
-| `DPKMS_` | dPKMS-specific | `DPKMS_WORKERS`, `DPKMS_DATA_DIR` |
-| `OPENAI_` | AI provider | `OPENAI_API_KEY` |
-| `ANTHROPIC_` | AI provider | `ANTHROPIC_API_KEY` |
-
-### Environment Variable Mapping Rules
-
-Viper converts environment variables to config keys using these rules:
-
-1. Strip the prefix (`CH_`, `CTXT_`, `DPKMS_`)
-2. Convert to lowercase
-3. Replace `_` with `.` to create nested paths
-4. Replace `__` with `_` for actual underscores in keys
-
-### Common Environment Variables
-
-#### Cross-Cutting (CH_)
+- **`key=value`**: overrides one config key. Dotted keys address nested
+  fields; the value parses as YAML, falling back to a literal string.
+- **a bare path**: loads one more config file after the discovered ones.
+  The file must exist.
 
 ```bash
-# Storage
-CH_STORAGE_TYPE=sqlite              # → dpkms.storage.backend
-CH_STORAGE_PATH=/custom/path        # → dpkms.storage.sqlite.path
-
-# Jobs
-CH_WORKERS=8                        # → dpkms.jobs.workers
-CH_RETRY_LIMIT=5                    # → dpkms.jobs.retry_limit
-
-# HTTP API
-CH_HTTP_PORT=8080                   # → dpkms.api.rest.port
-CH_GRPC_PORT=9090                   # → dpkms.api.grpc.port
-
-# Privacy
-CH_DISABLE_TELEMETRY=true           # → monitoring.telemetry.enabled (inverted)
-
-# Registry authentication
-CH_REGISTRY_TOKEN_UXPATTERNS=abc123 # → dpkms.registries.subscriptions[name=uxpatterns].auth_token
+ctxt -c ./work.yaml find "onboarding"
+dpkms serve -c server.port=8181 -c jobs.max_retries=5
+dpkms housekeeping prune -c /srv/dpkms/dpkms.yaml
 ```
 
-#### ctxt-Specific (CTXT_)
-
-```bash
-# Configuration
-CTXT_CONFIG=/path/to/config.yaml    # Override config file location
-CTXT_DATA_DIR=/custom/data          # → ctxt.data_dir
-
-# Profile
-CTXT_PROFILE=founder                # → ctxt.profiles.default
-
-# AI
-OPENAI_API_KEY=sk-...               # → ctxt.ai.providers.openai.api_key
-ANTHROPIC_API_KEY=sk-...            # → ctxt.ai.providers.anthropic.api_key
-
-# Pipelines
-CTXT_DEFAULT_PIPELINE=text.short    # → ctxt.pipelines.defaults.text
-
-# Language
-CTXT_LANG=fr,en                     # → ctxt.i18n.preferred_languages
-CTXT_AUTO_TRANSLATE=false           # → ctxt.i18n.auto_translate
-```
-
-#### dPKMS-Specific (DPKMS_)
-
-```bash
-# Configuration
-DPKMS_CONFIG=/path/to/config.yaml   # Override config file location
-DPKMS_DATA_DIR=/custom/data         # → dpkms.data_dir
-
-# Workers
-DPKMS_WORKERS=12                    # → dpkms.jobs.workers
-DPKMS_POLL_INTERVAL=2s              # → dpkms.jobs.poll_interval
-
-# Query
-DPKMS_MAX_RESULTS=200               # → dpkms.query.max_results
-DPKMS_QUERY_TIMEOUT=60s             # → dpkms.query.timeout
-```
-
-### Special Environment Variables
-
-Some environment variables have special handling:
-
-```bash
-# Config file override (highest priority for file location)
-CTXT_CONFIG=/custom/config.yaml     # Used before default search paths
-
-# Data directory override
-CTXT_DATA_DIR=/custom/data          # Overrides all path resolutions
-DPKMS_DATA_DIR=/custom/data         # dPKMS variant
-
-# Hard disable flags
-CH_DISABLE_TELEMETRY=1              # Disables telemetry regardless of config
-```
+An invalid `-c` token, or a file that fails to load, aborts the command.
+There is no fallback to the default config.
 
 ---
 
-## Precedence Resolution Examples
+## Environment Variables Bound to Config Keys
 
-These examples show how values are resolved when set multiple ways.
+Only the variables below map to config keys. There is no automatic
+prefix-to-key translation: an unlisted `CH_<SOMETHING>` is not read as
+config. An empty value is ignored (the lower layer stays in effect).
 
-### Example 1: Profile Selection
+| Env var | Config key | Default |
+|---------|------------|---------|
+| `CH_STORAGE_TYPE` | `storage.type` | `sqlite` |
+| `CTXT_DATA_DIR` | `storage.data_dir` | `$XDG_DATA_HOME/contexthelp` |
+| `CTXT_BLOB_BACKEND` | `storage.blob.backend` | `local` |
+| `CTXT_BLOB_THRESHOLD` | `storage.blob.threshold` | `65536` |
+| `CTXT_BLOB_S3_ENDPOINT` | `storage.blob.s3.endpoint` | _(empty)_ |
+| `CTXT_BLOB_S3_REGION` | `storage.blob.s3.region` | `us-east-1` |
+| `CTXT_BLOB_S3_BUCKET` | `storage.blob.s3.bucket` | _(empty)_ |
+| `CTXT_BLOB_S3_PREFIX` | `storage.blob.s3.prefix` | _(empty)_ |
+| `CTXT_BLOB_S3_USE_PATH_STYLE` | `storage.blob.s3.use_path_style` | `false` |
+| `CTXT_BLOB_S3_ACCESS_KEY` | `storage.blob.s3.access_key` | _(empty)_ |
+| `CTXT_BLOB_S3_SECRET_KEY` | `storage.blob.s3.secret_key` | _(empty)_ |
+| `CH_SERVER_PORT` | `server.port` | `8080` |
+| `CH_GRPC_PORT` | `server.grpc_port` | `9090` |
+| `CH_COOKIE_BRIDGE_PORT` | `server.cookie_bridge_port` | `9377` |
+| `DPKMS_WORKERS` | `server.workers` | `4` |
+| `CH_PUBLIC` | `server.public` | `false` |
+| `CTXT_PROFILE` | `profile.default` | _(empty)_ |
+| `DPKMS_POLL_INTERVAL` | `jobs.poll_interval` | `500ms` |
+| `DPKMS_STALE_TIMEOUT` | `jobs.stale_timeout` | `30m` |
+| `DPKMS_MAX_RETRIES` | `jobs.max_retries` | `3` |
+| `DPKMS_MAX_HOPS` | `jobs.max_hops` | `5` |
+| `CTXT_SECRETS_BACKEND` | `secrets.backend` | `env` |
+| `CTXT_AGE_FILE` | `secrets.age_file` | _(empty)_ |
+| `CTXT_AGE_IDENTITY` | `secrets.age_identity_file` | _(empty)_ |
+| `CTXT_BROWSER_ENABLED` | `browser.enabled` | `false` |
+| `CTXT_BROWSER_BINARY` | `browser.binary` | `ibr` |
+| `CTXT_BROWSER_PORT` | `browser.port` | `0` |
 
-**Scenario:** Profile set in config, environment, and flag.
+`CTXT_DATA_DIR` is a directory. It is the base for runtime files
+(`<data dir>/run/`: pidfiles and the `ctxt instance use` selection) and
+supplies the defaults `storage.path` = `<data dir>/db.sqlite` and
+`storage.blob.local.path` = `<data dir>/blobs`. An explicit
+`storage.path` or `storage.blob.local.path` from any layer is kept. Both
+binaries create the data directory at startup. `storage.path` has no
+environment variable.
 
-```yaml
-# config.yaml
-ctxt:
-  profiles:
-    default: engineer
-```
-
-```bash
-export CTXT_PROFILE=founder
-ctxt analyze "content" --profile research
-```
-
-**Resolution Steps:**
-
-1. Default: `general` (compiled default)
-2. Config: `engineer` (from config.yaml)
-3. Environment: `founder` (from CTXT_PROFILE)
-4. Flag: `research` (from --profile)
-
-**Result:** Uses `research` profile.
-
-### Example 2: Output Format
-
-**Scenario:** Format set via flag shorthand.
-
-```yaml
-# config.yaml
-ctxt:
-  cli:
-    output_format: yaml
-```
-
-```bash
-ctxt list --json
-```
-
-**Resolution Steps:**
-
-1. Default: `text`
-2. Config: `yaml`
-3. Flag: `json` (--json is shorthand for --output json)
-
-**Result:** Outputs in JSON format.
-
-### Example 3: Worker Count
-
-**Scenario:** Workers set in multiple places.
-
-```yaml
-# config.yaml
-dpkms:
-  jobs:
-    workers: 4
-```
-
-```bash
-export CH_WORKERS=8
-dpkms serve --workers 12
-```
-
-**Resolution Steps:**
-
-1. Default: `4` (compiled default)
-2. Config: `4` (from config.yaml)
-3. Environment: `8` (from CH_WORKERS)
-4. Flag: `12` (from --workers)
-
-**Result:** Serves with 12 workers.
-
-### Example 4: Limit Flag with Config Default
-
-**Scenario:** Limit not specified, uses config default.
-
-```yaml
-# config.yaml
-dpkms:
-  query:
-    default_limit: 50
-```
-
-```bash
-ctxt list --type url
-```
-
-**Resolution Steps:**
-
-1. Default: `20` (compiled default)
-2. Config: `50` (from config.yaml)
-3. Flag: _(not provided)_
-
-**Result:** Returns 50 results.
-
-### Example 5: Multiple Flag Sources
-
-**Scenario:** Same logical value from different flag names.
-
-```bash
-ctxt list --output json  # Explicit format flag
-ctxt list --json         # Shorthand flag
-```
-
-Both commands produce identical output. The `--json` flag is a boolean shorthand that sets `output_format=json`.
-
-### Example 6: Profile-Specific Registry Selection
-
-**Scenario:** Profile overrides registry selection.
-
-```yaml
-# config.yaml
-dpkms:
-  registries:
-    subscriptions:
-      - name: default-taxonomy
-        enabled: true
-      - name: uxpatterns
-        enabled: false
-
-ctxt:
-  profiles:
-    founder:
-      registries:
-        - uxpatterns  # Founder profile enables uxpatterns
-```
-
-```bash
-ctxt analyze "content" --profile founder
-```
-
-**Resolution:**
-- Default registries: `[default-taxonomy]`
-- Profile override: Adds `uxpatterns` to active registries
-- Result: Uses both `[default-taxonomy, uxpatterns]`
+`server.public` / `CH_PUBLIC` selects public access only while
+`server.access` is unset; an explicit `server.access` wins.
 
 ---
 
-## Persistent vs Command-Specific Flags
+## Other Environment Variables Read at Startup
 
-### Persistent Flags
+These are not config keys and do not take part in the layering above.
 
-These flags are available on **all commands** and are bound to Viper config keys.
+| Env var | Effect |
+|---------|--------|
+| `CTXT_CONFIG` | Replaces the system/user/project file cascade with one file (see [Config Files](#config-files)) |
+| `CTXT_INSTANCE` | `ctxt` instance selection, below `--server` and `--instance` (see [Instance selection](#instance-selection-ctxt)) |
+| `CH_DISABLE_TELEMETRY` | `true`, `1` or `yes` forces telemetry off, whatever `privacy.telemetry` says |
 
-| Flag | Available On | Binding |
-|------|--------------|---------|
-| `--config` | All commands | Special (file path) |
-| `--profile` | All commands | `ctxt.profiles.default` |
-| `--verbose` | All commands | `ctxt.cli.verbose` |
-| `--output` | All commands | `ctxt.cli.output_format` |
-| `--color` | All commands | `ctxt.cli.color` |
-
-**Implementation:**
-
-```go
-// In cmd/root.go
-rootCmd.PersistentFlags().StringP("profile", "", "", "Active focus profile")
-viper.BindPFlag("ctxt.profiles.default", rootCmd.PersistentFlags().Lookup("profile"))
-```
-
-**Usage:**
-
-```bash
-# These all work
-ctxt --profile founder analyze "content"
-ctxt analyze --profile founder "content"
-ctxt find --profile founder "query"
-ctxt list --profile founder
-```
-
-### Command-Specific Flags
-
-These flags are only available on specific commands and are **not** bound to Viper.
-
-#### `ctxt analyze` Only
-
-| Flag | Purpose | Access Method |
-|------|---------|---------------|
-| `--hints` | Semantic hints | `cmd.Flags().GetString("hints")` |
-| `--mentions` | Explicit mentions | `cmd.Flags().GetString("mentions")` |
-| `--type` | Input type override | `cmd.Flags().GetString("type")` |
-| `--file` | Input from file | `cmd.Flags().GetString("file")` |
-| `--raw` | Disable AI | `cmd.Flags().GetBool("raw")` |
-| `--wait` | Synchronous mode | `cmd.Flags().GetBool("wait")` |
-
-**Why not bound to Viper?**
-- These flags are operation-specific parameters, not configuration
-- They don't have meaningful defaults in config files
-- They represent per-invocation behavior, not persistent preferences
-
-#### `ctxt list` Only
-
-| Flag | Purpose | Access Method |
-|------|---------|---------------|
-| `--tag` | Filter by tag | `cmd.Flags().GetString("tag")` |
-| `--hint` | Filter by hint | `cmd.Flags().GetString("hint")` |
-| `--mention` | Filter by mention | `cmd.Flags().GetString("mention")` |
-| `--before` | Date filter | `cmd.Flags().GetString("before")` |
-| `--after` | Date filter | `cmd.Flags().GetString("after")` |
-| `--sort` | Sort mode | `cmd.Flags().GetString("sort")` |
-| `--no-track` | Skip tracking | `cmd.Flags().GetBool("no-track")` |
-
-#### `dpkms serve` Only
-
-| Flag | Purpose | Binding |
-|------|---------|---------|
-| `--port` | HTTP port | `dpkms.api.rest.port` |
-| `--grpc-port` | gRPC port | `dpkms.api.grpc.port` |
-| `--workers` | Worker count | `dpkms.jobs.workers` |
-| `--public` | Remote access | `dpkms.api.rest.public` |
-
-**Note:** `dpkms serve` flags **are** bound to Viper because they override operational configuration.
+The full list of variables the binaries read lives in
+[../environment-variables/README.md](../environment-variables/README.md).
 
 ---
 
-## Configuration Validation
+## Flags That Override Config
 
-### What Happens When Flags Conflict with Config
+### `dpkms serve` listener ports
 
-ContextHelp validates configuration after merging all layers.
+| Flag | Config key | Env var | Default |
+|------|------------|---------|---------|
+| `--port` | `server.port` | `CH_SERVER_PORT` | `8080` |
+| `--grpc-port` | `server.grpc_port` | `CH_GRPC_PORT` | `9090` |
+| `--cookie-bridge-port` | `server.cookie_bridge_port` | `CH_COOKIE_BRIDGE_PORT` | `9377` |
 
-#### Validation Checks
+Each port is the flag when passed, else the config value resolved through
+the [precedence](#precedence) table. A port set by any layer (flag, `-c`,
+env or file) is explicit: serve binds exactly that port or fails. Only an
+untouched built-in default falls back to another port when busy. Port `0`
+binds an OS-assigned port. The cookie bridge always binds `127.0.0.1`.
 
-1. **Schema validation** - YAML structure matches expected schema
-2. **Type validation** - Values are correct types (int, string, bool)
-3. **Range validation** - Numeric values within acceptable ranges
-4. **Dependency validation** - Required related settings present
-5. **Plugin validation** - Plugins load successfully with provided config
+### `dpkms serve` other settings
 
-#### Validation Commands
+| Flag | Config key | Env var | Default |
+|------|------------|---------|---------|
+| `--workers` | `server.workers` | `DPKMS_WORKERS` | `4` |
+| `--dev` | `server.dev` | _(none)_ | `false` |
+| `--reminder-interval` | `server.reminder_interval` | _(none)_ | `1m` |
+| `--steps-path` | `steps.path` | _(none)_ | `~/.config/contexthelp/steps` |
 
-```bash
-# Validate configuration (reports errors)
-ctxt config validate
+Each is the flag when passed, else the config value. `--dev` enables CORS
+for the Vite dev server at `http://localhost:5173`.
 
-# Show resolved configuration (after all merges)
-ctxt config show
+### `dpkms --data-dir`
 
-# Show resolved configuration for specific key
-ctxt config show ctxt.profiles
+`--data-dir <dir>` is a `dpkms` global for `storage.data_dir`. When
+passed it wins over `-c storage.data_dir=...`, `CTXT_DATA_DIR` and every
+config file; the run dir and the `storage.path` / `storage.blob.local.path`
+defaults follow it. `ctxt` has no `--data-dir`: use `CTXT_DATA_DIR` or
+`storage.data_dir`.
 
-# Test specific flag binding
-ctxt --profile founder config show ctxt.profiles.default
-# Output: founder
-```
+### `dpkms serve --public`
 
-### Required vs Optional Values
+`--public` is OR-ed with `server.public` (`CH_PUBLIC`): either one selects
+public access when `server.access` is unset. `--public=false` cannot turn
+off a `server.public: true` from config. A non-private instance needs
+inbound auth (`server.auth`) or serve refuses to start.
 
-| Setting | Required? | Validation |
-|---------|-----------|------------|
-| `dpkms.storage.backend` | Yes | Must be valid backend (sqlite, postgres, leann) |
-| `dpkms.storage.sqlite.path` | Yes (if sqlite) | Must be writable path |
-| `ctxt.profiles.default` | No | Defaults to `general` |
-| `ctxt.ai.providers.openai.api_key` | No | Required only if OpenAI provider used |
-| `--profile` flag | No | Falls back to config or default |
-| `--type` flag on analyze | No | Auto-detected if not provided |
+### Instance selection (`ctxt`)
 
-### Type Validation
+Commands that talk to dpkms pick one endpoint, first match wins:
 
-```bash
-# Valid - port is integer
-dpkms serve --port 8080
+1. `--server <url>`
+2. `--instance <name|port>`
+3. `CTXT_INSTANCE`
+4. the selection saved by `ctxt instance use`
+5. first entry of `server.urls`
+6. `server.url`
+7. `http://127.0.0.1:8080`
 
-# Invalid - port must be integer
-dpkms serve --port abc
-# Error: invalid argument "abc" for "--port" flag: strconv.ParseInt: parsing "abc": invalid syntax
+`dpkms` client commands take `--server-url`, which overrides
+`server.url` and `server.urls`.
 
-# Valid - workers is integer
-export CH_WORKERS=8
+### Global flags
 
-# Invalid - workers must be positive
-export CH_WORKERS=-1
-# Error: dpkms.jobs.workers must be positive integer, got -1
-```
+Both binaries inherit kit's global flags (`-c/--config`, `--format`,
+`-o/--output`, `--quiet`, `--no-color`, `-V/--verbose`, `-C/--chdir`,
+`--dry-run`, `--confirm`, `--offline`, ...). Apart from `-c`, these are
+per-invocation options with no config key behind them. `ctxt` adds
+`--profile` and `--instance`; `dpkms` adds `--data-dir`. Run
+`ctxt --help-all` or `dpkms --help-all` for the full list.
 
-### Example: Invalid Configuration
-
-```yaml
-# config.yaml
-dpkms:
-  storage:
-    backend: invalid_backend  # Not a valid backend
-  jobs:
-    workers: -5              # Must be positive
-```
-
-```bash
-ctxt config validate
-# Output:
-# ✗ dpkms.storage.backend: invalid value "invalid_backend", must be one of: sqlite, postgres, leann
-# ✗ dpkms.jobs.workers: must be positive integer, got -5
-# Config validation failed with 2 errors
-```
+`--offline` is enforced by kit: requests through `http.DefaultTransport`
+made on the command's context fail with `network disabled by --offline`
+unless they target loopback. It has no env var or config key.
 
 ---
 
-## Profile-Specific Overrides
+## Profiles
 
-Profiles provide a powerful way to override configuration at runtime.
-
-### How Profiles Work
-
-Profiles are defined in `ctxt.profiles.<name>` and can override:
-- Active registries
-- Pipeline selection
-- Tag filters and boosts
-- Language preferences
-- Reranking weights
-
-### Profile Definition Example
+Focus profiles live under `profile` in the config file:
 
 ```yaml
-# config.yaml
-ctxt:
-  profiles:
-    default: engineer  # Default profile if not specified
-
-    engineer:
-      registries:
-        - local-taxonomy
-      pipelines: ["*"]  # All pipelines enabled
-      tags:
-        include: ["technical.*", "code.*"]
-        boost: ["architecture.*", "performance.*"]
-
-    founder:
-      registries:
-        - uxpatterns
-        - growth-weights
-      pipelines:
-        - text.long
-        - url.generic
-      tags:
-        include: ["business.*", "growth.*"]
-        exclude: ["technical.*"]
-
-    research:
-      registries:
-        - local-taxonomy
-        - uxpatterns
-      pipelines: ["*"]
-      search:
-        vector:
-          enabled: true
-          weight: 0.5
-```
-
-### Profile Override Examples
-
-#### Example 1: Profile Changes Registry Selection
-
-```bash
-# Without profile (uses default: engineer)
-ctxt find "onboarding flow"
-# Searches: local-taxonomy only
-
-# With founder profile
-ctxt find "onboarding flow" --profile founder
-# Searches: uxpatterns + growth-weights
-```
-
-#### Example 2: Profile Changes Pipeline Selection
-
-```bash
-# Engineer profile (all pipelines)
-ctxt analyze screenshot.png --profile engineer
-# Uses: image.ocr pipeline
-
-# Founder profile (limited pipelines)
-ctxt analyze screenshot.png --profile founder
-# Error: image.ocr not enabled in founder profile
-```
-
-#### Example 3: Profile Changes Search Ranking
-
-```yaml
-# research profile definition
-research:
-  search:
-    ranking_weights:
-      recency: 0.2
-      relevance: 0.6  # Higher relevance weight
-      frequency: 0.2
-```
-
-```bash
-# Default ranking
-ctxt find "API design"
-# Results ranked: recency=0.3, relevance=0.5, frequency=0.2
-
-# Research profile ranking
-ctxt find "API design" --profile research
-# Results ranked: recency=0.2, relevance=0.6, frequency=0.2
-# (More weight on content relevance vs recency)
-```
-
-#### Example 4: Profile Persistent Selection
-
-```bash
-# Set default profile for session
-ctxt profile use founder
-
-# All subsequent commands use founder profile
-ctxt analyze "content"      # Uses founder profile
-ctxt find "query"           # Uses founder profile
-
-# Override per-command
-ctxt find "query" --profile engineer
-
-# Reset to default
-ctxt profile use engineer
-```
-
-### Profile Override Precedence
-
-When using profiles, the precedence chain becomes:
-
-```
-1. Compiled defaults
-   ↓
-2. Global config (ctxt.*)
-   ↓
-3. Profile config (ctxt.profiles.<name>.*)
-   ↓
-4. Environment variables
-   ↓
-5. Runtime flags
-```
-
-**Example:**
-
-```yaml
-# config.yaml
-dpkms:
-  registries:
-    subscriptions:
-      - name: default-taxonomy
-        enabled: true
-
-ctxt:
+# ~/.config/contexthelp/ctxt.yaml
+profile:
+  default: engineer          # CTXT_PROFILE overrides this
   profiles:
     engineer:
-      registries:
-        - local-taxonomy
-        - custom-tech-registry
+      description: Engineering focus
+      tags: ["technical", "code"]
+      mention_namespaces: ["repo"]
+    founder:
+      description: Business focus
+      tags: ["business", "growth"]
 ```
 
-```bash
-export CTXT_REGISTRIES=uxpatterns  # Environment override
-
-ctxt analyze "content" --profile engineer
-```
-
-**Resolution:**
-1. Default registries: `[default-taxonomy]`
-2. Profile override: `[local-taxonomy, custom-tech-registry]`
-3. Environment override: `[uxpatterns]`
-4. Final: Uses `uxpatterns` (environment wins)
+- `profile.default` names the default profile. `CTXT_PROFILE` and
+  `-c profile.default=<name>` override it like any bound key.
+- A profile entry may carry `default: true` instead. At most one may;
+  when `profile.default` is empty it is filled from that entry, and when
+  both are set they must agree or loading fails.
+- `--profile <name>` selects a profile for one invocation on commands that
+  read it. Every such command resolves the active profile the same way:
+  `--profile` when passed, then `profile.default` (`CTXT_PROFILE` over the
+  file), then none (a request then carries no profile and dpkms applies its
+  own default). `--profile ""` selects
+  no profile even when a default is set.
+- `ctxt profile set <name>` / `ctxt profile unset <name>` change the
+  default; `ctxt profile list` / `ctxt profile view <name>` inspect them.
 
 ---
 
-## Summary
+## Examples
 
-### Key Takeaways
+### Listener port through every layer
 
-1. **Precedence Chain:** Defaults → System Config → User Config → Environment → Flags
-2. **Persistent Flags:** Available on all commands (--profile, --output, --verbose)
-3. **Command-Specific Flags:** Only available on specific commands (--hints, --limit)
-4. **Environment Prefixes:** `CH_` (cross-cutting), `CTXT_` (ctxt), `DPKMS_` (dpkms)
-5. **Profiles Override:** Profiles apply between global config and environment
-6. **Flag Binding:** Cobra flags bound to Viper config keys for persistent settings
-7. **Validation:** Use `ctxt config validate` and `ctxt config show` to debug
+```yaml
+# ~/.config/contexthelp/dpkms.yaml
+server:
+  port: 8181
+```
 
-### Quick Reference Commands
+| Command | HTTP port |
+|---------|-----------|
+| `dpkms serve` | `8181` (user file) |
+| `CH_SERVER_PORT=8282 dpkms serve` | `8282` (env beats file) |
+| `CH_SERVER_PORT=8282 dpkms serve -c server.port=8383` | `8383` (`-c` beats env) |
+| `CH_SERVER_PORT=8282 dpkms serve -c server.port=8383 --port 8484` | `8484` (flag beats all) |
+
+With none of these set, serve uses `8080` and, if busy, falls back to
+another port.
+
+### Env beats an explicit `-c` file
 
 ```bash
-# Show resolved configuration
-ctxt config show
+# extra.yaml sets storage.type: postgres
+CH_STORAGE_TYPE=sqlite dpkms serve -c ./extra.yaml
+# → storage.type = sqlite
+```
 
-# Test flag binding
-ctxt --profile founder config show ctxt.profiles.default
+### `CTXT_CONFIG` vs `-c`
 
-# Validate configuration
+```bash
+CTXT_CONFIG=~/alt/ctxt.yaml ctxt -c jobs.max_hops=8 find "query"
+# Files: only ~/alt/ctxt.yaml (system/user/project skipped)
+# jobs.max_hops = 8 from -c, whatever the file says
+```
+
+---
+
+## Debugging Resolution
+
+```bash
+# Which files are in play, in order
+ctxt config paths
+dpkms config paths
+
+# Highest-precedence existing file
+ctxt config path
+
+# Merged configuration ctxt sees (files + env + -c)
+ctxt config show --format json
+
+# Validate the merged configuration
 ctxt config validate
 
-# Check precedence
-ctxt analyze "test" --profile engineer --verbose
-# Uses: engineer profile, verbose output, all config overrides applied
-
-# Debug environment variables
-env | grep -E '^(CH_|CTXT_|DPKMS_)'
+# Bound variables currently set
+env | grep -E '^(CH|CTXT|DPKMS)_'
 ```
 
 ### Related Documentation
 
-- [configuration.md](./configuration.md) - Full configuration reference
-- [api-cli.md](./api-cli.md) - Complete CLI command reference
+- [configuration.md](./configuration.md) - Configuration reference
+- [api-cli.md](./api-cli.md) - CLI command reference
+- [../environment-variables/README.md](../environment-variables/README.md) - All environment variables
 - [../configuration-structure.md](../configuration-structure.md) - Config file organization
-- [../design.md](../design.md) - System architecture overview
-
----
-
-**Document Version:** 1.0
-**Last Updated:** 2026-01-26

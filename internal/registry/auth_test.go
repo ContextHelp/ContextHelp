@@ -3,19 +3,14 @@
 package registry
 
 import (
+	"context"
 	"errors"
-	"os/exec"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// hasKeychain reports whether the OS keychain CLI is available.
-func hasKeychain() bool {
-	_, err := exec.LookPath("security")
-	return err == nil
-}
 
 func TestNewTokenStore(t *testing.T) {
 	s := NewTokenStore()
@@ -24,26 +19,19 @@ func TestNewTokenStore(t *testing.T) {
 }
 
 func TestTokenStore_SetGetDelete(t *testing.T) {
-	if !hasKeychain() {
-		t.Skip("security binary not available — skip live keychain test")
-	}
-
-	// Use a unique service to isolate test data.
-	origSvc := keychainService
-	_ = origSvc // ensure constant is accessible
-
 	s := &TokenStore{kc: newTestResolver(t)}
 
 	const regName = "test-registry"
 	const token = "tok-abc123"
+	const origin = "https://registry.example"
 
 	// Store
-	require.NoError(t, s.Set(regName, token))
+	require.NoError(t, s.Set(regName, origin, token))
 
 	// Retrieve
 	got, err := s.Get(regName)
 	require.NoError(t, err)
-	assert.Equal(t, token, got)
+	assert.Equal(t, StoredToken{Origin: origin, Token: token}, got)
 
 	// Delete
 	require.NoError(t, s.Delete(regName))
@@ -56,10 +44,6 @@ func TestTokenStore_SetGetDelete(t *testing.T) {
 }
 
 func TestTokenStore_GetMissing(t *testing.T) {
-	if !hasKeychain() {
-		t.Skip("security binary not available — skip live keychain test")
-	}
-
 	s := &TokenStore{kc: newTestResolver(t)}
 	_, err := s.Get("definitely-not-stored-registry")
 	var noToken ErrNoToken
@@ -68,10 +52,6 @@ func TestTokenStore_GetMissing(t *testing.T) {
 }
 
 func TestTokenStore_DeleteMissing(t *testing.T) {
-	if !hasKeychain() {
-		t.Skip("security binary not available — skip live keychain test")
-	}
-
 	s := &TokenStore{kc: newTestResolver(t)}
 	err := s.Delete("definitely-not-stored-registry-del")
 	var noToken ErrNoToken
@@ -79,15 +59,15 @@ func TestTokenStore_DeleteMissing(t *testing.T) {
 }
 
 func TestTokenStore_SetEmptyName(t *testing.T) {
-	s := NewTokenStore()
-	err := s.Set("", "sometoken")
+	s := &TokenStore{kc: newTestResolver(t)}
+	err := s.Set("", "https://registry.example", "sometoken")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "name must not be empty")
 }
 
 func TestTokenStore_SetEmptyToken(t *testing.T) {
-	s := NewTokenStore()
-	err := s.Set("myregistry", "")
+	s := &TokenStore{kc: newTestResolver(t)}
+	err := s.Set("myregistry", "https://registry.example", "")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "token must not be empty")
 }
@@ -99,20 +79,37 @@ func TestErrNoToken_Error(t *testing.T) {
 }
 
 func TestTokenStore_SetOverwrites(t *testing.T) {
-	if !hasKeychain() {
-		t.Skip("security binary not available — skip live keychain test")
-	}
-
 	s := &TokenStore{kc: newTestResolver(t)}
 	const reg = "overwrite-reg"
 
-	require.NoError(t, s.Set(reg, "first-token"))
-	require.NoError(t, s.Set(reg, "second-token"))
+	require.NoError(t, s.Set(reg, "https://registry.example", "first-token"))
+	require.NoError(t, s.Set(reg, "https://registry.example", "second-token"))
 
 	got, err := s.Get(reg)
 	require.NoError(t, err)
-	assert.Equal(t, "second-token", got)
+	assert.Equal(t, "second-token", got.Token)
 
 	// Cleanup
 	_ = s.Delete(reg)
+}
+
+func TestTokenStore_SetRequiresOrigin(t *testing.T) {
+	s := &TokenStore{kc: newTestResolver(t)}
+	err := s.Set("myregistry", "", "sometoken")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "origin must not be empty")
+}
+
+// An entry written without an origin (a bare token) is no token: there is
+// no recorded origin to bind it to.
+func TestTokenStore_EntryWithoutOriginIsNoToken(t *testing.T) {
+	kc := newTestResolver(t)
+	s := &TokenStore{kc: kc}
+	for i, raw := range []string{"bare-token", `{"token":"tok"}`, `{"origin":"https://registry.example"}`} {
+		name := fmt.Sprintf("legacy-%d", i)
+		require.NoError(t, kc.Set(context.Background(), name, []byte(raw)))
+		_, err := s.Get(name)
+		var noToken ErrNoToken
+		assert.True(t, errors.As(err, &noToken), "entry %q: err = %v", raw, err)
+	}
 }

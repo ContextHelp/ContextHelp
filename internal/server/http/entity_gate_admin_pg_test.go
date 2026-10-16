@@ -2,15 +2,15 @@
 
 package http
 
-// Postgres parity for the admin entity-gate bypass: the metering rows the
-// test asserts on live in the store. Reads the POSTGRES_* env block the
+// Postgres parity for the entity gate: the admin bypass and the
+// non-admin metering and quota both read and write metering rows in the
+// store. Reads the POSTGRES_* env block the
 // other integration suites use:
 //
 //	POSTGRES_HOST=localhost POSTGRES_USER=contexthelp POSTGRES_PASSWORD=test_password \
 //	  go test -tags integration,fts5 -count=1 -run 'Postgres' ./internal/server/http/
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"math/rand"
@@ -24,6 +24,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // pgBaseDSN mirrors the integration env contract: POSTGRES_DSN wins,
@@ -71,13 +72,17 @@ func freshPostgres(t *testing.T) storage.StorageDriver {
 	u, err := url.Parse(base)
 	require.NoError(t, err)
 	u.Path = "/" + name
-	d, err := postgres.New(u.String())
+	d, err := postgres.New(u.String(), storageutil.NewTestBlobStore(t))
 	require.NoError(t, err)
-	require.NoError(t, d.Init(context.Background()))
-	t.Cleanup(func() { _ = d.Close(context.Background()) })
+	require.NoError(t, d.Init(ownerCtx()))
+	t.Cleanup(func() { _ = d.Close(ownerCtx()) })
 	return d
 }
 
 func TestAdminBypassesEntityGate_Postgres(t *testing.T) {
-	runAdminEntityGateBypass(t, freshPostgres(t), false)
+	runAdminEntityGateBypass(t, freshPostgres(t))
+}
+
+func TestEntityGateMetersNonAdmin_Postgres(t *testing.T) {
+	runNonAdminEntityGateMetering(t, freshPostgres(t))
 }

@@ -15,12 +15,14 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"slices"
 	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	kitbus "hop.top/kit/go/runtime/bus"
+	"hop.top/kit/go/storage/secret"
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/browser"
@@ -40,6 +42,8 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/security"
 	httpserver "github.com/ideacrafterslabs/ctxt/internal/server/http"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
+	"github.com/ideacrafterslabs/ctxt/internal/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/watcher"
 )
@@ -54,9 +58,10 @@ type Inputs struct {
 	// Access is the effective access class (config.Access*), as
 	// ResolveInboundAuth returns it.
 	Access string
-	// Auth is the inbound authentication provider. It guards the route
-	// table on non-private instances only.
-	Auth authn.Provider
+	// Auth replaces the authentication chain Build assembles from
+	// server.auth and the driver's principal registry (tests). nil
+	// builds the configured chain. Ignored on private instances.
+	Auth *authn.Chain
 	// PolicyBus is the bus the policy engine subscribes to; dpkms serve
 	// passes its /ws/bus hub.
 	PolicyBus kitbus.Bus
@@ -66,6 +71,9 @@ type Inputs struct {
 	Browser *browser.Client
 	// StepsPath is the external steps directory.
 	StepsPath string
+	// StepRunners replaces the runners installed steps run through
+	// (tests); nil means steps.DefaultRunners.
+	StepRunners *steps.Runners
 	// ConfigPath is the config file the event subscriber reports.
 	ConfigPath string
 	// Probes injects runtime signals into /healthz.
@@ -82,6 +90,10 @@ type Inputs struct {
 	// Notes receives startup notes (web UI sign-in availability and
 	// session sweeps). nil discards them.
 	Notes io.Writer
+	// StrictSharing makes the visibility backstop refuse a response it
+	// would otherwise strip (ADR-080 §8): dpkms serve --strict-sharing,
+	// and every test instance.
+	StrictSharing bool
 }
 
 // Stack is the assembled request-serving stack.
@@ -96,55 +108,79 @@ type Stack struct {
 	Bus     events.Bus
 	Service *service.Service
 	Watcher *watcher.Manager
-	// RouteAuth is the token provider guarding the route table (and
-	// gRPC); nil on private instances.
-	RouteAuth authn.Provider
+	// RouteAuth is the authentication chain guarding the route table
+	// and gRPC; nil on private instances.
+	RouteAuth *authn.Chain
+	// Keys mints and verifies the registry API keys RouteAuth accepts.
+	// A private instance authenticates nothing but still manages keys
+	// over the API, so it holds one too.
+	Keys *authn.Keys
 	// UISessions is the web UI sign-in session manager; nil when the
-	// instance offers no browser sign-in (private instances, providers
-	// that cannot resolve token hashes). The HTTP route table accepts
-	// its session cookies on top of RouteAuth's tokens; gRPC does not.
-	UISessions   *authn.Sessions
+	// instance offers no browser sign-in (private instances, a
+	// server.auth.methods without session). Only the HTTP chain runs
+	// the session method: gRPC carries no cookies.
+	UISessions *authn.Sessions
+	// Tickets mints and redeems invite and sign-in links; nil when no
+	// ceremony may mint a session (no UISessions, or sign_in: []).
+	Tickets      *authn.Tickets
 	Security     *security.Emitter
 	Entitlements *registry.InboundGate
 	Router       chi.Router
+	// StrictSharing is Inputs.StrictSharing, for the gRPC server the
+	// caller builds beside the router.
+	StrictSharing bool
+	// Audit is the read audit writer (ADR-080 §9) the router records
+	// into; the gRPC server the caller builds takes it too. Shutdown
+	// flushes it.
+	Audit *sharing.AuditWriter
 
 	policy *policy.Bootstrap
 }
 
-// Close releases what Build acquired beyond the driver: it unwires the
-// policy engine from its bus. Idempotent.
-func (s *Stack) Close() {
-	if s != nil {
-		s.policy.Close()
+// closeDrainTimeout bounds Close's wait for queued security audit rows.
+const closeDrainTimeout = 5 * time.Second
+
+// Shutdown releases what Build acquired beyond the driver, and must run
+// before the driver closes: it flushes the read audit writer, stops the
+// security emitter and drains its queued audit rows within ctx, then
+// unwires the policy engine from its bus. Idempotent; a drain cut short
+// by ctx is returned as an error.
+func (s *Stack) Shutdown(ctx context.Context) error {
+	if s == nil {
+		return nil
 	}
+	err := s.Audit.Close(ctx)
+	if s.Security != nil {
+		if serr := s.Security.Close(ctx); serr != nil && err == nil {
+			err = serr
+		}
+	}
+	s.policy.Close()
+	return err
 }
 
-// ResolveInboundAuth folds the --public flag into the loaded config,
-// enforces the access-class rules, and constructs the configured
-// authentication provider. Returns the effective access class and the
-// provider (nil when no auth is configured, which is only legal for
-// private instances). Any misconfiguration (unknown class, explicit
-// private + --public, non-private without credentials, broken provider
-// config) is an error, so dpkms serve refuses before a port is bound.
-func ResolveInboundAuth(c *config.Config, publicFlag bool) (string, authn.Provider, error) {
+// Close is Shutdown bounded by a fixed drain timeout, for deferred and
+// test cleanup use. Idempotent.
+func (s *Stack) Close() {
+	ctx, cancel := context.WithTimeout(context.Background(), closeDrainTimeout)
+	defer cancel()
+	_ = s.Shutdown(ctx)
+}
+
+// ResolveInboundAuth folds the --public flag into the loaded config and
+// enforces the access-class and server.auth rules, returning the
+// effective access class. Any misconfiguration (unknown class, explicit
+// private + --public, broken server.auth, a link-minting instance with
+// no public_url) is an error, so dpkms serve refuses before a port is
+// bound. Whether the instance holds a credential is checked by Build
+// against the registry (authn.RequireOwnerCredential).
+func ResolveInboundAuth(c *config.Config, publicFlag bool) (string, error) {
 	folded := *c
 	folded.Server.Public = folded.Server.Public || publicFlag
 	if err := folded.ValidateAccess(); err != nil {
-		return "", nil, err
+		return "", err
 	}
-	access := folded.Server.EffectiveAccess()
-
-	provider, err := authn.FromConfig(c.Server.Auth)
-	if err != nil {
-		return "", nil, err
-	}
-	if access != config.AccessPrivate && provider == nil {
-		// Unreachable while ValidateAccess covers credential presence;
-		// kept as a hard stop so a validation regression can never
-		// expose an unauthenticated non-private listener.
-		return "", nil, fmt.Errorf("config: %s instance requires inbound authentication (server.auth)", access)
-	}
-	return access, provider, nil
+	return folded.Server.EffectiveAccess(), nil
 }
 
 // EmbeddingBuildOpts wires the embedding write path into the pipeline
@@ -218,40 +254,57 @@ func HostAllowlist(access string, port int, extra []string) (*httpserver.HostAll
 // Build prunes them.
 const uiSessionRetention = 30 * 24 * time.Hour
 
-// newUISessions builds the web UI session manager for a non-private
-// instance, or returns nil (private instances need no sign-in; a
-// provider that cannot resolve token hashes cannot mint sessions). At
-// start it revokes sessions whose minting token left the config, and
-// prunes sessions that ended more than uiSessionRetention ago.
-func newUISessions(ctx context.Context, out io.Writer, store storage.UISessionStore, provider authn.Provider, access string, bounds config.UISessionConfig) (*authn.Sessions, error) {
-	if access == config.AccessPrivate || provider == nil {
+// newUISessions builds the web UI session manager of a non-private
+// instance over the driver's session store and principal registry, or
+// returns nil (private instances need no sign-in). At start it prunes
+// sessions that ended more than uiSessionRetention ago.
+func newUISessions(ctx context.Context, out io.Writer, driver storage.StorageDriver, keys *authn.Keys, access string, bounds config.UISessionConfig) (*authn.Sessions, error) {
+	if access == config.AccessPrivate {
 		return nil, nil
 	}
-	resolver, ok := provider.(authn.TokenHashResolver)
-	if !ok {
-		fmt.Fprintf(out, "Web UI sign-in: unavailable with the %s provider\n", provider.Name())
-		return nil, nil
-	}
-	sessions, err := authn.NewSessions(store, resolver, authn.SessionOptions{
+	sessions, err := authn.NewSessions(driver.UISessions(), driver.Auth(), keys, authn.SessionOptions{
 		IdleTTL: bounds.IdleTTL,
 		MaxTTL:  bounds.MaxTTL,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("web UI sessions: %w", err)
 	}
-	n, err := sessions.SweepRemovedTokens(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("web UI sessions: %w", err)
-	}
-	if n > 0 {
-		fmt.Fprintf(out, "Web UI sign-in: revoked %d session(s) whose token is no longer configured\n", n)
-	}
-	if _, err := store.Prune(ctx, time.Now().Add(-uiSessionRetention)); err != nil {
+	if _, err := driver.UISessions().Prune(ctx, time.Now().Add(-uiSessionRetention)); err != nil {
 		return nil, fmt.Errorf("web UI sessions: prune: %w", err)
 	}
 	fmt.Fprintf(out, "Web UI sign-in: ctxt ui open (sessions end after %s idle, %s at most)\n",
 		sessions.IdleTTL(), sessions.MaxTTL())
 	return sessions, nil
+}
+
+// buildAuth assembles the authentication of a non-private instance
+// (ADR-079): registry keys and config-declared keys behind the api_key
+// method, browser sessions behind the session method, chained in the
+// configured order with carried methods first. It refuses an instance
+// with no active owner credential, naming the command that creates one.
+func buildAuth(ctx context.Context, notes io.Writer, driver storage.StorageDriver, cfg *config.Config, access string) (*authn.Chain, *authn.Keys, *authn.Sessions, error) {
+	keys := authn.NewKeysOver(driver.Auth(), nil)
+	cfgKeys, err := authn.ConfigKeysFrom(cfg.Server.Auth.Keys)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("config: %w", err)
+	}
+	if err := authn.RequireOwnerCredential(ctx, keys, cfgKeys, time.Now()); err != nil {
+		return nil, nil, nil, fmt.Errorf("config: %s instance: %w", access, err)
+	}
+	methods := cfg.Server.Auth.EffectiveMethods()
+	available := []authn.Method{authn.NewAPIKeyMethod(keys, cfgKeys)}
+	var sessions *authn.Sessions
+	if slices.Contains(methods, authn.MethodSession) {
+		if sessions, err = newUISessions(ctx, notes, driver, keys, access, cfg.Server.UI.Session); err != nil {
+			return nil, nil, nil, err
+		}
+		available = append(available, sessions.Method())
+	}
+	chain, err := authn.ChainFor(methods, available...)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return chain, keys, sessions, nil
 }
 
 // Build assembles the stack over in.Driver.
@@ -283,7 +336,7 @@ func Build(in Inputs) (*Stack, error) {
 		}
 	}
 
-	s := &Stack{Queue: jobs.NewQueue(in.Driver.Jobs())}
+	s := &Stack{Queue: jobs.NewQueue(in.Driver.Jobs()), StrictSharing: in.StrictSharing}
 
 	// Pipeline registry with configured providers and per-pipeline
 	// overrides, validated at enqueue time.
@@ -297,7 +350,27 @@ func Build(in Inputs) (*Stack, error) {
 	buildOpts.BlobStore = in.Driver.Blobs()
 	buildOpts.BlobThreshold = cfg.Storage.Blob.Threshold
 	buildOpts.BrowserClient = in.Browser
-	s.Pipelines = builtins.ConfiguredRegistryWithPipelineOverrides(buildOpts, cfg.Providers, cfg.Pipelines)
+	buildOpts.FetchGuard = config.FetchGuard(cfg)
+	// ADR-080 §3, §7: on protected and public instances every pipeline
+	// runs content_classes with the configured class rules and the
+	// embedding step writes the masked variant; a private instance
+	// shares nothing and does neither.
+	buildOpts.Access = access
+	buildOpts.ClassRules = builtins.ClassRulesFromConfig(cfg.Sharing)
+	// Installed steps pipelines.overrides may insert (ADR-058).
+	runners := steps.DefaultRunners()
+	if in.StepRunners != nil {
+		runners = *in.StepRunners
+	}
+	catalog, err := steps.LoadCatalog(context.Background(), in.Driver, runners)
+	if err != nil {
+		return nil, err
+	}
+	buildOpts.External = catalog
+	s.Pipelines, err = builtins.ConfiguredRegistryWithPipelineOverrides(buildOpts, cfg.Providers, cfg.Pipelines)
+	if err != nil {
+		return nil, err
+	}
 	pipes := s.Pipelines
 	s.Queue.SetPipelineValidator(func(name string) error {
 		_, err := pipes.Get(name)
@@ -329,15 +402,27 @@ func Build(in Inputs) (*Stack, error) {
 
 	s.Service = service.NewWithOptions(
 		in.Driver, s.Queue, s.Pipelines, s.Engine, in.StepsPath, bus,
-		[]service.Option{service.WithPolicyPublisher(pol.Publisher())},
+		[]service.Option{
+			service.WithPolicyPublisher(pol.Publisher()),
+			service.WithReservedStepNames(builtins.IsStepName),
+			// A server has no login keychain: registry tokens come from
+			// secrets.backend under registry/<name>.
+			service.WithRegistryTokens(registry.SecretTokens(func() (secret.Store, error) { return secretsStore, nil })),
+		},
 		*cfg,
 	)
-	s.Watcher = watcher.NewManager(in.Driver.Watches(), s.Service)
+	s.Watcher = watcher.NewManager(in.Driver.Watches(), watcher.StoreRecords(in.Driver.Watches()), serviceIngester{s.Service})
 
 	// Non-private instances authenticate the whole /api/v1 route table
-	// (MCP mount included) through the provider-agnostic middleware.
-	if access != config.AccessPrivate {
-		s.RouteAuth = in.Auth
+	// (MCP mount included) through the method chain: the configured one
+	// over the driver's principal registry, or the one a test injects.
+	notes := in.Notes
+	if notes == nil {
+		notes = io.Discard
+	}
+	if err := s.wireAuth(in, access, notes); err != nil {
+		s.Close()
+		return nil, err
 	}
 	// Auth failures and ACL denials feed the audit log
 	// (event_class=security) plus optional webhook/SMTP alerting. Wired
@@ -358,37 +443,34 @@ func Build(in Inputs) (*Stack, error) {
 		}
 	}
 
-	// Web UI sign-in (`ctxt ui open`): browser sessions persisted in the
-	// store, acting as the principal of the token that minted them. The
-	// HTTP route table takes session cookies; gRPC keeps tokens only.
-	httpAuth := s.RouteAuth
-	notes := in.Notes
-	if notes == nil {
-		notes = io.Discard
-	}
-	s.UISessions, err = newUISessions(context.Background(), notes, in.Driver.UISessions(), s.RouteAuth, access, cfg.Server.UI.Session)
-	if err != nil {
-		s.policy.Close()
-		return nil, err
-	}
-	if s.UISessions != nil {
-		httpAuth = s.UISessions.Provider(s.RouteAuth)
-	}
+	// The read audit of shared viewers (ADR-080 §9): buffered, flushed
+	// off the request path.
+	s.Audit = sharing.NewAuditWriter(in.Driver.Sharing().AccessLog(), sharing.AuditOptions{})
 
 	s.Router = httpserver.NewRouterWithConfig(s.Service, httpserver.RouterConfig{
 		Semantic:     QuerySemantic(in.Driver, resolver, in.Warnings),
 		DevCORS:      in.DevCORS,
 		Watcher:      s.Watcher,
 		Probes:       in.Probes,
-		Auth:         httpAuth,
+		Auth:         s.RouteAuth,
 		Sessions:     s.UISessions,
 		Security:     s.Security,
 		Entitlements: s.Entitlements,
-		// On non-private instances the federation push route is gated
-		// per federation.token, never by a principal token alone.
-		RequireFederationCredential: access != config.AccessPrivate,
-		RedactHealthz:               access == config.AccessPublic,
-		Hosts:                       hosts,
+		// The principal registry routes and the link ceremonies
+		// (ADR-079 §5): links are built on server.public_url.
+		Registry:  in.Driver.Auth(),
+		Keys:      s.Keys,
+		Sharing:   in.Driver.Sharing(),
+		Tickets:   s.Tickets,
+		SignIn:    cfg.Server.Auth.EffectiveSignIn(),
+		PublicURL: cfg.Server.PublicURL,
+		// On non-private instances the federation push route takes a
+		// peer principal's key, never any authenticated principal.
+		RequirePeerPrincipal: access != config.AccessPrivate,
+		RedactHealthz:        access == config.AccessPublic,
+		Hosts:                hosts,
+		StrictSharing:        in.StrictSharing,
+		Audit:                s.Audit,
 	})
 	return s, nil
 }

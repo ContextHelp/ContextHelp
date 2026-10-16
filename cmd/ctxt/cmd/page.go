@@ -1,14 +1,13 @@
 package cmd
 
 import (
-	"context"
+	"errors"
 	"fmt"
-	"os"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
-	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
+	"hop.top/kit/go/console/output"
 )
 
 var pageCmd = &cobra.Command{
@@ -18,6 +17,10 @@ var pageCmd = &cobra.Command{
 
 Entity pages are compiled knowledge objects that aggregate information
 about a single entity from all mentioning sources.
+
+Every subcommand calls the dpkms API of the resolved instance (--server,
+--instance, CTXT_INSTANCE, the current instance, then config). list and
+show need the read:objects scope; refresh needs write:objects.
 
 Examples:
   ctxt page list
@@ -29,7 +32,7 @@ var pageListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all entity pages",
 	Long: `List all entity pages with a one-line summary per page (id, slug,
-source count, last update).
+source count, last update), newest first.
 
 Examples:
   ctxt page list
@@ -91,92 +94,101 @@ func init() {
 	})
 
 	pageListCmd.Flags().Int("limit", 50, "maximum results")
-	viper.BindPFlag("page.limit", pageListCmd.Flags().Lookup("limit"))
+	for _, c := range []*cobra.Command{pageListCmd, pageShowCmd, pageRefreshCmd} {
+		c.Flags().String("server", "", serverFlagUsage)
+	}
 }
 
-func runPageList(cmd *cobra.Command, args []string) error {
-	svc, cleanup, err := newService()
+// pageLookupError gives a dpkms 404 for slug the recovery a caller
+// needs; every other failure keeps the class the client gave it.
+func pageLookupError(slug string, err error) error {
+	var ke *output.Error
+	if !errors.As(err, &ke) || ke.ExitCode != output.ExitNotFound {
+		return fmt.Errorf("entity page %s: %w", slug, err)
+	}
+	e := output.NotFoundError(fmt.Sprintf("no entity page for %q", slug))
+	e.SuggestedFix = "run `ctxt page list` to see the entity pages"
+	return e
+}
+
+func runPageList(cmd *cobra.Command, _ []string) error {
+	limit, _ := cmd.Flags().GetInt("limit")
+	client, err := newDpkmsClient(cmd, dpkmsclient.DefaultTimeout)
 	if err != nil {
 		return err
 	}
-	defer cleanup()
-
-	ctx := context.Background()
-	limit := viper.GetInt("page.limit")
-
-	pages, err := svc.ListEntityPages(ctx, limit)
+	pages, err := client.ListPages(cmd.Context(), limit)
 	if err != nil {
 		return fmt.Errorf("list pages: %w", err)
 	}
 
+	out := cmd.OutOrStdout()
 	if isJSONOutput() {
-		return outputJSON(os.Stdout, pages)
+		return outputJSON(out, pages)
 	}
 
-	fmt.Printf("Entity Pages (%d)\n\n", len(pages))
+	fmt.Fprintf(out, "Entity Pages (%d)\n\n", len(pages))
 	headers := []string{"ID", "Entity", "Sources", "Updated"}
-	var rows [][]string
+	rows := make([][]string, 0, len(pages))
 	for _, p := range pages {
-		meta, _ := service.ExtractPageMeta(p)
+		meta, _ := dpkmsclient.PageMeta(p)
+		id := p.ID
+		if len(id) > 8 {
+			id = id[:8]
+		}
 		rows = append(rows, []string{
-			p.ID[:8],
+			id,
 			meta.EntitySlug,
 			fmt.Sprintf("%d", len(meta.SourceIDs)),
 			p.UpdatedAt.Format("2006-01-02 15:04"),
 		})
 	}
-	printTable(os.Stdout, headers, rows)
+	printTable(out, headers, rows)
 	return nil
 }
 
 func runPageShow(cmd *cobra.Command, args []string) error {
 	slug := args[0]
-
-	svc, cleanup, err := newService()
+	client, err := newDpkmsClient(cmd, dpkmsclient.DefaultTimeout)
 	if err != nil {
 		return err
 	}
-	defer cleanup()
-
-	ctx := context.Background()
-	page, err := svc.GetEntityPage(ctx, slug)
+	page, err := client.GetPage(cmd.Context(), slug)
 	if err != nil {
-		return fmt.Errorf("get page: %w", err)
-	}
-	if page == nil {
-		return fmt.Errorf("entity page not found: %s", slug)
+		return pageLookupError(slug, err)
 	}
 
+	out := cmd.OutOrStdout()
 	if isJSONOutput() {
-		return outputJSON(os.Stdout, page)
+		return outputJSON(out, page)
 	}
 
-	meta, _ := service.ExtractPageMeta(page)
-	fmt.Printf("Entity Page: %s\n\n", meta.EntitySlug)
-	fmt.Printf("ID:        %s\n", page.ID)
-	fmt.Printf("Sources:   %d\n", len(meta.SourceIDs))
-	fmt.Printf("Revisions: %d\n", meta.RevisionCount)
-	fmt.Printf("Updated:   %s\n\n", page.UpdatedAt.Format("2006-01-02 15:04:05"))
-	fmt.Println("--- Content ---")
-	fmt.Println(page.RawContent)
+	meta, _ := dpkmsclient.PageMeta(page)
+	fmt.Fprintf(out, "Entity Page: %s\n\n", meta.EntitySlug)
+	fmt.Fprintf(out, "ID:        %s\n", page.ID)
+	fmt.Fprintf(out, "Sources:   %d\n", len(meta.SourceIDs))
+	fmt.Fprintf(out, "Revisions: %d\n", meta.RevisionCount)
+	fmt.Fprintf(out, "Updated:   %s\n\n", page.UpdatedAt.Format("2006-01-02 15:04:05"))
+	fmt.Fprintln(out, "--- Content ---")
+	fmt.Fprintln(out, page.RawContent)
 	return nil
 }
 
 func runPageRefresh(cmd *cobra.Command, args []string) error {
 	slug := args[0]
-
-	svc, cleanup, err := newService()
+	client, err := newDpkmsClient(cmd, dpkmsclient.DefaultTimeout)
 	if err != nil {
 		return err
 	}
-	defer cleanup()
-
-	ctx := context.Background()
-	page, err := svc.RefreshEntityPage(ctx, slug)
+	page, err := client.RefreshPage(cmd.Context(), slug)
 	if err != nil {
-		return fmt.Errorf("refresh page: %w", err)
+		return pageLookupError(slug, err)
 	}
 
-	fmt.Printf("Refreshed entity page: %s (ID: %s)\n", slug, page.ID)
+	out := cmd.OutOrStdout()
+	if isJSONOutput() {
+		return outputJSON(out, page)
+	}
+	fmt.Fprintf(out, "Refreshed entity page: %s (ID: %s)\n", slug, page.ID)
 	return nil
 }

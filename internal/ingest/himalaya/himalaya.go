@@ -1,3 +1,5 @@
+// Package himalaya ingests email through the himalaya CLI, grouping
+// messages into threads before they become ingest objects.
 package himalaya
 
 import (
@@ -17,14 +19,21 @@ type Adapter struct {
 	MaxItems int    // max envelopes to fetch
 }
 
-func (a *Adapter) Name() string { return "himalaya" }
+// adapterName names the adapter and is the source recorded on every
+// object it ingests.
+const adapterName = "himalaya"
+
+// defaultBinary is the himalaya CLI looked up on PATH when Binary is unset.
+const defaultBinary = "himalaya"
+
+func (a *Adapter) Name() string { return adapterName }
 
 func (a *Adapter) Fetch(
 	ctx context.Context,
 ) ([]ingest.Object, error) {
 	bin := a.Binary
 	if bin == "" {
-		bin = "himalaya"
+		bin = defaultBinary
 	}
 	folder := a.Folder
 	if folder == "" {
@@ -55,7 +64,7 @@ func (a *Adapter) Fetch(
 	}
 
 	// Read each message body
-	var msgs []Message
+	msgs := make([]Message, 0, len(envelopes))
 	for _, env := range envelopes {
 		readArgs := []string{"message", "read", env.ID, "-o", "json"}
 		if a.Account != "" {

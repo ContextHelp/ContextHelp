@@ -1,7 +1,6 @@
 package service
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -22,19 +21,19 @@ func newFanOutService(t *testing.T) *Service {
 
 func seedObjectWithMentions(t *testing.T, svc *Service, id string, mentions []uri.URI) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := ownerCtx()
 	obj := &storage.KnowledgeObject{
 		ID:         id,
 		Type:       "text",
 		RawContent: "test content with entities",
 		Mentions:   mentions,
 	}
-	require.NoError(t, svc.Store.Objects().Create(ctx, obj))
+	require.NoError(t, svc.store.Objects().Create(ctx, obj))
 }
 
 func TestFanOut_CreatesEdges(t *testing.T) {
 	svc := newFanOutService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	mentions := []uri.URI{
 		{Scheme: "ctxt", Namespace: "person", ID: "alice"},
@@ -53,7 +52,7 @@ func TestFanOut_CreatesEdges(t *testing.T) {
 	assert.Len(t, result.EntitySlugs, 3)
 
 	// Verify forward edges exist.
-	fwd, err := svc.Store.Edges().ListFrom(ctx, "object", "obj-fan-1")
+	fwd, err := svc.store.Edges().ListFrom(ctx, "object", "obj-fan-1")
 	require.NoError(t, err)
 	assert.Len(t, fwd, 3)
 	for _, e := range fwd {
@@ -61,7 +60,7 @@ func TestFanOut_CreatesEdges(t *testing.T) {
 	}
 
 	// Verify reverse edges exist.
-	rev, err := svc.Store.Edges().ListTo(ctx, "object", "obj-fan-1")
+	rev, err := svc.store.Edges().ListTo(ctx, "object", "obj-fan-1")
 	require.NoError(t, err)
 	assert.Len(t, rev, 3)
 	for _, e := range rev {
@@ -71,7 +70,7 @@ func TestFanOut_CreatesEdges(t *testing.T) {
 
 func TestFanOut_Idempotent(t *testing.T) {
 	svc := newFanOutService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	mentions := []uri.URI{
 		{Scheme: "ctxt", Namespace: "person", ID: "bob"},
@@ -90,7 +89,7 @@ func TestFanOut_Idempotent(t *testing.T) {
 
 func TestFanOut_NoMentions(t *testing.T) {
 	svc := newFanOutService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	seedObjectWithMentions(t, svc, "obj-fan-3", nil)
 
@@ -102,7 +101,7 @@ func TestFanOut_NoMentions(t *testing.T) {
 
 func TestFanOut_AuditLogEntry(t *testing.T) {
 	svc := newFanOutService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	mentions := []uri.URI{
 		{Scheme: "ctxt", Namespace: "concept", ID: "graph-db"},
@@ -113,7 +112,7 @@ func TestFanOut_AuditLogEntry(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, result.AuditEntries)
 
-	history, err := svc.Store.AuditLog().GetObjectHistory(ctx, "obj-fan-4")
+	history, err := svc.store.AuditLog().GetObjectHistory(ctx, "obj-fan-4")
 	require.NoError(t, err)
 	require.Len(t, history, 1)
 	assert.Equal(t, "fanout.completed", history[0].EventType)
@@ -123,7 +122,7 @@ func TestFanOut_AuditLogEntry(t *testing.T) {
 func TestFanOut_DisabledEntities(t *testing.T) {
 	svc := newFanOutService(t)
 	svc.Cfg.FanOut.Entities = false
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	mentions := []uri.URI{
 		{Scheme: "ctxt", Namespace: "person", ID: "carol"},
@@ -138,7 +137,7 @@ func TestFanOut_DisabledEntities(t *testing.T) {
 func TestFanOut_DisabledAuditLog(t *testing.T) {
 	svc := newFanOutService(t)
 	svc.Cfg.FanOut.AuditLog = false
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	mentions := []uri.URI{
 		{Scheme: "ctxt", Namespace: "person", ID: "dave"},
@@ -153,9 +152,55 @@ func TestFanOut_DisabledAuditLog(t *testing.T) {
 
 func TestFanOut_ObjectNotFound(t *testing.T) {
 	svc := newFanOutService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	_, err := svc.FanOut(ctx, "nonexistent")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "get object")
+}
+
+// TestFanOut_EdgesCarryProvenance pins the provenance both directions of
+// a mention edge carry: the entity_mention node of the stored graph that
+// holds the mention and the field it came from, or the mentions field
+// alone when the graph has no node for it.
+func TestFanOut_EdgesCarryProvenance(t *testing.T) {
+	svc := newFanOutService(t)
+	ctx := ownerCtx()
+
+	alice := uri.URI{Scheme: "ctxt", Namespace: "person", ID: "alice"}
+	mobile := uri.URI{Scheme: "ctxt", Namespace: "project", ID: "mobile"}
+	nodeID := storage.NewNodeID("obj-fan-7", storage.NodeTypeEntityMention, 0)
+	obj := &storage.KnowledgeObject{
+		ID:         "obj-fan-7",
+		Type:       "text",
+		RawContent: "test content with entities",
+		Mentions:   []uri.URI{alice, mobile},
+		Graph: &storage.ObjectGraph{Nodes: []storage.GraphNode{{
+			ID:       nodeID,
+			NodeType: storage.NodeTypeEntityMention,
+			Label:    alice.String(),
+			Metadata: map[string]any{storage.ProvenanceSourceField: storage.MentionSourceRawContent},
+		}}},
+	}
+	require.NoError(t, svc.store.Objects().Create(ctx, obj))
+
+	_, err := svc.FanOut(ctx, "obj-fan-7")
+	require.NoError(t, err)
+
+	want := map[string]map[string]any{
+		alice.String():  {storage.ProvenanceSourceNode: nodeID, storage.ProvenanceSourceField: storage.MentionSourceRawContent},
+		mobile.String(): {storage.ProvenanceSourceNode: "", storage.ProvenanceSourceField: storage.MentionSourceMentions},
+	}
+	fwd, err := svc.store.Edges().ListFrom(ctx, "object", "obj-fan-7")
+	require.NoError(t, err)
+	require.Len(t, fwd, 2)
+	for _, e := range fwd {
+		assert.Equal(t, want[e.ToID], e.Metadata, "mentions edge to %s", e.ToID)
+	}
+	rev, err := svc.store.Edges().ListTo(ctx, "object", "obj-fan-7")
+	require.NoError(t, err)
+	require.Len(t, rev, 2)
+	for _, e := range rev {
+		assert.Equal(t, want[e.FromID], e.Metadata, "mentioned_in edge from %s", e.FromID)
+	}
 }

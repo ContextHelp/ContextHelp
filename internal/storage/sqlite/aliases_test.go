@@ -71,7 +71,7 @@ func TestAliasStore_ProfileScope_DoesNotLeakToOtherProfile(t *testing.T) {
 
 	// Bob cannot resolve.
 	_, err = db.Aliases().Resolve(ctx, "private-doc", "bob")
-	require.Error(t, err)
+	require.ErrorIs(t, err, storage.ErrNotFound)
 }
 
 func TestAliasStore_List(t *testing.T) {
@@ -109,7 +109,11 @@ func TestAliasStore_Delete(t *testing.T) {
 	require.NoError(t, db.Aliases().Delete(ctx, "to-delete", "global", ""))
 
 	_, err := db.Aliases().Resolve(ctx, "to-delete", "")
-	require.Error(t, err, "alias should be gone after delete")
+	require.ErrorIs(t, err, storage.ErrNotFound, "alias should be gone after delete")
+
+	// A second delete finds nothing: not-found, not a silent success.
+	err = db.Aliases().Delete(ctx, "to-delete", "global", "")
+	require.ErrorIs(t, err, storage.ErrNotFound)
 }
 
 func TestMigration010_AliasesTable(t *testing.T) {

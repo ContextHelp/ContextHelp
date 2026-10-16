@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -41,8 +42,11 @@ func namedEndpoints(decoy, home string) string {
 // writeCurrentInstance persists sel as `ctxt instance use` would.
 func writeCurrentInstance(t *testing.T, sel string) {
 	t.Helper()
-	path, err := config.CurrentInstanceFile()
+	path, err := config.CurrentInstanceFile(testDataDir(t))
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(path, []byte(sel), 0o600); err != nil {
@@ -198,7 +202,7 @@ func TestHTTPCommands_UnreachableExits70(t *testing.T) {
 // and `ctxt log --instance home` reach a protected in-process dpkms with
 // the named entry's token; a wrong token for the same URL exits 5.
 func TestStatus_InstanceAgainstProtectedDpkms(t *testing.T) {
-	db := setupTestDB(t, dpkmstest.WithStaticTokens())
+	db := setupTestDB(t, dpkmstest.WithKeys())
 	appendConfig(t, db, "server:\n  urls:\n"+
 		"    - name: home\n      url: "+db.Server.URL+"\n      token: "+db.Server.Token(dpkmstest.RoleAdmin)+"\n"+
 		"    - name: stale\n      url: "+db.Server.URL+"/\n      token: not-a-token\n")
@@ -219,7 +223,7 @@ func TestStatus_InstanceAgainstProtectedDpkms(t *testing.T) {
 // a local dpkms named name on port.
 func startLocalInstance(t *testing.T, name string, port int) {
 	t.Helper()
-	runDir, err := config.RunDir()
+	runDir, err := config.RunDir(testDataDir(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +239,7 @@ func TestInstanceUse_NamedEndpointAndLocal(t *testing.T) {
 	db := setupTestDB(t)
 	appendConfig(t, db, namedEndpoints("http://127.0.0.1:1", "https://home.example.net:7700"))
 	startLocalInstance(t, "work", 18093)
-	state, err := config.CurrentInstanceFile()
+	state, err := config.CurrentInstanceFile(testDataDir(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -361,4 +365,26 @@ func assertNoToken(t *testing.T, out string) {
 // asEnvelope reports whether err carries a kit envelope, storing it.
 func asEnvelope(err error, e **output.Error) bool {
 	return errors.As(err, e)
+}
+
+// `instance use` creates the run dir its state file lives in, since
+// looking the file up no longer does.
+func TestInstanceUse_CreatesRunDir(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	db := setupTestDB(t)
+	appendConfig(t, db, namedEndpoints("http://127.0.0.1:1", "https://home.example.net:7700"))
+	state, err := config.CurrentInstanceFile(testDataDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Dir(state)); !os.IsNotExist(err) {
+		t.Fatalf("run dir %s exists before `instance use` (%v); the test needs a fresh one", filepath.Dir(state), err)
+	}
+
+	if out, err := db.exec("instance", "use", "home"); err != nil {
+		t.Fatalf("instance use home: %v\n%s", err, out)
+	}
+	if b, err := os.ReadFile(state); err != nil || string(b) != "home" {
+		t.Fatalf("state file = %q, %v; want home", b, err)
+	}
 }

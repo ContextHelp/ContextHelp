@@ -27,7 +27,7 @@ func hideSlugs(slugs ...string) EntityVisibility {
 func withoutMentions(f *fakeStore, slugs ...string) {
 	for from, rows := range f.edges {
 		f.edges[from] = slices.DeleteFunc(slices.Clone(rows), func(e *storage.Edge) bool {
-			return e.ToType == "entity" && e.EdgeType == RelMentions && slices.Contains(slugs, e.ToID)
+			return e.ToType == "entity" && e.EdgeType == RelMentions && slices.Contains(slugs, storage.MentionTargetSlug(e.ToID))
 		})
 	}
 	for _, s := range slugs {

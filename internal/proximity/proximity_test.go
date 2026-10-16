@@ -227,7 +227,7 @@ func TestComputeProximity_ReturnsStorageType(t *testing.T) {
 	b := &storage.KnowledgeObject{ID: "o-2", Type: "document", CreatedAt: now}
 	// Should compile and return *storage.ProximityScore
 	score := proximity.ComputeProximity(a, b)
-	var _ *storage.ProximityScore = score // compile-time type check
+	func(*storage.ProximityScore) {}(score) // compile-time type check
 	if score == nil {
 		t.Fatal("expected non-nil score")
 	}

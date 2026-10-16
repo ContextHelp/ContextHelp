@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,8 +15,9 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
-	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"hop.top/kit/go/console/output"
 )
@@ -96,17 +98,30 @@ var stepListCmd = &cobra.Command{
 }
 
 var stepInstallCmd = &cobra.Command{
-	Use:   "install <name> --registry <url>",
-	Short: "Install step from registry",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runStepInstall,
+	Use:   "install <name> (--path <dir> | --registry <url>)",
+	Short: "Install a step from a local directory or a registry",
+	Long: `Install a step the pipelines can insert (pipelines.overrides.<pipeline>.insert_steps).
+
+--path packs a local step directory (SKILL.md at its root, plus the
+executable it names) and sends it to the server, which copies it into
+its steps directory. --registry installs from a registry listed under
+registries in dpkms.yaml: an untrusted registry (the default) is
+refused, a sandboxed one installs the step for container isolation only,
+and the archive must match the sha256 the registry manifest declares.
+
+Restart dpkms serve after adding the step to pipelines.overrides.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runStepInstall,
 }
 
 var stepUninstallCmd = &cobra.Command{
 	Use:   "uninstall <name>",
-	Short: "Uninstall step",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runStepUninstall,
+	Short: "Uninstall a step and delete its files",
+	Long: `Uninstall a step: its directory under the server's steps directory and
+its record are deleted. A step pipelines.overrides still inserts is
+refused; remove it from dpkms.yaml first.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runStepUninstall,
 }
 
 var stepRegistryCmd = &cobra.Command{
@@ -166,6 +181,7 @@ var (
 var (
 	stepSource   string
 	stepRegistry string
+	stepPath     string
 )
 
 var (
@@ -214,7 +230,8 @@ func init() {
 
 	stepListCmd.Flags().StringVar(&stepSource, "source", "", "filter by source")
 
-	stepInstallCmd.Flags().StringVar(&stepRegistry, "registry", "", "registry URL")
+	stepInstallCmd.Flags().StringVar(&stepRegistry, "registry", "", "install from this registry URL (listed under registries in dpkms.yaml)")
+	stepInstallCmd.Flags().StringVar(&stepPath, "path", "", "install from this local step directory")
 
 	stepRegistryAutoUpdateCmd.Flags().BoolVar(&registryAutoUpdateEnable, "enable", false, "enable auto-update")
 	stepRegistryAutoUpdateCmd.Flags().BoolVar(&registryAutoUpdateDisable, "disable", false, "disable auto-update")
@@ -244,7 +261,7 @@ func init() {
 	cliconv.WithSideEffect(stepUninstallCmd, cliconv.SideEffectDestructive)
 }
 
-func initPipelineClient(ep idxbridge.Endpoint) {
+func initPipelineClient(ep dpkmsclient.Endpoint) {
 	apiClient = newEndpointClient(ep)
 }
 
@@ -259,54 +276,44 @@ func runPipelineCreate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	var config map[string]any
 	switch ext {
 	case ".json":
-		var config map[string]any
-		if err := json.Unmarshal(content, &config); err != nil {
-			return err
-		}
-		req.Name = config["name"].(string)
-		req.Description = config["description"].(string)
-		stepsJSON, _ := json.Marshal(config["steps"])
-		req.Steps = string(stepsJSON)
+		err = json.Unmarshal(content, &config)
 	case ".yaml", ".yml":
-		var config map[string]any
-		if err := yaml.Unmarshal(content, &config); err != nil {
-			return err
-		}
-		req.Name = config["name"].(string)
-		req.Description = config["description"].(string)
-		stepsJSON, _ := json.Marshal(config["steps"])
-		req.Steps = string(stepsJSON)
+		err = yaml.Unmarshal(content, &config)
 	case ".toml":
-		var config map[string]any
-		if err := toml.Unmarshal(content, &config); err != nil {
-			return err
-		}
-		req.Name = config["name"].(string)
-		req.Description = config["description"].(string)
-		stepsJSON, _ := json.Marshal(config["steps"])
-		req.Steps = string(stepsJSON)
+		err = toml.Unmarshal(content, &config)
 	default:
 		return fmt.Errorf("unsupported config format: %s", ext)
 	}
+	if err != nil {
+		return err
+	}
+	name, ok := config["name"].(string)
+	if !ok {
+		return fmt.Errorf("pipeline config %s: name must be a string, got %T", filePath, config["name"])
+	}
+	req.Name = name
+	req.Description, _ = config["description"].(string) // optional
+	stepsJSON, _ := json.Marshal(config["steps"])
+	req.Steps = string(stepsJSON)
 
 	if pipelineShowRaw {
 		return printJSON(req)
 	}
 
-	id, err := apiClient.CreatePipeline(req, pipelineNote)
+	id, err := apiClient.CreatePipeline(cmd.Context(), req, pipelineNote)
 	if err != nil {
 		return err
 	}
 
-	printJSON(map[string]string{"id": id})
-	return nil
+	return printJSON(map[string]string{"id": id})
 }
 
 func runPipelineRemove(cmd *cobra.Command, args []string) error {
 	name := args[0]
-	return apiClient.DeletePipeline(name, pipelineNote)
+	return apiClient.DeletePipeline(cmd.Context(), name, pipelineNote)
 }
 
 func runPipelineList(cmd *cobra.Command, _ []string) error {
@@ -316,7 +323,7 @@ func runPipelineList(cmd *cobra.Command, _ []string) error {
 		OnlyArchived:    pipelineOnlyArchived,
 	}
 
-	pipelines, _, err := apiClient.ListPipelines(filter)
+	pipelines, _, err := apiClient.ListPipelines(cmd.Context(), filter)
 	if err != nil {
 		return err
 	}
@@ -330,7 +337,7 @@ func runPipelineList(cmd *cobra.Command, _ []string) error {
 
 func runPipelineShow(cmd *cobra.Command, args []string) error {
 	name := args[0]
-	pipeline, err := apiClient.GetPipeline(name)
+	pipeline, err := apiClient.GetPipeline(cmd.Context(), name)
 	if err != nil {
 		return err
 	}
@@ -344,12 +351,12 @@ func runPipelineShow(cmd *cobra.Command, args []string) error {
 
 func runPipelineArchive(cmd *cobra.Command, args []string) error {
 	name := args[0]
-	return apiClient.ArchivePipeline(name, pipelineNote)
+	return apiClient.ArchivePipeline(cmd.Context(), name, pipelineNote)
 }
 
 func runPipelineUnarchive(cmd *cobra.Command, args []string) error {
 	name := args[0]
-	return apiClient.UnarchivePipeline(name, pipelineNote)
+	return apiClient.UnarchivePipeline(cmd.Context(), name, pipelineNote)
 }
 
 func runPipelineEnqueue(cmd *cobra.Command, args []string) error {
@@ -382,21 +389,20 @@ func runPipelineEnqueue(cmd *cobra.Command, args []string) error {
 		Pipeline: pipelinePipeline,
 	}
 
-	jobID, err := apiClient.Enqueue(req)
+	jobID, err := apiClient.Enqueue(cmd.Context(), req)
 	if err != nil {
 		return err
 	}
 
 	if pipelineWait {
-		return waitForJob(jobID)
+		return waitForJob(cmd.Context(), jobID)
 	}
 
-	printJSON(map[string]string{"job_id": jobID})
-	return nil
+	return printJSON(map[string]string{"job_id": jobID})
 }
 
 func runStepList(cmd *cobra.Command, _ []string) error {
-	steps, _, err := apiClient.ListSteps(stepSource)
+	steps, _, err := apiClient.ListSteps(cmd.Context(), stepSource)
 	if err != nil {
 		return err
 	}
@@ -410,24 +416,34 @@ func runStepList(cmd *cobra.Command, _ []string) error {
 
 func runStepInstall(cmd *cobra.Command, args []string) error {
 	name := args[0]
-	if stepRegistry == "" {
-		return fmt.Errorf("--registry is required")
+	switch {
+	case stepRegistry != "" && stepPath != "":
+		return fmt.Errorf("give --path or --registry, not both")
+	case stepRegistry != "":
+		return apiClient.InstallStep(cmd.Context(), name, stepRegistry, nil)
+	case stepPath != "":
+		archive, err := steps.PackDir(stepPath)
+		if err != nil {
+			return fmt.Errorf("pack %s: %w", stepPath, err)
+		}
+		return apiClient.InstallStep(cmd.Context(), name, "", archive)
+	default:
+		return fmt.Errorf("--path or --registry is required")
 	}
-	return apiClient.InstallStep(name, stepRegistry)
 }
 
 func runStepUninstall(cmd *cobra.Command, args []string) error {
 	name := args[0]
-	return apiClient.UninstallStep(name)
+	return apiClient.UninstallStep(cmd.Context(), name)
 }
 
 func runStepRegistryAdd(cmd *cobra.Command, args []string) error {
 	url := args[1]
-	return apiClient.FetchRegistry(url)
+	return apiClient.FetchRegistry(cmd.Context(), url)
 }
 
 func runStepRegistryList(cmd *cobra.Command, _ []string) error {
-	registries, _, err := apiClient.ListRegistries()
+	registries, _, err := apiClient.ListRegistries(cmd.Context())
 	if err != nil {
 		return err
 	}
@@ -441,7 +457,7 @@ func runStepRegistryList(cmd *cobra.Command, _ []string) error {
 
 func runStepRegistryUpdate(cmd *cobra.Command, args []string) error {
 	url := args[0]
-	return apiClient.UpdateRegistry(url)
+	return apiClient.UpdateRegistry(cmd.Context(), url)
 }
 
 func runStepRegistryAutoUpdate(cmd *cobra.Command, args []string) error {
@@ -542,9 +558,11 @@ func printRegistryTable(registries []*storage.RegistryCache) error {
 	return output.Render(os.Stdout, output.Table, rs, output.WithTableStyle(root.TableStyle()))
 }
 
-func waitForJob(jobID string) error {
+// waitForJob polls jobID until it settles. Each poll runs on ctx, so a
+// cancelled command (Ctrl-C) ends the wait at the next request.
+func waitForJob(ctx context.Context, jobID string) error {
 	for {
-		job, err := apiClient.GetJob(jobID)
+		job, err := apiClient.GetJob(ctx, jobID)
 		if err != nil {
 			return err
 		}

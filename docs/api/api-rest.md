@@ -1,8 +1,8 @@
 # REST API
 
-This document specifies the ContextHelp REST API: available endpoints, request/response formats, query parameters, conventions, and **mention-aware** semantics. The REST API provides a thin, consistent interface over the job system, pipelines, storage, query engine, registries, entity-resolution subsystems, and **plugin-augmented API surfaces**.
+This document specifies the ContextHelp REST API: available endpoints, request/response formats, query parameters, conventions, and **mention-aware** semantics. The REST API provides a thin, consistent interface over the job system, pipelines, storage, query engine, registries, and entity-resolution subsystems.
 
-Plugins may extend the API through documented extension points without modifying core functionality.
+There is no plugin system ([ADR-078](../decisions/ADR-078-no-plugin-system.md)): nothing adds routes or response fields outside the dpkms binary.
 
 ## Principles
 
@@ -12,12 +12,7 @@ Plugins may extend the API through documented extension points without modifying
 - Read path supports multi-source retrieval.
 - Extended RSQL Query Language with **mention operators**.
 - Entities, mentions, hints, and tags are independent semantic layers.
-- I18N/L10N optional and plugin-driven but exposed consistently.
-- Plugins may:
-  - add new knowledge object types
-  - attach plugin metadata to knowledge objects
-  - inject supplemental data into REST responses
-  - define new endpoints under `/plugins/*`
+- I18N/L10N optional but exposed consistently.
 
 ## Base URL
 
@@ -56,6 +51,12 @@ A web UI session cookie reports the session's narrowed scopes and the session it
  "session": {"id": "uis_3f2a…", "kind": "ui", "created_at": "…", "idle_expires_at": "…", "expires_at": "…"}}
 ```
 
+Invite and sign-in links (`ctxt share invite`, `ctxt principal link`) open the web UI at `/ui/invite` and `/ui/signin` with the ticket in the fragment; the page redeems it for the session cookie. For a browser signed in through an invite or a sign-in link, the session is bound to the `link` identity the redemption created, with the principal's role scopes narrowed to the web UI's set. `ctxt principal identity remove` on that identity ends the session; revoking the principal also ends it.
+
+The sign-in ceremonies (`POST /ui/auth/session`, `/ui/invite/session` and `/ui/signin/session`) share one budget per client address: ten attempts a minute, then 429 `RATE_LIMITED` with a `Retry-After`. A ceremony on a request that already carries a live session is refused with 409 `SESSION_ACTIVE`: the browser signs out first. Every ticket is single use; a second redemption is 401 `INVALID_TICKET`.
+
+Sharing routes (see [Share your network](../manual/workflows/sharing.md)): audiences, share policies, grants and the ceiling under `admin:shares`; a key's own policy binding under `write:self`. Audiences and policies may be named by id or by name in a path or a body. A policy document goes in the `document` field of a JSON body, as YAML or JSON text. The instance validates it and refuses one that does not parse with 400 naming the field. Every response is the plain record with its id. `POST /share/invites` takes an optional `audience` the person joins on accepting, and `GET /whoami` reports `shared: {owner, policies}` for a non-owner principal with a grant in force.
+
 ## Content Types
 
 - JSON: `application/json`
@@ -84,7 +85,6 @@ Common error codes:
 - `UNAUTHORIZED` (401)
 - `INSUFFICIENT_SCOPE` (403)
 - `INTERNAL_ERROR`
-- `PLUGIN_ERROR` (plugin-defined error states surfaced via API)
 
 ## Conventions
 
@@ -92,15 +92,10 @@ Common error codes:
 - IDs are opaque strings.
 - Pagination uses `limit` + `offset`.
 - Boolean parameters use `true`/`false`.
-- Plugins may add fields to responses under:
-  - `plugins.<pluginName>.{...}`
-- Plugins may add new routes under:
-  - `/plugins/{pluginName}/...`
 
 ## Reserved Routes
 
 - `/admin/v1/*` is reserved for the **Node Admin API** (used by context.help cloud and other admin clients).
-- `/plugins/*` is reserved for plugin-defined routes.
 
 The Node Admin API is documented separately in `docs/api/node-admin-api.md`.
 
@@ -125,6 +120,7 @@ Core endpoints:
 - `GET /jobs`
 - `GET /jobs/{id}`
 - `POST /jobs/{id}/retry`
+- `POST /jobs/{id}/cancel`
 - `GET /objects`
 - `GET /objects/facets`
 - `GET /objects/{id}`
@@ -132,6 +128,13 @@ Core endpoints:
 - `PATCH /objects/{id}`
 - `DELETE /objects/{id}`
 - `POST /objects/{id}/reprocess`
+- `GET /objects/{id}/edges`
+- `POST /edges`
+- `DELETE /edges`
+- `POST /aliases`
+- `GET /aliases`
+- `GET /aliases/{alias}`
+- `DELETE /aliases/{alias}`
 - `POST /find`
 - `GET /search/graph`
 - `POST /inbox`
@@ -149,21 +152,27 @@ Core endpoints:
 - `GET /entities/resolve`
 - `GET /entities/{slug}`
 - `GET /entities/{slug}/backlinks`
+- `GET /entities/registry-pending`
+- `POST /entities/registry-pending/approve`
+- `POST /entities/registry-pending/reject`
+- `GET /pages`
+- `GET /pages/{slug}`
+- `POST /pages/{slug}/refresh`
+- `GET /topic-index`
+- `GET /topic-index/{topic}`
+- `POST /topic-index`
+- `GET /stats`
 - `GET /suggest/tags` (optional)
 - `GET /suggest/mentions` (optional)
-
-Plugin endpoints:
-
-- `/plugins/*` namespace is reserved for plugin-defined routes.
-- Plugins may expose read-only or read-write API surfaces.
-
-Plugins may also augment core responses with:
-
-```
-"plugins": {
-  "<pluginName>": { ... }
-}
-```
+- `GET /whoami`
+- `GET|POST /principals`, `GET /principals/{id}`, `POST /principals/{id}/suspend`, `POST /principals/{id}/revoke`, `POST /principals/{id}/links`
+- `GET|POST /principals/{id}/identities`, `DELETE /principals/{id}/identities/{identity}`
+- `GET|POST /principals/{id}/keys`, `DELETE /principals/{id}/keys/{key}`
+- `POST /share/invites`
+- `GET|POST /share/audiences`, `GET /share/audiences/{audience}`, `PUT|DELETE /share/audiences/{audience}/members/{principal}`
+- `GET|POST /share/policies`, `GET|PUT /share/policies/{policy}`, `GET /share/templates`, `POST /share/templates/{name}`
+- `GET|POST /share/grants`, `DELETE /share/grants/{grant}`, `GET|PUT /principals/{id}/ceiling`, `PUT /share/keys/{key}/policy`
+- `GET|POST /self/keys`, `DELETE /self/keys/{key}`, `PUT /self/keys/{key}/policy`, `GET /self/identities`, `DELETE /self/identities/{identity}`, `GET /self/sessions`, `DELETE /self/sessions/{session}`
 
 ---
 
@@ -184,16 +193,9 @@ Plugins may also augment core responses with:
   },
   "jobs": {
     "workerRunning": true
-  },
-  "plugins": {
-    "notifications": {
-      "pending": 2
-    }
   }
 }
 ```
-
-Plugins may inject diagnostic information.
 
 ---
 
@@ -202,7 +204,6 @@ Plugins may inject diagnostic information.
 ### `POST /analyze`
 
 Enqueue a job that runs a full enrichment pipeline.
-Supported for both core and plugin-defined bookmark types.
 
 #### Request
 
@@ -215,12 +216,7 @@ Supported for both core and plugin-defined bookmark types.
   "profile": "founder",
   "pipeline": "auto",
   "language": "en",
-  "skipTranslation": false,
-  "plugins": {
-    "price_monitor": {
-      "threshold_percent": 10
-    }
-  }
+  "skipTranslation": false
 }
 ```
 
@@ -228,8 +224,6 @@ Notes:
 
 - The `mentions` field accepts `@namespace.slug` strings for backward compatibility. The pipeline converts them to `ctxt://entity/namespace/slug` URIs stored as `mention_uris`.
 - Mentions are **not resolved here**; resolution happens in the pipeline.
-- Plugins may hook ingestion via `plugins.<pluginName>` blocks.
-- Plugins may inject additional processing steps via configured hooks.
 
 #### Response
 
@@ -246,52 +240,66 @@ Notes:
 
 ### `GET /jobs`
 
+Lists jobs, newest first. Scope: `read:jobs`. CLI: `ctxt job list`.
+
 Query Parameters:
 
-- `status`
-- `type`
-- `limit`
+- `status`: `pending`, `running`, `completed`, `failed` or `cancelled`
+- `limit` (default 20)
 - `offset`
-- `plugin` (return jobs created by specific plugin)
 
 #### Response
 
 ```json
 {
-  "jobs": [
+  "data": [
     {
       "id": "job_123",
-      "type": "analyze",
-      "status": "completed",
-      "createdAt": "2025-01-01T12:00:00Z",
-      "updatedAt": "2025-01-01T12:00:02Z",
-      "input": {
-        "type": "text",
-        "hints": ["#ux", "#bad"],
-        "mentions": ["@ui.best-practice"]
-      },
-      "mention_uris": ["ctxt://entity/ui/best-practice"],
-      "resultObjectId": "obj_abc",
-      "plugins": {
-        "rss_feed": {
-          "derivedItems": 2
-        }
-      }
+      "type": "ingest:text",
+      "status": "failed",
+      "payload": "...",
+      "pipeline": "text.short",
+      "source": "cli",
+      "result_id": "",
+      "error": "provider timeout",
+      "retry_count": 1,
+      "max_retries": 3,
+      "created_at": "2026-10-01T12:00:00Z",
+      "updated_at": "2026-10-01T12:00:09Z",
+      "started_at": "2026-10-01T12:00:01Z",
+      "completed_at": "2026-10-01T12:00:09Z"
     }
   ],
-  "limit": 50,
-  "offset": 0,
   "total": 1
 }
 ```
 
-Plugins may attach job metadata.
+### `GET /jobs/{id}`
+
+Returns one job in the same shape. Scope: `read:jobs`. An unknown ID is 404 `NOT_FOUND`. CLI: `ctxt job status`.
+
+### `POST /jobs/{id}/retry`
+
+Puts the job back in the queue as `pending`, spends one retry and returns the job. Scope: `write:jobs`. An unknown job, or one whose `retry_count` reached `max_retries`, is 400 `INVALID_REQUEST`. CLI: `ctxt job retry`.
+
+### `POST /jobs/{id}/cancel`
+
+Cancels a `pending` or `running` job and returns it as `cancelled`. Scope: `cancel:jobs`, which only `admin` holds. An unknown ID is 404 `NOT_FOUND`; a job that already finished (`completed`, `failed`, `cancelled`) is 409 `CONFLICT` and is left as it is. CLI: `ctxt job cancel`.
 
 ---
 
 ## Knowledge Objects
 
-Knowledge objects include **tags**, **hints**, **mentions**, and **plugin metadata**.
+Knowledge objects include **tags**, **hints** and **mentions**.
+
+#### Object content
+
+Content above `storage.blob.threshold` is stored in the blob store, but no response carries the `blob://<key>` reference it is stored as: `raw_content` and `text_content` always hold content, on REST, gRPC and MCP alike.
+
+- **One object** (`GET /objects/{id}`, `PATCH /objects/{id}`): the whole content.
+- **Lists and searches** (`GET /objects`, `/objects/{id}/related`, `/search`, `POST /find`, entity backlinks, inbox, reminders): at most `storage.blob.threshold` bytes of it, the size an object stored inline can have. A cut preview sets `metadata.content_truncated: true`; `metadata.blob_original_size` is the full length. Read the object by ID for all of it.
+- A blob that cannot be read fails the request with 500, never a reference or empty content.
+- **Search** indexes the first `storage.blob.threshold` bytes of such content, never the reference. List results flag that stored prefix `metadata.text_content_truncated: true`; a read by ID returns the whole content as `text_content`.
 
 ### `GET /objects`
 
@@ -416,20 +424,101 @@ Follow the job with `GET /jobs/{job_id}`. Its type is `object:reprocess`, and on
 
 Errors: 400 `INVALID_REQUEST` for an unknown or missing `step`, an unknown field or a body that isn't JSON; 404 `NOT_FOUND` for an unknown object. Nothing is queued on an error.
 
-### Plugin Metadata
+### `POST /edges`
 
+Stores a typed link between two objects and, unless the type is symmetric, its inverse, in one transaction. Scope: `write:objects`. REST only; gRPC has no equivalent method.
+
+```json
+{"source": "o-a", "target": "o-b", "type": "extends", "context": "newer research"}
 ```
-"plugins": {
-  "rss_feed": {
-    "feedUrl": "...",
-    "guid": "..."
-  },
-  "price_monitor": {
-    "current_price": 1199.00,
-    "threshold_percent": 10
-  }
-}
+
+`type` is one of `extends`, `contradicts`, `supersedes`, `supports`, `related-to`, `derived-from`, or an inverse name (`extended-by`, `contradicted-by`, `superseded-by`, `supported-by`, `derived-to`). The inverse edge runs from `target` to `source` with the inverse type; `related-to` is symmetric and stores one edge. `context` is optional and is stored as each edge's `metadata.context`. The response is 201 with the stored edges, forward first:
+
+```json
+{"data": [
+  {"id": "…", "from_type": "object", "from_id": "o-a", "to_type": "object", "to_id": "o-b", "edge_type": "extends", "weight": 1, "metadata": {"context": "newer research"}, "created_at": "…"},
+  {"id": "…", "from_type": "object", "from_id": "o-b", "to_type": "object", "to_id": "o-a", "edge_type": "extended-by", "weight": 1, "metadata": {"context": "newer research"}, "created_at": "…"}
+]}
 ```
+
+Errors, with nothing stored: 400 `INVALID_REQUEST` for a missing `source`, `target` or `type`, an unknown type, an unknown field or a body that isn't JSON; 404 `NOT_FOUND` when either object is missing.
+
+### `GET /objects/{id}/edges`
+
+The object's edges to and from other objects: typed links, their inverses and other object-to-object edges. Scope: `read:objects`. REST only.
+
+| Parameter | Values | Default |
+|---|---|---|
+| `direction` | `out`, `in`, `both` | `both` |
+| `type` | an edge type; only edges of that type | every type |
+| `depth` | 1 to 3 | none |
+
+Without `depth`, every edge touching the object: outbound first, then inbound. With `depth`, a breadth-first walk to that many hops that reaches each object once, through the first edge found; `direction` and `type` apply at every hop. Each entry is a hop:
+
+```json
+{"data": [
+  {"depth": 1, "from": "o-a", "direction": "out", "object_id": "o-b", "edge": {"edge_type": "extends", "...": "..."}},
+  {"depth": 2, "from": "o-b", "direction": "out", "object_id": "o-c", "edge": {"edge_type": "supports", "...": "..."}}
+]}
+```
+
+`from` is the object the hop leaves, `direction` whether the edge leaves it (`out`) or points at it (`in`), and `object_id` the other end. No edges is `{"data": []}`. Any other parameter, or a value out of range, is a 400 `INVALID_PARAM`; an unknown `{id}` a 404 `NOT_FOUND`.
+
+### `DELETE /edges`
+
+Deletes the links between two objects in both directions, each link together with its inverse, in one transaction. Scope: `delete:edges`, which only `admin` tokens hold: a `writer` gets 403 `INSUFFICIENT_SCOPE`. REST only.
+
+| Parameter | Values |
+|---|---|
+| `source` | object ID, required |
+| `target` | object ID, required |
+| `type` | a link type, optional |
+
+With `type`, only `source -[type]-> target` and `target -[inverse]-> source` go. Without it, every link either way between the two. Object edges that are not links (mentions, alternatives) stay. The response is 200 with the number of edges deleted, 0 when there were none:
+
+```json
+{"deleted": 2}
+```
+
+A missing `source` or `target`, an unknown type or any other parameter is a 400 `INVALID_PARAM`.
+
+### Aliases
+
+An alias is a human-readable name for one object ID, stored in the instance's `aliases` table. A `global` alias resolves in every profile; a `profile` alias resolves only for its profile and wins over a global alias of the same name. The key is (`alias`, `scope`, `profile`): one global `charter` and one `charter` per profile can coexist. REST only: gRPC and MCP have no alias methods, and no `ctxt` command calls these routes. A storage backend without an alias store answers every alias route with 501 `NOT_IMPLEMENTED`.
+
+#### `POST /aliases`
+
+Stores an alias. Scope: `write:objects`.
+
+```json
+{"alias": "charter", "object_id": "o-a", "scope": "profile", "profile": "work"}
+```
+
+`alias` and `object_id` are required. `scope` is `global` (the default) or `profile`; `profile` is required with `profile` and refused with `global`. The response is 201 with the stored alias:
+
+```json
+{"alias": "charter", "object_id": "o-a", "scope": "profile", "profile": "work", "created_at": "…", "updated_at": "…"}
+```
+
+Errors, with nothing stored: 400 `INVALID_REQUEST` for a missing field, an unknown scope, a scope/profile mismatch or a body that isn't JSON; 404 `NOT_FOUND` for an unknown object; 409 `CONFLICT` when the (`alias`, `scope`, `profile`) key is taken. Delete the alias first to point it elsewhere.
+
+#### `GET /aliases`
+
+Lists aliases, all of them or, with `?object_id=`, those pointing at one object. Scope: `read:objects`. The response is 200 with a JSON array of alias records, `[]` when there are none.
+
+#### `GET /aliases/{alias}`
+
+Resolves an alias. Scope: `read:objects`. With `?profile=`, that profile's alias is tried before the global one; without it, only the global alias. The response is 200:
+
+```json
+{"alias": "charter", "object_id": "o-a"}
+```
+
+An alias that resolves to nothing is a 404 `NOT_FOUND`.
+
+#### `DELETE /aliases/{alias}`
+
+Deletes one alias by its key. Scope: `delete:aliases`, which only `admin` tokens hold: a `writer` gets 403 `INSUFFICIENT_SCOPE`. `?scope=` defaults to `global`; `?scope=profile` needs `?profile=`. Answers 204 with no body. No alias with that key is a 404 `NOT_FOUND`; a scope/profile mismatch is a 400 `INVALID_REQUEST`.
 
 ---
 
@@ -798,6 +887,93 @@ Returns one entity by exact slug, with its aliases, description and provenance (
 
 Lists the objects that mention the entity: `{"data": [...objects]}`. The gate check is unmetered. An unknown slug returns `{"data": []}` to an ungated caller and a 404 to a gated one.
 
+### Registry approval queue
+
+Entities an `untrusted` registry serves are not written by sync; they wait here. `sandboxed` registries' entities are blocked, never queued. Every route needs `sync:registries`, which only `admin` holds: listing too, since the payloads are unreviewed content from registries the instance does not trust. `reader` and `writer` tokens get 403 `INSUFFICIENT_SCOPE`.
+
+| Route | Does |
+|---|---|
+| `GET /entities/registry-pending` | Lists the queue; `?registry=<name>` keeps one registry's: `{"pending": [...], "total": N}` |
+| `POST /entities/registry-pending/approve` | Writes the selected entities as a trusted sync would (the registry's `sync_mode`), with metadata `provenance: "approved from <registry>"` on full writes, and drops them from the queue: `{"approved": [...], "total": N}` |
+| `POST /entities/registry-pending/reject` | Drops the selected entities unwritten: `{"rejected": [...], "total": N}` |
+
+A queued entity: `id`, `registry`, `registry_url`, `slug`, `namespace`, `title`, `version` (the `version_hash`, or `sha256:<hex>` of the content when the registry serves none), `entity` (the payload), `signature_status` (`verified` or `unsigned`), `first_seen_at`, `last_seen_at`. The ID is stable for a registry, slug and version.
+
+Approve and reject take `{"ids": ["..."]}`; approve also takes `{"all": true, "registry": "<name>"}`. Unknown fields are rejected.
+
+| Status | Code | When |
+|---|---|---|
+| 400 | `INVALID_REQUEST` | Bad JSON; no IDs and no `all`; `all` without `registry`; IDs together with `all` |
+| 404 | `NOT_FOUND` | An ID is not queued; nothing is written or dropped |
+| 409 | `REGISTRY_SANDBOXED` | Approve of an entity whose registry is now `sandboxed`; nothing is written |
+
+---
+
+## Entity Pages, Topic Index and Stats
+
+REST only; gRPC has none of these methods.
+
+| Route | Scope | Does |
+|---|---|---|
+| `GET /pages` | `read:objects` | Lists entity pages (objects of type `entity_page`), newest first |
+| `GET /pages/{slug}` | `read:objects` | Returns the entity page of one entity slug |
+| `POST /pages/{slug}/refresh` | `write:objects` | Recompiles the page from its current sources, stores it and returns it |
+| `GET /topic-index` | `read:objects` | Returns the stored topic index |
+| `GET /topic-index/{topic}` | `read:objects` | Returns the entries of one topic |
+| `POST /topic-index` | `write:objects` | Rebuilds the topic index from every object |
+| `GET /stats` | `read:objects` | Counts objects, jobs, entities, feeds, reminders and resurfacing candidates |
+
+A browser session may make the reads; refresh and rebuild need a `writer` or `admin` token. A `reader` token gets 403 `INSUFFICIENT_SCOPE` on both.
+
+### `GET /pages`
+
+Query parameter: `limit`, at least 1, default 50. An unknown, repeated or malformed parameter gets 400 `INVALID_PARAM`.
+
+```json
+{"data": [{"id": "p-alice-0001", "type": "entity_page", "raw_content": "# person.alice …", "metadata": {"entity_page": {"entity_slug": "person.alice", "source_ids": ["s-1", "s-2"], "revision_count": 2, "revision_log": []}}, "updated_at": "2026-10-01T09:00:00Z"}]}
+```
+
+Items are knowledge objects, as `GET /objects/{id}` returns them; `metadata.entity_page` names the entity and its sources. `data` is `[]` when there is no page.
+
+### `GET /pages/{slug}` and `POST /pages/{slug}/refresh`
+
+Both return the page object. A slug without a page is a 404 `NOT_FOUND`. Refresh takes no body; it recompiles `raw_content` from the page's `source_ids` and leaves the revision log as it is.
+
+### `GET /topic-index` and `GET /topic-index/{topic}`
+
+The index groups object summaries by the topics of `enrichment.structured_metadata`:
+
+```json
+{"categories": [{"topic": "go", "entries": [{"object_id": "s-1", "summary": "Alice ships Go"}]}], "object_ids": ["s-1"], "generated_at": "2026-10-01T09:00:00Z"}
+```
+
+`GET /topic-index/{topic}` returns `{"data": [...entries]}` of the first category whose name starts with `topic`, ignoring case, and `{"data": []}` when none does. Before the first rebuild both reads are a 404 `NOT_FOUND`.
+
+### `POST /topic-index`
+
+Rebuilds the index from every object and stores it. No body. Returns `{"id": "<index object ID>"}`.
+
+### `GET /stats`
+
+Query parameter: `profile` scopes the resurfacing count to one focus profile; without it every profile counts.
+
+```json
+{
+  "knowledge_objects": 3,
+  "objects_by_type": {"article": 1, "entity_page": 1, "note": 1},
+  "jobs": {"total": 3, "pending": 1, "running": 0, "completed": 2, "failed": 0},
+  "entities": 1,
+  "feeds": 2,
+  "feeds_active": 1,
+  "reminders_pending": 1,
+  "resurfacing_candidates": 2
+}
+```
+
+- `knowledge_objects` counts every object, whatever its status.
+- `entities` counts only the entities the principal may list: the inbound entitlement gate applies as it does to `GET /entities`.
+- `resurfacing_candidates` counts entries neither surfaced nor dismissed. It is `null` on a storage backend without a resurfacing queue (Postgres, for now): unknown, not zero.
+
 ---
 
 ## Registries
@@ -818,49 +994,6 @@ Get registry details and capabilities.
 
 ### `GET /suggest/mentions`
 
-Plugins may register additional suggestion providers.
-
----
-
-## Plugin Endpoints
-
-All plugin-defined REST endpoints must live under:
-
-```
-/plugins/{pluginName}/...
-```
-
-Examples:
-
-- `/plugins/rss_feed/items`
-- `/plugins/price_monitor/history/{objectId}`
-- `/plugins/notifications/pending`
-
-Plugin routes must not conflict with core routes.
-
-Each plugin defines:
-
-- its own request schema
-- its own response schema
-- its own access control settings
-
-Example Response:
-
-```json
-{
-  "plugin": "notifications",
-  "pending": [
-    {
-      "id": "uuid",
-      "type": "price_drop",
-      "level": "warning",
-      "payload": { "new": 1199.0 },
-      "timestamp": "2025-01-01T12:33:00Z"
-    }
-  ]
-}
-```
-
 ---
 
 ## Mention-Aware Retrieval Flow
@@ -873,7 +1006,7 @@ flowchart TD
     PL --> SG[Scatter–Gather Retrieval]
     SG --> GR[Graph Resolver (Entities)]
     GR --> RR[Reranker]
-    RR --> OUT[Final Results with Plugin Augmentations]
+    RR --> OUT[Final Results]
 ```
 
 ---
@@ -886,7 +1019,6 @@ Applies uniformly:
 - `origLang` filters knowledge objects by original language.
 - `preferLang` requests transformed summaries/titles in preferred language.
 - `translate=none` disables translation entirely.
-- Plugins may provide additional translation metadata.
 
 ## Focus Profile Behavior
 
@@ -909,10 +1041,3 @@ The REST API supports:
 - entity resolution and graph navigation
 - focus profiles for contextualized behavior
 - composition endpoints (briefs, plans, summaries)
-- plugin-defined knowledge object types
-- plugin-owned metadata
-- `/plugins/*` namespace for plugin endpoints
-- plugin-augmented responses (alerts, metadata, diagnostics)
-- integration with refresh and auto-fetch systems via plugin-defined fields
-
-This guarantees that plugins remain fully isolated, yet fully capable, without requiring modifications to core REST logic.

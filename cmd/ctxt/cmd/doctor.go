@@ -40,8 +40,8 @@ func init() {
 	doctorCmd.Flags().StringSlice("check", nil,
 		"checks to run (orphans,missing_metadata,duplicates,stale); default: all")
 	// --profile is inherited from kit's persistent flag set; do not
-	// re-register it locally. doctor reads it via cmd.Flags().GetString("profile")
-	// at run time (cobra resolves inherited persistent flags through Flags()).
+	// re-register it locally. doctor resolves it via activeProfileName at run
+	// time (cobra resolves inherited persistent flags through Flags()).
 	doctorCmd.Flags().Int("limit", 0, "max issues to report (0 = unlimited)")
 	doctorCmd.Flags().Int("stale-days", 90, "days without update before flagging as stale")
 	doctorCmd.Flags().Float64("duplicate-threshold", 0.95,
@@ -56,7 +56,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	defer cleanup()
 
 	checks, _ := cmd.Flags().GetStringSlice("check")
-	profile, _ := cmd.Flags().GetString("profile")
+	profile := activeProfileName(cmd)
 	limit, _ := cmd.Flags().GetInt("limit")
 	staleDays, _ := cmd.Flags().GetInt("stale-days")
 	dupThresh, _ := cmd.Flags().GetFloat64("duplicate-threshold")
@@ -68,8 +68,8 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	lcfg.StaleDays = staleDays
 	lcfg.DuplicateThresh = dupThresh
 
-	linter := lint.New(svc.Store, lcfg)
-	ctx := context.Background()
+	ctx := asOwner(context.Background())
+	linter := lint.New(svc.Store(ctx), lcfg)
 
 	report, err := linter.Run(ctx)
 	if err != nil {
@@ -77,7 +77,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Log report to audit.
-	logLintReport(ctx, svc.Store, report)
+	logLintReport(ctx, svc.Store(ctx), report)
 
 	if isJSONOutput() {
 		return outputJSON(os.Stdout, report)
@@ -97,7 +97,7 @@ func printLintReport(r *lint.Report) {
 	}
 
 	headers := []string{"Severity", "Check", "Object", "Message"}
-	var rows [][]string
+	rows := make([][]string, 0, len(r.Issues))
 	for _, iss := range r.Issues {
 		rows = append(rows, []string{
 			string(iss.Severity),

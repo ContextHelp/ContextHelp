@@ -136,7 +136,7 @@ ctxt embeddings register <model_id> [--embedding-provider B] [--embedding-model 
 
 ### `provider`
 
-`ctxt embeddings provider [model_id]` prints the backend, model, endpoint, `api_key_env` and dimension a command would use, with the layer each came from. It accepts the same `--embedding-*` flags, env and `-c` as the other commands and never prints a key. With a `model_id` it resolves the way a command targeting that model does: backend, model and dimension show as "fixed by registry". Details: [Check what a command will use](../../environment-variables/ai-providers.md#check-what-a-command-will-use).
+`ctxt embeddings provider [model_id]` prints the backend, model, endpoint, `api_key_env` and dimension a command would use, with the layer each came from. It accepts the same `--embedding-*` flags, env and `-c` as the other commands and never prints a key. With a `model_id` it resolves the way a command targeting that model does: backend, model and dimension show as "fixed by registry". Details: [Check what a command will use](https://github.com/ContextHelp/ContextHelp/blob/next/docs/environment-variables/ai-providers.md#check-what-a-command-will-use).
 
 ### `migrate`
 
@@ -191,11 +191,11 @@ The `failed` state stays until the next `migrate` run starts. Fix the cause (her
 #### Stop a migration
 
 ```bash
-dpkms job list
-dpkms job cancel <job-id> --confirm yes
+ctxt job list --state running
+ctxt job cancel <job-id> --confirm-token=<token>
 ```
 
-Outside a terminal, `cancel` refuses without `--confirm yes`. The run stops after the object in flight and the status turns `failed` ("stopped after 22 of 30 objects"). Vectors written so far are kept; `ctxt embeddings migrate --to <model_id>` continues from there.
+`cancel` needs an `admin` token; run it once without `--confirm-token` and the refusal prints the token. The run stops after the object in flight and the status turns `failed` ("stopped after 22 of 30 objects"). Vectors written so far are kept; `ctxt embeddings migrate --to <model_id>` continues from there.
 
 ### `set-default`
 
@@ -240,7 +240,7 @@ ctxt embeddings purge <model_id> --confirm-token <token>
 
 ## Search fallback notice
 
-A query that can't use the default model's index still answers from full-text search, and `ctxt find` says so on stderr:
+A query that can't use the default model's index still answers from full-text search, and `ctxt find` says so on stderr. dpkms embeds the query with the provider settings where it runs, so fix a `provider_error` there (`dpkms.yaml`, or `CTXT_EMBEDDING_*` in the `dpkms serve` environment):
 
 ```text
 notice: semantic search unavailable (<status>): <detail>; results are full-text only
@@ -257,7 +257,7 @@ With `--format json` the same report is under `diagnostics.semantic` (`status`, 
 | `index_missing` | The default model has no measured dimension, or has no vector index even though opening the database rebuilds every missing index. | No index: the open skipped the model and logged why just before the notice (`embedding index skipped`), usually stored vectors whose length differs from the registered dimension. Restarting doesn't help. For either cause, register the model under a new model_id (register measures the dimension), `migrate --to` it, then `set-default`. |
 | `low_coverage` | The default model's index holds no vectors at all. | `ctxt embeddings migrate --to <default id>`. |
 
-With `search.fallback_to_fts: false`, `find` fails instead (exit code 70) when the status isn't `ok`. The default is `true`.
+With `search.fallback_to_fts: false` in ctxt's config, `find` sends `fallback_to_fts: false` and fails instead when the status isn't `ok`: dpkms answers 422 `SEMANTIC_UNAVAILABLE` and `find` exits 2. The default is `true`.
 
 ## Duplicates
 
@@ -311,17 +311,17 @@ pipelines:
 
 | Key | Default | Used by |
 |---|---|---|
-| `providers.embedding.backend` / `model` / `endpoint` / `api_key_env` | `ollama` / `nomic-embed-text` / `http://localhost:11434` / unset | `register`, and `find` / ingest when no model is registered ([reference](../../environment-variables/ai-providers.md#embedding-provider)) |
+| `providers.embedding.backend` / `model` / `endpoint` / `api_key_env` | `ollama` / `nomic-embed-text` / `http://localhost:11434` / unset | `register`, and ingest and `find` queries on the dpkms host when no model is registered ([reference](https://github.com/ContextHelp/ContextHelp/blob/next/docs/environment-variables/ai-providers.md#embedding-provider)) |
 | `providers.embedding.dimension` | unset | Shown by `provider`; `register` checks it against the measured dimension |
 | `embeddings.min_coverage` | `0.99` | `set-default` |
 | `embeddings.grace_period` | `720h` | `purge` |
 | `duplicates.policy` / `check_exact` / `check_similar` / `similarity_threshold` | `warn` / `true` / `false` / `0.95` | Capture in dpkms |
-| `search.fallback_to_fts` | `true` | `find` when the semantic leg can't run |
+| `search.fallback_to_fts` | `true` | `find` when the semantic leg can't run (ctxt config; sent with each query) |
 
 A per-pipeline `pipelines.overrides.<name>.providers.embedding` is ignored with a warning: each registered model's own entry decides its provider.
 
 ## Related
 
 - [Turn on semantic search](../workflows/semantic-search.md)
-- [Embedding provider settings](../../environment-variables/ai-providers.md#embedding-provider)
+- [Embedding provider settings](https://github.com/ContextHelp/ContextHelp/blob/next/docs/environment-variables/ai-providers.md#embedding-provider)
 - [Runbook](./runbook.md)

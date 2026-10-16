@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"reflect"
 	"regexp"
 	"strings"
@@ -14,17 +15,32 @@ var secretPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`^ghp_`),
 }
 
-// secretFieldNames are substrings that, when found in a field name, flag the value.
+// secretFieldNames are substrings that, when found in a field name, flag the
+// value. Redaction reuses the list: connection-string parameters matching
+// it are masked, and every Config string field whose name matches must
+// carry a `secret` tag (see redact.go).
 var secretFieldNames = []string{"token", "password", "secret", "key"}
 
-// envRefPattern matches env-var references that should be skipped.
-var envRefPattern = regexp.MustCompile(`^\$\{[^}]+\}$|^\$[A-Z_][A-Z0-9_]*$`)
+// shellEnvRef is a shell-style ${VAR} or ${VAR:-default} reference
+// anywhere in a value. GitHub Actions ${{ ... }} and CloudFormation
+// ${AWS::Region} do not match.
+var shellEnvRef = regexp.MustCompile(`\$\{[A-Za-z_][A-Za-z0-9_]*(:?[-?+=][^}]*)?\}`)
+
+// bareEnvRef is a whole value that is a bare $VAR reference.
+var bareEnvRef = regexp.MustCompile(`^\$[A-Z_][A-Z0-9_]*$`)
+
+// isEnvRef reports whether a config value is written as an env-var
+// reference. Load never expands one, so the value is used literally;
+// Validate rejects it with envRefMessage.
+func isEnvRef(val string) bool {
+	return shellEnvRef.MatchString(val) || bareEnvRef.MatchString(val)
+}
 
 // SecretWarning describes a potentially exposed plaintext secret.
 type SecretWarning struct {
 	// Field is the dot-separated config path (e.g. "storage.blob.s3.secret_key").
 	Field string
-	// Hint is the first 4 chars of the value followed by "****".
+	// Hint is the value as RedactSecret masks it.
 	Hint string
 	// Reason explains why this field was flagged.
 	Reason string
@@ -32,14 +48,30 @@ type SecretWarning struct {
 
 // ScanSecrets walks cfg via reflection and returns warnings for any string
 // fields that appear to contain plaintext secrets.
+//
+// Env-var references are skipped: they are not plaintext secrets, and
+// Validate already rejects them because config never expands them.
 func ScanSecrets(cfg *Config) []SecretWarning {
 	var warnings []SecretWarning
-	walkStruct(reflect.ValueOf(cfg), "", &warnings)
+	walkStrings(reflect.ValueOf(cfg), "", func(path, val string) {
+		if isEnvRef(val) {
+			return
+		}
+		if reason := secretReason(path, val); reason != "" {
+			warnings = append(warnings, SecretWarning{
+				Field:  path,
+				Hint:   RedactSecret(val),
+				Reason: reason,
+			})
+		}
+	})
 	return warnings
 }
 
-// walkStruct recursively walks a struct value, collecting secret warnings.
-func walkStruct(v reflect.Value, path string, warnings *[]SecretWarning) {
+// walkStrings recursively walks v and calls fn with the dot-separated
+// config path of every non-empty string value. Slice elements carry
+// their index: server.urls[0].token.
+func walkStrings(v reflect.Value, path string, fn func(path, val string)) {
 	// Dereference pointers.
 	for v.Kind() == reflect.Ptr {
 		if v.IsNil() {
@@ -62,25 +94,12 @@ func walkStruct(v reflect.Value, path string, warnings *[]SecretWarning) {
 				childPath = path + "." + name
 			}
 
-			walkStruct(fieldVal, childPath, warnings)
+			walkStrings(fieldVal, childPath, fn)
 		}
 
 	case reflect.String:
-		val := v.String()
-		if val == "" {
-			return
-		}
-		// Skip env-var references.
-		if envRefPattern.MatchString(val) {
-			return
-		}
-		reason := secretReason(path, val)
-		if reason != "" {
-			*warnings = append(*warnings, SecretWarning{
-				Field:  path,
-				Hint:   sanitise(val),
-				Reason: reason,
-			})
+		if val := v.String(); val != "" {
+			fn(path, val)
 		}
 
 	case reflect.Map:
@@ -90,17 +109,17 @@ func walkStruct(v reflect.Value, path string, warnings *[]SecretWarning) {
 			if path != "" {
 				childPath = path + "." + keyStr
 			}
-			walkStruct(v.MapIndex(key), childPath, warnings)
+			walkStrings(v.MapIndex(key), childPath, fn)
 		}
 
 	case reflect.Slice:
 		for i := 0; i < v.Len(); i++ {
-			walkStruct(v.Index(i), path, warnings)
+			walkStrings(v.Index(i), fmt.Sprintf("%s[%d]", path, i), fn)
 		}
 
 	case reflect.Interface:
 		if !v.IsNil() {
-			walkStruct(v.Elem(), path, warnings)
+			walkStrings(v.Elem(), path, fn)
 		}
 	}
 }
@@ -130,25 +149,14 @@ func secretReason(fieldPath, value string) string {
 	}
 
 	// Check field name for secret-looking substrings.
-	lower := strings.ToLower(fieldPath)
-	for _, keyword := range secretFieldNames {
-		if strings.Contains(lower, keyword) {
-			// Only flag if it looks non-trivial (>8 chars, not a path/backend name).
-			if len(value) > 8 && !looksLikeFilePath(value) && !looksLikeBackendName(value) {
-				return "field name suggests secret (" + keyword + ")"
-			}
+	if keyword := secretKeyword(fieldPath); keyword != "" {
+		// Only flag if it looks non-trivial (>8 chars, not a path/backend name).
+		if len(value) > 8 && !looksLikeFilePath(value) && !looksLikeBackendName(value) {
+			return "field name suggests secret (" + keyword + ")"
 		}
 	}
 
 	return ""
-}
-
-// sanitise returns the first 4 chars of s followed by "****".
-func sanitise(s string) string {
-	if len(s) <= 4 {
-		return "****"
-	}
-	return s[:4] + "****"
 }
 
 // looksLikeFilePath returns true for values that look like filesystem paths.

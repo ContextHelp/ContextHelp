@@ -530,7 +530,7 @@ func TestUS0007_FeedItemKnowledgeObject(t *testing.T) {
 	})
 
 	// Enqueue a feed item directly via the service layer.
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "Feed item content from RSS",
 		Type:     "text",
 		Pipeline: "feed.ingest",

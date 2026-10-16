@@ -11,7 +11,6 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmstest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"gopkg.in/yaml.v3"
 	"hop.top/kit/go/console/output"
 )
@@ -170,12 +169,13 @@ func TestResolveNotFound(t *testing.T) {
 // object ID, and never opens the store the config names. No token is
 // UNAUTHORIZED (exit 5).
 func TestResolveOverAPI(t *testing.T) {
-	db := setupTestDB(t, dpkmstest.WithStaticTokens())
+	db := setupTestDB(t, dpkmstest.WithKeys())
 	seedResolveObject(t, db)
 	seedResolveEntity(t, db)
 	now := time.Now().Truncate(time.Second)
 	if err := db.Driver.Entities().Upsert(context.Background(), &storage.Entity{
-		Slug: "ui.cart", Title: "Shopping Cart", Aliases: []string{"basket"}, CreatedAt: now, UpdatedAt: now,
+		Slug: "ui.cart", Title: "Shopping Cart", Aliases: []string{"basket"}, RegistryURL: "https://registry.test",
+		CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +218,7 @@ func TestResolveObjectTagOnlyGraphFallsBackToTextContent(t *testing.T) {
 		TextContent: "THE-REAL-BODY-TEXT",
 		Graph: &storage.ObjectGraph{
 			Nodes: []storage.GraphNode{
-				{ID: "obj_tagonly:tag:0", NodeType: pluginapi.NodeTypeTag, Label: "signup"},
+				{ID: "obj_tagonly:tag:0", NodeType: storage.NodeTypeTag, Label: "signup"},
 			},
 		},
 		CreatedAt: now,

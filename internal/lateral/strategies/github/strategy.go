@@ -117,7 +117,7 @@ func isGitHubURL(raw string) bool {
 		return false
 	}
 	host = strings.ToLower(host)
-	if host == "github.com" || host == "www.github.com" {
+	if host == githubHost || host == githubWWWHost {
 		return true
 	}
 	return false
@@ -141,7 +141,7 @@ func hostOf(raw string) (string, bool) {
 }
 
 // Probe implements lateral.LateralStrategy. The skeleton returns an empty
-// candidate set; sub-path probes (T-0255..T-0259) fan out the real work
+// candidate set; sub-path probes fan out the real work
 // through the package-internal pipeline.
 func (s *GitHubStrategy) Probe(ctx context.Context, ev lateral.CapturedEvent, ac lateral.ActiveContext) ([]lateral.Candidate, error) {
 	pt := classifyPath(ev.SourceURL)
@@ -209,9 +209,9 @@ func classifyPath(raw string) pageType {
 	default:
 		// /<owner>/<repo>/<verb>/...
 		switch parts[2] {
-		case "pull", "pulls":
+		case "pull", segPulls:
 			return pageTypePullRequest
-		case "issues":
+		case segIssues:
 			return pageTypeIssue
 		default:
 			return pageTypeRepo
@@ -226,9 +226,9 @@ func isReservedTopLevel(seg string) bool {
 	case "settings", "marketplace", "explore", "topics", "trending",
 		"collections", "events", "notifications", "search", "login",
 		"join", "logout", "pricing", "features", "enterprise", "about",
-		"site", "security", "orgs", "organizations", "new", "codespaces",
-		"discussions", "pulls", "issues", "watching", "stars",
-		"home", "dashboard", "advisories":
+		"site", segSecurity, "orgs", "organizations", "new", "codespaces",
+		"discussions", segPulls, segIssues, "watching", "stars",
+		"home", "dashboard", segAdvisories:
 		return true
 	}
 	return false

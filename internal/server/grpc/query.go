@@ -13,7 +13,6 @@ import (
 	pb "github.com/ideacrafterslabs/ctxt/internal/server/grpc/pb"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 type queryHandler struct {
@@ -36,7 +35,7 @@ func (h *queryHandler) Search(ctx context.Context, req *pb.SearchRequest) (*pb.S
 
 	objs, total, err := h.svc.SearchObjects(ctx, req.Query, limit, int(req.Offset), req.ProfileId)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "search: %v", err)
+		return nil, toStatus(ctx, "objects", err)
 	}
 
 	out := make([]*pb.KnowledgeObject, 0, len(objs))
@@ -44,10 +43,7 @@ func (h *queryHandler) Search(ctx context.Context, req *pb.SearchRequest) (*pb.S
 		out = append(out, koToProto(o))
 	}
 
-	if total > math.MaxInt32 {
-		total = math.MaxInt32
-	}
-	return &pb.SearchResponse{Objects: out, Total: int32(total)}, nil
+	return &pb.SearchResponse{Objects: out, Total: clampInt32(total)}, nil
 }
 
 func (h *queryHandler) ListObjects(ctx context.Context, req *pb.ListObjectsRequest) (*pb.ListObjectsResponse, error) {
@@ -66,7 +62,7 @@ func (h *queryHandler) ListObjects(ctx context.Context, req *pb.ListObjectsReque
 
 	objs, total, err := h.svc.ListObjects(ctx, filter)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "list objects: %v", err)
+		return nil, toStatus(ctx, "objects", err)
 	}
 
 	out := make([]*pb.KnowledgeObject, 0, len(objs))
@@ -74,10 +70,7 @@ func (h *queryHandler) ListObjects(ctx context.Context, req *pb.ListObjectsReque
 		out = append(out, koToProto(o))
 	}
 
-	if total > math.MaxInt32 {
-		total = math.MaxInt32
-	}
-	return &pb.ListObjectsResponse{Objects: out, Total: int32(total)}, nil
+	return &pb.ListObjectsResponse{Objects: out, Total: clampInt32(total)}, nil
 }
 
 func (h *queryHandler) GetObject(ctx context.Context, req *pb.GetObjectRequest) (*pb.KnowledgeObject, error) {
@@ -87,10 +80,10 @@ func (h *queryHandler) GetObject(ctx context.Context, req *pb.GetObjectRequest) 
 
 	o, err := h.svc.GetObject(ctx, req.Id)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "get object: %v", err)
+		return nil, toStatus(ctx, "object", err)
 	}
 	if o == nil {
-		return nil, status.Errorf(codes.NotFound, "object %s not found", req.Id)
+		return nil, notFound("object")
 	}
 
 	return koToProto(o), nil
@@ -110,9 +103,9 @@ func (h *queryHandler) NodeAwareSearch(
 		limit = 20
 	}
 
-	var apiFilter *pluginapi.NodeAwareFilter
+	var apiFilter *storage.NodeAwareFilter
 	if req.Filter != nil {
-		apiFilter = &pluginapi.NodeAwareFilter{
+		apiFilter = &storage.NodeAwareFilter{
 			NodeTypes:      req.Filter.NodeTypes,
 			EdgeTypes:      req.Filter.EdgeTypes,
 			ReturnNodeHits: req.Filter.ReturnNodeHits,
@@ -122,7 +115,7 @@ func (h *queryHandler) NodeAwareSearch(
 	profileID := req.ProfileId
 	objs, total, err := h.svc.SearchObjectsNodeAware(ctx, req.Query, limit, int(req.Offset), apiFilter, profileID)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "node-aware search: %v", err)
+		return nil, toStatus(ctx, "objects", err)
 	}
 
 	results := make([]*pb.NodeAwareResult, 0, len(objs))
@@ -137,15 +130,24 @@ func (h *queryHandler) NodeAwareSearch(
 		results = append(results, r)
 	}
 
-	if total > math.MaxInt32 {
-		total = math.MaxInt32
-	}
-	return &pb.NodeAwareSearchResponse{Results: results, Total: int32(total)}, nil
+	return &pb.NodeAwareSearchResponse{Results: results, Total: clampInt32(total)}, nil
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-func koToProto(o *pluginapi.KnowledgeObject) *pb.KnowledgeObject {
+// clampInt32 narrows a count to the proto's int32 Total, saturating
+// instead of wrapping when the store holds more rows than int32 counts.
+func clampInt32(n int) int32 {
+	switch {
+	case n > math.MaxInt32:
+		return math.MaxInt32
+	case n < math.MinInt32:
+		return math.MinInt32
+	}
+	return int32(n)
+}
+
+func koToProto(o *storage.KnowledgeObject) *pb.KnowledgeObject {
 	p := &pb.KnowledgeObject{
 		Id:          o.ID,
 		Type:        o.Type,
@@ -163,7 +165,7 @@ func koToProto(o *pluginapi.KnowledgeObject) *pb.KnowledgeObject {
 	return p
 }
 
-func objectGraphToProto(g *pluginapi.ObjectGraph) *pb.ObjectGraph {
+func objectGraphToProto(g *storage.ObjectGraph) *pb.ObjectGraph {
 	if g == nil {
 		return nil
 	}
@@ -192,7 +194,7 @@ func objectGraphToProto(g *pluginapi.ObjectGraph) *pb.ObjectGraph {
 	return pg
 }
 
-func docProjectionToProto(d pluginapi.DocumentProjection) *pb.DocumentProjection {
+func docProjectionToProto(d storage.DocumentProjection) *pb.DocumentProjection {
 	dp := &pb.DocumentProjection{
 		Title: d.Title,
 		Body:  d.Body,
@@ -208,8 +210,8 @@ func docProjectionToProto(d pluginapi.DocumentProjection) *pb.DocumentProjection
 }
 
 // buildNodeHits constructs NodeHit entries for every node in the object graph.
-// Score is 1.0 (presence-based); richer scoring is deferred to T-0180.
-func buildNodeHits(o *pluginapi.KnowledgeObject) []*pb.NodeHit {
+// Score is 1.0 (presence-based); richer scoring is deferred.
+func buildNodeHits(o *storage.KnowledgeObject) []*pb.NodeHit {
 	if o.Graph == nil {
 		return nil
 	}
@@ -217,7 +219,7 @@ func buildNodeHits(o *pluginapi.KnowledgeObject) []*pb.NodeHit {
 	for i, n := range o.Graph.Nodes {
 		hits = append(hits, &pb.NodeHit{
 			ObjectId: o.ID,
-			NodeRef:  pluginapi.NodeURI(o.ID, n.NodeType, i),
+			NodeRef:  storage.NodeURI(o.ID, n.NodeType, i),
 			NodeType: n.NodeType,
 			Snippet:  snippetFromNode(n),
 			Score:    1.0,
@@ -226,7 +228,7 @@ func buildNodeHits(o *pluginapi.KnowledgeObject) []*pb.NodeHit {
 	return hits
 }
 
-func snippetFromNode(n pluginapi.GraphNode) string {
+func snippetFromNode(n storage.GraphNode) string {
 	if n.Content != "" {
 		if len(n.Content) > 200 {
 			return n.Content[:200]

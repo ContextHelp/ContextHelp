@@ -20,6 +20,7 @@ import (
 	"hop.top/kit/go/runtime/bus"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmstest"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/events"
@@ -28,6 +29,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/indexsig"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // Lifecycle fixture models: 4-dimension vectors written straight into the
@@ -345,7 +347,7 @@ func TestEmbeddingsSetDefault_DryRun(t *testing.T) {
 // default per query, so there is nothing to invalidate.
 func TestEmbeddingsSetDefault_VisibleToOtherHandle(t *testing.T) {
 	db := newLifecycleDB(t)
-	other, err := sqlite.New(dbFile(db))
+	other, err := sqlite.New(dbFile(db), storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -641,7 +643,7 @@ func TestEmbeddingsLifecycle_ConfirmToken(t *testing.T) {
 func TestEmbeddingsLifecycle_InstanceTargeting(t *testing.T) {
 	db := setupTestDB(t) // the configured database: stays empty
 	inst := newLifecycleDB(t)
-	runDir, err := config.RunDir()
+	runDir, err := config.RunDir(testDataDir(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -734,12 +736,10 @@ func dbFile(db *testDB) string {
 // the query path reads the default per query, with no restart and no cache
 // to invalidate. Replays the find-query-path cassettes.
 func TestEmbeddingsSetDefault_NextQueryFollows(t *testing.T) {
-	db := setupTestDB(t)
+	client, calls := providertest.OllamaClient(t, findCassettes)
+	db := setupTestDB(t, dpkmstest.WithEmbeddingHTTPClient(client))
 	ctx := context.Background()
 	d := sqliteDB(t, db)
-	client, calls := providertest.OllamaClient(t, findCassettes)
-	findEmbeddingHTTPClient = client
-	t.Cleanup(func() { findEmbeddingHTTPClient = nil })
 
 	query := "rotating signing keys without downtime"
 	arctic := func(id, endpoint string) registry.Model {

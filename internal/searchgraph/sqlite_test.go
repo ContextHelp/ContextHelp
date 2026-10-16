@@ -14,6 +14,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // TestBuildAgainstSQLite runs the builder over a real SQLite store: link
@@ -69,11 +70,11 @@ func TestBuildAgainstSQLite(t *testing.T) {
 	edge("object", "sg-c", "object", "sg-a", "related-to")
 	edge("object", "sg-a", "object", "sg-d", "supports")
 	edge("object", "sg-d", "object", "sg-a", "supported-by")
-	edge("object", "sg-a", "entity", "topic/x", "mentions")
-	edge("entity", "topic/x", "object", "sg-a", "mentioned_in")
-	edge("object", "sg-b", "entity", "topic/x", "mentions")
-	edge("object", "sg-c", "entity", "topic/y", "mentions")
-	edge("object", "sg-d", "entity", "topic/x", "mentions")
+	edge("object", "sg-a", "entity", "ctxt://entity/topic/x", "mentions")
+	edge("entity", "ctxt://entity/topic/x", "object", "sg-a", "mentioned_in")
+	edge("object", "sg-b", "entity", "ctxt://entity/topic/x", "mentions")
+	edge("object", "sg-c", "entity", "ctxt://entity/topic/y", "mentions")
+	edge("object", "sg-d", "entity", "ctxt://entity/topic/x", "mentions")
 	if err := drv.Entities().Upsert(ctx, &storage.Entity{
 		Slug: "topic/x", Title: "Topic X", Namespace: "topic", CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
@@ -141,7 +142,7 @@ func TestBuildAgainstSQLite(t *testing.T) {
 func graphSQLite(t *testing.T) *sqlite.Driver {
 	t.Helper()
 	ctx := context.Background()
-	drv, err := sqlite.New(filepath.Join(t.TempDir(), "graph.db"))
+	drv, err := sqlite.New(filepath.Join(t.TempDir(), "graph.db"), storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -3,36 +3,41 @@ package repl
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/peterh/liner"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 )
 
-func TestHistoryPath_DefaultFallback(t *testing.T) {
-	// When XDG_DATA_HOME is unset, kit/core/xdg picks the platform-correct
-	// default — Linux: ~/.local/share, macOS: ~/Library/Application Support.
-	// We assert only the suffix + that it lives under the user's home.
-	t.Setenv("XDG_DATA_HOME", "")
-	home, _ := os.UserHomeDir()
-	got := HistoryPath()
-	assert.True(t, strings.HasPrefix(got, home),
-		"expected path under home, got %q", got)
-	assert.Equal(t, filepath.Join("contexthelp", "repl_history"),
-		strings.Join([]string{filepath.Base(filepath.Dir(got)), filepath.Base(got)}, string(filepath.Separator)))
+// The history file lives in the data dir the session's config resolved.
+func TestHistoryPath_InDataDir(t *testing.T) {
+	dir := t.TempDir()
+	assert.Equal(t, filepath.Join(dir, "repl_history"), HistoryPath(dir))
 }
 
-func TestHistoryPath_XDGOverride(t *testing.T) {
-	t.Setenv("XDG_DATA_HOME", "/tmp/xdgtest")
-	want := "/tmp/xdgtest/contexthelp/repl_history"
-	assert.Equal(t, want, HistoryPath())
+// Without a loaded config the built-in (XDG) data dir applies.
+func TestHistoryPath_NoDataDirUsesDefault(t *testing.T) {
+	xdgData := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", xdgData)
+	t.Setenv(config.EnvDataDir, "")
+	assert.Equal(t, filepath.Join(xdgData, "contexthelp", "repl_history"), HistoryPath(""))
+}
+
+// A session whose config carries storage.data_dir (CTXT_DATA_DIR)
+// keeps its history there, not in the XDG data dir.
+func TestSession_HistoryFollowsConfigDataDir(t *testing.T) {
+	dataDir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	s := NewSession(nil, &config.Config{Storage: config.StorageConfig{DataDir: dataDir}})
+	assert.Equal(t, filepath.Join(dataDir, "repl_history"), HistoryPath(s.dataDir()))
+	assert.Equal(t, "", NewSession(nil, nil).dataDir())
 }
 
 func TestLoadSaveHistory_RoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("XDG_DATA_HOME", dir)
 
 	lines := []string{"find auth flow", "list --type url", "show 1"}
 
@@ -40,13 +45,13 @@ func TestLoadSaveHistory_RoundTrip(t *testing.T) {
 	for _, line := range lines {
 		l.AppendHistory(line)
 	}
-	require.NoError(t, SaveHistory(l))
+	require.NoError(t, SaveHistory(l, dir))
 	l.Close()
 
 	l2 := liner.NewLiner()
-	require.NoError(t, LoadHistory(l2))
+	require.NoError(t, LoadHistory(l2, dir))
 	l2.Close()
 
-	_, err := os.Stat(HistoryPath())
+	_, err := os.Stat(filepath.Join(dir, "repl_history"))
 	assert.NoError(t, err)
 }

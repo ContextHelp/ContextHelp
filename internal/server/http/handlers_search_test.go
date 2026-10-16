@@ -1,7 +1,6 @@
 package http
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"testing"
@@ -15,10 +14,10 @@ func TestSearch(t *testing.T) {
 	defer ts.Close()
 
 	now := time.Now().Truncate(time.Second)
-	ts.svc.Store.Objects().Create(context.Background(), &storage.KnowledgeObject{
+	ts.svc.Store(ownerCtx()).Objects().Create(ownerCtx(), &storage.KnowledgeObject{
 		ID: "obj-1", Type: "article", CreatedAt: now, UpdatedAt: now,
 	})
-	ts.svc.Store.Objects().Create(context.Background(), &storage.KnowledgeObject{
+	ts.svc.Store(ownerCtx()).Objects().Create(ownerCtx(), &storage.KnowledgeObject{
 		ID: "obj-2", Type: "note", CreatedAt: now, UpdatedAt: now,
 	})
 
@@ -63,7 +62,7 @@ func TestSearchPagination(t *testing.T) {
 
 	now := time.Now().Truncate(time.Second)
 	for i := 0; i < 5; i++ {
-		ts.svc.Store.Objects().Create(context.Background(), &storage.KnowledgeObject{
+		ts.svc.Store(ownerCtx()).Objects().Create(ownerCtx(), &storage.KnowledgeObject{
 			ID: "obj-" + string(rune('a'+i)), Type: "article", CreatedAt: now, UpdatedAt: now,
 		})
 	}

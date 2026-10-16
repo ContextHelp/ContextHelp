@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 type DetectorStore struct {
@@ -64,6 +65,7 @@ func (s *DetectorStore) List(ctx context.Context, filter storage.DetectorFilter)
 		return nil, 0, fmt.Errorf("count detectors: %w", err)
 	}
 
+	// #nosec G202 -- where joins fixed column predicates whose values are bound placeholders in args; no caller text reaches the SQL.
 	query := `SELECT id, kind, name, pipeline_name, pattern, priority, enabled, created_at, updated_at
 	FROM detectors ` + where + " ORDER BY priority ASC, created_at ASC"
 	if filter.Limit > 0 {
@@ -76,15 +78,8 @@ func (s *DetectorStore) List(ctx context.Context, filter storage.DetectorFilter)
 	}
 	defer rows.Close()
 
-	var detectors []*storage.DetectorRecord
-	for rows.Next() {
-		d, err := scanDetector(rows)
-		if err != nil {
-			return nil, 0, err
-		}
-		detectors = append(detectors, d)
-	}
-	if err := rows.Err(); err != nil {
+	detectors, err := rowscan.AllScanner(rows, scanDetector)
+	if err != nil {
 		return nil, 0, fmt.Errorf("iterate detectors: %w", err)
 	}
 	return detectors, total, nil

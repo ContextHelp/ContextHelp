@@ -70,6 +70,8 @@ func (s *stubEntityStore) List(_ context.Context, _ storage.EntityFilter) ([]*st
 	}
 	return out, nil
 }
+func (s *stubEntityStore) Namespaces(_ context.Context) ([]string, error) { return nil, nil }
+
 func (s *stubEntityStore) Resolve(_ context.Context, mention string) (*storage.Entity, error) {
 	if e, ok := s.entities[mention]; ok {
 		return e, nil
@@ -125,6 +127,18 @@ func (s *stubEdgeStore) DeleteByObject(_ context.Context, objectID string) error
 }
 func (s *stubEdgeStore) RelatedObjectIDs(_ context.Context, objectID string, depth, limit int) ([]string, error) {
 	return nil, nil
+}
+func (s *stubEdgeStore) CreateAll(ctx context.Context, edges []*storage.Edge) error {
+	for _, e := range edges {
+		_ = s.Create(ctx, e)
+	}
+	return nil
+}
+func (s *stubEdgeStore) CreateMissing(ctx context.Context, edges []*storage.Edge) (int, error) {
+	return len(edges), s.CreateAll(ctx, edges)
+}
+func (s *stubEdgeStore) DeleteMatching(_ context.Context, _ []storage.EdgeMatch) (int, error) {
+	return 0, nil
 }
 func (s *stubEdgeStore) CountMentionsTo(_ context.Context, toType, toID string) (int, error) {
 	n := 0
@@ -384,14 +398,14 @@ func TestGraphSafetyValidator_ValidateEdge(t *testing.T) {
 
 func TestDetectCycles_NoCycle(t *testing.T) {
 	// a → b → c (linear, no cycle)
-	graph_map := map[string][]string{
+	graphMap := map[string][]string{
 		"a": {"b"},
 		"b": {"c"},
 		"c": {},
 	}
 	err := graph.DetectCycles(context.Background(), "a",
 		func(_ context.Context, id string) ([]string, error) {
-			return graph_map[id], nil
+			return graphMap[id], nil
 		})
 	if err != nil {
 		t.Errorf("expected no cycle, got: %v", err)
@@ -400,14 +414,14 @@ func TestDetectCycles_NoCycle(t *testing.T) {
 
 func TestDetectCycles_WithCycle(t *testing.T) {
 	// a → b → c → a
-	graph_map := map[string][]string{
+	graphMap := map[string][]string{
 		"a": {"b"},
 		"b": {"c"},
 		"c": {"a"},
 	}
 	err := graph.DetectCycles(context.Background(), "a",
 		func(_ context.Context, id string) ([]string, error) {
-			return graph_map[id], nil
+			return graphMap[id], nil
 		})
 	if err == nil {
 		t.Error("expected cycle error, got nil")
@@ -415,10 +429,10 @@ func TestDetectCycles_WithCycle(t *testing.T) {
 }
 
 func TestDetectCycles_SelfLoop(t *testing.T) {
-	graph_map := map[string][]string{"a": {"a"}}
+	graphMap := map[string][]string{"a": {"a"}}
 	err := graph.DetectCycles(context.Background(), "a",
 		func(_ context.Context, id string) ([]string, error) {
-			return graph_map[id], nil
+			return graphMap[id], nil
 		})
 	if err == nil {
 		t.Error("expected self-loop cycle error, got nil")

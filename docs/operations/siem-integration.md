@@ -17,7 +17,7 @@ SIEM-ready audit log export for Splunk, Elastic/ELK, and Datadog.
 ## CLI Export
 
 ```
-# batch export — all entries as NDJSON
+# all entries as NDJSON
 ctxt audit export --format json > audit.ndjson
 
 # CEF export for last 24 h
@@ -35,50 +35,19 @@ ctxt audit list --since 7d --event-type delete
 
 ---
 
-## Real-Time Forwarding
+## Scheduled Shipping
 
-### Syslog (UDP / TCP / TLS)
+Nothing forwards the audit log as it is written. Ship it by running
+`ctxt audit export` on a schedule and pointing your SIEM agent at the output
+file. Export is unlimited unless you pass `--limit`.
 
-Each write to the audit log is forwarded to a remote syslog receiver.
-
-```yaml
-audit:
-  syslog:
-    enabled: true
-    protocol: udp          # udp | tcp | tls
-    address: siem.corp.example.com:514
-    facility: local0
+```
+# cron, hourly: append the last hour (plus a margin) as NDJSON
+0 * * * * ctxt audit export --format json --since 65m >> /var/log/ctxt/audit.ndjson
 ```
 
-TLS note: system trust store used; custom CA not yet supported — set
-`protocol: tcp` and terminate TLS at a reverse proxy if needed.
-
-### Webhook
-
-Each audit event is POSTed as JSON to a configurable URL (async, non-blocking).
-
-```yaml
-audit:
-  webhook:
-    enabled: true
-    url: https://ingest.example.com/audit
-```
-
-Payload is a JSON-encoded `AuditEntry`:
-
-```json
-{
-  "id": "evt-abc123",
-  "event_type": "delete",
-  "object_id": "obj-xyz",
-  "actor": "alice@corp.example.com",
-  "payload": {"reason": "user request"},
-  "created_at": "2026-03-26T12:00:00Z"
-}
-```
-
-Delivery is best-effort (one attempt, fire-and-forget). For guaranteed delivery
-add a queue in front of the webhook receiver.
+The margin makes consecutive windows overlap; deduplicate on `id` in the
+SIEM.
 
 ---
 
@@ -106,35 +75,6 @@ TIME_FORMAT = %Y-%m-%dT%H:%M:%SZ
 TIME_PREFIX = "created_at":"
 ```
 
-### HTTP Event Collector (webhook)
-
-Set the webhook URL to your HEC endpoint:
-
-```yaml
-audit:
-  webhook:
-    enabled: true
-    url: https://splunk.corp.example.com:8088/services/collector/event
-```
-
-Add a `Splunk <token>` `Authorization` header at the HEC receiver or via a
-reverse proxy that injects the token header.
-
-### CEF via Syslog
-
-Many Splunk deployments ingest CEF over syslog:
-
-```yaml
-audit:
-  syslog:
-    enabled: true
-    protocol: tcp
-    address: splunk-syslog.corp.example.com:5000
-    facility: local0
-```
-
-Use `ctxt audit export --format cef` for batch backfill.
-
 ---
 
 ## Elastic / ELK Stack
@@ -160,42 +100,6 @@ output.elasticsearch:
   index: "ctxt-audit-%{+yyyy.MM.dd}"
 ```
 
-### Logstash (webhook → pipeline)
-
-Point the webhook at a Logstash HTTP input:
-
-```yaml
-audit:
-  webhook:
-    enabled: true
-    url: http://logstash.corp.example.com:5044
-```
-
-Logstash pipeline:
-
-```
-input {
-  http { port => 5044 codec => json }
-}
-filter {
-  date { match => ["created_at", "ISO8601"] }
-}
-output {
-  elasticsearch { hosts => ["https://elastic.corp.example.com:9200"] }
-}
-```
-
-### Syslog (Logstash syslog input)
-
-```yaml
-audit:
-  syslog:
-    enabled: true
-    protocol: tcp
-    address: logstash.corp.example.com:5140
-    facility: local0
-```
-
 ---
 
 ## Datadog
@@ -219,20 +123,6 @@ logs:
         name: json_single_line
         pattern: '^\{'
 ```
-
-### Datadog Logs API (webhook)
-
-Use the Datadog HTTP logs intake as the webhook endpoint:
-
-```yaml
-audit:
-  webhook:
-    enabled: true
-    url: https://http-intake.logs.datadoghq.com/api/v2/logs
-```
-
-Add `DD-API-KEY` via a proxy that injects the header, or use a lightweight
-relay (e.g. Vector, Fluent Bit) between ctxt and the Datadog endpoint.
 
 ---
 

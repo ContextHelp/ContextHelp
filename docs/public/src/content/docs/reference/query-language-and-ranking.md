@@ -37,6 +37,14 @@ ctxt list --mention @project.checkout-redesign
 ctxt list --q "mention:project.checkout-redesign"
 ```
 
+### Related objects (graph traversal)
+
+Find objects that share mention targets with a given entity (1-hop neighbourhood):
+
+```bash
+ctxt list --q "related==@arch.decision"
+```
+
 ### Time-bounded retrieval
 
 ```bash
@@ -52,6 +60,8 @@ Expected ranking inputs include:
 - mention/entity alignment
 - profile context
 - optional federated sources
+
+To see how a specific query ranked every candidate, including the ones it cut, use `ctxt find "<query>" --graph`: [`../workflows/search-graph.md`](../workflows/search-graph.md).
 
 For day-to-day usage:
 
@@ -77,12 +87,11 @@ Semantic mode is best for discovery and ideation.
 
 ## Canonical references
 
-- [`../../dpkms/query-language-spec.md`](../../dpkms/query-language-spec.md)
-- [`../../dpkms/ranking-and-reranking.md`](../../dpkms/ranking-and-reranking.md)
-- [`../../stories/search/US-0017-structured-rsql-query.md`](../../stories/search/US-0017-structured-rsql-query.md)
+- [`docs/dpkms/query-language-spec.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/dpkms/query-language-spec.md)
+- [`docs/dpkms/ranking-and-reranking.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/dpkms/ranking-and-reranking.md)
+- [`docs/stories/search/US-0017-structured-rsql-query.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/stories/search/US-0017-structured-rsql-query.md)
 
 ## Story alignment
 
 - Core search: `US-0016`, `US-0017`, `US-0018`, `US-0021`
 - Advanced search: `US-0051`, `US-0052`, `US-0053`, `US-0054`, `US-0055`, `US-0061`
-- Ranking extensibility: `US-0045`

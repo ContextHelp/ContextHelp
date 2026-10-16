@@ -21,7 +21,7 @@ const ConversionWindow = 14 * 24 * time.Hour
 // dispatch correctness against a labelled set; conversion measures
 // production effectiveness — what fraction of candidates a strategy
 // emits go on to become Promoted entities. The two together drive
-// the per-strategy quality score (T-0333).
+// the per-strategy quality score.
 //
 // ConversionAggregator is safe for concurrent Subscribe / Snapshot.
 // Subscribe is intended to be called once at boot; Snapshot is
@@ -31,9 +31,9 @@ type ConversionAggregator struct {
 	window time.Duration
 	now    func() time.Time
 
-	mu      sync.Mutex
-	emits   map[string][]time.Time // strategy ID → emit timestamps
-	promots map[string][]time.Time // strategy ID → promotion timestamps
+	mu         sync.Mutex
+	emits      map[string][]time.Time // strategy ID → emit timestamps
+	promotions map[string][]time.Time // strategy ID → promotion timestamps
 }
 
 // AggregatorOptions configure a ConversionAggregator.
@@ -50,10 +50,10 @@ type AggregatorOptions struct {
 // instance (production wires the daemon's shared bus.Bus).
 func NewConversionAggregator(opts AggregatorOptions) *ConversionAggregator {
 	a := &ConversionAggregator{
-		window:  opts.Window,
-		now:     opts.Now,
-		emits:   map[string][]time.Time{},
-		promots: map[string][]time.Time{},
+		window:     opts.Window,
+		now:        opts.Now,
+		emits:      map[string][]time.Time{},
+		promotions: map[string][]time.Time{},
 	}
 	if a.window == 0 {
 		a.window = ConversionWindow
@@ -97,7 +97,7 @@ func (a *ConversionAggregator) onPromoted(_ context.Context, e bus.Event) error 
 		return nil
 	}
 	a.mu.Lock()
-	a.promots[id] = append(a.promots[id], a.now())
+	a.promotions[id] = append(a.promotions[id], a.now())
 	a.mu.Unlock()
 	return nil
 }
@@ -143,9 +143,9 @@ func (a *ConversionAggregator) Snapshot() map[string]ConversionRate {
 		ts = trimBefore(ts, cutoff)
 		a.emits[id] = ts
 	}
-	for id, ts := range a.promots {
+	for id, ts := range a.promotions {
 		ts = trimBefore(ts, cutoff)
-		a.promots[id] = ts
+		a.promotions[id] = ts
 	}
 
 	// Strategy IDs we know about: union of emit and promotion keys.
@@ -153,12 +153,12 @@ func (a *ConversionAggregator) Snapshot() map[string]ConversionRate {
 	for id := range a.emits {
 		ids[id] = struct{}{}
 	}
-	for id := range a.promots {
+	for id := range a.promotions {
 		ids[id] = struct{}{}
 	}
 	for id := range ids {
 		em := len(a.emits[id])
-		pr := len(a.promots[id])
+		pr := len(a.promotions[id])
 		rate := 0.0
 		if em > 0 {
 			rate = float64(pr) / float64(em)

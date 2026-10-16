@@ -63,7 +63,7 @@ func CreateWatch(svc *service.Service, mgr *watcher.Manager) http.HandlerFunc {
 				return
 			}
 		} else {
-			if err := svc.Store.Watches().CreateWatch(r.Context(), cfg); err != nil {
+			if err := svc.Store(r.Context()).Watches().CreateWatch(r.Context(), cfg); err != nil {
 				WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 				return
 			}
@@ -76,7 +76,7 @@ func CreateWatch(svc *service.Service, mgr *watcher.Manager) http.HandlerFunc {
 func ListWatches(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		watchStatus := r.URL.Query().Get("status")
-		watches, err := svc.Store.Watches().ListWatches(r.Context(), watchStatus)
+		watches, err := svc.Store(r.Context()).Watches().ListWatches(r.Context(), watchStatus)
 		if err != nil {
 			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 			return
@@ -89,13 +89,13 @@ func ListWatches(svc *service.Service) http.HandlerFunc {
 func GetWatch(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
-		cfg, err := svc.Store.Watches().GetWatch(r.Context(), id)
+		cfg, err := svc.Store(r.Context()).Watches().GetWatch(r.Context(), id)
 		if err != nil {
 			statusCode := http.StatusInternalServerError
 			if strings.Contains(err.Error(), "not found") {
 				statusCode = http.StatusNotFound
 			}
-			WriteError(w, statusCode, "NOT_FOUND", err.Error())
+			WriteError(w, statusCode, CodeNotFound, err.Error())
 			return
 		}
 		WriteJSON(w, http.StatusOK, cfg)
@@ -106,9 +106,9 @@ func GetWatch(svc *service.Service) http.HandlerFunc {
 func UpdateWatch(svc *service.Service, mgr *watcher.Manager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
-		cfg, err := svc.Store.Watches().GetWatch(r.Context(), id)
+		cfg, err := svc.Store(r.Context()).Watches().GetWatch(r.Context(), id)
 		if err != nil {
-			WriteError(w, http.StatusNotFound, "NOT_FOUND", err.Error())
+			WriteError(w, http.StatusNotFound, CodeNotFound, err.Error())
 			return
 		}
 		var patch struct {
@@ -117,7 +117,10 @@ func UpdateWatch(svc *service.Service, mgr *watcher.Manager) http.HandlerFunc {
 			DebounceMS       *int      `json:"debounce_ms"`
 			PipelineOverride *string   `json:"pipeline_override"`
 		}
-		json.NewDecoder(r.Body).Decode(&patch)
+		if err := decodeOptionalBody(r, &patch); err != nil {
+			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid JSON body")
+			return
+		}
 		if patch.IncludePatterns != nil {
 			cfg.IncludePatterns = *patch.IncludePatterns
 		}
@@ -131,7 +134,7 @@ func UpdateWatch(svc *service.Service, mgr *watcher.Manager) http.HandlerFunc {
 			cfg.PipelineOverride = *patch.PipelineOverride
 		}
 		cfg.UpdatedAt = time.Now()
-		if err := svc.Store.Watches().UpdateWatch(r.Context(), cfg); err != nil {
+		if err := svc.Store(r.Context()).Watches().UpdateWatch(r.Context(), cfg); err != nil {
 			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 			return
 		}
@@ -147,7 +150,7 @@ func DeleteWatch(svc *service.Service, mgr *watcher.Manager) http.HandlerFunc {
 		if mgr != nil {
 			deleteErr = mgr.RemoveWatch(r.Context(), id)
 		} else {
-			deleteErr = svc.Store.Watches().DeleteWatch(r.Context(), id)
+			deleteErr = svc.Store(r.Context()).Watches().DeleteWatch(r.Context(), id)
 		}
 		if deleteErr != nil {
 			statusCode := http.StatusInternalServerError
@@ -197,7 +200,7 @@ func ResumeWatch(mgr *watcher.Manager) http.HandlerFunc {
 func ListWatchFiles(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
-		recs, err := svc.Store.Watches().ListFileRecords(r.Context(), id)
+		recs, err := svc.Store(r.Context()).Watches().ListFileRecords(r.Context(), id)
 		if err != nil {
 			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 			return

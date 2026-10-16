@@ -1,34 +1,25 @@
 #!/usr/bin/env bash
 # Run golangci-lint over the staged packages, reporting only NEW findings.
 #
-# Mirrors the CI step `golangci-lint run --timeout=5m`, with two deliberate
-# differences that make it usable as a commit hook:
+# Same linter version and config as CI's lint job (make ci-lint-full), with
+# two deliberate differences that keep it fast enough for a commit hook:
 #
 #   1. Scoped to the packages holding the staged files, not ./...
-#   2. --new-from-rev=HEAD, so the large pre-existing backlog is filtered out
-#      and only findings this commit introduces fail the hook.
+#   2. --new-from-rev=HEAD, so only findings this commit introduces fail the
+#      hook. The full scan in CI catches anything this scope misses.
 #
-# Without (2) the hook fails on any file that already has findings — which is
-# most of them — and gets switched off. See .pre-commit-config.yaml.
+# See .pre-commit-config.yaml.
+#
+# golangci-lint is the mise.toml pin, resolved by scripts/ci/tools.sh. When
+# it is missing or another version comes first on PATH the hook FAILS: a
+# different version's findings are not evidence about CI, in either
+# direction.
 set -euo pipefail
 
 [ "$#" -eq 0 ] && exit 0
 
-# Keep this in sync with .github/workflows/ci.yml.
-GOLANGCI_VERSION=v2.1.6
-
-if ! command -v golangci-lint >/dev/null 2>&1; then
-	echo "golangci-lint not found; skipping." >&2
-	echo "Install the CI-pinned version:" >&2
-	echo "  go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_VERSION}" >&2
-	exit 0
-fi
-
-have=$(golangci-lint version 2>&1 | grep -oE 'v?2\.[0-9]+\.[0-9]+' | head -1 || true)
-if [ -n "$have" ] && [ "v${have#v}" != "$GOLANGCI_VERSION" ]; then
-	echo "warning: golangci-lint ${have} differs from the CI pin ${GOLANGCI_VERSION};" >&2
-	echo "         findings may not match CI." >&2
-fi
+tools="$(git rev-parse --show-toplevel)/scripts/ci/tools.sh"
+"$tools" golangci-lint,go
 
 # module_root prints the directory of the go.mod nearest to $1.
 module_root() {
@@ -44,7 +35,7 @@ in_workspace() {
 	[ -f go.work ] && grep -Eq "^[[:space:]]*(use[[:space:]]+)?\./$1[[:space:]]*$" go.work
 }
 
-# Packages in nested modules (plugins/*/go.mod) outside go.work are not
+# Packages in nested modules (a directory with its own go.mod) outside go.work are not
 # part of the build: golangci-lint run from the root cannot type-check
 # them, and CI's `golangci-lint run ./...` never lints them either. Skip
 # them here too.
@@ -60,5 +51,14 @@ done | sort -u)
 
 [ -z "$pkgs" ] && exit 0
 
+# Drop packages the lint tag set (.golangci.yml run.build-tags; keep in
+# sync) excludes entirely, e.g. test/e2e/federation (federation_e2e
+# only). `golangci-lint run ./...` skips them; naming one fails the
+# type check with "build constraints exclude all Go files".
 # shellcheck disable=SC2086 # deliberate word-splitting of the package list
-golangci-lint run --timeout=5m --new-from-rev=HEAD $pkgs
+pkgs=$(CGO_ENABLED=1 "$tools" go -- go list -e -tags integration,e2e,fts5,watch_e2e \
+	-f '{{if or .GoFiles .TestGoFiles .XTestGoFiles}}{{.Dir}}{{end}}' $pkgs)
+[ -z "$pkgs" ] && exit 0
+
+# shellcheck disable=SC2086 # deliberate word-splitting of the package list
+"$tools" golangci-lint,go -- golangci-lint run --timeout=10m --new-from-rev=HEAD $pkgs

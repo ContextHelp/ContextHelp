@@ -8,8 +8,8 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -17,7 +17,9 @@ import (
 var showCmd = &cobra.Command{
 	Use:   "show [id]",
 	Short: "Display knowledge object details",
-	Long: `Display detailed information about a knowledge object.
+	Long: `Display detailed information about a knowledge object, read from
+the dpkms instance ctxt resolves, with the objects related to it through
+shared mentions.
 
 If no ID is provided, it will check the clipboard for an ID.
 
@@ -44,9 +46,7 @@ func init() {
 
 	// Display flags
 	showCmd.Flags().Bool("raw", false, "show raw object data")
-	// --format is inherited from the kit-owned persistent flag set; do not
-	// re-register it locally. show reads it via cmd.Flags().GetString("format")
-	// at run time (cobra resolves inherited flags through Flags()).
+	showCmd.Flags().String("server", "", serverFlagUsage)
 
 	// Bind flags to viper
 	viper.BindPFlag("show.raw", showCmd.Flags().Lookup("raw"))
@@ -58,47 +58,32 @@ func runShow(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if source == "clipboard" {
+	if source == cli.SourceClipboard {
 		fmt.Fprintf(os.Stderr, "Opening object ID from clipboard: %q\n", objectID)
 	}
 
-	svc, cleanup, err := newService()
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	client, err := newDpkmsClient(cmd, dpkmsclient.DefaultTimeout)
 	if err != nil {
 		return err
 	}
-	defer cleanup()
-
-	ctx := context.Background()
-	obj, err := svc.GetObject(ctx, objectID)
+	obj, err := client.GetObject(ctx, objectID)
 	if err != nil {
-		return fmt.Errorf("get object: %w", err)
-	}
-
-	// Delegate to output-generator plugin when a named format is specified.
-	// --format is owned by kit as a persistent root flag; cmd.Flags()
-	// resolves inherited persistent flags transparently. kit v0.5 defaults
-	// --format to "table" (was ""), so an unset flag now reports "table";
-	// treat both as "no output-generator plugin requested" and fall through
-	// to the built-in human rendering below.
-	format, _ := cmd.Flags().GetString("format")
-	if format != "" && format != "table" {
-		gen := findOutputGenerator(svc.PluginRegistry, format)
-		if gen == nil {
-			return fmt.Errorf("no output-generator plugin loaded for format %q", format)
-		}
-		if !gen.Accepts(*obj) {
-			return fmt.Errorf("plugin %q does not accept objects of type %q", format, obj.Type)
-		}
-		out, err := gen.Generate(ctx, *obj, pluginapi.OutputOptions{})
-		if err != nil {
-			return fmt.Errorf("generate %q: %w", format, err)
-		}
-		_, err = os.Stdout.Write(out)
 		return err
 	}
 
 	if isJSONOutput() || viper.GetBool("show.raw") {
 		return outputJSON(os.Stdout, obj)
+	}
+
+	// See Also: related objects via shared mention targets (depth 1, at
+	// most 5), fetched before anything prints.
+	related, err := client.RelatedObjects(ctx, obj.ID, 1, 5)
+	if err != nil {
+		return err
 	}
 
 	fmt.Printf("Knowledge Object: %s\n\n", obj.ID)
@@ -168,9 +153,7 @@ func runShow(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// See Also: related objects via shared mention targets (depth=1, max 5).
-	related, err := svc.RelatedObjects(ctx, obj.ID, 1, 5)
-	if err == nil && len(related) > 0 {
+	if len(related) > 0 {
 		fmt.Println()
 		fmt.Println("See Also:")
 		for _, r := range related {

@@ -4,23 +4,21 @@
 > source of truth for all structured content is `ObjectGraph` (`graph_json` column). Flat
 > fields (`sections`, `tags`, `decisions`, `tasks`, `summaries`) are projection caches derived
 > on read by `internal/projection`. Pipeline steps MUST write to `Graph.Nodes`; flat-field
-> writes are treated as legacy. See `pkg/pluginapi/pluginapi.go` for the authoritative type.
+> writes are treated as legacy. See `internal/storage/types.go` for the authoritative type.
 
 This document describes the `KnowledgeObject` schema used by ContextHelp, including
-**Mentions**, **Plugin Metadata**, and the **ObjectGraph** as first-class layers. KOs represent
+**Mentions** and the **ObjectGraph** as first-class layers. KOs represent
 enriched, structured, registry-aligned knowledge extracted from any input type.
 
 They power retrieval, agent reasoning, semantic clustering, graph analysis, federated registry
-alignment, plugin-driven workflows, and deterministic reproduction.
+alignment, and deterministic reproduction.
 
 ## Overview
 
 A `KnowledgeObject` is a deterministic, JSON-serializable object produced by pipelines. All
-fields follow strict semantics to ensure stability across runs, machines, registries, agents,
-and plugins.
+fields follow strict semantics to ensure stability across runs, machines, registries and agents.
 
-Below is the conceptual structure including the `mention_uris` field and the `plugins`
-metadata namespace:
+Below is the conceptual structure including the `mention_uris` field:
 
 ```json
 {
@@ -51,7 +49,6 @@ metadata namespace:
   "related": [],
   "registry": {},
   "metadata": {},
-  "plugins": {},
   "debug": {}
 }
 ```
@@ -70,8 +67,6 @@ flowchart TD
     D1 --> G[Bookmark]
     D2 --> G
     D3 --> G
-    H[Plugins] --> G
-    H --> B
 ```
 
 ---
@@ -158,19 +153,10 @@ Allowed values include core types:
 - `video`
 - `other`
 
-**Plugin-defined types** are also allowed:
-
-Examples:
-
-- `"feed"` (RSS/Atom/JSONFeed plugin)
-- `"feed_item"`
-- `"price_track"`
-
-Plugin-defined types MUST be:
+Other types are allowed (for example `"feed"` and `"feed_item"` from feed ingestion). They MUST be:
 
 - lowercase
 - namespaced or descriptive
-- documented by the plugin
 
 ### subtype
 
@@ -184,8 +170,6 @@ Examples:
 - `feed.fetch`
 - `feed.parse`
 
-Plugins may register custom pipeline subtypes.
-
 ### raw
 
 Raw input payload or pointer.
@@ -193,13 +177,11 @@ Raw input payload or pointer.
 ### source
 
 Origin of the input:
-`engine-cli`, `rest-api`, `extension`, `plugin:<name>`
+`engine-cli`, `rest-api`, `extension`, or a capture source name
 
 ### pipeline
 
-Name of the pipeline that produced this bookmark.
-
-Plugins may define new pipelines, and their names appear here.
+Name of the pipeline that produced this bookmark, built-in or custom.
 
 ---
 
@@ -400,56 +382,6 @@ The pipeline converts these to `ctxt://entity/...` URIs automatically.
 
 ---
 
-## Plugin Metadata
-
-The `plugins` namespace is reserved for **plugin-owned bookmark metadata**, ensuring plugins can store state without modifying core fields.
-
-### Structure
-
-```json
-"plugins": {
-  "rss_feed": {
-    "feed_url": "https://example.com/feed.xml",
-    "guid": "item-123",
-    "published_at": "2025-01-02T10:00:00Z"
-  },
-  "price_monitor": {
-    "current_price": 1199.00,
-    "price_history": [
-      { "timestamp": 1710000000, "price": 1299.99 },
-      { "timestamp": 1710050000, "price": 1199.00 }
-    ],
-    "threshold_percent": 10
-  },
-  "notifications": {
-    "suppress": false,
-    "custom_channels": ["cli", "webhook"]
-  }
-}
-```
-
-### Plugin Metadata Rules
-
-- Plugins MUST store all bookmark-specific state under their own key.
-- Core MUST NOT interpret or mutate plugin metadata.
-- Plugin metadata MUST be JSON-serializable.
-- Plugins MUST NOT override or delete core fields.
-- Plugins MAY attach refresh policies, item metadata, history arrays, etc.
-- Conflicts between plugins MUST NOT occur because namespaces are segregated.
-
-### Purpose
-
-The `plugins` field ensures:
-
-- **RSS Feed Plugin** can track feed URLs, GUIDs, item timestamps
-- **Price Monitor Plugin** can track price history
-- **Notification Plugin** can suppress or redirect notifications per-item
-- **Future plugins** can extend bookmarks safely
-
-No core schema changes are ever required.
-
----
-
 ## Related
 
 Semantically related bookmarks.
@@ -464,9 +396,7 @@ Tracks registry versions, taxonomy sources, weights, and provenance.
 
 ## Metadata
 
-Auxiliary metadata from core pipelines (not plugins).
-
-Plugins must NOT write to `metadata`. Only `plugins`.
+Auxiliary metadata from pipelines and steps.
 
 ---
 
@@ -497,12 +427,6 @@ Diagnostics and pipeline traces.
   "mention_uris": [
     "ctxt://entity/concept/signup-flow"
   ],
-
-  "plugins": {
-    "price_monitor": {
-      "enabled": false
-    }
-  },
 
   "pipeline": "text.short"
 }
@@ -587,24 +511,6 @@ Diagnostics and pipeline traces.
     "image": { "width": 1440, "height": 900 }
   },
 
-  "plugins": {
-    "rss_feed": {
-      "feed_url": "https://example.com/feed.xml",
-      "guid": "item123",
-      "published_at": "2025-01-17T09:00:00Z"
-    },
-    "price_monitor": {
-      "current_price": 1199.00,
-      "price_history": [
-        { "timestamp": 1710000000, "price": 1299.99 },
-        { "timestamp": 1710050000, "price": 1199.00 }
-      ]
-    },
-    "notifications": {
-      "suppress": false
-    }
-  },
-
   "debug": {
     "taskTimings": {
       "OCR": 0.23,
@@ -620,8 +526,6 @@ Diagnostics and pipeline traces.
 
 - Additive changes permitted
 - Breaking changes require schema version bump
-- Plugins MUST NOT break core fields
-- `plugins` namespace is guaranteed stable
 
 ---
 
@@ -631,9 +535,4 @@ The Bookmark schema now formally supports:
 
 1. **Mentions** — canonical entity references
 2. **Content-hash deduplication** — SHA-256 based duplicate detection with reinforcement tracking
-3. **Plugin-defined bookmark types**
-4. **Plugin metadata namespace (`plugins`)**
-5. **Full isolation of plugin behavior from core**
-6. **Deterministic, extensible knowledge representations**
-
-This ensures plugins like RSS Feed, Price Monitor, Refresh, Notification, and future extensions can operate without modifying or interfering with core schema fields.
+3. **Deterministic, extensible knowledge representations**

@@ -26,7 +26,6 @@ package integration
 
 import (
 	"bytes"
-	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -70,7 +69,7 @@ func TestGarageBlobRoundTrip(t *testing.T) {
 		t.Fatalf("blob.New: %v", err)
 	}
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	key := randomHex(t, 16)
 	payload := []byte("ctxt → garage round-trip\nline 2\n")
 	meta := storage.BlobMeta{
@@ -270,7 +269,7 @@ db_engine = "sqlite"
 replication_factor = 1
 rpc_bind_addr = "[::]:3901"
 rpc_public_addr = "127.0.0.1:3901"
-rpc_secret = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+rpc_secret = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" # gitleaks:allow throwaway test node
 
 [s3_api]
 s3_region = "garage"

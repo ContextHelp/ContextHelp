@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Run `go vet` over the packages containing the staged Go files.
 #
-# Mirrors the CI step `go vet -tags fts5 ./...`. Vet analyses whole packages,
-# not single files, so the staged file list is mapped to its directories.
+# Mirrors the CI step `make ci-vet` (`go vet -tags fts5 ./...`) with the
+# pinned Go (scripts/ci/tools.sh; fails when it is missing). Vet analyses
+# whole packages, not single files, so the staged file list is mapped to its
+# directories.
 #
 # The fts5 tag is mandatory: without it the build fails on a deliberate
 # tripwire in internal/storage/sqlite. See DEVELOPING.md.
@@ -12,13 +14,13 @@ set -euo pipefail
 
 # Unique parent directories of the staged files, as ./pkg/path arguments.
 #
-# Directories belonging to a NESTED module are dropped. The repo carries six
-# of them under plugins/ (each with its own go.mod), and vetting one from the
-# root module fails with "main module does not contain package" — a staged
-# file there would block every commit. Same for build-tagged trees the
+# Directories belonging to a NESTED module (a directory with its own go.mod)
+# are dropped: vetting one from the root module fails with "main module does
+# not contain package", so a staged file there would block every commit. Same for build-tagged trees the
 # default tag set cannot load. Walk up to the nearest go.mod and keep only
 # the paths this module actually owns.
 root_mod=$(cd "$(git rev-parse --show-toplevel)" && pwd)
+tools="$root_mod/scripts/ci/tools.sh"
 owned=""
 for f in "$@"; do
 	d=$(dirname "$f")
@@ -36,9 +38,20 @@ done
 pkgs=$(printf '%s\n' $owned | sort -u)
 [ -z "$pkgs" ] && exit 0
 
-# e2e joins fts5 so the black-box suites under test/e2e/ that carry only
-# the e2e tag (and are linted with it, see .golangci.yml build-tags) load
-# as packages instead of failing with "build constraints exclude all Go
-# files"; it selects no file in any other package.
+# e2e and watch_e2e join fts5 so the black-box suites under test/e2e/
+# that carry only one of those tags (and are linted with them, see
+# .golangci.yml build-tags) load as packages instead of failing with
+# "build constraints exclude all Go files"; they select no file in any
+# other package.
+tags=fts5,e2e,watch_e2e
+
+# Drop packages this tag set excludes entirely (test/e2e/federation
+# carries only federation_e2e). `go vet ./...` skips them the same way;
+# naming one fails with "build constraints exclude all Go files".
 # shellcheck disable=SC2086 # deliberate word-splitting of the package list
-CGO_ENABLED=1 go vet -tags fts5,e2e $pkgs
+pkgs=$(CGO_ENABLED=1 "$tools" go -- go list -e -tags "$tags" \
+	-f '{{if or .GoFiles .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' $pkgs)
+[ -z "$pkgs" ] && exit 0
+
+# shellcheck disable=SC2086 # deliberate word-splitting of the package list
+CGO_ENABLED=1 "$tools" go -- go vet -tags "$tags" $pkgs

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	uri "hop.top/cite/scheme"
 )
 
@@ -31,7 +30,7 @@ func (s *stubObjectStore) Get(_ context.Context, id string) (*storage.KnowledgeO
 	return nil, io.EOF // sentinel: not found
 }
 
-func (s *stubObjectStore) GetByContentHash(_ context.Context, _ string) (*storage.KnowledgeObject, error) {
+func (s *stubObjectStore) GetByContentHash(_ context.Context, _, _ string) (*storage.KnowledgeObject, error) {
 	return nil, io.EOF
 }
 
@@ -55,7 +54,9 @@ func (s *stubObjectStore) List(_ context.Context, filter storage.ObjectFilter) (
 
 func (s *stubObjectStore) Update(_ context.Context, _ *storage.KnowledgeObject) error { return nil }
 func (s *stubObjectStore) Delete(_ context.Context, _ string) error                   { return nil }
-func (s *stubObjectStore) ListBySQL(_ context.Context, _ string, _ []any, _, _ int) ([]*storage.KnowledgeObject, int, error) {
+func (s *stubObjectStore) CountBlobRefs(_ context.Context, _ string) (int, error)     { return 0, nil }
+
+func (s *stubObjectStore) ListBySQL(_ context.Context, _ string, _ []any, _ storage.ObjectFilter) ([]*storage.KnowledgeObject, int, error) {
 	return nil, 0, nil
 }
 
@@ -85,11 +86,11 @@ func (s *stubObjectStore) FTSSearch(_ context.Context, _ string, _ storage.Objec
 	return nil, nil
 }
 
-func (s *stubObjectStore) FTSSearchNodeAware(_ context.Context, _ string, _ storage.ObjectFilter, _ pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error) {
+func (s *stubObjectStore) FTSSearchNodeAware(_ context.Context, _ string, _ storage.ObjectFilter, _ storage.NodeAwareFilter) ([]*storage.NodeAwareResult, error) {
 	return nil, nil
 }
 
-func (s *stubObjectStore) VectorSearchNodeAware(_ context.Context, _ storage.VectorQuery, _ storage.ObjectFilter, _ pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error) {
+func (s *stubObjectStore) VectorSearchNodeAware(_ context.Context, _ storage.VectorQuery, _ storage.ObjectFilter, _ storage.NodeAwareFilter) ([]*storage.NodeAwareResult, error) {
 	return nil, nil
 }
 
@@ -123,6 +124,21 @@ func (s *stubEdgeStoreAlt) CountMentionsTo(_ context.Context, _, _ string) (int,
 
 func (s *stubEdgeStoreAlt) RelatedObjectIDs(_ context.Context, _ string, _, _ int) ([]string, error) {
 	return nil, nil
+}
+
+func (s *stubEdgeStoreAlt) CreateAll(ctx context.Context, edges []*storage.Edge) error {
+	for _, e := range edges {
+		_ = s.Create(ctx, e)
+	}
+	return nil
+}
+
+func (s *stubEdgeStoreAlt) CreateMissing(ctx context.Context, edges []*storage.Edge) (int, error) {
+	return len(edges), s.CreateAll(ctx, edges)
+}
+
+func (s *stubEdgeStoreAlt) DeleteMatching(_ context.Context, _ []storage.EdgeMatch) (int, error) {
+	return 0, nil
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -436,4 +452,8 @@ func TestAlternativeEdgeExists_NotFound(t *testing.T) {
 	if alternativeEdgeExists(edges, "obj-b") {
 		t.Error("mentions edge should not count as alternative")
 	}
+}
+
+func (s *stubObjectStore) CountByType(_ context.Context) (map[string]int, error) {
+	return map[string]int{}, nil
 }

@@ -2,6 +2,7 @@
 package registry
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/base64"
@@ -11,6 +12,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 )
 
 // ErrSignatureRequired is returned when require_signatures is true but the
@@ -26,7 +29,7 @@ type ErrSignatureInvalid struct {
 
 func (e ErrSignatureInvalid) Error() string {
 	return fmt.Sprintf("registry %s: signature verification failed (key fingerprint: %s)",
-		e.RegistryURL, e.KeyFingerprint)
+		config.RedactDSN(e.RegistryURL), e.KeyFingerprint)
 }
 
 // ErrSignatureMissing is returned when the registry declares a public key but
@@ -36,7 +39,7 @@ type ErrSignatureMissing struct {
 }
 
 func (e ErrSignatureMissing) Error() string {
-	return fmt.Sprintf("registry %s: signature required but no Content-Signature header present", e.RegistryURL)
+	return fmt.Sprintf("registry %s: signature required but no Content-Signature header present", config.RedactDSN(e.RegistryURL))
 }
 
 // KeyFingerprint returns the hex-encoded SHA-256 digest of rawPublicKeyHex.
@@ -70,11 +73,11 @@ func VerifyResponseSignature(
 ) error {
 	pubKeyBytes, err := hex.DecodeString(publicKeyHex)
 	if err != nil {
-		return fmt.Errorf("decode public key for %s: %w", registryURL, err)
+		return fmt.Errorf("decode public key for %s: %w", config.RedactDSN(registryURL), err)
 	}
 	if len(pubKeyBytes) != ed25519.PublicKeySize {
 		return fmt.Errorf("registry %s: public key must be %d bytes, got %d",
-			registryURL, ed25519.PublicKeySize, len(pubKeyBytes))
+			config.RedactDSN(registryURL), ed25519.PublicKeySize, len(pubKeyBytes))
 	}
 	pubKey := ed25519.PublicKey(pubKeyBytes)
 
@@ -91,7 +94,7 @@ func VerifyResponseSignature(
 				sigBytes, err = base64.RawURLEncoding.DecodeString(hdr)
 				if err != nil {
 					return fmt.Errorf("registry %s: decode Content-Signature header: %w",
-						registryURL, err)
+						config.RedactDSN(registryURL), err)
 				}
 			}
 		}
@@ -104,7 +107,7 @@ func VerifyResponseSignature(
 		if err != nil {
 			sigBytes, err = base64.RawURLEncoding.DecodeString(trimmed)
 			if err != nil {
-				return fmt.Errorf("registry %s: decode .sig sidecar: %w", registryURL, err)
+				return fmt.Errorf("registry %s: decode .sig sidecar: %w", config.RedactDSN(registryURL), err)
 			}
 		}
 	}
@@ -124,11 +127,12 @@ func VerifyResponseSignature(
 }
 
 // FetchSigSidecar fetches <manifestURL>.sig and returns its body.
-// Returns (nil, nil) when the sidecar is absent (404).
-func FetchSigSidecar(client interface {
+// Returns (nil, nil) when the sidecar is absent (404). The request ends
+// with ctx, as the sync that needs the signature does.
+func FetchSigSidecar(ctx context.Context, client interface {
 	Do(*http.Request) (*http.Response, error)
 }, sigURL string) ([]byte, error) {
-	req, err := http.NewRequest(http.MethodGet, sigURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sigURL, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("create .sig request: %w", err)
 	}

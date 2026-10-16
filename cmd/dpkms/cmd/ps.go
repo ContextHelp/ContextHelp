@@ -38,7 +38,8 @@ var psCmd = &cobra.Command{
 	Short: "List running dpkms instances",
 	Long: `List all dpkms processes running on this machine.
 
-Scans $XDG_DATA_HOME/contexthelp/run/ for pidfiles and validates each
+Scans <data dir>/run/ (--data-dir, CTXT_DATA_DIR or storage.data_dir;
+default $XDG_DATA_HOME/contexthelp) for pidfiles and validates each
 process is still alive. Stale entries (from crashes or reboots) are
 removed automatically.
 
@@ -63,7 +64,7 @@ func init() {
 }
 
 func runPS(cmd *cobra.Command, _ []string) error {
-	runDir, err := config.RunDir()
+	runDir, err := config.RunDirPath(dataDir())
 	if err != nil {
 		return fmt.Errorf("run dir: %w", err)
 	}
@@ -84,8 +85,14 @@ func runPS(cmd *cobra.Command, _ []string) error {
 	// and it leaves the reader nothing to key on to confirm it is
 	// looking at a fleet listing at all.
 	if isJSONOutput() {
+		// db_path masks a credential a connection string embeds.
+		shown := make([]pidfile.Info, len(instances))
+		for i, info := range instances {
+			info.DBPath = config.RedactDSN(info.DBPath)
+			shown[i] = info
+		}
 		return outputJSON(os.Stdout, map[string]any{
-			"instances": instances,
+			"instances": shown,
 		})
 	}
 
@@ -132,7 +139,7 @@ func psRows(instances []pidfile.Info) []psRow {
 			PID:    info.PID,
 			Port:   info.Port,
 			GRPC:   info.GRPCPort,
-			DB:     info.DBPath,
+			DB:     config.RedactDSN(info.DBPath),
 			Uptime: time.Since(info.StartedAt).Truncate(time.Second).String(),
 		}
 	}
@@ -154,7 +161,7 @@ func psBrowserRows(instances []pidfile.Info) []psBrowserRow {
 			Port:    info.Port,
 			GRPC:    info.GRPCPort,
 			Browser: browser,
-			DB:      info.DBPath,
+			DB:      config.RedactDSN(info.DBPath),
 			Uptime:  time.Since(info.StartedAt).Truncate(time.Second).String(),
 		}
 	}

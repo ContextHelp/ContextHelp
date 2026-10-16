@@ -2,7 +2,7 @@ package integration
 
 // US-0220: Local MCP During Network Loss (ctxd-side server).
 //
-// E2E tests for the ctxd-side MCP read-surface (per ADR-068 + T-0533).
+// E2E tests for the ctxd-side MCP read-surface (per ADR-068).
 // Verifies the 5 local-only tools (current_session, recent_local,
 // pending_enqueue, sources, health) work end-to-end via xrr cassettes
 // — happy paths AND a failure path where the local daemon snapshot

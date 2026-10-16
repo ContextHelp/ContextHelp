@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
-	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/composition"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"hop.top/kit/go/console/output"
 )
 
 var composeCmd = &cobra.Command{
@@ -18,8 +19,10 @@ var composeCmd = &cobra.Command{
 	Short: "Generate compositions from knowledge",
 	Long: `Generate compositions such as briefs, plans, summaries, or drafts.
 
-Compositions are generated from your knowledge objects using templates
-and your focus profile context.
+Compositions are rendered locally from knowledge objects read from the
+dpkms instance ctxt resolves (--server, --instance, CTXT_INSTANCE,
+ctxt instance use, then config): the 100 most recently created objects
+the filters select.
 
 Types:
   brief   - Generate executive brief
@@ -29,22 +32,19 @@ Types:
 
 Examples:
   # Generate a brief with inline citations (default)
-  ctxt compose brief --tagged ux,onboarding
+  ctxt compose brief --tagged ux
 
   # Generate a plan with specific mentions
   ctxt compose plan --mention @project.signup-redesign
 
-  # Generate summary since a specific date
+  # Generate summary of objects created since a date
   ctxt compose summary --since 2025-01-01
 
-  # Generate summary across a time range
-  ctxt compose summary --since "yesterday afternoon" --until now
-
-  # Generate brief scoped to one work session (per ADR-067)
-  ctxt compose brief --session sess_a1b2c3d4e5f6
+  # Generate summary across a creation-time range (YYYY-MM-DD or RFC 3339)
+  ctxt compose summary --since 2025-01-01 --until 2025-01-31T18:00:00Z
 
   # Generate draft and save to file
-  ctxt compose draft --tagged launch --output launch-plan.md
+  ctxt compose draft --tagged launch --output-file launch-plan.md
 
   # Export as JSON (includes structured citations)
   ctxt compose brief --tagged launch --export json
@@ -59,7 +59,7 @@ func init() {
 	rootCmd.AddCommand(composeCmd)
 	cliconv.WithSideEffect(composeCmd, cliconv.SideEffectWrite)
 	cliconv.WithExamples(composeCmd, []cliconv.Example{
-		{Title: "Generate a brief from tagged knowledge", Command: "ctxt compose brief --tagged ux,onboarding"},
+		{Title: "Generate a brief from tagged knowledge", Command: "ctxt compose brief --tagged ux"},
 		{Title: "Generate a plan scoped to a mention", Command: "ctxt compose plan --mention @project.signup-redesign"},
 		{Title: "Write a draft to a file as JSON", Command: "ctxt compose draft --tagged launch --output-file launch.md --export json"},
 	})
@@ -73,11 +73,10 @@ func init() {
 	cliconv.WithIdempotency(composeCmd, cliconv.IdempotencyNo)
 
 	// Filter flags
-	composeCmd.Flags().String("mention", "", "focus on specific mentions")
-	composeCmd.Flags().String("tagged", "", "focus on specific tags (comma-separated)")
-	composeCmd.Flags().String("since", "", "include knowledge since date (ISO) or natural-language ('yesterday', '2 hours ago')")
-	composeCmd.Flags().String("until", "", "include knowledge up to date (ISO) or natural-language ('now', 'yesterday evening')")
-	composeCmd.Flags().String("session", "", "scope to one work session (sess_xxx; per ADR-067)")
+	composeCmd.Flags().String("mention", "", "focus on one mention (@ns.slug or ctxt:// URI)")
+	composeCmd.Flags().String("tagged", "", "focus on one tag")
+	composeCmd.Flags().String("since", "", "objects created on or after (YYYY-MM-DD or RFC 3339)")
+	composeCmd.Flags().String("until", "", "objects created on or before (YYYY-MM-DD or RFC 3339)")
 
 	// Output flags. -o shorthand is reserved by kit/cli's --output (write
 	// path), so --output-file is long-name only. A follow-up should drop
@@ -86,17 +85,12 @@ func init() {
 
 	// Citation flags
 	composeCmd.Flags().Bool("no-citations", false, "disable inline [ref:ID] citations")
-	composeCmd.Flags().String("export", "markdown", "output format: markdown or json")
+	composeCmd.Flags().String("export", formatMarkdown, "output format: markdown or json")
+	composeCmd.Flags().String("server", "", serverFlagUsage)
 
-	// Bind flags to viper
-	viper.BindPFlag("compose.mention", composeCmd.Flags().Lookup("mention"))
-	viper.BindPFlag("compose.tagged", composeCmd.Flags().Lookup("tagged"))
-	viper.BindPFlag("compose.since", composeCmd.Flags().Lookup("since"))
-	viper.BindPFlag("compose.until", composeCmd.Flags().Lookup("until"))
-	viper.BindPFlag("compose.session", composeCmd.Flags().Lookup("session"))
-	viper.BindPFlag("compose.output-file", composeCmd.Flags().Lookup("output-file"))
-	viper.BindPFlag("compose.no-citations", composeCmd.Flags().Lookup("no-citations"))
-	viper.BindPFlag("compose.export", composeCmd.Flags().Lookup("export"))
+	for _, name := range []string{"mention", "tagged", "since", "until", "output-file", "no-citations", "export"} {
+		_ = viper.BindPFlag("compose."+name, composeCmd.Flags().Lookup(name))
+	}
 }
 
 func runCompose(cmd *cobra.Command, args []string) error {
@@ -105,55 +99,32 @@ func runCompose(cmd *cobra.Command, args []string) error {
 	switch compositionType {
 	case "brief", "plan", "summary", "draft":
 	default:
-		return fmt.Errorf("unknown composition type: %s (expected brief|plan|summary|draft)", compositionType)
+		return output.UsageError(fmt.Sprintf("unknown composition type: %s (expected brief|plan|summary|draft)", compositionType))
 	}
 
 	exportFormat := viper.GetString("compose.export")
 	switch exportFormat {
-	case "markdown", "json", "":
+	case formatMarkdown, formatJSON, "":
 	default:
-		return fmt.Errorf("unknown export format: %s (expected markdown or json)", exportFormat)
+		return output.UsageError(fmt.Sprintf("unknown export format: %s (expected markdown or json)", exportFormat))
 	}
 
-	svc, cleanup, err := newService()
+	filter, err := composeFilter()
 	if err != nil {
 		return err
 	}
-	defer cleanup()
 
-	ctx := context.Background()
-
-	filter := storage.ObjectFilter{
-		Tag:     viper.GetString("compose.tagged"),
-		Mention: viper.GetString("compose.mention"),
-		Limit:   100,
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
 	}
-	if since := viper.GetString("compose.since"); since != "" {
-		if t, err := time.Parse("2006-01-02", since); err == nil {
-			filter.After = &t
-		}
-	}
-	if until := viper.GetString("compose.until"); until != "" {
-		if t, err := time.Parse("2006-01-02", until); err == nil {
-			filter.Before = &t
-		}
-	}
-	// --session scopes the compose to one work session (ADR-067).
-	// dpkms-side filter wiring (objects.session_id column + ObjectFilter
-	// extension) is tracked separately as part of T-0505's storage
-	// migration. The flag is plumbed here so the substrate is ready
-	// when that migration lands; until then, the value is ignored
-	// server-side (no harm, no error).
-	if sess := viper.GetString("compose.session"); sess != "" {
-		// Forward-compatible: when ObjectFilter gains a SessionID field,
-		// uncomment this assignment. Until then, leaving as a no-op
-		// preserves the flag-parsing contract for users.
-		_ = sess
-	}
-
-	objects, _, err := svc.ListObjects(ctx, filter)
+	client, err := newDpkmsClient(cmd, dpkmsclient.DefaultTimeout)
 	if err != nil {
-		return fmt.Errorf("list objects: %w", err)
+		return err
+	}
+	objects, _, err := client.ListObjects(ctx, filter)
+	if err != nil {
+		return err
 	}
 
 	if len(objects) == 0 {
@@ -161,45 +132,61 @@ func runCompose(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	noCitations := viper.GetBool("compose.no-citations")
-
-	var output string
-
-	if noCitations || exportFormat == "" {
+	var out string
+	if viper.GetBool("compose.no-citations") || exportFormat == "" {
 		// Plain composition without citation markers.
-		result, err := svc.Compose(ctx, objects, compositionType)
-		if err != nil {
-			return fmt.Errorf("compose: %w", err)
-		}
-		output = result
+		out = composition.Compose(objects, compositionType)
 	} else {
 		// Citation-enriched composition (default path).
-		result, err := svc.ComposeWithCitations(ctx, objects, compositionType)
-		if err != nil {
-			return fmt.Errorf("compose: %w", err)
-		}
-
-		if exportFormat == "json" {
+		result := composition.WithCitations(objects, compositionType)
+		if exportFormat == formatJSON {
 			b, err := json.MarshalIndent(result, "", "  ")
 			if err != nil {
 				return fmt.Errorf("marshal: %w", err)
 			}
-			output = string(b)
+			out = string(b)
 		} else {
-			// markdown (default)
-			output = result.Content
+			out = result.Content
 		}
 	}
 
-	outputFile := viper.GetString("compose.output-file")
-	if outputFile != "" {
-		if err := os.WriteFile(outputFile, []byte(output), 0600); err != nil {
+	if outputFile := viper.GetString("compose.output-file"); outputFile != "" {
+		if err := os.WriteFile(outputFile, []byte(out), 0600); err != nil {
 			return fmt.Errorf("write file: %w", err)
 		}
 		fmt.Printf("Composition written to %s\n", outputFile)
 		return nil
 	}
 
-	fmt.Print(output)
+	fmt.Print(out)
 	return nil
+}
+
+// composeFilter selects the 100 most recently created objects the
+// compose flags name. --since and --until bound created_at; a malformed
+// date or several tags are usage errors naming the flag.
+func composeFilter() (dpkmsclient.ObjectFilter, error) {
+	tag, err := oneTag(viper.GetString("compose.tagged"))
+	if err != nil {
+		return dpkmsclient.ObjectFilter{}, err
+	}
+	f := dpkmsclient.ObjectFilter{
+		Tag:     tag,
+		Mention: viper.GetString("compose.mention"),
+		Limit:   100,
+	}
+	for _, d := range []struct {
+		flag string
+		dst  *string
+	}{{"since", &f.After}, {"until", &f.Before}} {
+		v := viper.GetString("compose." + d.flag)
+		if v == "" {
+			continue
+		}
+		if _, err := parseDateFlag(d.flag, v, false); err != nil {
+			return dpkmsclient.ObjectFilter{}, err
+		}
+		*d.dst = v
+	}
+	return f, nil
 }

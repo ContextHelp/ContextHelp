@@ -5,7 +5,7 @@ name: Eva Contracts
 # shapes without updating the contract or the recorded fixture set fail
 # this check.
 #
-# T-0586 wires the four base contracts:
+# Wired base contracts:
 #   - contracts/upgrade-status.eva.yaml
 #   - contracts/healthz.eva.yaml
 #   - contracts/search-staleness.eva.yaml

@@ -139,11 +139,17 @@ var defaultExtensions = map[string]string{
 	".docx": "doc.office",
 }
 
+// The built-in text pipelines, which defaultContentSelector picks between.
+const (
+	TextShort = "text.short"
+	TextLong  = "text.long"
+)
+
 // defaultContentSelector is the content fallback when no selectors have been
 // configured: text pipelines by length.
 func defaultContentSelector(content string) string {
 	if len(content) < 500 {
-		return "text.short"
+		return TextShort
 	}
-	return "text.long"
+	return TextLong
 }

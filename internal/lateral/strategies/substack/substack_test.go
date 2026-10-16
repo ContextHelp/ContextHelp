@@ -78,7 +78,7 @@ func TestPublication_CustomDomainResolved(t *testing.T) {
 	}
 }
 
-// TestHintsRoundTrip_CustomDomainPlatformAttribution pins T-0310:
+// TestHintsRoundTrip_CustomDomainPlatformAttribution pins hint round-tripping:
 // Hints set on CapturedEvent reach the strategy's customdomain
 // detector and unlock custom-domain matching. Without the hint, the
 // same URL declines.

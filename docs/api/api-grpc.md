@@ -1,12 +1,11 @@
 # gRPC API
 
-This document specifies the **ContextHelp gRPC API**, the canonical typed interface for high-performance ingestion, retrieval, entity-aware mentions, and authorized plugin-driven extensions.
+This document specifies the **ContextHelp gRPC API**, the canonical typed interface for high-performance ingestion, retrieval, and entity-aware mentions.
 
 While the REST API is optimized for human and web use, the gRPC API is optimized for:
 
 - UIs with real-time interactions
 - local or remote agents
-- plugins invoking the engine programmatically
 - streaming pipelines
 - bulk ingestion
 - multi-step retrieval workflows
@@ -20,7 +19,7 @@ gRPC provides:
 - strong typing and schema evolution
 - language bindings for all major ecosystems
 
-Plugins MAY define additional RPC services under their own namespaces without modifying core.
+There is no plugin system ([ADR-078](../decisions/ADR-078-no-plugin-system.md)): every gRPC service ships in the dpkms binary.
 
 ---
 
@@ -41,11 +40,10 @@ The gRPC surface area is divided into logical services:
 | `RegistryService` | Discover registries and capabilities | Planned |
 | `SuggestionService` | Tag and hint suggestions | Planned |
 | `NodeAdminService` | Node enrollment and admin operations | Planned |
-| **`PluginService`** | Plugin-defined RPCs mounted dynamically | Experimental |
 
 ```mermaid
 graph LR
-  A[Clients<br/>UIs, Agents, Plugins] --> B[gRPC Endpoint]
+  A[Clients<br/>UIs, Agents] --> B[gRPC Endpoint]
   B --> C[AnalyzeService]
   B --> D[JobService]
   B --> E[QueryService]
@@ -54,7 +52,6 @@ graph LR
   B --> H[RegistryService (Planned)]
   B --> I2[EntityService]
   B --> J[SuggestionService (Planned)]
-  B --> P[Plugin Services<br/>Dynamic, per-plugin]
 
   E --> K[(Local Storage)]
   H --> L[(Registries)]
@@ -73,12 +70,6 @@ package contexthelp.v1;
 
 Future versions will increment the package (for example, `contexthelp.v2`).
 
-Plugin-defined APIs MUST use:
-
-```protobuf
-package contexthelp.plugins.<pluginName>.v1;
-```
-
 ### Authentication and scopes
 
 On protected and public instances, send `authorization: Bearer <token>` (or `x-api-key: <token>`) metadata. Every method requires the same scope as its HTTP counterpart:
@@ -91,6 +82,8 @@ On protected and public instances, send `authorization: Bearer <token>` (or `x-a
 | server reflection | `read:system` |
 
 Object updates, deletes and reprocess (`PATCH` and `DELETE /objects/{id}`, `POST /objects/{id}/reprocess`) are REST only: there is no gRPC method for them, so the gRPC surface cannot change or delete objects.
+
+Links (`POST /edges`, `GET /objects/{id}/edges`, `DELETE /edges`) are REST only too. `QueryService` has no edge method, so the gRPC surface can neither read nor change links.
 
 A missing or invalid token gets `UNAUTHENTICATED`; a token without the scope gets `PERMISSION_DENIED` with `INSUFFICIENT_SCOPE: missing scope <scope>`. `grpc.health.v1` is open. Roles and the full scope list: [config-and-permissions](../manual/reference/config-and-permissions.md#inbound-auth-roles-and-scopes).
 
@@ -137,13 +130,10 @@ message AnalyzeRequest {
   string profile = 4;                  // focus profile (founder, engineer, research, etc.)
   string pipeline = 5;                 // optional explicit pipeline
   string language = 6;                 // optional declared input language
-  bool skip_translation = 7;           // override i18n plugins for this call
+  bool skip_translation = 7;           // skip translation for this call
 
   // Canonical entity IDs or slugs already known to the caller.
   repeated string mentions = 8;
-
-  // Plugins may attach metadata to influence plugin-defined pipelines.
-  map<string, string> plugin_metadata = 9;
 }
 ```
 
@@ -161,7 +151,7 @@ message AnalyzeResponse {
 ```protobuf
 message Job {
   string id = 1;
-  string type = 2;                           // analyze, plugin:<pluginName>:*
+  string type = 2;                           // analyze, ...
   string status = 3;
   google.protobuf.Timestamp created_at = 4;
   google.protobuf.Timestamp updated_at = 5;
@@ -173,9 +163,6 @@ message Job {
 
   string result_object_id = 9;
   string error = 10;
-
-  // Plugins may attach additional state (e.g., price_monitor, rss_feed)
-  map<string, string> plugin_metadata = 11;
 }
 ```
 
@@ -204,7 +191,7 @@ message KnowledgeObject {
   google.protobuf.Timestamp created_at = 2;
   google.protobuf.Timestamp last_matched_at = 3;
 
-  string type = 4;                           // text, url, feed, plugin-defined
+  string type = 4;                           // text, url, feed, ...
   string subtype = 5;
 
   string title = 6;
@@ -233,10 +220,6 @@ message KnowledgeObject {
 
   repeated string mentions = 21;
   repeated EntityRef entities = 22;
-
-  // Namespaced plugin fields:
-  // object.plugins.<pluginName>.* becomes:
-  map<string, string> plugin_metadata = 23;
 }
 ```
 
@@ -398,9 +381,6 @@ message SearchRequest {
   bool mentions_only = 16;
 
   string profile = 17;
-
-  // Plugins may extend filtering via namespaced keys.
-  map<string, string> plugin_filters = 18;
 }
 ```
 
@@ -567,42 +547,6 @@ service NodeAdminService {
 
 ---
 
-## Plugin Services
-
-Plugins may expose their own gRPC services without modifying core.
-
-### Naming Convention
-
-```
-package contexthelp.plugins.<pluginName>.v1;
-```
-
-### Example
-
-A price monitoring plugin may define:
-
-```protobuf
-service PriceMonitorService {
-  rpc GetPriceHistory(GetPriceHistoryRequest) returns (GetPriceHistoryResponse);
-  rpc GetAlerts(GetPriceAlertsRequest) returns (GetPriceAlertsResponse);
-}
-```
-
-A notification plugin may define:
-
-```protobuf
-service NotificationService {
-  rpc GetPending(GetNotificationRequest) returns (NotificationResponse);
-  rpc MarkRead(NotificationAckRequest) returns (NotificationAckResponse);
-}
-```
-
-Core dynamically mounts these services based on plugin registration.
-
-No core modification is required.
-
----
-
 ## Mention Semantics
 
 (Hints vs tags vs mentions — unchanged logic)
@@ -611,7 +555,7 @@ No core modification is required.
 
 ## Streaming Extensions
 
-Same as before; plugins may also define streaming endpoints.
+Same as before.
 
 ---
 
@@ -621,12 +565,5 @@ This gRPC API explicitly supports:
 
 - **focus profiles** for contextualized behavior
 - **composition endpoints** for generating briefs, plans, and summaries
-- **plugin-defined RPC services**
-- **plugin-defined knowledge object types**
-- **plugin metadata on jobs and knowledge objects**
-- **plugin-defined filters**
-- **plugin-influenced ingestion through metadata**
-- **non-core notification & alert surfacing**
-- **safe coexistence of core and plugin pipelines**
 
-The core API remains stable, minimal, and deterministic, while enabling powerful extensions via plugins—without requiring core changes.
+The core API remains stable, minimal, and deterministic.

@@ -7,17 +7,36 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
-type ProximityStore struct{ db *sql.DB }
+type ProximityStore struct {
+	db *sql.DB
+	// scope, when set, keeps every neighbour read to pairs whose both
+	// objects the viewer may see (see scope.go).
+	scope *storage.Scope
+}
+
+// pairScope is " AND object_a IN visible AND object_b IN visible",
+// numbered from *idx, with its arguments; empty without a scope.
+func (s *ProximityStore) pairScope(idx *int) (string, []any) {
+	if s.scope == nil {
+		return "", nil
+	}
+	vis, args := visibleObjects(*s.scope, idx)
+	return " AND object_a IN " + vis + " AND object_b IN " + vis, args
+}
 
 func (s *ProximityStore) GetNeighbors(ctx context.Context, objectID string, limit int) ([]*storage.ProximityScore, error) {
+	idx := 3
+	clause, sargs := s.pairScope(&idx)
+	// #nosec G202 -- clause is fixed SQL over compiled predicates; values are bound.
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT object_a, object_b, score, semantic, temporal, entity, origin, behavioral, computed_at
 		FROM object_proximity
-		WHERE object_a = $1 OR object_b = $1
+		WHERE (object_a = $1 OR object_b = $1)`+clause+`
 		ORDER BY score DESC
-		LIMIT $2`, objectID, limit)
+		LIMIT $2`, append([]any{objectID, limit}, sargs...)...)
 	if err != nil {
 		return nil, fmt.Errorf("proximity.GetNeighbors: %w", err)
 	}
@@ -26,11 +45,14 @@ func (s *ProximityStore) GetNeighbors(ctx context.Context, objectID string, limi
 }
 
 func (s *ProximityStore) GetNeighborsAbove(ctx context.Context, objectID string, threshold float64) ([]*storage.ProximityScore, error) {
+	idx := 3
+	clause, sargs := s.pairScope(&idx)
+	// #nosec G202 -- clause is fixed SQL over compiled predicates; values are bound.
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT object_a, object_b, score, semantic, temporal, entity, origin, behavioral, computed_at
 		FROM object_proximity
-		WHERE (object_a = $1 OR object_b = $1) AND score >= $2
-		ORDER BY score DESC`, objectID, threshold)
+		WHERE (object_a = $1 OR object_b = $1) AND score >= $2`+clause+`
+		ORDER BY score DESC`, append([]any{objectID, threshold}, sargs...)...)
 	if err != nil {
 		return nil, fmt.Errorf("proximity.GetNeighborsAbove: %w", err)
 	}
@@ -43,10 +65,13 @@ func (s *ProximityStore) Get(ctx context.Context, objectA, objectB string) (*sto
 		objectA, objectB = objectB, objectA
 	}
 	var p storage.ProximityScore
+	idx := 3
+	clause, sargs := s.pairScope(&idx)
+	// #nosec G202 -- clause is fixed SQL over compiled predicates; values are bound.
 	err := s.db.QueryRowContext(ctx, `
 		SELECT object_a, object_b, score, semantic, temporal, entity, origin, behavioral, computed_at
 		FROM object_proximity
-		WHERE object_a = $1 AND object_b = $2`, objectA, objectB).Scan(
+		WHERE object_a = $1 AND object_b = $2`+clause, append([]any{objectA, objectB}, sargs...)...).Scan(
 		&p.ObjectA, &p.ObjectB, &p.Score,
 		&p.Factors.Semantic, &p.Factors.Temporal, &p.Factors.Entity,
 		&p.Factors.Origin, &p.Factors.Behavioral,
@@ -109,7 +134,9 @@ func (s *ProximityStore) PutBatch(ctx context.Context, scores []*storage.Proximi
 	if err != nil {
 		return fmt.Errorf("proximity.PutBatch: prepare: %w", err)
 	}
-	defer stmt.Close()
+	// The statement belongs to tx: Commit or Rollback releases it anyway,
+	// and the outcome that matters is Commit's error.
+	defer func() { _ = stmt.Close() }()
 
 	for _, score := range scores {
 		a, b := score.ObjectA, score.ObjectB
@@ -149,15 +176,13 @@ func (s *ProximityStore) FindStale(ctx context.Context, cutoff time.Time, limit 
 	}
 	defer rows.Close()
 
-	var ids []string
-	for rows.Next() {
+	return rowscan.All(rows, func(rows *sql.Rows) (string, error) {
 		var id string
 		if err := rows.Scan(&id); err != nil {
-			return nil, fmt.Errorf("proximity.FindStale: scan: %w", err)
+			return "", fmt.Errorf("proximity.FindStale: scan: %w", err)
 		}
-		ids = append(ids, id)
-	}
-	return ids, rows.Err()
+		return id, nil
+	})
 }
 
 func (s *ProximityStore) Stats(ctx context.Context) (*storage.ProximityStats, error) {
@@ -182,8 +207,7 @@ func (s *ProximityStore) Stats(ctx context.Context) (*storage.ProximityStats, er
 }
 
 func scanProximityRows(rows *sql.Rows) ([]*storage.ProximityScore, error) {
-	var results []*storage.ProximityScore
-	for rows.Next() {
+	return rowscan.All(rows, func(rows *sql.Rows) (*storage.ProximityScore, error) {
 		var p storage.ProximityScore
 		err := rows.Scan(
 			&p.ObjectA, &p.ObjectB, &p.Score,
@@ -194,7 +218,6 @@ func scanProximityRows(rows *sql.Rows) ([]*storage.ProximityScore, error) {
 		if err != nil {
 			return nil, fmt.Errorf("proximity: scan: %w", err)
 		}
-		results = append(results, &p)
-	}
-	return results, rows.Err()
+		return &p, nil
+	})
 }

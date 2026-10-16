@@ -67,7 +67,7 @@ These personas represent the technical ways people interact with ctxt:
 16. **System Integrator** (Ian) - REST API web dashboard integration
 17. **Scripter** (Scott) - CLI automation and piping
 18. **API Consumer** (Alice) - Mobile app integration
-19. **Plugin Developer** (Paige) - Extension development
+19. **Step Developer** (Paige) - Pipeline step development
 
 **Key Characteristics:**
 - Technical competence varies from power user to expert
@@ -84,7 +84,7 @@ These personas represent the technical ways people interact with ctxt:
 |--------------|--------------|----------------|---------------|------------|
 | **End Users** | Solve domain problems | CLI/TUI/Web | High | ⭐-⭐⭐⭐⭐ |
 | **User Roles** | Technical integration | API/gRPC/CLI | Varies | ⭐⭐⭐-⭐⭐⭐⭐⭐ |
-| **[dPKMS Personas](../../dpkms/personas/)** | Build/extend platform | Go SDK/Plugins | N/A | ⭐⭐⭐⭐⭐ |
+| **[dPKMS Personas](../../dpkms/personas/)** | Build/extend platform | Steps/Registries | N/A | ⭐⭐⭐⭐⭐ |
 
 ---
 

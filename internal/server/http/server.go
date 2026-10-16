@@ -14,6 +14,8 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/retrieval"
 	"github.com/ideacrafterslabs/ctxt/internal/security"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/ui"
 	"github.com/ideacrafterslabs/ctxt/internal/watcher"
 )
@@ -29,9 +31,10 @@ type RouterConfig struct {
 	// Probes injects runtime healthcheck signals into /healthz.
 	Probes HealthzProbes
 	// Auth guards the /api/v1 route table (MCP mount included) behind
-	// the configured provider. nil = no inbound auth (private instance).
-	// Health endpoints and static UI assets stay open for probes.
-	Auth authn.Provider
+	// the configured method chain. nil = no inbound auth (private
+	// instance). Health endpoints and static UI assets stay open for
+	// probes.
+	Auth *authn.Chain
 	// Security receives auth-failure and ACL-denial events. nil = no
 	// security event recording.
 	Security *security.Emitter
@@ -39,11 +42,10 @@ type RouterConfig struct {
 	// namespace grants and metering quotas. nil = no inbound
 	// entitlement enforcement (private instance).
 	Entitlements *registry.InboundGate
-	// RequireFederationCredential makes the federation.token credential
-	// mandatory on the push route (non-private instances): without a
-	// configured token the route refuses requests instead of accepting
-	// any authenticated principal.
-	RequireFederationCredential bool
+	// RequirePeerPrincipal makes the push route accept only a principal
+	// of kind peer (non-private instances): a federation push carries a
+	// peer's API key, never any authenticated principal's.
+	RequirePeerPrincipal bool
 	// RedactHealthz hides the verbose /healthz envelope (version, queue
 	// depths, upgrade progress) from unauthenticated callers — public
 	// instances set it. Bare /health stays open for LB probes either way.
@@ -58,12 +60,39 @@ type RouterConfig struct {
 	// later included). nil = no Host check.
 	Hosts *HostAllowlist
 	// Sessions enables web UI sign-in (login codes, session cookies)
-	// on an authenticated instance; Auth must then be
-	// Sessions.Provider(base). nil = no browser sessions.
+	// on an authenticated instance; Auth must then run the session
+	// method (Sessions.Method). nil = no browser sessions.
 	Sessions *authn.Sessions
 	// SessionRecheck is how often an open event stream re-checks its
 	// session; zero means DefaultSessionRecheck.
 	SessionRecheck time.Duration
+	// Registry is the principal registry the principal, identity and
+	// key routes read and write (ADR-079 §5), and Keys mints and
+	// revokes the registry's API keys. nil = those routes answer 404.
+	Registry storage.AuthStore
+	Keys     *authn.Keys
+	// Sharing is the sharing registry the audience, policy, grant and
+	// ceiling routes manage (ADR-080 §11) and whoami reports grants
+	// from. nil = those routes answer 404.
+	Sharing storage.SharingStore
+	// Tickets mints and redeems invite and sign-in links; SignIn lists
+	// the ceremonies server.auth.sign_in allows and PublicURL is the
+	// base of every link. nil Tickets = no link ceremony.
+	Tickets   *authn.Tickets
+	SignIn    []string
+	PublicURL string
+	// CeremonyLimiter rate limits the sign-in ceremonies (login-code
+	// exchange, invite and link redemption) per client address; nil
+	// means NewAddrLimiter's defaults.
+	CeremonyLimiter *AddrLimiter
+	// StrictSharing makes the visibility backstop answer 500 on a hit
+	// instead of stripping it (dpkms serve --strict-sharing; every
+	// test instance). A hit is a bug in the scoped reads or the render
+	// layer, and a strict instance makes it loud.
+	StrictSharing bool
+	// Audit receives one read audit entry per non-owner request
+	// (ADR-080 §9); nil logs nothing.
+	Audit *sharing.AuditWriter
 }
 
 // NewRouter creates the HTTP router with all routes and middleware.
@@ -102,17 +131,31 @@ func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
 		r.Use(WithSecurityEvents(rc.Security))
 	}
 
-	r.Get("/health", Health(svc))
+	// The probes sit outside the authenticated table and report the
+	// instance's own state (storage health, queue depth, watchers),
+	// never a principal's rows, so they read as the owner, as every
+	// caller did before reads were scoped; RedactHealthz still keeps
+	// the envelope from anonymous callers on public instances.
+	r.With(WithViewer(sharing.Unrestricted)).Get("/health", Health(svc))
 	if rc.RedactHealthz {
-		r.Get("/healthz", RedactedHealthz(svc, probes, rc.Auth))
+		r.With(WithViewer(sharing.Unrestricted)).Get("/healthz", RedactedHealthz(svc, probes, rc.Auth))
 	} else {
-		r.Get("/healthz", Healthz(svc, probes))
+		r.With(WithViewer(sharing.Unrestricted)).Get("/healthz", Healthz(svc, probes))
 	}
 	r.Get("/manifest.json", ManifestJSON())
 
-	// Web UI sign-in: login code → session cookie (see ui_session.go).
+	// Web UI sign-in ceremonies, each rate limited per client address:
+	// login code → session cookie (ui_session.go), invite and sign-in
+	// link → session cookie (ui_ceremony.go).
 	uiSessions := newUISessionRoutes(rc)
-	r.Post("/ui/auth/session", uiSessions.exchange)
+	limiter := rc.CeremonyLimiter
+	if limiter == nil {
+		limiter = NewAddrLimiter(0, 0, nil)
+	}
+	limited := r.With(LimitByAddr(limiter, rc.Security))
+	limited.Post("/ui/auth/session", uiSessions.exchange)
+	limited.Post(InvitePath+"/session", uiSessions.redeemInvite)
+	limited.Post(SignInPath+"/session", uiSessions.redeemLink)
 
 	// GET|HEAD /ui → redirect to /ui/
 	uiRoot := func(w http.ResponseWriter, r *http.Request) {
@@ -136,20 +179,26 @@ func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
 	mountSearchGraphViewer(r)
 
 	r.NotFound(func(w http.ResponseWriter, req *http.Request) {
-		WriteError(w, http.StatusNotFound, "NOT_FOUND", "resource not found")
+		WriteError(w, http.StatusNotFound, CodeNotFound, "resource not found")
 	})
 
 	r.Route("/api/v1", func(r chi.Router) {
 		// Inbound authentication ahead of the whole route table
 		// (REST, SSE, federation push, and the MCP mount all inherit
-		// it). Provider-agnostic by construction: the middleware
-		// consumes authn.Provider, never a scheme.
+		// it). Method-agnostic by construction: the middleware
+		// consumes the authn.Chain, never a scheme.
 		if rc.Auth != nil {
-			r.Use(RequireAuth(rc.Auth, rc.Security))
-			r.Use(SessionGuard(rc.Sessions, rc.DevCORS, rc.SessionRecheck))
+			r.Use(RequireAuth(rc.Auth, rc.Security, rc.DevCORS, svc.Viewers()))
+			r.Use(SessionGuard(rc.Sessions, rc.SessionRecheck))
+		} else {
+			// Private instance: no principal, but every caller is the
+			// owner and reads unscoped. The viewer is attached here,
+			// where RequireAuth would attach it, so the route table
+			// below (MCP mount included) never runs without one.
+			r.Use(WithViewer(sharing.Unrestricted))
 		}
 		r.Use(UpgradeHeader(probes.Upgrade))
-		mountAPIRoutes(r, apiRoutes(svc, rc), rc)
+		mountAPIRoutes(r, apiRoutes(svc, rc), rc, svc.Viewers())
 	})
 
 	return r
@@ -158,13 +207,20 @@ func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
 // mountAPIRoutes mounts the route-to-scope table. With an auth
 // provider, every route except the federation push (its own credential
 // rule) sits behind RequireScope. A private instance (no provider)
-// grants every scope, so its routes are mounted bare.
-func mountAPIRoutes(r chi.Router, routes []apiRoute, rc RouterConfig) {
+// grants every scope, so its routes are mounted bare. Every route sits
+// behind RequireCapability: a restricted viewer reaches only the routes
+// the capability table opens to it (ADR-080 §4), and an unrestricted
+// viewer passes at no cost. Outermost, Visibility wraps a restricted
+// viewer's request with its ledger and checks the response before it
+// leaves (§8); the owner passes it untouched.
+func mountAPIRoutes(r chi.Router, routes []apiRoute, rc RouterConfig, viewers *sharing.Resolver) {
+	vis := VisibilityConfig{Strict: rc.StrictSharing, Security: rc.Security, Audit: rc.Audit, Viewers: viewers}
 	for _, rt := range routes {
-		h := rt.Handler
+		h := RequireCapability(rt.Method, rt.Pattern)(rt.Handler)
 		if rc.Auth != nil {
 			h = RequireScope(rt.Scope, rc.Security)(h)
 		}
+		h = Visibility(rt.Method, rt.Pattern, rt.Scope, vis)(h)
 		if rt.Method == "" {
 			r.Handle(rt.Pattern, h)
 			continue
@@ -195,7 +251,7 @@ func mountMCP(svc *service.Service, sem retrieval.SemanticSource) http.Handler {
 // Health returns the health check handler.
 func Health(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := svc.Store.Health(r.Context()); err != nil {
+		if err := svc.Store(r.Context()).Health(r.Context()); err != nil {
 			WriteError(w, http.StatusServiceUnavailable, "UNHEALTHY", err.Error())
 			return
 		}

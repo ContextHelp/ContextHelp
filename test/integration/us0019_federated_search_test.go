@@ -5,7 +5,6 @@ package integration
 // SearchRemoteBookmarks and result merging.
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -57,7 +56,7 @@ func TestUS0019_FederatedSearchFansOutToRegistries(t *testing.T) {
 		{Name: "reg2", URL: srv2.URL},
 	}
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	merged, sources, err := env.svc.SearchRemoteBookmarks(ctx, "tracing", 5*time.Second)
 	require.NoError(t, err)
 
@@ -94,7 +93,7 @@ func TestUS0019_FederatedSearchOneRegistryDown(t *testing.T) {
 		{Name: "dead", URL: "http://127.0.0.1:1"}, // nothing listening
 	}
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	merged, sources, err := env.svc.SearchRemoteBookmarks(ctx, "alive", 2*time.Second)
 	require.NoError(t, err)
 
@@ -128,7 +127,7 @@ func TestUS0019_FederatedSearchNoRegistries(t *testing.T) {
 
 	env.svc.Cfg.Registries = nil
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	merged, sources, err := env.svc.SearchRemoteBookmarks(ctx, "anything", time.Second)
 	require.NoError(t, err)
 	assert.Nil(t, merged)
@@ -154,7 +153,7 @@ func TestUS0019_FederatedSearchDeduplicatesSameID(t *testing.T) {
 		{Name: "r2", URL: srv2.URL},
 	}
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	merged, _, err := env.svc.SearchRemoteBookmarks(ctx, "common", 5*time.Second)
 	require.NoError(t, err)
 	// MergeResults keys on registry_url + id, so same ID from two different

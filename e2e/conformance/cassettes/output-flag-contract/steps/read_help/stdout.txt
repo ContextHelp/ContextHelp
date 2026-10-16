@@ -28,9 +28,9 @@
     --interval    Seconds between refreshes when --watch is set (2)
     --no-color    Disable ANSI color
     --no-hints    Suppress next-step hints after command output
-    --offline     Disable network access. Highest-precedence override: flips off per-command network opt-ins (peer discovery, sync, GitHub, push). Enforced beneath net/http and any client routed through netpolicy.GuardDial; loopback and diagnostics stay exempt.
+    --offline     Disable network access
     --quiet       Suppress output; rely on exit code only
-    --server-url  Dpkms server URL (http://localhost:8080)
+    --server-url  Dpkms server URL for client commands; overrides server.url and server.urls (default http://127.0.0.1:8080 when nothing is configured)
     -V --verbose  Increase log verbosity (-V=debug, -VV=trace)
     --watch       Refresh every --interval seconds until interrupted
 

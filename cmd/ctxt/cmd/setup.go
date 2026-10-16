@@ -1,15 +1,16 @@
 package cmd
 
 import (
-	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/spf13/cobra"
+	"hop.top/kit/go/console/output"
+	"hop.top/kit/go/console/wizard"
 )
 
 var setupCmd = &cobra.Command{
@@ -25,6 +26,10 @@ The wizard prompts for:
 The answers are written to ~/.config/contexthelp/ctxt.yaml ($CTXT_CONFIG
 when set). Only the keys the wizard asks about change; every other key,
 comment and blank line in an existing file is kept.
+
+Answers can be piped on stdin, one line per question; an empty line
+takes the default. Input that ends before the last question exits 2
+and writes nothing.
 
 Examples:
   # Interactive wizard
@@ -53,6 +58,13 @@ func init() {
 	setupCmd.Flags().Bool("non-interactive", false, "skip all prompts and write defaults (also triggered by CI=true)")
 }
 
+// Wizard answers: no AI provider yet, and automatic pipeline detection
+// (also the inbox pipeline that choice writes).
+const (
+	providerSkip = "skip"
+	pipelineAuto = "auto"
+)
+
 // wizardAnswers holds the values collected (or defaulted) by the wizard.
 type wizardAnswers struct {
 	Provider    string // "openai" | "anthropic" | "skip"
@@ -69,25 +81,20 @@ func runSetup(cmd *cobra.Command, args []string) error {
 
 	cfgPath := config.GetConfigPath(binName)
 
-	// Check if config already exists.
-	if _, err := os.Stat(cfgPath); err == nil && !nonInteractive {
-		fmt.Fprintf(cmd.OutOrStdout(), "Config already exists at %s, update it? [y/N] ", cfgPath)
-		ans := prompt(os.Stdin)
-		if !strings.EqualFold(ans, "y") && !strings.EqualFold(ans, "yes") {
-			fmt.Fprintln(cmd.OutOrStdout(), "Aborted.")
-			return nil
-		}
-	}
-
 	var answers wizardAnswers
 	if nonInteractive {
 		answers = defaultAnswers()
 	} else {
-		var err error
-		answers, err = runWizard(cmd)
+		_, statErr := os.Stat(cfgPath)
+		a, proceed, err := runWizard(cmd, cfgPath, statErr == nil)
 		if err != nil {
 			return err
 		}
+		if !proceed {
+			fmt.Fprintln(cmd.OutOrStdout(), "Aborted.")
+			return nil
+		}
+		answers = a
 	}
 
 	err := config.EditLayer(cfgPath, func(l *config.Layer) error {
@@ -110,87 +117,101 @@ func runSetup(cmd *cobra.Command, args []string) error {
 func defaultAnswers() wizardAnswers {
 	home, _ := os.UserHomeDir()
 	return wizardAnswers{
-		Provider:    "skip",
+		Provider:    providerSkip,
 		APIKey:      "",
 		StoragePath: filepath.Join(home, ".local", "share", "ctxt"),
-		Pipeline:    "auto",
+		Pipeline:    pipelineAuto,
 	}
 }
 
-// runWizard interactively collects answers from the user.
-func runWizard(cmd *cobra.Command) (wizardAnswers, error) {
+// Wizard step keys.
+const (
+	stepUpdate   = "update"
+	stepProvider = "provider"
+	stepAPIKey   = "api_key"
+	stepStorage  = "storage_path"
+	stepPipeline = "pipeline"
+)
+
+// setupSteps builds the wizard's questions. With confirmUpdate, an
+// existing config is confirmed first and a "no" skips every question.
+func setupSteps(defaults wizardAnswers, cfgPath string, confirmUpdate bool) []wizard.Step {
+	// proceed gates the questions on the update confirmation; without
+	// that step its result is absent and every question is asked.
+	proceed := func(v any) bool { b, ok := v.(bool); return !ok || b }
+	needsKey := func(v any) bool { return v == "openai" || v == "anthropic" }
+
+	var steps []wizard.Step
+	if confirmUpdate {
+		steps = append(steps, wizard.Confirm(stepUpdate,
+			fmt.Sprintf("Config already exists at %s, update it?", cfgPath)).
+			WithDefault(false))
+	}
+	return append(steps,
+		wizard.Select(stepProvider, "AI provider", []wizard.Option{
+			{Value: "openai", Label: "OpenAI"},
+			{Value: "anthropic", Label: "Anthropic"},
+			{Value: providerSkip, Label: "Skip (configure later)"},
+		}).WithDefault(providerSkip).WithGroup("Step 1/3 — AI provider").
+			WithWhen(stepUpdate, proceed),
+		wizard.TextInput(stepAPIKey, "API key").
+			WithGroup("Step 1/3 — AI provider").
+			WithWhen(stepProvider, needsKey),
+		wizard.TextInput(stepStorage, "Path").
+			WithDefault(defaults.StoragePath).WithGroup("Step 2/3 — Storage path").
+			WithWhen(stepUpdate, proceed),
+		wizard.Select(stepPipeline, "Default pipeline", []wizard.Option{
+			{Value: objectTypeText, Label: "text  — plain text / notes"},
+			{Value: objectTypeURL, Label: "url   — web pages / links"},
+			{Value: pipelineAuto, Label: "auto  — detect automatically (recommended)"},
+		}).WithDefault(pipelineAuto).WithGroup("Step 3/3 — Default pipeline").
+			WithWhen(stepUpdate, proceed),
+	)
+}
+
+// runWizard asks the setup questions on the command's input and
+// output. One kit line frontend reads every answer through one reader,
+// so answers piped on stdin each reach their own question. proceed is
+// false when the operator declines to update an existing config. Input
+// that ends (or an interrupt) before every question is answered is a
+// usage error: nothing is written.
+func runWizard(cmd *cobra.Command, cfgPath string, confirmUpdate bool) (a wizardAnswers, proceed bool, err error) {
 	out := cmd.OutOrStdout()
 	defaults := defaultAnswers()
 
+	w, err := wizard.New(setupSteps(defaults, cfgPath, confirmUpdate)...)
+	if err != nil {
+		return a, false, fmt.Errorf("setup wizard: %w", err)
+	}
+
 	fmt.Fprintln(out, "Welcome to ctxt! Let's get you set up in under 2 minutes.")
+
+	// ForceLine: piped stdin carries answers, never a headless run.
+	err = wizard.Run(cmd.Context(), w,
+		wizard.ForceLine(), wizard.WithInput(cmd.InOrStdin()), wizard.WithOutput(out))
+	if err != nil {
+		var abort *wizard.AbortError
+		if errors.As(err, &abort) {
+			e := output.UsageError(
+				"setup aborted before every question was answered (input ended or interrupted); nothing written")
+			e.SuggestedFix = "pipe one answer per question (an empty line takes the default), or run ctxt setup --non-interactive"
+			return a, false, e
+		}
+		return a, false, fmt.Errorf("setup wizard: %w", err)
+	}
 	fmt.Fprintln(out)
 
-	// Step 1: AI provider.
-	fmt.Fprintln(out, "Step 1/3 — AI provider")
-	fmt.Fprintln(out, "  [1] OpenAI")
-	fmt.Fprintln(out, "  [2] Anthropic")
-	fmt.Fprintln(out, "  [3] Skip (configure later)")
-	fmt.Fprint(out, "Choice [3]: ")
-	providerChoice := prompt(os.Stdin)
-	if providerChoice == "" {
-		providerChoice = "3"
+	r := w.Results()
+	if confirmUpdate && !wizard.Bool(r, stepUpdate) {
+		return a, false, nil
 	}
-
-	var provider, apiKey string
-	switch providerChoice {
-	case "1":
-		provider = "openai"
-		fmt.Fprint(out, "OpenAI API key: ")
-		apiKey = prompt(os.Stdin)
-	case "2":
-		provider = "anthropic"
-		fmt.Fprint(out, "Anthropic API key: ")
-		apiKey = prompt(os.Stdin)
-	default:
-		provider = "skip"
+	a = wizardAnswers{
+		Provider:    wizard.Choice(r, stepProvider),
+		APIKey:      wizard.String(r, stepAPIKey),
+		StoragePath: wizard.String(r, stepStorage),
+		Pipeline:    wizard.Choice(r, stepPipeline),
 	}
-
-	fmt.Fprintln(out)
-
-	// Step 2: Storage path.
-	fmt.Fprintln(out, "Step 2/3 — Storage path")
-	fmt.Fprintf(out, "Path [%s]: ", defaults.StoragePath)
-	storagePath := prompt(os.Stdin)
-	if storagePath == "" {
-		storagePath = defaults.StoragePath
-	}
-
-	fmt.Fprintln(out)
-
-	// Step 3: Default pipeline.
-	fmt.Fprintln(out, "Step 3/3 — Default pipeline")
-	fmt.Fprintln(out, "  [1] text  — plain text / notes")
-	fmt.Fprintln(out, "  [2] url   — web pages / links")
-	fmt.Fprintln(out, "  [3] auto  — detect automatically (recommended)")
-	fmt.Fprint(out, "Choice [3]: ")
-	pipelineChoice := prompt(os.Stdin)
-	if pipelineChoice == "" {
-		pipelineChoice = "3"
-	}
-
-	var pipeline string
-	switch pipelineChoice {
-	case "1":
-		pipeline = "text"
-	case "2":
-		pipeline = "url"
-	default:
-		pipeline = "auto"
-	}
-
-	fmt.Fprintln(out)
-
-	return wizardAnswers{
-		Provider:    provider,
-		APIKey:      apiKey,
-		StoragePath: storagePath,
-		Pipeline:    pipeline,
-	}, nil
+	return a, true, nil
 }
 
 // setupEdit is one key the wizard writes.
@@ -205,7 +226,7 @@ type setupEdit struct {
 // load.
 func setupEdits(a wizardAnswers) []setupEdit {
 	edits := []setupEdit{
-		{[]string{"storage", "type"}, "sqlite"},
+		{[]string{"storage", "type"}, storageTypeSQLite},
 		{[]string{"storage", "path"}, filepath.Join(a.StoragePath, "db.sqlite")},
 		{[]string{"storage", "blob", "backend"}, "local"},
 		{[]string{"storage", "blob", "local", "path"}, filepath.Join(a.StoragePath, "blobs")},
@@ -223,12 +244,12 @@ func setupEdits(a wizardAnswers) []setupEdit {
 // pipelineToInboxValue maps wizard choice to an inbox pipeline name.
 func pipelineToInboxValue(p string) string {
 	switch p {
-	case "text":
-		return "text.short"
-	case "url":
+	case objectTypeText:
+		return pipelineTextShort
+	case objectTypeURL:
 		return "url.basic"
 	default:
-		return "auto"
+		return pipelineAuto
 	}
 }
 
@@ -241,19 +262,10 @@ func printSummary(cmd *cobra.Command, cfgPath string, a wizardAnswers) {
 	fmt.Fprintf(out, "  Storage path: %s\n", a.StoragePath)
 	fmt.Fprintf(out, "  Pipeline:     %s\n", a.Pipeline)
 	providerLine := a.Provider
-	if a.Provider == "skip" {
+	if a.Provider == providerSkip {
 		providerLine = "none (configure later)"
 	}
 	fmt.Fprintf(out, "  AI provider:  %s\n", providerLine)
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Run 'ctxt --help' to explore available commands.")
-}
-
-// prompt reads a single trimmed line from r (expected: os.Stdin).
-func prompt(r *os.File) string {
-	scanner := bufio.NewScanner(r)
-	if scanner.Scan() {
-		return strings.TrimSpace(scanner.Text())
-	}
-	return ""
 }

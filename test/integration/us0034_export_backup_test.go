@@ -3,7 +3,6 @@ package integration
 import (
 	"archive/tar"
 	"compress/gzip"
-	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -21,6 +20,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // ---------------------------------------------------------------------------
@@ -102,7 +102,7 @@ func TestUS0034_BackupArchiveCreated(t *testing.T) {
 
 	createMinimalSQLiteDB(t, dbPath)
 
-	result, err := service.Backup(context.Background(), service.BackupOpts{
+	result, err := service.Backup(ownerCtx(), service.BackupOpts{
 		DBPath:       dbPath,
 		IncludeBlobs: false,
 		OutputDir:    outDir,
@@ -124,7 +124,7 @@ func TestUS0034_ArchiveContainsDBAndManifest(t *testing.T) {
 
 	createMinimalSQLiteDB(t, dbPath)
 
-	result, err := service.Backup(context.Background(), service.BackupOpts{
+	result, err := service.Backup(ownerCtx(), service.BackupOpts{
 		DBPath:       dbPath,
 		IncludeBlobs: false,
 		OutputDir:    outDir,
@@ -149,7 +149,7 @@ func TestUS0034_ManifestSchemaVersionIsCurrent(t *testing.T) {
 
 	createMinimalSQLiteDB(t, dbPath)
 
-	result, err := service.Backup(context.Background(), service.BackupOpts{
+	result, err := service.Backup(ownerCtx(), service.BackupOpts{
 		DBPath:    dbPath,
 		OutputDir: outDir,
 	})
@@ -177,7 +177,7 @@ func TestUS0034_BackupContainsObjectsAfterIngestion(t *testing.T) {
 	// Seed a SQLite DB with the schema and some objects via the full driver.
 	driver, err := newSQLiteDriver(t, dbPath)
 	require.NoError(t, err)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now().Truncate(time.Second)
 	for i := 0; i < nObjects; i++ {
 		obj := &storage.KnowledgeObject{
@@ -191,7 +191,7 @@ func TestUS0034_BackupContainsObjectsAfterIngestion(t *testing.T) {
 	}
 	require.NoError(t, driver.Close(ctx))
 
-	result, err := service.Backup(context.Background(), service.BackupOpts{
+	result, err := service.Backup(ownerCtx(), service.BackupOpts{
 		DBPath:       dbPath,
 		IncludeBlobs: false,
 		OutputDir:    outDir,
@@ -214,7 +214,7 @@ func TestUS0034_BackupWithEdgesIncluded(t *testing.T) {
 
 	driver, err := newSQLiteDriver(t, dbPath)
 	require.NoError(t, err)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now().Truncate(time.Second)
 
 	obj := &storage.KnowledgeObject{
@@ -230,7 +230,7 @@ func TestUS0034_BackupWithEdgesIncluded(t *testing.T) {
 	require.NoError(t, driver.Edges().Create(ctx, edge))
 	require.NoError(t, driver.Close(ctx))
 
-	result, err := service.Backup(context.Background(), service.BackupOpts{
+	result, err := service.Backup(ownerCtx(), service.BackupOpts{
 		DBPath:    dbPath,
 		OutputDir: outDir,
 	})
@@ -250,12 +250,12 @@ func TestUS0034_BackupWithEdgesIncluded(t *testing.T) {
 // The caller is responsible for closing it.
 func newSQLiteDriver(t *testing.T, path string) (*sqlite.Driver, error) {
 	t.Helper()
-	driver, err := sqlite.New(path)
+	driver, err := sqlite.New(path, storageutil.NewTestBlobStore(t))
 	if err != nil {
 		return nil, err
 	}
-	if err := driver.Init(context.Background()); err != nil {
-		driver.Close(context.Background()) //nolint:errcheck
+	if err := driver.Init(ownerCtx()); err != nil {
+		driver.Close(ownerCtx()) //nolint:errcheck
 		return nil, err
 	}
 	return driver, nil

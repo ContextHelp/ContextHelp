@@ -68,15 +68,24 @@ export PATH="$PATH:$HOME/.local/bin"
 mkdir -p ~/.config/contexthelp
 ```
 
-### 2. Create Configuration File
+### 2. Create Configuration Files (optional)
+
+Nothing is required: without a config file both binaries run on their
+built-in defaults. Each binary reads its own file: `ctxt` reads
+`ctxt.yaml`, `dpkms` reads `dpkms.yaml`. The template sets nothing as
+copied; uncomment the settings you need.
 
 ```bash
-# Copy example configuration
-cp config/config.example.yaml ~/.config/contexthelp/config.yaml
+cp config/config.example.yaml ~/.config/contexthelp/ctxt.yaml
+cp config/config.example.yaml ~/.config/contexthelp/dpkms.yaml
+$EDITOR ~/.config/contexthelp/ctxt.yaml
 
-# Edit configuration
-$EDITOR ~/.config/contexthelp/config.yaml
+# Check the result
+ctxt config validate
+CTXT_CONFIG=~/.config/contexthelp/dpkms.yaml ctxt config validate
 ```
+
+See [docs/configuration-structure.md](docs/configuration-structure.md).
 
 ### 3. Create Data Directory
 
@@ -194,8 +203,8 @@ Logs land at `~/.local/share/dpkms/dpkms.{out,err}.log`. The unit uses
 Add these to your shell profile (~/.bashrc, ~/.zshrc, etc.):
 
 ```bash
-# Configuration file path
-export CTXT_CONFIG="$HOME/.config/contexthelp/config.yaml"
+# One config file for both binaries, replacing the ctxt.yaml / dpkms.yaml cascade
+export CTXT_CONFIG="$HOME/.config/contexthelp/ctxt.yaml"
 
 # Data directory
 export CTXT_DATA_DIR="$HOME/.local/share/contexthelp"
@@ -321,8 +330,8 @@ ctxt config path
 # Create config directory
 mkdir -p ~/.config/contexthelp
 
-# Copy example config
-cp config/config.example.yaml ~/.config/contexthelp/config.yaml
+# Copy the template (it sets nothing until you uncomment settings)
+cp config/config.example.yaml ~/.config/contexthelp/ctxt.yaml
 ```
 
 ## Platform-Specific Notes

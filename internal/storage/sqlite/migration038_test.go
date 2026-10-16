@@ -14,7 +14,7 @@ import (
 // the schema an install that stopped at that release still carries.
 func openAtVersion(t *testing.T, path string, version int) *Driver {
 	t.Helper()
-	d, err := New(path)
+	d, err := New(path, testBlobStore(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,6 +27,13 @@ func openAtVersion(t *testing.T, path string, version int) *Driver {
 // latestMigrationVersion is the version a fully migrated ledger ends at.
 func latestMigrationVersion() int {
 	return migrations[len(migrations)-1].Version
+}
+
+// previousMigrationVersion is the version the ledger ends at one
+// migration before the latest: the chain's own numbering, which may skip
+// a number, not latest-1.
+func previousMigrationVersion() int {
+	return migrations[len(migrations)-2].Version
 }
 
 // legacyArtifacts lists what migration 038 must remove, as found in
@@ -109,10 +116,11 @@ func seedPre038Database(t *testing.T, path string) {
 	if err := d.Embeddings().EnsureIndex(ctx, spec); err != nil {
 		t.Fatalf("EnsureIndex: %v", err)
 	}
-	if err := d.Embeddings().Put(ctx, "legacy", []storage.ObjectVector{
-		{ModelID: "real@1", Vector: []float32{1, 0, 0, 0}, Text: "body"},
-	}); err != nil {
-		t.Fatalf("Put: %v", err)
+	// By hand: the store writes the variant column 051 adds.
+	if _, err := d.db.Exec(`
+		INSERT INTO embeddings (object_id, model_id, chunk_idx, vector, text, created_at)
+		VALUES ('legacy', 'real@1', 0, ?, 'body', ?)`, vecBlob(t, 1, 0, 0, 0), now); err != nil {
+		t.Fatalf("seed embeddings: %v", err)
 	}
 	if err := d.Close(ctx); err != nil {
 		t.Fatal(err)
@@ -137,7 +145,7 @@ func TestMigration038_UpgradedDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	d, err := New(path)
+	d, err := New(path, testBlobStore(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,7 +241,7 @@ func TestMigration038_DependentFailsLoudly(t *testing.T) {
 		t.Fatal(err)
 	}
 	err := d.Migrate(ctx)
-	if err == nil || !strings.Contains(err.Error(), "view indexed_objects") {
+	if err == nil || !strings.Contains(err.Error(), "drop objects.vector_indexed: still referenced by view indexed_objects") {
 		t.Fatalf("Migrate with a dependent view: %v, want it to name view indexed_objects", err)
 	}
 	if n := scalarInt(t, d, `SELECT COUNT(*) FROM sqlite_master WHERE name = 'vec_objects'`); n != 1 {

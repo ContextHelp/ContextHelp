@@ -5,7 +5,7 @@
 > **Author:** jadb
 > **Applies to:** dpkms, ctxd, ctxt CLI
 > **Supersedes:** None
-> **References:** ADR-023 (auth), ADR-038 (SuperMemory MCP pattern), ADR-052 (HTTP+gRPC listeners), ADR-056 (unified enqueue API), ADR-064 (federation), ADR-065 (pluggable adapters), ADR-066 (ambient capture substrate), ADR-067 (sessions), prior art: OpenChronicle reader MCP (`~/.p/sandbox/OpenChronicle/src/openchronicle/mcp/server.py`, `docs/mcp.md`); SuperMemory MCP server pattern (referenced in ADR-038)
+> **References:** ADR-023 (auth), ADR-038 (SuperMemory MCP pattern), ADR-052 (HTTP+gRPC listeners), ADR-056 (unified enqueue API), ADR-064 (federation), ADR-065 (pluggable adapters), ADR-066 (ambient capture substrate), ADR-067 (sessions), prior art: OpenChronicle reader MCP (`src/openchronicle/mcp/server.py`, `docs/mcp.md`); SuperMemory MCP server pattern (referenced in ADR-038)
 
 ---
 
@@ -15,7 +15,7 @@ ctxt and dpkms today expose a rich set of read APIs for human and programmatic c
 
 ADR-066 elevated this to imminent work: the ambient-capture daemon produces a steady stream of small KnowledgeObjects, and the user's natural follow-up — "what was I just doing? what did I capture today? compose a summary of yesterday afternoon" — only pays off if agents can ask these questions inside the user's existing chat UI without shelling out.
 
-OpenChronicle (`~/.p/sandbox/OpenChronicle/docs/mcp.md`) demonstrates a working reader MCP server: streamable-HTTP on `127.0.0.1:8742/mcp`, in-daemon (warm process, stable URL), eight read-only tools spanning compressed and raw memory, server-level instructions teaching the client *"this is the user's personal memory; CALL THESE TOOLS FIRST."* It also documents the install workflows for the major clients (Claude Code, Claude Desktop, Codex, opencode, Cursor, ChatGPT-via-tunnel) — a non-trivial UX problem we shouldn't reinvent.
+OpenChronicle (its `docs/mcp.md`) demonstrates a working reader MCP server: streamable-HTTP on `127.0.0.1:8742/mcp`, in-daemon (warm process, stable URL), eight read-only tools spanning compressed and raw memory, server-level instructions teaching the client *"this is the user's personal memory; CALL THESE TOOLS FIRST."* It also documents the install workflows for the major clients (Claude Code, Claude Desktop, Codex, opencode, Cursor, ChatGPT-via-tunnel) — a non-trivial UX problem we shouldn't reinvent.
 
 **Existing ctxt/dpkms read surfaces (pre-ADR-068)**:
 
@@ -321,8 +321,7 @@ Every tool invocation passes through bus event emission for observability + CEL 
 - US-0038 — agent constructs RSQL query (deferred; named tools cover most cases; RSQL tool is Phase F)
 - US-0039–US-0041 — further agent-integration stories (read-side stories closed by Phase A; write-side deferred)
 - OpenChronicle prior art:
-  - `~/.p/sandbox/OpenChronicle/docs/mcp.md` — tool docs, install matrix, transport choices, ChatGPT-tunnel caveats
-  - `~/.p/sandbox/OpenChronicle/src/openchronicle/mcp/server.py` — FastMCP server pattern
-  - `~/.p/sandbox/OpenChronicle/src/openchronicle/mcp/captures.py` — raw-layer tools (analog to ctxd-side)
+  - `docs/mcp.md` — tool docs, install matrix, transport choices, ChatGPT-tunnel caveats
+  - `src/openchronicle/mcp/server.py` — FastMCP server pattern
+  - `src/openchronicle/mcp/captures.py` — raw-layer tools (analog to ctxd-side)
 - MCP spec 2025-03-26 (Streamable-HTTP transport)
-- tlc track: `ambient-capture` — `tlc track show ambient-capture` (T-0497 carries this ADR)

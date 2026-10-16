@@ -27,7 +27,7 @@ func TestMigration037_UpgradedDatabase(t *testing.T) {
 	ctx := context.Background()
 	legacy := seedPre037Database(t, path)
 
-	d, err := New(path)
+	d, err := New(path, testBlobStore(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,8 @@ func assertPerModelEmbeddingsSchema(t *testing.T, d *Driver) {
 		"id          INTEGER PRIMARY KEY",
 		"REFERENCES objects(id) ON DELETE CASCADE",
 		"CHECK (chunk_idx >= 0)",
-		"UNIQUE (object_id, model_id, chunk_idx)",
+		// 051 rebuilds the table once more to add variant to the key.
+		"UNIQUE (object_id, model_id, chunk_idx, variant)",
 	} {
 		if !strings.Contains(ddl, part) {
 			t.Errorf("embeddings DDL missing %q:\n%s", part, ddl)

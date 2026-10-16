@@ -9,7 +9,6 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // DependencyEnricher detects package dependencies from a repo knowledge object
@@ -76,27 +75,27 @@ func (s *DependencyEnricher) Run(_ context.Context, draft *storage.KnowledgeObje
 	// Skip when draft.ID is empty (pre-ID pipeline drafts).
 	if draft.ID != "" && len(deps) > 0 {
 		if draft.Graph == nil {
-			draft.Graph = &pluginapi.ObjectGraph{}
+			draft.Graph = &storage.ObjectGraph{}
 		}
 		for i, dep := range deps {
-			nodeID := pluginapi.NewNodeID(draft.ID, pluginapi.NodeTypeArtifact, i)
+			nodeID := storage.NewNodeID(draft.ID, storage.NodeTypeArtifact, i)
 			if draft.Graph.FindNode(nodeID) != nil {
 				continue
 			}
-			draft.Graph.Nodes = append(draft.Graph.Nodes, pluginapi.GraphNode{
+			draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
 				ID:       nodeID,
-				NodeType: pluginapi.NodeTypeArtifact,
+				NodeType: storage.NodeTypeArtifact,
 				Label:    dep.URL,
 				Order:    i,
 				Metadata: map[string]any{
 					"pipeline": dep.Pipeline,
 				},
 			})
-			draft.Graph.Edges = append(draft.Graph.Edges, pluginapi.GraphEdge{
+			draft.Graph.Edges = append(draft.Graph.Edges, storage.GraphEdge{
 				ID:       fmt.Sprintf("%s->%s", draft.ID, nodeID),
 				FromID:   draft.ID,
 				ToID:     nodeID,
-				EdgeType: pluginapi.EdgeTypeContains,
+				EdgeType: storage.EdgeTypeContains,
 			})
 		}
 	}
@@ -224,7 +223,7 @@ func parsePackageJSON(content string) ([]depEntry, error) {
 	if err := json.Unmarshal([]byte(content), &pkg); err != nil {
 		return nil, fmt.Errorf("package.json: %w", err)
 	}
-	var deps []depEntry
+	deps := make([]depEntry, 0, len(pkg.Dependencies)+len(pkg.DevDependencies))
 	for name := range pkg.Dependencies {
 		deps = append(deps, npmEntry(name))
 	}
@@ -290,9 +289,10 @@ var requirementsEntryRe = regexp.MustCompile(`^([a-zA-Z][a-zA-Z0-9_.-]+)`)
 
 // parseRequirementsTxt parses pip requirements.txt.
 func parseRequirementsTxt(content string) ([]depEntry, error) {
-	var deps []depEntry
+	lines := strings.Split(content, "\n")
+	deps := make([]depEntry, 0, len(lines))
 	seen := make(map[string]bool)
-	for _, line := range strings.Split(content, "\n") {
+	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "-") {
 			continue
@@ -324,7 +324,7 @@ var gemfileEntryRe = regexp.MustCompile(`(?m)^\s*gem\s+['"]([^'"]+)['"]`)
 // parseGemfile parses a Ruby Gemfile.
 func parseGemfile(content string) ([]depEntry, error) {
 	matches := gemfileEntryRe.FindAllStringSubmatch(content, -1)
-	var deps []depEntry
+	deps := make([]depEntry, 0, len(matches))
 	seen := make(map[string]bool)
 	for _, m := range matches {
 		if len(m) < 2 {

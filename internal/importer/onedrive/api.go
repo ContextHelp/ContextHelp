@@ -1,3 +1,5 @@
+// Package onedrive is a minimal Microsoft Graph client for OneDrive and
+// SharePoint imports.
 package onedrive
 
 import (

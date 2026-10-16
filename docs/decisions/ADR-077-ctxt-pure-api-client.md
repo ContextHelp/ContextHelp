@@ -86,7 +86,7 @@ A 401 or 403 always ends the request. It is never retried against another instan
 
 This follows ADR-023's capability model:
 
-- **Every `/api/v1` route declares a required scope** in ADR-023's `verb:resource` grammar, for example `read:objects`, `write:objects`, `delete:objects`, `write:inbox`, `process:inbox`, `sync:registries`, `admin:plugins`, `admin:embeddings`, `admin:upgrade`, `admin:audit`.
+- **Every `/api/v1` route declares a required scope** in ADR-023's `verb:resource` grammar, for example `read:objects`, `write:objects`, `delete:objects`, `write:inbox`, `process:inbox`, `sync:registries`, `admin:steps`, `admin:embeddings`, `admin:upgrade`, `admin:audit`.
 - **Every gRPC method declares one too,** through a matching interceptor, so gRPC cannot be used to bypass the HTTP checks.
 - **The static provider's roles are fixed bundles of scopes:**
   - `admin` holds every scope.

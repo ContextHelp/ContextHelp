@@ -46,7 +46,16 @@ const FTSSignatureID = "objects_fts"
 // Tag/EntityMention nodes only.
 // v2 = v1 with repeated segments dropped: a summary, section or body whose
 // text (trimmed) already appeared is indexed once, first occurrence first.
-const ProjectionVersion = "v2"
+// v3 = v2 with blob:// refs dropped: an externalized object's ref is
+// never indexed text.
+// v4 = v3. Bumped so the re-projection runs again and gives text back to
+// rows whose text_content is their blob:// ref (written before v3; see
+// storage.RefTextStore), on databases a v3 run already stamped.
+// v5 = v4 plus the masked shadow projection (ADR-080 §7): every row also
+// carries projected_fts_body_masked, the body with classed parts removed
+// (a structured type's searchable minimum). Rows stamped v4 have an empty
+// masked body, so the re-projection fills it.
+const ProjectionVersion = "v5"
 
 // SQLiteFTSTokenizer is the tokenizer in use for objects_fts. The DDL does
 // not specify `tokenize=`, so FTS5 falls back to its default ("unicode61"

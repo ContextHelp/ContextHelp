@@ -7,7 +7,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/providers/vision"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 type VisionAnalyzer struct {
@@ -62,23 +61,23 @@ func (s *VisionAnalyzer) Run(ctx context.Context, draft *storage.KnowledgeObject
 		return draft, nil
 	}
 	if draft.Graph == nil {
-		draft.Graph = &pluginapi.ObjectGraph{}
+		draft.Graph = &storage.ObjectGraph{}
 	}
-	artifactID := pluginapi.NewNodeID(draft.ID, pluginapi.NodeTypeArtifact, 0)
+	artifactID := storage.NewNodeID(draft.ID, storage.NodeTypeArtifact, 0)
 	if draft.Graph.FindNode(artifactID) == nil {
-		draft.Graph.Nodes = append(draft.Graph.Nodes, pluginapi.GraphNode{
+		draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
 			ID:       artifactID,
-			NodeType: pluginapi.NodeTypeArtifact,
+			NodeType: storage.NodeTypeArtifact,
 			Label:    "source-image",
 			Content:  draft.ContentType,
 			Order:    0,
 		})
 	}
-	summaryID := pluginapi.NewNodeID(draft.ID, pluginapi.NodeTypeSummary, 0)
+	summaryID := storage.NewNodeID(draft.ID, storage.NodeTypeSummary, 0)
 	if draft.Graph.FindNode(summaryID) == nil {
-		draft.Graph.Nodes = append(draft.Graph.Nodes, pluginapi.GraphNode{
+		draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
 			ID:       summaryID,
-			NodeType: pluginapi.NodeTypeSummary,
+			NodeType: storage.NodeTypeSummary,
 			Label:    "vision-description",
 			Content:  result.Description,
 			Order:    0,
@@ -87,11 +86,11 @@ func (s *VisionAnalyzer) Run(ctx context.Context, draft *storage.KnowledgeObject
 				"confidence": result.Confidence,
 			},
 		})
-		draft.Graph.Edges = append(draft.Graph.Edges, pluginapi.GraphEdge{
+		draft.Graph.Edges = append(draft.Graph.Edges, storage.GraphEdge{
 			ID:       fmt.Sprintf("%s->%s", artifactID, summaryID),
 			FromID:   artifactID,
 			ToID:     summaryID,
-			EdgeType: pluginapi.EdgeTypeDerivedFrom,
+			EdgeType: storage.EdgeTypeDerivedFrom,
 		})
 	}
 

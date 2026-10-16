@@ -7,12 +7,105 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/lib/pq"
+
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
+// edgeExecer is what an edge write runs on: the database or a
+// transaction.
+type edgeExecer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
 func (s *EdgeStore) Create(ctx context.Context, edge *storage.Edge) error {
+	return insertEdge(ctx, s.db, edge)
+}
+
+// CreateAll stores every edge in one transaction.
+func (s *EdgeStore) CreateAll(ctx context.Context, edges []*storage.Edge) error {
+	if len(edges) == 0 {
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("create edges: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, e := range edges {
+		if err := insertEdge(ctx, tx, e); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("create edges: commit: %w", err)
+	}
+	return nil
+}
+
+// CreateMissing stores, in one transaction, the edges no stored edge
+// matches on (from, to, edge type) and returns how many it stored.
+func (s *EdgeStore) CreateMissing(ctx context.Context, edges []*storage.Edge) (int, error) {
+	if len(edges) == 0 {
+		return 0, nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("create missing edges: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	stored := 0
+	for _, e := range edges {
+		n, err := insertMissingEdge(ctx, tx, e)
+		if err != nil {
+			return 0, err
+		}
+		stored += n
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("create missing edges: commit: %w", err)
+	}
+	return stored, nil
+}
+
+// DeleteMatching deletes every edge the matches select in one
+// transaction.
+func (s *EdgeStore) DeleteMatching(ctx context.Context, matches []storage.EdgeMatch) (int, error) {
+	for _, m := range matches {
+		if len(m.EdgeTypes) == 0 {
+			return 0, fmt.Errorf("delete edges %s/%s -> %s/%s: no edge types", m.FromType, m.FromID, m.ToType, m.ToID)
+		}
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("delete edges: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	deleted := 0
+	for _, m := range matches {
+		res, err := tx.ExecContext(ctx, `DELETE FROM edges
+			WHERE from_type = $1 AND from_id = $2 AND to_type = $3 AND to_id = $4
+			AND edge_type = ANY($5)`,
+			m.FromType, m.FromID, m.ToType, m.ToID, pq.Array(m.EdgeTypes))
+		if err != nil {
+			return 0, fmt.Errorf("delete edges: %w", err)
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return 0, fmt.Errorf("delete edges: %w", err)
+		}
+		deleted += int(n)
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("delete edges: commit: %w", err)
+	}
+	return deleted, nil
+}
+
+func insertEdge(ctx context.Context, db edgeExecer, edge *storage.Edge) error {
 	metadata, _ := json.Marshal(edge.Metadata)
-	_, err := s.db.ExecContext(ctx, `INSERT INTO edges (
+	_, err := db.ExecContext(ctx, `INSERT INTO edges (
 		id, from_type, from_id, to_type, to_id, edge_type, weight, metadata, created_at
 	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
 		edge.ID, edge.FromType, edge.FromID, edge.ToType, edge.ToID,
@@ -24,10 +117,38 @@ func (s *EdgeStore) Create(ctx context.Context, edge *storage.Edge) error {
 	return nil
 }
 
+// insertMissingEdge inserts edge unless an edge between the same nodes
+// with the same type is stored, and returns 1 when it inserted.
+func insertMissingEdge(ctx context.Context, db edgeExecer, edge *storage.Edge) (int, error) {
+	metadata, _ := json.Marshal(edge.Metadata)
+	res, err := db.ExecContext(ctx, `INSERT INTO edges (
+		id, from_type, from_id, to_type, to_id, edge_type, weight, metadata, created_at
+	) SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9
+	WHERE NOT EXISTS (
+		SELECT 1 FROM edges
+		WHERE from_type = $10 AND from_id = $11 AND to_type = $12 AND to_id = $13 AND edge_type = $14
+	)`,
+		edge.ID, edge.FromType, edge.FromID, edge.ToType, edge.ToID,
+		edge.EdgeType, edge.Weight, metadata, edge.CreatedAt.UTC(),
+		edge.FromType, edge.FromID, edge.ToType, edge.ToID, edge.EdgeType,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("create missing edge: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("create missing edge: %w", err)
+	}
+	return int(n), nil
+}
+
 func (s *EdgeStore) ListFrom(ctx context.Context, fromType, fromID string) ([]*storage.Edge, error) {
+	idx := 3
+	clause, sargs := edgeScope(s.scope, &idx)
+	// #nosec G202 -- clause is fixed SQL over compiled predicates; values are bound.
 	rows, err := s.db.QueryContext(ctx, `SELECT
 		id, from_type, from_id, to_type, to_id, edge_type, weight, metadata, created_at
-	FROM edges WHERE from_type = $1 AND from_id = $2`, fromType, fromID)
+	FROM edges WHERE from_type = $1 AND from_id = $2`+clause, append([]any{fromType, fromID}, sargs...)...)
 	if err != nil {
 		return nil, fmt.Errorf("list edges from: %w", err)
 	}
@@ -36,9 +157,12 @@ func (s *EdgeStore) ListFrom(ctx context.Context, fromType, fromID string) ([]*s
 }
 
 func (s *EdgeStore) ListTo(ctx context.Context, toType, toID string) ([]*storage.Edge, error) {
+	idx := 3
+	clause, sargs := edgeScope(s.scope, &idx)
+	// #nosec G202 -- clause is fixed SQL over compiled predicates; values are bound.
 	rows, err := s.db.QueryContext(ctx, `SELECT
 		id, from_type, from_id, to_type, to_id, edge_type, weight, metadata, created_at
-	FROM edges WHERE to_type = $1 AND to_id = $2`, toType, toID)
+	FROM edges WHERE to_type = $1 AND to_id = $2`+clause, append([]any{toType, toID}, sargs...)...)
 	if err != nil {
 		return nil, fmt.Errorf("list edges to: %w", err)
 	}
@@ -68,11 +192,16 @@ func (s *EdgeStore) DeleteByObject(ctx context.Context, objectID string) error {
 	return nil
 }
 
-// CountMentionsTo returns the count of edges pointing to the given node (toType, toID).
+// CountMentionsTo returns the count of edges pointing to the given node
+// (toType, toID); a scoped store counts the edges from visible objects
+// (ADR-080 §6: rerank signals over visible objects).
 func (s *EdgeStore) CountMentionsTo(ctx context.Context, toType, toID string) (int, error) {
 	var count int
+	idx := 3
+	clause, sargs := edgeScope(s.scope, &idx)
+	// #nosec G202 -- clause is fixed SQL over compiled predicates; values are bound.
 	err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM edges WHERE to_type = $1 AND to_id = $2`, toType, toID).Scan(&count)
+		`SELECT COUNT(*) FROM edges WHERE to_type = $1 AND to_id = $2`+clause, append([]any{toType, toID}, sargs...)...).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("count mentions to: %w", err)
 	}
@@ -120,6 +249,13 @@ func (s *EdgeStore) RelatedObjectIDs(ctx context.Context, objectID string, depth
 			  AND e2.edge_type = 'mentions'`,
 			strings.Join(placeholders, ","),
 		)
+		// Both sides of the traversal stay among visible objects: the
+		// seed and the neighbour (ADR-080 §6).
+		if s.scope != nil {
+			vis, vargs := visibleObjects(*s.scope, &i)
+			query += " AND e1.from_id IN " + vis + " AND e2.from_id IN " + vis
+			ids = append(ids, vargs...)
+		}
 
 		nextFrontier, done, err := s.relatedHop(ctx, query, ids, visited, &result, limit)
 		if err != nil {
@@ -176,8 +312,7 @@ func (s *EdgeStore) relatedHop(
 }
 
 func scanEdges(rows *sql.Rows) ([]*storage.Edge, error) {
-	var edges []*storage.Edge
-	for rows.Next() {
+	return rowscan.All(rows, func(rows *sql.Rows) (*storage.Edge, error) {
 		var e storage.Edge
 		var metadataJSON []byte
 		err := rows.Scan(&e.ID, &e.FromType, &e.FromID, &e.ToType, &e.ToID,
@@ -188,7 +323,6 @@ func scanEdges(rows *sql.Rows) ([]*storage.Edge, error) {
 		if err := decodeJSONColumn(metadataJSON, "metadata", &e.Metadata); err != nil {
 			return nil, fmt.Errorf("scan edge: %w", err)
 		}
-		edges = append(edges, &e)
-	}
-	return edges, rows.Err()
+		return &e, nil
+	})
 }

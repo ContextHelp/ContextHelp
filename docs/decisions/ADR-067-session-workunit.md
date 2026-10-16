@@ -5,7 +5,7 @@
 > **Author:** jadb
 > **Applies to:** ctxt CLI, ctxd local daemon, dpkms storage
 > **Supersedes:** None
-> **References:** ADR-053 (KnowledgeObject as pipeline draft), ADR-063 (graph-canonical KnowledgeObject), ADR-066 (ambient capture substrate), prior art: OpenChronicle session manager (`~/.p/sandbox/OpenChronicle/src/openchronicle/session/manager.py`, `docs/session.md`)
+> **References:** ADR-053 (KnowledgeObject as pipeline draft), ADR-063 (graph-canonical KnowledgeObject), ADR-066 (ambient capture substrate), prior art: OpenChronicle session manager (`src/openchronicle/session/manager.py`, `docs/session.md`)
 
 ---
 
@@ -339,7 +339,6 @@ Demonstrates soft-FK behavior: events tagged with a session_id can arrive at dpk
 - ADR-066 — ambient capture substrate (parent ADR; SessionID is populated by the cutter that runs in the substrate)
 - ADR-068 *(planned)* — dpkms MCP read-surface (will expose session-scoped queries to agents)
 - OpenChronicle prior art:
-  - `~/.p/sandbox/OpenChronicle/src/openchronicle/session/manager.py` — three-rule cutter; ports verbatim to Go
-  - `~/.p/sandbox/OpenChronicle/docs/session.md` — rationale, tuning table, post-mortem on per-capture vs. session-level writes
+  - `src/openchronicle/session/manager.py` — three-rule cutter; ports verbatim to Go
+  - `docs/session.md` — rationale, tuning table, post-mortem on per-capture vs. session-level writes
 - OC v1→v2 post-mortem (`docs/session.md` lines 93–100): why per-capture writes failed and session-level fixed it
-- tlc track: `ambient-capture` — `tlc track show ambient-capture` (T-0496 carries this ADR; T-0505 carries the implementation)

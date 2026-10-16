@@ -1,3 +1,6 @@
+// Package service holds the business operations behind dpkms's REST and
+// gRPC servers and ctxt's local commands: analyze and capture, search,
+// inbox, links, batches, backup and restore, and re-analysis.
 package service
 
 import (
@@ -7,45 +10,51 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
-	"github.com/ideacrafterslabs/ctxt/internal/citation"
+	"github.com/ideacrafterslabs/ctxt/internal/composition"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/events"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/mentions"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
-	"github.com/ideacrafterslabs/ctxt/internal/plugin"
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/ranking"
 	registrysync "github.com/ideacrafterslabs/ctxt/internal/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/retrieval"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
-	uri "hop.top/cite/scheme"
 	"hop.top/kit/go/runtime/domain"
 )
 
 // Service coordinates all business operations.
 type Service struct {
-	Store          storage.StorageDriver
-	Queue          *jobs.Queue
-	Pipes          pipeline.Registry
-	Search         *search.Engine
-	Discovery      *steps.StepDiscovery
-	Executor       *steps.StepExecutor
-	Bus            events.Bus
-	Cfg            config.Config
-	PluginRegistry *plugin.Registry
+	// store is the unscoped driver. Nothing reads it directly: request
+	// paths go through Store(ctx), which scopes it to the caller's
+	// viewer, and the constructor hands it to the components that run
+	// as the system (step discovery and install, the pipeline domain
+	// service).
+	store     storage.StorageDriver
+	Queue     *jobs.Queue
+	Pipes     pipeline.Registry
+	Search    *search.Engine
+	Discovery *steps.StepDiscovery
+	// Installer installs and removes steps under steps.path.
+	Installer *steps.Installer
+	Bus       events.Bus
+	Cfg       config.Config
 
 	// pipelineSvc delegates pipeline CRUD to kit/runtime/domain so
 	// pre_validated / pre_persisted veto seams fire on every
@@ -59,6 +68,18 @@ type Service struct {
 	// nil in tests and outside dpkms serve; non-nil when the daemon
 	// has wired kit/runtime/policy on the bus.
 	policyPub domain.EventPublisher
+
+	// registryTokens is where stored registry tokens are read from
+	// (WithRegistryTokens); registryAuth applies them to every request
+	// to a configured registry. Both nil: registry requests go
+	// unauthenticated.
+	registryTokens registrysync.TokenSource
+	registryAuth   *registrysync.Credentials
+
+	// viewers resolves each non-owner principal's viewer from the
+	// store's sharing registry (ADR-080 §4); the transports call it
+	// after authentication. nil without a store.
+	viewers *sharing.Resolver
 }
 
 // Option configures a Service at construction time. Existing call
@@ -75,6 +96,20 @@ func WithPolicyPublisher(p domain.EventPublisher) Option {
 	return func(s *Service) { s.policyPub = p }
 }
 
+// WithReservedStepNames refuses step installs under names reserved
+// reports (the built-in steps: builtins.IsStepName).
+func WithReservedStepNames(reserved func(string) bool) Option {
+	return func(s *Service) { s.Installer.Reserved = reserved }
+}
+
+// WithRegistryTokens makes every request to a configured registry
+// (manifest fetch, entity sync, entitlements, entity pull, step download,
+// bookmark search) carry that registry's stored token per its auth
+// config. ctxt passes the OS keychain store.
+func WithRegistryTokens(tokens registrysync.TokenSource) Option {
+	return func(s *Service) { s.registryTokens = tokens }
+}
+
 // New creates a new service instance.
 func New(store storage.StorageDriver, queue *jobs.Queue, pipes pipeline.Registry, engine *search.Engine, stepsPath string, bus events.Bus, cfg ...config.Config) *Service {
 	return NewWithOptions(store, queue, pipes, engine, stepsPath, bus, nil, cfg...)
@@ -84,8 +119,7 @@ func New(store storage.StorageDriver, queue *jobs.Queue, pipes pipeline.Registry
 // to wire optional behaviors (e.g. policy publisher). Existing callers
 // of New continue to work unchanged.
 func NewWithOptions(store storage.StorageDriver, queue *jobs.Queue, pipes pipeline.Registry, engine *search.Engine, stepsPath string, bus events.Bus, opts []Option, cfg ...config.Config) *Service {
-	discovery := steps.NewStepDiscovery(store, stepsPath)
-	executor := steps.NewStepExecutor(store, stepsPath)
+	discovery := steps.NewStepDiscovery(store)
 
 	if bus == nil {
 		bus = events.NewLocalBus()
@@ -97,12 +131,12 @@ func NewWithOptions(store storage.StorageDriver, queue *jobs.Queue, pipes pipeli
 	}
 
 	s := &Service{
-		Store:     store,
+		store:     store,
 		Queue:     queue,
 		Pipes:     pipes,
 		Search:    engine,
 		Discovery: discovery,
-		Executor:  executor,
+		Installer: &steps.Installer{Dir: stepsPath, Store: store, Discovery: discovery},
 		Bus:       bus,
 		Cfg:       c,
 	}
@@ -111,16 +145,77 @@ func NewWithOptions(store storage.StorageDriver, queue *jobs.Queue, pipes pipeli
 			opt(s)
 		}
 	}
+	if s.registryTokens != nil {
+		s.registryAuth = registrysync.NewCredentials(c.Registries, s.registryTokens)
+		discovery.WithCredentials(s.registryAuth)
+	}
 	if store != nil {
 		s.pipelineSvc = newPipelineService(store.Pipelines(), s.policyPub)
+		s.viewers = sharing.NewResolver(store.Sharing()).WithRegistry(store.Auth())
 	}
 	return s
+}
+
+// Viewers is the resolver the transports give each authenticated
+// principal its viewer through: the owner is unrestricted, anyone else
+// gets the viewer compiled from its grants over this service's store.
+// nil for a service with no store, which resolves every non-owner to
+// the zero viewer.
+func (s *Service) Viewers() *sharing.Resolver { return s.viewers }
+
+// Store returns the storage driver as the caller of ctx may see it:
+// the driver itself for an unrestricted viewer; for a restricted one a
+// driver whose reads answer through the viewer's predicate (hidden
+// rows are absent, owner-only stores refuse) and whose every released
+// object is rendered (ADR-080 §5) and recorded in the request's ledger
+// (§8) before a handler can touch it; and a driver whose every read
+// fails closed for a context no transport attached a viewer to, which
+// is a transport bug and stays loud (§4). Every read the service
+// performs on a caller's behalf goes through it; callers that act as
+// the system (pipeline, jobs, housekeeping, the CLI at the owner's
+// terminal) attach sharing.Unrestricted to their context, and say so.
+func (s *Service) Store(ctx context.Context) storage.StorageDriver {
+	return sharing.Scoped(ctx, s.store, s.provenance)
+}
+
+// provenance adapts the pipeline registry to the render layer: the
+// step contracts of the pipeline named name, with or without its @vN
+// suffix, so the derived rule can tell what each stored field was
+// computed from.
+func (s *Service) provenance(name string) ([]sharing.StepContract, bool) {
+	if s.Pipes == nil || name == "" {
+		return nil, false
+	}
+	p, err := s.Pipes.Get(name)
+	if err != nil {
+		if base, _, ok := strings.Cut(name, "@"); !ok || base == name {
+			return nil, false
+		} else if p, err = s.Pipes.Get(base); err != nil {
+			return nil, false
+		}
+	}
+	steps := make([]sharing.StepContract, 0, len(p.Steps))
+	for _, st := range p.Steps {
+		c := st.Contract()
+		steps = append(steps, sharing.StepContract{Name: st.Name(), Requires: c.Requires, Produces: c.Produces})
+	}
+	return steps, true
+}
+
+// viewer is the viewer attached to ctx as storage sees it: nil when
+// none was attached, so every read refuses.
+func (s *Service) viewer(ctx context.Context) storage.Viewer {
+	v, ok := sharing.FromContext(ctx)
+	if !ok {
+		return nil
+	}
+	return v
 }
 
 // ErrPipelineNotFound is returned by Analyze/Enqueue when the resolved
 // pipeline name does not exist in the registry. Callers (HTTP handler,
 // CLI) surface this as a 422 / non-zero exit rather than silently
-// dropping the job. T-0562: previously a job was enqueued referencing a
+// dropping the job. Previously a job was enqueued referencing a
 // non-existent pipeline name (e.g. when --type document picked up the
 // fallback "text.short" or any other path) — the worker would then fail
 // to dispatch silently and the data would be lost without any signal to
@@ -140,10 +235,10 @@ func (s *Service) pipelineExists(ctx context.Context, name string) bool {
 	if _, err := s.Pipes.Get(name); err == nil {
 		return true
 	}
-	if s.Store == nil {
+	if s.store == nil {
 		return false
 	}
-	p, err := s.Store.Pipelines().Get(ctx, name)
+	p, err := s.Store(ctx).Pipelines().Get(ctx, name)
 	return err == nil && p != nil
 }
 
@@ -172,40 +267,7 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 
 	// Raw mode: bypass pipeline entirely; persist as-is.
 	if req.Raw {
-		obj := &storage.KnowledgeObject{
-			ID:          uuid.New().String(),
-			Type:        detectedType,
-			RawContent:  req.Content,
-			Source:      jobSource,
-			SourceKey:   req.SourceKey,
-			ContentHash: storageutil.ContentHash(req.Content, jobSource),
-			Status:      "raw",
-			CreatedAt:   now,
-			UpdatedAt:   now,
-			Mentions:    mentions.ParseSlice(req.Mentions),
-			// T-0573: caller-asserted hints become Tag{Source:"user"} on the
-			// raw path too, so capture-with-hints partitioning works without
-			// the pipeline running.
-			Tags: userHintsToTags(req.Hints),
-			// T-0588: caller-asserted profile and note flow directly onto
-			// the KnowledgeObject so partitioning + audit-note capture
-			// work even on the raw path (no pipeline to plumb through).
-			ProfileID: req.Profile,
-			InboxNote: req.Note,
-		}
-		if err := s.Store.Objects().Create(ctx, obj); err != nil {
-			return "", fmt.Errorf("analyze raw: store: %w", err)
-		}
-		// T-0190: caller-asserted mentions become thin entity rows + mention
-		// edges even on the raw path so partitioning by @client/@project
-		// works without the pipeline running.
-		if err := s.writeUserMentionEdges(ctx, obj.ID, obj.Mentions); err != nil {
-			return "", fmt.Errorf("analyze raw: user mentions: %w", err)
-		}
-		if ev, err := events.NewEvent("service.analyze", string(events.TopicObjectRawStored), obj); err == nil {
-			_ = s.Bus.Publish(ctx, ev)
-		}
-		return obj.ID, nil
+		return s.analyzeRaw(ctx, req, detectedType, jobSource, now)
 	}
 
 	// A replayed submission (same client-generated idempotency key) must
@@ -222,7 +284,7 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 		pipelineName = s.detectPipeline(jobSource, req.Type, req.Content)
 	}
 
-	// T-0562: validate the resolved pipeline exists in the registry. Without
+	// validate the resolved pipeline exists in the registry. Without
 	// this, a job referencing a non-existent pipeline (e.g. `--type document`
 	// when no document.* pipeline is registered) would be enqueued and the
 	// worker would silently fail to dispatch — data lost, no signal.
@@ -233,25 +295,10 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 
 	// Duplicate detection (exact match only at analyze time; embeddings not yet computed).
 	if !req.Force {
-		hashForDedup := req.KnownHash
-		if hashForDedup == "" && s.Cfg.Duplicates.CheckExact {
-			hashForDedup = storageutil.ContentHash(req.Content, jobSource)
-		}
-		dup, err := s.checkDuplicates(ctx, hashForDedup, req.SourceKey, storage.VectorQuery{}, s.Cfg.Duplicates)
-		if err != nil {
-			return "", fmt.Errorf("analyze: duplicate check: %w", err)
-		}
-		if dup != nil {
-			s.logDedupDecision(ctx, dup, s.Cfg.Duplicates.Policy)
-			switch s.Cfg.Duplicates.Policy {
-			case "drop":
-				return dup.Existing.ID, nil
-			case "warn":
-				fmt.Fprintf(os.Stderr, "warning: duplicate detected (%s): existing object %s\n",
-					dup.Kind, dup.Existing.ID)
-			case "keep":
-				// Fall through silently.
-			}
+		if existingID, drop, err := s.analyzeDuplicate(ctx, req, jobSource); err != nil {
+			return "", err
+		} else if drop {
+			return existingID, nil
 		}
 	}
 
@@ -270,10 +317,10 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 		MaxRetries:   3,
 		CreatedAt:    now,
 		UpdatedAt:    now,
-		UserMentions: req.Mentions, // T-0190: forwarded to draft.Mentions in worker.
-		UserHints:    req.Hints,    // T-0573: forwarded to draft.Tags (Source:"user") in worker.
-		UserProfile:  req.Profile,  // T-0588: forwarded to draft.ProfileID in worker.
-		UserNote:     req.Note,     // T-0588: forwarded to draft.InboxNote in worker.
+		UserMentions: req.Mentions, // forwarded to draft.Mentions in worker.
+		UserHints:    req.Hints,    // forwarded to draft.Tags (Source:"user") in worker.
+		UserProfile:  req.Profile,  // forwarded to draft.ProfileID in worker.
+		UserNote:     req.Note,     // forwarded to draft.InboxNote in worker.
 
 		IdempotencyKey: req.IdempotencyKey,
 	}
@@ -293,7 +340,74 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 	return job.ID, nil
 }
 
-// userHintsToTags converts caller-asserted hint strings (T-0573) to the
+// analyzeRaw persists req's content as a raw object, bypassing the
+// pipeline, and returns the object ID.
+func (s *Service) analyzeRaw(ctx context.Context, req AnalyzeRequest, detectedType, jobSource string, now time.Time) (string, error) {
+	obj := &storage.KnowledgeObject{
+		ID:          uuid.New().String(),
+		Type:        detectedType,
+		RawContent:  req.Content,
+		Source:      jobSource,
+		SourceKey:   req.SourceKey,
+		ContentHash: storageutil.ContentHash(req.Content, jobSource),
+		Status:      "raw",
+		CreatedAt:   now,
+		UpdatedAt:   now,
+		Mentions:    mentions.ParseSlice(req.Mentions),
+		// caller-asserted hints become Tag{Source:"user"} on the
+		// raw path too, so capture-with-hints partitioning works without
+		// the pipeline running.
+		Tags: userHintsToTags(req.Hints),
+		// caller-asserted profile and note flow directly onto
+		// the KnowledgeObject so partitioning + audit-note capture
+		// work even on the raw path (no pipeline to plumb through).
+		ProfileID: req.Profile,
+		InboxNote: req.Note,
+	}
+	if err := s.Store(ctx).Objects().Create(ctx, obj); err != nil {
+		return "", fmt.Errorf("analyze raw: store: %w", err)
+	}
+	// caller-asserted mentions become thin entity rows + mention
+	// edges even on the raw path so partitioning by @client/@project
+	// works without the pipeline running.
+	if err := s.writeUserMentionEdges(ctx, obj); err != nil {
+		return "", fmt.Errorf("analyze raw: user mentions: %w", err)
+	}
+	if ev, err := events.NewEvent("service.analyze", string(events.TopicObjectRawStored), obj); err == nil {
+		_ = s.Bus.Publish(ctx, ev)
+	}
+	return obj.ID, nil
+}
+
+// analyzeDuplicate runs Analyze's exact-match duplicate check. drop
+// reports that the duplicates policy drops the submission, whose answer
+// is then the existing object's ID; otherwise Analyze goes on and
+// enqueues it.
+func (s *Service) analyzeDuplicate(ctx context.Context, req AnalyzeRequest, jobSource string) (existingID string, drop bool, err error) {
+	hashForDedup := req.KnownHash
+	if hashForDedup == "" && s.Cfg.Duplicates.CheckExact {
+		hashForDedup = storageutil.ContentHash(req.Content, jobSource)
+	}
+	dup, err := s.checkDuplicates(ctx, hashForDedup, req.SourceKey, req.Profile, storage.VectorQuery{}, s.Cfg.Duplicates)
+	if err != nil {
+		return "", false, fmt.Errorf("analyze: duplicate check: %w", err)
+	}
+	if dup != nil {
+		s.logDedupDecision(ctx, dup, s.Cfg.Duplicates.Policy)
+		switch s.Cfg.Duplicates.Policy {
+		case "drop":
+			return dup.Existing.ID, true, nil
+		case "warn":
+			fmt.Fprintf(os.Stderr, "warning: duplicate detected (%s): existing object %s\n",
+				dup.Kind, dup.Existing.ID)
+		case "keep":
+			// Fall through silently.
+		}
+	}
+	return "", false, nil
+}
+
+// userHintsToTags converts caller-asserted hint strings to the
 // Tag form KnowledgeObject.Tags expects, with Source:"user" so the
 // auto-tagger merge step can identify and preserve them. Empty / blank
 // hints are dropped — `--hint ""` shouldn't store a blank Tag.
@@ -319,22 +433,22 @@ func userHintsToTags(hints []string) []storage.Tag {
 	return out
 }
 
-// writeUserMentionEdges persists thin entity rows + object→entity 'mentions'
-// edges for caller-asserted mentions (T-0190). Mirrors the entity_resolver
-// pipeline step but runs at analyze-time so even Raw-mode and pipeline-mode
-// captures land partitioning data uniformly. Idempotent: thin upsert on
-// entities + UNIQUE-tolerant edge insert.
-func (s *Service) writeUserMentionEdges(
-	ctx context.Context,
-	objectID string,
-	uris []uri.URI,
-) error {
-	if len(uris) == 0 || objectID == "" {
+// writeUserMentionEdges persists thin entity rows and the object → entity
+// mentions edges for the caller-asserted mentions on obj. Mirrors the
+// entity_resolver pipeline step but runs at analyze-time so even Raw-mode
+// captures land partitioning data. Idempotent: thin upsert on entities,
+// and the store keeps a mentions edge already there for the pair. The
+// edges name each entity by storage.MentionTarget, as every mention-edge
+// writer does. The raw path runs no pipeline, so obj.Graph holds no
+// entity_mention node and each edge's provenance is the mentions field
+// alone.
+func (s *Service) writeUserMentionEdges(ctx context.Context, obj *storage.KnowledgeObject) error {
+	if obj == nil || len(obj.Mentions) == 0 || obj.ID == "" {
 		return nil
 	}
 	now := time.Now().UTC()
-	for i := range uris {
-		slug := mentionURISlug(&uris[i])
+	for _, mention := range obj.Mentions {
+		slug := storage.MentionSlug(mention)
 		if slug == "" {
 			continue
 		}
@@ -347,39 +461,15 @@ func (s *Service) writeUserMentionEdges(
 			CreatedAt:     now,
 			UpdatedAt:     now,
 		}
-		if err := s.Store.Entities().UpsertThin(ctx, entity); err != nil {
+		if err := s.Store(ctx).Entities().UpsertThin(ctx, entity); err != nil {
 			return fmt.Errorf("upsert thin entity %q: %w", slug, err)
 		}
-		edge := &storage.Edge{
-			ID:        uuid.NewString(),
-			FromType:  "object",
-			FromID:    objectID,
-			ToType:    "entity",
-			ToID:      slug,
-			EdgeType:  "mentions",
-			Weight:    1.0,
-			CreatedAt: now,
-		}
-		if err := s.Store.Edges().Create(ctx, edge); err != nil {
-			// UNIQUE collision (parallel worker, retry path): non-fatal.
-			if strings.Contains(err.Error(), "UNIQUE constraint failed") {
-				continue
-			}
-			return fmt.Errorf("create user-mention edge for %q: %w", slug, err)
-		}
+	}
+	edges := storage.MentionEdges(obj, obj.Mentions, false, now)
+	if _, err := s.Store(ctx).Edges().CreateMissing(ctx, edges); err != nil {
+		return fmt.Errorf("create user-mention edges: %w", err)
 	}
 	return nil
-}
-
-// mentionURISlug extracts the entity slug from a ctxt://entity/<slug> URI.
-// Returns "" for non-entity URIs.
-func mentionURISlug(u *uri.URI) string {
-	s := u.String()
-	const prefix = "ctxt://entity/"
-	if !strings.HasPrefix(s, prefix) {
-		return ""
-	}
-	return strings.TrimPrefix(s, prefix)
 }
 
 // humanizeSlug derives a display title from a namespace/slug path: takes the
@@ -393,13 +483,29 @@ func humanizeSlug(slug string) string {
 }
 
 // GetObject retrieves a knowledge object by ID.
+// Externalized content comes back whole (see resolveContent).
 func (s *Service) GetObject(ctx context.Context, id string) (*storage.KnowledgeObject, error) {
-	return s.Store.Objects().Get(ctx, id)
+	obj, err := s.Store(ctx).Objects().Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.resolveContent(ctx, obj); err != nil {
+		return nil, err
+	}
+	return obj, nil
 }
 
-// ListObjects lists knowledge objects matching the filter.
+// ListObjects lists knowledge objects matching the filter. Externalized
+// content comes back as a preview (see previewContent).
 func (s *Service) ListObjects(ctx context.Context, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, int, error) {
-	return s.Store.Objects().List(ctx, filter)
+	objs, total, err := s.Store(ctx).Objects().List(ctx, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+	if err := s.previewContent(ctx, objs); err != nil {
+		return nil, 0, err
+	}
+	return objs, total, nil
 }
 
 // FacetCounts returns metadata type counts for objects matching the filter.
@@ -409,7 +515,7 @@ func (s *Service) FacetCounts(ctx context.Context, filter storage.ObjectFilter) 
 	facetFilter := filter
 	facetFilter.Limit = 0
 	facetFilter.Offset = 0
-	objects, _, err := s.Store.Objects().List(ctx, facetFilter)
+	objects, _, err := s.Store(ctx).Objects().List(ctx, facetFilter)
 	if err != nil {
 		return nil, err
 	}
@@ -428,11 +534,29 @@ func (s *Service) FacetCounts(ctx context.Context, filter storage.ObjectFilter) 
 	return counts, nil
 }
 
+// logOrphans logs each blob a write could not delete once nothing
+// referred to it: its object is written, the blob is left behind.
+func logOrphans(op, id string, orphans []blob.Orphan) {
+	for _, o := range orphans {
+		slog.Warn(op+": orphan blob left behind", "object", id, "blob", o.Key, "err", o.Err)
+	}
+}
+
 // UpdateObject updates a knowledge object.
+// Content above storage.blob.threshold is stored externalized, and a
+// list preview is stored as the ref it was read from (see storable).
+// The blob of content the update replaced is deleted unless another
+// object refers to it (see blob.UpdateObject).
 func (s *Service) UpdateObject(ctx context.Context, obj *storage.KnowledgeObject) error {
-	if err := s.Store.Objects().Update(ctx, obj); err != nil {
+	row, err := s.storable(ctx, obj)
+	if err != nil {
 		return err
 	}
+	orphans, err := blob.UpdateObject(ctx, s.Store(ctx), row)
+	if err != nil {
+		return err
+	}
+	logOrphans("update object", obj.ID, orphans)
 	if ev, err := events.NewEvent("service.objects", string(events.TopicObjectUpdated), events.ObjectUpdatedPayload{
 		ObjectID: obj.ID,
 		Type:     obj.Type,
@@ -442,14 +566,15 @@ func (s *Service) UpdateObject(ctx context.Context, obj *storage.KnowledgeObject
 	return nil
 }
 
-// DeleteObject deletes a knowledge object and its edges.
+// DeleteObject deletes a knowledge object, its edges and the blob its
+// content is externalized to (see blob.DeleteObject). A blob that could
+// not be deleted is logged as an orphan; the object is gone either way.
 func (s *Service) DeleteObject(ctx context.Context, id string) error {
-	if err := s.Store.Edges().DeleteByObject(ctx, id); err != nil {
+	orphans, err := blob.DeleteObject(ctx, s.Store(ctx), id)
+	if err != nil {
 		return err
 	}
-	if err := s.Store.Objects().Delete(ctx, id); err != nil {
-		return err
-	}
+	logOrphans("delete object", id, orphans)
 	if ev, err := events.NewEvent("service.objects", string(events.TopicObjectDeleted), events.ObjectDeletedPayload{ObjectID: id}); err == nil {
 		_ = s.Bus.Publish(ctx, ev)
 	}
@@ -457,19 +582,29 @@ func (s *Service) DeleteObject(ctx context.Context, id string) error {
 }
 
 // SearchObjects executes an RSQL query and returns matching objects.
-// profileID, when non-empty, restricts results to the named profile's objects.
+// profileID, when non-empty, restricts results to the named profile's
+// objects. The query runs as the caller's viewer: over its scoped
+// store, with the cross-object operators compiled on both sides of
+// their edges (ADR-080 §7).
 func (s *Service) SearchObjects(ctx context.Context, query string, limit, offset int, profileID ...string) ([]*storage.KnowledgeObject, int, error) {
-	return s.Search.Search(ctx, query, limit, offset, profileID...)
+	objs, total, err := s.Search.SearchAs(ctx, s.viewer(ctx), s.Store(ctx).Objects(), query, limit, offset, profileID...)
+	if err != nil {
+		return nil, 0, err
+	}
+	if err := s.previewContent(ctx, objs); err != nil {
+		return nil, 0, err
+	}
+	return objs, total, nil
 }
 
 // GetJob retrieves a job by ID.
 func (s *Service) GetJob(ctx context.Context, id string) (*storage.Job, error) {
-	return s.Queue.Get(ctx, id)
+	return s.Store(ctx).Jobs().Get(ctx, id)
 }
 
 // ListJobs lists jobs matching the filter.
 func (s *Service) ListJobs(ctx context.Context, filter storage.JobFilter) ([]*storage.Job, int, error) {
-	return s.Queue.List(ctx, filter)
+	return s.Store(ctx).Jobs().List(ctx, filter)
 }
 
 // RetryJob retries a failed job.
@@ -479,18 +614,52 @@ func (s *Service) RetryJob(ctx context.Context, id string) error {
 
 // GetEntity retrieves an entity by slug.
 func (s *Service) GetEntity(ctx context.Context, slug string) (*storage.Entity, error) {
-	return s.Store.Entities().Get(ctx, slug)
+	return s.Store(ctx).Entities().Get(ctx, slug)
 }
 
 // ResolveEntity returns the entity whose slug, else one of whose
 // aliases, equals mention exactly. A miss wraps storage.ErrNotFound.
 func (s *Service) ResolveEntity(ctx context.Context, mention string) (*storage.Entity, error) {
-	return s.Store.Entities().Resolve(ctx, mention)
+	return s.Store(ctx).Entities().Resolve(ctx, mention)
 }
 
 // ListEntities lists entities matching the filter.
 func (s *Service) ListEntities(ctx context.Context, filter storage.EntityFilter) ([]*storage.Entity, error) {
-	return s.Store.Entities().List(ctx, filter)
+	return s.Store(ctx).Entities().List(ctx, filter)
+}
+
+// ListVisibleEntities lists the entities matching filter whose namespace
+// visible accepts. The restriction runs in the store ahead of
+// filter.Limit and filter.Offset, so a page is filled from the visible
+// entities alone and walking the offsets visits each of them exactly
+// once. visible is asked once per candidate namespace: filter.Namespaces
+// when set, else every namespace the store holds. A nil visible lists
+// exactly like ListEntities.
+func (s *Service) ListVisibleEntities(ctx context.Context, filter storage.EntityFilter, visible func(namespace string) bool) ([]*storage.Entity, error) {
+	if visible == nil {
+		return s.ListEntities(ctx, filter)
+	}
+	es := s.Store(ctx).Entities()
+	candidates := filter.Namespaces
+	if len(candidates) == 0 {
+		var err error
+		if candidates, err = es.Namespaces(ctx); err != nil {
+			return nil, fmt.Errorf("list entities: %w", err)
+		}
+	}
+	allowed := make([]string, 0, len(candidates))
+	for _, ns := range candidates {
+		if visible(ns) {
+			allowed = append(allowed, ns)
+		}
+	}
+	if len(allowed) == 0 {
+		// An empty EntityFilter.Namespaces means no restriction, so
+		// nothing visible must not reach the store.
+		return nil, nil
+	}
+	filter.Namespaces = allowed
+	return es.List(ctx, filter)
 }
 
 // RelatedObjects returns objects related to objectID by traversing shared
@@ -500,18 +669,21 @@ func (s *Service) RelatedObjects(ctx context.Context, objectID string, depth, li
 	if limit <= 0 {
 		limit = 10
 	}
-	ids, err := s.Store.Edges().RelatedObjectIDs(ctx, objectID, depth, limit)
+	ids, err := s.Store(ctx).Edges().RelatedObjectIDs(ctx, objectID, depth, limit)
 	if err != nil {
 		return nil, fmt.Errorf("related objects: %w", err)
 	}
 
 	objs := make([]*storage.KnowledgeObject, 0, len(ids))
 	for _, id := range ids {
-		obj, err := s.Store.Objects().Get(ctx, id)
+		obj, err := s.Store(ctx).Objects().Get(ctx, id)
 		if err != nil {
 			continue // skip missing/deleted objects
 		}
 		objs = append(objs, obj)
+	}
+	if err := s.previewContent(ctx, objs); err != nil {
+		return nil, err
 	}
 	return objs, nil
 }
@@ -523,20 +695,23 @@ func (s *Service) EntityBacklinks(ctx context.Context, slug string) ([]*storage.
 	if u, ok := mentions.Parse(slug); ok {
 		slug = u.String()
 	}
-	edges, err := s.Store.Edges().ListTo(ctx, "entity", slug)
+	edges, err := s.Store(ctx).Edges().ListTo(ctx, "entity", slug)
 	if err != nil {
 		return nil, err
 	}
 
 	var objs []*storage.KnowledgeObject
 	for _, edge := range edges {
-		if edge.FromType == "object" {
-			obj, err := s.Store.Objects().Get(ctx, edge.FromID)
+		if edge.FromType == nodeObject {
+			obj, err := s.Store(ctx).Objects().Get(ctx, edge.FromID)
 			if err != nil {
 				continue
 			}
 			objs = append(objs, obj)
 		}
+	}
+	if err := s.previewContent(ctx, objs); err != nil {
+		return nil, err
 	}
 	return objs, nil
 }
@@ -572,7 +747,7 @@ func (s *Service) CreatePipeline(ctx context.Context, req CreatePipelineRequest)
 			return "", fmt.Errorf("create pipeline: %w", err)
 		}
 	} else {
-		if err := s.Store.Pipelines().Create(ctx, pipeline); err != nil {
+		if err := s.Store(ctx).Pipelines().Create(ctx, pipeline); err != nil {
 			return "", fmt.Errorf("create pipeline: %w", err)
 		}
 	}
@@ -581,11 +756,11 @@ func (s *Service) CreatePipeline(ctx context.Context, req CreatePipelineRequest)
 }
 
 func (s *Service) GetPipeline(ctx context.Context, name string) (*storage.Pipeline, error) {
-	return s.Store.Pipelines().Get(ctx, name)
+	return s.Store(ctx).Pipelines().Get(ctx, name)
 }
 
 func (s *Service) ListPipelines(ctx context.Context, filter storage.PipelineFilter) ([]*storage.Pipeline, int, error) {
-	return s.Store.Pipelines().List(ctx, filter)
+	return s.Store(ctx).Pipelines().List(ctx, filter)
 }
 
 // DeletePipeline removes a custom pipeline. Built-in protection runs
@@ -598,14 +773,14 @@ func (s *Service) DeletePipeline(ctx context.Context, name string) error {
 		return fmt.Errorf("PROTECTED: cannot delete built-in pipeline")
 	}
 
-	if _, err := s.Store.Pipelines().Get(ctx, name); err != nil {
+	if _, err := s.Store(ctx).Pipelines().Get(ctx, name); err != nil {
 		return err
 	}
 
 	if s.pipelineSvc != nil {
 		return s.pipelineSvc.Delete(ctx, name)
 	}
-	return s.Store.Pipelines().Delete(ctx, name)
+	return s.Store(ctx).Pipelines().Delete(ctx, name)
 }
 
 // ArchivePipeline flips the Archived flag and persists via domain.Service.Update
@@ -614,9 +789,9 @@ func (s *Service) DeletePipeline(ctx context.Context, name string) error {
 // flip and can't infer prior state.
 func (s *Service) ArchivePipeline(ctx context.Context, name string) error {
 	if s.pipelineSvc == nil {
-		return s.Store.Pipelines().Archive(ctx, name)
+		return s.Store(ctx).Pipelines().Archive(ctx, name)
 	}
-	p, err := s.Store.Pipelines().Get(ctx, name)
+	p, err := s.Store(ctx).Pipelines().Get(ctx, name)
 	if err != nil {
 		return err
 	}
@@ -640,9 +815,9 @@ func (s *Service) ArchivePipeline(ctx context.Context, name string) error {
 // symmetrically.
 func (s *Service) UnarchivePipeline(ctx context.Context, name string) error {
 	if s.pipelineSvc == nil {
-		return s.Store.Pipelines().Unarchive(ctx, name)
+		return s.Store(ctx).Pipelines().Unarchive(ctx, name)
 	}
-	p, err := s.Store.Pipelines().Get(ctx, name)
+	p, err := s.Store(ctx).Pipelines().Get(ctx, name)
 	if err != nil {
 		return err
 	}
@@ -668,7 +843,14 @@ func (s *Service) dedupeOnIdempotencyKey(ctx context.Context, key string) (jobID
 	if key == "" {
 		return "", false, nil
 	}
-	existing, err := s.Store.Jobs().GetByIdempotencyKey(ctx, key)
+	existing, err := s.Store(ctx).Jobs().GetByIdempotencyKey(ctx, key)
+	if errors.Is(err, storage.ErrRestrictedViewer) && !errors.Is(err, storage.ErrNoViewer) {
+		// Jobs are owner-only (ADR-080 §6), so a restricted caller cannot
+		// look its key up: its submission is enqueued as new, which can
+		// duplicate a replay but never shows it another caller's job.
+		// Idempotency for restricted writers needs per-principal jobs.
+		return "", false, nil
+	}
 	if err != nil {
 		return "", false, fmt.Errorf("idempotency lookup: %w", err)
 	}
@@ -727,36 +909,126 @@ func (s *Service) Enqueue(ctx context.Context, req AnalyzeRequest) (string, erro
 }
 
 func (s *Service) ListSteps(ctx context.Context, source string) ([]*storage.RegisteredStep, int, error) {
-	return s.Store.Steps().List(ctx, source)
+	return s.Store(ctx).Steps().List(ctx, source)
 }
 
 func (s *Service) GetStep(ctx context.Context, name string) (*storage.RegisteredStep, error) {
-	return s.Store.Steps().Get(ctx, name)
+	return s.Store(ctx).Steps().Get(ctx, name)
 }
 
-func (s *Service) InstallStep(ctx context.Context, name, fromRegistry string) error {
-	return s.Discovery.InstallStep(ctx, name, fromRegistry)
+// StepInstallRequest is one step install: from a registry configured
+// under registries (FromRegistry, its URL) or from a packaged local
+// directory (Archive, as steps.PackDir builds it). Exactly one is set.
+type StepInstallRequest struct {
+	Name         string `json:"name"`
+	FromRegistry string `json:"from_registry,omitempty"`
+	Archive      []byte `json:"archive,omitempty"`
 }
 
+// ErrStepInUse is an uninstall of a step pipelines.overrides still inserts.
+var ErrStepInUse = errors.New("step in use")
+
+// InstallStep installs a step into steps.path and records it. A registry
+// install is gated by the registry's trust_level and the archive digest
+// its manifest declares (steps.Installer.InstallFromRegistry).
+func (s *Service) InstallStep(ctx context.Context, req StepInstallRequest) (*storage.RegisteredStep, error) {
+	switch {
+	case req.FromRegistry != "" && len(req.Archive) > 0:
+		return nil, fmt.Errorf("%w: give from_registry or archive, not both", steps.ErrInvalidStep)
+	case req.FromRegistry != "":
+		return s.Installer.InstallFromRegistry(ctx, req.Name, s.registryByURL(req.FromRegistry))
+	case len(req.Archive) > 0:
+		return s.Installer.InstallArchive(ctx, req.Name, req.Archive, "local", "")
+	default:
+		return nil, fmt.Errorf("%w: from_registry or archive is required", steps.ErrInvalidStep)
+	}
+}
+
+// UninstallStep removes an installed step's files and record. A step
+// that pipelines.overrides still inserts is refused: remove it from the
+// config first, or the next dpkms serve start fails on it.
 func (s *Service) UninstallStep(ctx context.Context, name string) error {
-	return s.Store.Steps().Unregister(ctx, name)
+	var users []string
+	for pipe, o := range s.Cfg.Pipelines.Overrides {
+		for i, ins := range o.InsertSteps {
+			if ins.Step == name {
+				users = append(users, fmt.Sprintf("pipelines.overrides.%s.insert_steps[%d]", pipe, i))
+			}
+		}
+	}
+	if len(users) > 0 {
+		sort.Strings(users)
+		return fmt.Errorf("%w: %q is inserted by %s; remove it from dpkms.yaml first", ErrStepInUse, name, strings.Join(users, ", "))
+	}
+	return s.Installer.Uninstall(ctx, name)
 }
 
+// FetchRegistry fetches the registry manifest at url and caches it.
 func (s *Service) FetchRegistry(ctx context.Context, url string) error {
 	_, err := s.Discovery.FetchRegistryManifest(ctx, url)
 	return err
 }
 
+// UpdateRegistry is a manual sync: it re-fetches the manifest at url,
+// with the registry's stored token, and replaces the cached copy, so its
+// Last Fetched time and ETag advance. Update reminders come from the
+// background check (CheckRegistryUpdates), not from here.
 func (s *Service) UpdateRegistry(ctx context.Context, url string) error {
-	return s.Discovery.NotifyUpdateAvailable(ctx, url, "")
+	return s.FetchRegistry(ctx, url)
+}
+
+// RegistrySyncResult reports what SyncRegistry pulled.
+type RegistrySyncResult struct {
+	// EntitySync mirrors the fetched manifest's capabilities.entity_sync:
+	// whether the registry advertises an entity index.
+	EntitySync bool
+	// RegistryEntityCounts is what became of the index's entities; all
+	// zero when EntitySync is false.
+	RegistryEntityCounts
+}
+
+// RegistryEntityCounts is what an entity index sync did with the
+// entities a registry served.
+type RegistryEntityCounts struct {
+	// TrustLevel is the registry's effective trust_level: untrusted
+	// when the config leaves it unset.
+	TrustLevel config.RegistryTrustLevel `json:"trust_level"`
+	// Upserted entities were written to the local entity store.
+	Upserted int `json:"upserted"`
+	// PendingApproval entities came from an untrusted registry and were
+	// not written: they wait in the approval queue (ListPendingEntities).
+	PendingApproval int `json:"pending_approval"`
+	// Blocked entities came from a sandboxed registry, which never
+	// writes to the local graph.
+	Blocked int `json:"blocked"`
+}
+
+// SyncRegistry is `ctxt registry sync`: it re-fetches and caches the
+// manifest at url, then, when that manifest advertises
+// capabilities.entity_sync, syncs the registry's entity index
+// (SyncRegistryEntities). A registry that serves steps only has no
+// /entities/index, so it is never asked for one.
+func (s *Service) SyncRegistry(ctx context.Context, url string) (RegistrySyncResult, error) {
+	manifest, err := s.Discovery.FetchRegistryManifest(ctx, url)
+	if err != nil {
+		return RegistrySyncResult{}, err
+	}
+	if !manifest.Capabilities.EntitySync {
+		return RegistrySyncResult{}, nil
+	}
+	counts, err := s.SyncRegistryEntities(ctx, url)
+	if err != nil {
+		return RegistrySyncResult{EntitySync: true}, err
+	}
+	return RegistrySyncResult{EntitySync: true, RegistryEntityCounts: counts}, nil
 }
 
 func (s *Service) ListRegistries(ctx context.Context) ([]*storage.RegistryCache, int, error) {
-	return s.Store.Registries().List(ctx)
+	return s.Store(ctx).Registries().List(ctx)
 }
 
 func (s *Service) RemoveRegistry(ctx context.Context, url string) error {
-	return s.Store.Registries().Delete(ctx, url)
+	return s.Store(ctx).Registries().Delete(ctx, url)
 }
 
 // RegistryDiffEntry describes a single would-be change from a registry sync.
@@ -780,7 +1052,7 @@ func (s *Service) DiffRegistrySync(ctx context.Context, url string) ([]RegistryD
 
 	// Load local cached manifest (may not exist yet).
 	var localSteps map[string]string // name → version
-	cache, err := s.Store.Registries().GetCachedManifest(ctx, url)
+	cache, err := s.Store(ctx).Registries().GetCachedManifest(ctx, url)
 	if err == nil && cache != nil && cache.Manifest != nil {
 		localSteps = make(map[string]string, len(cache.Manifest.Steps))
 		for _, step := range cache.Manifest.Steps {
@@ -860,11 +1132,11 @@ func classifyStepKind(name string) string {
 }
 
 func (s *Service) ListReminders(ctx context.Context, activeOnly bool) ([]*storage.SystemReminder, int, error) {
-	return s.Store.Reminders().List(ctx, activeOnly)
+	return s.Store(ctx).Reminders().List(ctx, activeOnly)
 }
 
 func (s *Service) DismissReminder(ctx context.Context, id string) error {
-	return s.Store.Reminders().Dismiss(ctx, id)
+	return s.Store(ctx).Reminders().Dismiss(ctx, id)
 }
 
 // ─── Resurfacing queue ────────────────────────────────────────────────────────
@@ -874,7 +1146,7 @@ func (s *Service) DismissReminder(ctx context.Context, id string) error {
 func (s *Service) ListResurfacing(
 	ctx context.Context, profileID string, limit int, minScore float64,
 ) ([]*storage.ResurfacingEntry, error) {
-	return s.Store.Resurfacing().List(ctx, storage.ResurfacingFilter{
+	return s.Store(ctx).Resurfacing().List(ctx, storage.ResurfacingFilter{
 		ProfileID:  profileID,
 		UnseenOnly: true,
 		MinScore:   minScore,
@@ -884,12 +1156,12 @@ func (s *Service) ListResurfacing(
 
 // MarkResurfaced marks an entry as shown to the user.
 func (s *Service) MarkResurfaced(ctx context.Context, id string) error {
-	return s.Store.Resurfacing().MarkSurfaced(ctx, id, time.Now())
+	return s.Store(ctx).Resurfacing().MarkSurfaced(ctx, id, time.Now())
 }
 
 // DismissResurfacing dismisses an entry so it no longer appears.
 func (s *Service) DismissResurfacing(ctx context.Context, id string) error {
-	return s.Store.Resurfacing().Dismiss(ctx, id, time.Now())
+	return s.Store(ctx).Resurfacing().Dismiss(ctx, id, time.Now())
 }
 
 // FindByText searches knowledge objects using FTS5 full-text search.
@@ -902,20 +1174,28 @@ func (s *Service) FindByText(ctx context.Context, query string, limit int) ([]*s
 // each driver applies its own dialect's FTS quoting at the boundary
 // (search.SanitizeFTSQueryFor), so no dialect's rules are baked in here.
 func (s *Service) FindByTextFiltered(ctx context.Context, query string, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
-	return s.Store.Objects().FTSSearch(ctx, query, filter)
+	objs, err := s.Store(ctx).Objects().FTSSearch(ctx, query, filter)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.previewContent(ctx, objs); err != nil {
+		return nil, err
+	}
+	return objs, nil
 }
 
 // CancelJob cancels a pending or running job.
 func (s *Service) CancelJob(ctx context.Context, id string) error {
-	return s.Store.Jobs().Cancel(ctx, id)
+	return s.Store(ctx).Jobs().Cancel(ctx, id)
 }
 
 // SyncRegistryEntities syncs entity index from a configured registry.
-// Uses the registry's sync_mode (thin or full). Returns count of upserted entities.
+// Uses the registry's sync_mode (thin or full). Returns what became of
+// the entities: written, or held back by the registry's trust_level.
 // When the registry manifest declares an entitlement_url, the entitlement is
 // fetched and stored before any sync occurs; ErrEntitlementRequired is returned
 // if the registry denies access.
-func (s *Service) SyncRegistryEntities(ctx context.Context, registryURL string) (int, error) {
+func (s *Service) SyncRegistryEntities(ctx context.Context, registryURL string) (RegistryEntityCounts, error) {
 	var cfg config.RegistryConfig
 	for _, r := range s.Cfg.Registries {
 		if r.URL == registryURL {
@@ -929,21 +1209,28 @@ func (s *Service) SyncRegistryEntities(ctx context.Context, registryURL string) 
 
 	// Populate EntitlementURL from cached manifest if not already set.
 	if cfg.EntitlementURL == "" {
-		if cache, err := s.Store.Registries().GetCachedManifest(ctx, registryURL); err == nil &&
+		if cache, err := s.Store(ctx).Registries().GetCachedManifest(ctx, registryURL); err == nil &&
 			cache != nil && cache.Manifest != nil && cache.Manifest.EntitlementURL != "" {
 			cfg.EntitlementURL = cache.Manifest.EntitlementURL
 		}
 	}
 
-	syncer := registrysync.New(s.Store.Entities()).
-		WithEntitlements(s.Store.Entitlements()).
-		WithRegistryStore(s.Store.Registries()).
-		WithRequireSignatures(s.Cfg.RegistriesGlobal.RequireSignatures)
+	syncer := registrysync.New(s.Store(ctx).Entities()).
+		WithEntitlements(s.Store(ctx).Entitlements()).
+		WithRegistryStore(s.Store(ctx).Registries()).
+		WithRequireSignatures(s.Cfg.RegistriesGlobal.RequireSignatures).
+		WithCredentials(s.registryAuth).
+		WithPendingQueue(s.Store(ctx).PendingEntities())
 	result, err := syncer.Sync(ctx, cfg)
 	if err != nil {
-		return 0, fmt.Errorf("sync registry entities: %w", err)
+		return RegistryEntityCounts{}, fmt.Errorf("sync registry entities: %w", err)
 	}
-	return result.Upserted, nil
+	return RegistryEntityCounts{
+		TrustLevel:      cfg.EffectiveTrustLevel(),
+		Upserted:        result.Upserted,
+		PendingApproval: result.PendingApproval,
+		Blocked:         result.Blocked,
+	}, nil
 }
 
 // SyncAllRegistriesResult is the output of SyncAllRegistriesWithReconciliation.
@@ -954,6 +1241,21 @@ type SyncAllRegistriesResult struct {
 	Conflicts []registrysync.ConflictReport
 	// OfflineRegistries lists registry URLs that were unreachable.
 	OfflineRegistries []string
+	// PendingApproval and Blocked total what the registries' trust_level
+	// held back; Registries breaks them down per configured registry.
+	PendingApproval int
+	Blocked         int
+	Registries      []ReconciledRegistryCounts
+}
+
+// ReconciledRegistryCounts is what a reconciling sync's trust gate did
+// with one registry's entities. Upserted is absent: written entities
+// are counted after reconciliation (Merged), not per registry.
+type ReconciledRegistryCounts struct {
+	Name            string                    `json:"name"`
+	TrustLevel      config.RegistryTrustLevel `json:"trust_level"`
+	PendingApproval int                       `json:"pending_approval"`
+	Blocked         int                       `json:"blocked"`
 }
 
 // SyncAllRegistriesWithReconciliation syncs all configured registries, reconciles
@@ -975,9 +1277,11 @@ func (s *Service) SyncAllRegistriesWithReconciliation(
 		strategy = registrysync.MergeLastWriteWins
 	}
 
-	syncer := registrysync.New(s.Store.Entities()).
-		WithRegistryStore(s.Store.Registries()).
-		WithRequireSignatures(s.Cfg.RegistriesGlobal.RequireSignatures)
+	syncer := registrysync.New(s.Store(ctx).Entities()).
+		WithRegistryStore(s.Store(ctx).Registries()).
+		WithRequireSignatures(s.Cfg.RegistriesGlobal.RequireSignatures).
+		WithCredentials(s.registryAuth).
+		WithPendingQueue(s.Store(ctx).PendingEntities())
 	multi := registrysync.MultiSyncConfig{
 		Registries:  s.Cfg.Registries,
 		Strategy:    strategy,
@@ -988,17 +1292,40 @@ func (s *Service) SyncAllRegistriesWithReconciliation(
 		return nil, fmt.Errorf("multi-registry sync: %w", err)
 	}
 
-	return &SyncAllRegistriesResult{
+	out := &SyncAllRegistriesResult{
 		Merged:            result.Merged,
 		Conflicts:         result.Conflicts,
 		OfflineRegistries: result.OfflineRegistries,
-	}, nil
+		PendingApproval:   result.PendingApproval,
+		Blocked:           result.Blocked,
+	}
+	for _, r := range result.PerRegistry {
+		reg := s.registryByURL(r.RegistryURL)
+		out.Registries = append(out.Registries, ReconciledRegistryCounts{
+			Name:            reg.Name,
+			TrustLevel:      reg.EffectiveTrustLevel(),
+			PendingApproval: r.PendingApproval,
+			Blocked:         r.Blocked,
+		})
+	}
+	return out, nil
+}
+
+// registryByURL is the configured registry at url, or one with just
+// that URL (and so untrusted) when none is configured.
+func (s *Service) registryByURL(url string) config.RegistryConfig {
+	for _, r := range s.Cfg.Registries {
+		if r.URL == url {
+			return r
+		}
+	}
+	return config.RegistryConfig{URL: url}
 }
 
 // PullEntity promotes a thin entity to full by fetching its complete definition
 // from its source registry. Returns ErrEntityDefinitionUnavailable if not thin.
 func (s *Service) PullEntity(ctx context.Context, slug string) (*storage.Entity, error) {
-	entity, err := s.Store.Entities().Get(ctx, slug)
+	entity, err := s.Store(ctx).Entities().Get(ctx, slug)
 	if err != nil {
 		return nil, fmt.Errorf("get entity: %w", err)
 	}
@@ -1013,7 +1340,7 @@ func (s *Service) PullEntity(ctx context.Context, slug string) (*storage.Entity,
 	}
 
 	// Mark as pending so concurrent callers can detect an in-progress pull.
-	if err := s.Store.Entities().SetContentStatus(ctx, slug, storage.ContentStatusPendingPull); err != nil {
+	if err := s.Store(ctx).Entities().SetContentStatus(ctx, slug, storage.ContentStatusPendingPull); err != nil {
 		return nil, fmt.Errorf("set pending_pull: %w", err)
 	}
 
@@ -1021,7 +1348,7 @@ func (s *Service) PullEntity(ctx context.Context, slug string) (*storage.Entity,
 	fullEntity, err := s.fetchRemoteEntityDefinition(ctx, entity.RegistryURL, slug)
 	if err != nil {
 		// Restore thin status on failure so the entity remains usable.
-		_ = s.Store.Entities().SetContentStatus(ctx, slug, storage.ContentStatusThin)
+		_ = s.Store(ctx).Entities().SetContentStatus(ctx, slug, storage.ContentStatusThin)
 		return nil, fmt.Errorf("fetch entity definition: %w", err)
 	}
 
@@ -1032,8 +1359,8 @@ func (s *Service) PullEntity(ctx context.Context, slug string) (*storage.Entity,
 	fullEntity.CreatedAt = entity.CreatedAt
 	fullEntity.UpdatedAt = time.Now().Truncate(time.Second)
 
-	if err := s.Store.Entities().Upsert(ctx, fullEntity); err != nil {
-		_ = s.Store.Entities().SetContentStatus(ctx, slug, storage.ContentStatusThin)
+	if err := s.Store(ctx).Entities().Upsert(ctx, fullEntity); err != nil {
+		_ = s.Store(ctx).Entities().SetContentStatus(ctx, slug, storage.ContentStatusThin)
 		return nil, fmt.Errorf("store full entity: %w", err)
 	}
 
@@ -1050,12 +1377,15 @@ func (s *Service) fetchRemoteEntityDefinition(ctx context.Context, registryURL, 
 	}
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.registryAuth.Client(http.DefaultClient).Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
+	if err := s.registryAuth.CheckResponse(resp); err != nil {
+		return nil, err
+	}
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, storage.ErrEntityDefinitionUnavailable
 	}
@@ -1070,133 +1400,51 @@ func (s *Service) fetchRemoteEntityDefinition(ctx context.Context, registryURL, 
 	return &entity, nil
 }
 
-// Compose generates a markdown composition from knowledge objects.
-// This is a fallback implementation that concatenates objects.
+// Compose generates a markdown composition from knowledge objects
+// (composition.Compose).
 func (s *Service) Compose(ctx context.Context, objects []*storage.KnowledgeObject, compositionType string) (string, error) {
-	var b strings.Builder
-	fmt.Fprintf(&b, "# %s\n\n", compositionType)
-	fmt.Fprintf(&b, "Generated from %d knowledge objects.\n\n", len(objects))
-
-	for _, obj := range objects {
-		fmt.Fprintf(&b, "## %s\n", obj.ID)
-		snippet := objectSnippet(obj)
-		if snippet != "" {
-			b.WriteString(snippet)
-			b.WriteString("\n\n")
-		}
-	}
-	return b.String(), nil
+	return composition.Compose(objects, compositionType), nil
 }
 
-// ComposeWithCitations generates a markdown composition from knowledge objects
-// with inline [ref:ID] citation markers and an appended reference table.
-//
-// The fallback implementation injects citation markers after each object's
-// content snippet. When an AI provider is wired up it should emit markers
-// itself; this layer then parses and validates them regardless of origin.
+// ComposeWithCitations generates a markdown composition with inline
+// [ref:ID] citation markers and an appended reference table
+// (composition.WithCitations).
 func (s *Service) ComposeWithCitations(ctx context.Context, objects []*storage.KnowledgeObject, compositionType string) (*CompositionResult, error) {
-	cctx := citation.NewCompositionContext(objects)
-
-	// Collect source IDs.
-	sourceIDs := make([]string, 0, len(objects))
-	for _, obj := range objects {
-		sourceIDs = append(sourceIDs, obj.ID)
-	}
-
-	// Build citation-annotated body.
-	var b strings.Builder
-	fmt.Fprintf(&b, "# %s\n\n", compositionType)
-	fmt.Fprintf(&b, "Generated from %d knowledge objects.\n\n", len(objects))
-
-	for _, obj := range objects {
-		fmt.Fprintf(&b, "## %s\n", obj.ID)
-		snippet := objectSnippet(obj)
-		if snippet != "" {
-			fmt.Fprintf(&b, "%s [ref:%s]\n\n", snippet, obj.ID)
-		} else {
-			fmt.Fprintf(&b, "[ref:%s]\n\n", obj.ID)
-		}
-	}
-
-	body := b.String()
-
-	// Parse citations from generated content.
-	citations := citation.ParseCitations(body)
-
-	// Enrich citations with entity mentions.
-	citation.EnrichCitationsWithEntities(citations, cctx.ObjectMap)
-
-	// Append reference table.
-	refTable := citation.BuildReferenceTable(citations, cctx.ObjectMap)
-	content := body + refTable
-
-	return &CompositionResult{
-		Type:        compositionType,
-		Content:     content,
-		Citations:   citations,
-		SourceIDs:   sourceIDs,
-		GeneratedAt: time.Now(),
-	}, nil
+	return composition.WithCitations(objects, compositionType), nil
 }
 
-// objectSnippet returns the best short text snippet for an object using
-// projection helpers. Prefers graph-derived body; falls back to flat
-// Summaries, then RawContent (truncated to 500 chars).
+// objectSnippet returns the best short text snippet for an object
+// (composition.Snippet).
 func objectSnippet(obj *storage.KnowledgeObject) string {
-	doc := projection.ProjectDocument(obj)
-	// Graph-canonical path: use first non-empty section content.
-	if obj.Graph != nil && len(obj.Graph.Nodes) > 0 {
-		if doc.Body != "" {
-			if len(doc.Body) > 500 {
-				return doc.Body[:500] + "..."
-			}
-			return doc.Body
-		}
-		for _, sec := range doc.Sections {
-			if sec.Content != "" {
-				if len(sec.Content) > 500 {
-					return sec.Content[:500] + "..."
-				}
-				return sec.Content
-			}
-		}
-	}
-	// Flat-field fallback: Summaries first, then RawContent.
-	if len(obj.Summaries) > 0 {
-		return obj.Summaries[0]
-	}
-	if obj.RawContent != "" {
-		if len(obj.RawContent) > 500 {
-			return obj.RawContent[:500] + "..."
-		}
-		return obj.RawContent
-	}
-	return ""
+	return composition.Snippet(obj)
 }
 
 // SearchObjectsNodeAware runs an RSQL query and post-filters results by
 // NodeAwareFilter constraints (NodeTypes / EdgeTypes). Storage does not yet
 // expose native node-type filtering, so the filtering happens in-process.
 // When filter is nil or empty, behaviour is identical to SearchObjects.
-func (s *Service) SearchObjectsNodeAware(ctx context.Context, query string, limit, offset int, filter *pluginapi.NodeAwareFilter, profileID ...string) ([]*storage.KnowledgeObject, int, error) {
+func (s *Service) SearchObjectsNodeAware(ctx context.Context, query string, limit, offset int, filter *storage.NodeAwareFilter, profileID ...string) ([]*storage.KnowledgeObject, int, error) {
 	// Fetch a wider candidate pool when node filtering is active so the final
 	// page still has enough results after the in-process filter.
 	fetchLimit := limit
 	fetchOffset := offset
 	nodeFilter := filter != nil && (len(filter.NodeTypes) > 0 || len(filter.EdgeTypes) > 0)
 	if nodeFilter {
-		// TODO(T-0177): push NodeTypes/EdgeTypes into storage query when
+		// TODO: push NodeTypes/EdgeTypes into storage query when
 		// storage exposes node-index filtering.
 		fetchLimit = limit*10 + 200
 		fetchOffset = 0
 	}
 
-	all, _, err := s.Search.Search(ctx, query, fetchLimit, fetchOffset, profileID...)
+	all, _, err := s.Search.Search(ctx, s.Store(ctx).Objects(), query, fetchLimit, fetchOffset, profileID...)
 	if err != nil {
 		return nil, 0, err
 	}
 
 	if !nodeFilter {
+		if err := s.previewContent(ctx, all); err != nil {
+			return nil, 0, err
+		}
 		return all, len(all), nil
 	}
 
@@ -1211,34 +1459,9 @@ func (s *Service) SearchObjectsNodeAware(ctx context.Context, query string, limi
 
 	var filtered []*storage.KnowledgeObject
 	for _, obj := range all {
-		if obj.Graph == nil {
-			continue
+		if graphHasTypes(obj.Graph, nodeTypeSet, edgeTypeSet) {
+			filtered = append(filtered, obj)
 		}
-		if len(nodeTypeSet) > 0 {
-			matched := false
-			for _, n := range obj.Graph.Nodes {
-				if nodeTypeSet[n.NodeType] {
-					matched = true
-					break
-				}
-			}
-			if !matched {
-				continue
-			}
-		}
-		if len(edgeTypeSet) > 0 {
-			matched := false
-			for _, e := range obj.Graph.Edges {
-				if edgeTypeSet[e.EdgeType] {
-					matched = true
-					break
-				}
-			}
-			if !matched {
-				continue
-			}
-		}
-		filtered = append(filtered, obj)
 	}
 
 	total := len(filtered)
@@ -1250,7 +1473,27 @@ func (s *Service) SearchObjectsNodeAware(ctx context.Context, query string, limi
 	if end > total {
 		end = total
 	}
-	return filtered[offset:end], total, nil
+	page := filtered[offset:end]
+	if err := s.previewContent(ctx, page); err != nil {
+		return nil, 0, err
+	}
+	return page, total, nil
+}
+
+// graphHasTypes reports whether g has a node of one of nodeTypes and an
+// edge of one of edgeTypes; an empty set matches any graph. A nil graph
+// never matches.
+func graphHasTypes(g *storage.ObjectGraph, nodeTypes, edgeTypes map[string]bool) bool {
+	if g == nil {
+		return false
+	}
+	if len(nodeTypes) > 0 && !slices.ContainsFunc(g.Nodes, func(n storage.GraphNode) bool { return nodeTypes[n.NodeType] }) {
+		return false
+	}
+	if len(edgeTypes) > 0 && !slices.ContainsFunc(g.Edges, func(e storage.GraphEdge) bool { return edgeTypes[e.EdgeType] }) {
+		return false
+	}
+	return true
 }
 
 // --- Feed methods ---
@@ -1265,7 +1508,7 @@ func (s *Service) CreateFeed(ctx context.Context, url, format string) (*storage.
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
-	if err := s.Store.Feeds().Create(ctx, feed); err != nil {
+	if err := s.Store(ctx).Feeds().Create(ctx, feed); err != nil {
 		return nil, fmt.Errorf("create feed: %w", err)
 	}
 	return feed, nil
@@ -1273,13 +1516,13 @@ func (s *Service) CreateFeed(ctx context.Context, url, format string) (*storage.
 
 // ListFeeds returns all feed subscriptions matching the filter.
 func (s *Service) ListFeeds(ctx context.Context, filter storage.FeedFilter) ([]*storage.Feed, error) {
-	return s.Store.Feeds().List(ctx, filter)
+	return s.Store(ctx).Feeds().List(ctx, filter)
 }
 
 // SyncFeed enqueues a feed.sync pipeline job to fetch and process feed items.
 // Deduplication and item enqueueing are handled by the pipeline steps.
 func (s *Service) SyncFeed(ctx context.Context, id string) (string, error) {
-	feed, err := s.Store.Feeds().Get(ctx, id)
+	feed, err := s.Store(ctx).Feeds().Get(ctx, id)
 	if err != nil {
 		return "", fmt.Errorf("feed not found: %w", err)
 	}
@@ -1298,11 +1541,12 @@ func (s *Service) SyncFeed(ctx context.Context, id string) (string, error) {
 
 // SyncAllFeeds enqueues sync jobs for all active feeds.
 func (s *Service) SyncAllFeeds(ctx context.Context) ([]string, error) {
-	feeds, err := s.Store.Feeds().List(ctx, storage.FeedFilter{Status: "active"})
+	feeds, err := s.Store(ctx).Feeds().List(ctx, storage.FeedFilter{Status: "active"})
 	if err != nil {
 		return nil, fmt.Errorf("list feeds: %w", err)
 	}
-	var jobIDs []string
+	// nil when no feed enqueues: POST /feeds/sync answers job_ids: null.
+	var jobIDs []string //nolint:prealloc // see above; preallocating would answer []
 	for _, f := range feeds {
 		jobID, err := s.SyncFeed(ctx, f.ID)
 		if err != nil {
@@ -1315,10 +1559,10 @@ func (s *Service) SyncAllFeeds(ctx context.Context) ([]string, error) {
 
 // DeleteFeed removes a feed subscription.
 func (s *Service) DeleteFeed(ctx context.Context, id string) error {
-	if _, err := s.Store.Feeds().Get(ctx, id); err != nil {
+	if _, err := s.Store(ctx).Feeds().Get(ctx, id); err != nil {
 		return fmt.Errorf("feed not found: %w", err)
 	}
-	return s.Store.Feeds().Delete(ctx, id)
+	return s.Store(ctx).Feeds().Delete(ctx, id)
 }
 
 // --- Batch import methods ---
@@ -1347,7 +1591,7 @@ func (s *Service) CreateBatch(ctx context.Context, content, format string) (*sto
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
-	if err := s.Store.Batches().Create(ctx, batch); err != nil {
+	if err := s.Store(ctx).Batches().Create(ctx, batch); err != nil {
 		return nil, fmt.Errorf("create batch: %w", err)
 	}
 
@@ -1369,7 +1613,7 @@ func (s *Service) CreateBatch(ctx context.Context, content, format string) (*sto
 			batch.Errors = append(batch.Errors, storage.BatchError{Error: err.Error()})
 			continue
 		}
-		_ = s.Store.Edges().Create(ctx, &storage.Edge{
+		_ = s.Store(ctx).Edges().Create(ctx, &storage.Edge{
 			ID:        uuid.New().String(),
 			FromType:  "batch",
 			FromID:    batch.ID,
@@ -1380,19 +1624,24 @@ func (s *Service) CreateBatch(ctx context.Context, content, format string) (*sto
 		})
 	}
 
-	if batch.Failed == 0 {
+	switch {
+	case batch.Failed == 0:
 		batch.Status = "completed"
-	} else if batch.Failed < batch.TotalRecords {
+	case batch.Failed < batch.TotalRecords:
 		batch.Status = "partial"
-	} else {
+	default:
 		batch.Status = "failed"
 	}
 	batch.Completed = batch.TotalRecords - batch.Failed
 	batch.UpdatedAt = time.Now()
-	_ = s.Store.Batches().Update(ctx, batch)
+	_ = s.Store(ctx).Batches().Update(ctx, batch)
 
 	return batch, nil
 }
+
+// ImportFormatJSONL is the batch import format: one JSON ImportRecord per
+// line. CreateBatch assumes it when no format is given.
+const ImportFormatJSONL = "jsonl"
 
 // parseBatchRecords parses JSONL, CSV, or TSV content into ImportRecords.
 func (s *Service) parseBatchRecords(content, format string) ([]storage.ImportRecord, []storage.BatchError) {
@@ -1400,7 +1649,7 @@ func (s *Service) parseBatchRecords(content, format string) ([]storage.ImportRec
 	var errs []storage.BatchError
 
 	switch format {
-	case "jsonl", "":
+	case ImportFormatJSONL, "":
 		for i, line := range strings.Split(strings.TrimSpace(content), "\n") {
 			if strings.TrimSpace(line) == "" {
 				continue
@@ -1494,7 +1743,7 @@ func (s *Service) createBatchFromOPML(ctx context.Context, content string) (*sto
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
-	if err := s.Store.Batches().Create(ctx, batch); err != nil {
+	if err := s.Store(ctx).Batches().Create(ctx, batch); err != nil {
 		return nil, fmt.Errorf("create batch: %w", err)
 	}
 
@@ -1511,14 +1760,14 @@ func (s *Service) createBatchFromOPML(ctx context.Context, content string) (*sto
 		batch.Status = "partial"
 	}
 	batch.UpdatedAt = time.Now()
-	_ = s.Store.Batches().Update(ctx, batch)
+	_ = s.Store(ctx).Batches().Update(ctx, batch)
 
 	return batch, nil
 }
 
 // GetBatch retrieves a batch import operation by ID.
 func (s *Service) GetBatch(ctx context.Context, id string) (*storage.Batch, error) {
-	return s.Store.Batches().Get(ctx, id)
+	return s.Store(ctx).Batches().Get(ctx, id)
 }
 
 // --- Detector methods ---
@@ -1545,7 +1794,7 @@ func (s *Service) CreateDetector(ctx context.Context, req DetectorCreateRequest)
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
-	if err := s.Store.Detectors().Create(ctx, d); err != nil {
+	if err := s.Store(ctx).Detectors().Create(ctx, d); err != nil {
 		return nil, fmt.Errorf("create detector: %w", err)
 	}
 	return d, nil
@@ -1553,23 +1802,23 @@ func (s *Service) CreateDetector(ctx context.Context, req DetectorCreateRequest)
 
 // ListDetectors returns all detectors matching the filter.
 func (s *Service) ListDetectors(ctx context.Context, filter storage.DetectorFilter) ([]*storage.DetectorRecord, error) {
-	detectors, _, err := s.Store.Detectors().List(ctx, filter)
+	detectors, _, err := s.Store(ctx).Detectors().List(ctx, filter)
 	return detectors, err
 }
 
 // DeleteDetector removes a detector.
 func (s *Service) DeleteDetector(ctx context.Context, id string) error {
-	return s.Store.Detectors().Delete(ctx, id)
+	return s.Store(ctx).Detectors().Delete(ctx, id)
 }
 
 // EnableDetector enables a detector.
 func (s *Service) EnableDetector(ctx context.Context, id string) error {
-	return s.Store.Detectors().Enable(ctx, id)
+	return s.Store(ctx).Detectors().Enable(ctx, id)
 }
 
 // DisableDetector disables a detector.
 func (s *Service) DisableDetector(ctx context.Context, id string) error {
-	return s.Store.Detectors().Disable(ctx, id)
+	return s.Store(ctx).Detectors().Disable(ctx, id)
 }
 
 // --- Saved Search (US-0054) ---
@@ -1597,7 +1846,7 @@ func (s *Service) CreateSavedSearch(ctx context.Context, req SavedSearchCreateRe
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	if err := s.Store.SavedSearches().Create(ctx, ss); err != nil {
+	if err := s.Store(ctx).SavedSearches().Create(ctx, ss); err != nil {
 		return nil, fmt.Errorf("create saved search: %w", err)
 	}
 	return ss, nil
@@ -1605,23 +1854,23 @@ func (s *Service) CreateSavedSearch(ctx context.Context, req SavedSearchCreateRe
 
 // GetSavedSearch returns a saved search by name, or nil if not found.
 func (s *Service) GetSavedSearch(ctx context.Context, name string) (*storage.SavedSearch, error) {
-	return s.Store.SavedSearches().GetByName(ctx, name)
+	return s.Store(ctx).SavedSearches().GetByName(ctx, name)
 }
 
 // ListSavedSearches returns saved searches matching the filter.
 func (s *Service) ListSavedSearches(ctx context.Context, filter storage.SavedSearchFilter) ([]*storage.SavedSearch, error) {
-	return s.Store.SavedSearches().List(ctx, filter)
+	return s.Store(ctx).SavedSearches().List(ctx, filter)
 }
 
 // UpdateSavedSearch persists field changes to an existing saved search.
 func (s *Service) UpdateSavedSearch(ctx context.Context, ss *storage.SavedSearch) error {
 	ss.UpdatedAt = time.Now().Truncate(time.Second)
-	return s.Store.SavedSearches().Update(ctx, ss)
+	return s.Store(ctx).SavedSearches().Update(ctx, ss)
 }
 
 // DeleteSavedSearch removes a saved search by name.
 func (s *Service) DeleteSavedSearch(ctx context.Context, name string) error {
-	return s.Store.SavedSearches().Delete(ctx, name)
+	return s.Store(ctx).SavedSearches().Delete(ctx, name)
 }
 
 // --- Search History (US-0055) ---
@@ -1636,17 +1885,17 @@ func (s *Service) AppendSearchHistory(ctx context.Context, query, profileID, str
 		ResultCount:    resultCount,
 		SearchedAt:     time.Now().Truncate(time.Second),
 	}
-	return s.Store.SearchHistory().Append(ctx, e)
+	return s.Store(ctx).SearchHistory().Append(ctx, e)
 }
 
 // ListSearchHistory returns search history entries matching the filter.
 func (s *Service) ListSearchHistory(ctx context.Context, filter storage.SearchHistoryFilter) ([]*storage.SearchHistoryEntry, error) {
-	return s.Store.SearchHistory().List(ctx, filter)
+	return s.Store(ctx).SearchHistory().List(ctx, filter)
 }
 
 // ClearSearchHistory removes all history entries for a profile.
 func (s *Service) ClearSearchHistory(ctx context.Context, profileID string) error {
-	return s.Store.SearchHistory().ClearByProfile(ctx, profileID)
+	return s.Store(ctx).SearchHistory().ClearByProfile(ctx, profileID)
 }
 
 // --- Semantic search ---
@@ -1658,23 +1907,29 @@ func (s *Service) ClearSearchHistory(ctx context.Context, profileID string) erro
 // cfg.FallbackToFTS is set and fails otherwise; either way the reason is in
 // the returned diagnostics' Semantic report, so the degradation is visible.
 func (s *Service) SemanticSearchFiltered(ctx context.Context, query string, filter storage.ObjectFilter, sem retrieval.SemanticSource, cfg config.SearchConfig) ([]*storage.KnowledgeObject, SearchDiagnostics, error) {
-	objs, rep, err := sem.Search(ctx, s.Store, search.DecomposeQuery(query, 2), filter)
+	objs, rep, err := sem.Search(ctx, s.Store(ctx), search.DecomposeQuery(query, 2), filter)
 	if err != nil {
 		return nil, SearchDiagnostics{}, fmt.Errorf("semantic search: %w", err)
 	}
 	diagnostics := SearchDiagnostics{Semantic: &rep}
 	if rep.OK() {
 		diagnostics.CandidateCount = len(objs)
+		if err := s.previewContent(ctx, objs); err != nil {
+			return nil, diagnostics, err
+		}
 		return objs, diagnostics, nil
 	}
 	if !cfg.FallbackToFTS {
 		return nil, diagnostics, &SemanticUnavailableError{Report: rep}
 	}
-	objs, err = s.Store.Objects().FTSSearch(ctx, query, filter)
+	objs, err = s.Store(ctx).Objects().FTSSearch(ctx, query, filter)
 	if err != nil {
 		return nil, diagnostics, fmt.Errorf("semantic search fts fallback: %w", err)
 	}
 	diagnostics.CandidateCount = len(objs)
+	if err := s.previewContent(ctx, objs); err != nil {
+		return nil, diagnostics, err
+	}
 	return objs, diagnostics, nil
 }
 
@@ -1696,7 +1951,7 @@ func (s *Service) HybridSearchFiltered(ctx context.Context, query string, filter
 
 // HybridSearchFilteredWithDiagnostics is like HybridSearchFiltered but also
 // returns SearchDiagnostics describing candidates that surfaced from the FTS
-// or vector legs and were dropped by the reranker MinScore threshold (T-0574).
+// or vector legs and were dropped by the reranker MinScore threshold.
 func (s *Service) HybridSearchFilteredWithDiagnostics(ctx context.Context, query string, filter storage.ObjectFilter, sem retrieval.SemanticSource, cfg config.SearchConfig) ([]*storage.KnowledgeObject, SearchDiagnostics, error) {
 	envelope, err := s.HybridSearchExplainFilteredWithDiagnostics(ctx, query, filter, sem, cfg)
 	if err != nil {
@@ -1735,7 +1990,7 @@ func (s *Service) HybridSearchExplainFiltered(ctx context.Context, query string,
 // HybridSearchExplainFilteredWithDiagnostics runs the full hybrid search
 // pipeline and returns a HybridSearchResult envelope containing both the
 // post-threshold result list and a SearchDiagnostics block describing
-// candidates dropped by the reranker MinScore threshold (T-0574).
+// candidates dropped by the reranker MinScore threshold.
 //
 // Diagnostics let callers distinguish two visually identical "no results"
 // cases at the CLI: (a) zero candidates from any retrieval leg vs. (b)
@@ -1770,7 +2025,10 @@ func (s *Service) hybridSearch(ctx context.Context, query string, filter storage
 	// query. The expanded text stays raw here: each driver applies its own
 	// dialect's FTS quoting at the boundary (search.SanitizeFTSQueryFor),
 	// covering user input and alias-injected punctuation alike.
-	ftsQuery := search.ExpandQuery(ctx, query, newStorageAliasResolver(s.Store.Aliases(), ""))
+	ftsQuery, err := search.ExpandQuery(ctx, query, newStorageAliasResolver(s.Store(ctx).Aliases(), ""))
+	if err != nil {
+		return nil, fmt.Errorf("hybrid search: %w", err)
+	}
 
 	// Build per-leg filters: inherit metadata facets but override pool size.
 	ftsFilter := filter
@@ -1783,7 +2041,7 @@ func (s *Service) hybridSearch(ctx context.Context, query string, filter storage
 
 	ftsCh := make(chan legResult, 1)
 	go func() {
-		res, err := s.Store.Objects().FTSSearch(ctx, ftsQuery, ftsFilter)
+		res, err := s.Store(ctx).Objects().FTSSearch(ctx, ftsQuery, ftsFilter)
 		ftsCh <- legResult{res, err}
 	}()
 
@@ -1845,10 +2103,10 @@ func (s *Service) hybridSearch(ctx context.Context, query string, filter storage
 		weights = ranking.DefaultWeights()
 	}
 
-	reranker := ranking.New(s.Store.Edges(), weights)
+	reranker := ranking.New(s.Store(ctx).Edges(), weights)
 	// Run the reranker with minScore=0 so we receive every scored candidate.
 	// Diagnostics need to know which candidates fell below cfg.MinScore — that
-	// information is lost if we let Rerank filter early (T-0574).
+	// information is lost if we let Rerank filter early.
 	scored, err := reranker.Rerank(ctx, query, candidates, 0)
 	if err != nil {
 		return nil, fmt.Errorf("hybrid search rerank: %w", err)
@@ -1860,7 +2118,7 @@ func (s *Service) hybridSearch(ctx context.Context, query string, filter storage
 	semantic := vecRes.report
 	diagnostics.Semantic = &semantic
 
-	// T-0581: count candidates whose pipeline stamp is older than the
+	// count candidates whose pipeline stamp is older than the
 	// registry's installed version for the same family. Surface the count
 	// as a soft warning so callers can prompt operators toward
 	// `ctxt upgrade plan`. Computed once per family for cheap repeat lookups.
@@ -1877,6 +2135,14 @@ func (s *Service) hybridSearch(ctx context.Context, query string, filter storage
 	limit := filter.Limit
 	if limit <= 0 || limit > len(ranked) {
 		limit = len(ranked)
+	}
+	kept := make([]*storage.KnowledgeObject, limit)
+	for i := range kept {
+		kept[i] = ranked[i].Object
+	}
+	// Before the document view, which is built from the content.
+	if err := s.previewContent(ctx, kept); err != nil {
+		return nil, err
 	}
 	out := make([]HybridResult, limit)
 	for i := 0; i < limit; i++ {
@@ -1937,7 +2203,7 @@ func partitionByThreshold(scored []ranking.Result, threshold float64) ([]ranking
 func (s *Service) hybridVectorLeg(ctx context.Context, query string, filter storage.ObjectFilter, sem retrieval.SemanticSource, cfg config.SearchConfig) ([]*storage.KnowledgeObject, retrieval.SemanticReport, error) {
 	vecFilter := filter
 	vecFilter.Limit = vectorPool(cfg)
-	res, rep, err := sem.Search(ctx, s.Store, search.DecomposeQuery(query, 2), vecFilter)
+	res, rep, err := sem.Search(ctx, s.Store(ctx), search.DecomposeQuery(query, 2), vecFilter)
 	if err != nil {
 		return nil, rep, fmt.Errorf("hybrid search vector leg: %w", err)
 	}
@@ -1958,7 +2224,7 @@ func vectorPool(cfg config.SearchConfig) int {
 // EnsureDefaultRegistry caches the bundled default registry manifest if no cache entry
 // exists for DefaultRegistryURL yet. Safe to call on every startup; idempotent.
 func (s *Service) EnsureDefaultRegistry(ctx context.Context) error {
-	_, err := s.Store.Registries().GetCachedManifest(ctx, registrysync.DefaultRegistryURL)
+	_, err := s.Store(ctx).Registries().GetCachedManifest(ctx, registrysync.DefaultRegistryURL)
 	if err == nil {
 		return nil // already cached
 	}
@@ -1967,7 +2233,7 @@ func (s *Service) EnsureDefaultRegistry(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("load default registry: %w", err)
 	}
-	if err := s.Store.Registries().CacheManifest(ctx, cache); err != nil {
+	if err := s.Store(ctx).Registries().CacheManifest(ctx, cache); err != nil {
 		return fmt.Errorf("cache default registry: %w", err)
 	}
 	return nil
@@ -1982,7 +2248,7 @@ func (s *Service) CheckRegistryCapabilities(
 	clientVersion string,
 	requiredFeatures ...string,
 ) ([]registrysync.CapabilityWarning, error) {
-	cache, err := s.Store.Registries().GetCachedManifest(ctx, registryURL)
+	cache, err := s.Store(ctx).Registries().GetCachedManifest(ctx, registryURL)
 	if err != nil {
 		return nil, fmt.Errorf("get registry manifest: %w", err)
 	}
@@ -2014,7 +2280,7 @@ func (s *Service) SearchRemoteBookmarks(
 		return nil, nil, nil
 	}
 
-	client := registrysync.NewBookmarkSearchClient(timeout)
+	client := registrysync.NewBookmarkSearchClient(timeout).WithCredentials(s.registryAuth)
 	raw := registrysync.ScatterGather(ctx, client, urls, query)
 	merged := registrysync.MergeResults(raw)
 	return merged, raw, nil
@@ -2037,7 +2303,7 @@ func (s *Service) RecordMeteringEvent(
 		Count:        1,
 		OccurredAt:   time.Now().UTC(),
 	}
-	return s.Store.Metering().Record(ctx, event)
+	return s.Store(ctx).Metering().Record(ctx, event)
 }
 
 // RegistryUsageSummary returns aggregated metering counts per event type for
@@ -2052,7 +2318,7 @@ func (s *Service) RegistryUsageSummary(
 		RegistryName: registryName,
 		After:        periodStart,
 	}
-	return s.Store.Metering().Aggregate(ctx, f)
+	return s.Store(ctx).Metering().Aggregate(ctx, f)
 }
 
 // AllRegistriesUsageSummary returns aggregated metering counts for all registries.
@@ -2061,7 +2327,7 @@ func (s *Service) AllRegistriesUsageSummary(
 	periodStart time.Time,
 ) ([]*storage.MeteringAggregate, error) {
 	f := storage.MeteringFilter{After: periodStart}
-	return s.Store.Metering().Aggregate(ctx, f)
+	return s.Store(ctx).Metering().Aggregate(ctx, f)
 }
 
 func (s *Service) parsePipelineSteps(stepsJSON string) ([]storage.StepRef, error) {
@@ -2070,7 +2336,8 @@ func (s *Service) parsePipelineSteps(stepsJSON string) ([]storage.StepRef, error
 		return nil, err
 	}
 
-	var result []storage.StepRef
+	// nil when no entry names a step: the pipeline stores steps as null.
+	var result []storage.StepRef //nolint:prealloc // see above; preallocating would store []
 	for _, step := range steps {
 		name, ok := step["name"].(string)
 		if !ok {

@@ -6,80 +6,74 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 )
 
-func staticAuthCfg() config.AuthConfig {
-	return config.AuthConfig{
-		Provider: "static",
-		Static: config.StaticAuthConfig{
-			Tokens: []config.StaticTokenConfig{{Token: "tok-1", Principal: "ops", Roles: []string{"admin"}}},
-		},
-	}
+// protectedCfg is a protected instance's config with the one key a
+// link-minting instance must set.
+func protectedCfg() *config.Config {
+	cfg := &config.Config{}
+	cfg.Server.Access = config.AccessProtected
+	cfg.Server.PublicURL = "https://dpkms.example.net"
+	return cfg
 }
 
 func TestResolveInboundAuthPrivateDefault(t *testing.T) {
 	cfg := &config.Config{}
-	access, provider, err := ResolveInboundAuth(cfg, false)
+	access, err := ResolveInboundAuth(cfg, false)
 	if err != nil {
 		t.Fatalf("resolveInboundAuth: %v", err)
 	}
 	if access != config.AccessPrivate {
 		t.Errorf("access = %q, want private", access)
 	}
-	if provider != nil {
-		t.Errorf("expected no provider on private instance, got %T", provider)
-	}
 }
 
-func TestResolveInboundAuthProtectedWithoutCredentialsRefuses(t *testing.T) {
+// A protected instance mints links by default, so it needs
+// server.public_url; the credential itself is the registry's business.
+func TestResolveInboundAuthProtectedWithoutPublicURLRefuses(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Server.Access = config.AccessProtected
-	if _, _, err := ResolveInboundAuth(cfg, false); err == nil {
-		t.Fatal("expected refusal for protected instance without credentials")
+	if _, err := ResolveInboundAuth(cfg, false); err == nil {
+		t.Fatal("expected refusal for protected instance without public_url")
 	}
-}
-
-func TestResolveInboundAuthPublicFlagWithoutCredentialsRefuses(t *testing.T) {
-	cfg := &config.Config{}
-	if _, _, err := ResolveInboundAuth(cfg, true); err == nil {
-		t.Fatal("expected refusal for --public without credentials")
+	if _, err := ResolveInboundAuth(&config.Config{}, true); err == nil {
+		t.Fatal("expected refusal for --public without public_url")
+	}
+	cfg.Server.Auth.SignIn = []string{}
+	if _, err := ResolveInboundAuth(cfg, false); err != nil {
+		t.Fatalf("protected minting no links: %v", err)
 	}
 }
 
 func TestResolveInboundAuthExplicitPrivatePlusPublicFlagRefuses(t *testing.T) {
-	cfg := &config.Config{}
+	cfg := protectedCfg()
 	cfg.Server.Access = config.AccessPrivate
-	cfg.Server.Auth = staticAuthCfg()
-	if _, _, err := ResolveInboundAuth(cfg, true); err == nil {
+	if _, err := ResolveInboundAuth(cfg, true); err == nil {
 		t.Fatal("expected hard error for access: private + --public")
 	}
 }
 
-func TestResolveInboundAuthProtectedWithCredentials(t *testing.T) {
-	cfg := &config.Config{}
-	cfg.Server.Access = config.AccessProtected
-	cfg.Server.Auth = staticAuthCfg()
-	access, provider, err := ResolveInboundAuth(cfg, false)
+func TestResolveInboundAuthBrokenAuthRefuses(t *testing.T) {
+	cfg := protectedCfg()
+	cfg.Server.Auth.Keys = []config.AuthKeyConfig{{Hash: "ctxt_plain_key", Principal: "owner"}}
+	if _, err := ResolveInboundAuth(cfg, false); err == nil {
+		t.Fatal("expected refusal for a plaintext key in server.auth.keys")
+	}
+}
+
+func TestResolveInboundAuthProtectedAndPublic(t *testing.T) {
+	access, err := ResolveInboundAuth(protectedCfg(), false)
 	if err != nil {
 		t.Fatalf("resolveInboundAuth: %v", err)
 	}
 	if access != config.AccessProtected {
 		t.Errorf("access = %q, want protected", access)
 	}
-	if provider == nil {
-		t.Fatal("expected provider for protected instance")
-	}
-}
-
-func TestResolveInboundAuthPublicShorthandWithCredentials(t *testing.T) {
-	cfg := &config.Config{}
-	cfg.Server.Auth = staticAuthCfg()
-	access, provider, err := ResolveInboundAuth(cfg, true)
+	cfg := protectedCfg()
+	cfg.Server.Access = ""
+	access, err = ResolveInboundAuth(cfg, true)
 	if err != nil {
 		t.Fatalf("resolveInboundAuth: %v", err)
 	}
 	if access != config.AccessPublic {
 		t.Errorf("access = %q, want public", access)
-	}
-	if provider == nil {
-		t.Fatal("expected provider for public instance")
 	}
 }

@@ -1,6 +1,7 @@
 package registry_test
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/base64"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/registry"
 )
@@ -162,7 +164,7 @@ func TestFetchSigSidecar_NotFound(t *testing.T) {
 	defer srv.Close()
 
 	client := &http.Client{}
-	data, err := registry.FetchSigSidecar(client, srv.URL+"/manifest.sig")
+	data, err := registry.FetchSigSidecar(context.Background(), client, srv.URL+"/manifest.sig")
 	if err != nil {
 		t.Errorf("expected nil error for 404, got: %v", err)
 	}
@@ -181,12 +183,43 @@ func TestFetchSigSidecar_Found(t *testing.T) {
 	defer srv.Close()
 
 	client := &http.Client{}
-	data, err := registry.FetchSigSidecar(client, srv.URL+"/manifest.sig")
+	data, err := registry.FetchSigSidecar(context.Background(), client, srv.URL+"/manifest.sig")
 	if err != nil {
 		t.Fatalf("FetchSigSidecar: %v", err)
 	}
 	if string(data) != expected {
 		t.Errorf("got %q, want %q", data, expected)
+	}
+}
+
+// TestFetchSigSidecar_StopsWithContext verifies the sidecar request ends
+// when the sync's context does, instead of waiting on a stalled registry.
+func TestFetchSigSidecar_StopsWithContext(t *testing.T) {
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-release:
+		}
+	}))
+	defer srv.Close()
+	defer close(release)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	done := make(chan []byte, 1)
+	go func() {
+		data, _ := registry.FetchSigSidecar(ctx, &http.Client{}, srv.URL+"/manifest.sig")
+		done <- data
+	}()
+
+	select {
+	case data := <-done:
+		if data != nil {
+			t.Errorf("cancelled fetch returned %q, want nil (treated as absent)", data)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("FetchSigSidecar still waiting 3s after its context ended")
 	}
 }
 

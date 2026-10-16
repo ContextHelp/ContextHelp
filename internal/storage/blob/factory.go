@@ -7,30 +7,36 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob/local"
 	s3store "github.com/ideacrafterslabs/ctxt/internal/storage/blob/s3"
-	"github.com/ideacrafterslabs/ctxt/internal/storage/blob/stub"
 )
 
-// New creates a BlobStore based on the configuration.
+const (
+	// backendGarage is the storage.blob.backend value for a Garage server.
+	backendGarage = "garage"
+	// garageRegion is the SigV4 region Garage answers to by default.
+	garageRegion = "garage"
+)
+
+// New creates the BlobStore that storage.blob configures. It is the one
+// constructor for the blob store a storage driver writes through.
+//
+// The backend and its required fields are checked by
+// config.BlobConfig.Validate, the same check `ctxt config validate`
+// reports, so startup and validate agree on what is valid.
 func New(cfg config.BlobConfig) (storage.BlobStore, error) {
-	backend := cfg.Backend
-	if backend == "" {
-		backend = "local"
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("blob: %w", err)
 	}
 
-	switch backend {
-	case "local":
-		return local.New(cfg.Local.Path)
+	switch cfg.Backend {
 	case "s3":
 		return s3store.New(cfg.S3)
-	case "garage":
-		if cfg.S3.Endpoint == "" {
-			return nil, fmt.Errorf("blob: garage backend requires s3.endpoint (e.g. http://localhost:3900)")
-		}
+	case backendGarage:
 		return s3store.New(garageDefaults(cfg.S3))
-	case "stub":
-		return stub.New(), nil
-	default:
-		return nil, fmt.Errorf("blob: unknown backend %q (valid: local, s3, garage, stub)", backend)
+	default: // "" or "local"
+		if cfg.Local.Path == "" {
+			return nil, fmt.Errorf("blob: local backend requires storage.blob.local.path")
+		}
+		return local.New(cfg.Local.Path)
 	}
 }
 
@@ -51,7 +57,7 @@ func garageDefaults(in config.BlobS3Config) config.BlobS3Config {
 	out := in
 	out.UsePathStyle = true
 	if out.Region == "" {
-		out.Region = "garage"
+		out.Region = garageRegion
 	}
 	return out
 }

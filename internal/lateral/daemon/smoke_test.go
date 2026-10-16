@@ -21,11 +21,11 @@ import (
 
 // TestSmoke_DaemonE2E_JIT proves the full daemon shape composes:
 //
-//  1. config (T-0313) builds a Config bundle with JIT enabled.
-//  2. adapters (T-0314 LLM, T-0315 fetcher, T-0318 bus) plug into the
+//  1. config builds a Config bundle with JIT enabled.
+//  2. adapters (LLM, fetcher, bus) plug into the
 //     daemon's Deps.
-//  3. wiring (T-0320) registers JIT into the registry.
-//  4. lifecycle (T-0321) subscribes to the bus and dispatches.
+//  3. wiring registers JIT into the registry.
+//  4. lifecycle subscribes to the bus and dispatches.
 //  5. JIT's pipeline runs end-to-end: stub LLM proposes paths,
 //     stub fetcher returns bodies, candidates flow back.
 //

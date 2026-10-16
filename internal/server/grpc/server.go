@@ -17,6 +17,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/security"
 	pb "github.com/ideacrafterslabs/ctxt/internal/server/grpc/pb"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 )
 
 // Server wraps a gRPC server with all registered services.
@@ -30,10 +31,25 @@ type Server struct {
 type Option func(*serverOptions)
 
 type serverOptions struct {
-	auth         authn.Provider
-	security     *security.Emitter
-	entitlements *registry.InboundGate
-	reflection   bool
+	auth          *authn.Chain
+	security      *security.Emitter
+	entitlements  *registry.InboundGate
+	reflection    bool
+	strictSharing bool
+	audit         *sharing.AuditWriter
+}
+
+// WithAudit records one read audit entry per restricted call on w
+// (ADR-080 §9). A nil writer logs nothing.
+func WithAudit(w *sharing.AuditWriter) Option {
+	return func(o *serverOptions) { o.audit = w }
+}
+
+// WithStrictSharing makes the visibility backstop answer Internal on a
+// hit instead of stripping it (dpkms serve --strict-sharing; every
+// test instance).
+func WithStrictSharing(strict bool) Option {
+	return func(o *serverOptions) { o.strictSharing = strict }
 }
 
 // WithSecurity wires the security event emitter into the auth
@@ -44,10 +60,10 @@ func WithSecurity(e *security.Emitter) Option {
 }
 
 // WithAuth guards every RPC (unary and stream) behind the configured
-// authentication provider; grpc.health.v1 probes stay exempt. A nil
-// provider is a no-op (private instance).
-func WithAuth(p authn.Provider) Option {
-	return func(o *serverOptions) { o.auth = p }
+// authentication chain; grpc.health.v1 probes stay exempt. A nil chain
+// is a no-op (private instance).
+func WithAuth(c *authn.Chain) Option {
+	return func(o *serverOptions) { o.auth = c }
 }
 
 // WithEntitlements gates the entity-serving RPCs behind per-principal
@@ -75,9 +91,22 @@ func New(addr string, svc *service.Service, opts ...Option) *Server {
 	unary := []grpc.UnaryServerInterceptor{recoveryInterceptor}
 	var stream []grpc.StreamServerInterceptor
 	if o.auth != nil {
-		unary = append(unary, authUnaryInterceptor(o.auth, o.security))
-		stream = append(stream, authStreamInterceptor(o.auth, o.security))
+		unary = append(unary, authUnaryInterceptor(o.auth, o.security, svc.Viewers()))
+		stream = append(stream, authStreamInterceptor(o.auth, o.security, svc.Viewers()))
+	} else {
+		// Private instance: no principal, but every caller is the
+		// owner and reads unscoped. Attached where the auth
+		// interceptors would attach it, so no RPC runs without a viewer.
+		unary = append(unary, viewerUnaryInterceptor(sharing.Unrestricted))
+		stream = append(stream, viewerStreamInterceptor(sharing.Unrestricted))
 	}
+
+	// Visibility runs after the viewer is attached and before the
+	// handler: it attaches the ledger, then checks the answer (ADR-080
+	// §8). The owner passes it untouched.
+	vis := visibilityConfig{strict: o.strictSharing, security: o.security, audit: o.audit, viewers: svc.Viewers()}
+	unary = append(unary, visibilityUnaryInterceptor(vis))
+	stream = append(stream, visibilityStreamInterceptor(vis))
 
 	gs := grpc.NewServer(
 		grpc.ChainUnaryInterceptor(unary...),

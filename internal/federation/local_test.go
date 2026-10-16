@@ -2,6 +2,9 @@ package federation
 
 import (
 	"context"
+	"errors"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -14,7 +17,7 @@ import (
 func newTestDB(t *testing.T) (storage.StorageDriver, string) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "test.db")
-	drv, err := storageutil.NewDriver("sqlite", path)
+	drv, err := storageutil.NewDriver("sqlite", path, storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatalf("newTestDB: %v", err)
 	}
@@ -62,7 +65,7 @@ func TestLocalPusher_SingleObject(t *testing.T) {
 	_, targetPath := newTestDB(t)
 
 	obj := makeObject("obj-1", "hash-1")
-	pusher := NewLocalPusher("test-fed", targetPath)
+	pusher := NewLocalPusher("test-fed", targetPath, nil, storageutil.NewTestBlobStore(t))
 
 	if err := pusher.Push(context.Background(), []storage.KnowledgeObject{obj}, nil, nil); err != nil {
 		t.Fatalf("Push: %v", err)
@@ -70,7 +73,7 @@ func TestLocalPusher_SingleObject(t *testing.T) {
 
 	targetDrv, _ := newTestDB(t) // open fresh handle to verify
 	// Reopen via path directly to read back.
-	targetDrv2, err := storageutil.NewDriver("sqlite", targetPath)
+	targetDrv2, err := storageutil.NewDriver("sqlite", targetPath, storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatalf("reopen: %v", err)
 	}
@@ -94,7 +97,7 @@ func TestLocalPusher_Idempotent(t *testing.T) {
 	_, targetPath := newTestDB(t)
 
 	obj := makeObject("obj-2", "hash-2")
-	pusher := NewLocalPusher("test-fed", targetPath)
+	pusher := NewLocalPusher("test-fed", targetPath, nil, storageutil.NewTestBlobStore(t))
 
 	for i := 0; i < 2; i++ {
 		if err := pusher.Push(context.Background(), []storage.KnowledgeObject{obj}, nil, nil); err != nil {
@@ -102,7 +105,7 @@ func TestLocalPusher_Idempotent(t *testing.T) {
 		}
 	}
 
-	targetDrv, err := storageutil.NewDriver("sqlite", targetPath)
+	targetDrv, err := storageutil.NewDriver("sqlite", targetPath, storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatalf("reopen: %v", err)
 	}
@@ -126,13 +129,13 @@ func TestLocalPusher_MultipleObjects(t *testing.T) {
 		makeObject("obj-b", "hash-b"),
 		makeObject("obj-c", "hash-c"),
 	}
-	pusher := NewLocalPusher("test-fed", targetPath)
+	pusher := NewLocalPusher("test-fed", targetPath, nil, storageutil.NewTestBlobStore(t))
 
 	if err := pusher.Push(context.Background(), objects, nil, nil); err != nil {
 		t.Fatalf("Push: %v", err)
 	}
 
-	targetDrv, err := storageutil.NewDriver("sqlite", targetPath)
+	targetDrv, err := storageutil.NewDriver("sqlite", targetPath, storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatalf("reopen: %v", err)
 	}
@@ -149,8 +152,8 @@ func TestLocalPusher_MultipleObjects(t *testing.T) {
 
 // TestLocalPusher_AdvancesWatermarkAfterCommit verifies AC #3 of US-0319:
 // after a successful Push, the federation_watermarks row at the target DB
-// reflects last_synced_at > epoch. Drives the same code path the async
-// worker invokes (federation.LocalPusher.Push).
+// holds the change position of the batch's last object. Drives the same
+// code path the async worker invokes (federation.LocalPusher.Push).
 func TestLocalPusher_AdvancesWatermarkAfterCommit(t *testing.T) {
 	_, targetPath := newTestDB(t)
 
@@ -159,16 +162,17 @@ func TestLocalPusher_AdvancesWatermarkAfterCommit(t *testing.T) {
 		makeObject("wm-2", "wm-hash-2"),
 		makeObject("wm-3", "wm-hash-3"),
 	}
-	pusher := NewLocalPusher("wm-fed", targetPath)
+	for i := range objects {
+		objects[i].ChangeSeq = int64(10 + i)
+	}
+	pusher := NewLocalPusher("wm-fed", targetPath, nil, storageutil.NewTestBlobStore(t))
 
-	before := time.Now().UTC()
 	if err := pusher.Push(context.Background(), objects, nil, nil); err != nil {
 		t.Fatalf("Push: %v", err)
 	}
-	after := time.Now().UTC()
 
 	// Reopen to read watermark + verify objects landed.
-	drv, err := storageutil.NewDriver("sqlite", targetPath)
+	drv, err := storageutil.NewDriver("sqlite", targetPath, storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatalf("reopen: %v", err)
 	}
@@ -185,14 +189,12 @@ func TestLocalPusher_AdvancesWatermarkAfterCommit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetWatermark: %v", err)
 	}
-	epoch := time.Unix(0, 0).UTC()
-	if !got.After(epoch) {
-		t.Errorf("watermark not advanced: got %v, want > epoch", got)
+	if got != 12 {
+		t.Errorf("watermark = %d, want the last object's ChangeSeq 12", got)
 	}
-	// Sanity: watermark sits within the call's wall-clock window (small slack).
-	if got.Before(before.Add(-time.Second)) || got.After(after.Add(time.Second)) {
-		t.Errorf("watermark outside call window: got %v, before=%v after=%v",
-			got, before, after)
+	viaPusher, err := pusher.Watermark(context.Background())
+	if err != nil || viaPusher != 12 {
+		t.Errorf("pusher.Watermark = %d, %v; want 12", viaPusher, err)
 	}
 }
 
@@ -202,27 +204,30 @@ func TestLocalPusher_AdvancesWatermarkAfterCommit(t *testing.T) {
 func TestLocalPusher_NoObjectsLeavesWatermarkUntouched(t *testing.T) {
 	_, targetPath := newTestDB(t)
 
-	pusher := NewLocalPusher("noop-fed", targetPath)
+	pusher := NewLocalPusher("noop-fed", targetPath, nil, storageutil.NewTestBlobStore(t))
 	if err := pusher.Push(context.Background(), nil, nil, nil); err != nil {
 		t.Fatalf("Push on empty: %v", err)
 	}
 
-	drv, err := storageutil.NewDriver("sqlite", targetPath)
+	got, err := pusher.Watermark(context.Background())
 	if err != nil {
-		t.Fatalf("reopen: %v", err)
+		t.Fatalf("Watermark: %v", err)
 	}
-	defer drv.Close(context.Background())
-	if err := drv.Init(context.Background()); err != nil {
-		t.Fatalf("init: %v", err)
+	if got != 0 {
+		t.Errorf("no-op tick advanced watermark: got %d, want 0", got)
 	}
+}
 
-	got, err := drv.Watermarks().GetWatermark(context.Background(), "noop-fed")
-	if err != nil {
-		t.Fatalf("GetWatermark: %v", err)
+// A target database that does not exist yet has acknowledged nothing;
+// reading its watermark does not create it.
+func TestLocalPusher_WatermarkOfMissingTargetIsZero(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "absent.db")
+	got, err := NewLocalPusher("absent-fed", target, nil, nil).Watermark(context.Background())
+	if err != nil || got != 0 {
+		t.Fatalf("Watermark = %d, %v; want 0, nil", got, err)
 	}
-	epoch := time.Unix(0, 0).UTC()
-	if !got.Equal(epoch) {
-		t.Errorf("no-op tick advanced watermark: got %v, want epoch", got)
+	if _, err := os.Stat(target); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("reading the watermark created the target: %v", err)
 	}
 }
 
@@ -230,7 +235,7 @@ func TestLocalPusher_NoObjectsLeavesWatermarkUntouched(t *testing.T) {
 // AND the entity rows they reference both land at target. Per ADR-049, the
 // edges table is the source of truth for mentions (edge_type='mentions',
 // to_type='entity'). Without their target entity rows, mention edges at
-// the receiver dangle. T-0175 closes that gap.
+// the receiver dangle; the pusher ships them alongside.
 func TestLocalPusher_PushesMentions(t *testing.T) {
 	_, targetPath := newTestDB(t)
 
@@ -263,7 +268,7 @@ func TestLocalPusher_PushesMentions(t *testing.T) {
 		CreatedAt: now, UpdatedAt: now,
 	}
 
-	pusher := NewLocalPusher("test-fed", targetPath)
+	pusher := NewLocalPusher("test-fed", targetPath, nil, storageutil.NewTestBlobStore(t))
 	if err := pusher.Push(context.Background(),
 		[]storage.KnowledgeObject{obj},
 		[]storage.Edge{mentionAlice, mentionBob},
@@ -272,7 +277,7 @@ func TestLocalPusher_PushesMentions(t *testing.T) {
 		t.Fatalf("Push: %v", err)
 	}
 
-	drv, err := storageutil.NewDriver("sqlite", targetPath)
+	drv, err := storageutil.NewDriver("sqlite", targetPath, storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatalf("reopen: %v", err)
 	}
@@ -327,7 +332,7 @@ func TestLocalPusher_EdgesTravelWithObjects(t *testing.T) {
 	obj2 := makeObject("obj-y", "hash-y")
 	edge := makeEdge("edge-xy", "obj-x", "obj-y")
 
-	pusher := NewLocalPusher("test-fed", targetPath)
+	pusher := NewLocalPusher("test-fed", targetPath, nil, storageutil.NewTestBlobStore(t))
 
 	if err := pusher.Push(
 		context.Background(),
@@ -338,7 +343,7 @@ func TestLocalPusher_EdgesTravelWithObjects(t *testing.T) {
 		t.Fatalf("Push: %v", err)
 	}
 
-	targetDrv, err := storageutil.NewDriver("sqlite", targetPath)
+	targetDrv, err := storageutil.NewDriver("sqlite", targetPath, storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatalf("reopen: %v", err)
 	}
@@ -359,7 +364,7 @@ func TestLocalPusher_EdgesTravelWithObjects(t *testing.T) {
 	}
 }
 
-// TestFederation_EntityPageDupeDoesNotAbortBatch verifies T-0189: when one
+// TestFederation_EntityPageDupeDoesNotAbortBatch verifies that when one
 // object in the batch hits a UNIQUE-id collision at the target (e.g. an
 // entity_page that auto-generates with the same id on two consecutive ticks
 // and has an empty ContentHash so the dedup-by-hash check at line 83 misses),
@@ -383,7 +388,7 @@ func TestFederation_EntityPageDupeDoesNotAbortBatch(t *testing.T) {
 		UpdatedAt:   now,
 	}
 	{
-		drv, err := storageutil.NewDriver("sqlite", targetPath)
+		drv, err := storageutil.NewDriver("sqlite", targetPath, storageutil.NewTestBlobStore(t))
 		if err != nil {
 			t.Fatalf("seed open: %v", err)
 		}
@@ -411,14 +416,17 @@ func TestFederation_EntityPageDupeDoesNotAbortBatch(t *testing.T) {
 		makeObject("capture-A", "hash-cap-A"),
 		makeObject("capture-B", "hash-cap-B"),
 	}
+	for i := range objects {
+		objects[i].ChangeSeq = int64(i + 1)
+	}
 
-	pusher := NewLocalPusher("dupe-fed", targetPath)
+	pusher := NewLocalPusher("dupe-fed", targetPath, nil, storageutil.NewTestBlobStore(t))
 
 	if err := pusher.Push(context.Background(), objects, nil, nil); err != nil {
 		t.Fatalf("Push: %v", err)
 	}
 
-	drv, err := storageutil.NewDriver("sqlite", targetPath)
+	drv, err := storageutil.NewDriver("sqlite", targetPath, storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatalf("reopen: %v", err)
 	}
@@ -441,13 +449,12 @@ func TestFederation_EntityPageDupeDoesNotAbortBatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetWatermark: %v", err)
 	}
-	epoch := time.Unix(0, 0).UTC()
-	if !wm.After(epoch) {
-		t.Errorf("watermark not advanced after dupe-skip batch: got %v", wm)
+	if wm != 3 {
+		t.Errorf("watermark not advanced after dupe-skip batch: got %d, want 3", wm)
 	}
 }
 
-// TestLocalPusher_FileURLPrefixStripped verifies T-0187: when a federation
+// TestLocalPusher_FileURLPrefixStripped verifies that when a federation
 // target URL is configured as `file:///abs/path/to/db.sqlite`, the LocalPusher
 // strips the `file://` prefix before opening the SQLite driver. Without the
 // strip, the SQLite driver receives a literal `file:///…` path and fails with
@@ -458,14 +465,14 @@ func TestLocalPusher_FileURLPrefixStripped(t *testing.T) {
 	target := "file://" + absPath
 
 	obj := makeObject("obj-fileurl", "hash-fileurl")
-	pusher := NewLocalPusher("file-url-fed", target)
+	pusher := NewLocalPusher("file-url-fed", target, nil, storageutil.NewTestBlobStore(t))
 
 	if err := pusher.Push(context.Background(), []storage.KnowledgeObject{obj}, nil, nil); err != nil {
 		t.Fatalf("Push with file:// URL: %v", err)
 	}
 
 	// Reopen using bare absolute path to verify object landed.
-	drv, err := storageutil.NewDriver("sqlite", absPath)
+	drv, err := storageutil.NewDriver("sqlite", absPath, storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatalf("reopen: %v", err)
 	}

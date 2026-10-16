@@ -3,13 +3,13 @@
 Based on the personas documentation, here's what we should provide for **immediate value before users invest time in deep integration**.
 
 ## Architecture Note
-The entire CLI is plugin-extensible. All commands (`import`, `watch`, `demo`, `find`, `list`, `make`, `analyze`, etc.) support plugin hooks. Plugins can register new subcommands, extend existing commands with additional functionality, add new data sources, define custom handlers, and provide specialized processors.
+ctxt has no plugin system ([ADR-078](decisions/ADR-078-no-plugin-system.md)). Import sources and file handlers below are ctxt built-ins, shipped or planned; processing is extended with custom pipelines and steps installed from registries.
 
 ## Zero-Config Demo Mode
 - **For:** Elena, Julian, Priya (low tech savvy)
 - **What:** Pre-populated demo database with sample queries
 - **Why:** Show what's possible before asking them to import anything
-- **Command:** `ctxt demo [scenario]` - Core command with plugin-provided scenarios
+- **Command:** `ctxt demo [scenario]` - Core command with built-in scenarios
 - **Example:** `ctxt demo research` loads sample research PDFs, lets them ask "Find connections between documents about X" instantly
 
 ## Local Folder/Archive Import (One-Shot)
@@ -23,35 +23,35 @@ The entire CLI is plugin-extensible. All commands (`import`, `watch`, `demo`, `f
 - **For:** Sarah, Victor, Morgan (browser-heavy workflows)
 - **What:** Import bookmarks from any browser
 - **Why:** They already have 1000+ bookmarks; instant searchable knowledge base
-- **Command:** `ctxt import bookmarks --browser chrome` (bookmarks plugin)
+- **Command:** `ctxt import bookmarks --browser chrome` (built-in importer)
 - **Value:** "Search my bookmarks using natural language" in <60 seconds
 
 ## Folder Watching (Continuous Sync)
 - **For:** Elena, Julian, Alex (file-heavy users who keep adding content)
 - **What:** Continuously watch folder for new/changed files
 - **Why:** Passive, automatic value from ongoing file collections
-- **Command:** `ctxt watch ~/Documents/Research` - Core command with plugin handlers
+- **Command:** `ctxt watch ~/Documents/Research` - Core command with built-in handlers
 - **Value:** "Auto-index my PDFs/images/code as I add them" - set once, passive forever
 
 ## GitHub Stars Import
 - **For:** Marcus, Alex, Devin (developers)
 - **What:** Import all starred GitHub repositories
 - **Why:** 500+ starred repos become queryable ("Show me all Rust web frameworks I've starred")
-- **Command:** `ctxt import github-stars --username jadb` (github plugin)
+- **Command:** `ctxt import github-stars --username jadb` (built-in importer)
 - **Value:** Instant code reference library
 
 ## Pocket/Instapaper/ReadItLater Import
 - **For:** Sarah, Victor, Morgan (read-it-later users)
 - **What:** Import from read-it-later services
 - **Why:** Years of saved articles become searchable
-- **Command:** `ctxt import pocket --api-key <key>` (pocket plugin)
+- **Command:** `ctxt import pocket --api-key <key>` (built-in importer)
 - **Value:** "Finally answer 'where did I read that article about X?'"
 
 ## Notion Workspace Import (Read-Only)
 - **For:** Morgan, Priya, Ian (Notion power users)
 - **What:** OAuth integration to sync Notion workspace
 - **Why:** Their existing knowledge base becomes AI-queryable
-- **Command:** `ctxt import notion --workspace <id>` (notion plugin)
+- **Command:** `ctxt import notion --workspace <id>` (built-in importer)
 - **Value:** "Ask questions about our company wiki" without migration
 
 ## Public Taxonomies/Registries
@@ -86,17 +86,17 @@ The entire CLI is plugin-extensible. All commands (`import`, `watch`, `demo`, `f
 
 ## Priority Matrix
 
-| Feature | Setup Time | User Impact | Technical Complexity | Core/Plugin |
+| Feature | Setup Time | User Impact | Technical Complexity | Where |
 |---------|-----------|-------------|---------------------|-------------|
-| **Demo mode** | 0 sec | MEDIUM | Low | Core + Plugins |
+| **Demo mode** | 0 sec | MEDIUM | Low | Core |
 | **Local folder import** | <1 min | HIGH | Low | Core |
 | **Archive import (zip/tar)** | <1 min | HIGH | Low | Core |
-| **Browser bookmark import** | <1 min | HIGH | Low | Plugin |
-| **Folder watch** | <2 min | HIGH | Medium | Core + Plugins |
-| **GitHub stars import** | <1 min | HIGH | Low | Plugin |
+| **Browser bookmark import** | <1 min | HIGH | Low | Core importer |
+| **Folder watch** | <2 min | HIGH | Medium | Core |
+| **GitHub stars import** | <1 min | HIGH | Low | Core importer |
 | **Public taxonomies** | 0 sec | MEDIUM | Low | Core (exists!) |
-| **Pocket import** | <1 min | MEDIUM | Low | Plugin |
-| **Notion sync** | <2 min | HIGH | High | Plugin |
+| **Pocket import** | <1 min | MEDIUM | Low | Core importer |
+| **Notion sync** | <2 min | HIGH | High | Core importer |
 | **Newsletter email forward** | <30 sec | HIGH | Medium | Backend Service |
 | **Web playground demo** | 0 sec | MEDIUM | High | Web App |
 | **Audio recording app** | 0 sec (app install) | HIGH | Medium | Mobile App |
@@ -129,51 +129,14 @@ The entire CLI is plugin-extensible. All commands (`import`, `watch`, `demo`, `f
 
 **Key Principle:** Show, don't tell. Value before configuration. Their data before theoretical capabilities.
 
-## Plugin Architecture & Extension Points
+## Extension Points
 
-All CLI commands support plugin hooks. Plugins can extend any command with additional functionality:
+Built-in commands are fixed; nothing registers new subcommands, flags or hooks at runtime. Processing is extended through:
 
-### `ctxt import <source> [flags]`
-- **Core:** Command structure, job queue management, common flags
-- **Plugins:** Register import sources, implement data fetching logic
-- **Examples:** `bookmarks`, `github`, `pocket`, `notion`, `raindrop`, `zotero`
-
-### `ctxt watch <path> [flags]`
-- **Core:** File system monitoring, change detection, scheduling
-- **Plugins:** Define file handlers, extraction logic, metadata enrichment
-- **Examples:** `pdf-extractor`, `image-ocr`, `code-analyzer`, `audio-transcriber`
-
-### `ctxt demo [scenario]`
-- **Core:** Demo data loading, interactive mode, cleanup
-- **Plugins:** Provide demo scenarios with sample data and queries
-- **Examples:** `demo-research`, `demo-developer`, `demo-bookmarks`, `demo-github-stars`
-
-### `ctxt find <query> [flags]`
-- **Core:** Semantic search engine, ranking, result display
-- **Plugins:** Custom search providers, specialized rankers, result formatters
-- **Examples:** `code-search`, `academic-search`, `visual-search`
-
-### `ctxt make <type> [flags]`
-- **Core:** Composition framework, template engine, output handling
-- **Plugins:** Custom composition types, templates, generators
-- **Examples:** `blog-post`, `changelog`, `api-docs`, `meeting-notes`
-
-### `ctxt analyze [content] [flags]`
-- **Core:** Ingestion pipeline, job queueing, content routing
-- **Plugins:** Custom analyzers, extractors, enrichers, validators
-- **Examples:** `code-linter`, `sentiment-analyzer`, `entity-extractor`, `duplicate-detector`
-
-### `ctxt list [filters] [flags]`
-- **Core:** Query engine, filtering, pagination
-- **Plugins:** Custom filters, aggregations, views
-- **Examples:** `timeline-view`, `graph-view`, `heatmap-view`
-
-### All Commands Support:
-- Plugin-defined subcommands
-- Custom flags and options
-- Pre/post execution hooks
-- Output format extensions
-- Configuration overrides
+- **Custom pipelines** (`dpkms pipeline create`) and **pipeline overrides** (`pipelines.overrides`)
+- **Steps installed from a step registry** (`dpkms pipeline step install`)
+- **Registries** for entities and taxonomies
+- **External hooks** for other applications ([ADR-075](decisions/ADR-075-external-hook-surface.md), designed)
 
 ---
 
@@ -181,14 +144,14 @@ All CLI commands support plugin hooks. Plugins can extend any command with addit
 
 ### Phase 1: Core Framework + Essential Imports (Week 1-2)
 **Core CLI:**
-- `ctxt import <source>` command framework with plugin registration
+- `ctxt import <source>` command framework
 - `ctxt import folder <path>` - local folder import (core)
 - `ctxt import archive <file>` - ZIP/TAR import (core)
 - `ctxt demo [scenario]` framework with scenario loader
 
-**Essential Plugins:**
-- Bookmarks plugin: Chrome, Firefox, Safari support
-- GitHub plugin: Stars import, repo metadata
+**Essential importers:**
+- Bookmarks: Chrome, Firefox, Safari support
+- GitHub: Stars import, repo metadata
 - Demo scenarios: research, developer, bookmarks
 
 ### Phase 2: Continuous Sync + Passive Capture (Week 3-4)
@@ -196,16 +159,16 @@ All CLI commands support plugin hooks. Plugins can extend any command with addit
 - `ctxt watch <path>` command framework with handler registration
 - File system monitoring and change detection
 
-**Plugins & Services:**
-- File handler plugins: PDF extractor, image OCR, code analyzer
+**Steps & Services:**
+- File handler steps: PDF extractor, image OCR, code analyzer
 - Newsletter email forwarding service → `ctxt analyze` integration
 - Browser extension for one-click capture
 
 ### Phase 3: Integration Layer (Week 5-8)
-**Plugins:**
-- Pocket/Instapaper plugin with API integration
-- Notion plugin with OAuth and read-only sync
-- Raindrop.io plugin for bookmark sync
+**Importers:**
+- Pocket/Instapaper importer with API integration
+- Notion importer with OAuth and read-only sync
+- Raindrop.io importer for bookmark sync
 
 **Infrastructure:**
 - Web playground/sandbox environment with demo scenarios
@@ -234,9 +197,9 @@ All CLI commands support plugin hooks. Plugins can extend any command with addit
 - Target: >50% return within 7 days to query their data
 - Measure: Users who run `ctxt find` or `ctxt list` at least twice in first week
 
-**Plugin Adoption:**
-- Target: >40% install at least one plugin within first week
-- Measure: Users who run `ctxt import <plugin-source>` successfully
+**Importer Adoption:**
+- Target: >40% run at least one source importer within first week
+- Measure: Users who run `ctxt import <source>` successfully
 
 ---
 

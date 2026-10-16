@@ -1,12 +1,13 @@
-// Package service: ReanalyzeObject re-runs the active pipeline against an
+// ReanalyzeObject re-runs the active pipeline against an
 // existing object's RawContent and atomically replaces its projection.
-// Used by the reingest_selective worker (ADR-070 §1, T-0581) to upgrade
+// Used by the reingest_selective worker (ADR-070 §1) to upgrade
 // objects whose stored projection was produced by an older pipeline version.
 //
 // Re-analysis is in-process and synchronous: unlike Analyze (which enqueues
 // a worker job), ReanalyzeObject runs the pipeline steps inline so the
 // caller can drive a deterministic for-loop over a selector's matching set
 // without coordinating with the queue. The object's ID is preserved.
+
 package service
 
 import (
@@ -18,6 +19,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 )
 
 // ReanalyzeObject re-runs the registry's currently-installed pipeline for
@@ -30,7 +32,7 @@ import (
 //   - newPipelineVersion: the versioned name that was stamped, e.g.
 //     "text.short@v1". Always returned with a "@vN" suffix per ADR-070 §2.
 //   - llmCostUSD: the LLM cost incurred during this re-analysis. Pipelines
-//     that don't call LLMs return 0.0. T-0581 always returns 0.0; the
+//     that don't call LLMs return 0.0. Projection-only re-ingests always return 0.0; the
 //     hook is in place so a future LLM-driven re-ingest can wire its
 //     usage tracker through without a worker API change.
 //   - err: any pipeline / storage failure.
@@ -40,12 +42,16 @@ import (
 //   - the registry has no pipeline that resolves to the object's family;
 //   - the pipeline run itself fails.
 func (s *Service) ReanalyzeObject(ctx context.Context, id string) (newPipelineVersion string, llmCostUSD float64, err error) {
-	obj, err := s.Store.Objects().Get(ctx, id)
+	obj, err := s.Store(ctx).Objects().Get(ctx, id)
 	if err != nil {
 		return "", 0, fmt.Errorf("reanalyze: load %q: %w", id, err)
 	}
 	if obj == nil {
 		return "", 0, fmt.Errorf("reanalyze: object %q not found", id)
+	}
+	// The pipeline runs on the content, not on its blob:// ref.
+	if err := s.resolveContent(ctx, obj); err != nil {
+		return "", 0, fmt.Errorf("reanalyze: %w", err)
 	}
 	if obj.RawContent == "" {
 		// Re-running the pipeline against an empty RawContent would
@@ -68,7 +74,7 @@ func (s *Service) ReanalyzeObject(ctx context.Context, id string) (newPipelineVe
 
 	// Pick the registry's currently-installed version for this family.
 	// CurrentVersionForFamily returns the highest @vN registered. Fall
-	// back to v0 when nothing matches (e.g. a custom plugin with a bare
+	// back to v0 when nothing matches (e.g. a custom pipeline with a bare
 	// registration only) — pipeline.Registry.Get resolves that back to
 	// the bare registration via the @v0 alias.
 	curVer, known := CurrentVersionForFamily(s.Pipes, family)
@@ -127,19 +133,28 @@ func (s *Service) ReanalyzeObject(ctx context.Context, id string) (newPipelineVe
 	// every projection column so the new pipeline output overwrites the old.
 	draft.Pipeline = versionedName
 	draft.UpdatedAt = time.Now().UTC()
-	if err := s.Store.Objects().Update(ctx, draft); err != nil {
+	// Content above the threshold is stored externalized, whether or
+	// not the pipeline has an externalize_content step.
+	row, err := s.storable(ctx, draft)
+	if err != nil {
 		return "", 0, fmt.Errorf("reanalyze: persist %q: %w", id, err)
 	}
+	// The blob of content the pipeline replaced goes with it.
+	orphans, err := blob.UpdateObject(ctx, s.Store(ctx), row)
+	if err != nil {
+		return "", 0, fmt.Errorf("reanalyze: persist %q: %w", id, err)
+	}
+	logOrphans("reanalyze", id, orphans)
 	// Replace the object's vectors for every model the embedding step
 	// produced; other models' rows stay. Vectors are additive: a failed
 	// write is logged, never fails the re-analysis.
 	if len(draft.Vectors) > 0 {
-		if err := s.Store.Embeddings().Put(ctx, id, draft.Vectors); err != nil {
+		if err := s.Store(ctx).Embeddings().Put(ctx, id, draft.Vectors); err != nil {
 			slog.Warn("reanalyze: embeddings not stored", "object", id, "err", err)
 		}
 	}
 
-	// LLM cost: T-0581 ships projection-only re-ingests so always 0.0. The
+	// LLM cost: re-ingests are projection-only so always 0.0. The
 	// non-zero return path is reserved for a follow-up that wires the
 	// per-step cost meter through the pipeline.Run call.
 	return versionedName, 0.0, nil

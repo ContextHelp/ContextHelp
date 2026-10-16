@@ -1,18 +1,59 @@
 # docker-compose.yml
 # Usage:
-#   dev:  docker compose --profile dev up
-#   prod: docker compose --profile prod up -d
+#   dev:  docker compose --env-file docker/.env.dev --profile dev up
+#   prod: docker compose --env-file docker/.env.prod --profile prod up -d
+#
+# The env file (from docker/.env.<profile>.example) feeds ${VAR}
+# interpolation below; compose does not read docker/ env files on its
+# own. Pass it to every command: DPKMS_BUS_TOKEN is required. Both dpkms
+# services also need docker/dpkms-auth.yaml (server.auth, from
+# docker/dpkms-auth.example.yaml) and docker/dpkms-local.yaml (blob
+# storage and providers, from docker/dpkms-local.example.yaml); see
+# docs/deployment/docker.md.
 
 name: ctxt
 
 x-dpkms-common: &dpkms-common
   image: ctxt/dpkms:${TAG:-latest}
   restart: unless-stopped
-  environment:
-    CH_STORAGE_TYPE: sqlite
-    CTXT_DATA_DIR: /data/dpkms.db
-    CTXT_BLOB_BACKEND: local
-    DPKMS_WORKERS: ${DPKMS_WORKERS:-4}
+  # No storage / server env: docker/config.docker.yaml (the image's
+  # /app/config.yaml) is the single source, and env would override it.
+  # The one exception is the non-secret S3 settings below.
+
+# serve's bus hub refuses to start without a token; `up` fails here
+# instead when it is unset.
+x-dpkms-bus-token: &dpkms-bus-token
+  DPKMS_BUS_TOKEN: ${DPKMS_BUS_TOKEN:?set DPKMS_BUS_TOKEN (openssl rand -hex 32), see docs/deployment/docker.md}
+
+# Provider API keys have no config key: providers read them from env.
+# They come from the env file; unset ones reach dpkms empty, which reads
+# as not set.
+x-dpkms-provider-keys: &dpkms-provider-keys
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+
+# Non-secret S3 settings from the env file. Unset ones reach dpkms
+# empty, which reads as not set: docker/dpkms-local.yaml keeps its value.
+# A set one overrides that file. The S3 access and secret keys are never
+# passed here: they stay in docker/dpkms-local.yaml.
+x-dpkms-s3-settings: &dpkms-s3-settings
+  CTXT_BLOB_S3_ENDPOINT: ${CTXT_BLOB_S3_ENDPOINT:-}
+  CTXT_BLOB_S3_REGION: ${CTXT_BLOB_S3_REGION:-}
+  CTXT_BLOB_S3_BUCKET: ${CTXT_BLOB_S3_BUCKET:-}
+  CTXT_BLOB_S3_PREFIX: ${CTXT_BLOB_S3_PREFIX:-}
+  CTXT_BLOB_S3_USE_PATH_STYLE: ${CTXT_BLOB_S3_USE_PATH_STYLE:-}
+
+# The operator's files, read by serve as extra --config layers after the
+# image's config (root Dockerfile CMD, docker/air.toml):
+#   dpkms-auth   server.auth, which a public instance needs to start
+#   dpkms-local  storage.blob and providers; the example changes nothing
+x-dpkms-secrets: &dpkms-secrets
+  - source: dpkms-auth
+    target: dpkms-auth.yaml
+  - source: dpkms-local
+    target: dpkms-local.yaml
 
 services:
 
@@ -28,6 +69,9 @@ services:
         GIT_COMMIT: ${GIT_COMMIT:-unknown}
         BUILD_TIME: ${BUILD_TIME:-unknown}
     container_name: ctxt-dpkms
+    environment:
+      <<: [*dpkms-bus-token, *dpkms-provider-keys, *dpkms-s3-settings]
+    secrets: *dpkms-secrets
     volumes:
       - ctxt_data:/data
       - ctxt_blobs:/data/blobs
@@ -45,12 +89,14 @@ services:
 
   # ── Dev dpkms (hot-reload via air) ──────────────────────────────────────
   dpkms-dev:
-    image: golang:1.26-bookworm
+    # Exact Go patch: mise.toml's go pin, as in the root Dockerfile
+    # (scripts/check-toolchain-pins.sh enforces it).
+    image: golang:1.26.9-bookworm
     container_name: ctxt-dpkms-dev
     working_dir: /app
     command: >
       sh -c "apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev libsqlite3-dev &&
-             go install github.com/air-verse/air@latest &&
+             go install github.com/air-verse/air@v1.67.4 &&
              air -c docker/air.toml"
     volumes:
       - .:/app
@@ -59,15 +105,14 @@ services:
     ports:
       - "8080:8080"   # HTTP API
       - "9090:9090"   # gRPC
-      - "9377:9377"   # WebSocket (future)
+    # Build env plus the bus token, provider keys and non-secret S3
+    # settings; other serve settings come from docker/config.docker.yaml
+    # and the operator's secrets.
     environment:
-      CH_STORAGE_TYPE: sqlite
-      CTXT_DATA_DIR: /data/dpkms.db
-      CTXT_BLOB_BACKEND: local
-      DPKMS_WORKERS: ${DPKMS_WORKERS:-2}
-      CH_PUBLIC: "true"
+      <<: [*dpkms-bus-token, *dpkms-provider-keys, *dpkms-s3-settings]
       CGO_ENABLED: "1"
       GOOS: linux
+    secrets: *dpkms-secrets
     networks:
       - ctxt
     profiles:
@@ -75,7 +120,10 @@ services:
 
   # ── Vite dev server ──────────────────────────────────────────────────────
   ui-dev:
-    image: node:22-alpine
+    # Must equal the mise.toml node pin, like every Node version in the repo.
+    # Every image here names an exact release (scripts/check-toolchain-pins.sh
+    # enforces both).
+    image: node:22.23.3-alpine3.24
     container_name: ctxt-ui-dev
     working_dir: /app/web/ui
     command: >
@@ -97,7 +145,7 @@ services:
 
   # ── Caddy reverse proxy (prod only) ─────────────────────────────────────
   caddy:
-    image: caddy:2-alpine
+    image: caddy:2.11.4-alpine
     container_name: ctxt-caddy
     restart: unless-stopped
     ports:
@@ -110,6 +158,7 @@ services:
       - caddy_config:/config
     environment:
       DOMAIN: ${DOMAIN:-localhost}
+      ACME_EMAIL: ${ACME_EMAIL:-admin@example.com}
     depends_on:
       dpkms:
         condition: service_healthy
@@ -123,6 +172,12 @@ services:
       retries: 3
     profiles:
       - prod
+
+secrets:
+  dpkms-auth:
+    file: ./docker/dpkms-auth.yaml
+  dpkms-local:
+    file: ./docker/dpkms-local.yaml
 
 volumes:
   ctxt_data:

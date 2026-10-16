@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 type FeedStore struct {
@@ -18,7 +19,7 @@ func (s *FeedStore) Create(ctx context.Context, feed *storage.Feed) error {
 	feed.CreatedAt = now
 	feed.UpdatedAt = now
 	if feed.Status == "" {
-		feed.Status = "active"
+		feed.Status = storage.FeedStatusActive
 	}
 	if feed.SyncInterval == "" {
 		feed.SyncInterval = "1h"
@@ -38,14 +39,14 @@ func (s *FeedStore) Get(ctx context.Context, id string) (*storage.Feed, error) {
 	row := s.db.QueryRowContext(ctx,
 		`SELECT id, url, title, description, site_url, format, status, sync_interval, etag, last_modified, last_sync, error_count, last_error, created_at, updated_at
 		 FROM feeds WHERE id = ?`, id)
-	return scanFeed(row)
+	return scanFeedRow(row)
 }
 
 func (s *FeedStore) GetByURL(ctx context.Context, url string) (*storage.Feed, error) {
 	row := s.db.QueryRowContext(ctx,
 		`SELECT id, url, title, description, site_url, format, status, sync_interval, etag, last_modified, last_sync, error_count, last_error, created_at, updated_at
 		 FROM feeds WHERE url = ?`, url)
-	return scanFeed(row)
+	return scanFeedRow(row)
 }
 
 func (s *FeedStore) List(ctx context.Context, filter storage.FeedFilter) ([]*storage.Feed, error) {
@@ -55,7 +56,7 @@ func (s *FeedStore) List(ctx context.Context, filter storage.FeedFilter) ([]*sto
 		query += ` WHERE status = ?`
 		args = append(args, filter.Status)
 	}
-	query += ` ORDER BY created_at DESC`
+	query += orderNewestFirst
 	if filter.Limit > 0 {
 		query += fmt.Sprintf(` LIMIT %d OFFSET %d`, filter.Limit, filter.Offset) // #nosec G202 -- integer values
 	}
@@ -66,15 +67,7 @@ func (s *FeedStore) List(ctx context.Context, filter storage.FeedFilter) ([]*sto
 	}
 	defer rows.Close()
 
-	var feeds []*storage.Feed
-	for rows.Next() {
-		f, err := scanFeedRow(rows)
-		if err != nil {
-			return nil, err
-		}
-		feeds = append(feeds, f)
-	}
-	return feeds, rows.Err()
+	return rowscan.AllScanner(rows, scanFeedRow)
 }
 
 func (s *FeedStore) Update(ctx context.Context, feed *storage.Feed) error {
@@ -102,33 +95,8 @@ func timePtr(t *time.Time) any {
 	return t.Format(time.RFC3339)
 }
 
-func scanFeed(row *sql.Row) (*storage.Feed, error) {
-	var f storage.Feed
-	var lastSync, createdAt, updatedAt sql.NullString
-	err := row.Scan(&f.ID, &f.URL, &f.Title, &f.Description, &f.SiteURL,
-		&f.Format, &f.Status, &f.SyncInterval, &f.ETag, &f.LastModified,
-		&lastSync, &f.ErrorCount, &f.LastError, &createdAt, &updatedAt)
-	if err != nil {
-		return nil, err
-	}
-	if lastSync.Valid {
-		t, _ := time.Parse(time.RFC3339, lastSync.String)
-		f.LastSync = &t
-	}
-	if createdAt.Valid {
-		f.CreatedAt, _ = time.Parse(time.RFC3339, createdAt.String)
-	}
-	if updatedAt.Valid {
-		f.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt.String)
-	}
-	return &f, nil
-}
-
-type feedScanner interface {
-	Scan(dest ...any) error
-}
-
-func scanFeedRow(row feedScanner) (*storage.Feed, error) {
+// scanFeedRow reads one feed from a QueryRow or a rows cursor.
+func scanFeedRow(row rowscan.Scanner) (*storage.Feed, error) {
 	var f storage.Feed
 	var lastSync, createdAt, updatedAt sql.NullString
 	err := row.Scan(&f.ID, &f.URL, &f.Title, &f.Description, &f.SiteURL,

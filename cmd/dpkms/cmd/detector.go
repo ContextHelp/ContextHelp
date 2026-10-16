@@ -94,8 +94,7 @@ func init() {
 	detectorAddCmd.Flags().String("name", "", "human-readable label")
 	detectorAddCmd.Flags().Int("priority", 100,
 		"priority (lower = higher, default 100)")
-	detectorAddCmd.MarkFlagRequired("kind")
-	detectorAddCmd.MarkFlagRequired("pipeline")
+	markFlagsRequired(detectorAddCmd, "kind", "pipeline")
 
 	// add creates a routing rule; enable/disable flip a boolean. All three
 	// are reversible by the opposite command, so Write, not Destructive.
@@ -124,7 +123,7 @@ func runDetectorAdd(cmd *cobra.Command, _ []string) error {
 	}
 	defer cleanup()
 
-	d, err := svc.CreateDetector(context.Background(), service.DetectorCreateRequest{
+	d, err := svc.CreateDetector(asSystem(context.Background()), service.DetectorCreateRequest{
 		Kind:         storage.DetectorKind(kind),
 		Name:         name,
 		PipelineName: pipelineName,
@@ -165,7 +164,7 @@ func runDetectorList(cmd *cobra.Command, _ []string) error {
 		filter.Enabled = &f
 	}
 
-	detectors, err := svc.ListDetectors(context.Background(), filter)
+	detectors, err := svc.ListDetectors(asSystem(context.Background()), filter)
 	if err != nil {
 		return fmt.Errorf("list detectors: %w", err)
 	}
@@ -259,7 +258,7 @@ func runDetectorRemove(cmd *cobra.Command, args []string) error {
 	}
 	defer cleanup()
 
-	if err := svc.DeleteDetector(context.Background(), args[0]); err != nil {
+	if err := svc.DeleteDetector(asSystem(context.Background()), args[0]); err != nil {
 		return fmt.Errorf("remove detector: %w", err)
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "Removed detector %s\n", args[0])
@@ -273,7 +272,7 @@ func runDetectorEnable(cmd *cobra.Command, args []string) error {
 	}
 	defer cleanup()
 
-	if err := svc.EnableDetector(context.Background(), args[0]); err != nil {
+	if err := svc.EnableDetector(asSystem(context.Background()), args[0]); err != nil {
 		return fmt.Errorf("enable detector: %w", err)
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "Enabled detector %s\n", args[0])
@@ -287,7 +286,7 @@ func runDetectorDisable(cmd *cobra.Command, args []string) error {
 	}
 	defer cleanup()
 
-	if err := svc.DisableDetector(context.Background(), args[0]); err != nil {
+	if err := svc.DisableDetector(asSystem(context.Background()), args[0]); err != nil {
 		return fmt.Errorf("disable detector: %w", err)
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "Disabled detector %s\n", args[0])

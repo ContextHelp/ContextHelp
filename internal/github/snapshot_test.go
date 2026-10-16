@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 // mustTime parses an RFC3339 string or panics — test helper only.
@@ -37,7 +37,7 @@ func TestRepoSnapshot_JSONRoundtrip(t *testing.T) {
 		UpdatedAt:   mustTime("2026-01-15T12:00:00Z"),
 		PushedAt:    pushed,
 		README:      "# widget\nA Go library.",
-		Sections: []pluginapi.Section{
+		Sections: []storage.Section{
 			{Title: "Installation", Content: "go get github.com/acme/widget", Order: 0},
 		},
 		Dependencies: []Dependency{
@@ -110,7 +110,7 @@ func TestIssueSnapshot_JSONRoundtrip(t *testing.T) {
 		Author:    "alice",
 		Assignees: []string{"bob"},
 		LinkedPR:  123,
-		Sections: []pluginapi.Section{
+		Sections: []storage.Section{
 			{Title: "Discussion", Content: "See comment thread.", Order: 0},
 		},
 		CreatedAt: mustTime("2026-02-10T09:00:00Z"),

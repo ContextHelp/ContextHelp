@@ -15,6 +15,10 @@ import (
 // reserved-dispatch check and the help-flag test key on it.
 const helpWord = "help"
 
+// completionCmdName is cobra's default completion command, a built-in
+// the command-tree passes skip alongside help.
+const completionCmdName = "completion"
+
 // checkUnknownSubcommand refuses a leading word that names no child
 // of a non-runnable command, returning an [output.UsageError] so the
 // taxonomy gives exit 2.

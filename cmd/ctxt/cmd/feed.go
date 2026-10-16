@@ -32,7 +32,7 @@ Examples:
   ctxt feed sync --url https://example.com/feed.xml
 
   # Remove a feed
-  ctxt feed delete feed_12345678`,
+  ctxt feed delete feed_12345678 --confirm-token=<sha>`,
 }
 
 var feedAddCmd = &cobra.Command{
@@ -60,7 +60,7 @@ var feedSyncCmd = &cobra.Command{
 var feedRemoveCmd = &cobra.Command{
 	Use:   "delete <url-or-id>",
 	Short: "Remove a feed subscription",
-	Long:  `Remove an RSS/Atom feed subscription by URL or ID.`,
+	Long:  "Remove an RSS/Atom feed subscription by URL or ID.\n\n" + cliconv.DestructiveTokenHelp,
 	Args:  cobra.ExactArgs(1),
 	RunE:  runFeedRemove,
 }
@@ -100,8 +100,8 @@ func init() {
 	// the dpkms server; opt into kit's typed-token confirmation flow.
 	cliconv.WithDestructiveToken(feedRemoveCmd)
 	cliconv.WithExamples(feedRemoveCmd, []cliconv.Example{
-		{Title: "Remove a feed by ID", Command: "ctxt feed delete feed_12345678 --confirm=yes"},
-		{Title: "Remove a feed by URL", Command: "ctxt feed delete https://example.com/feed.xml --confirm=yes"},
+		{Title: "Remove a feed by ID", Command: "ctxt feed delete feed_12345678 --confirm-token=<sha>"},
+		{Title: "Remove a feed by URL", Command: "ctxt feed delete https://example.com/feed.xml --confirm-token=<sha>"},
 	})
 	cliconv.WithNextSteps(feedRemoveCmd, []cliconv.NextStep{
 		{When: "after delete", Suggest: "ctxt feed list", Reason: "verify the subscription no longer appears"},
@@ -170,12 +170,12 @@ func runFeedList(cmd *cobra.Command, args []string) error {
 	// callers may have reset between command invocations, but the
 	// cobra flag value reflects the parsed command line either way.
 	formatFlag, _ := cmd.Flags().GetString("format")
-	if formatFlag == "json" || isJSONOutput() {
+	if formatFlag == formatJSON || isJSONOutput() {
 		return outputJSON(cmd.OutOrStdout(), map[string]any{"feeds": feeds})
 	}
 
 	headers := []string{"ID", "URL", "STATUS", "LAST SYNC"}
-	var rows [][]string
+	rows := make([][]string, 0, len(feeds))
 	for _, f := range feeds {
 		rows = append(rows, []string{
 			f.ID,

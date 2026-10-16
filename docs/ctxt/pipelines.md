@@ -2,9 +2,9 @@
 
 Pipelines are the core processing units of ContextHelp. They transform raw, unstructured input into structured knowledge by applying ordered tasks such as inference, AI enrichment, metadata extraction, mention extraction, registry alignment, tagging, weighting, decision synthesis, and background job scheduling.
 
-Pipelines are modular, deterministic, registry-aware, and fully extensible through plugins. They execute inside the transactional **Jobs** system, ensuring resilience, traceability, and crash-safe resumption.
+Pipelines are modular, deterministic and registry-aware. They execute inside the transactional **Jobs** system, ensuring resilience, traceability, and crash-safe resumption.
 
-In addition to built-in pipelines, **plugins can define custom pipelines, tasks, bookmark types, and post-processing hooks**, allowing complex workflows such as feed ingestion, price monitoring, notifications, and domain-specific enrichment to occur without modifying core.
+In addition to built-in pipelines, operators extend processing with pipeline overrides, custom pipelines and steps installed from registries (see [Extending pipelines](#extending-pipelines)). There is no plugin system ([ADR-078](../decisions/ADR-078-no-plugin-system.md)).
 
 ---
 
@@ -12,13 +12,11 @@ In addition to built-in pipelines, **plugins can define custom pipelines, tasks,
 
 A pipeline:
 
-- Accepts a `PipelineContext` containing raw content, hints, mentions, plugin config, registry state, and job metadata
+- Accepts a `PipelineContext` containing raw content, hints, mentions, registry state, and job metadata
 - Executes a sequence of tasks (AI calls, heuristics, extraction routines)
 - Produces a **Bookmark** (or additional `JobSteps`)
 - Aligns output with taxonomies, entities, and weights from registries
 - May enqueue follow-up background jobs
-- Emits events for plugins before and after each task
-- Allows plugins to attach their own tasks and semantic layers
 - Runs deterministically inside the jobs engine
 
 ```mermaid
@@ -30,7 +28,6 @@ flowchart TD
     E --> F[Bookmark Assembly]
     F --> G[Storage]
     G --> H[Optional Follow-Up Jobs]
-    H --> I[Plugin Hooks<br/>Post-Pipeline Events]
 ```
 
 ---
@@ -45,63 +42,18 @@ flowchart TD
 - Align mentions using entity registries
 - Produce deterministic structured bookmarks
 - Integrate tightly with the Jobs system
-- Provide extensible hooks for plugins (custom pipelines, custom tasks, post-ingest logic)
 - Support localization/I18N
-- Support plugin-managed background workflows (feeds, notifications, price tracking)
 
 ---
 
-## Plugin Extensions to Pipelines
+## Extending pipelines
 
-ContextHelp provides formal extension mechanisms that allow plugins to add behavior **without altering core code**:
+Pipelines are extended without changing core code through:
 
-### Plugin-defined Pipelines
-
-A plugin may register entirely new pipelines:
-
-- `feed.fetch`
-- `feed.parse`
-- `feed.ingest_items`
-- `price.monitor`
-- `custom.security.scan`
-
-These appear in configuration under `customPipelines:`.
-
-### Plugin-defined Tasks
-
-Plugins may add tasks to:
-
-- built-in pipelines (via before/after hooks)
-- plugin-defined pipelines
-- background pipelines (e.g., refresh jobs)
-
-### Plugin-defined Bookmark Types
-
-A plugin may define new logical bookmark types (e.g. `feed`, `feed_item`, `price_snapshot`) using the plugin metadata namespace within bookmarks.
-
-### Plugin-defined Follow-Up Jobs
-
-Any task—core or plugin—may enqueue background jobs:
-
-- feed item ingestion
-- price re-checks
-- notification routing
-- incremental analysis
-
-No core changes are required.
-
-### Plugin Hooks (Global)
-
-Plugins may subscribe to:
-
-- `BeforePipelineTask`
-- `AfterPipelineTask`
-- `PostPipelineExecute`
-- `PostIngest`
-- `PostRefresh`
-- `OnJobCompleted`
-
-These hooks enable plugins like RSS Feed, Price Monitor, and Notifications to activate workflows solely through official extension points.
+- **Overrides**: `pipelines.overrides.<pipeline>` in config sets `providers`, `skip_steps` and `insert_steps` for a built-in pipeline.
+- **Custom pipelines**: `dpkms pipeline create <file>` (or `POST /api/v1/pipelines`) defines a new pipeline from built-in and installed steps.
+- **Installed steps**: `dpkms pipeline step install <name> --path <dir>` (or `--registry <url>`) installs a program that `insert_steps` runs out of process on every object ([ADR-058](../decisions/ADR-058-external-step-execution-protocol.md), [Add a custom step](../manual/admin-extensibility/custom-steps.md)).
+- **Hooks** (accepted, not implemented yet): other applications will react before or after pipeline events through the external hook surface ([ADR-075](../decisions/ADR-075-external-hook-surface.md)).
 
 ---
 
@@ -174,45 +126,6 @@ Extracts transcripts, overlays, diagrams → feeds into enrichment and mention e
 
 ---
 
-## Custom Pipelines (Plugins)
-
-Plugins may define arbitrary pipelines:
-
-- `feed.fetch`
-- `feed.parse`
-- `feed.ingest_items`
-- `price.monitor`
-- `custom.mydomain`
-
-Each may include:
-
-- custom tasks
-- optional mention extraction
-- registry resolution
-- job scheduling
-- plugin-managed metadata
-
-Custom pipelines behave identically to built-in pipelines with respect to:
-
-- job lifecycle
-- error handling
-- plugin hooks
-- context updates
-
-Example:
-
-```yaml
-customPipelines:
-  feed.fetch:
-    module: ~/.contexthelp/pipelines/feed.so
-    tasks:
-      - FetchFeedDocument
-      - ExtractFeedMetadata
-      - ParseFeedItems
-```
-
----
-
 ## Mention Extraction Stage
 
 All pipelines include a standardized mention stage.
@@ -231,27 +144,24 @@ All pipelines include a standardized mention stage.
 - Deterministic resolution
 - No influence on tagging
 - No merging with hints
-- Works identically for plugin pipelines
+- Works identically for custom pipelines
 
 ---
 
 ## Pipeline Lifecycle
 
-All pipelines—core and plugin—execute inside the Jobs system.
+All pipelines, built-in and custom, execute inside the Jobs system.
 
 ```mermaid
 sequenceDiagram
     participant Jobs
     participant Pipeline
-    participant Plugins
 
     Jobs->>Pipeline: Execute Pipeline
     Pipeline->>Pipeline: Run Tasks
-    Pipeline->>Plugins: Emit BeforeTask/AfterTask
     Pipeline->>Pipeline: Mention Extraction
     Pipeline->>Pipeline: Registry Alignment
     Pipeline->>Jobs: Optionally Enqueue New Jobs
-    Plugins->>Jobs: Plugin-Scheduled Jobs Allowed
 ```
 
 ### Stages
@@ -260,9 +170,7 @@ sequenceDiagram
 
 - type inference
 - metadata extraction
-- plugin pre-scanning
 - hint parsing
-- optional plugin-defined pre-steps
 
 #### Task Execution
 
@@ -270,7 +178,7 @@ Tasks run in order:
 
 - AI tasks
 - heuristic tasks
-- plugin tasks
+- installed steps
 - mention extraction
 - weighting
 - structural parsing
@@ -281,21 +189,11 @@ Tasks run in order:
 - entity resolution
 - taxonomy mapping
 
-#### Bookmark Assembly
-
-Includes plugin metadata under namespaced fields:
-
-```
-bookmark.plugins.<pluginName>
-```
-
 #### Follow-Up Jobs
 
-Plugins may schedule:
+Steps may schedule:
 
 - feed ingestion
-- price monitoring
-- notification routing
 - entity graph operations
 - deep scan jobs
 
@@ -311,75 +209,7 @@ The `PipelineContext` contains:
 - resolved & unresolved mentions
 - registry handles
 - job metadata
-- plugin config
-- plugin scratchpads
 - intermediate task outputs
-
-Plugins may extend context through namespaced keys:
-
-```
-ctx.Plugins["rss_feed"]
-ctx.Plugins["price_monitor"]
-ctx.Plugins["notifications"]
-```
-
----
-
-## Plugin Safety Guarantees
-
-To ensure plugins cannot corrupt core systems:
-
-- plugins cannot modify core DB schema
-- plugins cannot override entity registries
-- plugins operate only on their namespaced bookmark metadata
-- plugins may only enqueue jobs, not modify pipeline routing
-- pipeline context enforces namespacing for plugin fields
-- plugins cannot interfere with mention/tag/hint logic
-
----
-
-## Hint Influence
-
-Hints affect pipeline behavior but never affect plugin-owned metadata.
-
----
-
-## Tag Influence
-
-Tags are normalized via registries and unaffected by plugin logic.
-
----
-
-## Mention Influence
-
-Mentions may be consumed by plugins (e.g., feed→entity links) but plugins cannot mutate mention resolution rules.
-
----
-
-## Registry Influence
-
-Registry alignment is immutable to plugins unless they provide private registries under user control.
-
----
-
-## Background Jobs
-
-Plugins rely heavily on background jobs.
-
-They may:
-
-- schedule new jobs
-- attach metadata
-- chain pipelines
-- retry independently
-
-Plugins **do not** modify core job mechanics.
-
----
-
-## Localization & Translation (Optional)
-
-Plugins may request automatic translation of their metadata via the I18N plugin.
 
 ---
 
@@ -409,10 +239,9 @@ extension recipes, and how to override the gate temporarily.
 Testing includes:
 
 - built-in pipelines
-- plugin pipelines
-- plugin hooks
+- custom pipelines
 - crash-recovery behavior
-- deterministic replay tests for plugin-defined tasks
+- deterministic replay tests
 
 ---
 
@@ -423,9 +252,7 @@ Pipelines in ContextHelp:
 - perform structured multimodal enrichment
 - extract hints, tags, and mentions
 - integrate with registries
-- are deterministic, extensible, and plugin-friendly
-- support plugin-defined tasks, types, and post-pipeline workflows
+- are deterministic and extensible through overrides, custom pipelines and installed steps
 - schedule background jobs without core modification
-- provide a safe environment for advanced plugins such as RSS feed ingestion, price tracking, auto-refresh, and notifications
 
-Pipelines form the computational backbone of ContextHelp’s semantic engine and provide stable, well-defined extension points that allow plugins to implement rich behaviors without ever touching core logic.
+Pipelines form the computational backbone of ContextHelp’s semantic engine.

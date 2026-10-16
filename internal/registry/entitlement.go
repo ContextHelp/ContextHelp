@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -38,43 +39,64 @@ type entitlementResponse struct {
 }
 
 // EntitlementChecker fetches and stores registry entitlement records.
+// FetchAndStore always writes outbound rows; CheckNamespace reads rows
+// of the checker's kind (outbound unless built by the inbound gate).
 type EntitlementChecker struct {
 	store  storage.EntitlementStore
+	kind   storage.EntitlementKind
 	client *http.Client
+	creds  *Credentials
 }
 
-// NewEntitlementChecker creates an EntitlementChecker backed by the given store.
+// NewEntitlementChecker creates an EntitlementChecker over the outbound
+// rows of the given store.
 func NewEntitlementChecker(store storage.EntitlementStore) *EntitlementChecker {
+	return newEntitlementChecker(store, storage.EntitlementOutbound)
+}
+
+func newEntitlementChecker(store storage.EntitlementStore, kind storage.EntitlementKind) *EntitlementChecker {
 	return &EntitlementChecker{
 		store:  store,
+		kind:   kind,
 		client: &http.Client{Timeout: 15 * time.Second},
 	}
 }
 
+// WithCredentials authenticates the entitlement request with the stored
+// token of the registry whose host serves entitlementURL.
+func (c *EntitlementChecker) WithCredentials(creds *Credentials) *EntitlementChecker {
+	c.creds = creds
+	c.client = creds.Client(c.client)
+	return c
+}
+
 // FetchAndStore calls entitlementURL, parses the response, persists it under
-// registryName, and returns the stored record. The caller supplies the auth
-// token (may be empty for open registries that still publish entitlements).
+// registryName, and returns the stored record. The request carries a stored
+// token when credentials are attached (WithCredentials) and entitlementURL
+// is on a configured registry's host.
 func (c *EntitlementChecker) FetchAndStore(
 	ctx context.Context,
 	registryName string,
 	entitlementURL string,
-	authToken string,
 ) (*storage.RegistryEntitlement, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, entitlementURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("build entitlement request: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
-	if authToken != "" {
-		req.Header.Set("Authorization", "Bearer "+authToken)
-	}
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetch entitlements from %s: %w", entitlementURL, err)
+		return nil, fmt.Errorf("fetch entitlements from %s: %w", config.RedactDSN(entitlementURL), config.RedactURLError(err))
 	}
 	defer resp.Body.Close()
 
+	// A refusal sent without a token means the user has to log in; one
+	// sent with a token means the plan does not cover this registry.
+	var authErr ErrRegistryAuth
+	if err := c.creds.CheckResponse(resp); errors.As(err, &authErr) && !authErr.TokenSent {
+		return nil, err
+	}
 	if resp.StatusCode == http.StatusUnauthorized {
 		return nil, ErrEntitlementRequired{
 			RegistryName: registryName,
@@ -91,6 +113,7 @@ func (c *EntitlementChecker) FetchAndStore(
 	}
 
 	ent := &storage.RegistryEntitlement{
+		Kind:         storage.EntitlementOutbound,
 		RegistryName: registryName,
 		Plan:         payload.Plan,
 		Namespaces:   payload.Namespaces,
@@ -114,7 +137,7 @@ func (c *EntitlementChecker) CheckNamespace(
 	namespace string,
 	upgradeURL string,
 ) error {
-	ent, err := c.store.Get(ctx, registryName)
+	ent, err := c.store.Get(ctx, c.kind, registryName)
 	if err != nil {
 		// Documented fail-open (see the doc comment): with no stored
 		// entitlement the registry is treated as unrestricted.

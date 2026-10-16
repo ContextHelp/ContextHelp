@@ -123,7 +123,9 @@ func TestRelease_MakesLockReacquirable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("re-Acquire after Release: %v", err)
 	}
-	defer l2.Release()
+	if err := l2.Release(); err != nil {
+		t.Errorf("Release: %v", err)
+	}
 }
 
 func TestRelease_NeverUnlinksLockfile(t *testing.T) {
@@ -197,7 +199,9 @@ func TestHolderProcessExit_ReleasesLock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Acquire after holder exit: %v — kernel should have released the flock", err)
 	}
-	defer l.Release()
+	if err := l.Release(); err != nil {
+		t.Errorf("Release: %v", err)
+	}
 }
 
 // TestHelperHoldLock is not a test: it is the subprocess body for
@@ -235,7 +239,9 @@ func TestAcquireRetry_SucceedsWhenHolderReleasesWithinBudget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AcquireRetry within budget: %v", err)
 	}
-	defer l2.Release()
+	if err := l2.Release(); err != nil {
+		t.Errorf("Release: %v", err)
+	}
 }
 
 func TestAcquireRetry_FailsWithHolderIdentityAfterBudget(t *testing.T) {
@@ -303,4 +309,52 @@ func TestReadHolder_NoLockfile(t *testing.T) {
 	if _, err := dblock.ReadHolder(dbPath); err == nil {
 		t.Fatal("ReadHolder with no lockfile: want error")
 	}
+}
+
+func TestCheck_NoSidecarIsFreeAndCreatesNothing(t *testing.T) {
+	dbPath := tempDBPath(t)
+	if err := dblock.Check(dbPath); err != nil {
+		t.Fatalf("Check with no sidecar: %v; want nil", err)
+	}
+	if _, err := os.Stat(dblock.Path(dbPath)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("Check created the sidecar (stat err = %v); a probe must write nothing", err)
+	}
+}
+
+func TestCheck_HeldReportsHolder(t *testing.T) {
+	dbPath := tempDBPath(t)
+	l, err := dblock.Acquire(dbPath, dblock.Info{Role: dblock.RoleDaemon, Instance: "main"})
+	if err != nil {
+		t.Fatalf("Acquire: %v", err)
+	}
+	defer l.Release()
+
+	err = dblock.Check(dbPath)
+	var held *dblock.HeldError
+	if !errors.As(err, &held) || !errors.Is(err, dblock.ErrHeld) {
+		t.Fatalf("Check on held lock = %v; want *HeldError wrapping ErrHeld", err)
+	}
+	if held.Holder == nil || held.Holder.Role != dblock.RoleDaemon || held.Holder.Instance != "main" {
+		t.Errorf("HeldError.Holder = %+v; want daemon/main", held.Holder)
+	}
+}
+
+func TestCheck_ReleasedIsFreeAndLeavesLockAcquirable(t *testing.T) {
+	dbPath := tempDBPath(t)
+	l, err := dblock.Acquire(dbPath, dblock.Info{Role: dblock.RoleCLI})
+	if err != nil {
+		t.Fatalf("Acquire: %v", err)
+	}
+	if err := l.Release(); err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+	if err := dblock.Check(dbPath); err != nil {
+		t.Fatalf("Check after Release: %v; want nil", err)
+	}
+	// The probe must not keep the lock.
+	l2, err := dblock.Acquire(dbPath, dblock.Info{Role: dblock.RoleCLI})
+	if err != nil {
+		t.Fatalf("Acquire after Check: %v — Check kept the lock", err)
+	}
+	_ = l2.Release()
 }

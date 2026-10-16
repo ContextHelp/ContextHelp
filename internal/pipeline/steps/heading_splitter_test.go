@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 func TestHeadingSplitterDefaultDepth(t *testing.T) {
@@ -58,14 +57,14 @@ func TestHeadingSplitterEmitsGraphNodes(t *testing.T) {
 		t.Fatal("graph is nil; expected nodes")
 	}
 
-	rootID := pluginapi.NewNodeID("obj-003", pluginapi.NodeTypeSummary, 0)
+	rootID := storage.NewNodeID("obj-003", storage.NodeTypeSummary, 0)
 	if got.Graph.FindNode(rootID) == nil {
 		t.Errorf("root summary node %q not found", rootID)
 	}
 
 	// Two headings → two section nodes.
 	for i := 0; i < 2; i++ {
-		secID := pluginapi.NewNodeID("obj-003", pluginapi.NodeTypeSection, i)
+		secID := storage.NewNodeID("obj-003", storage.NodeTypeSection, i)
 		if got.Graph.FindNode(secID) == nil {
 			t.Errorf("section node %q not found", secID)
 		}

@@ -8,7 +8,6 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/storagetest"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	uri "hop.top/cite/scheme"
@@ -33,25 +32,25 @@ func makeObject(id, typ string) *storage.KnowledgeObject {
 			Content: content,
 			Order:   0,
 		}},
-		Graph: &pluginapi.ObjectGraph{
-			Nodes: []pluginapi.GraphNode{
+		Graph: &storage.ObjectGraph{
+			Nodes: []storage.GraphNode{
 				{
-					ID:       pluginapi.NewNodeID(id, pluginapi.NodeTypeSummary, 0),
-					NodeType: pluginapi.NodeTypeSummary,
+					ID:       storage.NewNodeID(id, storage.NodeTypeSummary, 0),
+					NodeType: storage.NodeTypeSummary,
 					Label:    "Summary",
 					Content:  content,
 					Order:    0,
 				},
 				{
-					ID:       pluginapi.NewNodeID(id, pluginapi.NodeTypeSection, 0),
-					NodeType: pluginapi.NodeTypeSection,
+					ID:       storage.NewNodeID(id, storage.NodeTypeSection, 0),
+					NodeType: storage.NodeTypeSection,
 					Label:    "Body",
 					Content:  content,
 					Order:    0,
 				},
 				{
-					ID:       pluginapi.NewNodeID(id, pluginapi.NodeTypeTag, 0),
-					NodeType: pluginapi.NodeTypeTag,
+					ID:       storage.NewNodeID(id, storage.NodeTypeTag, 0),
+					NodeType: storage.NodeTypeTag,
 					Label:    "design",
 					Content:  "design",
 					Order:    0,
@@ -191,7 +190,7 @@ func TestListBySQL_SimpleWhere(t *testing.T) {
 	require.NoError(t, d.Objects().Create(ctx, makeObject("art-2", "article")))
 	require.NoError(t, d.Objects().Create(ctx, makeObject("note-1", "note")))
 
-	objs, total, err := d.Objects().ListBySQL(ctx, "type = ?", []any{"article"}, 0, 0)
+	objs, total, err := d.Objects().ListBySQL(ctx, "type = ?", []any{"article"}, storage.ObjectFilter{})
 	require.NoError(t, err)
 	assert.Equal(t, 2, total)
 	assert.Len(t, objs, 2)
@@ -204,7 +203,7 @@ func TestListBySQL_Empty(t *testing.T) {
 	d := newTestDriver(t)
 	ctx := context.Background()
 
-	objs, total, err := d.Objects().ListBySQL(ctx, "type = ?", []any{"nonexistent"}, 0, 0)
+	objs, total, err := d.Objects().ListBySQL(ctx, "type = ?", []any{"nonexistent"}, storage.ObjectFilter{})
 	require.NoError(t, err)
 	assert.Equal(t, 0, total)
 	assert.Len(t, objs, 0)
@@ -222,7 +221,7 @@ func TestListBySQL_Pagination(t *testing.T) {
 		require.NoError(t, d.Objects().Create(ctx, obj))
 	}
 
-	objs, total, err := d.Objects().ListBySQL(ctx, "", nil, 2, 1)
+	objs, total, err := d.Objects().ListBySQL(ctx, "", nil, storage.ObjectFilter{Limit: 2, Offset: 1})
 	require.NoError(t, err)
 	assert.Equal(t, 5, total)
 	assert.Len(t, objs, 2)
@@ -242,7 +241,7 @@ func TestListBySQL_OffsetWithoutLimit(t *testing.T) {
 		require.NoError(t, d.Objects().Create(ctx, obj))
 	}
 
-	objs, total, err := d.Objects().ListBySQL(ctx, "", nil, 0, 2)
+	objs, total, err := d.Objects().ListBySQL(ctx, "", nil, storage.ObjectFilter{Offset: 2})
 	require.NoError(t, err)
 	assert.Equal(t, 5, total)
 	assert.Len(t, objs, 3, "offset 2 of 5 rows with no limit should return 3")
@@ -319,7 +318,7 @@ func TestGetByContentHashEmptyStore(t *testing.T) {
 	d := newTestDriver(t)
 	ctx := context.Background()
 
-	got, err := d.Objects().GetByContentHash(ctx, "any-hash")
+	got, err := d.Objects().GetByContentHash(ctx, "any-hash", "")
 	assert.NoError(t, err)
 	assert.Nil(t, got, "empty store must return nil, nil — not an error")
 }
@@ -333,20 +332,20 @@ func TestGetByContentHash(t *testing.T) {
 	require.NoError(t, d.Objects().Create(ctx, obj))
 
 	t.Run("found", func(t *testing.T) {
-		got, err := d.Objects().GetByContentHash(ctx, "abc123")
+		got, err := d.Objects().GetByContentHash(ctx, "abc123", "")
 		require.NoError(t, err)
 		require.NotNil(t, got)
 		assert.Equal(t, "hash-1", got.ID)
 	})
 
 	t.Run("not found returns nil nil", func(t *testing.T) {
-		got, err := d.Objects().GetByContentHash(ctx, "nonexistent")
+		got, err := d.Objects().GetByContentHash(ctx, "nonexistent", "")
 		assert.NoError(t, err)
 		assert.Nil(t, got)
 	})
 
 	t.Run("empty hash returns nil", func(t *testing.T) {
-		got, err := d.Objects().GetByContentHash(ctx, "")
+		got, err := d.Objects().GetByContentHash(ctx, "", "")
 		assert.NoError(t, err)
 		assert.Nil(t, got)
 	})
@@ -438,7 +437,7 @@ func TestListBySQL_JSONExtract(t *testing.T) {
 	obj3.Metadata = map[string]any{"different": "field"}
 	require.NoError(t, d.Objects().Create(ctx, obj3))
 
-	objs, total, err := d.Objects().ListBySQL(ctx, "json_extract(metadata, '$.key') = ?", []any{"val"}, 0, 0)
+	objs, total, err := d.Objects().ListBySQL(ctx, "json_extract(metadata, '$.key') = ?", []any{"val"}, storage.ObjectFilter{})
 	require.NoError(t, err)
 	assert.Equal(t, 1, total)
 	assert.Len(t, objs, 1)
@@ -567,7 +566,7 @@ func TestDriver_ObjectStoreUsesDriverEmbeddings(t *testing.T) {
 
 // makeFTSObject builds an object whose projected_fts_body contains the given text.
 // Uses a Graph with a summary node so that ProjectIndex derives the FTS body from
-// the graph (matching the canonical projection path post-T-0195).
+// the graph (matching the canonical projection path).
 func makeFTSObject(id, typ, searchableText string) *storage.KnowledgeObject {
 	now := time.Now().Truncate(time.Second)
 	return &storage.KnowledgeObject{
@@ -575,11 +574,11 @@ func makeFTSObject(id, typ, searchableText string) *storage.KnowledgeObject {
 		Type:      typ,
 		CreatedAt: now,
 		UpdatedAt: now,
-		Graph: &pluginapi.ObjectGraph{
-			Nodes: []pluginapi.GraphNode{
+		Graph: &storage.ObjectGraph{
+			Nodes: []storage.GraphNode{
 				{
-					ID:       pluginapi.NewNodeID(id, pluginapi.NodeTypeSummary, 0),
-					NodeType: pluginapi.NodeTypeSummary,
+					ID:       storage.NewNodeID(id, storage.NodeTypeSummary, 0),
+					NodeType: storage.NodeTypeSummary,
 					Label:    "Summary",
 					Content:  searchableText,
 					Order:    0,
@@ -616,7 +615,7 @@ func TestFTSSearch(t *testing.T) {
 	assert.Empty(t, results)
 }
 
-// TestFTSSearch_HyphenatedQuerySanitised exercises the T-0565 hyphen-crash
+// TestFTSSearch_HyphenatedQuerySanitised exercises the hyphen-crash
 // regression: before the fix, `credit-eligible` reached SQLite FTS5 raw,
 // where `-` was parsed as NOT / column qualifier and produced
 // "no such column: eligible". The service now passes user input through

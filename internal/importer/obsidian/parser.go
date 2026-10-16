@@ -254,8 +254,9 @@ var (
 
 func extractWikilinks(body string) []string {
 	seen := map[string]struct{}{}
-	var out []string
-	for _, m := range wikilinkRe.FindAllStringSubmatch(body, -1) {
+	matches := wikilinkRe.FindAllStringSubmatch(body, -1)
+	out := make([]string, 0, len(matches))
+	for _, m := range matches {
 		target := strings.TrimSpace(m[1])
 		if target == "" {
 			continue
@@ -294,8 +295,9 @@ func extractAttachments(body string) []string {
 
 func extractInlineTags(body string) []string {
 	seen := map[string]struct{}{}
-	var out []string
-	for _, m := range inlineTagRe.FindAllStringSubmatch(body, -1) {
+	matches := inlineTagRe.FindAllStringSubmatch(body, -1)
+	out := make([]string, 0, len(matches))
+	for _, m := range matches {
 		tag := strings.TrimSpace(m[1])
 		if tag == "" {
 			continue

@@ -5,7 +5,7 @@ ContextHelp provides two command-line interfaces that together expose all engine
 - **`ctxt`** — User-facing commands for capture, search, composition, and profiles
 - **`dpkms`** — Infrastructure commands for server operations and maintenance
 
-Both CLIs support ingestion, job queue management, retrieval, registry interactions, entity/mention resolution, focus profiles, local server operations, and **plugin-defined commands** that extend the CLI at runtime.
+Both CLIs support ingestion, job queue management, retrieval, registry interactions, entity/mention resolution, focus profiles, and local server operations. There is no plugin system ([ADR-078](../decisions/ADR-078-no-plugin-system.md)): nothing adds commands at runtime.
 
 Both CLIs are:
 
@@ -14,7 +14,6 @@ Both CLIs are:
 - Scriptable
 - Fully offline-capable
 - Parallel to REST and gRPC APIs
-- **Extensible by plugins without modifying core**
 
 All ingestion operations follow the **Transactional Outbox Model**:
 `ctxt analyze` enqueues a job → the worker (`dpkms serve`) processes pipelines → results are written to storage.
@@ -63,21 +62,23 @@ go build -o dpkms cmd/dpkms/main.go
 | `ctxt <content>` | (Default) Enqueue content for ingestion (args, stdin, or clipboard) |
 | `ctxt analyze` | Enqueue an ingestion job (supports clipboard fallback) |
 | `ctxt inbox` | Manage inbox items (list, triage, discard, clear) |
-| `ctxt job` | Inspect/manage ingestion jobs |
-| `ctxt list` | Query knowledge objects (local + registries) |
+| `ctxt list` | Query knowledge objects on the dpkms instance |
 | `ctxt find <query>` | Semantic search (supports clipboard fallback) |
-| `ctxt open <id>` | Display knowledge object details (supports clipboard fallback) |
+| `ctxt show <id>` | Display knowledge object details (supports clipboard fallback) |
+| `ctxt export <id>` | Print a knowledge object as JSON or YAML |
 | `ctxt delete` | Remove knowledge objects |
 | `ctxt edit` | Modify knowledge object metadata |
 | `ctxt reprocess` | Re-run an enrichment step on an object, as a dpkms job |
+| `ctxt link` | Create, list and delete typed links between objects |
 | `ctxt profile` | Manage focus profiles |
-| `ctxt make` | Generate compositions (briefs, plans) |
+| `ctxt compose` | Generate compositions (briefs, plans) |
 | `ctxt stats` | Live at-a-glance system summary |
+| `ctxt page` | Entity pages (list, show, refresh) |
+| `ctxt index` | Show or rebuild the topic index |
 | `ctxt instance` | Multi-instance targeting (use, list, current) |
 | `ctxt config` | Configuration operations |
 | `ctxt registry` | Manage registries |
 | `ctxt entity` | Query and inspect entities |
-| `ctxt secret` | Manage secrets (get, set, list backend) |
 | `ctxt uri` | Manage ctxt:// URI scheme OS registration |
 
 ### `dpkms` Commands (Infrastructure)
@@ -89,6 +90,8 @@ go build -o dpkms cmd/dpkms/main.go
 | `dpkms shutdown` | Gracefully stop a running instance (alias: `stop`) |
 | `dpkms reboot` | Gracefully restart a running instance (SIGHUP) |
 | `dpkms housekeeping` | Database maintenance and optimization |
+| `dpkms job` | Inspect/manage ingestion jobs |
+| `dpkms secret` | Manage secrets (get, set, list backend) |
 
 ### Version and Verbose Flags
 
@@ -136,21 +139,10 @@ ctxt analyze <content> <options>
 | `--wait` | Block until job completes |
 | `--output <json|yaml|id>` | Output format |
 
-### Refresh & Auto-Fetch Flags (Plugin-provided)
-
-Plugins such as the Refresh Plugin and RSS Feed Plugin may add:
-
-| Flag | Description |
-|------|-------------|
-| `--refresh <seconds|daily|auto>` | Attach refresh policy to knowledge object |
-| `--fetch-new` | For feed-like sources, auto-fetch new items |
-| `--no-fetch-new` | Disable auto-fetch |
-
 ### Notes
 
 - Returns a **Job ID**.
 - With `--wait`, returns the resulting **Knowledge Object ID**.
-- Plugins may intercept or extend `ctxt analyze` behavior via lifecycle hooks.
 - Content goes only to the one instance ctxt resolves (see [Resolution order](#resolution-order)). Nothing is queued on this machine and no other instance is tried.
 - Exit status: `70` nothing answered at the instance, `5` the instance rejected the token (not retried; a `reader` token lacks `write:objects`), `2` the instance refused the request (a `422` names the unrouted type or pipeline), `6` a server error.
 
@@ -237,26 +229,25 @@ ctxt inbox clear --confirm-token=<token>
 
 ---
 
-## `ctxt job`
+## `dpkms job`
 
-Inspect and control ingestion jobs.
+Inspect and control ingestion jobs. ctxt has no job command.
 
 ### Commands
 
 ```bash
-ctxt job list
-ctxt job status <id>
-ctxt job log <id>
-ctxt job retry <id>
-ctxt job cancel <id>
+dpkms job list [--state pending|running|completed|failed|cancelled] [--limit N]
+dpkms job status <id>
+dpkms job log <id>
+dpkms job retry <id>
+dpkms job cancel <id>
 ```
 
 ---
 
 ## `ctxt list`
 
-Query knowledge objects across local storage and registries.
-Supports tags, hints, mentions, entities, and AST query language.
+Query the knowledge objects of the dpkms instance ctxt resolves (`--server`, `--instance`, `CTXT_INSTANCE`, `ctxt instance use`, then config). Filters go to `GET /api/v1/objects`, `--facets` also calls `GET /api/v1/objects/facets`, and `--q` calls `GET /api/v1/search`. All need `read:objects`. ctxt never opens a local store.
 
 ### Usage
 
@@ -266,36 +257,41 @@ ctxt list <filters> <options>
 
 ### Filters
 
+Filters combine with AND.
+
 | Flag | Description |
 |------|-------------|
-| `--type <type>` | Filter by knowledge object type |
-| `--tagged <t1,t2>` | Filter by tags |
-| `--hint <#h1,#h2>` | Filter by hints |
-| `--mention <@slug>` | Filter by mention |
-| `--pipeline <name>` | Filter by pipeline |
-| `--subtype <name>` | Filter by subtype |
-| `--before <ISO>` | Created before |
-| `--after <ISO>` | Created after |
-| `--orig-lang <code>` | Original language |
-| `--profile <name>` | Focus profile filter |
-| `--q "<query>"` | AST-based query |
+| `--type <type>` | Knowledge object type |
+| `--subtype <name>` | Subtype |
+| `--tagged <tag>` | One tag. Match several with `--q "tag=in=(a,b)"` |
+| `--mention <@ns.slug>` | Mention (`@ns.slug` or `ctxt://` URI) |
+| `--pipeline <name>` | Pipeline |
+| `--status <s>` | `active` (default), `inbox`, `discarded`, `raw` or `all` |
+| `--after <date>` / `--before <date>` | Created on or after / on or before: `YYYY-MM-DD` (midnight UTC) or RFC 3339 |
+| `--meta-type <type>` | Metadata type (e.g. `observation`, `task`) |
+| `--topic <t>` / `--person <p>` / `--source-type <s>` | Metadata topic, person, source type |
+| `--since <date>` / `--until <date>` | A date mentioned in the content falls in the range: `YYYY-MM-DD` |
+| `--q "<rsql>"` | RSQL query answered by the instance's search, instead of the filters |
 
 ### Options
 
 | Flag | Description |
 |------|-------------|
-| `--limit <n>` | Max results |
-| `--start <offset>` | Pagination |
-| `--sort <view|match|recent|weight|score>` | Sorting |
-| `--dir <asc|desc>` | Sort direction |
-| `--json` | JSON output |
-| `--yaml` | YAML output |
+| `--limit <n>` | Max results (default 50; 0 returns every match) |
+| `--start <offset>` | Pagination offset |
+| `--sort <key>` | `created` (default; `recent` is a synonym) or `updated` |
+| `--dir <asc\|desc>` | Sort direction (default `desc`) |
+| `--facets` | Also print counts by metadata type |
+| `--cursor <name>` / `--advance` | Named cursor, kept in a client file: list only objects created since the cursor's last position, oldest first; `--advance` moves it |
+| `--format json\|yaml` | Structured output |
+
+A malformed date, several tags in `--tagged`, or an unknown `--sort` / `--dir` value exits 2. An unreachable instance exits 70, a refused token 5.
 
 ---
 
 ## `ctxt find`
 
-Semantic search across local and federated knowledge.
+Search knowledge on the dpkms instance: full-text, vector or hybrid (the default).
 
 **If no query is provided, `ctxt find` will check the system clipboard.**
 
@@ -309,28 +305,57 @@ ctxt find <query> <options>
 
 | Flag | Description |
 |------|-------------|
-| `--profile <name>` | Use focus profile for reranking |
-| `--limit <n>` | Max results |
-| `--json` | JSON output |
-| `--yaml` | YAML output |
+| `--fts`, `--semantic`, `--hybrid` | Mode: full-text, vector or hybrid. Default: the profile's `search_strategy.mode`, else `search.default_mode` |
+| `--profile <name>` | Search only the objects this profile owns, with its `search_strategy` |
+| `--limit <n>` | Max results (default 10) |
+| `--rrf-k`, `--fts-weight`, `--vector-weight`, `--fts-pool`, `--vector-pool`, `--min-score` | Override one search knob for this run |
+| `--meta-type`, `--topic`, `--person`, `--source-type`, `--since`, `--until` | Metadata filters; dates as `YYYY-MM-DD` |
+| `--explain` | Per-result score breakdown (hybrid only) |
+| `--facets` | Metadata type counts over the filtered objects |
+| `--graph` | The search trace as a graph (see `ctxt find --help`) |
+| `--server <url>` | dpkms instance to search; overrides `--instance` and config |
+| `--format json\|yaml` | Structured output |
+
+- **How it runs.** `find` sends `POST /api/v1/find` (`read:objects`, every role) to the instance `--server`, `--instance`, `CTXT_INSTANCE` or `ctxt instance use` selects. It never opens a local database.
+- **Settings travel with the query.** ctxt resolves the search strategy (global `search`, then the active profile's `search_strategy`, then the flags) and sends every knob. The active profile (`--profile` or `profile.default`) scopes the search to its objects.
+- **Query embedding** runs on the dpkms host, with its default embedding model and provider settings. The `--embedding-*` flags apply to `--graph` only; without it they exit 2.
+- **Exit codes.** Unreachable 70, 401/403 5, a bad filter date or a semantic leg that cannot run with `search.fallback_to_fts: false` 2, a dpkms error 6.
+- **`ctxt://search/<query>`** runs the same search.
 
 ---
 
-## `ctxt open`
+## `ctxt show`
 
-Display knowledge object details including mentions, resolved entities, and metadata.
+Display a knowledge object's details, read from the dpkms instance (`GET /api/v1/objects/{id}`), with the objects related to it through shared mentions (`GET /api/v1/objects/{id}/related`). Needs `read:objects`.
 
-**If no ID is provided, `ctxt open` will check the system clipboard for an object ID.**
+**If no ID is provided, `ctxt show` will check the system clipboard for an object ID.**
 
 ```bash
-ctxt open <id>
+ctxt show <id> [--raw] [--format json|yaml]
 ```
 
-Options:
+`--raw` and `--format` print the object itself. An unknown ID exits 3, an unreachable instance 70, a refused token 5.
 
-- `--raw`
-- `--json`
-- `--yaml`
+---
+
+## `ctxt export`
+
+Print a knowledge object read from the dpkms instance (`GET /api/v1/objects/{id}`) as JSON, or YAML with `--format yaml`. Same exit codes as `ctxt show`.
+
+```bash
+ctxt export <id> [--format yaml]
+```
+
+---
+
+## `ctxt classify`
+
+Run classification on text, or on an object when the argument starts with `o-`. The object is read from the dpkms instance (`GET /api/v1/objects/{id}`); classification runs in the ctxt process on its first summary, else its text, else its raw content.
+
+```bash
+ctxt classify "<text>"
+ctxt classify <o-id>
+```
 
 ---
 
@@ -341,7 +366,7 @@ Delete knowledge objects on the dpkms instance, by ID or by filter.
 ### Usage
 
 ```bash
-ctxt delete <selector> --confirm=yes --confirm-token=<sha>
+ctxt delete <selector> --confirm-token=<sha>
 ```
 
 ### Selectors
@@ -400,6 +425,23 @@ ctxt reprocess <id> [--step structured_metadata|entity_extractor|tagger]
 
 ---
 
+## `ctxt link`
+
+Typed links between two objects, stored on the dpkms instance.
+
+```bash
+ctxt link create <source_id> <target_id> --type <type> [--context "<reason>"]
+ctxt link list <object_id> [--type <type>] [--follow 1-3]
+ctxt link delete <source_id> <target_id> --confirm-token=<sha>
+```
+
+- **Types:** `extends`, `contradicts`, `supersedes`, `supports`, `related-to`, `derived-from`, or an inverse name such as `extended-by`. dpkms stores the reverse edge with each link (`extends` gets `extended-by`), except for the symmetric `related-to`, and deletes the two together.
+- **create** (`POST /api/v1/edges`) needs `write:objects`. An unknown type exits 2, an unknown object 3.
+- **list** (`GET /api/v1/objects/{id}/edges`) needs `read:objects`. Without `--follow` it prints every edge in and out of the object, with its context. `--follow N` walks N hops (at most 3) and prints each object once. An unknown object exits 3.
+- **delete** (`DELETE /api/v1/edges`) removes every link between the two objects, both directions. It needs `delete:edges`, which only the `admin` role holds: a `writer` token exits 5 and deletes nothing.
+
+---
+
 ## `ctxt profile`
 
 Manage focus profiles.
@@ -410,21 +452,24 @@ Manage focus profiles.
 ctxt profile list
 ctxt profile view <name>
 ctxt profile create <name> --config <path>
-ctxt profile rm <name> --confirm=yes
+ctxt profile rm <name> --confirm-token=<sha>
 ctxt profile set <name>
 ctxt profile unset <name>
+ctxt profile schema evolve <name>
 ```
+
+`ctxt profile schema evolve` reads the 100 most recently created objects from the dpkms instance (`GET /api/v1/objects`, `read:objects`) and suggests entity types and topics the profile's schema lacks. The analysis runs in the ctxt process; the schema is not changed.
 
 ---
 
-## `ctxt make`
+## `ctxt compose`
 
-Generate compositions from knowledge objects.
+Generate a composition from knowledge objects. ctxt reads the 100 most recently created objects the filters select from the dpkms instance (`GET /api/v1/objects`, `read:objects`) and renders them locally.
 
 ### Usage
 
 ```bash
-ctxt make <type> <options>
+ctxt compose <type> <options>
 ```
 
 ### Types
@@ -440,11 +485,14 @@ ctxt make <type> <options>
 
 | Flag | Description |
 |------|-------------|
-| `--profile <name>` | Use focus profile |
-| `--mention <@slug>` | Focus on specific mentions |
-| `--tagged <t1,t2>` | Focus on specific tags |
-| `--since <ISO>` | Include knowledge since date |
-| `--output <path>` | Write to file |
+| `--mention <@slug>` | Objects that mention the entity |
+| `--tagged <tag>` | Objects carrying one tag |
+| `--since <date>` / `--until <date>` | Created on or after / on or before: `YYYY-MM-DD` or RFC 3339 |
+| `--export markdown\|json` | Output format; `json` includes structured citations |
+| `--no-citations` | No inline `[ref:ID]` markers |
+| `--output-file <path>` | Write to file |
+
+An unknown type, a malformed date or several tags exit 2. An unreachable instance exits 70, a refused token 5.
 
 ---
 
@@ -464,6 +512,7 @@ dpkms serve <options>
 | `--name <slug>` | Instance name (URI-safe, e.g. `work`); derived from DB basename if omitted. Must be unique across running instances |
 | `--port <number>` | HTTP port (default: 8080; auto-assigns if busy) |
 | `--grpc-port <number>` | gRPC port (default: 9090; auto-assigned if busy) |
+| `--cookie-bridge-port <number>` | Browser-extension cookie bridge port, loopback only (default: 9377; auto-assigned if busy; `0` = OS-assigned) |
 | `--daemon` | Detach from terminal (background daemon) |
 | `--profile <name>` | Default focus profile (interactive picker if unset and multiple exist) |
 | `--public` | Allow remote connections |
@@ -499,7 +548,7 @@ List all running dpkms instances on this machine.
 dpkms ps [--output json]
 ```
 
-Scans `$XDG_DATA_HOME/contexthelp/run/` for pidfiles, validates each process is alive, and removes stale entries automatically.
+Scans `$XDG_DATA_HOME/contexthelp/run/` for pidfiles, validates each process is alive, and removes stale entries automatically. A pid now held by a process that started after the pidfile's `started_at` (the pid was reused) is stale too; when the OS does not report a process's start time, the entry counts as alive.
 
 Output columns: `NAME  PID  PORT  GRPC  DB  UPTIME` (BROWSER column added when any instance has browser enabled).
 
@@ -518,7 +567,7 @@ Sends SIGTERM to the target instance. The instance drains in-flight jobs, closes
 
 | Flag | Description |
 |------|-------------|
-| `--port <number>` | Port of the instance to stop (default: server-url port) |
+| `--port <number>` | Port of the instance to stop (default: `server.port`, overridden by `CH_SERVER_PORT`) |
 
 ---
 
@@ -534,7 +583,7 @@ Sends SIGHUP. The instance drains in-flight jobs and exits. The caller (or proce
 
 | Flag | Description |
 |------|-------------|
-| `--port <number>` | Port of the instance to restart (default: server-url port) |
+| `--port <number>` | Port of the instance to restart (default: `server.port`, overridden by `CH_SERVER_PORT`) |
 
 ---
 
@@ -556,6 +605,8 @@ dpkms housekeeping prune --before <ISO>
 ## `ctxt stats`
 
 Live at-a-glance system summary: knowledge objects (by type), jobs (by status), entities, feeds, profiles, pending reminders, and resurfacing candidates.
+
+The counts come from `GET /api/v1/stats` on the dpkms instance `--server`, `--instance` or the config selects (scope `read:objects`); the server counts, nothing is listed. Profiles are this client's configuration, and the resurfacing count is the default profile's. Exit codes follow ADR-077: 70 when nothing answers, 5 without a valid token. `--watch` fails the same way on its first snapshot; later failures are printed and the next tick retries.
 
 ```bash
 ctxt stats
@@ -579,7 +630,35 @@ ctxt stats --watch               # re-print every 3s; Ctrl-C to exit
 | `feeds` / `feeds_active` | Total and active feed count |
 | `profiles` / `default_profile` | Profile count and active default |
 | `reminders_pending` | Due or upcoming reminder count |
-| `resurfacing_candidates` | Objects queued for resurfacing |
+| `resurfacing_candidates` | Unseen resurfacing candidates of the default profile; `null` when the instance's storage has no resurfacing queue (Postgres) |
+
+---
+
+## `ctxt page`
+
+Entity pages: compiled objects (type `entity_page`) that gather what the sources mentioning one entity say about it. Every leaf calls the dpkms instance `--server`, `--instance` or the config selects, through `/api/v1/pages`.
+
+```bash
+ctxt page list [--limit 50]          # newest first
+ctxt page show person.alice
+ctxt page refresh person.alice       # recompile from the page's sources
+```
+
+`list` and `show` need `read:objects`; `refresh` needs `write:objects` (`writer` or `admin`), and a `reader` token exits 5. An entity without a page exits 3. `--format json` prints the page objects.
+
+---
+
+## `ctxt index`
+
+The topic index: object summaries grouped by the topics of `enrichment.structured_metadata`, read from `/api/v1/topic-index` on the selected instance.
+
+```bash
+ctxt index                 # every topic
+ctxt index auth            # the first topic starting with "auth", ignoring case
+ctxt index --refresh       # rebuild on dpkms, then print
+```
+
+Reading needs `read:objects`; `--refresh` needs `write:objects`. Before the first rebuild there is no index: `ctxt index` exits 3 and suggests `ctxt index --refresh`. A topic with no match prints `No entries for topic "<topic>"` (`[]` under `--format json`) and exits 0.
 
 ---
 
@@ -628,6 +707,8 @@ ctxt instance current           # name, URL, layer that chose it, token: yes/no
 
 The selection is persisted to `$XDG_DATA_HOME/contexthelp/run/current-instance`.
 Tokens are never printed; `list` and `current` only say whether one is attached.
+A password or `token=` parameter inside a URL (or a local instance's
+connection string) prints masked, as `****` plus its last 4 characters.
 
 ### Per-call override (not persisted)
 
@@ -674,10 +755,56 @@ Manage registry subscriptions and metadata.
 ```bash
 ctxt registry list
 ctxt registry add <name> <url>
-ctxt registry remove <name>
+ctxt registry delete <name> --confirm-token=<sha>
 ctxt registry info <name>
 ctxt registry sync <name>
+ctxt registry pending [--registry <name>]
+ctxt registry approve <id>... --confirm-token=<sha>
+ctxt registry approve --all --registry <name> --confirm-token=<sha>
+ctxt registry reject <id>...
 ```
+
+`list` shows the cached registry manifests (what `add` and `sync`
+fetched), not the config file's `registries` list; `ctxt config show`
+prints that. `add` fetches and caches a registry's manifest (shown by
+`list`); it does not write the config file. `sync`, `info`, `login` and `delete`
+find a registry by name in the config file's `registries` list, so
+subscribe by adding an entry there (`ctxt config edit`):
+
+```yaml
+registries:
+  - name: uxpatterns
+    url: https://uxpatterns.example.com
+```
+
+`sync` re-fetches the registry's manifest and replaces the cached copy.
+When the manifest advertises `capabilities.entity_sync`, it also pulls
+the entity index (`/entities/index`) into the local entity store; a
+registry that serves steps only is never asked for entities. Entities
+from a registry whose `trust_level` is not `trusted` (unset means
+`untrusted`) are not written; `sync` reports them and still exits 0.
+`--reconcile` applies each registry's `trust_level` the same way: only
+trusted registries' entities take part in reconciliation.
+
+- `untrusted`: the entities wait in the approval queue (`Entities not
+  written from <name>: N pending approval (ctxt registry pending)`).
+  `pending` lists them with an ID, the version, whether the registry's
+  index signature was verified (`verified`, `unsigned`) and when sync
+  first and last saw them. `approve` writes them as a trusted sync
+  would (the registry's `sync_mode`), with metadata `provenance:
+  approved from <name>` on full writes, and takes them off the queue;
+  `reject` takes them off unwritten (the next sync queues them again
+  while the registry still serves them). Nothing is written or dropped
+  when an ID is not queued; a registry that is now `sandboxed` cannot
+  have its queued entities approved. A later sync of a version already
+  approved does not queue it again, and a new version replaces the
+  queued one. `approve` is gated like `delete`: it needs the
+  `--confirm-token` the refusal prints, and `--confirm=yes` alone is
+  refused. `reject` needs no confirmation. `--dry-run` lists what
+  either would touch. Setting `trust_level: trusted` and syncing
+  again also writes them and empties the registry's queue.
+- `sandboxed`: blocked (`N blocked`), never queued: a sandboxed
+  registry never writes to the local graph.
 
 ---
 
@@ -696,41 +823,41 @@ ctxt entity backlink <slug>
 
 ---
 
-## `ctxt secret`
+## `dpkms secret`
 
-Read and write secrets from the configured backend.
+Read and write secrets from the configured backend. ctxt has no secret command.
 
 The active backend is set via `secrets.backend` in the config file. Supported backends: `env`, `keychain`, `age-file`, `1password`, `gh-secrets`. See [secrets-backends](../security/secrets-backends.md) for setup.
 
 ### Commands
 
 ```bash
-ctxt secret get <key>        # Print secret value to stdout
-ctxt secret set <key> <val>  # Store secret in the active backend
-ctxt secret list             # Show active backend and its config
+dpkms secret get <key>       # Print secret value to stdout
+dpkms secret set <key>       # Store a secret read from stdin, --from-file or --prompt
+dpkms secret list            # List keys, or show the backend config when it cannot enumerate
 ```
 
 ### Notes
 
 - `secret get` exits non-zero if the key is not found.
 - `secret set` with the `env` or `age-file` backend fails with a clear error — these backends are read-only.
-- `--output json` is supported for `get` (`{"key":"...","value":"..."}`) and `list`.
-- Passing a secret value on the command line exposes it in shell history. For sensitive values, prefer the backend's native tooling (e.g. `security add-generic-password` for keychain).
+- `--format json` is supported for `get` (`{"key":"...","value":"..."}`) and `list`.
+- `secret set` refuses a value passed as an argument (it would leak into shell history, `ps` and CI logs): pipe it on stdin, or use `--from-file` or `--prompt`.
 
 ### Examples
 
 ```bash
 # Get a secret from the active backend
-ctxt secret get OPENAI_API_KEY
+dpkms secret get OPENAI_API_KEY
 
 # Store a secret (keychain backend required)
-ctxt secret set OPENAI_API_KEY sk-...
+dpkms secret set OPENAI_API_KEY --prompt
 
 # Show which backend is active and its config
-ctxt secret list
+dpkms secret list
 
 # Machine-readable output
-ctxt --output json secret get OPENAI_API_KEY
+dpkms secret get OPENAI_API_KEY --format json
 ```
 
 ---

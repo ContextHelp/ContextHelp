@@ -2,8 +2,13 @@ root = "."
 tmp_dir = ".air"
 
 [build]
-  cmd = "CGO_ENABLED=1 go build -o ./tmp/dpkms ./cmd/dpkms"
-  bin = "./tmp/dpkms serve --config docker/config.yaml --public"
+  # Same CGo + tags as the Makefile and root Dockerfile: without fts5
+  # mattn/go-sqlite3 has no FTS5 module and the migrations fail.
+  cmd = "CGO_ENABLED=1 go build -tags fts5 -o ./tmp/dpkms ./cmd/dpkms"
+  # Extra --config layers, as in the root Dockerfile CMD: server.auth from
+  # the dpkms-auth compose secret, then blob storage and providers from
+  # the dpkms-local one.
+  bin = "./tmp/dpkms serve --config docker/config.docker.yaml --config /run/secrets/dpkms-auth.yaml --config /run/secrets/dpkms-local.yaml"
   include_ext = ["go", "yaml", "sql"]
   exclude_dir  = ["vendor", "web", "docs", "tmp", "bin", ".git"]
   delay        = 500

@@ -21,6 +21,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	httpserver "github.com/ideacrafterslabs/ctxt/internal/server/http"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
@@ -50,11 +51,11 @@ func startFanOutEnv(t *testing.T) *testEnv {
 			MaxHops:      5,
 		})
 	pool.SetFanOut(func(ctx context.Context, objectID string) error {
-		_, err := svc.FanOut(ctx, objectID)
+		_, err := svc.FanOut(sharing.WithViewer(ctx, sharing.Unrestricted), objectID)
 		return err
 	})
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ownerCtx())
 	g, ctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
@@ -66,7 +67,7 @@ func startFanOutEnv(t *testing.T) *testEnv {
 	g.Go(func() error { return pool.Start(ctx) })
 	g.Go(func() error {
 		<-ctx.Done()
-		return httpSrv.Shutdown(context.Background())
+		return httpSrv.Shutdown(ownerCtx())
 	})
 
 	for i := 0; i < 50; i++ {
@@ -82,6 +83,7 @@ func startFanOutEnv(t *testing.T) *testEnv {
 	go func() { done <- g.Wait() }()
 
 	return &testEnv{
+		driver: driver,
 		URL:    "http://" + addr,
 		svc:    svc,
 		cancel: cancel,
@@ -108,7 +110,7 @@ func TestUS0400_FanOutCreatesEdges(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "Alice from Acme discussed the mobile project",
 		Type:     "text",
 		Pipeline: "text.fanout-test",
@@ -119,17 +121,17 @@ func TestUS0400_FanOutCreatesEdges(t *testing.T) {
 	job := waitForJob(t, env.URL, jobID, storage.JobCompleted)
 	require.NotEmpty(t, job.ResultID)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	// Fan-out runs after job completion; poll for reverse edges.
 	var rev []*storage.Edge
 	pollUntil(t, func() bool {
-		rev, _ = env.svc.Store.Edges().ListTo(ctx, "object", job.ResultID)
+		rev, _ = env.driver.Edges().ListTo(ctx, "object", job.ResultID)
 		return len(rev) >= 3
 	})
 
 	// Forward edges: object -> entity (3 from worker + fan-out dedup).
-	fwd, err := env.svc.Store.Edges().ListFrom(ctx, "object", job.ResultID)
+	fwd, err := env.driver.Edges().ListFrom(ctx, "object", job.ResultID)
 	require.NoError(t, err)
 	assert.GreaterOrEqual(t, len(fwd), 3,
 		"should have at least 3 forward edges")
@@ -162,7 +164,7 @@ func TestUS0400_FanOutIdempotent(t *testing.T) {
 	content := "Bob wrote the fan-out design doc"
 
 	// First ingest.
-	jobID1, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID1, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  content,
 		Type:     "text",
 		Pipeline: "text.fanout-idem",
@@ -172,12 +174,12 @@ func TestUS0400_FanOutIdempotent(t *testing.T) {
 	job1 := waitForJob(t, env.URL, jobID1, storage.JobCompleted)
 	require.NotEmpty(t, job1.ResultID)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	// Wait for fan-out to complete.
 	var rev1 []*storage.Edge
 	pollUntil(t, func() bool {
-		rev1, _ = env.svc.Store.Edges().ListTo(ctx, "object", job1.ResultID)
+		rev1, _ = env.driver.Edges().ListTo(ctx, "object", job1.ResultID)
 		return len(rev1) > 0
 	})
 	initialCount := len(rev1)
@@ -186,7 +188,7 @@ func TestUS0400_FanOutIdempotent(t *testing.T) {
 	_, err = env.svc.FanOut(ctx, job1.ResultID)
 	require.NoError(t, err)
 
-	rev2, err := env.svc.Store.Edges().ListTo(ctx, "object", job1.ResultID)
+	rev2, err := env.driver.Edges().ListTo(ctx, "object", job1.ResultID)
 	require.NoError(t, err)
 	assert.Equal(t, initialCount, len(rev2),
 		"second fan-out should not create duplicate edges")
@@ -209,7 +211,7 @@ func TestUS0400_FanOutAuditLog(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "Event sourcing is a powerful pattern",
 		Type:     "text",
 		Pipeline: "text.fanout-audit",
@@ -220,11 +222,11 @@ func TestUS0400_FanOutAuditLog(t *testing.T) {
 	job := waitForJob(t, env.URL, jobID, storage.JobCompleted)
 	require.NotEmpty(t, job.ResultID)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	// Wait for fan-out to complete (runs after job completion).
 	found := pollUntil(t, func() bool {
-		history, err := env.svc.Store.AuditLog().GetObjectHistory(ctx, job.ResultID)
+		history, err := env.driver.AuditLog().GetObjectHistory(ctx, job.ResultID)
 		require.NoError(t, err)
 		for _, entry := range history {
 			if entry.EventType == "fanout.completed" {
@@ -253,7 +255,7 @@ func TestUS0400_NoFanoutFlag(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "Carol should not trigger fan-out",
 		Type:     "text",
 		Pipeline: "text.fanout-skip",
@@ -268,15 +270,15 @@ func TestUS0400_NoFanoutFlag(t *testing.T) {
 	// Brief pause to let any (incorrectly triggered) fan-out finish.
 	time.Sleep(200 * time.Millisecond)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	// Worker still creates forward edges, but fan-out reverse edges should not exist.
-	rev, err := env.svc.Store.Edges().ListTo(ctx, "object", job.ResultID)
+	rev, err := env.driver.Edges().ListTo(ctx, "object", job.ResultID)
 	require.NoError(t, err)
 	assert.Empty(t, rev, "no-fanout should skip reverse edge creation")
 
 	// No audit log entries from fan-out.
-	history, err := env.svc.Store.AuditLog().GetObjectHistory(ctx, job.ResultID)
+	history, err := env.driver.AuditLog().GetObjectHistory(ctx, job.ResultID)
 	require.NoError(t, err)
 	for _, entry := range history {
 		assert.NotEqual(t, "fanout.completed", entry.EventType,
@@ -302,7 +304,7 @@ func TestUS0400_FanOutCompletesInTime(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "Dave completed the widget project",
 		Type:     "text",
 		Pipeline: "text.fanout-time",
@@ -314,10 +316,10 @@ func TestUS0400_FanOutCompletesInTime(t *testing.T) {
 	require.NotEmpty(t, job.ResultID)
 
 	// Verify fan-out completed by checking reverse edges.
-	ctx := context.Background()
+	ctx := ownerCtx()
 	var rev []*storage.Edge
 	pollUntil(t, func() bool {
-		rev, _ = env.svc.Store.Edges().ListTo(ctx, "object", job.ResultID)
+		rev, _ = env.driver.Edges().ListTo(ctx, "object", job.ResultID)
 		return len(rev) >= 2
 	})
 	assert.Len(t, rev, 2)

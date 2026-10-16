@@ -3,15 +3,15 @@
   "actions": [
     {
       "kind": "checkpoint",
-      "target": "wal:/var/folders/x6/lrc3lbzd1gs0wvmn_z_t76780000gn/T/dpkms-12fcc-record/maintenance-preview/data/contexthelp/db.sqlite",
+      "target": "wal:/tmp/dpkms-12fcc-record/maintenance-preview/data/contexthelp/db.sqlite",
       "detail": "PRAGMA wal_checkpoint(TRUNCATE)",
       "count": 0,
       "reversible": true
     },
     {
       "kind": "vacuum",
-      "target": "database:/var/folders/x6/lrc3lbzd1gs0wvmn_z_t76780000gn/T/dpkms-12fcc-record/maintenance-preview/data/contexthelp/db.sqlite",
-      "detail": "VACUUM; 136 pages of 544 KB currently allocated",
+      "target": "database:/tmp/dpkms-12fcc-record/maintenance-preview/data/contexthelp/db.sqlite",
+      "detail": "VACUUM; 138 pages of 552 KB currently allocated",
       "count": 0,
       "reversible": false
     },

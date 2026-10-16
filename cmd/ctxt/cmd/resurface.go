@@ -10,7 +10,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/resurfacing"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 var resurfaceCmd = &cobra.Command{
@@ -94,22 +93,6 @@ func init() {
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-func activeProfileName() string {
-	if cfg != nil && cfg.Profile.Default != "" {
-		return cfg.Profile.Default
-	}
-	return viper.GetString("profile.default")
-}
-
-func activeProfile() (string, config.FocusProfile, bool) {
-	name := activeProfileName()
-	if name == "" || cfg == nil {
-		return "", config.FocusProfile{}, false
-	}
-	p, ok := cfg.Profile.Profiles[name]
-	return name, p, ok
-}
-
 func resurfacingCfg() config.ResurfacingConfig {
 	if cfg != nil {
 		return cfg.Resurfacing
@@ -131,7 +114,7 @@ func runResurfaceShow(cmd *cobra.Command, _ []string) error {
 	}
 	defer cleanup()
 
-	ctx := context.Background()
+	ctx := asOwner(context.Background())
 	rcfg := resurfacingCfg()
 
 	limit, _ := cmd.Flags().GetInt("limit")
@@ -147,7 +130,7 @@ func runResurfaceShow(cmd *cobra.Command, _ []string) error {
 		minScore = rcfg.MinScore
 	}
 
-	profileName := activeProfileName()
+	profileName := activeProfileName(cmd)
 
 	entries, err := svc.ListResurfacing(ctx, profileName, limit, minScore)
 	if err != nil {
@@ -191,22 +174,22 @@ func runResurfaceShow(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-func runResurfaceRefresh(_ *cobra.Command, _ []string) error {
+func runResurfaceRefresh(cmd *cobra.Command, _ []string) error {
 	svc, cleanup, err := newService()
 	if err != nil {
 		return err
 	}
 	defer cleanup()
 
-	ctx := context.Background()
+	ctx := asOwner(context.Background())
 	rcfg := resurfacingCfg()
 
-	profileName, profile, ok := activeProfile()
+	profileName, profile, ok := activeProfile(cmd)
 	if !ok && profileName != "" {
 		return fmt.Errorf("active profile %q not found in config", profileName)
 	}
 
-	job := resurfacing.NewJob(svc.Store, rcfg)
+	job := resurfacing.NewJob(svc.Store(ctx), rcfg)
 	if err := job.RunOnce(ctx, profileName, profile); err != nil {
 		return fmt.Errorf("resurfacing refresh: %w", err)
 	}
@@ -222,7 +205,7 @@ func runResurfaceDismiss(_ *cobra.Command, args []string) error {
 	}
 	defer cleanup()
 
-	ctx := context.Background()
+	ctx := asOwner(context.Background())
 	if err := svc.DismissResurfacing(ctx, args[0]); err != nil {
 		return fmt.Errorf("dismiss: %w", err)
 	}

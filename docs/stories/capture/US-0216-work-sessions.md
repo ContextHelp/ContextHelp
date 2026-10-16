@@ -1,7 +1,6 @@
 ---
 status: paper
 adr: ADR-067
-task: T-0505
 ---
 
 # US-0216: Work Sessions (Temporal Grouping of Captures)
@@ -31,7 +30,7 @@ In v1, sessions are **grouping-only**: no LLM-driven per-session summary. The sc
 
 ### Type + storage
 
-- [ ] `Session` and `AppShare` types added to `pkg/pluginapi/` (stable plugin API)
+- [ ] `Session` and `AppShare` types added to `internal/storage/`
 - [ ] `SessionID string` field added to `KnowledgeObject` (optional; soft-FK)
 - [ ] `sessions` table created via migration (SQLite + Postgres parity)
 - [ ] `objects.session_id` column added; soft-FK index
@@ -161,7 +160,7 @@ Items (34):
 - [ ] Take dpkms offline; capture 50 events; bring dpkms back; verify all 50 KOs have correct session_id (soft-FK works in both arrival orders)
 - [ ] `ctxt session list --since today` shows expected sessions with correct end_reason
 - [ ] `ctxt compose --session <id>` returns content from only that session's KOs
-- [ ] Plugin reads `KnowledgeObject.SessionID`; backwards-compat (empty string for pre-Phase-4 KOs) works
+- [ ] API clients read `KnowledgeObject.SessionID`; backwards-compat (empty string for pre-Phase-4 KOs) works
 - [ ] All bus events from ADR-067 §Decision fire
 
 ---
@@ -178,7 +177,7 @@ Items (34):
 ## Sprint
 
 **Skeleton 9.5 — Ambient Capture + Sessions + Agent-Native MCP**
-Implements ADR-067 — see `tlc track show ambient-capture`, task **T-0505**.
+Implements ADR-067.
 
 ---
 

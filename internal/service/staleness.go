@@ -38,7 +38,7 @@ func CurrentVersionForFamily(reg pipeline.Registry, name string) (int, bool) {
 // countStaleCandidates returns the number of candidates whose `Object.Pipeline`
 // parses to a version strictly older than the registry's currently-installed
 // version for the same family. Candidates with an unparseable pipeline value
-// (e.g. legacy malformed strings, plugins that pre-date the @vN convention)
+// (e.g. legacy malformed strings, custom pipelines without an @vN suffix)
 // are not counted — they're a different problem than staleness.
 //
 // Cached per family within the call so a result set with N candidates from

@@ -193,14 +193,7 @@ func TestUS0106_MultipleJobsUniqueIDs(t *testing.T) {
 			"source":  "e2e-test",
 		})
 
-		resp, err := gohttp.Post(env.URL+"/api/v1/pipelines/enqueue", "application/json", bytes.NewReader(body))
-		require.NoError(t, err)
-		defer resp.Body.Close()
-		require.Equal(t, gohttp.StatusAccepted, resp.StatusCode)
-
-		var result map[string]string
-		require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
-		jobID := result["job_id"]
+		jobID := postForJobID(t, env.URL+"/api/v1/pipelines/enqueue", body)
 		require.NotEmpty(t, jobID)
 		ids[jobID] = true
 	}

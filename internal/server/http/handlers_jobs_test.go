@@ -1,7 +1,7 @@
 package http
 
 import (
-	"context"
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"testing"
@@ -15,14 +15,14 @@ import (
 func seedJob(t *testing.T, ts *testServerBundle, id string) {
 	t.Helper()
 	now := time.Now().Truncate(time.Second)
-	ts.svc.Store.Jobs().Create(context.Background(), &storage.Job{
+	ts.svc.Store(ownerCtx()).Jobs().Create(ownerCtx(), &storage.Job{
 		ID: id, Type: "ingest:text", Status: storage.JobPending,
 		Payload: "content", Pipeline: "text.short", Source: "test",
 		MaxRetries: 3, CreatedAt: now, UpdatedAt: now,
 	})
 }
 
-// TestListJobsEmptyCollection ensures empty DB returns [] not null (T-0219).
+// TestListJobsEmptyCollection ensures empty DB returns [] not null.
 func TestListJobsEmptyCollection(t *testing.T) {
 	ts := newTestServerBundle(t)
 	defer ts.Close()
@@ -105,11 +105,11 @@ func TestRetryJob(t *testing.T) {
 	defer ts.Close()
 
 	seedJob(t, ts, "job-1")
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	// Acquire and fail the job.
-	ts.svc.Store.Jobs().AcquireNext(ctx)
-	ts.svc.Store.Jobs().Fail(ctx, "job-1", "broke")
+	ts.svc.Store(ownerCtx()).Jobs().AcquireNext(ctx)
+	ts.svc.Store(ownerCtx()).Jobs().Fail(ctx, "job-1", "broke")
 
 	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/v1/jobs/job-1/retry", nil)
 	resp, err := http.DefaultClient.Do(req)
@@ -153,13 +153,13 @@ func TestRetryJobMaxRetriesExceeded(t *testing.T) {
 	defer ts.Close()
 
 	seedJob(t, ts, "job-maxretry")
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	// MaxRetries is 3. Acquire, fail, retry 3 times to exhaust retries.
 	for i := 0; i < 3; i++ {
-		ts.svc.Store.Jobs().AcquireNext(ctx)
-		ts.svc.Store.Jobs().Fail(ctx, "job-maxretry", "error")
-		err := ts.svc.Store.Jobs().Retry(ctx, "job-maxretry")
+		ts.svc.Store(ownerCtx()).Jobs().AcquireNext(ctx)
+		ts.svc.Store(ownerCtx()).Jobs().Fail(ctx, "job-maxretry", "error")
+		err := ts.svc.Store(ownerCtx()).Jobs().Retry(ctx, "job-maxretry")
 		require.NoError(t, err, "retry %d should succeed", i+1)
 	}
 
@@ -185,11 +185,11 @@ func TestRetryJobReturnsUpdatedJob(t *testing.T) {
 	defer ts.Close()
 
 	seedJob(t, ts, "job-updated")
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	// Acquire and fail the job so it can be retried.
-	ts.svc.Store.Jobs().AcquireNext(ctx)
-	ts.svc.Store.Jobs().Fail(ctx, "job-updated", "something broke")
+	ts.svc.Store(ownerCtx()).Jobs().AcquireNext(ctx)
+	ts.svc.Store(ownerCtx()).Jobs().Fail(ctx, "job-updated", "something broke")
 
 	req, err := http.NewRequest(http.MethodPost, ts.URL+"/api/v1/jobs/job-updated/retry", nil)
 	require.NoError(t, err)
@@ -205,4 +205,75 @@ func TestRetryJobReturnsUpdatedJob(t *testing.T) {
 	assert.Equal(t, "job-updated", job.ID)
 	assert.Equal(t, storage.JobPending, job.Status)
 	assert.Equal(t, 1, job.RetryCount, "retry count should be incremented to 1")
+}
+
+func postCancel(t *testing.T, ts *testServerBundle, id string) (*http.Response, []byte) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, ts.URL+"/api/v1/jobs/"+id+"/cancel", nil)
+	require.NoError(t, err)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	var buf bytes.Buffer
+	_, err = buf.ReadFrom(resp.Body)
+	require.NoError(t, err)
+	return resp, buf.Bytes()
+}
+
+// A pending or running job is cancelled and the cancelled job returned.
+func TestCancelJob(t *testing.T) {
+	ts := newTestServerBundle(t)
+	defer ts.Close()
+
+	seedJob(t, ts, "job-pending")
+	seedJob(t, ts, "job-running")
+	_, err := ts.svc.Store(ownerCtx()).Jobs().AcquireNext(ownerCtx())
+	require.NoError(t, err)
+
+	for _, id := range []string{"job-pending", "job-running"} {
+		resp, body := postCancel(t, ts, id)
+		require.Equal(t, http.StatusOK, resp.StatusCode, string(body))
+		var job storage.Job
+		require.NoError(t, json.Unmarshal(body, &job))
+		assert.Equal(t, id, job.ID)
+		assert.Equal(t, storage.JobCancelled, job.Status)
+
+		stored, err := ts.svc.GetJob(ownerCtx(), id)
+		require.NoError(t, err)
+		assert.Equal(t, storage.JobCancelled, stored.Status)
+	}
+}
+
+// A finished job cannot be cancelled: 409 CONFLICT, the job untouched.
+func TestCancelJobFinished(t *testing.T) {
+	ts := newTestServerBundle(t)
+	defer ts.Close()
+
+	ctx := ownerCtx()
+	seedJob(t, ts, "job-done")
+	_, err := ts.svc.Store(ownerCtx()).Jobs().AcquireNext(ctx)
+	require.NoError(t, err)
+	require.NoError(t, ts.svc.Store(ownerCtx()).Jobs().Complete(ctx, "job-done", "obj-1"))
+
+	resp, body := postCancel(t, ts, "job-done")
+	assert.Equal(t, http.StatusConflict, resp.StatusCode, string(body))
+	var env ErrorEnvelope
+	require.NoError(t, json.Unmarshal(body, &env))
+	assert.Equal(t, "CONFLICT", env.Error.Code)
+	assert.Contains(t, env.Error.Message, "completed")
+
+	stored, err := ts.svc.GetJob(ctx, "job-done")
+	require.NoError(t, err)
+	assert.Equal(t, storage.JobCompleted, stored.Status)
+}
+
+func TestCancelJobNotFound(t *testing.T) {
+	ts := newTestServerBundle(t)
+	defer ts.Close()
+
+	resp, body := postCancel(t, ts, "nonexistent-job")
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode, string(body))
+	var env ErrorEnvelope
+	require.NoError(t, json.Unmarshal(body, &env))
+	assert.Equal(t, "NOT_FOUND", env.Error.Code)
 }

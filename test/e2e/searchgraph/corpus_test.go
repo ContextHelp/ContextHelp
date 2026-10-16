@@ -3,13 +3,12 @@
 package searchgraph_test
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
@@ -17,7 +16,9 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob/local"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
@@ -41,7 +42,8 @@ type fixtureObject struct {
 	embedding []float32
 }
 
-// fixtureLink is one `ctxt link create` call.
+// fixtureLink is one typed link, as `ctxt link create` asks dpkms to
+// store it (POST /api/v1/edges).
 type fixtureLink struct{ from, typ, to string }
 
 // The corpus is shaped so one query exercises every graph feature:
@@ -114,34 +116,20 @@ type corpus struct {
 // seedCorpus builds the fixture database. Objects go in through the
 // service's raw analyze path, what `ctxt analyze --raw --mention` asks
 // dpkms to run (ctxt itself never writes a store), so each object keeps
-// its entity mentions. `link create` then stores each typed link with its
-// inverse through the binary. The default model and its vectors go in
-// through the storage driver: registering through the CLI probes a live
-// provider, and vectors are written by the dpkms migration job.
-func seedCorpus(bin, dir string) (*corpus, error) {
+// its entity mentions. Each typed link then goes in with its inverse
+// through the service's link path, what `ctxt link create` asks dpkms to
+// run. The default model and its vectors go in through the storage
+// driver: registering through the CLI probes a live provider, and
+// vectors are written by the dpkms migration job.
+func seedCorpus(dir string) (*corpus, error) {
 	h, err := newHome(dir, closedURL(), closedURL())
 	if err != nil {
 		return nil, err
-	}
-	run := func(args ...string) (string, error) {
-		cmd := exec.Command(bin, args...)
-		cmd.Env = h.environ()
-		var out, errb bytes.Buffer
-		cmd.Stdout, cmd.Stderr = &out, &errb
-		if err := cmd.Run(); err != nil {
-			return "", fmt.Errorf("ctxt %s: %w\nstdout: %s\nstderr: %s", strings.Join(args, " "), err, out.String(), errb.String())
-		}
-		return out.String(), nil
 	}
 
 	c := &corpus{db: h.db, ids: map[string]string{}}
 	if err := storeObjects(c); err != nil {
 		return nil, err
-	}
-	for _, l := range fixtureLinks {
-		if _, err := run("link", "create", c.ids[l.from], c.ids[l.to], "--type", l.typ); err != nil {
-			return nil, err
-		}
 	}
 	if err := storeEmbeddings(c); err != nil {
 		return nil, err
@@ -149,15 +137,26 @@ func seedCorpus(bin, dir string) (*corpus, error) {
 	return c, nil
 }
 
+// corpusBlobs is the corpus's blob store, beside its database.
+func corpusBlobs(c *corpus) storage.BlobStore {
+	bs, err := local.New(filepath.Join(filepath.Dir(c.db), "blobs"))
+	if err != nil {
+		panic(err)
+	}
+	return bs
+}
+
 // storeObjects stores each fixture object through the service's raw
 // analyze path as `ctxt analyze --raw` stored it (source "argument"),
-// with its --mention value split as the CLI splits it.
+// with its --mention value split as the CLI splits it, activates it (see
+// activate), then stores each fixture link through the service's link
+// path.
 func storeObjects(c *corpus) error {
-	ctx := context.Background()
+	ctx := sharing.WithViewer(context.Background(), sharing.Unrestricted)
 	if err := os.MkdirAll(filepath.Dir(c.db), 0o700); err != nil {
 		return err
 	}
-	d, err := storageutil.NewDriver("sqlite", c.db)
+	d, err := storageutil.NewDriver("sqlite", c.db, corpusBlobs(c))
 	if err != nil {
 		return err
 	}
@@ -174,16 +173,33 @@ func storeObjects(c *corpus) error {
 		if err != nil {
 			return fmt.Errorf("store %s: %w", o.alias, err)
 		}
+		if err := activate(ctx, d, id); err != nil {
+			return fmt.Errorf("store %s: %w", o.alias, err)
+		}
 		c.ids[o.alias] = id
 	}
+	for _, l := range fixtureLinks {
+		if _, err := svc.CreateLink(ctx, service.LinkRequest{Source: c.ids[l.from], Target: c.ids[l.to], Type: l.typ}); err != nil {
+			return fmt.Errorf("link %s -[%s]-> %s: %w", l.from, l.typ, l.to, err)
+		}
+	}
 	return nil
+}
+
+// activate moves an object the raw analyze path stored from raw to
+// active. Search returns active objects only, and a raw object is one
+// still waiting for enrichment (`ctxt inbox --raw`), so a raw fixture
+// would never match. The fixture stands for enriched knowledge; the raw
+// path is only how it gets in without a pipeline run.
+func activate(ctx context.Context, d storage.StorageDriver, id string) error {
+	return d.Objects().TransitionStatus(ctx, id, "raw", storage.ObjectStatusActive, time.Now().Truncate(time.Second))
 }
 
 // storeEmbeddings registers fixtureModel as the default, builds its index
 // and writes each fixture embedding as its object's single chunk.
 func storeEmbeddings(c *corpus) error {
-	ctx := context.Background()
-	d, err := storageutil.NewDriver("sqlite", c.db)
+	ctx := sharing.WithViewer(context.Background(), sharing.Unrestricted)
+	d, err := storageutil.NewDriver("sqlite", c.db, corpusBlobs(c))
 	if err != nil {
 		return err
 	}

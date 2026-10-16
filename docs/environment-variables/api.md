@@ -1,144 +1,107 @@
 # API Environment Variables
 
-REST and gRPC API server configuration.
+Listener ports of `dpkms serve`: REST (HTTP), gRPC and the browser-extension
+cookie bridge.
 
 ---
 
-## REST API
+## Precedence
 
-### API_HOST
-**Type:** string  
-**Default:** `localhost`
+Each port resolves from the first source that sets it:
 
-Bind address for REST API.
+1. Flag: `--port`, `--grpc-port`, `--cookie-bridge-port`
+2. `-c key=value` override
+3. Env var: `CH_SERVER_PORT`, `CH_GRPC_PORT`, `CH_COOKIE_BRIDGE_PORT`
+4. Config file: `server.port`, `server.grpc_port`, `server.cookie_bridge_port`
+5. Built-in default: `8080`, `9090`, `9377`
 
-```bash
-API_HOST=0.0.0.0  # Listen on all interfaces
-```
-
-### API_PORT
-**Type:** integer  
-**Default:** `8080`
-
-REST API port.
-
-```bash
-API_PORT=8080
-```
-
-### API_READ_TIMEOUT
-**Type:** duration  
-**Default:** `30s`
-
-Request read timeout.
-
-```bash
-API_READ_TIMEOUT=60s
-```
-
-### API_WRITE_TIMEOUT
-**Type:** duration  
-**Default:** `30s`
-
-Response write timeout.
-
-```bash
-API_WRITE_TIMEOUT=60s
-```
+A port set by any of sources 1-4 is exact: serve binds that port or exits
+non-zero if it is busy. Only an untouched built-in default falls back to an
+OS-assigned port when busy. `0` asks for an OS-assigned port. An empty env
+var counts as unset.
 
 ---
 
-## gRPC API
+## Ports
 
-### GRPC_PORT
-**Type:** integer  
-**Default:** `9090`
+### CH_SERVER_PORT
 
-gRPC server port.
+- **Type:** integer
+- **Default:** `8080`
+- **Config key:** `server.port`
+- **Flag:** `--port`
+
+REST (HTTP) API port.
 
 ```bash
-GRPC_PORT=9090
+CH_SERVER_PORT=8081
 ```
 
-### GRPC_MAX_RECV_SIZE
-**Type:** integer (bytes)  
-**Default:** `16777216` (16MB)
+### CH_GRPC_PORT
 
-Maximum message size for receiving.
+- **Type:** integer
+- **Default:** `9090`
+- **Config key:** `server.grpc_port`
+- **Flag:** `--grpc-port`
+
+gRPC API port.
 
 ```bash
-GRPC_MAX_RECV_SIZE=33554432  # 32MB
+CH_GRPC_PORT=9091
+```
+
+### CH_COOKIE_BRIDGE_PORT
+
+- **Type:** integer
+- **Default:** `9377`
+- **Config key:** `server.cookie_bridge_port`
+- **Flag:** `--cookie-bridge-port`
+
+Browser-extension cookie bridge port. Always binds `127.0.0.1`, whatever the
+access class. The browser extension connects to `9377`; change it only if
+the extension is pointed elsewhere.
+
+```bash
+CH_COOKIE_BRIDGE_PORT=9378
 ```
 
 ---
 
-## CORS
+## Bind address
 
-### CORS_ALLOWED_ORIGINS
-**Type:** comma-separated strings  
-**Default:** `http://localhost:3000,http://localhost:8080`
+No env var. The REST and gRPC listeners bind by access class
+(`server.access` in the config file):
 
-Allowed CORS origins.
-
-```bash
-CORS_ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com
-```
-
-### CORS_ALLOWED_METHODS
-**Type:** comma-separated strings  
-**Default:** `GET,POST,PUT,DELETE,OPTIONS`
-
-Allowed HTTP methods.
-
-```bash
-CORS_ALLOWED_METHODS=GET,POST,PUT,DELETE,OPTIONS
-```
-
-### CORS_ALLOWED_HEADERS
-**Type:** comma-separated strings  
-**Default:** `Content-Type,Authorization`
-
-Allowed request headers.
-
-```bash
-CORS_ALLOWED_HEADERS=Content-Type,Authorization,X-Request-ID
-```
+| `server.access` | Bind address |
+|-----------------|--------------|
+| `private` (default) | `127.0.0.1` |
+| `protected`, `public` | `0.0.0.0` (inbound auth required) |
 
 ---
 
 ## Examples
 
-### Development
+### Second local instance
+
 ```bash
-API_HOST=localhost
-API_PORT=8080
-API_READ_TIMEOUT=30s
-API_WRITE_TIMEOUT=30s
-
-GRPC_PORT=9090
-
-CORS_ALLOWED_ORIGINS=http://localhost:3000
+CH_SERVER_PORT=8081
+CH_GRPC_PORT=9091
+CH_COOKIE_BRIDGE_PORT=9378
 ```
 
-### Production
+### Throwaway instance (every listener OS-assigned)
+
 ```bash
-API_HOST=0.0.0.0
-API_PORT=8080
-API_READ_TIMEOUT=60s
-API_WRITE_TIMEOUT=60s
-
-GRPC_PORT=9090
-GRPC_MAX_RECV_SIZE=33554432
-
-CORS_ALLOWED_ORIGINS=https://app.example.com
-CORS_ALLOWED_METHODS=GET,POST,PUT,DELETE,OPTIONS
-CORS_ALLOWED_HEADERS=Content-Type,Authorization,X-Request-ID,X-Trace-ID
+CH_SERVER_PORT=0
+CH_GRPC_PORT=0
+CH_COOKIE_BRIDGE_PORT=0
 ```
 
 ---
 
 ## Related
 
+- [../manual/reference/config-and-permissions.md](../manual/reference/config-and-permissions.md) — ports table (flag, env, config key)
 - [../api/api-rest.md](../api/api-rest.md) — REST API reference
 - [../api/api-grpc.md](../api/api-grpc.md) — gRPC API reference
 - [../scaling.md](../scaling.md#network--api-scaling) — API scaling

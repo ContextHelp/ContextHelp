@@ -116,7 +116,7 @@ func runResolve(cmd *cobra.Command, args []string) error {
 	// Flags(). isJSONOutput() additionally honors the viper-bound value
 	// set by the --output shim.
 	format, _ := cmd.Flags().GetString("format") //nolint:errcheck // flag is registered by kit; absence yields "" and the markdown default
-	wantJSON := format == "json" || isJSONOutput()
+	wantJSON := format == formatJSON || isJSONOutput()
 
 	// Reject an unsupported format before the lookup, not after it.
 	// The format is a property of the invocation, so it is wrong the
@@ -242,7 +242,7 @@ func runResolve(cmd *cobra.Command, args []string) error {
 // the viper-bound --output shim.
 func isSupportedResolveFormat(format string) bool {
 	switch format {
-	case "", "table", "markdown", "md":
+	case "", "table", formatMarkdown, "md":
 		return true
 	}
 	return false

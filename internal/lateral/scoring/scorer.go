@@ -1,3 +1,5 @@
+// Package scoring blends per-signal sub-scores into one 0..1 relevance
+// score for a lateral candidate against the active context.
 package scoring
 
 import (

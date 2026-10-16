@@ -99,7 +99,7 @@ func runRemindSet(cmd *cobra.Command, args []string) error {
 	}
 	defer cleanup()
 
-	ctx := context.Background()
+	ctx := asOwner(context.Background())
 	id := args[0]
 	expr := strings.Join(args[1:], " ")
 	at, err := remind.ParseTime(expr, time.Now())
@@ -123,7 +123,7 @@ func runRemindClear(cmd *cobra.Command, args []string) error {
 	}
 	defer cleanup()
 
-	ctx := context.Background()
+	ctx := asOwner(context.Background())
 	id := args[0]
 	if err := svc.ClearObjectReminder(ctx, id); err != nil {
 		return fmt.Errorf("clear reminder: %w", err)
@@ -139,7 +139,7 @@ func runRemindList(cmd *cobra.Command, args []string) error {
 	}
 	defer cleanup()
 
-	ctx := context.Background()
+	ctx := asOwner(context.Background())
 	objects, err := svc.ListPendingReminders(ctx)
 	if err != nil {
 		return fmt.Errorf("list reminders: %w", err)
@@ -160,7 +160,7 @@ func runRemindList(cmd *cobra.Command, args []string) error {
 	now := time.Now()
 	fmt.Printf("Reminders (%d)\n\n", len(objects))
 	headers := []string{"ID", "Title", "Remind At", "Status"}
-	var rows [][]string
+	rows := make([][]string, 0, len(objects))
 	for _, obj := range objects {
 		title := objectTitle(obj)
 		remindAt := obj.RemindAt.Format("2006-01-02 15:04 MST")

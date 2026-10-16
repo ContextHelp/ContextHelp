@@ -11,13 +11,14 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/indexsig"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // A stale signature at startup queues one re-projection job and says so;
 // a matching one queues nothing.
 func TestScheduleReproject_StartupOutput(t *testing.T) {
 	ctx := context.Background()
-	d, err := sqlite.New(filepath.Join(t.TempDir(), "d.db"))
+	d, err := sqlite.New(filepath.Join(t.TempDir(), "d.db"), storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatal(err)
 	}

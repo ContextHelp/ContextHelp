@@ -30,7 +30,7 @@ Identify candidate content:
 
 ```bash
 ctxt find "checkout redesign decisions" --limit 10
-ctxt list --tag checkout,decision --after 2026-02-01 --limit 20
+ctxt list --q "tag=in=(checkout,decision)" --limit 20
 ```
 
 Inspect key objects:

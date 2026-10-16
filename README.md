@@ -59,9 +59,9 @@ ContextHelp is built as two independent but cooperating packages:
 > [!NOTE]
 > Detailed installation instructions are in [INSTALL.md](./INSTALL.md).
 
-**Docker (Local Dev):**
+**Docker (Local Dev):** needs `docker/.env.dev`, `docker/dpkms-auth.yaml` and `docker/dpkms-local.yaml` first; see [docs/deployment/docker-dev.md](./docs/deployment/docker-dev.md).
 ```bash
-docker compose --profile dev up
+docker compose --env-file docker/.env.dev --profile dev up
 ```
 
 **Build from source:**
@@ -76,9 +76,8 @@ task build
 
 We've adopted high standards for contributions to ensure quality and interoperability:
 
-- **Manifest:** Every contribution in `extensions/`, `plugins/`, or `skills/` must include a `manifest.json` file. See [.github/manifest.schema.json](./.github/manifest.schema.json) for the specification.
+- **Catalog entry:** Every contribution in `extensions/` or `skills/` must include a `catalog.json` file. See [docs/catalog-spec.md](docs/catalog-spec.md) and [.github/catalog.schema.json](./.github/catalog.schema.json).
 - **Agent Ready:** We use [CLAUDE.md](./CLAUDE.md) to maintain context for AI coding tools.
 - **Visuals:** Use GitHub alerts and clear headers in all documentation.
 
 Refer to [CONTRIBUTING.md](./CONTRIBUTING.md) for the full workflow.
-

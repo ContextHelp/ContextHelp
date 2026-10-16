@@ -42,7 +42,7 @@ func TestUS0058_HighImpactDecisionPreserved(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	env.svc.Pipes.Upsert("impact.high", &pipeline.Pipeline{
 		PipelineName: "impact.high",
@@ -85,7 +85,7 @@ func TestUS0058_MultipleImpactLevelsPreserved(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	env.svc.Pipes.Upsert("impact.mixed", &pipeline.Pipeline{
 		PipelineName: "impact.mixed",
@@ -130,7 +130,7 @@ func TestUS0058_ImpactAssessmentCompositionIncludesImpactLevels(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	env.svc.Pipes.Upsert("impact.assess", &pipeline.Pipeline{
 		PipelineName: "impact.assess",
@@ -186,7 +186,7 @@ func TestUS0058_NoDecisionsInObjectProducesEmptyImpactList(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	env.svc.Pipes.Upsert("impact.nodecisions", &pipeline.Pipeline{
 		PipelineName: "impact.nodecisions",

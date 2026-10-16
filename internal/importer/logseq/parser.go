@@ -396,7 +396,7 @@ func extractInlineProperties(content string) map[string]string {
 // stripProperties removes key:: value lines from block content.
 func stripProperties(content string) string {
 	lines := strings.Split(content, "\n")
-	var out []string
+	out := make([]string, 0, len(lines))
 	for _, line := range lines {
 		if propLineRe.MatchString(strings.TrimSpace(line)) {
 			continue
@@ -416,8 +416,9 @@ func extractPageProperties(blocks []*Block) map[string]string {
 
 func extractPageRefs(raw string) []string {
 	seen := map[string]struct{}{}
-	var out []string
-	for _, m := range pageRefRe.FindAllStringSubmatch(raw, -1) {
+	matches := pageRefRe.FindAllStringSubmatch(raw, -1)
+	out := make([]string, 0, len(matches))
+	for _, m := range matches {
 		ref := strings.TrimSpace(m[1])
 		if ref == "" {
 			continue

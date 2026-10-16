@@ -68,7 +68,7 @@ func TestRouterUpgradeHeaderBehindAuth(t *testing.T) {
 	m := upgrade.NewManager("")
 	require.NoError(t, m.Start(upgrade.BucketReindexAuto, 10))
 	r := NewRouterWithConfig(newScopeTestService(t), RouterConfig{
-		Auth:   testProvider(t),
+		Auth:   testChain(t),
 		Probes: HealthzProbes{Upgrade: managerProbe(m)},
 	})
 
@@ -82,7 +82,7 @@ func TestRouterUpgradeHeaderBehindAuth(t *testing.T) {
 		return rec
 	}
 
-	ok := call("tok-valid")
+	ok := call("tok-valid-fixture-0123456789abcdef0123456789")
 	assert.Equal(t, http.StatusNotFound, ok.Code)
 	assert.NotEmpty(t, ok.Header().Get(upgrade.HeaderName), "authenticated API response must carry the header")
 

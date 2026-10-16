@@ -80,8 +80,8 @@ func TestStartDpkmsIsHermetic(t *testing.T) {
 	t.Setenv("CTXT_INSTANCE", "inherited-instance")
 	d := StartDpkms(t)
 
-	for _, port := range []int{d.Instance.Port, d.Instance.GRPCPort} {
-		if port == 0 || port == 8080 || port == 8081 || port == 9090 || port == 9091 {
+	for _, port := range []int{d.Instance.Port, d.Instance.GRPCPort, d.Instance.CookieBridgePort} {
+		if port == 0 || port == 8080 || port == 8081 || port == 9090 || port == 9091 || port == 9377 {
 			t.Errorf("instance port %d: want an ephemeral port", port)
 		}
 	}

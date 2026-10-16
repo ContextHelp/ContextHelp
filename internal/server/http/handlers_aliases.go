@@ -1,8 +1,8 @@
 package http
 
 import (
-	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -10,32 +10,29 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
-// aliasOperator is the minimal interface the handlers need from the aliasing plugin.
-// Avoids importing the plugin module directly from the HTTP package.
-type aliasOperator interface {
-	SetAliasOp(ctx context.Context, alias, objectID, scope, profile string) error
-	ListAliases(ctx context.Context, objectID string) ([]*storage.Alias, error)
-	RemoveAlias(ctx context.Context, alias, scope, profile string) error
-	ResolveID(ctx context.Context, idOrAlias, profile string) (string, error)
+// writeAliasError maps an alias service error to its response: 400 for a
+// bad scope/profile pair, 404 for a missing alias or target object, 409 for
+// a taken key, 501 for a backend without an alias store, 500 otherwise.
+func writeAliasError(w http.ResponseWriter, err error, notFound string) {
+	switch {
+	case errors.Is(err, service.ErrInvalidAlias):
+		WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
+	case errors.Is(err, service.ErrAliasExists):
+		WriteError(w, http.StatusConflict, "CONFLICT", err.Error())
+	case errors.Is(err, storage.ErrNotImplemented):
+		WriteError(w, http.StatusNotImplemented, "NOT_IMPLEMENTED",
+			"aliases are not supported by this storage backend")
+	case errors.Is(err, storage.ErrNotFound):
+		WriteError(w, http.StatusNotFound, CodeNotFound, notFound)
+	default:
+		WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+	}
 }
 
-// getAliasOperator retrieves the aliasing plugin from the service's plugin registry.
-func getAliasOperator(svc *service.Service) aliasOperator {
-	if svc.PluginRegistry == nil {
-		return nil
-	}
-	for _, ar := range svc.PluginRegistry.AliasResolvers() {
-		if ap, ok := ar.(aliasOperator); ok {
-			return ap
-		}
-	}
-	return nil
-}
-
-// CreateAlias handles POST /api/v1/aliases
+// CreateAlias handles POST /api/v1/aliases: stores alias → object_id and
+// answers 201 with the stored record.
 func CreateAlias(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
 		var req struct {
 			Alias    string `json:"alias"`
 			ObjectID string `json:"object_id"`
@@ -46,82 +43,50 @@ func CreateAlias(svc *service.Service) http.HandlerFunc {
 			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid JSON")
 			return
 		}
-		if req.Alias == "" || req.ObjectID == "" {
-			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "alias and object_id are required")
+		a, err := svc.CreateAlias(r.Context(), req.Alias, req.ObjectID, req.Scope, req.Profile)
+		if err != nil {
+			writeAliasError(w, err, "object not found")
 			return
 		}
-		if req.Scope == "" {
-			req.Scope = "global"
-		}
-		ap := getAliasOperator(svc)
-		if ap != nil {
-			if err := ap.SetAliasOp(ctx, req.Alias, req.ObjectID, req.Scope, req.Profile); err != nil {
-				WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
-				return
-			}
-		}
-		WriteJSON(w, http.StatusCreated, map[string]string{"alias": req.Alias, "object_id": req.ObjectID})
+		WriteJSON(w, http.StatusCreated, a)
 	}
 }
 
 // ListAliases handles GET /api/v1/aliases
 func ListAliases(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
-		objectID := r.URL.Query().Get("object_id")
-		ap := getAliasOperator(svc)
-		if ap != nil {
-			aliases, err := ap.ListAliases(ctx, objectID)
-			if err != nil {
-				WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
-				return
-			}
-			if aliases == nil {
-				aliases = []*storage.Alias{}
-			}
-			WriteJSON(w, http.StatusOK, aliases)
+		aliases, err := svc.ListAliases(r.Context(), r.URL.Query().Get("object_id"))
+		if err != nil {
+			writeAliasError(w, err, "alias not found")
 			return
 		}
-		WriteJSON(w, http.StatusOK, []*storage.Alias{})
+		if aliases == nil {
+			aliases = []*storage.Alias{}
+		}
+		WriteJSON(w, http.StatusOK, aliases)
 	}
 }
 
 // ResolveAlias handles GET /api/v1/aliases/{alias}
 func ResolveAlias(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
 		alias := chi.URLParam(r, "alias")
-		profile := r.URL.Query().Get("profile")
-		ap := getAliasOperator(svc)
-		if ap != nil {
-			id, err := ap.ResolveID(ctx, alias, profile)
-			if err != nil || id == alias {
-				WriteError(w, http.StatusNotFound, "NOT_FOUND", "alias not found")
-				return
-			}
-			WriteJSON(w, http.StatusOK, map[string]string{"alias": alias, "object_id": id})
+		id, err := svc.ResolveAlias(r.Context(), alias, r.URL.Query().Get("profile"))
+		if err != nil {
+			writeAliasError(w, err, "alias not found")
 			return
 		}
-		WriteError(w, http.StatusNotFound, "NOT_FOUND", "aliasing plugin not configured")
+		WriteJSON(w, http.StatusOK, map[string]string{"alias": alias, "object_id": id})
 	}
 }
 
 // DeleteAlias handles DELETE /api/v1/aliases/{alias}
 func DeleteAlias(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
-		alias := chi.URLParam(r, "alias")
-		scope := r.URL.Query().Get("scope")
-		profile := r.URL.Query().Get("profile")
-		if scope == "" {
-			scope = "global"
-		}
-		ap := getAliasOperator(svc)
-		if ap != nil {
-			if err := ap.RemoveAlias(ctx, alias, scope, profile); err != nil {
-				WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
-				return
-			}
+		q := r.URL.Query()
+		if err := svc.DeleteAlias(r.Context(), chi.URLParam(r, "alias"), q.Get("scope"), q.Get("profile")); err != nil {
+			writeAliasError(w, err, "alias not found")
+			return
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}

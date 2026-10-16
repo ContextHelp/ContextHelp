@@ -75,15 +75,8 @@ func (s *Strategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _ latera
 	host := strings.ToLower(u.Hostname())
 	apex := "https://www.youtube.com"
 
-	// youtu.be/<id> → video shortlink. Extract only the first non-empty
-	// path segment so trailing segments (e.g. `youtu.be/<id>/extra`) or
-	// trailing slashes don't bleed into the canonical /watch?v= URL.
 	if host == "youtu.be" {
-		segs := pathSegments(u.Path)
-		if len(segs) == 0 || segs[0] == "" {
-			return nil, nil
-		}
-		return s.videoCandidates(ctx, apex, segs[0]), nil
+		return s.shortlinkCandidates(ctx, apex, u.Path), nil
 	}
 
 	q := u.Query()
@@ -104,17 +97,7 @@ func (s *Strategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _ latera
 		}
 		return out, nil
 	case len(parts) >= 1 && parts[0] == "playlist":
-		listID := q.Get("list")
-		if listID == "" {
-			return nil, nil
-		}
-		return []lateral.Candidate{{
-			URL:           apex + "/playlist?list=" + listID,
-			CandidateType: CandidateTypePlaylist,
-			Strategy:      ID,
-			IdentityKey:   identitykey.Build("youtube", identitykey.EntityPlaylist, listID),
-			Preview:       map[string]any{"playlist_id": listID},
-		}}, nil
+		return playlistCandidates(apex, q.Get("list")), nil
 	case len(parts) >= 1 && strings.HasPrefix(parts[0], "@"):
 		handle := strings.TrimPrefix(parts[0], "@")
 		return s.channelCandidates(ctx, apex, "handle", handle), nil
@@ -143,6 +126,32 @@ func (s *Strategy) Probe(ctx context.Context, ev lateral.CapturedEvent, _ latera
 		}, nil
 	}
 	return nil, nil
+}
+
+// shortlinkCandidates resolves a youtu.be/<id> video shortlink. Only the
+// first path segment is the ID, so trailing segments (youtu.be/<id>/extra)
+// or slashes don't bleed into the canonical /watch?v= URL.
+func (s *Strategy) shortlinkCandidates(ctx context.Context, apex, path string) []lateral.Candidate {
+	segs := pathSegments(path)
+	if len(segs) == 0 || segs[0] == "" {
+		return nil
+	}
+	return s.videoCandidates(ctx, apex, segs[0])
+}
+
+// playlistCandidates emits the canonical playlist URL, or nothing
+// without a list ID.
+func playlistCandidates(apex, listID string) []lateral.Candidate {
+	if listID == "" {
+		return nil
+	}
+	return []lateral.Candidate{{
+		URL:           apex + "/playlist?list=" + listID,
+		CandidateType: CandidateTypePlaylist,
+		Strategy:      ID,
+		IdentityKey:   identitykey.Build("youtube", identitykey.EntityPlaylist, listID),
+		Preview:       map[string]any{"playlist_id": listID},
+	}}
 }
 
 // videoCandidates emits the canonical /watch URL plus uploader probe

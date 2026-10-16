@@ -12,8 +12,10 @@ import (
 	"time"
 
 	"github.com/atotto/clipboard"
+	"github.com/ideacrafterslabs/ctxt/internal/cli"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -72,7 +74,7 @@ func init() {
 	// --- Source selection ---
 	captureCmd.Flags().String("source", "", "override auto-detection on the positional source")
 	captureCmd.Flags().Bool("stdin", false, "read input from stdin")
-	captureCmd.Flags().String("type", "text", "input type (text|url|image|audio|video|feed|auto)")
+	captureCmd.Flags().String("type", objectTypeText, "input type (text|url|image|audio|video|feed|auto)")
 
 	// --- Routing ---
 	captureCmd.Flags().String("pipeline", "", "override server-side pipeline pick")
@@ -86,8 +88,8 @@ func init() {
 	captureCmd.Flags().StringSlice("mention", nil, "mention targets (repeatable, CSV)")
 	captureCmd.Flags().String("note", "", "audit note explaining the capture")
 	// --profile is inherited from kit's persistent flag set; do not
-	// re-register it locally. capture reads it via cmd.Flags().GetString("profile")
-	// at run time (cobra resolves inherited persistent flags through Flags()).
+	// re-register it locally. capture resolves it via activeProfileName at run
+	// time (cobra resolves inherited persistent flags through Flags()).
 
 	// --- Pipeline behavior ---
 	captureCmd.Flags().Bool("raw", false, "disable AI; store raw knowledge object")
@@ -177,12 +179,12 @@ func captureLoop(cmd *cobra.Command, args []string, every time.Duration) error {
 // captureSourceLabel produces a short label for the loop banner.
 func captureSourceLabel(cmd *cobra.Command, args []string) string {
 	if stdin, _ := cmd.Flags().GetBool("stdin"); stdin {
-		return "stdin"
+		return cli.SourceStdin
 	}
 	if len(args) > 0 {
 		return args[0]
 	}
-	return "clipboard"
+	return cli.SourceClipboard
 }
 
 // captureOnce performs a single capture: resolves input → builds request →
@@ -217,12 +219,12 @@ func captureOnce(ctx context.Context, cmd *cobra.Command, args []string) error {
 	sourceKey, _ := cmd.Flags().GetString("source-key")
 	hints, _ := cmd.Flags().GetStringSlice("hint")
 	mentions, _ := cmd.Flags().GetStringSlice("mention")
-	profile, _ := cmd.Flags().GetString("profile")
+	profile := activeProfileName(cmd)
 	note, _ := cmd.Flags().GetString("note")
 	wait, _ := cmd.Flags().GetBool("wait")
 	inbox, _ := cmd.Flags().GetBool("inbox")
 
-	// Build request body. Server-side JSON contract uses `hints` (T-0573)
+	// Build request body. Server-side JSON contract uses `hints`
 	// and `mentions` arrays — both are caller-asserted user inputs that
 	// merge with auto-extracted entries during pipeline execution.
 	reqBody := map[string]any{
@@ -292,8 +294,8 @@ func postInboxCapture(
 	if len(hints) > 0 {
 		body["hints"] = hints
 	}
-	// T-0588: --profile partitions the inbox item to a focus profile.
-	if profile, _ := cmd.Flags().GetString("profile"); profile != "" {
+	// --profile partitions the inbox item to a focus profile.
+	if profile := activeProfileName(cmd); profile != "" {
 		body["profile"] = profile
 	}
 	var obj map[string]any
@@ -322,7 +324,7 @@ func resolveCaptureInput(cmd *cobra.Command, args []string) (content, source str
 		if err != nil {
 			return "", "", fmt.Errorf("read stdin: %w", err)
 		}
-		return string(data), "stdin", nil
+		return string(data), cli.SourceStdin, nil
 	}
 
 	if len(args) > 0 {
@@ -342,7 +344,7 @@ func resolveCaptureInput(cmd *cobra.Command, args []string) (content, source str
 			// Send the absolute path as `source` so the server's
 			// pipeline detector chain can fire both extension-based
 			// detectors (foo.png → image.ocr) AND prefix-based ones
-			// (/vault/notes/... → watch.file, T-0209). The earlier
+			// (/vault/notes/... → watch.file). The earlier
 			// "file:<path>" prefix broke the latter. Resolution
 			// failure falls back to the raw path the operator typed.
 			abs, absErr := filepath.Abs(raw)
@@ -352,7 +354,7 @@ func resolveCaptureInput(cmd *cobra.Command, args []string) (content, source str
 			return string(data), abs, nil
 		}
 		// Literal string.
-		return raw, "argument", nil
+		return raw, cli.SourceArgument, nil
 	}
 
 	// Clipboard fallback.
@@ -364,7 +366,7 @@ func resolveCaptureInput(cmd *cobra.Command, args []string) (content, source str
 		return "", "", fmt.Errorf("no input provided (use a positional source, --stdin, or copy something to the clipboard)")
 	}
 	fmt.Fprintln(os.Stderr, "Using content from clipboard...")
-	return c, "clipboard", nil
+	return c, cli.SourceClipboard, nil
 }
 
 // waitForCaptureJob polls /api/v1/jobs/<id> on the instance that accepted
@@ -380,9 +382,9 @@ func waitForCaptureJob(ctx context.Context, client *dpkmsclient.Client, jobID st
 			return fmt.Errorf("poll job %s: %w", jobID, err)
 		}
 		switch job.Status {
-		case "completed":
+		case string(storage.JobCompleted):
 			return nil
-		case "failed":
+		case string(storage.JobFailed):
 			return fmt.Errorf("job %s failed: %s", jobID, job.Error)
 		}
 		select {

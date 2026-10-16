@@ -175,7 +175,7 @@ ctxt registry info core
 | `ctxt [content]` | Capture (default; clipboard fallback) |
 | `ctxt analyze` | Explicit capture alias |
 | `ctxt inbox list/triage/discard/clear` | Inbox triage |
-| `ctxt job list/status/log/retry/cancel` | Job queue ops |
+| `ctxt job list/status/retry/cancel` | Job queue ops (over the API) |
 | `ctxt list` | Query knowledge objects |
 | `ctxt find <query>` | Semantic search |
 | `ctxt open <id>` | Show object detail |
@@ -186,7 +186,7 @@ ctxt registry info core
 | `ctxt config show/path/validate/edit` | Config ops |
 | `ctxt registry list/add/remove/info/sync` | Registry ops |
 | `ctxt entity list/show/search/backlink` | Entity ops |
-| `ctxt secret get/set/list` | Secrets backend |
+| `dpkms secret get/set/list` | Secrets backend |
 | `ctxt uri register` | Register ctxt:// OS handler |
 | `dpkms serve` | Start worker + REST/gRPC |
 | `dpkms housekeeping vacuum/reindex/compact/prune` | DB maintenance |
@@ -354,7 +354,7 @@ ctxt make summary --since 2026-02-01
 - Never skip `dpkms serve` — pipelines do not run without the worker.
 - Never use `--raw` when enrichment is needed; it bypasses AI entirely.
 - Never assume synchronous processing; use `--wait` or `ctxt job status`.
-- Never pass secrets on CLI (`ctxt secret set KEY val` exposes value in shell history).
-  Use the backend's native tooling instead.
+- Never pass secrets on CLI: `dpkms secret set KEY` takes the value from stdin,
+  `--from-file` or `--prompt`, never an argument.
 - Never filter with both `--tag` and `--q` containing tag filters simultaneously
   (they compound; can produce unexpectedly narrow results).

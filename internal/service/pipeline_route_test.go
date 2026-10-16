@@ -1,7 +1,6 @@
 package service
 
 import (
-	"context"
 	"strings"
 	"testing"
 )
@@ -50,7 +49,7 @@ func TestAnalyzeRoutesSourceVsContent(t *testing.T) {
 	svc := newRoutingService(t)
 	for _, tc := range sourceVsContentCases {
 		t.Run(tc.name, func(t *testing.T) {
-			id, err := svc.Analyze(context.Background(), AnalyzeRequest{
+			id, err := svc.Analyze(ownerCtx(), AnalyzeRequest{
 				Content: tc.content, Type: "text", Source: tc.source, Pipeline: tc.pipeline, Force: true,
 			})
 			if err != nil {
@@ -67,7 +66,7 @@ func TestEnqueueRoutesSourceVsContent(t *testing.T) {
 	svc := newRoutingService(t)
 	for _, tc := range sourceVsContentCases {
 		t.Run(tc.name, func(t *testing.T) {
-			id, err := svc.Enqueue(context.Background(), AnalyzeRequest{
+			id, err := svc.Enqueue(ownerCtx(), AnalyzeRequest{
 				Content: tc.content, Type: "text", Source: tc.source, Pipeline: tc.pipeline,
 			})
 			if err != nil {
@@ -82,7 +81,7 @@ func TestEnqueueRoutesSourceVsContent(t *testing.T) {
 
 func TestTriageInboxRoutesSourceVsContent(t *testing.T) {
 	svc := newRoutingService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	for i, tc := range sourceVsContentCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Inbox objects are unique by content hash; leading blank

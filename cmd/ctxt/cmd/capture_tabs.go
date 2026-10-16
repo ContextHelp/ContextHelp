@@ -233,7 +233,7 @@ func runCaptureTabs(cmd *cobra.Command, _ []string) error {
 
 	var sendErr error
 	if !report.DryRun {
-		focusProfile, _ := cmd.Flags().GetString("profile")
+		focusProfile := activeProfileName(cmd)
 		sendErr = sendTabs(ctx, client, focusProfile, &report)
 	}
 

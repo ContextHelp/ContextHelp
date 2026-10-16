@@ -62,7 +62,8 @@ func (s *Service) PatchObject(ctx context.Context, id string, p ObjectPatch) (*s
 		}
 	}
 
-	obj, err := s.GetObject(ctx, id)
+	// The stored row, refs and all: the patch touches no content.
+	obj, err := s.Store(ctx).Objects().Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -98,6 +99,9 @@ func (s *Service) PatchObject(ctx context.Context, id string, p ObjectPatch) (*s
 	if err := s.UpdateObject(ctx, obj); err != nil {
 		return nil, err
 	}
+	if err := s.resolveContent(ctx, obj); err != nil {
+		return nil, err
+	}
 	return obj, nil
 }
 
@@ -109,7 +113,7 @@ func (s *Service) ReprocessObject(ctx context.Context, id, step string) (*storag
 	if !slices.Contains(jobs.ReprocessSteps, step) {
 		return nil, fmt.Errorf("step %q: %w", step, jobs.ErrUnknownReprocessStep)
 	}
-	if _, err := s.GetObject(ctx, id); err != nil {
+	if _, err := s.Store(ctx).Objects().Get(ctx, id); err != nil {
 		return nil, err
 	}
 	return s.Queue.EnqueueReprocess(ctx, id, step)

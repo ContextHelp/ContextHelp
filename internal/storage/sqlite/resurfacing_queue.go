@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 // ResurfacingQueueStore implements storage.ResurfacingQueueStore for SQLite.
@@ -15,6 +16,8 @@ type ResurfacingQueueStore struct {
 }
 
 // Upsert inserts or replaces an entry keyed on (object_id, profile_id).
+// An empty OwnerPrincipal is stored as the instance owner; a conflict
+// refreshes score and reason and keeps the row's owner.
 func (s *ResurfacingQueueStore) Upsert(ctx context.Context, e *storage.ResurfacingEntry) error {
 	if e.ID == "" {
 		return fmt.Errorf("resurfacing_queue upsert: empty id")
@@ -24,13 +27,14 @@ func (s *ResurfacingQueueStore) Upsert(ctx context.Context, e *storage.Resurfaci
 		created = time.Now()
 	}
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO resurfacing_queue (id, object_id, profile_id, score, reason, created_at)
-		VALUES (?, ?, ?, ?, ?, ?)
+		INSERT INTO resurfacing_queue (id, object_id, profile_id, score, reason, owner_principal, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			score      = excluded.score,
 			reason     = excluded.reason
 	`,
 		e.ID, e.ObjectID, e.ProfileID, e.Score, e.Reason,
+		storage.PrincipalOrOwner(e.OwnerPrincipal),
 		created.UTC().Format(time.RFC3339),
 	)
 	if err != nil {
@@ -43,14 +47,18 @@ func (s *ResurfacingQueueStore) Upsert(ctx context.Context, e *storage.Resurfaci
 func (s *ResurfacingQueueStore) List(
 	ctx context.Context, f storage.ResurfacingFilter,
 ) ([]*storage.ResurfacingEntry, error) {
-	query := `SELECT id, object_id, profile_id, score, reason,
+	query := `SELECT id, object_id, profile_id, score, reason, owner_principal,
 		surfaced_at, dismissed_at, created_at
 	FROM resurfacing_queue
 	WHERE 1=1`
 	var args []any
 
+	if f.OwnerPrincipal != "" {
+		query += andOwnerPrincipal
+		args = append(args, f.OwnerPrincipal)
+	}
 	if f.ProfileID != "" {
-		query += " AND profile_id = ?"
+		query += andProfileScoped
 		args = append(args, f.ProfileID)
 	}
 	if f.UnseenOnly {
@@ -109,12 +117,11 @@ func (s *ResurfacingQueueStore) DeleteByObject(ctx context.Context, objectID str
 }
 
 func collectResurfacingRows(rows *sql.Rows) ([]*storage.ResurfacingEntry, error) {
-	var out []*storage.ResurfacingEntry
-	for rows.Next() {
+	return rowscan.All(rows, func(rows *sql.Rows) (*storage.ResurfacingEntry, error) {
 		e := &storage.ResurfacingEntry{}
 		var surfacedAt, dismissedAt, createdAt sql.NullString
 		if err := rows.Scan(
-			&e.ID, &e.ObjectID, &e.ProfileID, &e.Score, &e.Reason,
+			&e.ID, &e.ObjectID, &e.ProfileID, &e.Score, &e.Reason, &e.OwnerPrincipal,
 			&surfacedAt, &dismissedAt, &createdAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan resurfacing_queue row: %w", err)
@@ -134,7 +141,6 @@ func collectResurfacingRows(rows *sql.Rows) ([]*storage.ResurfacingEntry, error)
 				e.CreatedAt = t
 			}
 		}
-		out = append(out, e)
-	}
-	return out, rows.Err()
+		return e, nil
+	})
 }

@@ -25,7 +25,7 @@ func CaptureInbox(svc *service.Service) http.HandlerFunc {
 			InboxNote string   `json:"inbox_note"`
 			Hints     []string `json:"hints"`
 			Mentions  []string `json:"mentions"`
-			Profile   string   `json:"profile"` // T-0588
+			Profile   string   `json:"profile"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid JSON body")
@@ -173,7 +173,7 @@ func ClearInbox(svc *service.Service) http.HandlerFunc {
 // otherwise.
 func writeInboxItemError(w http.ResponseWriter, id string, err error) {
 	if errors.Is(err, storage.ErrNotFound) {
-		WriteError(w, http.StatusNotFound, "NOT_FOUND", "no inbox item "+id)
+		WriteError(w, http.StatusNotFound, CodeNotFound, "no inbox item "+id)
 		return
 	}
 	WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
@@ -185,7 +185,10 @@ func TriageInbox(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
 		var req service.TriageRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		if err := decodeOptionalBody(r, &req); err != nil {
+			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid JSON body")
+			return
+		}
 
 		jobID, err := svc.TriageInbox(r.Context(), id, req)
 		if err != nil {

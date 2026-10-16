@@ -10,8 +10,7 @@ consume.
 > top-level summary across P1–P5 including config map, rollback levers,
 > and the 30d/90d review checkpoints.
 
-> **Status (track `lateral-daemon-wiring-20260509`)**: T-0312..T-0322
-> ship the wiring shape end-to-end. Production deployments must wire
+> **Status**: the daemon wiring ships end-to-end. Production deployments must wire
 > their own LLM, GitHub, and platform clients per the [Wiring](#wiring)
 > section. The default `ctxt lateral start` invocation registers zero
 > strategies and no-ops on the poller.
@@ -246,13 +245,5 @@ the kit/cli issue is fixed.
 - [`internal/lateral/strategies/jit/wiring.go`](../../internal/lateral/strategies/jit/wiring.go) — JIT register helper.
 - [`internal/lateral/strategies/github/wiring.go`](../../internal/lateral/strategies/github/wiring.go) — GitHub family register helper.
 - [`internal/lateral/strategies/roster/roster.go`](../../internal/lateral/strategies/roster/roster.go) — P4 platform roster register helper.
-- [`internal/lateral/daemon/`](../../internal/lateral/daemon/) — Daemon wiring (this track's home).
-- [`internal/lateral/adapters/`](../../internal/lateral/adapters/) — Adapter packages (T-0314..T-0319).
-
-## Track lineage
-
-This document captures the `lateral-daemon-wiring-20260509` track
-(T-0312..T-0323). Prior tracks established the substrate
-(`lateral-substrate-*`), strategy implementations, scoring, lifecycle,
-and identity-key resolver. The daemon-wiring slice composes those
-pieces behind a CLI surface.
+- [`internal/lateral/daemon/`](../../internal/lateral/daemon/) — Daemon wiring.
+- [`internal/lateral/adapters/`](../../internal/lateral/adapters/) — Adapter packages.

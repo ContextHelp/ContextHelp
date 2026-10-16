@@ -22,12 +22,11 @@ type ApprovalRecord struct {
 }
 
 // TrustGate enforces registry trust-level rules before entity writes.
-type TrustGate struct {
-	// pendingApprovals holds entities queued for user approval.
-	pendingApprovals []*ApprovalRecord
-}
+// It only decides; the Syncer queues what it holds for approval in the
+// persistent queue (storage.PendingEntityStore).
+type TrustGate struct{}
 
-// NewTrustGate returns an initialised TrustGate.
+// NewTrustGate returns a TrustGate.
 func NewTrustGate() *TrustGate {
 	return &TrustGate{}
 }
@@ -36,8 +35,8 @@ func NewTrustGate() *TrustGate {
 // be blocked based on the registry's trust level.
 //
 //   - trusted   → proceed (returns nil, nil)
-//   - untrusted → queue for approval (returns record, ErrEntityRequiresApproval)
-//   - sandboxed → block silently (returns nil, ErrEntityRequiresApproval after logging)
+//   - untrusted → hold for approval (returns record, ErrEntityRequiresApproval)
+//   - sandboxed → block (returns nil, ErrEntityRequiresApproval)
 func (g *TrustGate) CheckWrite(
 	ctx context.Context,
 	e *storage.Entity,
@@ -50,39 +49,15 @@ func (g *TrustGate) CheckWrite(
 
 	case config.RegistryTrustLevelSandboxed:
 		slog.InfoContext(ctx, "trust gate: sandboxed registry entity blocked",
-			"slug", e.Slug, "registry", registryURL)
+			"slug", e.Slug, "registry", config.RedactDSN(registryURL))
 		return nil, fmt.Errorf("registry %q is sandboxed: entity %q blocked: %w",
-			registryURL, e.Slug, ErrEntityRequiresApproval)
+			config.RedactDSN(registryURL), e.Slug, ErrEntityRequiresApproval)
 
 	default: // untrusted
-		rec := &ApprovalRecord{
-			Entity:      e,
-			RegistryURL: registryURL,
-			TrustLevel:  level,
-		}
-		g.pendingApprovals = append(g.pendingApprovals, rec)
-		slog.InfoContext(ctx, "trust gate: entity queued for approval",
-			"slug", e.Slug, "registry", registryURL)
-		return rec, fmt.Errorf("registry %q is untrusted: entity %q queued for approval: %w",
-			registryURL, e.Slug, ErrEntityRequiresApproval)
+		slog.InfoContext(ctx, "trust gate: entity held for approval",
+			"slug", e.Slug, "registry", config.RedactDSN(registryURL))
+		return &ApprovalRecord{Entity: e, RegistryURL: registryURL, TrustLevel: level},
+			fmt.Errorf("registry %q is untrusted: entity %q held for approval: %w",
+				config.RedactDSN(registryURL), e.Slug, ErrEntityRequiresApproval)
 	}
-}
-
-// PendingApprovals returns all entities awaiting user approval.
-func (g *TrustGate) PendingApprovals() []*ApprovalRecord {
-	out := make([]*ApprovalRecord, len(g.pendingApprovals))
-	copy(out, g.pendingApprovals)
-	return out
-}
-
-// Approve marks the record as approved and returns it for writing.
-// After approval the record is removed from the pending queue.
-func (g *TrustGate) Approve(registryURL, slug string) (*ApprovalRecord, error) {
-	for i, r := range g.pendingApprovals {
-		if r.RegistryURL == registryURL && r.Entity.Slug == slug {
-			g.pendingApprovals = append(g.pendingApprovals[:i], g.pendingApprovals[i+1:]...)
-			return r, nil
-		}
-	}
-	return nil, fmt.Errorf("no pending approval for slug %q from registry %q", slug, registryURL)
 }

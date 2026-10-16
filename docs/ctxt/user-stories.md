@@ -90,7 +90,7 @@
 65. As a User I want summaries and tags to be automatically translated into my preferred language
 66. As a User I want to filter search results to show only content in its original source language
 67. As a User I want to manually override the language detection during ingestion (`--lang`)
-68. As a Plugin Developer I want to extend the schema to store translation maps without breaking the core engine
+68. As a Step Developer I want a translation step to store translation maps without breaking the core engine
 
 ### **Trust, Integrity & Federation (Added)**
 69. As a User I want to rotate encryption keys safely without losing access to my stored knowledge

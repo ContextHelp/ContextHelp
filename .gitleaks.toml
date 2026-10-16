@@ -7,102 +7,118 @@ title = "ContextHelp Gitleaks Configuration"
 
 #############################################################################
 # Custom Rules for ContextHelp
+#
+# These run alongside gitleaks' default rules ([extend] useDefault below).
+# Every custom id carries the ctxt- prefix so it never equals a default rule
+# id: gitleaks treats a same-id rule as an override of the default one,
+# keeping the default's keywords and allowlists. The default openai-api-key
+# keyword ("t3blbkfj") then gated this file's sk-proj- regex, so it never
+# matched, and this file's narrower regexes replaced the default
+# generic-api-key and private-key detectors.
+#
+# Groups are (?:...): with no secretGroup gitleaks takes the first capture
+# group as the secret, so a captured keyword was what --redact masked (the
+# value was printed) and what stopwords and allowlist regexes were tested
+# against.
 #############################################################################
 
 [[rules]]
-id = "openai-api-key"
+id = "ctxt-openai-api-key"
 description = "OpenAI API Key"
 regex = '''sk-proj-[a-zA-Z0-9]{32,}'''
 tags = ["api-key", "openai"]
 
 [[rules]]
-id = "openai-legacy-key"
+id = "ctxt-openai-legacy-key"
 description = "OpenAI Legacy API Key"
 regex = '''sk-[a-zA-Z0-9]{48}'''
 tags = ["api-key", "openai", "legacy"]
 
 [[rules]]
-id = "anthropic-api-key"
+id = "ctxt-anthropic-api-key"
 description = "Anthropic API Key"
 regex = '''sk-ant-[a-zA-Z0-9-]{95}'''
 tags = ["api-key", "anthropic"]
 
 [[rules]]
-id = "generic-api-key"
+id = "ctxt-generic-api-key"
 description = "Generic API Key"
 regex = '''(?i)api[_-]?key\s*[:=]\s*['"][a-zA-Z0-9_\-]{20,}['"]'''
 tags = ["api-key", "generic"]
 
 [[rules]]
-id = "generic-secret"
+id = "ctxt-generic-secret"
 description = "Generic Secret"
 regex = '''(?i)secret\s*[:=]\s*['"][a-zA-Z0-9_\-]{20,}['"]'''
 tags = ["secret"]
 
 [[rules]]
-id = "password-assignment"
+id = "ctxt-password-assignment"
 description = "Password in variable assignment"
-regex = '''(?i)(password|passwd|pwd)\s*[:=]\s*['"][^'"\s]{8,}['"]'''
+regex = '''(?i)(?:password|passwd|pwd)\s*[:=]\s*['"][^'"\s]{8,}['"]'''
 tags = ["password"]
 
 [[rules]]
-id = "jwt-token"
+id = "ctxt-jwt-token"
 description = "JWT Token"
 regex = '''eyJ[a-zA-Z0-9_-]*\.eyJ[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*'''
 tags = ["jwt", "token"]
 
 [[rules]]
-id = "github-token"
+id = "ctxt-github-token"
 description = "GitHub Token"
 regex = '''gh[pousr]_[a-zA-Z0-9]{36}'''
 tags = ["github", "token"]
 
 [[rules]]
-id = "aws-access-key"
+id = "ctxt-aws-access-key"
 description = "AWS Access Key ID"
 regex = '''AKIA[0-9A-Z]{16}'''
 tags = ["aws", "access-key"]
 
 [[rules]]
-id = "aws-secret-key"
+id = "ctxt-aws-secret-key"
 description = "AWS Secret Access Key"
 regex = '''(?i)aws[_-]?secret[_-]?access[_-]?key\s*[:=]\s*['"][a-zA-Z0-9/+=]{40}['"]'''
 tags = ["aws", "secret-key"]
 
 [[rules]]
-id = "slack-webhook"
+id = "ctxt-slack-webhook"
 description = "Slack Webhook URL"
 regex = '''https://hooks\.slack\.com/services/[A-Z0-9]{9,}/[A-Z0-9]{9,}/[a-zA-Z0-9]{24}'''
 tags = ["slack", "webhook"]
 
 [[rules]]
-id = "postgres-connection-string"
+id = "ctxt-postgres-connection-string"
 description = "PostgreSQL Connection String with Password"
-regex = '''postgres(?:ql)?://[^:]+:[^@]+@[^/]+/[^\s'"]+'''
+# Each part stops at whitespace, and the user part at '@' or '/': an
+# unbounded [^:]+ ran across newlines, so a password-less DSN matched
+# through to the next colon lines further down.
+regex = '''postgres(?:ql)?://[^:@/\s]+:[^@\s]+@[^/\s]+/[^\s'"]+'''
 tags = ["database", "postgres", "connection-string"]
 
 [[rules]]
-id = "private-key"
+id = "ctxt-private-key"
 description = "Private Key"
 regex = '''-----BEGIN\s+(?:RSA|DSA|EC|OPENSSH)\s+PRIVATE\s+KEY-----'''
 tags = ["private-key", "crypto"]
 
 [[rules]]
-id = "basic-auth"
+id = "ctxt-basic-auth"
 description = "Basic Authentication Header"
 regex = '''(?i)authorization\s*[:=]\s*['"]basic\s+[a-zA-Z0-9+/=]{20,}['"]'''
 tags = ["auth", "basic-auth"]
 
 [[rules]]
-id = "bearer-token"
+id = "ctxt-bearer-token"
 description = "Bearer Token"
 regex = '''(?i)authorization\s*[:=]\s*['"]bearer\s+[a-zA-Z0-9_\-\.]{20,}['"]'''
 tags = ["auth", "bearer-token"]
 
 [[rules]]
-id = "env-var-assignment"
+id = "ctxt-env-var-assignment"
 description = "Environment Variable with Secret"
-regex = '''(?i)(api[_-]?key|secret|password|token)\s*=\s*[a-zA-Z0-9_\-]{20,}'''
+regex = '''(?i)(?:api[_-]?key|secret|password|token)\s*=\s*[a-zA-Z0-9_\-]{20,}'''
 tags = ["env-var"]
 
 #############################################################################
@@ -118,7 +134,7 @@ tags = ["ctxt", "api-key"]
 [[rules]]
 id = "ctxt-secret"
 description = "CTXT Secret or Token"
-regex = '''CTXT_(SECRET|TOKEN|PASSWORD|AUTH_TOKEN|SIGNING_KEY)\s*[:=]\s*['"]?[a-zA-Z0-9_\-\.]{16,}['"]?'''
+regex = '''CTXT_(?:SECRET|TOKEN|PASSWORD|AUTH_TOKEN|SIGNING_KEY)\s*[:=]\s*['"]?[a-zA-Z0-9_\-\.]{16,}['"]?'''
 tags = ["ctxt", "secret"]
 
 [[rules]]
@@ -137,20 +153,15 @@ tags = ["ctxt", "provider", "api-key"]
 # Allowlist - Files and Patterns to Ignore
 #############################################################################
 
-[allowlist]
-description = "Allowlisted files and patterns"
+# [[allowlists]] is the 8.25+ form of the deprecated [allowlist] table.
+[[allowlists]]
+description = "Allowlisted patterns"
 
-# Allow example files (they don't contain real secrets)
-paths = [
-  '''.env.example$''',
-  '''config\.example\.yaml$''',
-  '''config\.minimal\.yaml$''',
-  '''config\.plugins\.yaml$''',
-  '''config\.leann\.yaml$''',
-  '''testdata/''',
-  '''docs/''',
-  '''\.md$''',
-]
+# No path allowlist: a path entry skips every rule for the whole file, so
+# a real key pasted into a doc, a fixture or a sample config would go
+# through unseen. Docs and samples write placeholders in shapes the
+# regexes below (or gitleaks' own placeholder checks) recognize;
+# deliberate key-shaped test vectors carry an inline gitleaks:allow.
 
 # Allow specific patterns that are false positives
 regexes = [
@@ -165,12 +176,8 @@ regexes = [
   '''sk-ant-\.\.\.''',
   '''sk-\.\.\.''',
 
-  # Allow base64 encoded test data (short strings).
-  # NOTE: the previous pattern used {0,20}, which matches the EMPTY string
-  # and therefore allowlisted every finding, silently disabling secret
-  # scanning. Anchored with a minimum length so it covers only genuinely
-  # short base64 test data, as intended.
-  '''^[a-zA-Z0-9+/=]{8,20}$''',
+  # No length-only patterns: a regex like ^[a-zA-Z0-9+/=]{8,20}$ matches
+  # every AWS access key id (AKIA + 16 chars) and any short token.
 
   # Allow common test/placeholder passwords
   '''(password|secret|token|key)[:=]\s*['"]?(test|example|placeholder|changeme|dummy)['"]?''',
@@ -178,12 +185,24 @@ regexes = [
   # Allow CTXT_* env vars that reference other env vars or are empty/placeholder
   '''CTXT_[A-Z0-9_]+=\s*["']?\$\{?[A-Z_]+\}?["']?''',
   '''CTXT_[A-Z0-9_]+=\s*["']?(your|my|example|test|demo|changeme|<[^>]+>|)["']?$''',
+
+  # Postgres DSN whose password is an <angle-bracket> placeholder, e.g.
+  # postgres://ctxt:<password>@db.internal:5432/ctxt. Anchored to the
+  # password slot: a real password elsewhere in the DSN still matches.
+  '''^postgres(?:ql)?://[^:@/\s]+:<[a-z][a-z0-9_-]*>@''',
+
+  # Postgres DSN whose password slot is all asterisks: the redaction mask
+  # `ctxt config show` prints (postgres://jad:****@db/ctxt). Anchored to the
+  # password slot like the placeholder rule above.
+  '''^postgres(?:ql)?://[^:@/\s]+:\*+@''',
 ]
 
 # Commits to exclude from scanning (if any)
 commits = []
 
-# Stop words - if found in context, reduce false positive score
+# Stop words: a finding whose secret contains one (case-insensitive) is
+# skipped. Keep them to words a random key is unlikely to contain; "my"
+# appears in about 1 in 70 random AWS key ids.
 stopwords = [
   "example",
   "test",
@@ -192,7 +211,27 @@ stopwords = [
   "placeholder",
   "changeme",
   "your",
-  "my",
+]
+
+# Fixture tokens in Go tests (tok-<name>-fixture-<hex>), scoped to test
+# files: condition AND needs both the path and the secret shape to match,
+# so the same string in production code or docs is still reported.
+#
+# targetRules is load-bearing, not just narrowing. gitleaks (8.30) checks a
+# GLOBAL allowlist's paths while walking a directory and skips any matching
+# file outright, ignoring condition = "AND": as a global entry this would
+# hide every key in every _test.go file from `gitleaks dir`. A targeted
+# allowlist is attached to the rule instead, where AND is honoured.
+[[allowlists]]
+description = "Go test fixture token shapes"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = [
+  '''_test\.go$''',
+  '''(?:^|/)testdata/''',
+]
+regexes = [
+  '''^tok-[a-z0-9]+-fixture-[0-9a-f]+$''',
 ]
 
 #############################################################################

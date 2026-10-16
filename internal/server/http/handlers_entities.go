@@ -15,8 +15,9 @@ import (
 // entities whose slug, title or an alias contains q, ignoring ASCII case.
 // With an inbound gate wired (non-private instances), the listing is
 // filtered to the namespaces the authenticated principal is entitled to
-// — an index browse, so no metering charge. Admin principals see every
-// entity.
+// — an index browse, so no metering charge. The filter runs in the store
+// ahead of limit and offset, so a page holds only entitled entities and
+// is never short while more remain. Admin principals see every entity.
 func ListEntities(svc *service.Service, gate *registry.InboundGate) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		filter := storage.EntityFilter{
@@ -26,20 +27,17 @@ func ListEntities(svc *service.Service, gate *registry.InboundGate) http.Handler
 			Offset:    parseIntDefault(r.URL.Query().Get("offset"), 0),
 		}
 
-		entities, err := svc.ListEntities(r.Context(), filter)
+		var entitled func(namespace string) bool
+		if g := entityGate(r, gate); g != nil {
+			principal := gatePrincipal(r)
+			entitled = func(namespace string) bool {
+				return g.Check(r.Context(), principal, namespace) == nil
+			}
+		}
+		entities, err := svc.ListVisibleEntities(r.Context(), filter, entitled)
 		if err != nil {
 			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 			return
-		}
-		if g := entityGate(r, gate); g != nil {
-			principal := gatePrincipal(r)
-			entitled := make([]*storage.Entity, 0, len(entities))
-			for _, e := range entities {
-				if g.Check(r.Context(), principal, e.Namespace) == nil {
-					entitled = append(entitled, e)
-				}
-			}
-			entities = entitled
 		}
 		WriteJSON(w, http.StatusOK, map[string]any{
 			"data": entities,
@@ -56,7 +54,7 @@ func GetEntity(svc *service.Service, gate *registry.InboundGate) http.HandlerFun
 		slug := chi.URLParam(r, "slug")
 		entity, err := svc.GetEntity(r.Context(), slug)
 		if err != nil || entity == nil {
-			WriteError(w, http.StatusNotFound, "NOT_FOUND", "entity not found")
+			WriteError(w, http.StatusNotFound, CodeNotFound, "entity not found")
 			return
 		}
 		if err := entityGate(r, gate).Authorize(r.Context(), gatePrincipal(r), entity.Namespace,
@@ -85,7 +83,7 @@ func ResolveEntity(svc *service.Service, gate *registry.InboundGate) http.Handle
 		}
 		entity, err := svc.ResolveEntity(r.Context(), mention)
 		if errors.Is(err, storage.ErrNotFound) {
-			WriteError(w, http.StatusNotFound, "NOT_FOUND", "no entity matches the mention")
+			WriteError(w, http.StatusNotFound, CodeNotFound, "no entity matches the mention")
 			return
 		}
 		if err != nil {
@@ -115,7 +113,7 @@ func EntityBacklinks(svc *service.Service, gate *registry.InboundGate) http.Hand
 		if g := entityGate(r, gate); g != nil {
 			entity, err := svc.GetEntity(r.Context(), slug)
 			if err != nil || entity == nil {
-				WriteError(w, http.StatusNotFound, "NOT_FOUND", "entity not found")
+				WriteError(w, http.StatusNotFound, CodeNotFound, "entity not found")
 				return
 			}
 			if cerr := g.Check(r.Context(), gatePrincipal(r), entity.Namespace); cerr != nil {

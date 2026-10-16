@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // stubAdapter returns fixed objects.
@@ -47,7 +46,7 @@ func (m *memObjectStore) Get(_ context.Context, id string) (*storage.KnowledgeOb
 	return m.objects[id], nil
 }
 
-func (m *memObjectStore) GetByContentHash(_ context.Context, _ string) (*storage.KnowledgeObject, error) {
+func (m *memObjectStore) GetByContentHash(_ context.Context, _, _ string) (*storage.KnowledgeObject, error) {
 	return nil, nil
 }
 
@@ -65,7 +64,9 @@ func (m *memObjectStore) Update(_ context.Context, _ *storage.KnowledgeObject) e
 
 func (m *memObjectStore) Delete(_ context.Context, _ string) error { return nil }
 
-func (m *memObjectStore) ListBySQL(_ context.Context, _ string, _ []any, _, _ int) ([]*storage.KnowledgeObject, int, error) {
+func (m *memObjectStore) CountBlobRefs(_ context.Context, _ string) (int, error) { return 0, nil }
+
+func (m *memObjectStore) ListBySQL(_ context.Context, _ string, _ []any, _ storage.ObjectFilter) ([]*storage.KnowledgeObject, int, error) {
 	return nil, 0, nil
 }
 
@@ -103,11 +104,11 @@ func (m *memObjectStore) FTSSearch(_ context.Context, _ string, _ storage.Object
 	return nil, nil
 }
 
-func (m *memObjectStore) FTSSearchNodeAware(_ context.Context, _ string, _ storage.ObjectFilter, _ pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error) {
+func (m *memObjectStore) FTSSearchNodeAware(_ context.Context, _ string, _ storage.ObjectFilter, _ storage.NodeAwareFilter) ([]*storage.NodeAwareResult, error) {
 	return nil, nil
 }
 
-func (m *memObjectStore) VectorSearchNodeAware(_ context.Context, _ storage.VectorQuery, _ storage.ObjectFilter, _ pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error) {
+func (m *memObjectStore) VectorSearchNodeAware(_ context.Context, _ storage.VectorQuery, _ storage.ObjectFilter, _ storage.NodeAwareFilter) ([]*storage.NodeAwareResult, error) {
 	return nil, nil
 }
 
@@ -198,4 +199,8 @@ func TestRunnerSourceKeyFormat(t *testing.T) {
 	if _, ok := store.sourceKeys["myapp:obj-1"]; !ok {
 		t.Error("expected source_key format adapter:id")
 	}
+}
+
+func (m *memObjectStore) CountByType(_ context.Context) (map[string]int, error) {
+	return map[string]int{}, nil
 }

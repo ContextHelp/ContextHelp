@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,6 +11,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/configpath"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/safefs"
 	"github.com/spf13/cobra"
 	kitconfigcli "hop.top/kit/go/console/cli/config"
 )
@@ -39,8 +41,12 @@ var configShowCmd = &cobra.Command{
 	Long: `Print the loaded ctxt configuration to stdout.
 
 The default human-readable view groups settings under storage, server, profile,
-i18n, and registries. Pass --format json (global) to emit the full config tree
-as a JSON object for scripting.`,
+i18n, and registries. Pass --format json or yaml (global) to emit the full
+config tree for scripting.
+
+Credentials are redacted in every format: tokens, keys and capability URLs
+print as **** (plus the last 4 characters of values of 16 or more), and a
+password inside a connection string or URL is masked in place.`,
 	RunE: runConfigShow,
 }
 
@@ -49,8 +55,14 @@ var configValidateCmd = &cobra.Command{
 	Short: "Validate configuration and optionally scan for plaintext secrets",
 	Long: `Validate configuration and optionally scan for plaintext secrets.
 
-Checks that the configuration file is well-formed, then scans string fields for
-values that look like plaintext API keys or passwords.
+Validates the effective configuration (every file layer, env var and -c
+override applied) and lists every error: ports, server access and auth,
+storage and blob settings, quotas, duplicates, federations, embeddings,
+secrets backend. Then scans string fields for values that look like
+plaintext API keys or passwords.
+
+Keys the configuration does not declare are reported as warnings: they
+are ignored, so the setting they were meant for keeps its default.
 
 Exit code 1 when validation errors or secret warnings are found.`,
 	RunE: runConfigValidate,
@@ -98,7 +110,7 @@ Produces two files in the output directory:
 
 The public key is embedded in the bundle manifest for self-contained verification.
 
-Requires a keypair generated with 'ctxt key init'.
+Requires a keypair generated with 'dpkms key init'.
 
 Examples:
   ctxt config backup
@@ -117,11 +129,11 @@ The signature file is expected alongside the zip: <bundle>.zip.sig
 
 Without --verify, the bundle is extracted without signature checking.
 
-Requires --confirm=yes (or --confirm=prompt for an interactive confirmation).
+` + cliconv.DestructiveTokenHelp + `
 
 Examples:
-  ctxt config restore ctxt-config-bundle-2026-03-25T12-00-00Z.zip --verify
-  ctxt config restore ctxt-config-bundle-2026-03-25T12-00-00Z.zip`,
+  ctxt config restore ctxt-config-bundle-2026-03-25T12-00-00Z.zip --verify --confirm-token=<sha>
+  ctxt config restore ctxt-config-bundle-2026-03-25T12-00-00Z.zip --confirm-token=<sha>`,
 	RunE: runConfigRestore,
 }
 
@@ -217,10 +229,10 @@ func init() {
 		{Title: "Backup to a specific directory", Command: "ctxt config backup --output /tmp/my-backup"},
 	})
 	cliconv.WithNextSteps(configBackupCmd, []cliconv.NextStep{
-		{When: "on success", Suggest: "ctxt config restore --verify <bundle.zip>", Reason: "verify the bundle signature round-trips before relying on it"},
+		{When: "on success", Suggest: "ctxt config restore --verify --dry-run <bundle.zip>", Reason: "verify the bundle signature round-trips before relying on it"},
 	})
 	cliconv.WithExamples(configRestoreCmd, []cliconv.Example{
-		{Title: "Restore with signature verification", Command: "ctxt config restore ctxt-config-bundle-2026-03-25T12-00-00Z.zip --verify"},
+		{Title: "Restore with signature verification", Command: "ctxt config restore ctxt-config-bundle-2026-03-25T12-00-00Z.zip --verify --confirm-token=<sha>"},
 		{Title: "Dry-run a restore to inspect contents", Command: "ctxt config restore ctxt-config-bundle.zip --verify --dry-run"},
 	})
 	cliconv.WithNextSteps(configRestoreCmd, []cliconv.NextStep{
@@ -262,6 +274,9 @@ func init() {
 }
 
 func runConfigShow(cmd *cobra.Command, args []string) error {
+	// Every format renders the redacted copy: credentials (tokens, keys,
+	// a password inside a connection string) never reach the output.
+	cfg := config.Redacted(cfg)
 	if isJSONOutput() {
 		return outputJSON(os.Stdout, cfg)
 	}
@@ -272,6 +287,7 @@ func runConfigShow(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 	fmt.Println("  storage:")
 	fmt.Printf("    type:       %s\n", cfg.Storage.Type)
+	fmt.Printf("    data_dir:   %s\n", cfg.Storage.DataDir)
 	fmt.Printf("    path:       %s\n", cfg.Storage.Path)
 	fmt.Println()
 	fmt.Println("  server:")
@@ -311,33 +327,58 @@ func findChildCommand(parent *cobra.Command, name string) *cobra.Command {
 }
 
 func runConfigValidate(cmd *cobra.Command, args []string) error {
-	fmt.Println("Validating configuration...")
+	out := cmd.OutOrStdout()
+	fmt.Fprintln(out, "Validating configuration...")
 
-	// Re-load to get a fresh validation result (cfg may have been loaded early).
-	if _, err := config.Load(binName, cfgFile); err != nil {
-		fmt.Printf("  ✗ Configuration is invalid: %v\n", err)
-		return err
+	// cfg is the config initConfig loaded with every file layer, env var
+	// and -c override applied; a config that fails to load never gets
+	// here. Validate checks that effective result.
+	errs := config.Validate(cfg)
+	if len(errs) == 0 {
+		fmt.Fprintln(out, "  ✓ Configuration is valid")
+	} else {
+		fmt.Fprintf(out, "  ✗ %d validation error(s):\n", len(errs))
+		for _, e := range errs {
+			fmt.Fprintf(out, "      %s\n", e)
+		}
 	}
 
-	fmt.Println("  ✓ Configuration is valid")
-
-	checkSecrets, _ := cmd.Flags().GetBool("check-secrets")
-	if !checkSecrets {
-		return nil
+	// Unknown keys are warnings: Load ignores them, so the config works,
+	// but the setting the key was meant for keeps its default.
+	paths, _, _ := root.ConfigArgs()
+	for _, f := range config.LayerFiles(binName, "", paths) {
+		unknown, err := config.UnknownKeys(f)
+		if err != nil {
+			fmt.Fprintf(out, "  ! %s: %v\n", f, err)
+			continue
+		}
+		for _, u := range unknown {
+			fmt.Fprintf(out, "  ! unknown key in %s: %s\n", f, u)
+		}
 	}
 
-	// Scan cfg, the config initConfig loaded with every -c layer applied.
-	warnings := config.ScanSecrets(cfg)
-	if len(warnings) == 0 {
-		fmt.Println("  ✓ No plaintext secrets detected")
-		return nil
+	var secrets []config.SecretWarning
+	if checkSecrets, _ := cmd.Flags().GetBool("check-secrets"); checkSecrets {
+		secrets = config.ScanSecrets(cfg)
+		if len(secrets) == 0 {
+			fmt.Fprintln(out, "  ✓ No plaintext secrets detected")
+		} else {
+			fmt.Fprintf(out, "  ✗ %d plaintext secret(s) detected:\n", len(secrets))
+			for _, w := range secrets {
+				fmt.Fprintf(out, "      field: %s  value: %s  reason: %s\n", w.Field, w.Hint, w.Reason)
+			}
+		}
 	}
 
-	fmt.Printf("  ✗ %d plaintext secret(s) detected:\n", len(warnings))
-	for _, w := range warnings {
-		fmt.Printf("      field: %s  value: %s  reason: %s\n", w.Field, w.Hint, w.Reason)
+	switch {
+	case len(errs) > 0 && len(secrets) > 0:
+		return fmt.Errorf("configuration is invalid: %d validation error(s), %d plaintext secret(s)", len(errs), len(secrets))
+	case len(errs) > 0:
+		return fmt.Errorf("configuration is invalid: %d validation error(s)", len(errs))
+	case len(secrets) > 0:
+		return fmt.Errorf("plaintext secrets found in configuration")
 	}
-	return fmt.Errorf("plaintext secrets found in configuration")
+	return nil
 }
 
 func runConfigEdit(cmd *cobra.Command, args []string) error {
@@ -430,7 +471,7 @@ func runConfigBackup(cmd *cobra.Command, _ []string) error {
 	// Load private key from OS keychain.
 	privKey, err := bundle.LoadPrivateKey()
 	if err != nil {
-		return fmt.Errorf("config backup: %w (run 'ctxt key init' to generate a signing key)", err)
+		return fmt.Errorf("config backup: %w (run 'dpkms key init' to generate a signing key)", err)
 	}
 
 	result, err := bundle.Build(bundle.BuildOpts{
@@ -472,7 +513,7 @@ func runConfigBackup(cmd *cobra.Command, _ []string) error {
 	if encrypt {
 		fmt.Fprintf(cmd.OutOrStdout(), "  encrypted:   yes (AES-256-GCM + Argon2id)\n")
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "\nVerify with: ctxt config restore --verify %s\n", result.ZipPath)
+	fmt.Fprintf(cmd.OutOrStdout(), "\nVerify with: ctxt config restore --verify --dry-run %s\n", result.ZipPath)
 	return nil
 }
 
@@ -575,11 +616,17 @@ func writeRestoredFiles(cmd *cobra.Command, files map[string][]byte) error {
 	configPath := config.GetConfigPath(binName)
 	configDir := filepath.Dir(configPath)
 	for name, data := range files {
-		dst := filepath.Join(configDir, name)
-		if err := os.WriteFile(dst, data, 0600); err != nil {
+		// Bundle entry names are untrusted: each must land inside
+		// configDir (safefs refuses "..", absolute paths and symlink
+		// escapes).
+		rel, err := safefs.LocalName(name)
+		if err != nil {
+			return fmt.Errorf("config restore: entry %w", err)
+		}
+		if err := safefs.WriteFile(configDir, rel, bytes.NewReader(data), 0o600); err != nil {
 			return fmt.Errorf("config restore: write %s: %w", name, err)
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "  restored: %s\n", dst)
+		fmt.Fprintf(cmd.OutOrStdout(), "  restored: %s\n", filepath.Join(configDir, rel))
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "\nRestart ctxt for changes to take effect.\n")
 	return nil

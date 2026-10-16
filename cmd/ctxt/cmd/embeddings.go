@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
@@ -312,7 +313,7 @@ func runEmbeddingsProvider(cmd *cobra.Command, args []string) error {
 	}
 
 	doc := embeddingsProviderDoc{
-		ModelID: res.ModelID, Backend: res.Backend, Model: res.Model, Endpoint: res.Endpoint,
+		ModelID: res.ModelID, Backend: res.Backend, Model: res.Model, Endpoint: config.RedactDSN(res.Endpoint),
 		APIKeyEnv: res.APIKeyEnv, Dimension: res.Dimension, Sources: map[string]string{},
 		Fixed: []string{},
 	}
@@ -561,7 +562,7 @@ func probeEmbeddingDimension(ctx context.Context, p providers.EmbeddingProvider,
 	vec, err := p.Embed(ctx, embeddingsRegisterProbeText)
 	if err != nil {
 		return 0, fmt.Errorf("probe %s model %q at %s failed: %w; nothing was registered. %s",
-			mc.Backend, mc.Model, mc.Endpoint, err, probeFixHint(mc))
+			mc.Backend, mc.Model, config.RedactDSN(mc.Endpoint), config.RedactURLError(err), probeFixHint(mc))
 	}
 	if len(vec) == 0 {
 		return 0, fmt.Errorf("probe %s model %q returned an empty vector, so there is no dimension to measure; nothing was registered. %s",
@@ -574,7 +575,7 @@ func probeFixHint(mc embeddings.ModelConfig) string {
 	switch mc.Backend {
 	case embeddings.BackendOllama:
 		return fmt.Sprintf("Check that Ollama is running at %s and the model is pulled (ollama pull %s), or point at another Ollama with --embedding-endpoint.",
-			mc.Endpoint, mc.Model)
+			config.RedactDSN(mc.Endpoint), mc.Model)
 	case embeddings.BackendStub:
 		return "The stub backend produces no vectors; choose a real backend with --embedding-provider."
 	default:
@@ -599,13 +600,13 @@ func openEmbeddingsBackend() (*registry.Store, storage.StorageDriver, func(), er
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	switch d := svc.Store.(type) {
+	switch d := svc.Store(asOwner(context.Background())).(type) {
 	case *sqlite.Driver:
-		return registry.NewFor(d.DB(), "sqlite"), d, cleanup, nil
+		return registry.NewFor(d.DB(), storageTypeSQLite), d, cleanup, nil
 	case *postgres.Driver:
 		return registry.NewFor(d.DB(), d.SQLDialect()), d, cleanup, nil
 	default:
 		cleanup()
-		return nil, nil, nil, fmt.Errorf("ctxt embeddings: unsupported storage backend %T", svc.Store)
+		return nil, nil, nil, fmt.Errorf("ctxt embeddings: unsupported storage backend %T", svc.Store(asOwner(context.Background())))
 	}
 }

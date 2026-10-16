@@ -3,7 +3,6 @@ package config
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -78,11 +77,32 @@ func TestLintSecretsFound(t *testing.T) {
 	assert.Contains(t, findings[0].Message, "plaintext secret")
 }
 
+// A ${VAR} value is not a plaintext secret, but config never expands it:
+// doctor reports it once, as a schema ERROR, not as a secret warning.
 func TestLintSecretsEnvRef(t *testing.T) {
 	cfg := &Config{}
 	cfg.Storage.Blob.S3.SecretKey = "${MY_SECRET_KEY}"
+	assert.Empty(t, lintSecrets(cfg))
+
+	findings := LintConfig(cfg, "")
+	var hit []LintFinding
+	for _, f := range findings {
+		if f.Field == "storage.blob.s3.secret_key" {
+			hit = append(hit, f)
+		}
+	}
+	require.Len(t, hit, 1)
+	assert.Equal(t, SeverityError, hit[0].Severity)
+	assert.Equal(t, envRefMessage, hit[0].Message)
+}
+
+// The secret warning must not advise ${ENV_VAR}: config never expands it.
+func TestLintSecretsAdviceDoesNotSuggestEnvRef(t *testing.T) {
+	cfg := &Config{}
+	cfg.Storage.Blob.S3.SecretKey = "sk-ant-verysecretvalue123456"
 	findings := lintSecrets(cfg)
-	assert.Empty(t, findings)
+	require.NotEmpty(t, findings)
+	assert.NotContains(t, findings[0].Message, "${")
 }
 
 // --- lintPermissions ---
@@ -198,30 +218,10 @@ func TestLintConfigClean(t *testing.T) {
 	assert.Empty(t, findings, "clean config + safe permissions should have no findings")
 }
 
-func TestLintAccessPrivateWithFederationToken(t *testing.T) {
-	cfg := &Config{}
-	cfg.Federation.Token = "push-secret"
-
-	findings := LintConfig(cfg, "")
-
-	var hit *LintFinding
-	for i, f := range findings {
-		if f.Field == "federation.token" {
-			hit = &findings[i]
-			break
-		}
-	}
-	require.NotNil(t, hit, "expected federation.token finding on private instance")
-	assert.Equal(t, SeverityWarn, hit.Severity)
-}
-
 func TestLintPublicFlagDeprecationShorthand(t *testing.T) {
 	cfg := &Config{}
 	cfg.Server.Public = true
-	cfg.Server.Auth = AuthConfig{
-		Provider: "static",
-		Static:   StaticAuthConfig{Tokens: []StaticTokenConfig{{Token: "t", Principal: "p", Roles: []string{"admin"}}}},
-	}
+	cfg.Server.PublicURL = "https://dpkms.example.net"
 
 	findings := LintConfig(cfg, "")
 
@@ -235,43 +235,4 @@ func TestLintPublicFlagDeprecationShorthand(t *testing.T) {
 	require.NotNil(t, hit, "expected server.public deprecation finding")
 	assert.Equal(t, SeverityWarn, hit.Severity)
 	assert.Contains(t, hit.Message, "deprecated")
-}
-
-func TestLintAccessProtectedWithFederationTokenIsQuiet(t *testing.T) {
-	cfg := &Config{}
-	cfg.Server.Access = AccessProtected
-	cfg.Server.Auth = AuthConfig{
-		Provider: "static",
-		Static:   StaticAuthConfig{Tokens: []StaticTokenConfig{{Token: "t", Principal: "p", Roles: []string{"admin"}}}},
-	}
-	cfg.Federation.Token = "push-secret"
-
-	for _, f := range LintConfig(cfg, "") {
-		if f.Field == "federation.token" && f.Severity == SeverityWarn && f.Message != "" &&
-			strings.Contains(f.Message, "private") {
-			t.Fatalf("unexpected private-instance finding on protected instance: %v", f)
-		}
-	}
-}
-
-func TestLintAccessNonPrivateWithoutFederationToken(t *testing.T) {
-	cfg := &Config{}
-	cfg.Server.Access = AccessProtected
-	cfg.Server.Auth = AuthConfig{
-		Provider: "static",
-		Static:   StaticAuthConfig{Tokens: []StaticTokenConfig{{Token: "t", Principal: "p", Roles: []string{"admin"}}}},
-	}
-
-	findings := LintConfig(cfg, "")
-
-	var hit *LintFinding
-	for i, f := range findings {
-		if f.Field == "federation.token" {
-			hit = &findings[i]
-			break
-		}
-	}
-	require.NotNil(t, hit, "expected federation.token finding on non-private instance without a credential")
-	assert.Equal(t, SeverityWarn, hit.Severity)
-	assert.Contains(t, hit.Message, "push")
 }

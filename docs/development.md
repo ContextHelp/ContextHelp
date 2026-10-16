@@ -12,7 +12,7 @@ Comprehensive guide for developing **dPKMS + `ctxt`**.
 - [Testing Strategy](#testing-strategy)
 - [Code Quality](#code-quality)
 - [Database & Migrations](#database--migrations)
-- [Plugin Development](#plugin-development)
+- [Adding a Pipeline Step](#adding-a-pipeline-step)
 - [Debugging](#debugging)
 - [Performance Optimization](#performance-optimization)
 - [Release Process](#release-process)
@@ -72,21 +72,24 @@ Settings (`.vscode/settings.json`):
 
 ### Environment Variables
 
-Create `.env` from `.env.example`:
+None are needed for local development. Nothing loads a `.env` file
+automatically; to keep overrides in one, export it into your shell:
 
 ```bash
 cp .env.example .env
+set -a; . ./.env; set +a
 ```
 
-Key variables for development:
+Variables useful during development:
 ```bash
-ENV=development
-LOG_LEVEL=debug
-STORAGE_BACKEND=sqlite
-SQLITE_PATH=./data/sqlite/contexthelp_dev.db
-WORKER_COUNT=2
-API_PORT=8080
+CH_STORAGE_TYPE=sqlite   # storage.type
+DPKMS_WORKERS=2          # server.workers
+CH_SERVER_PORT=8080      # server.port
 ```
+
+Logging has no env var: pass `--verbose` to `ctxt` or `dpkms` for debug
+output. The database location is the `storage.path` config key. Full
+list: [environment-variables/README.md](environment-variables/README.md).
 
 ---
 
@@ -363,19 +366,19 @@ func TestSQLiteStore_CreateObject(t *testing.T) {
     // Arrange
     store, cleanup := setupTestStore(t)
     defer cleanup()
-    
+
     obj := &Object{
         Type:    "text",
         Content: "test content",
     }
-    
+
     // Act
     err := store.Create(obj)
-    
+
     // Assert
     require.NoError(t, err)
     assert.NotEmpty(t, obj.ID)
-    
+
     // Verify persistence
     retrieved, err := store.Get(obj.ID)
     require.NoError(t, err)
@@ -400,14 +403,14 @@ func TestTextPipeline_EndToEnd(t *testing.T) {
     // Setup test database
     db := setupTestDB(t)
     defer db.Close()
-    
+
     // Create pipeline
     pipeline := pipelines.NewTextLong(db)
-    
+
     // Execute
     ctx := context.Background()
     result, err := pipeline.Execute(ctx, "Long text input...")
-    
+
     // Verify
     require.NoError(t, err)
     assert.NotEmpty(t, result.Summary)
@@ -425,15 +428,15 @@ package helpers
 
 func SetupTestStore(t *testing.T) (*storage.Store, func()) {
     t.Helper()
-    
+
     db := setupTempDB(t)
     store := storage.New(db)
-    
+
     cleanup := func() {
         db.Close()
         os.Remove(db.Path())
     }
-    
+
     return store, cleanup
 }
 ```
@@ -500,88 +503,67 @@ chmod +x .git/hooks/pre-commit
 
 ## Database & Migrations
 
-### Creating Migrations
+The schema lives in migrations embedded in the binaries. There is no
+separate migrate tool, migration directory or Taskfile target: `dpkms` and
+`ctxt` apply every pending migration whenever they open the database
+(`Driver.Init` -> `Migrate`). Migrations are forward-only; there are no
+down steps.
+
+| Backend | Where | Ledger |
+|---------|-------|--------|
+| SQLite (default) | `internal/storage/sqlite/migrations/NNN_name.sql`, each `//go:embed`ed and listed in the `migrations` slice in `internal/storage/sqlite/migrations.go` | `schema_version` table |
+| Postgres | the `pgMigrations` slice in `internal/storage/postgres/migrations.go` | versioned chain |
+
+### Adding a migration
+
+1. Add the next-numbered `internal/storage/sqlite/migrations/NNN_name.sql`.
+2. Embed it in `migrations.go` (`//go:embed migrations/NNN_name.sql`) and
+   append `{Version: NNN, SQL: migrationNNN}` to `migrations`. Use the
+   entry's `fn` instead when SQL alone cannot do it (for example an
+   idempotent `ALTER TABLE` on upgraded databases).
+3. Mirror the change as the next `pgMigrations` entry.
+4. Cover it with a test next to the existing ones
+   (`internal/storage/sqlite/migrations_test.go`,
+   `internal/storage/postgres/migrations_unit_test.go`).
+
+### Starting from an empty database
+
+Point the binary at a throwaway data dir; the database
+(`<data dir>/db.sqlite`) is created and migrated on first open:
 
 ```bash
-# Create new migration
-task db:migrate:create -- add_embeddings_table
-
-# This creates:
-# data/migrations/000001_add_embeddings_table.up.sql
-# data/migrations/000001_add_embeddings_table.down.sql
+CTXT_DATA_DIR="$(mktemp -d)" ./bin/dpkms serve
 ```
 
-### Writing Migrations
-
-**Up migration** (`000001_add_embeddings_table.up.sql`):
-```sql
-CREATE TABLE IF NOT EXISTS embeddings (
-    id TEXT PRIMARY KEY,
-    object_id TEXT NOT NULL,
-    model TEXT NOT NULL,
-    vector BLOB NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (object_id) REFERENCES objects(id) ON DELETE CASCADE
-);
-
-CREATE INDEX idx_embeddings_object_id ON embeddings(object_id);
-```
-
-**Down migration** (`000001_add_embeddings_table.down.sql`):
-```sql
-DROP INDEX IF EXISTS idx_embeddings_object_id;
-DROP TABLE IF EXISTS embeddings;
-```
-
-### Running Migrations
-
-```bash
-# Apply all pending migrations
-task db:migrate:up
-
-# Rollback last migration
-task db:migrate:down
-
-# Reset database (drops all, re-runs migrations)
-task db:reset
-```
+To reset your real database instead, stop dpkms (`dpkms shutdown`), back
+it up (`dpkms backup`), then move the file at `storage.path` aside.
 
 ---
 
-## Plugin Development
+## Adding a Pipeline Step
 
-See [docs/plugins/plugins-api.md](plugins/plugins-api.md) for complete plugin development guide.
+There is no plugin system ([ADR-078](decisions/ADR-078-no-plugin-system.md)).
+A built-in step implements `pipeline.PipelineStep` (`internal/pipeline/pipeline.go`):
 
-### Quick Start
-
-1. **Define plugin interface:**
 ```go
-type PipelinePlugin interface {
+type PipelineStep interface {
     Name() string
-    Execute(ctx context.Context, input any) (any, error)
+    Contract() StepContract
+    Run(ctx context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error)
 }
 ```
 
-2. **Implement plugin:**
-```go
-type MyPlugin struct{}
+1. Add the step under `internal/pipeline/steps/`, embedding
+   `pipeline.NewBaseContract(pipeline.StepContract{Requires: ..., Produces: ...})`.
+2. Add its constructor to the step tables in
+   `internal/pipeline/builtins/builtins.go` so pipeline definitions can name it.
+3. Reference it from a pipeline definition, or from
+   `pipelines.overrides.<pipeline>.insert_steps`.
 
-func (p *MyPlugin) Name() string {
-    return "my-plugin"
-}
-
-func (p *MyPlugin) Execute(ctx context.Context, input any) (any, error) {
-    // Plugin logic
-    return result, nil
-}
-```
-
-3. **Register plugin:**
-```go
-func init() {
-    plugins.Register(&MyPlugin{})
-}
-```
+A step that ships outside ctxt is an external step: a directory with a
+`SKILL.md` and an executable that reads the knowledge object on stdin and
+writes `{"object": ...}` (the fields it changed) on stdout, installed with
+`dpkms pipeline step install` (ADR-058; example in `examples/steps/pii-mask`).
 
 ---
 
@@ -656,22 +638,16 @@ go tool pprof cpu.prof
 
 ## Release Process
 
-See [docs/release-process.md](release-process.md) for complete release guide.
+ctxt has no published release yet. The release path is a `v*.*.*` tag:
+pushing one runs `.github/workflows/release.yml`, which runs all of
+`.github/workflows/ci.yml` on the tag, then a blocking Trivy scan, then
+GoReleaser per `.goreleaser.yaml` (see [ci-cd.md](ci-cd.md)).
+Release notes for operators live in [release-notes/](release-notes/); the
+`Operator-Impact:` commit trailer feeds them (see
+[release-notes/template.md](release-notes/template.md)).
 
-### Quick Release
-
-```bash
-# 1. Update version
-git tag -a v0.2.0 -m "Release v0.2.0"
-
-# 2. Build release binaries
-task release:build
-
-# 3. Push tag
-git push origin v0.2.0
-
-# 4. GitHub Actions will create release
-```
+`task release:build` packs `bin/` into `dist/contexthelp-<tag>.tar.gz` for
+a local check; it does not publish anything.
 
 ---
 

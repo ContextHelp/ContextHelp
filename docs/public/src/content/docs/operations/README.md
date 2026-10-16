@@ -8,6 +8,8 @@ This section is for operating dPKMS/`ctxt` reliably in multi-user or production-
 ## Start here
 
 - Primary runbook: [`runbook.md`](./runbook.md)
+- Embedding models (register, migrate, switch, retire; duplicates): [`embeddings.md`](./embeddings.md)
+- Web UI and API in a browser through a reverse proxy (Caddy, nginx): [`reverse-proxy.md`](./reverse-proxy.md)
 - Troubleshooting companion: [`../troubleshooting/faq.md`](../troubleshooting/faq.md)
 
 ## Operational scope
@@ -15,6 +17,8 @@ This section is for operating dPKMS/`ctxt` reliably in multi-user or production-
 - Service availability and health checks
 - Ingestion queue throughput and failure handling
 - Search/composition path verification
+- Embedding model lifecycle and migrations
+- Remote browser access behind a reverse proxy
 - Registry and step governance checks
 - Maintenance operations (`housekeeping`)
 

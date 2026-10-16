@@ -94,7 +94,7 @@ func (d *AlternativeDetector) Run(ctx context.Context, draft *storage.KnowledgeO
 		return draft, nil
 	}
 
-	var linked []string
+	linked := make([]string, 0, len(candidates))
 	for _, candidate := range candidates {
 		if candidate.ID == draft.ID {
 			continue

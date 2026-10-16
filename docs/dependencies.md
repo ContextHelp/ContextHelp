@@ -57,48 +57,31 @@ For each non-Charmbracelet dependency, we evaluate:
    - WAL mode provides adequate concurrency
    - Can achieve similar performance to crawshaw.io with proper pooling
 
-#### Configuration: YAML/TOML Parser
+#### Configuration: YAML Loader
 
-**Selected:** `github.com/ilyakaznacheev/cleanenv` (~1.6k stars)
+**Selected:** `hop.top/kit/go/core/config` on top of `github.com/spf13/viper`,
+with `gopkg.in/yaml.v3` for YAML.
 
-**Why:**
-- Struct-tag based validation (declarative approach)
-- Simple, minimal API
-- Built-in env var mapping
-- Perfect for dPKMS: one config struct, zero boilerplate
-- 1 day integration
+**How it is used** (`internal/config/config.go`):
+- `kitconfig.Load` reads the per-binary file cascade (`/etc/contexthelp/<bin>.yaml`,
+  `$XDG_CONFIG_HOME/contexthelp/<bin>.yaml`, nearest `.contexthelp/<bin>.yaml`)
+  into the typed `Config` struct via `mapstructure`/`yaml` tags.
+- `kitconfig.ParseConfigArgs` / `ApplyOverrides` apply `-c key=value` overrides.
+- A fixed `envBindings` list maps env vars onto keys (env > file); viper is also
+  bound for code paths that still call `viper.Get*`.
+- `${VAR}` is never expanded in config values.
 
 **Example:**
 ```go
-type Config struct {
-    DBPath string `yaml:"db_path" env:"DPKMS_DB_PATH" env-default:"./dpkms.db"`
-    Port   int    `yaml:"port" env:"DPKMS_PORT" env-default:"8080"`
+type StorageConfig struct {
+    Type    string `mapstructure:"type" yaml:"type"`
+    DataDir string `mapstructure:"data_dir" yaml:"data_dir"`
+    Path    string `mapstructure:"path" yaml:"path"`
 }
-// Load with: cleanenv.ReadConfig("config.yaml", &cfg)
+// storage.type is also bound to CH_STORAGE_TYPE through envBindings.
 ```
 
-**Optional Addition:** `github.com/joho/godotenv` (~8k stars)
-- Load `.env` files for profile-specific overrides
-- 0.5 days integration
-- Use with cleanenv for `.env` + YAML support
-
-**Alternatives:**
-
-1. **Popular:** `github.com/spf13/viper` (~27k stars)
-   - Watch files, env vars, remote config
-   - Overkill for local-first use case
-   - 3-4 days (complex API)
-
-2. **Complementary:** `github.com/knadh/koanf` (~2.7k stars)
-   - More composable than viper
-   - Clean separation of providers
-   - 2 days integration
-   - Choose if you need 3+ config sources or file watching
-
-3. **Why cleanenv wins:**
-   - Simplest for single YAML + env vars pattern
-   - Validation built-in
-   - Less code to maintain
+No `.env` loader (`godotenv`) and no `cleanenv` or `koanf` dependency.
 
 #### Migrations
 
@@ -107,7 +90,6 @@ type Config struct {
 **Why:**
 - Simpler API than golang-migrate
 - Embedded migrations (better for compiled binaries)
-- Excellent for plugin-extensible schemas
 - Supports both SQL and Go migrations
 - 2 days integration (define migration format, test up/down)
 
@@ -127,7 +109,6 @@ type Config struct {
 3. **Why goose wins:**
    - Simpler for our use case
    - Better embedded migration support
-   - Plugin system will benefit from goose's flexibility
 
 #### UUID Generation
 
@@ -195,7 +176,7 @@ type Config struct {
 - NATS: Overkill for single-process
 - BoltDB: Redundant with SQLite
 
-**Future:** Plugin interface for distributed queues (Redis, NATS)
+**Future:** Backend interface for distributed queues (Redis, NATS)
 
 #### Logging
 
@@ -559,7 +540,7 @@ resp, err := client.R().
 3. **Lightweight:** Manual SQL JOIN queries
    - (already selected)
 
-**Future:** Plugin interface for graph backends (Neo4j connector, etc.)
+**Future:** Backend interface for graph backends (Neo4j connector, etc.)
 
 ### ctxt
 
@@ -665,7 +646,7 @@ c.OnHTML("a[href]", func(e *colly.HTMLElement) {
 
 2. **Complementary:** Cloud OCR APIs (Google Vision, AWS Textract)
    - Network dependency (violates local-first)
-   - Fallback option for plugin
+   - Fallback option behind a provider backend
 
 3. **Lightweight:** `github.com/GeertJohan/go.tesseract` (~36 stars)
    - Unmaintained
@@ -778,7 +759,7 @@ results := collection.Query(ctx, queryEmbedding, 10)
    - Pinecone cloud SDK
    - Network dependency (violates local-first)
    - 3 days (API integration)
-   - Plugin option for cloud deployments
+   - Backend option for cloud deployments
 
 3. **Pure Go HNSW:** `github.com/chewxy/hnsw` (~480 stars)
    - Lower-level HNSW library
@@ -789,40 +770,16 @@ results := collection.Query(ctx, queryEmbedding, 10)
 - Zero CGo = simpler builds (aligns with modernc.org/sqlite choice)
 - Batteries-included (persistence, collections, metadata)
 - Easy to start, easy to deploy
-- Plugin interface allows swapping to sqlite-vec later if needed
+- Backend interface allows swapping to sqlite-vec later if needed
 
-**Plugin Interface:** Still provide abstraction for alternative backends
+**Backend Interface:** Still provide abstraction for alternative backends
 
 #### Plugin System
 
-**Selected:** Go plugin system OR compiled-in plugins
-
-**Why:**
-- Go plugins (`plugin` package) are platform-limited
-- Recommend compiled-in plugins with interface registration
-- 5-7 days (plugin interface, discovery, lifecycle)
-
-**Alternatives:**
-
-1. **Go stdlib plugins:** `plugin` package
-   - Linux/macOS only
-   - CGo required
-   - Fragile across Go versions
-   - 3-4 days (if it works)
-
-2. **Hashicorp go-plugin:** `github.com/hashicorp/go-plugin` (~5k stars)
-   - RPC-based plugins (subprocesses)
-   - Cross-platform
-   - More complex
-   - 7-10 days
-
-3. **Compiled-in + Registry:** (recommended)
-   - Plugins are Go packages
-   - Register via init() functions
-   - Rebuild to add plugins
-   - 5-7 days (interface design, registry, examples)
-
-**Recommendation:** Start with compiled-in, consider hashicorp/go-plugin for v2.
+**Selected:** none. ctxt and dpkms have no plugin system
+([ADR-078](decisions/ADR-078-no-plugin-system.md)); extension is through
+pipelines, steps (built-in, or installed from step registries), registries,
+and (designed) hooks. Neither the Go `plugin` package nor `hashicorp/go-plugin` is used.
 
 ### ctxt
 
@@ -995,7 +952,7 @@ pipelineErrors := prometheus.NewCounter(...)
    - OpenAI-compatible API for local models
    - 2-3 days (same as Ollama)
 
-**Recommendation:** Support both Ollama and llama.cpp via plugin interface.
+**Recommendation:** Support both Ollama and llama.cpp as provider backends.
 
 ---
 
@@ -1260,7 +1217,7 @@ go mod tidy
 
 Use `govulncheck`:
 ```bash
-go install golang.org/x/vuln/cmd/govulncheck@latest
+go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
 govulncheck ./...
 ```
 
@@ -1320,7 +1277,7 @@ govulncheck ./...
    - Self-owned package at `hop.top/hdl`
    - Replaces manual OS-specific code (LSSetDefaultHandlerForURLScheme, xdg-mime, registry)
    - Used by `ctxt uri register` to make `ctxt://` links OS-clickable
-   - Phase 9 (T-0158)
+   - Phase 9
 
 **Comparison with awesome-go:**
 - Validated choices against community standards

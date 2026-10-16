@@ -1,3 +1,6 @@
+// Command dpkms is the ContextHelp substrate daemon and its operator CLI:
+// it serves the REST and gRPC APIs, runs ingest pipelines, and
+// maintains the store.
 package main
 
 import (

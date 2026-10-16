@@ -2,8 +2,11 @@ package sqlite
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
+
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 func TestMigration014_ColumnsExist(t *testing.T) {
@@ -57,13 +60,7 @@ func TestMigration014_SetAndClearReminder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list pending reminders: %v", err)
 	}
-	found := false
-	for _, o := range pending {
-		if o.ID == obj.ID {
-			found = true
-		}
-	}
-	if !found {
+	if !hasObjectID(pending, obj.ID) {
 		t.Error("object not found in pending reminders")
 	}
 
@@ -72,13 +69,7 @@ func TestMigration014_SetAndClearReminder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list due reminders: %v", err)
 	}
-	found = false
-	for _, o := range due {
-		if o.ID == obj.ID {
-			found = true
-		}
-	}
-	if !found {
+	if !hasObjectID(due, obj.ID) {
 		t.Error("object not in due reminders")
 	}
 
@@ -93,10 +84,8 @@ func TestMigration014_SetAndClearReminder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list due reminders after mark: %v", err)
 	}
-	for _, o := range due2 {
-		if o.ID == obj.ID {
-			t.Error("object still in due reminders after MarkReminded")
-		}
+	if hasObjectID(due2, obj.ID) {
+		t.Error("object still in due reminders after MarkReminded")
 	}
 
 	// ClearReminder.
@@ -110,4 +99,9 @@ func TestMigration014_SetAndClearReminder(t *testing.T) {
 	if cleared.RemindAt != nil {
 		t.Error("RemindAt should be nil after ClearReminder")
 	}
+}
+
+// hasObjectID reports whether objs holds an object with id.
+func hasObjectID(objs []*storage.KnowledgeObject, id string) bool {
+	return slices.ContainsFunc(objs, func(o *storage.KnowledgeObject) bool { return o.ID == id })
 }

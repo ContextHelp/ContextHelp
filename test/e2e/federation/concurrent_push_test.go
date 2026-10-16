@@ -1,7 +1,7 @@
 //go:build federation_e2e
 
 // Concurrent push idempotency e2e test for US-0319 dedup-by-content-hash and
-// US-0323 idempotent push semantics (T-0169).
+// US-0323 idempotent push semantics.
 //
 // Verifies that two independent source instances pushing to the SAME merged
 // target DB in parallel:
@@ -34,14 +34,13 @@ import (
 // (sees nil), the other also wins the SELECT (sees nil), then both Create —
 // the loser hits "UNIQUE constraint failed: objects.content_hash" and
 // returns an error. Dedup is not concurrency-safe at the federation level.
-// Filed follow-up: see commit message for tlc task ID.
 //
 // Behavior under fix: either INSERT … ON CONFLICT DO NOTHING, or the
 // content-hash collision must be swallowed as a successful no-op (matches
 // "idempotent push" per US-0323). Either way, both pushers must return nil
 // and the target row count must be exactly 5.
 func TestFederation_ConcurrentPush_Idempotent(t *testing.T) {
-	// T-0189: LocalPusher.Push now treats UNIQUE-constraint collisions
+	// LocalPusher.Push now treats UNIQUE-constraint collisions
 	// (objects.content_hash + jobs id + edge id) as no-op skips so the
 	// concurrent-pushers race no longer surfaces as an error. Re-enabled.
 	tmp := t.TempDir()
@@ -70,7 +69,7 @@ func TestFederation_ConcurrentPush_Idempotent(t *testing.T) {
 		for _, o := range objs {
 			batch = append(batch, *o)
 		}
-		pusher := federation.NewLocalPusher(fedName, tgtPath)
+		pusher := federation.NewLocalPusher(fedName, tgtPath, nil, storageutil.NewTestBlobStore(t))
 		return pusher.Push(ctx, batch, nil, nil)
 	}
 
@@ -98,10 +97,10 @@ func TestFederation_ConcurrentPush_Idempotent(t *testing.T) {
 
 	wmA := getWM("fed-a")
 	wmB := getWM("fed-b")
-	if wmA.IsZero() {
+	if wmA == 0 {
 		t.Error("watermark fed-a not advanced after concurrent push")
 	}
-	if wmB.IsZero() {
+	if wmB == 0 {
 		t.Error("watermark fed-b not advanced after concurrent push")
 	}
 
@@ -111,7 +110,7 @@ func TestFederation_ConcurrentPush_Idempotent(t *testing.T) {
 	if perr := pushFromSrc(srcA, "fed-a"); perr != nil {
 		t.Fatalf("third push fed-a: %v", perr)
 	}
-	if wmBAfter := getWM("fed-b"); !wmBAfter.Equal(prevB) {
+	if wmBAfter := getWM("fed-b"); wmBAfter != prevB {
 		t.Errorf("fed-b watermark moved on fed-a push: before=%v after=%v",
 			prevB, wmBAfter)
 	}
@@ -125,9 +124,9 @@ func TestFederation_ConcurrentPush_Idempotent(t *testing.T) {
 // openWatermarkReader opens a fresh SQLite driver against tgtPath and
 // returns a closure that reads watermarks by federation name. Cleanup is
 // registered via t.Cleanup so the caller doesn't manage the driver.
-func openWatermarkReader(t *testing.T, tgtPath string) func(name string) time.Time {
+func openWatermarkReader(t *testing.T, tgtPath string) func(name string) int64 {
 	t.Helper()
-	drv, err := storageutil.NewDriver("sqlite", tgtPath)
+	drv, err := storageutil.NewDriver("sqlite", tgtPath, storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatalf("open target for watermark check: %v", err)
 	}
@@ -136,7 +135,7 @@ func openWatermarkReader(t *testing.T, tgtPath string) func(name string) time.Ti
 			t.Logf("close wm reader: %v", cerr)
 		}
 	})
-	return func(name string) time.Time {
+	return func(name string) int64 {
 		t.Helper()
 		got, gerr := drv.Watermarks().GetWatermark(context.Background(), name)
 		if gerr != nil {

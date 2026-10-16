@@ -30,11 +30,85 @@ outcome, not a broken pipeline. Re-records churn only `recorded_at`,
 `binary_version`, and `duration_ms`; captures are byte-stable.
 
 Each scenario runs in its own throwaway work dir with `HOME` and all
-four XDG roots pointed inside it and `CTXT_*` / `DPKMS_*` / `KIT_*`
-env scrubbed, so the knowledge database a scenario writes never leaks
-between scenarios or into the developer's real data. `USER` and
-`LOGNAME` are pinned to a fixed token so the recording host's account
-name can never reach a committed capture.
+four XDG roots pointed inside it and `CTXT_*` / `CH_*` / `DPKMS_*` /
+`KIT_*` / `BUS_TOKEN` env scrubbed (`CH_*` binds config keys, so an
+exported `CH_SERVER_URL` would re-route a step), so the knowledge database a scenario writes never leaks between
+scenarios or into the developer's real data. `USER` and `LOGNAME` are
+pinned to a fixed token so the recording host's account name can never
+reach a committed capture.
+
+### ctxt scenarios and the server
+
+ctxt commands run over the dpkms API, and with nothing configured ctxt
+targets the built-in default endpoint (`127.0.0.1:8080`) — where a
+developer's real instance may be listening. `12fcc-record.sh` never
+lets a scenario reach it. Before recording, it writes `server.url`
+into the scenario's own user config
+(`$XDG_CONFIG_HOME/contexthelp/ctxt.yaml`) and checks, through `ctxt
+config show`, that ctxt resolves exactly that URL; on a mismatch it
+refuses to record. Each scenario has one of two server modes, set per
+scenario in the script's `server_mode` from what the scenario and its
+story say they test (an unclassified scenario is refused):
+
+| Mode | Scenarios | ctxt is routed to |
+|---|---|---|
+| live | `delete-preview`, `format-contract`, `profile-idempotency`, `resolve-contract`, `state-transparency` | a throwaway `dpkms serve` started for that scenario alone |
+| closed | `offline-state-envelope` ("orientation works with nothing running") | `http://127.0.0.1:1`, a port nothing listens on |
+
+The live instance is private (loopback only, no inbound tokens) with
+its own `HOME`/XDG tree and SQLite database, stub providers and stub
+embeddings, and a random bus token held only in the daemon's env.
+Throwaway instances bind HTTP, gRPC and the cookie bridge on
+OS-assigned ports (`--port 0 --grpc-port 0 --cookie-bridge-port 0`);
+the recorder fails the run if the pidfile names any default port
+(8080, 8081, 9090, 9091, 9377). It starts empty: no scenario seeds data,
+and the empty-store expectations (`knowledge_objects: 0`, `total: 0`)
+depend on that. It leads its own process group; the recorder stops the
+group before the next scenario starts and on every exit path, and
+waits until the port stops accepting connections.
+
+The port is random, so byte stability rests on no capture naming it.
+After each scenario the recorder fails the run if any capture contains
+a default-port endpoint, the live instance's address or bus token, the
+repo path, or the operator's `HOME`/`TMPDIR`.
+
+The work root is a fixed `/tmp/ctxt-12fcc-record` rather than a
+`$TMPDIR` path: `ctxt config path` in `offline-state-envelope` reports
+the scenario's config file, and a fixed root keeps that capture stable
+and free of host-specific temp paths. Overriding it with
+`CTXT_12FCC_WORK` changes that capture.
+
+### dpkms scenarios and the server
+
+The dpkms scenarios probe the substrate stopped: no scenario starts a
+daemon (`dpkms serve` needs `DPKMS_BUS_TOKEN`, which the scrub
+removes). The client commands still dial `server.url`, though —
+`daemon-unreachable` runs `dpkms healthcheck` — and with nothing
+configured that is the default endpoint (`127.0.0.1:8080`), where a
+developer's real instance may answer. `12fcc-record-dpkms.sh` writes
+`server.url: http://127.0.0.1:1` (a port nothing listens on, the Go
+test guard's closed endpoint) into every scenario's own user config
+(`$XDG_CONFIG_HOME/contexthelp/dpkms.yaml`). Before recording it
+checks that `dpkms config path` reports exactly that file and that a
+`dpkms healthcheck` run as the steps run dials that URL and is
+refused there; on a mismatch it refuses to record. It also refuses
+when anything accepts connections on port 1. Routing goes through
+config, not `--server-url` or env, so the scenario steps run as
+written.
+
+After each scenario the recorder fails the run if any capture names a
+default-port endpoint, the repo path, or the operator's
+`HOME`/`TMPDIR`. The one exempt default-port mention is the exact
+`--server-url` help phrase `(default http://127.0.0.1:8080 when
+nothing is configured)`, which `output-flag-contract` records from
+`dpkms healthcheck --help`; any other mention, on the same line or
+not, still fails.
+
+The work root is a fixed `/tmp/dpkms-12fcc-record`: the housekeeping
+previews in `maintenance-preview` and `preview-idempotent` name the
+scenario's database file, and a fixed root keeps those captures
+stable and free of host-specific temp paths. Overriding it with
+`DPKMS_12FCC_WORK` changes those captures.
 
 ## Keeping `verify-no-leak` clean
 
@@ -61,9 +135,11 @@ gate went green.
 
 ## Re-running
 
-Record fresh cassettes (builds the binary with the `fts5` tag,
+Record fresh cassettes (builds the binary with the `fts5` tag —
+the ctxt recorder builds `dpkms` too, for its throwaway instance —
 isolates a work dir per scenario, runs every scenario step as a real
-subprocess):
+subprocess; both recorders need `python3`, the ctxt recorder also
+`curl`):
 
 ```sh
 KIT_BIN=/path/to/kit scripts/12fcc-record.sh        # ctxt scenarios
@@ -113,135 +189,47 @@ cassettes and verdicts.
 
 ## Current verdicts
 
-| Scenario | Binary | Verdict | Factors |
-|---|---|---|---|
-| `resolve-contract` | ctxt | see verdicts/ | F3 F4 F11 |
-| `state-transparency` | ctxt | see verdicts/ | F3 F5 F8 F11 |
-| `delete-preview` | ctxt | see verdicts/ | F3 F5 F6 F8 F11 |
-| `format-contract` | ctxt | see verdicts/ | F3 F4 F5 F11 |
-| `offline-state-envelope` | ctxt | see verdicts/ | F3 F4 F5 F8 F11 |
-| `profile-idempotency` | ctxt | see verdicts/ | F3 F4 F5 F7 F8 F11 |
-| `state-contract` | dpkms | see verdicts/ | F3 F5 F8 |
-| `daemon-unreachable` | dpkms | see verdicts/ | F3 F4 F11 |
-| `maintenance-preview` | dpkms | see verdicts/ | F3 F4 F6 F11 |
-| `preview-idempotent` | dpkms | see verdicts/ | F6 F7 F8 |
-| `output-flag-contract` | dpkms | see verdicts/ | F3 F5 F11 |
+`verdicts/` is the source of truth, not this table: it is rewritten on
+every grade, and the table below reflects the last committed re-grade.
 
-Verdicts are regenerated by `scripts/12fcc-grade.sh`; `verdicts/` is the
-source of truth, not this table.
+| Scenario | Binary | Verdict | Factors | Contract probed |
+|---|---|---|---|---|
+| `resolve-contract` | ctxt | pass | F3 F4 F11 | missing object, missing entity, undefined flag: corrective envelope + matching exit class |
+| `state-transparency` | ctxt | pass | F3 F5 F8 F11 | derived counts as JSON fields; empty store and no-match search explicit; repeat reads agree |
+| `delete-preview` | ctxt | pass | F3 F6 F8 F11 | declined delete yields a machine-readable preview; state unchanged after |
+| `format-contract` | ctxt | pass | F3 F4 F5 F11 | listed formats honored; unlisted ones refused as `USAGE`, naming the value |
+| `offline-state-envelope` | ctxt | pass | F3 F4 F5 F8 F11 | version and config answer as data with nothing running; unknown subcommand refused |
+| `profile-idempotency` | ctxt | pass | F3 F4 F5 F7 F8 F11 | re-asserting the active profile converges; repeat create distinguishable by exit class |
+| `state-contract` | dpkms | pass | F3 F5 F8 | instance, job, and detector listings as stable JSON; empty collections stay collections |
+| `daemon-unreachable` | dpkms | pass | F3 F4 F11 | unreachable daemon, absent job, rejected flag: corrective envelope + matching exit code |
+| `maintenance-preview` | dpkms | pass | F3 F4 F6 F11 | writing maintenance steps preview as a JSON plan; refusals addressed to the caller |
+| `preview-idempotent` | dpkms | pass | F6 F7 F8 | two identical previews agree, mutate nothing, enqueue no work |
+| `output-flag-contract` | dpkms | pass | F3 F5 F11 | the output flag help documents is the one the leaf accepts and honors |
 
-Per-factor rollup across the library: **F8 pass**; F3, F4, F5, F6, F7,
-and F11 fail. Every factor except F6 and F7 has at least one passing
-leaf; the rollup takes the worst status seen anywhere, so one failing
-scenario keeps a factor red even where another scenario passes it.
+Each scenario's own `description` states its contract in full. The
+dpkms scenarios probe the substrate in its stopped state (see
+[Not covered](#not-covered)).
 
-One defect accounts for most of the red: several leaves ignore
-`--format` and write human-rendered prose to stdout. It surfaces as F3
-(stdout is not machine-readable), F5 (the advertised format contract is
-not honored), and, where the value is a field a caller needs, F7.
+Per-factor rollup takes the worst status seen in any scenario carrying
+the factor, so one failing scenario turns a factor red even where
+others pass it. At the last re-grade every scenario passes, so every
+service-graded factor rolls up `pass`:
 
-### `resolve-contract` — fail (F4, F11)
+| Factor | Carried by |
+|---|---|
+| F3 Structured I/O | every scenario except `preview-idempotent` |
+| F4 Corrective Error Model | `resolve-contract`, `format-contract`, `offline-state-envelope`, `profile-idempotency`, `daemon-unreachable`, `maintenance-preview` |
+| F5 Explicit Contracts | `state-transparency`, `format-contract`, `offline-state-envelope`, `profile-idempotency`, `state-contract`, `output-flag-contract` |
+| F6 Previewability | `delete-preview`, `maintenance-preview`, `preview-idempotent` |
+| F7 Idempotency | `profile-idempotency`, `preview-idempotent` |
+| F8 State Transparency | `state-transparency`, `delete-preview`, `offline-state-envelope`, `profile-idempotency`, `state-contract`, `preview-idempotent` |
+| F11 Exit Code Semantics | every scenario except `state-contract` and `preview-idempotent` |
 
-`resolve-contract` is the scaffold's proving scenario: it probes the
-three ways a resolve request goes wrong — an object ref that was never
-stored, an entity slug that was never registered, and a flag the
-parser does not define — and asserts the spec-correct contract for
-each.
+Scenarios encode the target contract, not current behavior: when a
+regression lands, re-record and re-grade, and the verdict flips without
+touching the rubric.
 
-What passes:
-
-- **F3** — stream discipline holds on the failure path. A failed
-  resolve writes nothing to stdout and keeps diagnostics on stderr, so
-  a pipe never eats half a document.
-- **F4, partially** — the failing input is echoed back (`obj_deadbeef`,
-  `nonexistent.slug`, `bogus-flag`), and a rejected flag points the
-  caller at `--help`.
-
-What genuinely fails, and why the assertions stay as written:
-
-- **F4 — no error envelope under `--format json`.** `ctxt resolve
-  obj_deadbeef --format json` renders a human error block on stderr and
-  writes nothing machine-readable: no `code`, no `suggested_fix`. A
-  caller that explicitly asked for JSON is owed a keyed envelope on the
-  failure path too, otherwise it is back to regexing prose. The same
-  holds for a missing entity.
-- **F4 — errors are descriptive, not corrective.** A missing object
-  names no recovery command. Telling the caller to try `ctxt find`
-  turns a dead end into a next step.
-- **F11 — no exit-code classes.** Every failure exits `1`: missing
-  object, missing entity, unknown flag, unknown command, missing
-  argument. kit's exit-class table distinguishes `USAGE=2`,
-  `NOT_FOUND=3`, and `CONFLICT=4`, and an agent needs that split to
-  tell a request it can repair from knowledge that is simply absent.
-  Collapsing every class to `1` forces prose parsing.
-
-These are contract gaps in `ctxt`, not defects in the rubric. When a
-fix lands, re-record and re-grade; the scenario already encodes the
-target, so the verdict flips without touching the rubric.
-
-## dpkms findings
-
-The five `dpkms` scenarios probe the substrate in its stopped state.
-Every one grades `fail`; each failure below is a contract gap in
-`dpkms`, not a defect in the rubric.
-
-**`--format json` is accepted and ignored on most surfaces.** `dpkms
-ps --format json` prints the sentence `No running dpkms instances.`;
-with an instance up it prints a rendered table. `dpkms housekeeping
-run --dry-run --format json` prints a progress log and a summary
-block. `dpkms backup --format json` prints `OK <path> (db: …)`. `dpkms
-job list --format yaml` prints the human table. A caller that declared
-it cannot read prose is answered with prose, and has no signal that
-the request was dropped.
-
-**Two output flags disagree.** `dpkms ps` defines both `--format` and
-`-o/--output`. `--output json` returns JSON; `--format json` returns a
-table. Worse, `dpkms healthcheck --help` documents the spelling
-`--output json`, and `healthcheck` defines only `--format` — so the
-route the help teaches is not the route the leaf implements.
-
-**Empty collections are `null`, and some have no envelope at all.**
-`dpkms detector list --format json` and `dpkms ps --output json` with
-nothing running both emit bare `null` rather than a keyed object with
-an empty array. `dpkms job list --format json` emits `{"jobs": null,
-"total": 0}` — `null` where an empty list belongs, forcing every caller
-to special-case the idle substrate before it can iterate.
-
-**No exit-code classes.** Every failure exits `1`: an unreachable
-daemon, a job id that does not exist, an unknown flag, an unknown
-command, and a wrong argument count. kit's table distinguishes
-`USAGE=2`, `NOT_FOUND=3`, `CONFLICT=4`, and `TRANSIENT=6`, and the
-retry decision depends on that split — "wait and retry" and "this will
-never exist" are opposite instructions collapsed to the same code.
-
-**No JSON error envelope, and errors leak internals.** A failure under
-`--format json` renders a human error block on stderr with no `code`
-and no `suggested_fix`. `dpkms job status <missing>` reports `job not
-found: sql: no rows in result set`, surfacing the database driver's
-words in a user-facing error. `dpkms healthcheck` writes its message
-to stderr three times: once raw, once inside a rendered block, and
-once more on an `Error:` line.
-
-**Only two dry-run surfaces exist, and one of them refuses in the
-implementer's voice.** `restore` and `housekeeping run` honour
-`--dry-run`; `vacuum`, `reindex`, `compact`, `prune`, and `backup` do
-not. Because `--dry-run` is a kit-global flag it is accepted on all of
-them and then rejected at runtime with `--dry-run cannot be applied to
-"dpkms housekeeping vacuum": the command is missing the required
-kit/side-effect tag; adopter must call cli.SetSideEffect(cmd, ...)`.
-That names a defect in code the caller does not own and offers it no
-recovery. The steps that most need previewing — the one that rewrites
-the database file and the one that deletes rows — are the ones that
-cannot be previewed.
-
-**What holds.** Stream discipline is sound on the failure path: every
-failing step writes nothing to stdout and keeps diagnostics on stderr.
-`housekeeping run --dry-run` genuinely does not mutate, and is
-byte-stable across repeated calls. `restore --dry-run` leaves the
-database untouched, verified by hashing it either side of the call.
-Unknown flags echo the rejected flag and point at `--help`.
-
-### Notes on the rubrics
+## Notes on the rubrics
 
 Two grader properties shaped how these assertions are written, and
 both would otherwise have produced misleading results:
@@ -268,9 +256,8 @@ both would otherwise have produced misleading results:
   `classes: [TRANSIENT]` therefore returned a false pass against a
   command that exits 1. The unreachable-daemon expectation is stated
   as `exit_code_equals: 6` instead, which pins the same contract
-  without depending on the service knowing the symbol. These scenarios
-  otherwise use only `OK`, `NOT_FOUND`, and `USAGE`, all verified to
-  resolve correctly.
+  without depending on the service knowing the symbol. Every other
+  `exit_code_class` assertion names a class from the known row.
 
   Note this is narrower than the class table in the grader's own
   source, which does list `TRANSIENT` and `PROVENANCE_MISSING`. The
@@ -299,8 +286,8 @@ both would otherwise have produced misleading results:
 
 `dry_run_no_mutation` passes vacuously when a step records no adapter
 traffic, so a command that refuses to run at all satisfies it. It is
-kept as corroborating evidence but is never the only assertion
-carrying F6 for a step.
+kept as corroborating evidence only: every step it covers also has its
+payload pinned by `output_schema_matches`.
 
 One more consequence of using `output_schema_matches`: the grading
 service's JSON-schema library embeds the serving process's working
@@ -312,13 +299,14 @@ Only the message text is rewritten; statuses and observed values are
 left exactly as the service returned them, and the scrub refuses to
 write a file that stopped parsing as JSON.
 
-### Not covered
+## Not covered
 
-No scenario starts a daemon. `dpkms serve` requires `DPKMS_BUS_TOKEN`,
+No dpkms scenario starts a daemon (the ctxt recorder's throwaway
+instance serves ctxt scenarios only). `dpkms serve` requires `DPKMS_BUS_TOKEN`,
 and the recorders scrub `DPKMS_*` precisely so ambient operator
 environment cannot reach a committed capture; a live-instance scenario
-would have to reintroduce that env. The consequence is that F8 is
-measured against the stopped substrate only. The surfaces that do
+would have to reintroduce that env. The consequence is that dpkms F8
+is measured against the stopped substrate only. The surfaces that do
 report live state — `dpkms ps --output json` and `dpkms healthcheck
 --format json` — were probed manually against an isolated instance on
 a non-default port: `healthcheck` returns a clean, host-independent

@@ -210,7 +210,7 @@ func (a *Adapter) dial(_ context.Context) (*sftp.Client, func(), error) {
 	}
 	host := a.cfg.Host
 	if !strings.Contains(host, ":") {
-		host = host + ":22"
+		host += ":22"
 	}
 	hkCallback, err := a.hostKeyCallback(host)
 	if err != nil {

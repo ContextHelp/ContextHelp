@@ -71,15 +71,16 @@ func ParseHeaders(raw string) (messageID, inReplyTo string, refs []string) {
 	lines := strings.Split(raw, "\n")
 	for _, line := range lines {
 		lower := strings.ToLower(line)
-		if strings.HasPrefix(lower, "message-id:") {
+		switch {
+		case strings.HasPrefix(lower, "message-id:"):
 			messageID = extractAngleBracket(
 				strings.TrimSpace(line[len("Message-Id:"):]),
 			)
-		} else if strings.HasPrefix(lower, "in-reply-to:") {
+		case strings.HasPrefix(lower, "in-reply-to:"):
 			inReplyTo = extractAngleBracket(
 				strings.TrimSpace(line[len("In-Reply-To:"):]),
 			)
-		} else if strings.HasPrefix(lower, "references:") {
+		case strings.HasPrefix(lower, "references:"):
 			raw := strings.TrimSpace(line[len("References:"):])
 			for _, ref := range strings.Fields(raw) {
 				refs = append(refs, extractAngleBracket(ref))

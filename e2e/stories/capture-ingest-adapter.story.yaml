@@ -5,7 +5,7 @@ title: Ingest adapter output from stdin and from a named built-in adapter
 binary: ctxt
 intent: |
   An operator wiring a custom source into ContextHelp pipes their own JSON
-  through stdin rather than writing a plugin, then runs the same command
+  through stdin, then runs the same command
   against a built-in adapter, so one ingestion path covers both homegrown
   and shipped sources.
 steps:

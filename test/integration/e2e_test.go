@@ -21,6 +21,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
+	"github.com/ideacrafterslabs/ctxt/internal/safefetch"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	httpserver "github.com/ideacrafterslabs/ctxt/internal/server/http"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
@@ -30,8 +31,10 @@ import (
 
 // testEnv bundles a running in-process dpkms server for E2E testing.
 type testEnv struct {
-	URL    string
-	svc    *service.Service
+	URL string
+	svc *service.Service
+	// driver is the unscoped store the tests seed and inspect directly.
+	driver storage.StorageDriver
 	cancel context.CancelFunc
 	done   chan error
 }
@@ -41,13 +44,17 @@ func startTestEnv(t *testing.T) *testEnv {
 
 	driver := storageutil.NewTestDriver(t)
 	queue := jobs.NewQueue(driver.Jobs())
-	pipes := builtins.Registry()
+	// The mock feed and page servers bind loopback, which the default
+	// fetch guard refuses, as fetch.allow_private: true would allow.
+	pipes := builtins.ConfiguredRegistryWithOpts(builtins.BuildOpts{
+		FetchGuard: safefetch.New(safefetch.Options{Policy: safefetch.Policy{AllowPrivate: true}}),
+	})
 	queue.SetPipelineValidator(func(name string) error {
 		// Check in-memory registry first, then DB-stored pipelines.
 		if _, err := pipes.Get(name); err == nil {
 			return nil
 		}
-		if _, err := driver.Pipelines().Get(context.Background(), name); err == nil {
+		if _, err := driver.Pipelines().Get(ownerCtx(), name); err == nil {
 			return nil
 		}
 		return fmt.Errorf("pipeline %q not found", name)
@@ -65,7 +72,7 @@ func startTestEnv(t *testing.T) *testEnv {
 	httpSrv := &gohttp.Server{Handler: router}
 	pool := jobs.NewWorkerPool(queue, pipes, driver, 2, nil, config.JobsConfig{PollInterval: 50 * time.Millisecond, StaleTimeout: 30 * time.Minute, MaxRetries: 3, MaxHops: 5})
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ownerCtx())
 	g, ctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
@@ -77,7 +84,7 @@ func startTestEnv(t *testing.T) *testEnv {
 	g.Go(func() error { return pool.Start(ctx) })
 	g.Go(func() error {
 		<-ctx.Done()
-		return httpSrv.Shutdown(context.Background())
+		return httpSrv.Shutdown(ownerCtx())
 	})
 
 	// Wait for server ready.
@@ -94,6 +101,7 @@ func startTestEnv(t *testing.T) *testEnv {
 	go func() { done <- g.Wait() }()
 
 	return &testEnv{
+		driver: driver,
 		URL:    "http://" + addr,
 		svc:    svc,
 		cancel: cancel,
@@ -204,6 +212,36 @@ func waitForJob(t *testing.T, url, jobID string, wantStatus storage.JobStatus) *
 	return waitForJobTimeout(t, url, jobID, wantStatus, jobWaitTimeout(t))
 }
 
+// getObject fetches GET /objects/{id}, requires 200 OK (msgAndArgs label
+// a failure) and returns the decoded object. The body is closed before it
+// returns, so callers can fetch in a loop.
+func getObject(t *testing.T, url, id string, msgAndArgs ...any) storage.KnowledgeObject {
+	t.Helper()
+	resp, err := gohttp.Get(fmt.Sprintf("%s/api/v1/objects/%s", url, id))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, gohttp.StatusOK, resp.StatusCode, msgAndArgs...)
+
+	var obj storage.KnowledgeObject
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&obj))
+	return obj
+}
+
+// postForJobID POSTs body as JSON to url, requires 202 Accepted and
+// returns the job_id the response names. The body is closed before it
+// returns, so callers can post in a loop.
+func postForJobID(t *testing.T, url string, body []byte) string {
+	t.Helper()
+	resp, err := gohttp.Post(url, "application/json", bytes.NewReader(body))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, gohttp.StatusAccepted, resp.StatusCode)
+
+	var result map[string]string
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	return result["job_id"]
+}
+
 // waitForJobTimeout is waitForJob with an explicit budget, for the rare
 // test that knows its own bound.
 func waitForJobTimeout(t *testing.T, url, jobID string, wantStatus storage.JobStatus, timeout time.Duration) *storage.Job {
@@ -221,7 +259,7 @@ func waitForJobTimeout(t *testing.T, url, jobID string, wantStatus storage.JobSt
 	for time.Now().Before(deadline) {
 		polls++
 
-		resp, err := gohttp.Get(fmt.Sprintf("%s/api/v1/jobs/%s", url, jobID)) //nolint:noctx
+		resp, err := gohttp.Get(fmt.Sprintf("%s/api/v1/jobs/%s", url, jobID))
 		if err != nil {
 			lastErr = err
 			time.Sleep(pollInterval)
@@ -335,15 +373,15 @@ func TestFullReadPath(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now().Truncate(time.Second)
-	env.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+	env.driver.Objects().Create(ctx, &storage.KnowledgeObject{
 		ID: "obj-1", Type: "article", CreatedAt: now, UpdatedAt: now,
 	})
-	env.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+	env.driver.Objects().Create(ctx, &storage.KnowledgeObject{
 		ID: "obj-2", Type: "note", CreatedAt: now, UpdatedAt: now,
 	})
-	env.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+	env.driver.Objects().Create(ctx, &storage.KnowledgeObject{
 		ID: "obj-3", Type: "article", CreatedAt: now, UpdatedAt: now,
 	})
 
@@ -379,7 +417,7 @@ func TestJobRetry(t *testing.T) {
 	})
 
 	// Enqueue a job using the always-failing pipeline.
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "test retry content",
 		Type:     "text",
 		Pipeline: "test.alwaysfail",
@@ -423,7 +461,7 @@ func TestEdgesCreated(t *testing.T) {
 	})
 
 	// Enqueue with the custom pipeline.
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "content with mentions",
 		Type:     "text",
 		Pipeline: "test.mentions",
@@ -539,7 +577,7 @@ func TestObjectDeleteCascade(t *testing.T) {
 	})
 
 	// Enqueue with the custom pipeline.
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "cascade delete content with mentions",
 		Type:     "text",
 		Pipeline: "test.mentions",
@@ -551,7 +589,7 @@ func TestObjectDeleteCascade(t *testing.T) {
 	require.NotEmpty(t, job.ResultID, "completed job must have result_id")
 
 	// Verify edges exist for the result object.
-	edges, err := env.svc.Store.Edges().ListFrom(context.Background(), "object", job.ResultID)
+	edges, err := env.driver.Edges().ListFrom(ownerCtx(), "object", job.ResultID)
 	require.NoError(t, err)
 	assert.Greater(t, len(edges), 0, "edges should exist after ingestion with mentions")
 
@@ -564,7 +602,7 @@ func TestObjectDeleteCascade(t *testing.T) {
 	assert.Equal(t, gohttp.StatusNoContent, resp.StatusCode)
 
 	// Verify edges are now removed.
-	edgesAfter, err := env.svc.Store.Edges().ListFrom(context.Background(), "object", job.ResultID)
+	edgesAfter, err := env.driver.Edges().ListFrom(ownerCtx(), "object", job.ResultID)
 	require.NoError(t, err)
 	assert.Len(t, edgesAfter, 0, "edges should be removed after object deletion")
 

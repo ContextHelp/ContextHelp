@@ -63,8 +63,8 @@ func TestContentTypeRouter_UnknownTypeLogsAndSetsUnsupported(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Subtype != "unsupported" {
-		t.Errorf("Subtype: got %q, want %q", out.Subtype, "unsupported")
+	if out.Subtype != subtypeUnsupported {
+		t.Errorf("Subtype: got %q, want %q", out.Subtype, subtypeUnsupported)
 	}
 }
 

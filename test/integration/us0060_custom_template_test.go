@@ -50,7 +50,7 @@ func TestUS0060_CustomTemplateSectionsRegisteredInPipeline(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	templateSections := []storage.Section{
 		{Title: "Sprint Summary", Content: "Team completed auth module.", Order: 0},
@@ -109,7 +109,7 @@ func TestUS0060_CustomTemplateContentInterpolated(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	env.svc.Pipes.Upsert("template.interpolate", &pipeline.Pipeline{
 		PipelineName: "template.interpolate",
@@ -166,7 +166,7 @@ func TestUS0060_CustomTemplateSectionOrderInComposition(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	env.svc.Pipes.Upsert("template.order", &pipeline.Pipeline{
 		PipelineName: "template.order",
@@ -224,7 +224,7 @@ func TestUS0060_BulletListSectionFormatPreserved(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	bulletContent := "- Feature A shipped\n- Feature B in progress\n- Feature C planned"
 

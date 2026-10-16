@@ -45,27 +45,49 @@ go build -o bin/dpkms cmd/dpkms/main.go
 mkdir -p ~/.config/contexthelp
 ```
 
-### Create Configuration File
+### Create Configuration Files
 
-Copy the example configuration:
+Each binary reads its own file: `ctxt` reads `ctxt.yaml`, `dpkms` reads
+`dpkms.yaml`. Both live in `$XDG_CONFIG_HOME/contexthelp/` (default
+`~/.config/contexthelp/`). Both binaries run with built-in defaults when no file
+exists, so this step is optional.
+
+The fastest way to create the client file is the setup wizard, which writes
+`~/.config/contexthelp/ctxt.yaml` (or `$CTXT_CONFIG` when set):
 
 ```bash
-cp config/config.example.yaml ~/.config/contexthelp/config.yaml
+ctxt setup                    # interactive
+ctxt setup --non-interactive  # write defaults without prompting
 ```
 
-Edit the configuration file to customize settings:
+Or copy the template and edit it. `config/config.example.yaml` covers the keys of
+both binaries; copy it once per binary you run:
 
 ```bash
-# Use your preferred editor
-$EDITOR ~/.config/contexthelp/config.yaml
+cp config/config.example.yaml ~/.config/contexthelp/ctxt.yaml    # client (ctxt)
+cp config/config.example.yaml ~/.config/contexthelp/dpkms.yaml   # daemon (dpkms)
+$EDITOR ~/.config/contexthelp/ctxt.yaml
 ```
+
+Validate the result. `ctxt config validate` checks the effective ctxt
+configuration (every file layer, env var and `-c` override) and exits 1 on errors:
+
+```bash
+ctxt config validate
+ctxt config paths      # print the resolution chain and which files exist
+dpkms config paths     # same for dpkms
+```
+
+See [ctxt configuration](./ctxt/configuration.md) for the file cascade and keys.
 
 ### Environment Variables (Optional)
 
 You can override configuration using environment variables:
 
+See [environment variables](./environment-variables/README.md) for the full list.
+
 ```bash
-# Data directory
+# Data directory (database defaults to $CTXT_DATA_DIR/db.sqlite)
 export CTXT_DATA_DIR=~/.local/share/contexthelp
 
 # Default profile
@@ -100,8 +122,9 @@ For full functionality, start the background worker and API server:
 
 This starts:
 - Background job worker for processing ingestion
-- REST API on port 8080 (a free port if 8080 is busy; `--port` requires that exact port)
-- gRPC API on port 9090 (a free port if 9090 is busy; `--grpc-port` requires that exact port)
+- REST API on port 8080 (a free port if 8080 is busy; `--port`, `CH_SERVER_PORT` or `server.port` requires that exact port)
+- gRPC API on port 9090 (a free port if 9090 is busy; `--grpc-port`, `CH_GRPC_PORT` or `server.grpc_port` requires that exact port)
+- Browser-extension cookie bridge on `127.0.0.1:9377` (a free port if 9377 is busy; `--cookie-bridge-port`, `CH_COOKIE_BRIDGE_PORT` or `server.cookie_bridge_port` requires that exact port)
 
 Manage running instances:
 
@@ -127,12 +150,12 @@ Capture and analyze various types of content from arguments, stdin, or the clipb
 echo "UX improvements needed" | ./bin/ctxt
 
 # Analyze with metadata using the explicit 'analyze' subcommand
-./bin/ctxt analyze \
-  --hints "#ux #critical" \
-  --mentions "@ui.best-practice"
+./bin/ctxt analyze "Checkout button is hidden on mobile" \
+  --hint ux,critical \
+  --mention "@ui.best-practice"
 
 # Analyze a URL
-./bin/ctxt "https://example.com/article"
+./bin/ctxt analyze "https://example.com/article" --type url
 
 # Analyze an image using a file
 ./bin/ctxt --file screenshot.png --type image
@@ -143,20 +166,20 @@ echo "UX improvements needed" | ./bin/ctxt
 
 ### 3. Manage Jobs
 
-Monitor and control ingestion jobs:
+Monitor and control the instance's jobs with `ctxt job`. It calls the dpkms API, so it works against a remote instance too; cancel needs an admin token:
 
 ```bash
 # List all jobs
 ./bin/ctxt job list
 
-# Check job status
+# Check job status (state, retries, error)
 ./bin/ctxt job status job_12345678
-
-# View job logs
-./bin/ctxt job log job_12345678
 
 # Retry failed job
 ./bin/ctxt job retry job_12345678
+
+# Cancel a pending or running job
+./bin/ctxt job cancel job_12345678 --confirm-token=<token>
 ```
 
 ### 4. Query Knowledge
@@ -167,8 +190,11 @@ Search and query your knowledge base:
 # List all objects
 ./bin/ctxt list
 
-# Filter by tags
-./bin/ctxt list --tag ux,onboarding
+# Filter by one tag
+./bin/ctxt list --tagged ux
+
+# Several tags at once (RSQL query)
+./bin/ctxt list --q "tag=in=(ux,onboarding)"
 
 # Filter by type
 ./bin/ctxt list --type url
@@ -185,7 +211,7 @@ Search and query your knowledge base:
 ./bin/ctxt find "authentication" --graph
 
 # View object details
-./bin/ctxt open obj_12345678
+./bin/ctxt show obj_12345678
 ```
 
 ### 5. Use Focus Profiles
@@ -199,8 +225,8 @@ Manage focus profiles for contextual filtering:
 # View profile details
 ./bin/ctxt profile view founder
 
-# Create custom profile
-./bin/ctxt profile create myproject --config profile.yaml
+# Create a profile (adds a placeholder entry to the resolved config file)
+./bin/ctxt profile create myproject
 
 # Set default profile
 ./bin/ctxt profile set founder
@@ -219,16 +245,16 @@ Create briefs, plans, and summaries:
 
 ```bash
 # Generate brief
-./bin/ctxt make brief --tag ux,onboarding
+./bin/ctxt compose brief --tagged ux
 
 # Generate plan
-./bin/ctxt make plan --mention @project.signup-redesign
+./bin/ctxt compose plan --mention @project.signup-redesign
 
-# Generate summary since date
-./bin/ctxt make summary --since 2025-01-01
+# Generate summary of objects created since a date
+./bin/ctxt compose summary --since 2025-01-01
 
 # Save to file
-./bin/ctxt make draft --tag launch -o launch-plan.md
+./bin/ctxt compose draft --tagged launch --output-file launch-plan.md
 ```
 
 ### 7. Manage Registries
@@ -249,7 +275,7 @@ Work with knowledge registries:
 ./bin/ctxt registry sync uxpatterns
 
 # Remove registry
-./bin/ctxt registry remove uxpatterns
+./bin/ctxt registry delete uxpatterns
 ```
 
 ### 8. Work with Entities
@@ -270,80 +296,38 @@ Query and inspect canonical entities:
 ./bin/ctxt entity backlink ui.best-practice
 ```
 
-### 9. Continuous Capture & Sessions
+### 9. Background Watchers and Browser Capture
 
-The `ctxd` ambient daemon captures clipboard, file-watch, browser-history, foreground-window, screenshots, and meetings into the knowledge graph automatically. Sessions group these captures into work units. Agents query both via MCP. Full guide: [`manual/workflows/ambient-capture.md`](manual/workflows/ambient-capture.md).
-
-```bash
-# Start the ambient daemon (auto-config, runs in background)
-ctxt capture --ambient
-
-# OR via service-manager (preferred for desktop installs that should survive logout)
-brew services start ctxd                              # macOS Homebrew
-launchctl load ~/Library/LaunchAgents/io.ctxt.ctxd.plist   # macOS launchd
-systemctl --user enable --now ctxd.service           # Linux systemd
-
-# Check what's running
-ctxt capture --ambient status
-ctxt capture --ambient sources
-ctxt capture --ambient tail               # follow live capture stream
-
-# Stop
-ctxt capture --ambient stop
-```
-
-#### Meeting capture (audio + video)
+`ctxt watch` runs passive watchers on this machine: the clipboard (opt-in) and the
+directories listed in `watch.dirs`. New or changed content is enqueued on the
+dpkms instance ctxt resolves.
 
 ```bash
-# Start a recording (default: full audio + video → video.full pipeline)
-ctxt capture meeting start --label "Q3 planning"
-
-# Audio-only mode (smaller files, faster pipeline)
-ctxt capture meeting start --label "1:1 with Alice" --audio-only
-
-# Stop (or use the same hotkey, default ⇧⌘M / Ctrl+Shift+M)
-ctxt capture meeting stop
-
-# View past meetings
-ctxt capture meeting list --since today
-ctxt capture meeting show <id>
-
-# Redact a sensitive segment
-ctxt capture meeting redact <id> --segment 14:55-14:58 --reason "off-record"
-
-# Export the transcript
-ctxt capture meeting export <id> --format md
-ctxt capture meeting export <id> --format srt > meeting.srt
+ctxt watch enable clipboard
+ctxt watch start
+ctxt watch status
+ctxt watch stop
 ```
 
-#### Sessions
+Browser tabs and history are captured explicitly, per browser profile:
 
 ```bash
-# List recent sessions
-ctxt session list --since today
-ctxt session list --since "yesterday afternoon"
-
-# Show one session (timeline + items)
-ctxt session show sess_a1b2c3d4e5f6
-
-# Compose by session
-ctxt compose --session sess_a1b2c3d4e5f6 --template meeting-recap
-ctxt compose --since "2 hours ago" --template work-summary
+ctxt capture browsers          # list installed Chromium browsers and profiles
+ctxt capture tabs              # capture the open tabs of one profile
+ctxt capture history           # capture the browsing history of one profile
+ctxt capture schedule --help   # run tab/history capture on a timer (macOS LaunchAgent)
 ```
+
+Not implemented: `ctxt capture --ambient` (and `--input`, `--skip`, `--window`)
+is reserved and does nothing yet. There is no `ctxd` binary, no meeting
+recorder, and no `ctxt session` or `ctxt mcp` command.
 
 #### Agent integration (MCP)
 
-```bash
-# Install MCP for your agent
-ctxt mcp install claude-code        # OR claude-desktop / cursor / codex / opencode / mcp-json
-
-# Verify
-ctxt mcp status
-
-# Restart your agent client to pick up the new MCP servers
-```
-
-After install, your agent can call `search()`, `recent()`, `session()`, `compose()`, `current_session()`, etc. directly. Full tool reference: [`manual/workflows/mcp-agents.md`](manual/workflows/mcp-agents.md).
+A running `dpkms serve` exposes an MCP endpoint at `/api/v1/mcp` on its REST
+port, behind the same inbound auth as the rest of `/api/v1`. It serves two
+read-only tools: `search` and `schema`. Point an MCP client that speaks
+JSON-RPC over HTTP at `http://127.0.0.1:8080/api/v1/mcp`.
 
 ## Shell Completion
 
@@ -389,24 +373,24 @@ exec zsh
 
 ```bash
 # Capture quick thoughts
-echo "Remember to review onboarding metrics" | ./bin/ctxt analyze --hints "#todo"
+echo "Remember to review onboarding metrics" | ./bin/ctxt analyze --hint todo
 
 # Capture with context
 echo "Authentication pattern from competitor" | ./bin/ctxt analyze \
-  --hints "#research #competitor" \
-  --mentions "@auth.best-practice"
+  --hint research,competitor \
+  --mention "@auth.best-practice"
 ```
 
 ### Workflow 2: Research Collection
 
 ```bash
 # Analyze multiple URLs
-./bin/ctxt analyze https://example.com/article1 --profile research
-./bin/ctxt analyze https://example.com/article2 --profile research
-./bin/ctxt analyze https://example.com/article3 --profile research
+./bin/ctxt analyze https://example.com/article1 --type url --profile research
+./bin/ctxt analyze https://example.com/article2 --type url --profile research
+./bin/ctxt analyze https://example.com/article3 --type url --profile research
 
 # Generate research brief
-./bin/ctxt make brief --profile research --since 2025-01-26
+./bin/ctxt compose brief --profile research --since 2025-01-26
 ```
 
 ### Workflow 3: Project Documentation
@@ -414,10 +398,10 @@ echo "Authentication pattern from competitor" | ./bin/ctxt analyze \
 ```bash
 # Analyze project resources
 ./bin/ctxt analyze --file docs/architecture.md --mention "@project.platform"
-./bin/ctxt analyze https://github.com/org/repo --mention "@project.platform"
+./bin/ctxt analyze https://github.com/org/repo --type url --mention "@project.platform"
 
-# Generate project brief
-./bin/ctxt make plan --mention @project.platform
+# Generate project plan
+./bin/ctxt compose plan --mention @project.platform
 ```
 
 ### Workflow 4: Daily Review
@@ -430,7 +414,7 @@ echo "Authentication pattern from competitor" | ./bin/ctxt analyze \
 ./bin/ctxt find "decisions made today"
 
 # Generate daily summary
-./bin/ctxt make summary --since $(date -u +%Y-%m-%d)
+./bin/ctxt compose summary --since $(date -u +%Y-%m-%d)
 ```
 
 ## Database Maintenance
@@ -459,11 +443,16 @@ Keep your database optimized:
 # Show current configuration
 ./bin/ctxt config show
 
-# Validate configuration
+# Validate configuration (exit 1 on errors)
 ./bin/ctxt config validate
 
-# Show config file path
+# Lint configuration: schema, secrets, permissions, deprecated keys
+./bin/ctxt config doctor
+
+# Show the config file ctxt loads, and the full resolution chain
 ./bin/ctxt config path
+./bin/ctxt config paths
+./bin/dpkms config paths
 ```
 
 ### Check Version
@@ -479,12 +468,13 @@ Keep your database optimized:
 ### Common Issues
 
 **Issue: Config file not found**
-```bash
-# Create config directory
-mkdir -p ~/.config/contexthelp
 
-# Copy example config
-cp config/config.example.yaml ~/.config/contexthelp/config.yaml
+`ctxt config path` exits 1 when no file exists; both binaries still run on
+defaults. To create the files:
+```bash
+mkdir -p ~/.config/contexthelp
+ctxt setup --non-interactive                                     # writes ctxt.yaml
+cp config/config.example.yaml ~/.config/contexthelp/dpkms.yaml   # daemon file
 ```
 
 **Issue: Permission denied**
@@ -505,7 +495,7 @@ mkdir -p ~/.local/share/contexthelp
 2. Read the [design documentation](./design.md)
 3. Learn about focus profiles in [ctxt configuration](./ctxt/configuration.md)
 4. Understand [pipeline configuration](./ctxt/pipelines.md)
-5. Check out the [plugin system](./plugins.md)
+5. Extend processing with [custom pipelines and steps](./ctxt/pipelines.md#extending-pipelines)
 
 ## Getting Help
 

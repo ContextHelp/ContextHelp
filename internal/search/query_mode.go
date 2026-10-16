@@ -24,20 +24,15 @@ var (
 		"would": true,
 	}
 
-	// TODO: replace with filterStopwords from query_decompose.go once T-0164 is merged.
-	stopwords = map[string]bool{
-		"a": true, "an": true, "the": true, "and": true, "or": true,
-		"but": true, "in": true, "on": true, "at": true, "to": true,
-		"for": true, "of": true, "with": true, "by": true, "from": true,
-		"as": true, "is": true, "it": true, "its": true, "be": true,
-		"was": true, "are": true, "were": true, "been": true, "has": true,
-		"have": true, "had": true, "do": true, "does": true, "did": true,
-		"will": true, "would": true, "could": true, "should": true,
-		"may": true, "might": true, "can": true, "that": true, "this": true,
-		"these": true, "those": true, "i": true, "we": true, "you": true,
-		"he": true, "she": true, "they": true, "my": true, "our": true,
-		"your": true, "his": true, "her": true, "their": true,
-	}
+	// Query-mode stopwords. The list differs from searchStopwords in
+	// query_decompose.go, so folding the two together would change which
+	// queries read as keyword searches.
+	stopwords = wordSet(`
+		a an the and or but in on at to for of with by from as is it its
+		be was are were been has have had do does did will would could
+		should may might can that this these those i we you he she they
+		my our your his her their
+	`)
 
 	versionRe  = regexp.MustCompile(`^v\d+(\.\d+)+$`)
 	filePathRe = regexp.MustCompile(`^(/[\w.\-]+)+$`)
@@ -151,7 +146,7 @@ func isCamelCase(w string) bool {
 }
 
 // filterStopwordsLocal returns only the meaningful (non-stopword) words.
-// TODO: replace with filterStopwords from query_decompose.go once T-0164 is merged.
+// TODO: replace with filterStopwords from query_decompose.go once that lands.
 func filterStopwordsLocal(words []string) []string {
 	out := make([]string, 0, len(words))
 	for _, w := range words {

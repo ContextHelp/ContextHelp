@@ -15,11 +15,11 @@
 // reload is internal — observers see kit.config.snapshot.reload_failed
 // bus events on veto, not a Run() error.
 //
-// Tasks T-0312..T-0321 land here incrementally:
-//   - T-0312: package skeleton + sentinel
-//   - T-0313: Options + config loader
-//   - T-0314..T-0319: per-adapter packages under internal/lateral/adapters
-//   - T-0320: registry wiring
-//   - T-0321: ScanFunc + cold-cycle integration
-//   - T-0322: in-process smoke test (this package)
+// Package layout:
+//   - package skeleton + sentinel
+//   - Options + config loader
+//   - per-adapter packages under internal/lateral/adapters
+//   - registry wiring
+//   - ScanFunc + cold-cycle integration
+//   - in-process smoke test (this package)
 package daemon

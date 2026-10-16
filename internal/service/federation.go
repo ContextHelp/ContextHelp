@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 )
 
 // FederationAccept stores incoming pushed objects, edges, and entities,
@@ -14,7 +15,7 @@ import (
 //
 // Returns count of newly created objects (skipped dupes not counted).
 //
-// T-0175: entities are upserted thin so a 'full' record at the receiver
+// entities are upserted thin so a 'full' record at the receiver
 // is preserved (ADR-049 + EntityStore.UpsertThin), while mention edges
 // (object→entity) gain valid targets.
 func (s *Service) FederationAccept(
@@ -23,9 +24,9 @@ func (s *Service) FederationAccept(
 	edges []storage.Edge,
 	entities []storage.Entity,
 ) (int, error) {
-	objs := s.Store.Objects()
-	edgeStore := s.Store.Edges()
-	entityStore := s.Store.Entities()
+	objs := s.Store(ctx).Objects()
+	edgeStore := s.Store(ctx).Edges()
+	entityStore := s.Store(ctx).Entities()
 
 	for i := range entities {
 		ent := &entities[i]
@@ -44,15 +45,24 @@ func (s *Service) FederationAccept(
 	for i := range objects {
 		obj := &objects[i]
 		if obj.ContentHash != "" {
-			existing, _ := objs.GetByContentHash(ctx, obj.ContentHash)
+			existing, _ := objs.GetByContentHash(ctx, obj.ContentHash, obj.ProfileID)
 			if existing != nil {
 				continue // dedup — already present
 			}
 		}
-		if err := objs.Create(ctx, obj); err != nil {
+		// Pushed content arrives inline (the wire has no blob channel):
+		// this instance's threshold decides what is externalized.
+		row, err := s.storable(ctx, obj)
+		if err != nil {
+			return created, fmt.Errorf("federation accept: object %q: %w", obj.ID, err)
+		}
+		if err := objs.Create(ctx, row); err != nil {
 			return created, fmt.Errorf("federation accept: create object %q: %w", obj.ID, err)
 		}
 		created++
+		if err := blob.Ensure(ctx, s.Store(ctx).Blobs(), row); err != nil {
+			return created, fmt.Errorf("federation accept: object %q: %w", obj.ID, err)
+		}
 
 		for j := range edges {
 			e := &edges[j]

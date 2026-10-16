@@ -5,7 +5,6 @@ package integration
 // that search is restricted to the profile's scope.
 
 import (
-	"context"
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -19,7 +18,7 @@ func TestUS0020_FocusProfileRestrictsSearchScope(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 
 	// Two objects in "engineering" profile, one in "security" profile.
@@ -30,7 +29,7 @@ func TestUS0020_FocusProfileRestrictsSearchScope(t *testing.T) {
 		{"fp-eng-2", "note", "engineering"},
 		{"fp-sec-1", "decision", "security"},
 	} {
-		require.NoError(t, env.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+		require.NoError(t, env.driver.Objects().Create(ctx, &storage.KnowledgeObject{
 			ID:        tc.id,
 			Type:      tc.typ,
 			ProfileID: tc.profile,
@@ -53,7 +52,7 @@ func TestUS0020_FocusProfileAllObjectsWhenNoProfile(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 
 	for _, tc := range []struct {
@@ -63,7 +62,7 @@ func TestUS0020_FocusProfileAllObjectsWhenNoProfile(t *testing.T) {
 		{"fp-all-2", "beta"},
 		{"fp-all-3", ""},
 	} {
-		require.NoError(t, env.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+		require.NoError(t, env.driver.Objects().Create(ctx, &storage.KnowledgeObject{
 			ID:        tc.id,
 			Type:      "text",
 			ProfileID: tc.profile,
@@ -85,14 +84,14 @@ func TestUS0020_FocusProfileViaHTTPSearchQuery(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+	require.NoError(t, env.driver.Objects().Create(ctx, &storage.KnowledgeObject{
 		ID: "fp-http-1", Type: "article", ProfileID: "ops",
 		CreatedAt: now, UpdatedAt: now,
 	}))
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+	require.NoError(t, env.driver.Objects().Create(ctx, &storage.KnowledgeObject{
 		ID: "fp-http-2", Type: "article", ProfileID: "dev",
 		CreatedAt: now, UpdatedAt: now,
 	}))
@@ -116,7 +115,7 @@ func TestUS0020_FocusProfileNoMatchReturnsEmpty(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	objs, total, err := env.svc.SearchObjects(ctx, "type==text", 20, 0, "nonexistent-profile")
 	require.NoError(t, err)
 	assert.Equal(t, 0, total)

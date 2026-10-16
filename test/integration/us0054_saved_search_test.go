@@ -10,7 +10,6 @@ package integration
 // matching content, confirm match is findable) that underpin the story.
 
 import (
-	"context"
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/service"
@@ -25,7 +24,7 @@ func TestUS0054_DetectorPersistsQueryPattern(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	det, err := env.svc.CreateDetector(ctx, service.DetectorCreateRequest{
 		Kind:         storage.DetectorKindContentTest,
@@ -58,7 +57,7 @@ func TestUS0054_IngestMatchingObjectFoundByQuery(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 
 	// Persist a "saved search" as a detector.
@@ -72,7 +71,7 @@ func TestUS0054_IngestMatchingObjectFoundByQuery(t *testing.T) {
 	require.NoError(t, err)
 
 	// Ingest a new object that matches the pattern.
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+	require.NoError(t, env.driver.Objects().Create(ctx, &storage.KnowledgeObject{
 		ID:         "ss-match-01",
 		Type:       "decision",
 		RawContent: "new authentication policy decision",
@@ -96,7 +95,7 @@ func TestUS0054_DeleteDetectorRemovesRecord(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	det, err := env.svc.CreateDetector(ctx, service.DetectorCreateRequest{
 		Kind:         storage.DetectorKindExtension,

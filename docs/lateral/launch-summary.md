@@ -15,33 +15,33 @@ Cross-references:
 
 ## What shipped per phase
 
-### P1 — Substrate (T-0301 …)
+### P1 — Substrate
 
 The core scoring / lifecycle / candidate state machine. `internal/
 lateral/{scoring,lifecycle,promote,reject,materialize,jobs}/`.
 Bus-event catalog at `internal/lateral/events/catalog.go` — 26 topics
 mirroring `schemas/lateral_events.json`.
 
-### P2 — Identity + dispatch (T-0307 …)
+### P2 — Identity + dispatch
 
 Strategy interface (`internal/lateral/strategy.go`), Registry
 dispatch (`internal/lateral/registry.go`), identity-key resolver +
 candidate dedup. The substrate became strategy-aware here.
 
-### P3 — Tier-A platform strategies (T-0308 …)
+### P3 — Tier-A platform strategies
 
 GitHub family: parent + gist + security-advisory. JIT (catch-all
 LLM-driven). Adapters: `internal/lateral/adapters/{llm,fetcher,
 breaker,bus,githubapi,pageshape}`.
 
-### P4 — Roster (T-0316 …)
+### P4 — Roster
 
 Platform roster: google + 4 children, x, linkedin, arxiv, wikipedia,
 medium + 2 children, substack + 3 children, beehiiv + 2 children,
 youtube. Custom-domain detection via Hints (canonical_host,
 generator).
 
-### P5 — Eval, rollout, observability (T-0324 …, this track)
+### P5 — Eval, rollout, observability
 
 - **Eval** (`internal/lateral/eval/`): replay harness, labelled
   fixture set, precision/recall/negative-pass metrics, conversion
@@ -66,7 +66,7 @@ scoring:
 lifecycle: {cold_cycle_days: 30, soft_delete_days: 30, p3_reference_threshold: 3}
 jobs: {engine_kind: memory}
 
-# Strategy gates (this track).
+# Strategy gates.
 strategies:
   jit:
     enabled: false           # opt-in; needs LLM adapter
@@ -191,7 +191,7 @@ Tune:
 - **Real production telemetry exporter** (Prometheus deployment,
   Grafana hosting). The schemas + rules are in place; deployment is
   ops work.
-- **xrr cassette migration** (T-0334 deferred — xrr binary not
+- **xrr cassette migration** (deferred — xrr binary not
   yet available).
 - **Live-LLM eval harness**: today's eval skips JIT (no LLM
   adapter at eval time). When deterministic-LLM testing infra

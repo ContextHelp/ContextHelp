@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/lib/pq"
+
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 func (s *EntityStore) Upsert(ctx context.Context, entity *storage.Entity) error {
@@ -85,16 +88,32 @@ func (s *EntityStore) SetContentStatus(ctx context.Context, slug string, status 
 	return nil
 }
 
+// errEntityNotFound is the answer for a missing entity and for one the
+// scope hides alike.
+var errEntityNotFound = fmt.Errorf("entity %w", storage.ErrNotFound)
+
+// noEntities reports whether the scope admits no entity at all.
+func (s *EntityStore) noEntities() bool { return s.scope != nil && !s.scope.Entities }
+
 func (s *EntityStore) Get(ctx context.Context, slug string) (*storage.Entity, error) {
+	if s.noEntities() {
+		return nil, errEntityNotFound
+	}
+	idx := 2
+	clause, sargs := entityScope(s.scope, &idx)
+	// #nosec G202 -- clause is fixed SQL over compiled predicates; values are bound.
 	row := s.db.QueryRowContext(ctx, `SELECT
 		slug, title, description, namespace, aliases, metadata,
 		content_status, version_hash, registry_url,
 		created_at, updated_at
-	FROM entities WHERE slug = $1`, slug)
+	FROM entities WHERE slug = $1`+clause, append([]any{slug}, sargs...)...)
 	return scanEntity(row)
 }
 
 func (s *EntityStore) List(ctx context.Context, filter storage.EntityFilter) ([]*storage.Entity, error) {
+	if s.noEntities() {
+		return []*storage.Entity{}, nil
+	}
 	query := `SELECT slug, title, description, namespace, aliases, metadata,
 		content_status, version_hash, registry_url,
 		created_at, updated_at FROM entities WHERE 1=1`
@@ -104,6 +123,11 @@ func (s *EntityStore) List(ctx context.Context, filter storage.EntityFilter) ([]
 	if filter.Namespace != "" {
 		query += fmt.Sprintf(" AND namespace = $%d", argIdx)
 		args = append(args, filter.Namespace)
+		argIdx++
+	}
+	if len(filter.Namespaces) > 0 {
+		query += fmt.Sprintf(" AND namespace = ANY($%d)", argIdx)
+		args = append(args, pq.Array(filter.Namespaces))
 		argIdx++
 	}
 	if filter.ContentStatus != "" {
@@ -119,6 +143,12 @@ func (s *EntityStore) List(ctx context.Context, filter storage.EntityFilter) ([]
 				CASE WHEN jsonb_typeof(aliases) = 'array' THEN aliases ELSE '[]'::jsonb END) AS a(v)
 				WHERE lower(a.v) LIKE $%[1]d ESCAPE '\'))`, argIdx)
 		args = append(args, storage.ContainsPattern(filter.Query))
+		argIdx++
+	}
+	if clause, sargs := entityScope(s.scope, &argIdx); clause != "" {
+		// #nosec G202 -- clause is fixed SQL over compiled predicates; values are bound.
+		query += clause
+		args = append(args, sargs...)
 	}
 
 	query += " ORDER BY slug ASC"
@@ -135,24 +165,48 @@ func (s *EntityStore) List(ctx context.Context, filter storage.EntityFilter) ([]
 	}
 	defer rows.Close()
 
-	var entities []*storage.Entity
-	for rows.Next() {
-		e, err := scanEntityRow(rows)
-		if err != nil {
-			return nil, err
-		}
-		entities = append(entities, e)
+	return rowscan.All(rows, scanEntityRow)
+}
+
+// Namespaces returns each distinct namespace of the stored entities
+// once, ascending in byte order, as on every driver. A scoped store
+// lists the namespaces of the entities its scope shows only, as List
+// does.
+func (s *EntityStore) Namespaces(ctx context.Context) ([]string, error) {
+	if s.noEntities() {
+		return []string{}, nil
 	}
-	return entities, rows.Err()
+	idx := 1
+	clause, sargs := entityScope(s.scope, &idx)
+	// #nosec G202 -- clause is fixed SQL over compiled predicates; values are bound.
+	rows, err := s.db.QueryContext(ctx, `SELECT namespace FROM entities WHERE 1=1`+clause+
+		` GROUP BY namespace ORDER BY namespace COLLATE "C"`, sargs...)
+	if err != nil {
+		return nil, fmt.Errorf("list entity namespaces: %w", err)
+	}
+	defer rows.Close()
+	return rowscan.All(rows, scanNamespace)
+}
+
+func scanNamespace(rows *sql.Rows) (string, error) {
+	var ns string
+	err := rows.Scan(&ns)
+	return ns, err
 }
 
 func (s *EntityStore) Resolve(ctx context.Context, mention string) (*storage.Entity, error) {
+	if s.noEntities() {
+		return nil, errEntityNotFound
+	}
+	idx := 2
+	clause, sargs := entityScope(s.scope, &idx)
 	// Try exact slug match first.
+	// #nosec G202 -- clause is fixed SQL over compiled predicates; values are bound.
 	row := s.db.QueryRowContext(ctx, `SELECT
 		slug, title, description, namespace, aliases, metadata,
 		content_status, version_hash, registry_url,
 		created_at, updated_at
-	FROM entities WHERE slug = $1`, mention)
+	FROM entities WHERE slug = $1`+clause, append([]any{mention}, sargs...)...)
 	entity, err := scanEntity(row)
 	if err == nil {
 		return entity, nil
@@ -164,11 +218,12 @@ func (s *EntityStore) Resolve(ctx context.Context, mention string) (*storage.Ent
 	if err != nil {
 		return nil, fmt.Errorf("resolve entity: %w", err)
 	}
+	// #nosec G202 -- clause is fixed SQL over compiled predicates; values are bound.
 	row = s.db.QueryRowContext(ctx, `SELECT
 		slug, title, description, namespace, aliases, metadata,
 		content_status, version_hash, registry_url,
 		created_at, updated_at
-	FROM entities WHERE aliases @> $1::jsonb`, string(probe))
+	FROM entities WHERE aliases @> $1::jsonb`+clause, append([]any{string(probe)}, sargs...)...)
 	return scanEntity(row)
 }
 

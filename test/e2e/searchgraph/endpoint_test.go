@@ -85,9 +85,9 @@ func runEndpointSuite(t *testing.T, typ string, newStore func(t *testing.T, name
 	})
 
 	t.Run("protected", func(t *testing.T) {
-		t.Run("CredentialRequired", func(t *testing.T) { testCredentialRequired(t, protected.url) })
+		t.Run("CredentialRequired", func(t *testing.T) { testCredentialRequired(t, protected.url, ftsOnly) })
 		t.Run("NoProviderIsFTSOnly", func(t *testing.T) {
-			doc, _ := endpointDoc(t, protected.url, ftsOnly, url.Values{"q": {"deployment"}}, bearer(openToken))
+			doc, _ := endpointDoc(t, protected.url, ftsOnly, url.Values{"q": {"deployment"}}, bearer(ftsOnly.openToken))
 			meta := metaOf(doc)
 			if str(meta["mode"]) != "fts_only" || str(meta["semantic_status"]) != "no_default_model" {
 				t.Errorf("mode = %v, semantic_status = %v, want fts_only, no_default_model", meta["mode"], meta["semantic_status"])
@@ -102,12 +102,12 @@ func runEndpointSuite(t *testing.T, typ string, newStore func(t *testing.T, name
 		t.Run("EntitlementGate", func(t *testing.T) { testGate(t, protected.url, ftsOnly) })
 		t.Run("SessionCookie", func(t *testing.T) {
 			e := e.in(t)
-			cfg := e.writeCtxtConfig("ctxt-signin", ftsOnly, protected.url, gatedToken, closedURL())
+			cfg := e.writeCtxtConfig("ctxt-signin", ftsOnly, protected.url, ftsOnly.gatedToken, closedURL())
 			testSessionCookie(t, e, protected.url, ftsOnly, cfg)
 		})
 		t.Run("ViewerSignedIn", func(t *testing.T) {
 			e := e.in(t)
-			cfg := e.writeCtxtConfig("ctxt-signin-front", ftsOnly, front.URL, gatedToken, closedURL())
+			cfg := e.writeCtxtConfig("ctxt-signin-front", ftsOnly, front.URL, ftsOnly.gatedToken, closedURL())
 			testViewerSignedIn(t, e, front, cfg)
 		})
 	})
@@ -485,7 +485,7 @@ func testParity(t *testing.T, e *env, base, cfg string) {
 // --- protected instance -------------------------------------------------
 
 // The route answers a valid bearer token or session cookie only.
-func testCredentialRequired(t *testing.T, base string) {
+func testCredentialRequired(t *testing.T, base string, st *graphStore) {
 	q := url.Values{"q": {"deployment"}}
 	for name, cred := range map[string]credential{
 		"no credential": nil,
@@ -496,7 +496,7 @@ func testCredentialRequired(t *testing.T, base string) {
 			t.Errorf("%s: %d, want 401\n%s", name, res.StatusCode, body)
 		}
 	}
-	for _, tok := range []string{gatedToken, openToken} {
+	for _, tok := range []string{st.gatedToken, st.openToken} {
 		if res, body := endpointGET(t, base, q, bearer(tok)); res.StatusCode != http.StatusOK {
 			t.Errorf("valid token: %d, want 200\n%s", res.StatusCode, body)
 		}
@@ -511,8 +511,8 @@ func testCredentialRequired(t *testing.T, base string) {
 // nowhere in the body. Objects are profile-scoped, never entity-gated.
 func testGate(t *testing.T, base string, st *graphStore) {
 	params := url.Values{"q": {"deployment"}, "profile": {"ops"}}
-	open, _ := endpointDoc(t, base, st, params, bearer(openToken))
-	gated, raw := endpointDoc(t, base, st, params, bearer(gatedToken))
+	open, _ := endpointDoc(t, base, st, params, bearer(st.openToken))
+	gated, raw := endpointDoc(t, base, st, params, bearer(st.gatedToken))
 
 	// Guard: ungated, the vault entity is there and adds to every pair.
 	openEnts := entityNodes(open)
@@ -561,7 +561,7 @@ func testSessionCookie(t *testing.T, e *env, base string, st *graphStore, cfg st
 	cookie := exchangeCode(t, base, codeOf(t, e.signInLink(t, cfg, base)))
 	params := url.Values{"q": {"deployment"}, "profile": {"ops"}}
 	viaCookie, _ := endpointDoc(t, base, st, params, sessionCookie(cookie, "same-origin"))
-	viaToken, _ := endpointDoc(t, base, st, params, bearer(gatedToken))
+	viaToken, _ := endpointDoc(t, base, st, params, bearer(st.gatedToken))
 	if hasNode(viaCookie, "ent:"+hiddenEntity) {
 		t.Errorf("session of %s sees %s", gatedPrincipal, hiddenEntity)
 	}
@@ -627,18 +627,24 @@ func exchangeCode(t *testing.T, base, code string) *http.Cookie {
 const signInProbePath = "/__e2e/signin-probe.js"
 
 // signInProbeJS runs on the sign-in page ahead of the web UI. The web UI
-// opens its event stream once it holds the session cookie; the probe
-// then closes the stream (headless Chrome's virtual time cannot run out
-// while it is open) and loads the viewer on the same origin, so the
-// viewer's graph fetch carries nothing but the browser's cookie.
+// opens its event stream once it holds the session cookie. The stream is
+// the owner's alone, so a reader's is refused and closes, and an owner's
+// opens; either way the probe then closes it (headless Chrome's virtual
+// time cannot run out while it is open) and loads the viewer on the same
+// origin, so the viewer's graph fetch carries nothing but the browser's
+// cookie.
 const signInProbeJS = `(() => {
   const Native = window.EventSource;
   window.EventSource = class extends Native {
     constructor(url, init) {
       super(url, init);
-      this.addEventListener('open', () => {
+      const viewer = () => {
         this.close();
         location.replace(%q);
+      };
+      this.addEventListener('open', viewer);
+      this.addEventListener('error', () => {
+        if (this.readyState === Native.CLOSED) viewer();
       });
     }
   };

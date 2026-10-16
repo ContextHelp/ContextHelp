@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 func TestDependencyEnricherName(t *testing.T) {
@@ -434,8 +433,8 @@ func TestDependencyEnricherGraphNodesEmitted(t *testing.T) {
 		t.Fatalf("Graph.Nodes: got %d, want 2", len(got.Graph.Nodes))
 	}
 	for _, n := range got.Graph.Nodes {
-		if n.NodeType != pluginapi.NodeTypeArtifact {
-			t.Errorf("node %q has NodeType %q, want %q", n.ID, n.NodeType, pluginapi.NodeTypeArtifact)
+		if n.NodeType != storage.NodeTypeArtifact {
+			t.Errorf("node %q has NodeType %q, want %q", n.ID, n.NodeType, storage.NodeTypeArtifact)
 		}
 		if n.Label == "" {
 			t.Errorf("node %q has empty Label", n.ID)
@@ -445,8 +444,8 @@ func TestDependencyEnricherGraphNodesEmitted(t *testing.T) {
 		t.Fatalf("Graph.Edges: got %d, want 2", len(got.Graph.Edges))
 	}
 	for _, e := range got.Graph.Edges {
-		if e.EdgeType != pluginapi.EdgeTypeContains {
-			t.Errorf("edge %q has EdgeType %q, want %q", e.ID, e.EdgeType, pluginapi.EdgeTypeContains)
+		if e.EdgeType != storage.EdgeTypeContains {
+			t.Errorf("edge %q has EdgeType %q, want %q", e.ID, e.EdgeType, storage.EdgeTypeContains)
 		}
 	}
 }

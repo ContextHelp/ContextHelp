@@ -21,6 +21,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/retrieval"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
@@ -81,7 +82,7 @@ type HybridFixture struct {
 // default model, so the semantic leg reports no_default_model.
 func NewHybridFixture(t testing.TB, drv storage.StorageDriver, withModel bool) *HybridFixture {
 	t.Helper()
-	ctx := context.Background()
+	ctx := sharing.WithViewer(context.Background(), sharing.Unrestricted)
 	models, err := registry.ForDriver(drv)
 	if err != nil {
 		t.Fatalf("registry: %v", err)
@@ -115,7 +116,7 @@ func NewHybridFixture(t testing.TB, drv storage.StorageDriver, withModel bool) *
 // fixture registered it.
 func (f *HybridFixture) Seed(t testing.TB, id, typ, profileID, content string, vec []float32) *storage.KnowledgeObject {
 	t.Helper()
-	ctx := context.Background()
+	ctx := sharing.WithViewer(context.Background(), sharing.Unrestricted)
 	obj := storageutil.BuildGraphKO(id, typ, content)
 	obj.ProfileID = profileID
 	if err := f.Drv.Objects().Create(ctx, obj); err != nil {
@@ -165,7 +166,7 @@ func ProfileCorpusID(profile, kind string) string {
 // engine honor.
 func RunHybridProfileScope(t *testing.T, drv storage.StorageDriver) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := sharing.WithViewer(context.Background(), sharing.Unrestricted)
 	f := NewHybridFixture(t, drv, true)
 	f.SeedProfileCorpus(t)
 	cfg := config.DefaultSearchConfig()
@@ -233,7 +234,7 @@ func RunHybridProfileScope(t *testing.T, drv storage.StorageDriver) {
 // unscoped Find answers every profile's.
 func runFindProfileScope(t *testing.T, f *HybridFixture) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := sharing.WithViewer(context.Background(), sharing.Unrestricted)
 	for _, mode := range []string{service.FindModeHybrid, service.FindModeVector, service.FindModeFTS} {
 		res, err := f.Svc.Find(ctx, service.FindRequest{
 			Query: ProfileQuery, Mode: mode, Profile: "alpha", Limit: 20, Facets: true,

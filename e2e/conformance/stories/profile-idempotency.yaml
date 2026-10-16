@@ -22,14 +22,14 @@ steps:
   - id: select
     intent: |
       Assert that this profile is the active default.
-    invoke: ["ctxt", "profile", "default", "reconcile-demo", "--format", "json", "--no-hints"]
+    invoke: ["ctxt", "profile", "set", "reconcile-demo", "--format", "json", "--no-hints"]
     capture: [exit_code, stdout, stderr]
   - id: select_again
     intent: |
       Assert the very same thing a second time, as a retried or
       duplicated reconcile would, and get the same answer as the first
       attempt.
-    invoke: ["ctxt", "profile", "default", "reconcile-demo", "--format", "json", "--no-hints"]
+    invoke: ["ctxt", "profile", "set", "reconcile-demo", "--format", "json", "--no-hints"]
     capture: [exit_code, stdout, stderr]
   - id: converged
     intent: |

@@ -33,7 +33,7 @@ func TestAPIClient_DeletePipeline_ForwardsNoteHeader(t *testing.T) {
 			t.Cleanup(ts.Close)
 
 			c := NewAPIClient(ts.URL)
-			require.NoError(t, c.DeletePipeline("p-1", tc.note))
+			require.NoError(t, c.DeletePipeline(t.Context(), "p-1", tc.note))
 			assert.Equal(t, tc.want, got)
 		})
 	}
@@ -51,7 +51,7 @@ func TestAPIClient_PolicyDenied_ReturnsSentinel(t *testing.T) {
 	t.Cleanup(ts.Close)
 
 	c := NewAPIClient(ts.URL)
-	err := c.DeletePipeline("p-1", "")
+	err := c.DeletePipeline(t.Context(), "p-1", "")
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrPolicyDenied), "expected ErrPolicyDenied wrap, got %v", err)
 	assert.True(t, strings.Contains(err.Error(), "delete-pipeline-requires-note"))
@@ -70,7 +70,7 @@ func TestAPIClient_OtherErrors_NotPolicyDenied(t *testing.T) {
 	t.Cleanup(ts.Close)
 
 	c := NewAPIClient(ts.URL)
-	err := c.ArchivePipeline("p-1", "any note")
+	err := c.ArchivePipeline(t.Context(), "p-1", "any note")
 	require.Error(t, err)
 	assert.False(t, errors.Is(err, ErrPolicyDenied))
 	assert.Equal(t, 1, ExitCodeFor(err))

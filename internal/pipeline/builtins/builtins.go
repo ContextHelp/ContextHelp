@@ -1,6 +1,10 @@
+// Package builtins declares dpkms's built-in pipelines and the step
+// constructors they resolve to, and builds them into a pipeline
+// registry with config overrides and installed external steps applied.
 package builtins
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"path/filepath"
@@ -15,6 +19,8 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
+	"github.com/ideacrafterslabs/ctxt/internal/safefetch"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -90,7 +96,7 @@ var stepConstructors = map[string]func() pipeline.PipelineStep{
 	"linkedin_articles_parser": func() pipeline.PipelineStep { return steps.NewLinkedInArticlesParser() },
 	// Email pipeline steps.
 	"email_parser":   func() pipeline.PipelineStep { return steps.NewEmailParser() },
-	"email_filter":   func() pipeline.PipelineStep { return newDefaultEmailFilter() },
+	"email_filter":   newDefaultEmailFilter,
 	"email_enqueuer": func() pipeline.PipelineStep { return steps.NewEmailEnqueuer() },
 	// Graph enrichment: detects "alternative" relationships and creates proximity edges.
 	// Registered with nil stores (passthrough mode); stores are injected at runtime.
@@ -107,10 +113,22 @@ var stepConstructors = map[string]func() pipeline.PipelineStep{
 	"ibr_fetcher": func() pipeline.PipelineStep { return steps.NewIBRFetcher(nil) },
 }
 
+// fetchStepConstructors maps the steps that fetch captured URLs to
+// constructors taking the fetch guard (BuildOpts.FetchGuard), so the
+// fetch.* config governs which addresses they may reach.
+var fetchStepConstructors = map[string]func(*safefetch.Guard) pipeline.PipelineStep{
+	"url_fetcher": func(g *safefetch.Guard) pipeline.PipelineStep {
+		return steps.NewURLFetcher(steps.WithURLFetchGuard(g))
+	},
+	"feed_fetcher": func(g *safefetch.Guard) pipeline.PipelineStep {
+		return steps.NewFeedFetcher(steps.WithFeedFetchGuard(g))
+	},
+}
+
 // browserStepConstructors maps step names to browser-client-aware constructors.
-var browserStepConstructors = map[string]func(*browser.Client) pipeline.PipelineStep{
-	"ibr_fetcher": func(c *browser.Client) pipeline.PipelineStep {
-		return steps.NewIBRFetcher(c)
+var browserStepConstructors = map[string]func(*browser.Client, *safefetch.Guard) pipeline.PipelineStep{
+	"ibr_fetcher": func(c *browser.Client, g *safefetch.Guard) pipeline.PipelineStep {
+		return steps.NewIBRFetcher(c, steps.WithIBRFetchGuard(g))
 	},
 }
 
@@ -127,6 +145,10 @@ type BuildOpts struct {
 	BlobStore     storage.BlobStore
 	BlobThreshold int64
 	BrowserClient *browser.Client
+	// FetchGuard is what url_fetcher, feed_fetcher and ibr_fetcher fetch
+	// captured URLs through (config.FetchGuard). Nil uses the default
+	// guard: every private-network address refused.
+	FetchGuard *safefetch.Guard
 
 	// Models is the registry the embedding step reads its populate set
 	// from, and dedup its default model.
@@ -140,6 +162,75 @@ type BuildOpts struct {
 	// Duplicates configures near-duplicate detection. With CheckSimilar
 	// set, every pipeline that embeds runs dedup right after embedding.
 	Duplicates config.DuplicatesConfig
+
+	// External resolves the installed steps pipelines.overrides inserts
+	// (`dpkms pipeline step install`). Nil: no step is installed.
+	External ExternalSteps
+
+	// Access is the instance access class (config.ServerConfig.
+	// EffectiveAccess). On protected and public instances every pipeline
+	// runs the content_classes step and the embedding step writes the
+	// masked variant (ADR-080 §3, §7); private instances share nothing
+	// and skip both.
+	Access string
+	// ClassRules are the class rules content_classes evaluates
+	// (ClassRulesFromConfig).
+	ClassRules []sharing.ClassRule
+}
+
+// SharingEnabled reports whether access shares data with other
+// principals: protected and public instances do, private ones never.
+func SharingEnabled(access string) bool {
+	return access == config.AccessProtected || access == config.AccessPublic
+}
+
+// ClassRulesFromConfig returns the class rules of c: the built-in ones
+// (unless no_defaults) followed by the configured ones.
+func ClassRulesFromConfig(c config.SharingConfig) []sharing.ClassRule {
+	rules := make([]sharing.ClassRule, 0, len(c.Classes.Rules)+2)
+	if !c.Classes.NoDefaults {
+		rules = append(rules, sharing.DefaultClassRules()...)
+	}
+	for _, r := range c.Classes.Rules {
+		rules = append(rules, sharing.ClassRule{
+			Class: r.Class, Type: r.Type, Subtype: r.Subtype, Source: r.Source,
+			Pipeline: r.Pipeline, Tag: r.Tag, Profile: r.Profile, StructuredType: r.StructuredType,
+		})
+	}
+	return rules
+}
+
+// contentClassesStep is the step name InjectClassRulesStep inserts.
+const contentClassesStep = "content_classes"
+
+// InjectClassRulesStep inserts content_classes into stepNames when
+// SharingEnabled(access): right after structured_metadata, whose type
+// the default rules read, else before embedding, else last. A pipeline
+// that already names it is left alone. Pipeline overrides cannot anchor
+// on the injected step: it is added after they are validated.
+func InjectClassRulesStep(stepNames []string, access string) []string {
+	if !SharingEnabled(access) || slices.Contains(stepNames, contentClassesStep) {
+		return stepNames
+	}
+	at := len(stepNames)
+	if i := slices.Index(stepNames, "structured_metadata"); i >= 0 {
+		at = i + 1
+	} else if i := slices.Index(stepNames, "embedding"); i >= 0 {
+		at = i
+	}
+	out := make([]string, 0, len(stepNames)+1)
+	out = append(out, stepNames[:at]...)
+	out = append(out, contentClassesStep)
+	return append(out, stepNames[at:]...)
+}
+
+// ExternalSteps resolves installed (out-of-process, ADR-058) steps by name.
+type ExternalSteps interface {
+	// Has reports whether a step of that name is installed.
+	Has(name string) bool
+	// Step builds the installed step ins names for pipelineName, with
+	// the run options ins sets.
+	Step(pipelineName string, ins config.StepInsert) (pipeline.PipelineStep, error)
 }
 
 // embeddingStepConstructors maps step names to constructors that take the
@@ -147,10 +238,15 @@ type BuildOpts struct {
 // no-ops, so these always resolve.
 var embeddingStepConstructors = map[string]func(BuildOpts) pipeline.PipelineStep{
 	"embedding": func(o BuildOpts) pipeline.PipelineStep {
-		return steps.NewEmbeddingGenerator(o.Models, o.Resolver)
+		return steps.NewEmbeddingGenerator(o.Models, o.Resolver, steps.WithMaskedVariant(SharingEnabled(o.Access)))
 	},
 	"dedup": func(o BuildOpts) pipeline.PipelineStep {
 		return steps.NewDedupStep(o.Models, o.Embeddings, o.Audit, o.Duplicates)
+	},
+	// Content classes at ingest (ADR-080 §3); inserted by
+	// InjectClassRulesStep on sharing instances.
+	contentClassesStep: func(o BuildOpts) pipeline.PipelineStep {
+		return steps.NewContentClasses(o.ClassRules)
 	},
 }
 
@@ -210,9 +306,16 @@ func resolveStep(name string, opts BuildOpts) (pipeline.PipelineStep, error) {
 			return ctor(opts.Factory), nil
 		}
 	}
+	guard := opts.FetchGuard
+	if guard == nil {
+		guard = safefetch.Default()
+	}
+	if ctor, ok := fetchStepConstructors[name]; ok {
+		return ctor(guard), nil
+	}
 	if opts.BrowserClient != nil {
 		if ctor, ok := browserStepConstructors[name]; ok {
-			return ctor(opts.BrowserClient), nil
+			return ctor(opts.BrowserClient, guard), nil
 		}
 	}
 	if opts.BlobStore != nil {
@@ -247,12 +350,44 @@ func resolveStep(name string, opts BuildOpts) (pipeline.PipelineStep, error) {
 	return nil, fmt.Errorf("builtins: unknown step %q", name)
 }
 
+// stepSpec is one step of a pipeline being built: its name and, for a
+// step pipelines.overrides inserted, the insert entry.
+type stepSpec struct {
+	name   string
+	insert *config.StepInsert
+}
+
+func specsOf(names []string) []stepSpec {
+	out := make([]stepSpec, len(names))
+	for i, n := range names {
+		out[i] = stepSpec{name: n}
+	}
+	return out
+}
+
 // buildPipeline constructs a Pipeline from a Def, optionally injecting providers.
 // If strict is true, unsatisfied capabilities cause an error; otherwise they are pruned.
 func buildPipeline(name string, d Def, opts BuildOpts, strict bool) (*pipeline.Pipeline, error) {
-	pipelineSteps := make([]pipeline.PipelineStep, 0, len(d.Steps))
-	for _, stepName := range d.Steps {
-		s, err := resolveStep(stepName, opts)
+	return buildPipelineSpecs(name, d, specsOf(d.Steps), opts, strict)
+}
+
+// buildPipelineSpecs is buildPipeline over an explicit step list: a
+// built-in step resolves through the constructor tables, an installed
+// one through opts.External.
+func buildPipelineSpecs(name string, d Def, specs []stepSpec, opts BuildOpts, strict bool) (*pipeline.Pipeline, error) {
+	pipelineSteps := make([]pipeline.PipelineStep, 0, len(specs))
+	for _, spec := range specs {
+		var s pipeline.PipelineStep
+		var err error
+		if !IsStepName(spec.name) && opts.External != nil && opts.External.Has(spec.name) {
+			ins := config.StepInsert{Step: spec.name}
+			if spec.insert != nil {
+				ins = *spec.insert
+			}
+			s, err = opts.External.Step(name, ins)
+		} else {
+			s, err = resolveStep(spec.name, opts)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("pipeline %q: %w", name, err)
 		}
@@ -386,7 +521,7 @@ func selectByContent(selectors []selector, content string) string {
 			return sel.PipelineName
 		}
 	}
-	return "text.short"
+	return pipeline.TextShort
 }
 
 // Registry builds a pipeline.Registry from all registered defs (no providers).
@@ -414,13 +549,29 @@ func ConfiguredRegistryStrict(f *providers.Factory) pipeline.Registry {
 
 // ConfiguredRegistryWithPipelineOverrides builds a registry from base where
 // each pipeline can override individual provider backends via
-// PipelinesConfig.Overrides (base.Factory is built from baseCfg). It also
-// honors SkipSteps and ExtraSteps structural overrides.
+// PipelinesConfig.Overrides (base.Factory is built from baseCfg), drop
+// steps (skip_steps) and insert steps, built-in or installed
+// (insert_steps). An override that names an unknown pipeline, step or
+// anchor fails the build with one line per problem; nothing panics and
+// nothing is ignored.
 func ConfiguredRegistryWithPipelineOverrides(
 	base BuildOpts,
 	baseCfg config.ProvidersConfig,
 	pipelinesCfg config.PipelinesConfig,
-) pipeline.Registry {
+) (pipeline.Registry, error) {
+	has := func(string) bool { return false }
+	if base.External != nil {
+		has = base.External.Has
+	}
+	verrs := append(pipelinesCfg.Validate(), ValidateOverrides(pipelinesCfg, base.Duplicates, has)...)
+	if len(verrs) > 0 {
+		lines := make([]string, len(verrs))
+		for i, e := range verrs {
+			lines[i] = e.Error()
+		}
+		return nil, fmt.Errorf("invalid pipelines config:\n  %s", strings.Join(lines, "\n  "))
+	}
+
 	r := pipeline.NewRegistry()
 	selectors := buildSelectors()
 
@@ -434,12 +585,15 @@ func ConfiguredRegistryWithPipelineOverrides(
 		}
 
 		opts := base
-		d.Steps = InjectDedupStep(d.Steps, base.Duplicates)
+		d.Steps = InjectClassRulesStep(InjectDedupStep(d.Steps, base.Duplicates), base.Access)
+		specs := specsOf(d.Steps)
 
 		if override, ok := pipelinesCfg.Overrides[name]; ok {
-			// 1. Handle structural overrides (SkipSteps, ExtraSteps).
-			if len(override.SkipSteps) > 0 || len(override.ExtraSteps) > 0 {
-				d.Steps = applyStructuralOverrides(d.Steps, override.SkipSteps, override.ExtraSteps)
+			// 1. Structural overrides: skip_steps, then insert_steps.
+			var problems []config.ValidationError
+			specs, problems = applyStructuralOverrides(name, specs, override, nil)
+			if len(problems) > 0 {
+				return nil, errors.New("invalid pipelines config: " + problems[0].Error())
 			}
 
 			// 2. Handle provider overrides.
@@ -469,22 +623,168 @@ func ConfiguredRegistryWithPipelineOverrides(
 						log.Printf("builtins: pipeline %q: unknown provider role %q in override (ignored)", name, role)
 					}
 				}
-				opts.Factory = providers.NewFactory(merged, nil)
+				// Same secrets store as the base factory: keys resolve identically.
+				opts.Factory = base.Factory.WithConfig(merged)
 			}
 		}
 
-		p, err := buildPipeline(name, d, opts, false)
+		p, err := buildPipelineSpecs(name, d, specs, opts, false)
 		if err != nil {
-			panic(fmt.Sprintf("builtins: %v", err))
+			return nil, err
 		}
 		if err := r.Register(name, p); err != nil {
-			panic(fmt.Sprintf("builtins: %v", err))
+			return nil, err
 		}
 	}
 
 	r.SetSelectors(builtinSelectors(selectors))
 
-	return r
+	return r, nil
+}
+
+// ValidateOverrides checks every pipelines.overrides entry against the
+// registered pipelines: the pipeline exists, each skip_steps name is one
+// of its steps, each inserted step is built in or installed (installed
+// reports which names are; nil means none), and each before/after anchor
+// is in the pipeline once skip_steps and the earlier inserts apply.
+// dedup counts as a pipeline step when dups.CheckSimilar inserts it.
+// Problems come back one per field, sorted by pipeline.
+func ValidateOverrides(p config.PipelinesConfig, dups config.DuplicatesConfig, installed func(string) bool) []config.ValidationError {
+	names := make([]string, 0, len(p.Overrides))
+	for name := range p.Overrides {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	var errs []config.ValidationError
+	for _, name := range names {
+		d, ok := defs[name]
+		if !ok {
+			errs = append(errs, config.ValidationError{
+				Field:   "pipelines.overrides." + name,
+				Message: fmt.Sprintf("unknown pipeline %q (dpkms pipeline list)", name),
+			})
+			continue
+		}
+		_, problems := applyStructuralOverrides(name, specsOf(InjectDedupStep(d.Steps, dups)), p.Overrides[name], installed)
+		errs = append(errs, problems...)
+	}
+	return errs
+}
+
+// applyStructuralOverrides drops o.SkipSteps from specs, then applies
+// o.InsertSteps in order. Every name that does not resolve is a problem;
+// installed nil skips the inserted-step name check (the step builder
+// reports it).
+func applyStructuralOverrides(pipelineName string, specs []stepSpec, o config.PipelineOverride, installed func(string) bool) ([]stepSpec, []config.ValidationError) {
+	ov := overrideApplier{pipeline: pipelineName, base: "pipelines.overrides." + pipelineName, installed: installed}
+	out := slices.Clone(specs)
+	for i, skip := range o.SkipSteps {
+		if _, n := indexOfStep(out, skip); n == 0 {
+			if _, inOrig := indexOfStep(specs, skip); inOrig == 0 {
+				ov.notIn(fmt.Sprintf("%s.skip_steps[%d]", ov.base, i), skip, specs)
+			}
+			continue
+		}
+		out = slices.DeleteFunc(out, func(s stepSpec) bool { return s.name == skip })
+	}
+	for i := range o.InsertSteps {
+		out = ov.insert(out, i, &o.InsertSteps[i])
+	}
+	return out, ov.problems
+}
+
+// overrideApplier collects the problems one pipeline's override has.
+type overrideApplier struct {
+	pipeline  string
+	base      string
+	installed func(string) bool
+	problems  []config.ValidationError
+}
+
+func (ov *overrideApplier) problem(field, format string, args ...any) {
+	ov.problems = append(ov.problems, config.ValidationError{Field: field, Message: fmt.Sprintf(format, args...)})
+}
+
+func (ov *overrideApplier) notIn(field, step string, in []stepSpec) {
+	names := make([]string, len(in))
+	for i, s := range in {
+		names[i] = s.name
+	}
+	ov.problem(field, "step %q is not in pipeline %s (steps: %s)", step, ov.pipeline, strings.Join(names, ", "))
+}
+
+// insert places insert_steps[i] in out, or records why it cannot.
+func (ov *overrideApplier) insert(out []stepSpec, i int, ins *config.StepInsert) []stepSpec {
+	field := fmt.Sprintf("%s.insert_steps[%d]", ov.base, i)
+	builtin := IsStepName(ins.Step)
+	if !builtin && ov.installed != nil && !ov.installed(ins.Step) {
+		ov.problem(field+".step", "unknown step %q: not a built-in step and not installed (dpkms pipeline step list)", ins.Step)
+	}
+	if builtin && (ins.OnError != "" || ins.Timeout != 0 || ins.Isolation != "" || len(ins.Config) > 0) {
+		ov.problem(field, "on_error, timeout, isolation and config apply to installed steps only; %q is built in", ins.Step)
+	}
+	anchorField, anchor := "", ""
+	switch {
+	case ins.Before != "" && ins.After != "":
+		return out // PipelinesConfig.Validate reports it
+	case ins.Before != "":
+		anchorField, anchor = field+".before", ins.Before
+	case ins.After != "":
+		anchorField, anchor = field+".after", ins.After
+	default:
+		return append(out, stepSpec{name: ins.Step, insert: ins})
+	}
+	idx, n := indexOfStep(out, anchor)
+	switch {
+	case n == 0:
+		ov.notIn(anchorField, anchor, out)
+		return out
+	case n > 1:
+		ov.problem(anchorField, "step %q appears %d times in pipeline %s; the anchor must be unique", anchor, n, ov.pipeline)
+		return out
+	}
+	if ins.After != "" {
+		idx++
+	}
+	return slices.Insert(out, idx, stepSpec{name: ins.Step, insert: ins})
+}
+
+// indexOfStep is the first index of step in specs and how often it occurs.
+func indexOfStep(specs []stepSpec, step string) (idx, count int) {
+	idx = -1
+	for i, s := range specs {
+		if s.name == step {
+			if idx < 0 {
+				idx = i
+			}
+			count++
+		}
+	}
+	return idx, count
+}
+
+// IsStepName reports whether name is a built-in step.
+func IsStepName(name string) bool {
+	if _, ok := stepConstructors[name]; ok {
+		return true
+	}
+	if _, ok := providerStepConstructors[name]; ok {
+		return true
+	}
+	if _, ok := embeddingStepConstructors[name]; ok {
+		return true
+	}
+	if _, ok := blobStepConstructors[name]; ok {
+		return true
+	}
+	if _, ok := fetchStepConstructors[name]; ok {
+		return true
+	}
+	if _, ok := browserStepConstructors[name]; ok {
+		return true
+	}
+	return false
 }
 
 // defProvidersSatisfied returns true if all providers listed in d.Providers
@@ -498,28 +798,6 @@ func defProvidersSatisfied(d Def, caps pipeline.CapabilitySet) bool {
 	return true
 }
 
-func applyStructuralOverrides(steps []string, skip []string, extra []string) []string {
-	out := make([]string, 0, len(steps)+len(extra))
-	out = append(out, steps...)
-
-	if len(skip) > 0 {
-		skipMap := make(map[string]bool)
-		for _, s := range skip {
-			skipMap[s] = true
-		}
-		filtered := make([]string, 0, len(out))
-		for _, s := range out {
-			if !skipMap[s] {
-				filtered = append(filtered, s)
-			}
-		}
-		out = filtered
-	}
-
-	out = append(out, extra...)
-	return out
-}
-
 func buildRegistry(opts BuildOpts, strict bool) pipeline.Registry {
 	r := pipeline.NewRegistry()
 	selectors := buildSelectors()
@@ -530,7 +808,7 @@ func buildRegistry(opts BuildOpts, strict bool) pipeline.Registry {
 			log.Printf("builtins: skipping pipeline %q (required provider(s) %v not available)", name, d.Providers)
 			continue
 		}
-		d.Steps = InjectDedupStep(d.Steps, opts.Duplicates)
+		d.Steps = InjectClassRulesStep(InjectDedupStep(d.Steps, opts.Duplicates), opts.Access)
 
 		p, err := buildPipeline(name, d, opts, strict)
 		if err != nil {

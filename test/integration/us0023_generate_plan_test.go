@@ -46,7 +46,7 @@ func TestUS0023_PlanPreservesDecisionTaskStructure(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	decisions := []storage.Decision{
 		{Title: "Adopt event-driven architecture", Status: "OPEN", Impact: "HIGH"},
@@ -103,7 +103,7 @@ func TestUS0023_PlanCompositionContainsDecisionAndTaskContent(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	env.svc.Pipes.Upsert("plan.compose", &pipeline.Pipeline{
 		PipelineName: "plan.compose",
@@ -157,7 +157,7 @@ func TestUS0023_HighImpactDecisionAppearsInPlan(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	env.svc.Pipes.Upsert("plan.impact", &pipeline.Pipeline{
 		PipelineName: "plan.impact",

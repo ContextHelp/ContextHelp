@@ -138,7 +138,7 @@ func TestAnalyzeMissingFileError(t *testing.T) {
 	}
 }
 
-// TestAnalyzeUnsupportedTypeErrors covers T-0562: when the server rejects
+// TestAnalyzeUnsupportedTypeErrors covers the case where the server rejects
 // the request with 422 (no pipeline registered for the requested type),
 // the CLI must exit non-zero and print the server-supplied error to stderr
 // so the operator can see that the file/content was not enqueued. Previously
@@ -184,7 +184,7 @@ func TestAnalyzeUnsupportedTypeErrors(t *testing.T) {
 	}
 }
 
-// TestAnalyzeWaitDetectsSilentDrop covers T-0562 AC2: when --wait is set
+// TestAnalyzeWaitDetectsSilentDrop covers the case where --wait is set
 // and the job ID returned by the analyze endpoint can't be located via
 // GET /jobs/{id}, the CLI must surface a clear "silently dropped" error
 // instead of exiting 0 and leaving the user to guess.

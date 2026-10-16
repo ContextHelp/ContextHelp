@@ -25,9 +25,15 @@ func (e *ToolNotInstalledError) Error() string {
 	return fmt.Sprintf("%s not found in PATH", e.Tool)
 }
 
+// CLI tools the providers run, by executable name.
+const (
+	toolFFmpeg    = "ffmpeg"
+	toolTesseract = "tesseract"
+)
+
 // installHints returns platform-specific install instructions.
 var installHints = map[string]map[string]string{
-	"ffmpeg": {
+	toolFFmpeg: {
 		"darwin": "brew install ffmpeg",
 		"linux":  "apt install ffmpeg   # or: dnf install ffmpeg",
 	},
@@ -35,7 +41,7 @@ var installHints = map[string]map[string]string{
 		"darwin": "brew install ffmpeg",
 		"linux":  "apt install ffmpeg   # or: dnf install ffmpeg",
 	},
-	"pdftotext": {
+	pdftotextTool: {
 		"darwin": "brew install poppler",
 		"linux":  "apt install poppler-utils",
 	},
@@ -43,7 +49,7 @@ var installHints = map[string]map[string]string{
 		"darwin": "brew install poppler",
 		"linux":  "apt install poppler-utils",
 	},
-	"tesseract": {
+	toolTesseract: {
 		"darwin": "brew install tesseract",
 		"linux":  "apt install tesseract-ocr",
 	},
@@ -51,7 +57,7 @@ var installHints = map[string]map[string]string{
 		"darwin": "brew install whisper-cpp   # or build from source: github.com/ggerganov/whisper.cpp",
 		"linux":  "build from source: github.com/ggerganov/whisper.cpp",
 	},
-	"pyannote": {
+	pyannoteName: {
 		"darwin": "pip install pyannote.audio",
 		"linux":  "pip install pyannote.audio",
 	},

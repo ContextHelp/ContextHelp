@@ -4,49 +4,50 @@ import (
 	"context"
 	"io"
 	"time"
-
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // mockDriver verifies that a concrete type can satisfy StorageDriver.
 type mockDriver struct{}
 
-func (m *mockDriver) Init(ctx context.Context) error     { return nil }
-func (m *mockDriver) Close(ctx context.Context) error    { return nil }
-func (m *mockDriver) Objects() ObjectStore               { return &mockObjectStore{} }
-func (m *mockDriver) Entities() EntityStore              { return &mockEntityStore{} }
-func (m *mockDriver) Edges() EdgeStore                   { return &mockEdgeStore{} }
-func (m *mockDriver) Jobs() JobStore                     { return &mockJobStore{} }
-func (m *mockDriver) Pipelines() PipelineStore           { return &mockPipelineStore{} }
-func (m *mockDriver) Steps() StepStore                   { return &mockStepStore{} }
-func (m *mockDriver) Registries() RegistryStore          { return &mockRegistryStore{} }
-func (m *mockDriver) Reminders() ReminderStore           { return &mockReminderStore{} }
-func (m *mockDriver) Feeds() FeedStore                   { return &mockFeedStore{} }
-func (m *mockDriver) FeedItems() FeedItemStore           { return &mockFeedItemStore{} }
-func (m *mockDriver) Batches() BatchStore                { return &mockBatchStore{} }
-func (m *mockDriver) Detectors() DetectorStore           { return &mockDetectorStore{} }
-func (m *mockDriver) Blobs() BlobStore                   { return &mockBlobStore{} }
-func (m *mockDriver) Proximity() ProximityStore          { return &mockProximityStore{} }
-func (m *mockDriver) Watches() WatchStore                { return &mockWatchStore{} }
-func (m *mockDriver) Aliases() AliasStore                { return &mockAliasStore{} }
-func (m *mockDriver) AuditLog() AuditStore               { return &mockAuditLogStore{} }
-func (m *mockDriver) Attachments() AttachmentStore       { return &mockAttachmentStore{} }
-func (m *mockDriver) Resurfacing() ResurfacingQueueStore { return &mockResurfacingQueueStore{} }
-func (m *mockDriver) Entitlements() EntitlementStore     { return &mockEntitlementStore{} }
-func (m *mockDriver) Metering() MeteringStore            { return &mockMeteringStore{} }
-func (m *mockDriver) Embeddings() EmbeddingStore         { return nil }
-func (m *mockDriver) SavedSearches() SavedSearchStore    { return &mockSavedSearchStore{} }
-func (m *mockDriver) SearchHistory() SearchHistoryStore  { return &mockSearchHistoryStore{} }
-func (m *mockDriver) Watermarks() WatermarkStore         { return &mockWatermarkStore{} }
-func (m *mockDriver) UISessions() UISessionStore         { return nil }
-func (m *mockDriver) Health(ctx context.Context) error   { return nil }
+func (m *mockDriver) Init(ctx context.Context) error      { return nil }
+func (m *mockDriver) Close(ctx context.Context) error     { return nil }
+func (m *mockDriver) Objects() ObjectStore                { return &mockObjectStore{} }
+func (m *mockDriver) Entities() EntityStore               { return &mockEntityStore{} }
+func (m *mockDriver) Edges() EdgeStore                    { return &mockEdgeStore{} }
+func (m *mockDriver) Jobs() JobStore                      { return &mockJobStore{} }
+func (m *mockDriver) Pipelines() PipelineStore            { return &mockPipelineStore{} }
+func (m *mockDriver) Steps() StepStore                    { return &mockStepStore{} }
+func (m *mockDriver) Registries() RegistryStore           { return &mockRegistryStore{} }
+func (m *mockDriver) Reminders() ReminderStore            { return &mockReminderStore{} }
+func (m *mockDriver) Feeds() FeedStore                    { return &mockFeedStore{} }
+func (m *mockDriver) FeedItems() FeedItemStore            { return &mockFeedItemStore{} }
+func (m *mockDriver) Batches() BatchStore                 { return &mockBatchStore{} }
+func (m *mockDriver) Detectors() DetectorStore            { return &mockDetectorStore{} }
+func (m *mockDriver) Blobs() BlobStore                    { return &mockBlobStore{} }
+func (m *mockDriver) Proximity() ProximityStore           { return &mockProximityStore{} }
+func (m *mockDriver) Watches() WatchStore                 { return &mockWatchStore{} }
+func (m *mockDriver) Aliases() AliasStore                 { return &mockAliasStore{} }
+func (m *mockDriver) AuditLog() AuditStore                { return &mockAuditLogStore{} }
+func (m *mockDriver) Attachments() AttachmentStore        { return &mockAttachmentStore{} }
+func (m *mockDriver) Resurfacing() ResurfacingQueueStore  { return &mockResurfacingQueueStore{} }
+func (m *mockDriver) Entitlements() EntitlementStore      { return &mockEntitlementStore{} }
+func (m *mockDriver) Metering() MeteringStore             { return &mockMeteringStore{} }
+func (m *mockDriver) PendingEntities() PendingEntityStore { return nil }
+func (m *mockDriver) Embeddings() EmbeddingStore          { return nil }
+func (m *mockDriver) SavedSearches() SavedSearchStore     { return &mockSavedSearchStore{} }
+func (m *mockDriver) SearchHistory() SearchHistoryStore   { return &mockSearchHistoryStore{} }
+func (m *mockDriver) Watermarks() WatermarkStore          { return &mockWatermarkStore{} }
+func (m *mockDriver) UISessions() UISessionStore          { return nil }
+func (m *mockDriver) Auth() AuthStore                     { return nil }
+func (m *mockDriver) Sharing() SharingStore               { return nil }
+func (m *mockDriver) Health(ctx context.Context) error    { return nil }
 
 type mockWatermarkStore struct{}
 
-func (m *mockWatermarkStore) GetWatermark(_ context.Context, _ string) (time.Time, error) {
-	return time.Unix(0, 0).UTC(), nil
+func (m *mockWatermarkStore) GetWatermark(_ context.Context, _ string) (int64, error) {
+	return 0, nil
 }
-func (m *mockWatermarkStore) SetWatermark(_ context.Context, _ string, _ time.Time) error {
+func (m *mockWatermarkStore) SetWatermark(_ context.Context, _ string, _ int64) error {
 	return nil
 }
 
@@ -74,7 +75,7 @@ func (m *mockObjectStore) Create(ctx context.Context, obj *KnowledgeObject) erro
 func (m *mockObjectStore) Get(ctx context.Context, id string) (*KnowledgeObject, error) {
 	return nil, nil
 }
-func (m *mockObjectStore) GetByContentHash(ctx context.Context, hash string) (*KnowledgeObject, error) {
+func (m *mockObjectStore) GetByContentHash(ctx context.Context, hash, profileID string) (*KnowledgeObject, error) {
 	return nil, nil
 }
 func (m *mockObjectStore) GetBySourceKey(ctx context.Context, key string) (*KnowledgeObject, error) {
@@ -85,7 +86,9 @@ func (m *mockObjectStore) List(ctx context.Context, filter ObjectFilter) ([]*Kno
 }
 func (m *mockObjectStore) Update(ctx context.Context, obj *KnowledgeObject) error { return nil }
 func (m *mockObjectStore) Delete(ctx context.Context, id string) error            { return nil }
-func (m *mockObjectStore) ListBySQL(ctx context.Context, where string, args []any, limit, offset int) ([]*KnowledgeObject, int, error) {
+func (m *mockObjectStore) CountBlobRefs(_ context.Context, _ string) (int, error) { return 0, nil }
+
+func (m *mockObjectStore) ListBySQL(ctx context.Context, where string, args []any, filter ObjectFilter) ([]*KnowledgeObject, int, error) {
 	return nil, 0, nil
 }
 func (m *mockObjectStore) Reinforce(ctx context.Context, hash string, mergeData *KnowledgeObject) (string, error) {
@@ -97,10 +100,10 @@ func (m *mockObjectStore) VectorSearch(ctx context.Context, q VectorQuery, filte
 func (m *mockObjectStore) FTSSearch(ctx context.Context, query string, filter ObjectFilter) ([]*KnowledgeObject, error) {
 	return nil, nil
 }
-func (m *mockObjectStore) FTSSearchNodeAware(_ context.Context, _ string, _ ObjectFilter, _ pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error) {
+func (m *mockObjectStore) FTSSearchNodeAware(_ context.Context, _ string, _ ObjectFilter, _ NodeAwareFilter) ([]*NodeAwareResult, error) {
 	return nil, nil
 }
-func (m *mockObjectStore) VectorSearchNodeAware(_ context.Context, _ VectorQuery, _ ObjectFilter, _ pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error) {
+func (m *mockObjectStore) VectorSearchNodeAware(_ context.Context, _ VectorQuery, _ ObjectFilter, _ NodeAwareFilter) ([]*NodeAwareResult, error) {
 	return nil, nil
 }
 func (m *mockObjectStore) SetReminder(ctx context.Context, id string, at time.Time) error {
@@ -133,6 +136,7 @@ func (m *mockEntityStore) Get(ctx context.Context, slug string) (*Entity, error)
 func (m *mockEntityStore) List(ctx context.Context, filter EntityFilter) ([]*Entity, error) {
 	return nil, nil
 }
+func (m *mockEntityStore) Namespaces(ctx context.Context) ([]string, error) { return nil, nil }
 func (m *mockEntityStore) Resolve(ctx context.Context, mention string) (*Entity, error) {
 	return nil, nil
 }
@@ -153,6 +157,13 @@ func (m *mockEdgeStore) CountMentionsTo(ctx context.Context, toType, toID string
 }
 func (m *mockEdgeStore) RelatedObjectIDs(ctx context.Context, objectID string, depth, limit int) ([]string, error) {
 	return nil, nil
+}
+func (m *mockEdgeStore) CreateAll(ctx context.Context, edges []*Edge) error { return nil }
+func (m *mockEdgeStore) CreateMissing(ctx context.Context, edges []*Edge) (int, error) {
+	return 0, nil
+}
+func (m *mockEdgeStore) DeleteMatching(ctx context.Context, matches []EdgeMatch) (int, error) {
+	return 0, nil
 }
 
 type mockJobStore struct{}
@@ -377,11 +388,14 @@ func (m *mockResurfacingQueueStore) DeleteByObject(_ context.Context, _ string) 
 type mockEntitlementStore struct{}
 
 func (m *mockEntitlementStore) Upsert(_ context.Context, _ *RegistryEntitlement) error { return nil }
-func (m *mockEntitlementStore) Get(_ context.Context, _ string) (*RegistryEntitlement, error) {
+func (m *mockEntitlementStore) Get(_ context.Context, _ EntitlementKind, _ string) (*RegistryEntitlement, error) {
 	return nil, nil
 }
-func (m *mockEntitlementStore) List(_ context.Context) ([]*RegistryEntitlement, error) {
+func (m *mockEntitlementStore) List(_ context.Context, _ EntitlementKind) ([]*RegistryEntitlement, error) {
 	return nil, nil
+}
+func (m *mockEntitlementStore) Delete(_ context.Context, _ EntitlementKind, _ string) error {
+	return nil
 }
 
 type mockMeteringStore struct{}
@@ -424,3 +438,7 @@ func (m *mockSearchHistoryStore) List(
 	return nil, nil
 }
 func (m *mockSearchHistoryStore) ClearByProfile(_ context.Context, _ string) error { return nil }
+
+func (m *mockObjectStore) CountByType(_ context.Context) (map[string]int, error) {
+	return map[string]int{}, nil
+}

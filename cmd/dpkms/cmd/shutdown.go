@@ -6,7 +6,6 @@ import (
 	"syscall"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
@@ -21,8 +20,9 @@ var shutdownCmd = &cobra.Command{
 
 The target instance drains in-flight jobs, closes all servers, and exits.
 
-By default targets the instance on --server-url port. Use --port to target
-a specific instance when multiple are running.
+By default targets the instance listening on server.port (config file,
+overridden by CH_SERVER_PORT). Use --port to target a specific instance
+when multiple are running.
 
 Examples:
   dpkms shutdown
@@ -33,7 +33,7 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(shutdownCmd)
-	shutdownCmd.Flags().Int("port", 0, "port of the instance to shut down (default: server-url port)")
+	shutdownCmd.Flags().Int("port", 0, "port of the instance to shut down (default: server.port / CH_SERVER_PORT)")
 
 	// SIGTERM to a live daemon. The instance drains and exits; in-flight
 	// work is interrupted and the process does not come back on its own.
@@ -42,12 +42,19 @@ func init() {
 }
 
 func runShutdown(cmd *cobra.Command, _ []string) error {
+	return signalInstance(cmd, syscall.SIGTERM, "SIGTERM")
+}
+
+// signalInstance sends sig (named sigName in the confirmation) to the
+// running dpkms instance on --port, or on server.port when the flag is
+// unset.
+func signalInstance(cmd *cobra.Command, sig syscall.Signal, sigName string) error {
 	port, _ := cmd.Flags().GetInt("port")
 	if port == 0 {
-		port = viper.GetInt("server.port")
+		port = cfg.Server.Port
 	}
 
-	runDir, err := config.RunDir()
+	runDir, err := config.RunDirPath(dataDir())
 	if err != nil {
 		return fmt.Errorf("run dir: %w", err)
 	}
@@ -63,10 +70,10 @@ func runShutdown(cmd *cobra.Command, _ []string) error {
 			if err != nil {
 				return fmt.Errorf("find process %d: %w", info.PID, err)
 			}
-			if err := proc.Signal(syscall.SIGTERM); err != nil {
+			if err := proc.Signal(sig); err != nil {
 				return fmt.Errorf("signal pid %d: %w", info.PID, err)
 			}
-			fmt.Printf("Sent SIGTERM to dpkms (pid %d, port %d)\n", info.PID, port)
+			fmt.Printf("Sent %s to dpkms (pid %d, port %d)\n", sigName, info.PID, port)
 			return nil
 		}
 	}

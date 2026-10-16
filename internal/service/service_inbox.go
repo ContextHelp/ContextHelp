@@ -40,18 +40,18 @@ func (s *Service) CaptureToInbox(ctx context.Context, req InboxCaptureRequest) (
 		Status:      inboxStatus,
 		InboxNote:   req.InboxNote,
 		Mentions:    req.Mentions,
-		// T-0573: caller-asserted hints land directly on Tags (Source:"user")
+		// caller-asserted hints land directly on Tags (Source:"user")
 		// since no pipeline runs at inbox-capture time. Triage will re-enqueue
 		// the object via a pipeline job that picks these up via UserHints.
 		Tags: userHintsToTags(req.Hints),
-		// T-0588: caller-asserted profile partitions the inbox item from
+		// caller-asserted profile partitions the inbox item from
 		// the start so list/find queries scoped to a profile see it.
 		ProfileID: req.Profile,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
 
-	if err := s.Store.Objects().Create(ctx, obj); err != nil {
+	if err := s.Store(ctx).Objects().Create(ctx, obj); err != nil {
 		return nil, fmt.Errorf("capture to inbox: %w", err)
 	}
 
@@ -74,19 +74,26 @@ func (s *Service) ListInbox(ctx context.Context, filter InboxFilter) ([]*storage
 	if !filter.After.IsZero() {
 		f.After = &filter.After
 	}
-	return s.Store.Objects().List(ctx, f)
+	objs, total, err := s.Store(ctx).Objects().List(ctx, f)
+	if err != nil {
+		return nil, 0, err
+	}
+	if err := s.previewContent(ctx, objs); err != nil {
+		return nil, 0, err
+	}
+	return objs, total, nil
 }
 
 // TriageInbox promotes an inbox item to "active" status and enqueues it
 // for pipeline processing. An object that is not an inbox item, or no
 // object at all, wraps storage.ErrNotFound and nothing changes.
 func (s *Service) TriageInbox(ctx context.Context, id string, req TriageRequest) (string, error) {
-	obj, err := s.Store.Objects().Get(ctx, id)
+	obj, err := s.Store(ctx).Objects().Get(ctx, id)
 	if err != nil {
 		return "", fmt.Errorf("triage inbox item %s: %w", id, err)
 	}
 	now := time.Now().Truncate(time.Second)
-	if err := s.Store.Objects().TransitionStatus(ctx, id, inboxStatus, "active", now); err != nil {
+	if err := s.Store(ctx).Objects().TransitionStatus(ctx, id, inboxStatus, "active", now); err != nil {
 		return "", fmt.Errorf("triage inbox item %s: %w", id, err)
 	}
 	obj.Status = "active"
@@ -107,13 +114,13 @@ func (s *Service) TriageInbox(ctx context.Context, id string, req TriageRequest)
 		MaxRetries: 3,
 		CreatedAt:  now,
 		UpdatedAt:  now,
-		// T-0573: forward caller-asserted hints to the worker so the
+		// forward caller-asserted hints to the worker so the
 		// auto-tagger merge preserves them as Tag{Source:"user"}.
 		UserHints: req.Hints,
 	}
 	if err := s.Queue.Enqueue(ctx, job); err != nil {
 		// Compensate: return the item to the inbox.
-		_ = s.Store.Objects().TransitionStatus(ctx, id, "active", inboxStatus, time.Now().Truncate(time.Second))
+		_ = s.Store(ctx).Objects().TransitionStatus(ctx, id, "active", inboxStatus, time.Now().Truncate(time.Second))
 		return "", fmt.Errorf("triage inbox enqueue: %w", err)
 	}
 
@@ -127,7 +134,7 @@ func (s *Service) TriageInbox(ctx context.Context, id string, req TriageRequest)
 // an inbox item, or no object at all, wraps storage.ErrNotFound and
 // nothing changes.
 func (s *Service) DiscardInbox(ctx context.Context, id string) error {
-	if err := s.Store.Objects().TransitionStatus(ctx, id, inboxStatus, "discarded", time.Now().Truncate(time.Second)); err != nil {
+	if err := s.Store(ctx).Objects().TransitionStatus(ctx, id, inboxStatus, "discarded", time.Now().Truncate(time.Second)); err != nil {
 		return fmt.Errorf("discard inbox item %s: %w", id, err)
 	}
 	return nil
@@ -147,36 +154,27 @@ func (s *Service) ListInboxQueue(ctx context.Context, f InboxQueueFilter) ([]*In
 
 	// Pending/running jobs.
 	if showAll || f.Pending {
-		jobs, _, err := s.Store.Jobs().List(ctx, storage.JobFilter{Status: storage.JobPending, Limit: limit})
-		if err != nil {
-			return nil, 0, fmt.Errorf("list pending jobs: %w", err)
-		}
-		for _, j := range jobs {
-			items = append(items, jobToQueueItem(j))
-		}
-		running, _, err := s.Store.Jobs().List(ctx, storage.JobFilter{Status: storage.JobRunning, Limit: limit})
-		if err != nil {
-			return nil, 0, fmt.Errorf("list running jobs: %w", err)
-		}
-		for _, j := range running {
-			items = append(items, jobToQueueItem(j))
+		for _, st := range []storage.JobStatus{storage.JobPending, storage.JobRunning} {
+			got, err := s.jobQueueItems(ctx, st, limit)
+			if err != nil {
+				return nil, 0, err
+			}
+			items = append(items, got...)
 		}
 	}
 
 	// Failed jobs.
 	if showAll || f.Failed {
-		failed, _, err := s.Store.Jobs().List(ctx, storage.JobFilter{Status: storage.JobFailed, Limit: limit})
+		got, err := s.jobQueueItems(ctx, storage.JobFailed, limit)
 		if err != nil {
-			return nil, 0, fmt.Errorf("list failed jobs: %w", err)
+			return nil, 0, err
 		}
-		for _, j := range failed {
-			items = append(items, jobToQueueItem(j))
-		}
+		items = append(items, got...)
 	}
 
 	// Raw objects.
 	if showAll || f.Raw {
-		objs, _, err := s.Store.Objects().List(ctx, storage.ObjectFilter{Status: "raw", Limit: limit})
+		objs, _, err := s.Store(ctx).Objects().List(ctx, storage.ObjectFilter{Status: "raw", Limit: limit})
 		if err != nil {
 			return nil, 0, fmt.Errorf("list raw objects: %w", err)
 		}
@@ -198,6 +196,19 @@ func (s *Service) ListInboxQueue(ctx context.Context, f InboxQueueFilter) ([]*In
 	}
 
 	return items, total, nil
+}
+
+// jobQueueItems lists up to limit jobs in status st as queue items.
+func (s *Service) jobQueueItems(ctx context.Context, st storage.JobStatus, limit int) ([]*InboxQueueItem, error) {
+	jobs, _, err := s.Store(ctx).Jobs().List(ctx, storage.JobFilter{Status: st, Limit: limit})
+	if err != nil {
+		return nil, fmt.Errorf("list %s jobs: %w", st, err)
+	}
+	items := make([]*InboxQueueItem, 0, len(jobs))
+	for _, j := range jobs {
+		items = append(items, jobToQueueItem(j))
+	}
+	return items, nil
 }
 
 func jobToQueueItem(j *storage.Job) *InboxQueueItem {
@@ -240,7 +251,7 @@ func (s *Service) ClearInbox(ctx context.Context) (int, error) {
 	now := time.Now().Truncate(time.Second)
 	seen := map[string]bool{}
 	for {
-		items, _, err := s.Store.Objects().List(ctx, storage.ObjectFilter{Status: inboxStatus, Limit: clearInboxPage})
+		items, _, err := s.Store(ctx).Objects().List(ctx, storage.ObjectFilter{Status: inboxStatus, Limit: clearInboxPage})
 		if err != nil {
 			return len(seen), fmt.Errorf("clear inbox list: %w", err)
 		}
@@ -257,7 +268,7 @@ func (s *Service) ClearInbox(ctx context.Context) (int, error) {
 			seen[obj.ID] = true
 			obj.Status = "discarded"
 			obj.UpdatedAt = now
-			if err := s.Store.Objects().Update(ctx, obj); err != nil {
+			if err := s.Store(ctx).Objects().Update(ctx, obj); err != nil {
 				return len(seen) - 1, fmt.Errorf("clear inbox update %s: %w", obj.ID, err)
 			}
 		}

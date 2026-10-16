@@ -71,7 +71,7 @@ jobs:
 
 
       - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
 
       - name: Run govulncheck
         # Exit code 3 = vulnerabilities found in reachable code paths.
@@ -94,7 +94,7 @@ jobs:
 
 
       - name: Install nancy
-        run: go install github.com/sonatype-nexus-community/nancy@latest
+        run: go install github.com/sonatype-nexus-community/nancy@v1.2.0
 
       - name: Run nancy
         # Pipe go list output to nancy sleuth.

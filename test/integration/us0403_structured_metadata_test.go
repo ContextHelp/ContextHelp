@@ -48,7 +48,7 @@ func TestUS0403_PersonDateActionExtracted(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "Alice needs to review PR #42 for auth security by May 1st",
 		Type:     "text",
 		Pipeline: "text.short",
@@ -121,7 +121,7 @@ func TestUS0403_TypeClassification(t *testing.T) {
 				},
 			})
 
-			jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+			jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 				Content:  tc.content,
 				Type:     "text",
 				Pipeline: pName,
@@ -169,14 +169,14 @@ func TestUS0403_Idempotent(t *testing.T) {
 	content := "We could add a Redis cache layer for faster lookups"
 
 	// First ingestion.
-	jobID1, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID1, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content: content, Type: "text", Pipeline: "text.short", Source: "e2e-test",
 	})
 	require.NoError(t, err)
 	job1 := waitForJob(t, env.URL, jobID1, storage.JobCompleted)
 
 	// Second ingestion.
-	jobID2, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID2, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content: content, Type: "text", Pipeline: "text.short", Source: "e2e-test",
 	})
 	require.NoError(t, err)
@@ -218,7 +218,7 @@ func TestUS0403_FailedExtractionStoresPending(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "Content that cannot be enriched without LLM",
 		Type:     "text",
 		Pipeline: "text.short",
@@ -247,7 +247,7 @@ func TestUS0403_MetadataFilterableByType(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now().Truncate(time.Second)
 
 	// Seed objects with structured metadata directly.
@@ -267,7 +267,7 @@ func TestUS0403_MetadataFilterableByType(t *testing.T) {
 				},
 			},
 		}
-		require.NoError(t, env.svc.Store.Objects().Create(ctx, obj))
+		require.NoError(t, env.driver.Objects().Create(ctx, obj))
 	}
 
 	// Search for type==text (the object's Type field).

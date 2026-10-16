@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"text/template"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/spf13/cobra"
@@ -19,7 +18,7 @@ import (
 var devCmd = &cobra.Command{
 	Use:   "dev",
 	Short: "Developer and maintenance utilities",
-	Long:  `Developer utilities for inspecting, maintaining, and scaffolding ctxt plugins.`,
+	Long:  `Developer utilities: lint a registry file and regenerate the CLI reference docs.`,
 }
 
 // ─── validate-registry ───────────────────────────────────────────────────────
@@ -141,148 +140,6 @@ func runDevValidateRegistry(cmd *cobra.Command, args []string) error {
 	return fmt.Errorf("registry validation failed: %d issue(s)", len(issues))
 }
 
-// ─── init-plugin ─────────────────────────────────────────────────────────────
-
-var devInitPluginCmd = &cobra.Command{
-	Use:   "init-plugin <slug>",
-	Short: "Scaffold a new plugin with manifest, Go stub, and README",
-	Long: `Scaffold a new ctxt plugin directory under plugins/<slug>/:
-  - manifest.yaml   — plugin manifest (name, version, description)
-  - plugin.go       — Go stub implementing pluginapi.Plugin
-  - README.md       — minimal plugin documentation
-
-Examples:
-  dpkms dev init-plugin my-plugin
-  dpkms dev init-plugin sentiment --dir ./custom-plugins`,
-	Args: cobra.ExactArgs(1),
-	RunE: runDevInitPlugin,
-}
-
-func init() {
-	devInitPluginCmd.Flags().String("dir", "plugins",
-		"parent directory for the new plugin")
-}
-
-const pluginManifestTmpl = `name: {{ .Slug }}
-version: "0.1.0"
-description: "TODO: describe {{ .Slug }}"
-author: ""
-`
-
-const pluginGoTmpl = `// Package {{ .PkgName }} is a ctxt plugin scaffold.
-package {{ .PkgName }}
-
-import (
-	"context"
-
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
-)
-
-// Plugin implements pluginapi.Plugin.
-type Plugin struct{}
-
-// New returns an uninitialised Plugin for registration.
-func New() *Plugin { return &Plugin{} }
-
-func (p *Plugin) Name() string    { return "{{ .Slug }}" }
-func (p *Plugin) Version() string { return "0.1.0" }
-
-func (p *Plugin) Init(_ context.Context, _ map[string]interface{}, _ pluginapi.Deps) error {
-	return nil
-}
-
-func (p *Plugin) PipelineSteps() []pluginapi.PipelineStep { return nil }
-
-func (p *Plugin) Close(_ context.Context) error { return nil }
-`
-
-const pluginReadmeTmpl = `# {{ .Slug }}
-
-A ctxt plugin.
-
-## Overview
-
-TODO: describe what this plugin does.
-
-## Configuration
-
-` + "```yaml" + `
-plugins:
-  {{ .Slug }}:
-    enabled: true
-` + "```" + `
-
-## Development
-
-See [ctxt plugin development guide](../../docs/plugins.md).
-`
-
-type pluginTmplData struct {
-	Slug    string
-	PkgName string
-}
-
-func runDevInitPlugin(cmd *cobra.Command, args []string) error {
-	slug := args[0]
-	if !slugRE.MatchString(slug) {
-		return fmt.Errorf("init-plugin: invalid slug %q (must match [a-z0-9-])", slug)
-	}
-
-	parentDir, _ := cmd.Flags().GetString("dir")
-	pluginDir := filepath.Join(parentDir, slug)
-
-	if _, err := os.Stat(pluginDir); err == nil {
-		return fmt.Errorf("init-plugin: directory %q already exists", pluginDir)
-	}
-
-	if err := os.MkdirAll(pluginDir, 0o750); err != nil {
-		return fmt.Errorf("init-plugin: mkdir %q: %w", pluginDir, err)
-	}
-
-	pkgName := strings.ReplaceAll(slug, "-", "")
-	data := pluginTmplData{Slug: slug, PkgName: pkgName}
-
-	files := []struct {
-		name string
-		tmpl string
-	}{
-		{"manifest.yaml", pluginManifestTmpl},
-		{"plugin.go", pluginGoTmpl},
-		{"README.md", pluginReadmeTmpl},
-	}
-
-	for _, f := range files {
-		path := filepath.Join(pluginDir, f.name)
-		t, err := template.New(f.name).Parse(f.tmpl)
-		if err != nil {
-			return fmt.Errorf("init-plugin: parse template %s: %w", f.name, err)
-		}
-		fh, err := os.Create(path)
-		if err != nil {
-			return fmt.Errorf("init-plugin: create %s: %w", path, err)
-		}
-		if err := t.Execute(fh, data); err != nil {
-			fh.Close()
-			return fmt.Errorf("init-plugin: render %s: %w", f.name, err)
-		}
-		fh.Close()
-	}
-
-	if isJSONOutput() {
-		return outputJSON(cmd.OutOrStdout(), map[string]any{
-			"slug":    slug,
-			"dir":     pluginDir,
-			"created": []string{"manifest.yaml", "plugin.go", "README.md"},
-		})
-	}
-
-	fmt.Fprintf(cmd.OutOrStdout(), "Created plugin scaffold: %s\n", pluginDir)
-	fmt.Fprintf(cmd.OutOrStdout(), "  %s/manifest.yaml\n", pluginDir)
-	fmt.Fprintf(cmd.OutOrStdout(), "  %s/plugin.go\n", pluginDir)
-	fmt.Fprintf(cmd.OutOrStdout(), "  %s/README.md\n", pluginDir)
-	return nil
-}
-
 // ─── gen-docs ────────────────────────────────────────────────────────────────
 
 var devGenDocsCmd = &cobra.Command{
@@ -330,14 +187,10 @@ func runDevGenDocs(cmd *cobra.Command, _ []string) error {
 func init() {
 	rootCmd.AddCommand(devCmd)
 	devCmd.AddCommand(devValidateRegistryCmd)
-	devCmd.AddCommand(devInitPluginCmd)
 	devCmd.AddCommand(devGenDocsCmd)
 
 	// validate-registry only lints a YAML file on disk. Read.
 	cliconv.WithSideEffect(devValidateRegistryCmd, cliconv.SideEffectRead)
-	// init-plugin scaffolds a new directory; it refuses to clobber an
-	// existing slug. Write.
-	cliconv.WithSideEffect(devInitPluginCmd, cliconv.SideEffectWrite)
 	// gen-docs overwrites every file under the output directory. Local,
 	// regenerable output, but prior contents are gone. Destructive.
 	cliconv.WithSideEffect(devGenDocsCmd, cliconv.SideEffectDestructive)

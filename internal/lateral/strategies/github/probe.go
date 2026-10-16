@@ -132,8 +132,8 @@ func sponsorCandidate(login, strategyID string) lateral.Candidate {
 // goes to the recorder. Author/reviewer lookup requires the API client;
 // skeleton mode emits only the structural sibling owner_profile.
 //
-// author_other_pr fires only when ac.AuthorHints["github"] is set
-// (T-0308). The capture pipeline's session middleware populates the
+// author_other_pr fires only when ac.AuthorHints["github"] is set.
+// The capture pipeline's session middleware populates the
 // hint from a captured PR's author when it has one; without the hint,
 // probePR skips the author-scoped fetch (this matches the v1
 // best-effort posture).
@@ -173,7 +173,7 @@ func (s *GitHubStrategy) probePR(ctx context.Context, ev lateral.CapturedEvent, 
 
 	// Author's other PRs: use the captured PR's author signal in the
 	// author_other_pr fires only when the active context carries a
-	// github author hint (T-0308). The hint is set by the daemon's
+	// github author hint. The hint is set by the daemon's
 	// session middleware before Probe is called; absent, we skip the
 	// author-based fan-out rather than incur an extra fetch to discover
 	// the author from the PR endpoint. Best-effort by design — a session
@@ -256,7 +256,7 @@ func prCandidate(p PullRequestSummary, candidateType, strategyID string) lateral
 
 // authorHintFor returns the github author login carried on
 // ActiveContext.AuthorHints["github"] when the capture pipeline's
-// session middleware has staged one (T-0308). Empty when the platform
+// session middleware has staged one. Empty when the platform
 // key is absent, the value is empty, or AuthorHints is nil — the
 // probes treat that as "skip the author-scoped fetch."
 func authorHintFor(ac lateral.ActiveContext) string {
@@ -277,8 +277,8 @@ func authorHintFor(ac lateral.ActiveContext) string {
 // Number-less URLs (/issues list view) skip label lookup. owner_profile
 // is always emitted.
 //
-// author_other_issue fires only when ac.AuthorHints["github"] is set
-// (T-0308); see probePR for the same hint-driven seam.
+// author_other_issue fires only when ac.AuthorHints["github"] is set;
+// see probePR for the same hint-driven seam.
 func (s *GitHubStrategy) probeIssue(ctx context.Context, ev lateral.CapturedEvent, ac lateral.ActiveContext) ([]lateral.Candidate, error) {
 	pu, ok := parseGitHubURL(ev.SourceURL)
 	if !ok || pu.Owner == "" || pu.Repo == "" {

@@ -99,7 +99,7 @@ func TestUS0014_LMQLExtractedEntitiesConformToNamespaceSlugFormat(t *testing.T) 
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "Alice Smith is leading the mobile redesign project using the backend API",
 		Type:     "text",
 		Pipeline: "text.lmql-entities",
@@ -152,7 +152,7 @@ func TestUS0014_LMQLConstraintFiltersInvalidSlugs(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "Alice Smith applies event sourcing principles",
 		Type:     "text",
 		Pipeline: "text.lmql-filter",
@@ -198,7 +198,7 @@ func TestUS0014_LMQLTagConstraintEnforcesVocabulary(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "Database architecture review with security considerations",
 		Type:     "text",
 		Pipeline: "text.lmql-tags",
@@ -242,7 +242,7 @@ func TestUS0014_ExtractionProviderRecordedInMetadata(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "Test user reviewed the document",
 		Type:     "text",
 		Pipeline: "text.lmql-provider",

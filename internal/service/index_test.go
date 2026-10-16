@@ -1,7 +1,6 @@
 package service
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -15,7 +14,7 @@ import (
 func newIndexTestService(t *testing.T) *Service {
 	t.Helper()
 	driver := storageutil.NewTestDriver(t)
-	return &Service{Store: driver}
+	return &Service{store: driver}
 }
 
 func seedIndexObj(
@@ -43,14 +42,14 @@ func seedIndexObj(
 	if summary != "" {
 		obj.Summaries = []string{summary}
 	}
-	require.NoError(t, svc.Store.Objects().Create(
-		context.Background(), obj,
+	require.NoError(t, svc.store.Objects().Create(
+		ownerCtx(), obj,
 	))
 }
 
 func TestBuildTopicIndex_GroupsByTopic(t *testing.T) {
 	svc := newIndexTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	seedIndexObj(t, svc, "obj-1", []string{"auth", "security"}, "OAuth setup")
 	seedIndexObj(t, svc, "obj-2", []string{"auth"}, "JWT tokens")
@@ -77,13 +76,13 @@ func TestBuildTopicIndex_GroupsByTopic(t *testing.T) {
 
 func TestBuildTopicIndex_SkipsObjectsWithoutTopics(t *testing.T) {
 	svc := newIndexTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	seedIndexObj(t, svc, "obj-1", []string{"auth"}, "Has topic")
 
 	// Object without structured metadata.
 	now := time.Now().Truncate(time.Second)
-	require.NoError(t, svc.Store.Objects().Create(ctx,
+	require.NoError(t, svc.store.Objects().Create(ctx,
 		&storage.KnowledgeObject{
 			ID: "obj-no-meta", Type: "text", RawContent: "no meta",
 			Status: "active", CreatedAt: now, UpdatedAt: now,
@@ -101,7 +100,7 @@ func TestBuildTopicIndex_SkipsObjectsWithoutTopics(t *testing.T) {
 
 func TestGetTopicEntries_CaseInsensitive(t *testing.T) {
 	svc := newIndexTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	seedIndexObj(t, svc, "obj-1", []string{"Authentication"}, "SSO")
 	_, err := svc.BuildTopicIndex(ctx)
@@ -115,7 +114,7 @@ func TestGetTopicEntries_CaseInsensitive(t *testing.T) {
 
 func TestGetTopicEntries_PrefixMatch(t *testing.T) {
 	svc := newIndexTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	seedIndexObj(t, svc, "obj-1", []string{"authentication"}, "SSO")
 	_, err := svc.BuildTopicIndex(ctx)
@@ -128,14 +127,14 @@ func TestGetTopicEntries_PrefixMatch(t *testing.T) {
 
 func TestGetTopicIndex_NilWhenNoIndex(t *testing.T) {
 	svc := newIndexTestService(t)
-	idx, err := svc.GetTopicIndex(context.Background())
+	idx, err := svc.GetTopicIndex(ownerCtx())
 	require.NoError(t, err)
 	assert.Nil(t, idx)
 }
 
 func TestUpdateTopicIndexIncremental(t *testing.T) {
 	svc := newIndexTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	seedIndexObj(t, svc, "obj-1", []string{"auth"}, "OAuth")
 	_, err := svc.BuildTopicIndex(ctx)
@@ -153,7 +152,7 @@ func TestUpdateTopicIndexIncremental(t *testing.T) {
 			},
 		},
 	}
-	require.NoError(t, svc.Store.Objects().Create(ctx, newObj))
+	require.NoError(t, svc.store.Objects().Create(ctx, newObj))
 	require.NoError(t, svc.UpdateTopicIndexIncremental(ctx, newObj))
 
 	idx, err := svc.GetTopicIndex(ctx)
@@ -170,13 +169,13 @@ func TestUpdateTopicIndexIncremental(t *testing.T) {
 
 func TestUpdateTopicIndexIncremental_Idempotent(t *testing.T) {
 	svc := newIndexTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	seedIndexObj(t, svc, "obj-1", []string{"auth"}, "OAuth")
 	_, err := svc.BuildTopicIndex(ctx)
 	require.NoError(t, err)
 
-	obj, err := svc.Store.Objects().Get(ctx, "obj-1")
+	obj, err := svc.store.Objects().Get(ctx, "obj-1")
 	require.NoError(t, err)
 
 	// Incrementally add same object twice — should be no-op.
@@ -190,7 +189,7 @@ func TestUpdateTopicIndexIncremental_Idempotent(t *testing.T) {
 
 func TestBuildTopicIndex_SkipsSelfIndexObject(t *testing.T) {
 	svc := newIndexTestService(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	seedIndexObj(t, svc, "obj-1", []string{"auth"}, "OAuth")
 	_, err := svc.BuildTopicIndex(ctx)

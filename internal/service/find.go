@@ -10,7 +10,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/retrieval"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // Find modes.
@@ -129,9 +128,9 @@ type FindResult struct {
 
 // FindExplanation is the score breakdown of one find result.
 type FindExplanation struct {
-	ID           string                       `json:"id"`
-	Breakdown    ScoreBreakdown               `json:"score_breakdown"`
-	DocumentView pluginapi.DocumentProjection `json:"document_view"`
+	ID           string                     `json:"id"`
+	Breakdown    ScoreBreakdown             `json:"score_breakdown"`
+	DocumentView storage.DocumentProjection `json:"document_view"`
 }
 
 // Find runs a find request; with Trace set it also returns the hybrid

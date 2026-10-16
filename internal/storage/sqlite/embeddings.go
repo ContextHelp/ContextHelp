@@ -27,6 +27,9 @@ import (
 // rebuilds it from canonical rows whenever its ADR-070 signature drifts.
 type EmbeddingStore struct {
 	db *sql.DB
+	// scope, when set, makes Search rank the masked variant over the
+	// objects the viewer may see only (see scope.go).
+	scope *storage.Scope
 }
 
 var _ storage.EmbeddingStore = (*EmbeddingStore)(nil)
@@ -66,7 +69,7 @@ BEGIN DELETE FROM {TABLE} WHERE rowid = old.id;
 	vec0DelTmpl = `CREATE TRIGGER {DEL} AFTER DELETE ON embeddings WHEN old.model_id = '{MODEL}'
 BEGIN DELETE FROM {TABLE} WHERE rowid = old.id; END`
 	vec0RefillTmpl = `INSERT INTO {TABLE}(rowid, embedding) SELECT id, vector FROM embeddings WHERE model_id = ?`
-	vec0SearchTmpl = `SELECT e.object_id, e.chunk_idx, v.distance
+	vec0SearchTmpl = `SELECT e.object_id, e.chunk_idx, e.variant, v.distance
   FROM {TABLE} v JOIN embeddings e ON e.id = v.rowid
  WHERE v.embedding MATCH ? AND k = ?
  ORDER BY v.distance, e.object_id, e.chunk_idx`
@@ -326,9 +329,9 @@ func (s *EmbeddingStore) Put(ctx context.Context, objectID string, vectors []sto
 				text = v.Text
 			}
 			if _, err := tx.ExecContext(ctx, `
-				INSERT INTO embeddings (object_id, model_id, chunk_idx, vector, text, created_at)
-				VALUES (?, ?, ?, ?, ?, ?)`,
-				objectID, g.modelID, v.ChunkIdx, blob, text, now); err != nil {
+				INSERT INTO embeddings (object_id, model_id, chunk_idx, variant, vector, text, created_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?)`,
+				objectID, g.modelID, v.ChunkIdx, v.EffectiveVariant(), blob, text, now); err != nil {
 				return fmt.Errorf("sqlite embeddings put %s/%s chunk %d: %w", objectID, g.modelID, v.ChunkIdx, err)
 			}
 		}
@@ -374,12 +377,13 @@ func registryDimension(ctx context.Context, q interface {
 	return dim, nil
 }
 
-// Get returns objectID's chunks under modelID, ordered by chunk index.
+// Get returns objectID's chunks under modelID: the raw variant first,
+// then the masked one, each ordered by chunk index.
 func (s *EmbeddingStore) Get(ctx context.Context, objectID, modelID string) ([]storage.ObjectVector, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT chunk_idx, vector, text FROM embeddings
+		SELECT chunk_idx, variant, vector, text FROM embeddings
 		 WHERE object_id = ? AND model_id = ?
-		 ORDER BY chunk_idx`, objectID, modelID)
+		 ORDER BY CASE variant WHEN 'raw' THEN 0 ELSE 1 END, chunk_idx`, objectID, modelID)
 	if err != nil {
 		return nil, fmt.Errorf("sqlite embeddings get %s/%s: %w", objectID, modelID, err)
 	}
@@ -391,7 +395,7 @@ func (s *EmbeddingStore) Get(ctx context.Context, objectID, modelID string) ([]s
 			blob []byte
 			text sql.NullString
 		)
-		if err := rows.Scan(&v.ChunkIdx, &blob, &text); err != nil {
+		if err := rows.Scan(&v.ChunkIdx, &v.Variant, &blob, &text); err != nil {
 			return nil, fmt.Errorf("sqlite embeddings get %s/%s: %w", objectID, modelID, err)
 		}
 		if len(blob)%4 != 0 {
@@ -421,11 +425,17 @@ func decodeFloat32(b []byte) []float32 {
 // Search runs a KNN query against the model's vec0 table and collapses
 // chunks to the best one per object. k starts at TopK and grows until TopK
 // distinct objects are found, the index is exhausted, or vec0's k ceiling
-// is reached.
+// is reached. A scoped store ranks the masked variant (ADR-080 §7) and
+// keeps only visible objects, checked in SQL on each round's candidate
+// ids, so the rounds widen until TopK visible objects are found or the
+// index is exhausted.
 func (s *EmbeddingStore) Search(ctx context.Context, q storage.VectorQuery) ([]storage.EmbeddingHit, error) {
 	topK := q.TopK
 	if topK <= 0 {
 		topK = 10
+	}
+	if s.scope != nil {
+		q.Variant = storage.EmbeddingVariantMasked
 	}
 	dim, err := registryDimension(ctx, s.db, q.ModelID)
 	if err != nil {
@@ -457,8 +467,15 @@ func (s *EmbeddingStore) Search(ctx context.Context, q storage.VectorQuery) ([]s
 		if k > vec0KMax {
 			k = vec0KMax
 		}
-		hits, fetched, err := s.knn(ctx, query, blob, k)
+		rows, fetched, err := s.knn(ctx, query, blob, k)
 		if err != nil {
+			return nil, fmt.Errorf("sqlite embeddings search %s: %w", q.ModelID, err)
+		}
+		hits, err := s.selectVariant(ctx, q, rows)
+		if err != nil {
+			return nil, fmt.Errorf("sqlite embeddings search %s: %w", q.ModelID, err)
+		}
+		if hits, err = s.filterVisible(ctx, hits); err != nil {
 			return nil, fmt.Errorf("sqlite embeddings search %s: %w", q.ModelID, err)
 		}
 		collapsed := collapseChunks(hits, topK)
@@ -468,20 +485,27 @@ func (s *EmbeddingStore) Search(ctx context.Context, q storage.VectorQuery) ([]s
 	}
 }
 
-func (s *EmbeddingStore) knn(ctx context.Context, query string, blob []byte, k int) ([]storage.EmbeddingHit, int, error) {
+// variantHit is a KNN row with the variant of the embeddings row it
+// came from; the index holds both variants.
+type variantHit struct {
+	storage.EmbeddingHit
+	variant string
+}
+
+func (s *EmbeddingStore) knn(ctx context.Context, query string, blob []byte, k int) ([]variantHit, int, error) {
 	rows, err := s.db.QueryContext(ctx, query, blob, k)
 	if err != nil {
 		return nil, 0, err
 	}
 	defer rows.Close()
-	hits := make([]storage.EmbeddingHit, 0, k)
+	hits := make([]variantHit, 0, k)
 	fetched := 0
 	for rows.Next() {
 		var (
-			h    storage.EmbeddingHit
+			h    variantHit
 			dist sql.NullFloat64
 		)
-		if err := rows.Scan(&h.ObjectID, &h.ChunkIdx, &dist); err != nil {
+		if err := rows.Scan(&h.ObjectID, &h.ChunkIdx, &h.variant, &dist); err != nil {
 			return nil, 0, err
 		}
 		fetched++
@@ -493,6 +517,88 @@ func (s *EmbeddingStore) knn(ctx context.Context, query string, blob []byte, k i
 		hits = append(hits, h)
 	}
 	return hits, fetched, rows.Err()
+}
+
+// selectVariant keeps the hits of q's variant, in order. For the raw
+// variant that is the raw rows. For the masked variant it is every
+// masked row plus the raw rows of chunks that have no masked row
+// (ADR-080 §7: one vector serves both variants when nothing is
+// withheld), decided by one lookup over the raw candidates so a raw row
+// whose masked twin ranks outside the fetched window is still dropped.
+func (s *EmbeddingStore) selectVariant(ctx context.Context, q storage.VectorQuery, hits []variantHit) ([]storage.EmbeddingHit, error) {
+	want := q.EffectiveVariant()
+	out := make([]storage.EmbeddingHit, 0, len(hits))
+	if want == storage.EmbeddingVariantRaw {
+		for _, h := range hits {
+			if h.variant == storage.EmbeddingVariantRaw {
+				out = append(out, h.EmbeddingHit)
+			}
+		}
+		return out, nil
+	}
+	rawObjects := make([]string, 0, len(hits))
+	for _, h := range hits {
+		if h.variant == storage.EmbeddingVariantRaw {
+			rawObjects = append(rawObjects, h.ObjectID)
+		}
+	}
+	masked, err := s.maskedChunks(ctx, q.ModelID, rawObjects)
+	if err != nil {
+		return nil, err
+	}
+	for _, h := range hits {
+		if h.variant == want || (h.variant == storage.EmbeddingVariantRaw && !masked[chunkKey{h.ObjectID, h.ChunkIdx}]) {
+			out = append(out, h.EmbeddingHit)
+		}
+	}
+	return out, nil
+}
+
+// chunkKey identifies one chunk of one object under a model.
+type chunkKey struct {
+	objectID string
+	chunkIdx int
+}
+
+// maskedChunks returns the chunks of objectIDs that have a masked row
+// under modelID.
+func (s *EmbeddingStore) maskedChunks(ctx context.Context, modelID string, objectIDs []string) (map[chunkKey]bool, error) {
+	out := map[chunkKey]bool{}
+	if len(objectIDs) == 0 {
+		return out, nil
+	}
+	for start := 0; start < len(objectIDs); start += embeddingsByIDChunk {
+		chunk := objectIDs[start:min(start+embeddingsByIDChunk, len(objectIDs))]
+		if err := s.maskedChunksOf(ctx, modelID, chunk, out); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+// maskedChunksOf is one IN-list query of maskedChunks.
+func (s *EmbeddingStore) maskedChunksOf(ctx context.Context, modelID string, chunk []string, out map[chunkKey]bool) error {
+	args := make([]any, 0, len(chunk)+2)
+	args = append(args, modelID, storage.EmbeddingVariantMasked)
+	for _, id := range chunk {
+		args = append(args, id)
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(chunk)), ",")
+	// #nosec G202 -- placeholders are literal "?" markers; every value is bound.
+	rows, err := s.db.QueryContext(ctx, `SELECT object_id, chunk_idx FROM embeddings
+		 WHERE model_id = ? AND variant = ? AND object_id IN (`+placeholders+`)`, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var k chunkKey
+		if err := rows.Scan(&k.objectID, &k.chunkIdx); err != nil {
+			return err
+		}
+		out[k] = true
+	}
+	return rows.Err()
 }
 
 // collapseChunks keeps each object's first (closest) hit from a
@@ -522,7 +628,7 @@ func (s *EmbeddingStore) ListMissing(ctx context.Context, modelID, afterObjectID
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT o.id FROM objects o
 		 WHERE o.id > ?
-		   AND NOT EXISTS (SELECT 1 FROM embeddings e WHERE e.object_id = o.id AND e.model_id = ?)
+		   AND NOT EXISTS (SELECT 1 FROM embeddings e WHERE e.object_id = o.id AND e.model_id = ? AND e.variant = 'raw')
 		 ORDER BY o.id
 		 LIMIT ?`, afterObjectID, modelID, limit)
 	if err != nil {

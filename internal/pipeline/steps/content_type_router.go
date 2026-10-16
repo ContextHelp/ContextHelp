@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
@@ -27,6 +28,14 @@ type Handler struct {
 // handlers is the ordered registry. Register more-specific handlers first.
 var handlers []Handler
 
+// extIn returns an ExtCheck matching exactly the given extensions.
+func extIn(exts ...string) func(string) bool {
+	return func(e string) bool { return slices.Contains(exts, e) }
+}
+
+// subtypeUnsupported is the subtype of a draft no handler claims.
+const subtypeUnsupported = "unsupported"
+
 // RegisterContentTypeHandler appends a handler to the global registry.
 // Call from init() to keep each format self-contained and independently extensible.
 func RegisterContentTypeHandler(h Handler) {
@@ -37,85 +46,75 @@ func init() {
 	// Documents
 	RegisterContentTypeHandler(Handler{
 		MIMECheck: func(m string) bool { return strings.Contains(m, "pdf") },
-		ExtCheck:  func(e string) bool { return e == ".pdf" },
-		Subtype:   "pdf",
+		ExtCheck:  extIn(".pdf"),
+		Subtype:   subtypePDF,
 	})
 	RegisterContentTypeHandler(Handler{
 		MIMECheck: func(m string) bool {
 			return strings.Contains(m, "officedocument") || strings.Contains(m, "msword")
 		},
-		ExtCheck: func(e string) bool { return e == ".docx" || e == ".doc" || e == ".pptx" || e == ".xlsx" },
+		ExtCheck: extIn(".docx", ".doc", ".pptx", ".xlsx"),
 		Subtype:  "office",
 	})
 	RegisterContentTypeHandler(Handler{
 		MIMECheck: func(m string) bool { return strings.Contains(m, "epub") },
-		ExtCheck:  func(e string) bool { return e == ".epub" },
+		ExtCheck:  extIn(".epub"),
 		Subtype:   "epub",
 	})
 	RegisterContentTypeHandler(Handler{
 		MIMECheck: func(m string) bool { return strings.Contains(m, "markdown") },
-		ExtCheck:  func(e string) bool { return e == ".md" || e == ".markdown" },
+		ExtCheck:  extIn(".md", ".markdown"),
 		Subtype:   "markdown",
 	})
 	RegisterContentTypeHandler(Handler{
 		MIMECheck: func(m string) bool { return strings.Contains(m, "csv") },
-		ExtCheck:  func(e string) bool { return e == ".csv" },
+		ExtCheck:  extIn(".csv"),
 		Subtype:   "csv",
 	})
 	RegisterContentTypeHandler(Handler{
 		MIMECheck: func(m string) bool { return strings.Contains(m, "json") },
-		ExtCheck:  func(e string) bool { return e == ".json" },
+		ExtCheck:  extIn(".json"),
 		Subtype:   "json",
 	})
 	RegisterContentTypeHandler(Handler{
 		MIMECheck: func(m string) bool { return strings.Contains(m, "xml") },
-		ExtCheck:  func(e string) bool { return e == ".xml" },
+		ExtCheck:  extIn(".xml"),
 		Subtype:   "xml",
 	})
 
 	// Web
 	RegisterContentTypeHandler(Handler{
 		MIMECheck: func(m string) bool { return strings.Contains(m, "html") },
-		ExtCheck:  func(e string) bool { return e == ".html" || e == ".htm" },
+		ExtCheck:  extIn(".html", ".htm"),
 		Subtype:   "html",
 	})
 
 	// Images
 	RegisterContentTypeHandler(Handler{
 		MIMECheck: func(m string) bool { return strings.HasPrefix(m, "image/") },
-		ExtCheck: func(e string) bool {
-			return e == ".png" || e == ".jpg" || e == ".jpeg" || e == ".gif" ||
-				e == ".webp" || e == ".bmp" || e == ".tiff" || e == ".tif"
-		},
-		Subtype: "image",
+		ExtCheck:  extIn(".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff", ".tif"),
+		Subtype:   "image",
 	})
 
 	// Audio
 	RegisterContentTypeHandler(Handler{
 		MIMECheck: func(m string) bool { return strings.HasPrefix(m, "audio/") },
-		ExtCheck: func(e string) bool {
-			return e == ".mp3" || e == ".wav" || e == ".ogg" || e == ".flac" || e == ".m4a"
-		},
-		Subtype: "audio",
+		ExtCheck:  extIn(".mp3", ".wav", ".ogg", ".flac", ".m4a"),
+		Subtype:   "audio",
 	})
 
 	// Video
 	RegisterContentTypeHandler(Handler{
 		MIMECheck: func(m string) bool { return strings.HasPrefix(m, "video/") },
-		ExtCheck: func(e string) bool {
-			return e == ".mp4" || e == ".mov" || e == ".avi" || e == ".mkv" || e == ".webm"
-		},
-		Subtype: "video",
+		ExtCheck:  extIn(".mp4", ".mov", ".avi", ".mkv", ".webm"),
+		Subtype:   "video",
 	})
 
 	// Plain text — last resort; catches text/plain, source files, etc.
 	RegisterContentTypeHandler(Handler{
 		MIMECheck: func(m string) bool { return strings.HasPrefix(m, "text/") },
-		ExtCheck: func(e string) bool {
-			return e == ".txt" || e == ".go" || e == ".py" || e == ".js" || e == ".ts" ||
-				e == ".rs" || e == ".java" || e == ".rb" || e == ".cpp" || e == ".c" || e == ".cs"
-		},
-		Subtype: "text",
+		ExtCheck:  extIn(".txt", ".go", ".py", ".js", ".ts", ".rs", ".java", ".rb", ".cpp", ".c", ".cs"),
+		Subtype:   "text",
 	})
 }
 
@@ -174,6 +173,6 @@ func (s *ContentTypeRouter) Run(_ context.Context, draft *storage.KnowledgeObjec
 	}
 
 	log.Printf("content_type_router: no handler for mime=%q ext=%q source=%s — skipping extraction", mime, ext, src)
-	draft.Subtype = "unsupported"
+	draft.Subtype = subtypeUnsupported
 	return draft, nil
 }

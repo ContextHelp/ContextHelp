@@ -40,6 +40,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/lateral/strategies/github"
 	"github.com/ideacrafterslabs/ctxt/internal/lateral/strategies/jit"
+	"github.com/ideacrafterslabs/ctxt/internal/safefetch"
 )
 
 // HTTPClient is the subset of *http.Client this adapter calls.
@@ -70,6 +71,12 @@ type Options struct {
 	// transport's timeouts.
 	Timeout time.Duration
 
+	// Guard is the fetch guard the default client dials through: the
+	// URLs come from captured content, so private-network addresses are
+	// refused. Nil uses safefetch.Default. Ignored when Client is
+	// non-nil.
+	Guard *safefetch.Guard
+
 	// UserAgent overrides the User-Agent header. Empty falls back to
 	// "ctxt-lateral/1.0".
 	UserAgent string
@@ -86,7 +93,11 @@ func NewHTTP(opts Options) *HTTPFetcher {
 		if timeout == 0 {
 			timeout = defaultTimeout
 		}
-		c = &http.Client{Timeout: timeout}
+		g := opts.Guard
+		if g == nil {
+			g = safefetch.Default()
+		}
+		c = g.Client(timeout)
 	}
 	ua := opts.UserAgent
 	if ua == "" {

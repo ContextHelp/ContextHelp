@@ -1,533 +1,247 @@
 # Git Hooks for Secret Detection
 
-ContextHelp includes pre-commit hooks that automatically scan for secrets and sensitive data before allowing commits. This prevents accidental exposure of API keys, passwords, and other credentials.
+ContextHelp ships git hooks in the tracked `.githooks/` directory. The
+pre-commit hook scans staged changes for secrets before a commit lands, so
+API keys, passwords and other credentials never reach history.
+
+CI's `secret-scan` job (`.github/workflows/ci.yml`) scans the full
+history with the same gitleaks release; see
+[History scan and baseline](#history-scan-and-baseline).
 
 ---
 
 ## Overview
 
-The pre-commit hook performs 5 security checks:
-
-1. **Gitleaks Scan** - Industry-standard secret detection
-2. **Custom Pattern Matching** - ContextHelp-specific secret patterns
-3. **Sensitive File Check** - Blocks `.env`, `.key`, `.token` files
-4. **YAML Validation** - Detects plaintext secrets in config files
-5. **Summary Report** - Clear pass/fail with remediation guidance
+| Hook | What it does |
+|------|--------------|
+| `pre-commit` | 1. `gitleaks git --staged` with `.gitleaks.toml` (skipped with a warning when gitleaks is missing). 2. The lint gate from `.pre-commit-config.yaml`, scoped to staged files (skipped when `pre-commit` is missing). |
+| `pre-push` | Chains to your global pre-push hook, if any. `core.hooksPath` replaces the global hooks dir instead of adding to it. |
 
 ---
 
 ## Installation
 
-### Automatic Installation (Recommended)
+```bash
+make install-hooks
+```
+
+This sets `core.hooksPath` to `.githooks`, so git runs the tracked hooks
+directly. Nothing is copied into `.git/hooks`. It works the same in a clone
+and in a linked worktree, where `.git` is a file. `scripts/install-hooks.sh`
+is a wrapper around the same target, and `scripts/dev-setup.sh` runs it too.
+
+Do not run `pre-commit install`. It refuses to run while `core.hooksPath`
+is set; `.githooks/pre-commit` chains to `pre-commit hook-impl` instead.
+
+### Install gitleaks (required for the scan)
 
 ```bash
-# Run the installer script
-./scripts/install-hooks.sh
+make install-gitleaks   # installs the mise.toml pin via mise
 ```
 
-This will:
-- Check for gitleaks installation
-- Install the pre-commit hook
-- Verify `.gitleaks.toml` configuration
-- Check `.gitignore` completeness
-
-### Manual Installation
-
-```bash
-# Make sure the hook is executable
-chmod +x .git/hooks/pre-commit
-
-# Verify installation
-.git/hooks/pre-commit --version
-```
-
-### Install Gitleaks (Required)
-
-**macOS:**
-```bash
-brew install gitleaks
-```
-
-**Linux:**
-```bash
-wget https://github.com/gitleaks/gitleaks/releases/download/v8.18.1/gitleaks_8.18.1_linux_x64.tar.gz
-tar -xzf gitleaks_8.18.1_linux_x64.tar.gz
-sudo mv gitleaks /usr/local/bin/
-```
-
-**Windows:**
-```powershell
-choco install gitleaks
-```
+`mise.toml` pins the gitleaks version: rules and default allowlists change
+between releases. The hook and `make secret-scan-local` print a warning when
+the gitleaks on `PATH` is a different version. Without mise, install that
+release from <https://github.com/gitleaks/gitleaks/releases>.
 
 ---
 
 ## Usage
 
-### Normal Workflow
+The hook runs on every `git commit`. If gitleaks finds a secret, the commit
+is blocked and gitleaks prints the file, line and rule that matched
+(secrets redacted). Remove the secret, re-stage, and commit again.
 
-The hook runs automatically before every commit:
-
-```bash
-# Stage your changes
-git add file.go
-
-# Commit (hook runs automatically)
-git commit -m "Add feature"
-
-# If secrets detected, commit is blocked
-# Fix the issues and try again
-```
-
-### Example Output
-
-**✅ When no secrets detected:**
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  ContextHelp Pre-Commit Security Check (v1.0.0)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-[1/5] Checking for gitleaks installation...
-✓ gitleaks found: gitleaks version 8.18.1
-
-[2/5] Scanning staged files for secrets with gitleaks...
-✓ No secrets detected by gitleaks
-
-[3/5] Checking for common secret patterns...
-✓ No common secret patterns detected
-
-[4/5] Checking for sensitive files...
-✓ No sensitive files detected
-
-[5/5] Validating YAML configuration files...
-✓ No plaintext secrets in YAML files
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✓ All security checks passed!
-
-Your commit is safe to proceed.
-```
-
-**❌ When secrets detected:**
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  ContextHelp Pre-Commit Security Check (v1.0.0)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-[1/5] Checking for gitleaks installation...
-✓ gitleaks found: gitleaks version 8.18.1
-
-[2/5] Scanning staged files for secrets with gitleaks...
-✗ gitleaks found potential secrets!
-
-Secret:      sk-proj-abc...
-RuleID:      openai-api-key
-File:        config.yaml:15
-Commit:      (staged)
-
-Please review the output above and:
-  1. Remove the secrets from the files
-  2. Use environment variables or config references instead
-  3. Add false positives to .gitleaks.toml
-
-[3/5] Checking for common secret patterns...
-✗ Found OpenAI project API key in: config.yaml
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✗ Security checks failed!
-
-Your commit has been blocked to prevent committing secrets.
-```
-
----
-
-## Bypass Options
-
-### Skip All Checks (NOT Recommended)
+Scan the whole working tree on demand:
 
 ```bash
-# Emergency bypass - USE WITH CAUTION
+make secret-scan-local
+```
+
+It scans what git would commit (tracked files plus untracked, non-ignored
+ones), so a local `.env` or build output is not reported.
+
+### History scan and baseline
+
+```bash
+make security-scan                  # every commit reachable from HEAD
+make security-scan SCAN_REFS=--all  # every local ref
+```
+
+History cannot be rewritten, and old commits hold findings: placeholders
+in docs, test fixtures, and one Garage access key ID that was rotated.
+`.gitleaksignore` is the baseline. Each entry is the fingerprint
+(`commit:file:rule:line`) of a reviewed finding, grouped under a comment
+saying why it is not a live secret. gitleaks skips those, so the scan
+fails only on new findings. CI's `secret-scan` job runs this target on
+every push and pull request; it installs the gitleaks release `mise.toml`
+pins and needs no secret or license (only `gitleaks-action` does).
+
+When the scan reports a finding in history:
+
+1. Read it unredacted locally and decide whether the value is real.
+2. A real secret: rotate it first. Only then baseline it, with a comment
+   saying it was rotated.
+3. A placeholder or fixture: fix the file if it is still in the tree,
+   then add the fingerprint the scan printed under the matching comment.
+
+Entries must name a commit (`go test ./scripts/` checks): a
+`file:rule:line` entry would skip that line in every commit and in
+working-tree scans. Rewriting history (a rebase or squash merge) changes
+commit ids, so rescan and review again after one.
+
+### Bypass (use sparingly)
+
+```bash
 git commit --no-verify -m "message"
 ```
 
-**⚠️ Warning:** This skips ALL pre-commit checks, including secret detection. Only use in emergencies.
-
-### Skip Specific Checks
-
-Skip individual checks when you know they're false positives:
-
-```bash
-# Skip gitleaks only
-SKIP_GITLEAKS=1 git commit -m "message"
-
-# Skip pattern matching only
-SKIP_PATTERNS=1 git commit -m "message"
-
-# Skip file type check only
-SKIP_FILE_CHECK=1 git commit -m "message"
-
-# Skip YAML validation only
-SKIP_YAML_CHECK=1 git commit -m "message"
-
-# Combine multiple skips
-SKIP_GITLEAKS=1 SKIP_PATTERNS=1 git commit -m "message"
-```
+This skips every pre-commit check, including the secret scan. The hook has
+no per-check skip variables.
 
 ---
 
 ## Detected Secret Types
 
-### API Keys
+Rules live in `.gitleaks.toml`: the gitleaks default rules
+(`[extend] useDefault = true`) plus the custom `ctxt-*` rules below. The
+custom rules cover:
 
-- **OpenAI API Keys**: `sk-proj-...` (project keys), `sk-...` (legacy)
-- **Anthropic API Keys**: `sk-ant-...`
-- **Generic API Keys**: `api_key="..."`
-
-### Authentication
-
-- **JWT Tokens**: `eyJ...`
-- **GitHub Tokens**: `ghp_...`, `gho_...`, `ghr_...`
-- **Bearer Tokens**: `Authorization: Bearer ...`
-- **Basic Auth**: `Authorization: Basic ...`
-
-### Cloud Providers
-
-- **AWS Access Keys**: `AKIA...`
-- **AWS Secret Keys**: Pattern in config
-- **Google Cloud API Keys**
-- **Azure Connection Strings**
-
-### Databases
-
-- **PostgreSQL Connection Strings**: `postgresql://user:password@...`
-- **MySQL Connection Strings**: `mysql://user:password@...`
-- **Redis URLs**: `redis://password@...`
-- **MongoDB Connection Strings**
-
-### Webhooks & Integrations
-
-- **Slack Webhooks**: `https://hooks.slack.com/...`
-- **Discord Webhooks**
-- **Generic Webhook URLs with Tokens**
-
-### Cryptographic Keys
-
-- **Private Keys**: `-----BEGIN PRIVATE KEY-----`
-- **SSH Keys**: `id_rsa`, `id_ed25519`
-- **PGP Keys**: `.gpg`, `.asc`
+- **AI providers**: OpenAI (`sk-proj-...`, legacy `sk-...`), Anthropic (`sk-ant-...`)
+- **Generic**: `api_key = "..."`, `secret = "..."`, password assignments, env-var assignments
+- **Tokens**: JWTs (`eyJ...`), GitHub tokens (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`)
+- **Cloud**: AWS access key IDs (`AKIA...`) and secret access keys
+- **Databases**: PostgreSQL connection strings with a password
+- **Webhooks**: Slack webhook URLs
+- **Keys**: PEM private keys (RSA, DSA, EC, OpenSSH)
+- **Auth headers**: `Authorization: Basic ...`, `Authorization: Bearer ...`
+- **ctxt**: `CTXT_API_KEY`, `CTXT_SECRET`/`TOKEN`/`PASSWORD`, `CTXT_DB_*` DSNs, `CTXT_*_API_KEY`
 
 ---
 
 ## Configuration
 
-### .gitleaks.toml
+### Add a rule
 
-Customize secret detection rules in `.gitleaks.toml`:
+Add rules to `.gitleaks.toml`, not to the hook. Give the id the `ctxt-`
+prefix: a rule with the same id as a gitleaks default rule does not add a
+rule, it overrides the default one and keeps its keywords and allowlists,
+which can stop your regex from ever matching. `scripts/` tests fail on an
+unprefixed id.
 
 ```toml
 [[rules]]
-id = "custom-api-key"
+id = "ctxt-custom-api-key"
 description = "My Custom API Key Format"
 regex = '''myapi-[a-zA-Z0-9]{32}'''
 tags = ["api-key", "custom"]
 ```
 
-### Allowlist
+### Allowlist false positives
 
-Add false positives to the allowlist:
+Prefer fixing the example over allowlisting it. In docs, write a value
+gitleaks recognizes as a placeholder: `<password>`, `<garage-key-id>`,
+`${ENV_VAR}`, `$CTXT_TOKEN` or `sk-proj-...`. For a deliberate key-shaped
+test vector, or a non-secret a rule mistakes for one, end the line with a
+`gitleaks:allow` comment.
 
 ```toml
-[allowlist]
-paths = [
-  '''example\.yaml$''',        # Allow all example files
-  '''testdata/''',              # Allow test fixtures
-  '''docs/''',                  # Allow documentation
-]
-
+[[allowlists]]
 regexes = [
-  '''\$\{[A-Z_]+\}''',         # Allow ${ENV_VAR} syntax
-  '''your[_-]?key[_-]?here''', # Allow placeholder text
+  '''\$\{[A-Z_]+\}''',         # ${ENV_VAR} references
+  '''your[_-]?key[_-]?here''', # placeholder text
 ]
 ```
 
-### Custom Patterns
+There is deliberately no path allowlist for `docs/`, `*.md`, `testdata/`,
+`.env.example` or the `config.*.yaml` samples: a path entry skips every
+rule for the whole file, so a real key pasted there would pass. Only a
+checksum file is path-allowlisted. To scope a regex to some paths, use
+`condition = "AND"` with `targetRules` (see the fixture-token entry):
+gitleaks 8.30 ignores `condition` for a global entry's paths in `gitleaks
+dir`, skipping matching files outright.
 
-Add ContextHelp-specific patterns to the pre-commit hook:
-
-Edit `.git/hooks/pre-commit` and add to the `PATTERNS` array:
-
-```bash
-declare -a PATTERNS=(
-    "registry[_-]?token[_-][a-zA-Z0-9]{32}"  # Registry tokens
-    "plugin[_-]?key[_-][a-zA-Z0-9]{20,}"     # Plugin keys
-)
-```
+Allowlist entries must not match real keys. Avoid length-only regexes (a
+regex like `^[a-zA-Z0-9+/=]{8,20}$` matches every AWS access key id) and
+short stopwords: a finding whose secret contains a stopword anywhere,
+in any case, is skipped.
 
 ---
 
 ## Testing
 
-### Test the Hook
-
 ```bash
-# Run test suite
 ./scripts/test-hooks.sh
 ```
 
-This runs 8 test scenarios:
-1. ✓ Safe config with environment variables
-2. ✗ Config with OpenAI key (should be blocked)
-3. ✗ Config with Anthropic key (should be blocked)
-4. ✗ .env file (should be blocked)
-5. ✓ Safe markdown documentation
-6. ✗ File with AWS key (should be blocked)
-7. ✗ File with GitHub token (should be blocked)
-8. ✓ Example file (should be allowed)
+This runs the installed `.githooks/pre-commit` against nine scenarios:
 
-### Manual Testing
+1. allow: config with an `${ENV_VAR}` reference
+2. block: OpenAI key
+3. block: Anthropic key
+4. allow: markdown documentation
+5. block: key pasted into a file under `docs/`
+6. block: AWS access key
+7. block: GitHub token
+8. block: GitLab token (caught by a gitleaks default rule only)
+9. allow: example config with a placeholder
 
-```bash
-# Create a test file with a fake secret
-echo "api_key: sk-proj-test123fake" > test-secret.yaml
+The fake keys are built at run time and avoid the placeholder shapes
+gitleaks skips by design, such as `abcdefghijklmnopqrstuvwxyz` runs or
+AWS's documented `AKIAIOSFODNN7EXAMPLE`. `go test ./scripts/` runs the
+script against the real gitleaks binary when it is installed, scans the
+full tree (skipped with `-short`), and checks no allowlist entry hides a
+provider key planted in docs, markdown, Go tests, testdata, `.env.example`
+or a `config.*.yaml` sample.
 
-# Stage it
-git add test-secret.yaml
-
-# Try to commit (should be blocked)
-git commit -m "test"
-
-# Clean up
-git reset HEAD test-secret.yaml
-rm test-secret.yaml
-```
+Each scenario is staged in a throwaway repo, so your index, working tree
+and `.env` are not touched. The script needs gitleaks installed and exits
+non-zero if the hooks are not installed or any scenario fails.
 
 ---
 
 ## Troubleshooting
 
-### Hook Not Running
+### Hook not running
 
-**Problem:** Pre-commit hook doesn't execute
-
-**Solutions:**
 ```bash
-# Check if hook exists
-ls -la .git/hooks/pre-commit
-
-# Make it executable
-chmod +x .git/hooks/pre-commit
-
-# Verify it's not disabled
-git config --get core.hooksPath
+git rev-parse --git-path hooks   # should print .githooks
+make install-hooks               # if it does not
+ls -l .githooks/pre-commit       # should be executable
 ```
 
-### Gitleaks Not Found
+### "gitleaks not found; skipping secret scan."
 
-**Problem:** `gitleaks: command not found`
+Install it (`make install-gitleaks`). Until you do, commits go through
+without a secret scan.
 
-**Solutions:**
-```bash
-# Install gitleaks
-brew install gitleaks  # macOS
-apt-get install gitleaks  # Ubuntu/Debian
+### False positives
 
-# Or skip gitleaks temporarily
-SKIP_GITLEAKS=1 git commit -m "message"
-```
+Add an allowlist entry to `.gitleaks.toml` (see above). Keep the secret
+out of the file entirely: providers read keys such as `OPENAI_API_KEY`
+from the environment, and config files do not expand env vars.
 
-### False Positives
+### Lint gate fails on code you did not touch
 
-**Problem:** Hook blocks legitimate code
-
-**Solutions:**
-
-1. **Add to .gitleaks.toml allowlist:**
-```toml
-[allowlist]
-regexes = [
-  '''your-false-positive-pattern''',
-]
-```
-
-2. **Skip the check:**
-```bash
-SKIP_PATTERNS=1 git commit -m "message"
-```
-
-3. **Use environment variable syntax:**
-```yaml
-# Instead of:
-api_key: sk-proj-actual-key
-
-# Use:
-api_key: ${OPENAI_API_KEY}
-```
-
-### Hook Too Slow
-
-**Problem:** Hook takes too long to run
-
-**Solutions:**
-```bash
-# Skip gitleaks for faster commits (less secure)
-SKIP_GITLEAKS=1 git commit -m "message"
-
-# Or disable pattern matching
-SKIP_PATTERNS=1 git commit -m "message"
-
-# For very large commits, bypass temporarily
-git commit --no-verify -m "message"
-```
-
-### Example Files Blocked
-
-**Problem:** Example files like `config.example.yaml` are blocked
-
-**Solution:**
-Add to `.gitleaks.toml`:
-```toml
-[allowlist]
-paths = [
-  '''\.example\.yaml$''',
-  '''config\.example\.''',
-]
-```
+It should not. The hooks are scoped to staged files and new findings only;
+see the comments in `.pre-commit-config.yaml`. Run the full check with
+`pre-commit run --all-files`.
 
 ---
 
 ## Best Practices
 
-### 1. Never Bypass Without Reason
-
-```bash
-# ❌ Bad: Always using --no-verify
-git commit --no-verify -m "quick fix"
-
-# ✓ Good: Fix the issue, then commit normally
-# Remove secrets, use env vars, then:
-git commit -m "fix configuration"
-```
-
-### 2. Use Environment Variables
-
-```yaml
-# ❌ Bad: Hardcoded secrets
-api_key: sk-proj-abc123...
-
-# ✓ Good: Environment variable reference
-api_key: ${OPENAI_API_KEY}
-```
-
-### 3. Keep .gitignore Updated
-
-Ensure `.gitignore` includes:
-```gitignore
-.env
-.env.*
-*.key
-*.token
-*.pem
-config.yaml
-```
-
-### 4. Regularly Update Gitleaks
-
-```bash
-# Update to latest version
-brew upgrade gitleaks
-
-# Or manually download from GitHub
-# https://github.com/gitleaks/gitleaks/releases
-```
-
-### 5. Review Hook Output
-
-Always read what the hook tells you:
-- **File paths**: Which files contain secrets
-- **Line numbers**: Exact location of the issue
-- **Secret type**: What kind of secret was detected
-- **Remediation**: How to fix the issue
-
-### 6. Test Before Committing
-
-```bash
-# Run hook manually before committing
-.git/hooks/pre-commit
-
-# Or use test suite
-./scripts/test-hooks.sh
-```
-
----
-
-## CI/CD Integration
-
-### GitHub Actions
-
-Add secret scanning to your CI pipeline:
-
-```yaml
-name: Security Scan
-
-on: [push, pull_request]
-
-jobs:
-  gitleaks:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-
-      - name: Run Gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-```
-
-### GitLab CI
-
-```yaml
-security-scan:
-  stage: test
-  image: zricethezav/gitleaks:latest
-  script:
-    - gitleaks detect --verbose --redact --report-path gitleaks-report.json
-  artifacts:
-    reports:
-      sast: gitleaks-report.json
-```
+- Fix the finding rather than reaching for `--no-verify`.
+- Keep keys in the environment or the secrets store, never in tracked files.
+- Keep `.gitignore` covering `.env`, `.env.*`, `*.key`, `*.token`, `*.pem`.
+- Keep gitleaks current: `brew upgrade gitleaks`.
 
 ---
 
 ## Additional Resources
 
-### Documentation
-- [SECURITY.md](../SECURITY.md) - Complete security policy
-- [Environment Variables](environment-variables.md) - Secret management guide
-- [Configuration Guide](ctxt/configuration.md) - Config file best practices
-
-### External Tools
-- [Gitleaks](https://github.com/gitleaks/gitleaks) - Secret detection tool
-- [TruffleHog](https://github.com/trufflesecurity/trufflehog) - Alternative scanner
-- [git-secrets](https://github.com/awslabs/git-secrets) - AWS Labs tool
-
-### Related Guides
+- [SECURITY.md](SECURITY.md): security policy
+- [Environment Variables](environment-variables/README.md): secret management
+- [Configuration Guide](ctxt/configuration.md): config file practices
+- [Gitleaks](https://github.com/gitleaks/gitleaks)
 - [OWASP Secrets Management](https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html)
-- [GitHub Secret Scanning](https://docs.github.com/en/code-security/secret-scanning)
-- [GitLab Secret Detection](https://docs.gitlab.com/ee/user/application_security/secret_detection/)
-
----
-
-## Support
-
-If you encounter issues with the pre-commit hooks:
-
-1. **Check the documentation** - Most issues are covered here
-2. **Run the test suite** - `./scripts/test-hooks.sh`
-3. **Check gitleaks logs** - Look for `.gitleaks` output
-4. **Review .gitleaks.toml** - Verify configuration
-5. **Open an issue** - https://github.com/ideacrafterslabs/ctxt/issues
-
-**Last Updated:** 2024-01-26
-**Version:** 1.0.0

@@ -1,3 +1,4 @@
+// Package mentions converts @namespace.slug mentions to ctxt:// entity URIs.
 package mentions
 
 import (

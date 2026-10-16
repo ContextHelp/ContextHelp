@@ -54,25 +54,14 @@ func CapturePage(svc *service.Service) http.HandlerFunc {
 		if content == "" {
 			content = req.URL
 		}
-		pipeline := req.Pipeline
-		if pipeline == "" {
-			pipeline = "url.generic"
-		}
-
-		jobID, err := svc.Analyze(r.Context(), service.AnalyzeRequest{
+		enqueueCapture(w, r, svc, service.AnalyzeRequest{
 			Content:     content,
 			Type:        "url",
-			Pipeline:    pipeline,
+			Pipeline:    req.Pipeline,
 			Source:      req.URL,
 			SourceTitle: req.Title,
 			AuthState:   req.AuthState,
-		})
-		if err != nil {
-			WriteError(w, http.StatusInternalServerError, "ANALYZE_FAILED", err.Error())
-			return
-		}
-
-		WriteJSON(w, http.StatusAccepted, map[string]string{"job_id": jobID})
+		}, "url.generic")
 	}
 }
 
@@ -90,25 +79,14 @@ func CaptureSelection(svc *service.Service) http.HandlerFunc {
 			return
 		}
 
-		pipeline := req.Pipeline
-		if pipeline == "" {
-			pipeline = "text.default"
-		}
-
-		jobID, err := svc.Analyze(r.Context(), service.AnalyzeRequest{
+		enqueueCapture(w, r, svc, service.AnalyzeRequest{
 			Content:     req.Selection,
 			Type:        "text",
-			Pipeline:    pipeline,
+			Pipeline:    req.Pipeline,
 			Source:      req.URL,
 			SourceTitle: req.Title,
 			AuthState:   req.AuthState,
-		})
-		if err != nil {
-			WriteError(w, http.StatusInternalServerError, "ANALYZE_FAILED", err.Error())
-			return
-		}
-
-		WriteJSON(w, http.StatusAccepted, map[string]string{"job_id": jobID})
+		}, "text.default")
 	}
 }
 
@@ -126,26 +104,29 @@ func CaptureElement(svc *service.Service) http.HandlerFunc {
 			return
 		}
 
-		pipeline := req.Pipeline
-		if pipeline == "" {
-			pipeline = "text.default"
-		}
-
-		jobID, err := svc.Analyze(r.Context(), service.AnalyzeRequest{
+		enqueueCapture(w, r, svc, service.AnalyzeRequest{
 			Content:     req.Content,
 			Type:        "text",
-			Pipeline:    pipeline,
+			Pipeline:    req.Pipeline,
 			Source:      req.URL,
 			SourceTitle: req.Title,
 			AuthState:   req.AuthState,
-		})
-		if err != nil {
-			WriteError(w, http.StatusInternalServerError, "ANALYZE_FAILED", err.Error())
-			return
-		}
-
-		WriteJSON(w, http.StatusAccepted, map[string]string{"job_id": jobID})
+		}, "text.default")
 	}
+}
+
+// enqueueCapture runs a browser capture through Analyze and answers 202
+// with the job ID; an empty req.Pipeline falls back to defaultPipeline.
+func enqueueCapture(w http.ResponseWriter, r *http.Request, svc *service.Service, req service.AnalyzeRequest, defaultPipeline string) {
+	if req.Pipeline == "" {
+		req.Pipeline = defaultPipeline
+	}
+	jobID, err := svc.Analyze(r.Context(), req)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "ANALYZE_FAILED", err.Error())
+		return
+	}
+	WriteJSON(w, http.StatusAccepted, map[string]string{"job_id": jobID})
 }
 
 // ListRecentCaptures handles GET /api/v1/capture/recent.

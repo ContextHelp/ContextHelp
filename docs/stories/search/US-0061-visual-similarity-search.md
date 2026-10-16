@@ -318,7 +318,6 @@ type VisualEmbeddingProvider interface {
 Pluggable implementations:
 - API-based: OpenAI (if/when available), Replicate, HuggingFace Inference
 - Local: DINOv2 via ONNX runtime, CLIP via ONNX
-- Plugin: custom providers via plugin system (ADR-012)
 
 ### Configuration
 
@@ -326,7 +325,7 @@ Pluggable implementations:
 # In configuration.yaml
 visualEmbedding:
   enabled: true
-  provider: replicate  # or: openai, local, plugin
+  provider: replicate  # or: openai, local
   model: dinov2-vitl14
   replicate:
     apiKey: ${CH_REPLICATE_API_KEY}
@@ -444,7 +443,6 @@ ctxt admin backfill --status
 - [ ] `ctxt admin backfill --type visual-embeddings` processes existing image objects; DB row
       count of visual embeddings increases
 - [ ] `ctxt admin backfill --status` returns progress (processed/total count)
-- [ ] Plugin: custom visual embedding provider loads and `EmbedImage` called by server
 - [ ] Multi-format ingestion: PNG, JPEG, WebP, TIFF, SVG (rasterized) all produce embeddings
 
 ---

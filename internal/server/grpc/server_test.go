@@ -7,8 +7,10 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/status"
 
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
@@ -147,8 +149,8 @@ func TestGetJob_NotFound(t *testing.T) {
 
 	c := pb.NewJobServiceClient(conn)
 	_, err := c.GetJob(context.Background(), &pb.GetJobRequest{Id: "nonexistent"})
-	if err == nil {
-		t.Error("expected not found error")
+	if code := status.Code(err); code != codes.NotFound {
+		t.Errorf("code = %v, want NotFound (err: %v)", code, err)
 	}
 }
 

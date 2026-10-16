@@ -1,17 +1,14 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"strings"
-	"time"
 
-	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/ideacrafterslabs/ctxt/internal/graph"
-	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 // --- ctxt link {create,list,delete} ---
@@ -22,8 +19,12 @@ var linkCmd = &cobra.Command{
 	Long: `Manage associative typed links between knowledge objects.
 
 Links are directed edges with a kit-defined type (extends, contradicts,
-supersedes, supports, related-to, derived-from). Reverse edges are
-maintained automatically except for symmetric types.
+supersedes, supports, related-to, derived-from). The dpkms instance stores
+each link with its reverse edge, except for symmetric types, and deletes
+the two together.
+
+create needs a token with write:objects (writer or admin), list one with
+read:objects, and delete one with delete:edges (admin only).
 
 Subcommands:
   create  Create a typed link between two objects.
@@ -52,7 +53,8 @@ func init() {
 	linkCreateCmd.Flags().StringP("type", "t", "", "link type (required): "+
 		strings.Join(graph.UserLinkTypeStrings(), ", "))
 	linkCreateCmd.Flags().String("context", "", "optional reason for the link")
-	_ = linkCreateCmd.MarkFlagRequired("type")
+	linkCreateCmd.Flags().String("server", "", serverFlagUsage)
+	markFlagsRequired(linkCreateCmd, "type")
 
 	// 12fcc conformance: side-effect annotation for create.
 	// list and delete are wired in their own init() blocks below; the
@@ -73,72 +75,18 @@ func init() {
 
 func runLinkCreate(cmd *cobra.Command, args []string) error {
 	sourceID, targetID := args[0], args[1]
-	ltStr, _ := cmd.Flags().GetString("type")
-	ctx, _ := cmd.Flags().GetString("context")
+	lt, _ := cmd.Flags().GetString("type")
+	note, _ := cmd.Flags().GetString("context")
 
-	lt := graph.LinkType(ltStr)
-	if !graph.ValidLinkType(lt) {
-		return fmt.Errorf("invalid link type %q; valid types: %s",
-			ltStr, strings.Join(graph.UserLinkTypeStrings(), ", "))
-	}
-
-	svc, cleanup, err := newService()
+	client, err := newDpkmsClient(cmd, dpkmsclient.DefaultTimeout)
 	if err != nil {
 		return err
 	}
-	defer cleanup()
-
-	bg := context.Background()
-
-	// validate both objects exist
-	if _, err := svc.GetObject(bg, sourceID); err != nil {
-		return fmt.Errorf("source object %q: %w", sourceID, err)
+	if _, err := client.CreateLink(cmd.Context(), dpkmsclient.LinkCreate{
+		Source: sourceID, Target: targetID, Type: lt, Context: note,
+	}); err != nil {
+		return err
 	}
-	if _, err := svc.GetObject(bg, targetID); err != nil {
-		return fmt.Errorf("target object %q: %w", targetID, err)
-	}
-
-	now := time.Now().Truncate(time.Second)
-	var meta map[string]any
-	if ctx != "" {
-		meta = map[string]any{"context": ctx}
-	}
-
-	// forward edge
-	fwd := &storage.Edge{
-		ID:        uuid.New().String(),
-		FromType:  "object",
-		FromID:    sourceID,
-		ToType:    "object",
-		ToID:      targetID,
-		EdgeType:  string(lt),
-		Weight:    1.0,
-		Metadata:  meta,
-		CreatedAt: now,
-	}
-	if err := svc.Store.Edges().Create(bg, fwd); err != nil {
-		return fmt.Errorf("create forward edge: %w", err)
-	}
-
-	// reverse edge (skip if symmetric and same pair)
-	inv, _ := graph.InverseLinkType(lt)
-	if !graph.IsSymmetric(lt) {
-		rev := &storage.Edge{
-			ID:        uuid.New().String(),
-			FromType:  "object",
-			FromID:    targetID,
-			ToType:    "object",
-			ToID:      sourceID,
-			EdgeType:  string(inv),
-			Weight:    1.0,
-			Metadata:  meta,
-			CreatedAt: now,
-		}
-		if err := svc.Store.Edges().Create(bg, rev); err != nil {
-			return fmt.Errorf("create reverse edge: %w", err)
-		}
-	}
-
 	fmt.Fprintf(cmd.OutOrStdout(), "Linked %s -[%s]-> %s\n", sourceID, lt, targetID)
 	return nil
 }
@@ -162,6 +110,7 @@ func init() {
 	linkCmd.AddCommand(linkListCmd)
 	linkListCmd.Flags().StringP("type", "t", "", "filter by link type")
 	linkListCmd.Flags().Int("follow", 0, "depth-limited traversal (max 3)")
+	linkListCmd.Flags().String("server", "", serverFlagUsage)
 
 	// 12fcc conformance: list is a pure read traversal over edges.
 	cliconv.WithSideEffect(linkListCmd, cliconv.SideEffectRead)
@@ -177,154 +126,54 @@ func runLinkList(cmd *cobra.Command, args []string) error {
 	objectID := args[0]
 	typeFilter, _ := cmd.Flags().GetString("type")
 	follow, _ := cmd.Flags().GetInt("follow")
-	if follow > 3 {
-		follow = 3
-	}
+	follow = min(follow, maxLinkFollow)
 
-	svc, cleanup, err := newService()
+	client, err := newDpkmsClient(cmd, dpkmsclient.DefaultTimeout)
 	if err != nil {
 		return err
 	}
-	defer cleanup()
-
-	bg := context.Background()
-
+	q := dpkmsclient.LinkQuery{Type: typeFilter}
 	if follow > 0 {
-		return printLinksTraversal(cmd, svc.Store.Edges(), objectID, typeFilter, follow)
+		q.Depth = follow
 	}
-
-	outbound, err := svc.Store.Edges().ListFrom(bg, "object", objectID)
+	hops, err := client.ListLinks(cmd.Context(), objectID, q)
 	if err != nil {
-		return fmt.Errorf("list outbound: %w", err)
-	}
-	inbound, err := svc.Store.Edges().ListTo(bg, "object", objectID)
-	if err != nil {
-		return fmt.Errorf("list inbound: %w", err)
+		return err
 	}
 
-	// filter to object-object link edges only
-	var links []*storage.Edge
-	for _, e := range outbound {
-		if e.ToType != "object" {
-			continue
-		}
-		if typeFilter != "" && e.EdgeType != typeFilter {
-			continue
-		}
-		links = append(links, e)
-	}
-	for _, e := range inbound {
-		if e.FromType != "object" {
-			continue
-		}
-		if typeFilter != "" && e.EdgeType != typeFilter {
-			continue
-		}
-		links = append(links, e)
-	}
-
-	if len(links) == 0 {
-		fmt.Fprintln(cmd.OutOrStdout(), "No links found.")
+	w := cmd.OutOrStdout()
+	if len(hops) == 0 {
+		fmt.Fprintln(w, "No links found.")
 		return nil
 	}
-
-	for _, e := range links {
-		dir := "→"
-		other := e.ToID
+	for _, h := range hops {
+		if follow > 0 {
+			fmt.Fprintf(w, "%s%s [%s] %s\n", strings.Repeat("  ", h.Depth-1), linkArrow(h.Direction), h.Edge.EdgeType, h.ObjectID)
+			continue
+		}
+		e := h.Edge
+		dir, other := "→", e.ToID
 		if e.ToID == objectID {
-			dir = "←"
-			other = e.FromID
+			dir, other = "←", e.FromID
 		}
 		meta := ""
 		if c, ok := e.Metadata["context"]; ok {
 			meta = fmt.Sprintf(" (%s)", c)
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "  %s [%s] %s%s\n", dir, e.EdgeType, other, meta)
+		fmt.Fprintf(w, "  %s [%s] %s%s\n", dir, e.EdgeType, other, meta)
 	}
 	return nil
 }
 
-// printLinksTraversal does BFS up to maxDepth.
-func printLinksTraversal(
-	cmd *cobra.Command,
-	edges storage.EdgeStore,
-	rootID, typeFilter string,
-	maxDepth int,
-) error {
-	bg := context.Background()
-	type queueItem struct {
-		id    string
-		depth int
+// maxLinkFollow caps --follow; a larger value walks this far.
+const maxLinkFollow = 3
+
+// linkArrow is the arrow link list prints for a hop's direction.
+func linkArrow(direction string) string {
+	if direction == "in" {
+		return "←"
 	}
-
-	visited := map[string]bool{rootID: true}
-	queue := []queueItem{{rootID, 0}}
-
-	for len(queue) > 0 {
-		item := queue[0]
-		queue = queue[1:]
-
-		if item.depth >= maxDepth {
-			continue
-		}
-
-		outbound, err := edges.ListFrom(bg, "object", item.id)
-		if err != nil {
-			return err
-		}
-		inbound, err := edges.ListTo(bg, "object", item.id)
-		if err != nil {
-			return err
-		}
-
-		var neighbors []struct {
-			edgeType string
-			other    string
-			dir      string
-		}
-		for _, e := range outbound {
-			if e.ToType != "object" {
-				continue
-			}
-			if typeFilter != "" && e.EdgeType != typeFilter {
-				continue
-			}
-			neighbors = append(neighbors, struct {
-				edgeType string
-				other    string
-				dir      string
-			}{e.EdgeType, e.ToID, "→"})
-		}
-		for _, e := range inbound {
-			if e.FromType != "object" {
-				continue
-			}
-			if typeFilter != "" && e.EdgeType != typeFilter {
-				continue
-			}
-			neighbors = append(neighbors, struct {
-				edgeType string
-				other    string
-				dir      string
-			}{e.EdgeType, e.FromID, "←"})
-		}
-
-		indent := strings.Repeat("  ", item.depth)
-		for _, n := range neighbors {
-			if visited[n.other] {
-				continue
-			}
-			visited[n.other] = true
-			fmt.Fprintf(cmd.OutOrStdout(), "%s%s [%s] %s\n",
-				indent, n.dir, n.edgeType, n.other)
-			queue = append(queue, queueItem{n.other, item.depth + 1})
-		}
-	}
-
-	if len(visited) == 1 {
-		fmt.Fprintln(cmd.OutOrStdout(), "No links found.")
-	}
-	return nil
+	return "→"
 }
 
 // --- ctxt link delete <source_id> <target_id> ---
@@ -335,14 +184,17 @@ var linkDeleteCmd = &cobra.Command{
 	Long: `Remove all associative links between two knowledge objects.
 Both forward and reverse edges are removed.
 
+` + cliconv.DestructiveTokenHelp + `
+
 Examples:
-  ctxt link delete obj_abc obj_xyz`,
+  ctxt link delete obj_abc obj_xyz --confirm-token=<sha>`,
 	Args: cobra.ExactArgs(2),
 	RunE: runLinkDelete,
 }
 
 func init() {
 	linkCmd.AddCommand(linkDeleteCmd)
+	linkDeleteCmd.Flags().String("server", "", serverFlagUsage)
 
 	// 12fcc conformance: delete removes forward + reverse edges
 	// between two objects. Classified as destructive on the shared
@@ -356,7 +208,7 @@ func init() {
 
 	// 12fcc strict-gate: examples + next-steps on the destructive leaf.
 	cliconv.WithExamples(linkDeleteCmd, []cliconv.Example{
-		{Title: "Remove every link between two objects", Command: "ctxt link delete obj_abc obj_xyz"},
+		{Title: "Remove every link between two objects", Command: "ctxt link delete obj_abc obj_xyz --confirm-token=<sha>"},
 	})
 	cliconv.WithNextSteps(linkDeleteCmd, []cliconv.NextStep{
 		{When: "on success", Suggest: "ctxt link list obj_abc", Reason: "verify the forward + reverse edges are gone"},
@@ -366,43 +218,13 @@ func init() {
 func runLinkDelete(cmd *cobra.Command, args []string) error {
 	sourceID, targetID := args[0], args[1]
 
-	svc, cleanup, err := newService()
+	client, err := newDpkmsClient(cmd, dpkmsclient.DefaultTimeout)
 	if err != nil {
 		return err
 	}
-	defer cleanup()
-
-	bg := context.Background()
-	deleted := 0
-
-	// find and delete forward edges (source -> target)
-	outbound, err := svc.Store.Edges().ListFrom(bg, "object", sourceID)
+	deleted, err := client.DeleteLinks(cmd.Context(), sourceID, targetID, "")
 	if err != nil {
-		return fmt.Errorf("list outbound: %w", err)
-	}
-	for _, e := range outbound {
-		if e.ToType == "object" && e.ToID == targetID &&
-			graph.ValidLinkType(graph.LinkType(e.EdgeType)) {
-			if err := svc.Store.Edges().Delete(bg, e.ID); err != nil {
-				return fmt.Errorf("delete edge %s: %w", e.ID, err)
-			}
-			deleted++
-		}
-	}
-
-	// find and delete reverse edges (target -> source)
-	outbound2, err := svc.Store.Edges().ListFrom(bg, "object", targetID)
-	if err != nil {
-		return fmt.Errorf("list reverse outbound: %w", err)
-	}
-	for _, e := range outbound2 {
-		if e.ToType == "object" && e.ToID == sourceID &&
-			graph.ValidLinkType(graph.LinkType(e.EdgeType)) {
-			if err := svc.Store.Edges().Delete(bg, e.ID); err != nil {
-				return fmt.Errorf("delete edge %s: %w", e.ID, err)
-			}
-			deleted++
-		}
+		return err
 	}
 
 	if deleted == 0 {

@@ -254,7 +254,7 @@ func TestUS0205_TitleSummaryStored(t *testing.T) {
 	})
 
 	sourceURL := fmt.Sprintf("https://en.wikipedia.org/wiki/%s", pageTitle)
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  sourceURL,
 		Type:     "url",
 		Pipeline: "reference.wikipedia",
@@ -305,7 +305,7 @@ func TestUS0205_InfoboxEntitiesExtracted(t *testing.T) {
 	})
 
 	sourceURL := fmt.Sprintf("https://en.wikipedia.org/wiki/%s", pageTitle)
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  sourceURL,
 		Type:     "url",
 		Pipeline: "reference.wikipedia",

@@ -10,7 +10,7 @@ This directory documents the **personas** who interact with dPKMS as a substrate
 
 dPKMS is the **mechanical substrate** that provides correctness guarantees. While end users interact with `ctxt` (the agentic brain), several technical personas interact directly with dPKMS:
 
-- **Plugin Developers** - Extend dPKMS capabilities
+- **Step Developers** - Extend dPKMS with pipeline steps
 - **Platform Operators** - Deploy and maintain dPKMS infrastructure
 - **System Integrators** - Embed dPKMS in applications
 - **Security Engineers** - Configure security and privacy features
@@ -20,22 +20,23 @@ dPKMS is the **mechanical substrate** that provides correctness guarantees. Whil
 
 ## Persona Categories
 
-### 1. Plugin Developers
+### 1. Step Developers
 
 **Who they are:**
-- Go developers building extensions
+- Developers building pipeline steps (built-in or published to a step registry)
 - Open source contributors
 - Enterprise teams adding custom capabilities
 
+There is no plugin system ([ADR-078](../../decisions/ADR-078-no-plugin-system.md)).
+
 **What they need from dPKMS:**
-- Clear plugin interfaces and contracts
+- A clear step contract (`pipeline.PipelineStep`, external step stdin/stdout protocol)
 - Safe execution environment with capability scoping
 - Documentation and examples
 - Testing utilities
-- Hot reload during development
 
 **Key Documents:**
-- [../plugins.md](../../plugins/plugins.md)
+- [../../ctxt/pipelines.md](../../ctxt/pipelines.md#extending-pipelines) - Extending pipelines
 - [../security.md](../security.md) - Capability model
 - [../storage.md](../storage.md) - Storage interface
 - [../jobs-and-ingestion.md](../jobs-and-ingestion.md) - Job system
@@ -61,7 +62,6 @@ dPKMS is the **mechanical substrate** that provides correctness guarantees. Whil
 **Key Documents:**
 - [../storage.md](../storage.md) - Backend configuration
 - [../queue.md](../queue.md) - Queue backend options
-- [../caching.md](../caching.md) - Cache configuration
 - [../../development-infrastructure.md](../../development-infrastructure.md)
 
 ---
@@ -140,7 +140,7 @@ dPKMS is the **mechanical substrate** that provides correctness guarantees. Whil
 
 | Persona | Primary Goal | Main Interaction | Key Concerns |
 |---------|-------------|------------------|--------------|
-| **Plugin Developer** | Extend capabilities | Go SDK, interfaces | API stability, documentation |
+| **Step Developer** | Extend pipelines | Step contract, step registries | Contract stability, documentation |
 | **Platform Operator** | Keep system running | Configuration, monitoring | Reliability, performance |
 | **System Integrator** | Build applications | REST/gRPC API | Integration patterns, compatibility |
 | **Security Engineer** | Ensure safety | Security config, audits | Threat mitigation, compliance |
@@ -150,13 +150,13 @@ dPKMS is the **mechanical substrate** that provides correctness guarantees. Whil
 
 ## Interaction Patterns
 
-### Plugin Developer Journey
+### Step Developer Journey
 
-1. **Discovery** - Find plugin documentation
-2. **Setup** - Clone example plugin, configure dev environment
-3. **Development** - Implement interfaces, write tests
+1. **Discovery** - Find the step contract and pipeline docs
+2. **Setup** - Clone an example step, configure dev environment
+3. **Development** - Implement the step, write tests
 4. **Testing** - Use test harness, validate capabilities
-5. **Distribution** - Package plugin, publish to registry
+5. **Distribution** - Publish the step to a step registry
 6. **Maintenance** - Monitor usage, respond to issues
 
 ### Platform Operator Journey
@@ -231,7 +231,7 @@ dPKMS is the **mechanical substrate** that provides correctness guarantees. Whil
 **Core Documentation:**
 - [../README.md](../README.md) - dPKMS overview
 - [../../architecture.md](../../architecture.md) - System architecture
-- [../../plugins/README.md](../../plugins/README.md) - Plugin system
+- [../../decisions/ADR-078-no-plugin-system.md](../../decisions/ADR-078-no-plugin-system.md) - No plugin system
 
 **Developer Resources:**
 - [../../development-infrastructure.md](../../development-infrastructure.md)

@@ -195,8 +195,8 @@ Caption: 12px / 0.75rem (line-height: 1.4)
    - "dPKMS (substrate): Durability, correctness, sovereignty"
    - "ctxt (brain): Intelligence, usability, actionability"
 
-5. **Plugin Architecture**
-   - "Extend without forking — plugins hook into formal APIs"
+5. **Extension Surfaces**
+   - "Extend without forking — custom pipelines, steps and registries"
    - "Community extensions without core modification"
 
 ---
@@ -305,9 +305,9 @@ Options:
    - Icon: Lock/home
    - Text: "Export everything. Migrate anytime. No proprietary formats."
 
-6. **Plugin Architecture**
+6. **Extension Surfaces**
    - Icon: Puzzle piece
-   - Text: "Extend pipelines, storage, and commands without forking"
+   - Text: "Extend pipelines with your own steps and registries without forking"
 
 ### Social Media Guidelines
 

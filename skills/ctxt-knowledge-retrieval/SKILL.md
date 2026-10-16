@@ -51,7 +51,6 @@ ctxt analyze "Investigate checkout funnel anomalies" --type text --hints "#check
 ctxt analyze https://example.com/incident-postmortem --type url
 ctxt job list --limit 20
 ctxt job status <job_id>
-ctxt job log <job_id>
 ctxt job retry <job_id>
 ```
 

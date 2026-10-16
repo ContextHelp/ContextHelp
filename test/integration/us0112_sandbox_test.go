@@ -85,7 +85,7 @@ func TestUS0112_NonSandboxedStep_CanMakeOutboundCall(t *testing.T) {
 		Steps:        []pipeline.PipelineStep{&outboundProbe{targetURL: targetSrv.URL, outboundHit: &outboundHit}},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "non-sandboxed probe content",
 		Type:     "text",
 		Pipeline: "test.non-sandboxed",

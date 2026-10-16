@@ -27,3 +27,24 @@ type ProjectionStore interface {
 	// already current (a concurrent write re-projected it).
 	Reproject(ctx context.Context, id string) (bool, error)
 }
+
+// RefTextStore repairs objects whose text_content is a blob:// ref.
+// Before projection v3, storage copied an externalized object's ref into
+// an empty text_content, so such a row has a pointer, not text, where
+// search and embeddings read its text. The re-projection job resolves
+// each ref and writes the text back through ReplaceRefText. Both
+// drivers' ObjectStore implement it.
+type RefTextStore interface {
+	// ListRefText returns up to limit objects with an ID greater than
+	// after, in ID order, whose text_content is a blob:// ref. Only ID,
+	// RawContent, TextContent and Metadata are filled in.
+	ListRefText(ctx context.Context, after string, limit int) ([]*KnowledgeObject, error)
+	// ReplaceRefText sets object id's text_content to text, provided it
+	// is still ref, and with truncated sets metadata
+	// text_content_truncated (blobref.MetaTextTruncated). It marks the
+	// row's projection stale so the re-projection re-indexes it, and
+	// leaves updated_at alone: a repair is not an edit. It reports
+	// whether it wrote; false when the object is gone or its text has
+	// changed since it was listed.
+	ReplaceRefText(ctx context.Context, id, ref, text string, truncated bool) (bool, error)
+}

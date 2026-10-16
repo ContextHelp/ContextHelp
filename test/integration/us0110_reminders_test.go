@@ -1,7 +1,6 @@
 package integration
 
 import (
-	"context"
 	"encoding/json"
 	gohttp "net/http"
 	"testing"
@@ -18,7 +17,7 @@ func TestUS0110_ListReminders(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now()
 	reminder := &storage.SystemReminder{
 		ID:        uuid.New().String(),
@@ -30,7 +29,7 @@ func TestUS0110_ListReminders(t *testing.T) {
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	require.NoError(t, env.svc.Store.Reminders().Create(ctx, reminder))
+	require.NoError(t, env.driver.Reminders().Create(ctx, reminder))
 
 	resp, err := gohttp.Get(env.URL + "/api/v1/system/reminders")
 	require.NoError(t, err)
@@ -50,7 +49,7 @@ func TestUS0110_DismissReminder(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now()
 	reminder := &storage.SystemReminder{
 		ID:        uuid.New().String(),
@@ -61,7 +60,7 @@ func TestUS0110_DismissReminder(t *testing.T) {
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	require.NoError(t, env.svc.Store.Reminders().Create(ctx, reminder))
+	require.NoError(t, env.driver.Reminders().Create(ctx, reminder))
 
 	resp, err := gohttp.Post(env.URL+"/api/v1/system/reminders/"+reminder.ID+"/dismiss", "application/json", nil)
 	require.NoError(t, err)
@@ -74,7 +73,7 @@ func TestUS0110_ActiveOnlyFilter(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now()
 
 	activeReminder := &storage.SystemReminder{
@@ -82,14 +81,14 @@ func TestUS0110_ActiveOnlyFilter(t *testing.T) {
 		Message: "Active", Source: "test", Dismissed: false,
 		CreatedAt: now, UpdatedAt: now,
 	}
-	require.NoError(t, env.svc.Store.Reminders().Create(ctx, activeReminder))
+	require.NoError(t, env.driver.Reminders().Create(ctx, activeReminder))
 
 	dismissedReminder := &storage.SystemReminder{
 		ID: uuid.New().String(), Type: "update", Title: "dismissed-reminder",
 		Message: "Dismissed", Source: "test", Dismissed: true,
 		CreatedAt: now, UpdatedAt: now,
 	}
-	require.NoError(t, env.svc.Store.Reminders().Create(ctx, dismissedReminder))
+	require.NoError(t, env.driver.Reminders().Create(ctx, dismissedReminder))
 
 	t.Run("active_only excludes dismissed", func(t *testing.T) {
 		resp, err := gohttp.Get(env.URL + "/api/v1/system/reminders?active_only=true")
@@ -124,7 +123,7 @@ func TestUS0110_DismissThenVerify(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now()
 	reminderID := uuid.New().String()
 
@@ -133,7 +132,7 @@ func TestUS0110_DismissThenVerify(t *testing.T) {
 		Message: "Reminder to be dismissed", Source: "test",
 		Dismissed: false, CreatedAt: now, UpdatedAt: now,
 	}
-	require.NoError(t, env.svc.Store.Reminders().Create(ctx, reminder))
+	require.NoError(t, env.driver.Reminders().Create(ctx, reminder))
 
 	resp, err := gohttp.Get(env.URL + "/api/v1/system/reminders?active_only=true")
 	require.NoError(t, err)
@@ -177,7 +176,7 @@ func TestUS0110_MultipleTypes(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now()
 
 	types := []struct {
@@ -195,7 +194,7 @@ func TestUS0110_MultipleTypes(t *testing.T) {
 			Message: "Reminder of type " + tt.typ, Source: "test",
 			CreatedAt: now, UpdatedAt: now,
 		}
-		require.NoError(t, env.svc.Store.Reminders().Create(ctx, reminder))
+		require.NoError(t, env.driver.Reminders().Create(ctx, reminder))
 	}
 
 	resp, err := gohttp.Get(env.URL + "/api/v1/system/reminders")

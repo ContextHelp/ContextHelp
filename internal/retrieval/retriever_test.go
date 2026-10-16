@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 func TestRagRetrieve_FiltersByType(t *testing.T) {
@@ -94,22 +93,22 @@ func TestRetrieveCategories_Items_Resources(t *testing.T) {
 type nodeAwareMockObjects struct {
 	*mockObjectStore2
 	nodeAwareResults []*storage.KnowledgeObject
-	capturedFilter   *pluginapi.NodeAwareFilter
+	capturedFilter   *storage.NodeAwareFilter
 }
 
 func (m *nodeAwareMockObjects) VectorSearchNodeAware(
 	_ context.Context,
 	_ storage.VectorQuery,
 	f storage.ObjectFilter,
-	naf pluginapi.NodeAwareFilter,
-) ([]*pluginapi.NodeAwareResult, error) {
+	naf storage.NodeAwareFilter,
+) ([]*storage.NodeAwareResult, error) {
 	m.capturedFilter = &naf
-	var out []*pluginapi.NodeAwareResult
+	var out []*storage.NodeAwareResult
 	for _, o := range m.nodeAwareResults {
 		if f.Type != "" && o.Type != f.Type {
 			continue
 		}
-		out = append(out, &pluginapi.NodeAwareResult{Object: o})
+		out = append(out, &storage.NodeAwareResult{Object: o})
 	}
 	return out, nil
 }
@@ -129,35 +128,38 @@ func newNodeAwareMockStore(all, nodeAware []*storage.KnowledgeObject) *naStore {
 }
 
 // Forward all StorageDriver methods from mockStore but return our nodeObjs.
-func (n *naStore) Init(_ context.Context) error               { return nil }
-func (n *naStore) Close(_ context.Context) error              { return nil }
-func (n *naStore) Objects() storage.ObjectStore               { return n.nodeObjs }
-func (n *naStore) Entities() storage.EntityStore              { return nil }
-func (n *naStore) Edges() storage.EdgeStore                   { return nil }
-func (n *naStore) Jobs() storage.JobStore                     { return nil }
-func (n *naStore) Pipelines() storage.PipelineStore           { return nil }
-func (n *naStore) Steps() storage.StepStore                   { return nil }
-func (n *naStore) Registries() storage.RegistryStore          { return nil }
-func (n *naStore) Reminders() storage.ReminderStore           { return nil }
-func (n *naStore) Feeds() storage.FeedStore                   { return nil }
-func (n *naStore) FeedItems() storage.FeedItemStore           { return nil }
-func (n *naStore) Batches() storage.BatchStore                { return nil }
-func (n *naStore) Detectors() storage.DetectorStore           { return nil }
-func (n *naStore) Blobs() storage.BlobStore                   { return nil }
-func (n *naStore) Proximity() storage.ProximityStore          { return nil }
-func (n *naStore) Watches() storage.WatchStore                { return nil }
-func (n *naStore) Aliases() storage.AliasStore                { return nil }
-func (n *naStore) AuditLog() storage.AuditStore               { return nil }
-func (n *naStore) Attachments() storage.AttachmentStore       { return nil }
-func (n *naStore) Resurfacing() storage.ResurfacingQueueStore { return nil }
-func (n *naStore) Entitlements() storage.EntitlementStore     { return nil }
-func (n *naStore) Metering() storage.MeteringStore            { return nil }
-func (n *naStore) Embeddings() storage.EmbeddingStore         { return nil }
-func (n *naStore) SavedSearches() storage.SavedSearchStore    { return nil }
-func (n *naStore) SearchHistory() storage.SearchHistoryStore  { return nil }
-func (n *naStore) Watermarks() storage.WatermarkStore         { return nil }
-func (n *naStore) UISessions() storage.UISessionStore         { return nil }
-func (n *naStore) Health(_ context.Context) error             { return nil }
+func (n *naStore) Init(_ context.Context) error                { return nil }
+func (n *naStore) Close(_ context.Context) error               { return nil }
+func (n *naStore) Objects() storage.ObjectStore                { return n.nodeObjs }
+func (n *naStore) Entities() storage.EntityStore               { return nil }
+func (n *naStore) Edges() storage.EdgeStore                    { return nil }
+func (n *naStore) Jobs() storage.JobStore                      { return nil }
+func (n *naStore) Pipelines() storage.PipelineStore            { return nil }
+func (n *naStore) Steps() storage.StepStore                    { return nil }
+func (n *naStore) Registries() storage.RegistryStore           { return nil }
+func (n *naStore) Reminders() storage.ReminderStore            { return nil }
+func (n *naStore) Feeds() storage.FeedStore                    { return nil }
+func (n *naStore) FeedItems() storage.FeedItemStore            { return nil }
+func (n *naStore) Batches() storage.BatchStore                 { return nil }
+func (n *naStore) Detectors() storage.DetectorStore            { return nil }
+func (n *naStore) Blobs() storage.BlobStore                    { return nil }
+func (n *naStore) Proximity() storage.ProximityStore           { return nil }
+func (n *naStore) Watches() storage.WatchStore                 { return nil }
+func (n *naStore) Aliases() storage.AliasStore                 { return nil }
+func (n *naStore) AuditLog() storage.AuditStore                { return nil }
+func (n *naStore) Attachments() storage.AttachmentStore        { return nil }
+func (n *naStore) Resurfacing() storage.ResurfacingQueueStore  { return nil }
+func (n *naStore) Entitlements() storage.EntitlementStore      { return nil }
+func (n *naStore) Metering() storage.MeteringStore             { return nil }
+func (n *naStore) PendingEntities() storage.PendingEntityStore { return nil }
+func (n *naStore) Embeddings() storage.EmbeddingStore          { return nil }
+func (n *naStore) SavedSearches() storage.SavedSearchStore     { return nil }
+func (n *naStore) SearchHistory() storage.SearchHistoryStore   { return nil }
+func (n *naStore) Watermarks() storage.WatermarkStore          { return nil }
+func (n *naStore) UISessions() storage.UISessionStore          { return nil }
+func (n *naStore) Auth() storage.AuthStore                     { return nil }
+func (n *naStore) Sharing() storage.SharingStore               { return nil }
+func (n *naStore) Health(_ context.Context) error              { return nil }
 
 // TestRagRetrieve_NodeAwareFilterRoutesThroughNodeAwarePath verifies that when a
 // NodeAwareFilter with NodeTypes is set, VectorSearchNodeAware is invoked and the
@@ -175,7 +177,7 @@ func TestRagRetrieve_NodeAwareFilterRoutesThroughNodeAwarePath(t *testing.T) {
 	cfg.EnableSufficiencyCheck = false
 	wf := NewWorkflow(cfg, store, nil, fixedSemantic())
 
-	nf := &pluginapi.NodeAwareFilter{NodeTypes: []string{"question"}}
+	nf := &storage.NodeAwareFilter{NodeTypes: []string{"question"}}
 	state := &State{ActiveQuery: "open questions?", NeedsRetrieval: true}
 
 	err := wf.ragRetrieve(context.Background(), state, &state.ItemHits, "item", 10, storage.ObjectFilter{}, nf)
@@ -204,7 +206,7 @@ func TestRetrieve_NodeAwareFilterThreadedThroughWorkflow(t *testing.T) {
 	cfg.EnableSufficiencyCheck = false
 	wf := NewWorkflow(cfg, store, nil, fixedSemantic())
 
-	nf := &pluginapi.NodeAwareFilter{NodeTypes: []string{"section"}}
+	nf := &storage.NodeAwareFilter{NodeTypes: []string{"section"}}
 	result, err := wf.Retrieve(context.Background(), "query", nil, storage.ObjectFilter{}, nf)
 
 	require.NoError(t, err)

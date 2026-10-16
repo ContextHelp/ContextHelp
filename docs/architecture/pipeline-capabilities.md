@@ -26,7 +26,7 @@ buildPipeline (non-strict mode)
 ```
 
 The log line is emitted via the standard `log` package (always visible,
-regardless of the `--verbose` / `CTXT_DEBUG` level).
+regardless of `--verbose`).
 
 ---
 
@@ -39,7 +39,7 @@ regardless of the `--verbose` / `CTXT_DEBUG` level).
 | `transcription` | `audio_transcriber` | `whisper-cpp` or `whisper` binary on PATH |
 | `diarization` | `speaker_diarizer` | `pyannote-audio` / `pyannote` binary **or** `python3 -c "import pyannote.audio"` succeeds |
 | `vision` | `vision_analyzer` | Ollama reachable at endpoint **or** any of `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY` set |
-| `llm` | `autosuggest` plugin step | `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` set **or** Ollama reachable |
+| `llm` | `graph_extractor`, `structured_metadata` | `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` set **or** Ollama reachable |
 | `blob-externalize` | `externalize_content` | A `BlobStore` is configured (non-nil) |
 
 ### Auto-detection order
@@ -108,7 +108,7 @@ providers:
 
 ## Adding a capability to a new step
 
-If you write a step (built-in or plugin) that requires a provider:
+If you write a built-in step that requires a provider:
 
 1. Declare the capability in the step's `Contract()`:
 
@@ -140,4 +140,4 @@ if _, isStub := f.MyProvider().(*providers.StubMyProvider); !isStub {
 - `internal/pipeline/validate.go` — `ValidateCapabilities`
 - `internal/providers/factory.go` — provider resolution
 - `docs/environment-variables/ai-providers.md` — API key configuration
-- `docs/manual/admin-extensibility/plugin-development.md` — plugin authoring guide
+- [`docs/development.md`](../development.md#adding-a-pipeline-step) — adding a pipeline step

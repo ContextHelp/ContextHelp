@@ -1,6 +1,6 @@
 package integration
 
-// T-0477: filesystem watcher must ingest files dropped into a subdirectory
+// filesystem watcher must ingest files dropped into a subdirectory
 // that did not exist when the watcher was registered.
 //
 // This integration test wires a real watcher.Manager to the in-process dpkms
@@ -12,7 +12,6 @@ package integration
 // Gate: INTEGRATION=1.
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	gohttp "net/http"
@@ -25,6 +24,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/ideacrafterslabs/ctxt/internal/server/stack"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/watcher"
 )
@@ -39,7 +39,8 @@ func TestUS0477_WatchPicksUpFileInNewSubdir(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	mgr := watcher.NewManager(env.svc.Store.Watches(), env.svc)
+	ws := env.driver.Watches()
+	mgr := watcher.NewManager(ws, watcher.StoreRecords(ws), stack.ServiceIngester(env.svc))
 	t.Cleanup(mgr.Stop)
 
 	cfg := &storage.WatchConfig{
@@ -52,7 +53,7 @@ func TestUS0477_WatchPicksUpFileInNewSubdir(t *testing.T) {
 		CreatedAt:       time.Now(),
 		UpdatedAt:       time.Now(),
 	}
-	require.NoError(t, mgr.AddWatch(context.Background(), cfg))
+	require.NoError(t, mgr.AddWatch(ownerCtx(), cfg))
 
 	// Allow fsnotify to register on the root.
 	time.Sleep(200 * time.Millisecond)

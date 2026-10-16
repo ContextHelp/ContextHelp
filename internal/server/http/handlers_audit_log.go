@@ -52,7 +52,7 @@ func ListAuditLog(svc *service.Service) http.HandlerFunc {
 			filter.Before = t.Add(24*time.Hour - time.Nanosecond)
 		}
 
-		entries, total, err := svc.Store.AuditLog().List(r.Context(), filter)
+		entries, total, err := svc.Store(r.Context()).AuditLog().List(r.Context(), filter)
 		if err != nil {
 			WriteError(w, http.StatusInternalServerError,
 				"INTERNAL_ERROR", err.Error())

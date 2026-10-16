@@ -29,7 +29,7 @@ type searchResponse struct {
 // doGet performs an HTTP GET and fails the test on transport error.
 func doGet(t *testing.T, url string) *gohttp.Response {
 	t.Helper()
-	resp, err := gohttp.Get(url) //nolint:noctx
+	resp, err := gohttp.Get(url)
 	require.NoError(t, err)
 	return resp
 }

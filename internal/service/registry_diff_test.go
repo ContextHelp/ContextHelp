@@ -1,7 +1,6 @@
 package service
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -60,7 +59,7 @@ func TestDiffRegistrySyncAllAdditions(t *testing.T) {
 	defer srv.Close()
 
 	svc := newTestSvc(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	diffs, err := svc.DiffRegistrySync(ctx, srv.URL)
 	if err != nil {
@@ -83,7 +82,7 @@ func TestDiffRegistrySyncAllAdditions(t *testing.T) {
 func TestDiffRegistrySyncUpdate(t *testing.T) {
 	// Seed local cache with v1.0.0; remote has v2.0.0 → one "update".
 	svc := newTestSvc(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	localManifest := &storage.RegistryManifest{
 		Name:    "test-registry",
@@ -91,7 +90,7 @@ func TestDiffRegistrySyncUpdate(t *testing.T) {
 		Steps:   []storage.ManifestStep{{Name: "text_summary", Version: "1.0.0"}},
 	}
 	cacheURL := "http://test.example.com/manifest.json"
-	err := svc.Store.Registries().CacheManifest(ctx, &storage.RegistryCache{
+	err := svc.store.Registries().CacheManifest(ctx, &storage.RegistryCache{
 		RegistryURL: cacheURL,
 		Manifest:    localManifest,
 	})
@@ -110,7 +109,7 @@ func TestDiffRegistrySyncUpdate(t *testing.T) {
 	defer srv.Close()
 
 	// Re-cache under the test server's URL so DiffRegistrySync finds local state.
-	err = svc.Store.Registries().CacheManifest(ctx, &storage.RegistryCache{
+	err = svc.store.Registries().CacheManifest(ctx, &storage.RegistryCache{
 		RegistryURL: srv.URL,
 		Manifest:    localManifest,
 	})
@@ -144,7 +143,7 @@ func TestDiffRegistrySyncUpdate(t *testing.T) {
 func TestDiffRegistrySyncRemoval(t *testing.T) {
 	// Local has a step not in remote → "remove".
 	svc := newTestSvc(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	remote := storage.RegistryManifest{
 		Name:    "test-registry",
@@ -159,7 +158,7 @@ func TestDiffRegistrySyncRemoval(t *testing.T) {
 		Version: "1.0.0",
 		Steps:   []storage.ManifestStep{{Name: "old_step", Version: "1.0.0"}},
 	}
-	err := svc.Store.Registries().CacheManifest(ctx, &storage.RegistryCache{
+	err := svc.store.Registries().CacheManifest(ctx, &storage.RegistryCache{
 		RegistryURL: srv.URL,
 		Manifest:    localManifest,
 	})
@@ -186,7 +185,7 @@ func TestDiffRegistrySyncRemoval(t *testing.T) {
 func TestDiffRegistrySyncNoChanges(t *testing.T) {
 	// Local and remote identical → empty diff.
 	svc := newTestSvc(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	manifest := storage.RegistryManifest{
 		Name:    "test-registry",
@@ -196,7 +195,7 @@ func TestDiffRegistrySyncNoChanges(t *testing.T) {
 	srv := httptest.NewServer(serveManifest(t, manifest))
 	defer srv.Close()
 
-	err := svc.Store.Registries().CacheManifest(ctx, &storage.RegistryCache{
+	err := svc.store.Registries().CacheManifest(ctx, &storage.RegistryCache{
 		RegistryURL: srv.URL,
 		Manifest:    &manifest,
 	})
@@ -216,7 +215,7 @@ func TestDiffRegistrySyncNoChanges(t *testing.T) {
 func TestDiffRegistrySyncWritesNothing(t *testing.T) {
 	// After DiffRegistrySync the local cache must remain unchanged.
 	svc := newTestSvc(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	local := storage.RegistryManifest{
 		Name:    "test-registry",
@@ -231,7 +230,7 @@ func TestDiffRegistrySyncWritesNothing(t *testing.T) {
 	srv := httptest.NewServer(serveManifest(t, remote))
 	defer srv.Close()
 
-	err := svc.Store.Registries().CacheManifest(ctx, &storage.RegistryCache{
+	err := svc.store.Registries().CacheManifest(ctx, &storage.RegistryCache{
 		RegistryURL: srv.URL,
 		Manifest:    &local,
 	})
@@ -246,7 +245,7 @@ func TestDiffRegistrySyncWritesNothing(t *testing.T) {
 	}
 
 	// Local cache must still show version 1.0.0.
-	cached, err := svc.Store.Registries().GetCachedManifest(ctx, srv.URL)
+	cached, err := svc.store.Registries().GetCachedManifest(ctx, srv.URL)
 	if err != nil {
 		t.Fatalf("GetCachedManifest: %v", err)
 	}
@@ -274,7 +273,7 @@ func TestDiffRegistrySyncKindClassification(t *testing.T) {
 	defer srv.Close()
 
 	svc := newTestSvc(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	diffs, err := svc.DiffRegistrySync(ctx, srv.URL)
 	if err != nil {

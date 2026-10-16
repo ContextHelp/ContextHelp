@@ -1,109 +1,51 @@
 # Security Documentation
 
-This directory contains comprehensive documentation on security features and best practices for the ContextHelp platform.
+Security features of ctxt and dpkms, and the places where there is no
+protection.
 
 ## Contents
 
-### Core Security Documentation
+- **[Secrets Backends](./secrets-backends.md)** — where ctxt reads API keys from: env, keychain, age-file, 1Password, GitHub secrets
+- **[Secrets Validation and Log Sanitization](./secrets-validation-and-log-sanitization.md)** — the config secret scan, config file permissions, which output shows secrets, security alerts
+- **[Security Model](./security-model.md)** — threat model and guarantees
+- **[Secret Management Best Practices](./secret-management.md)** — handling and rotating secrets
+- **[Configuration Security](./configuration-security.md)** — securing config files and environment variables
 
-- **[Secrets Backends](./secrets-backends.md)** - Configure where ctxt reads API keys from: env, keychain, age-file, 1Password, or GitHub secrets
-- **[Secrets Validation & Log Sanitization](./secrets-validation-and-log-sanitization.md)** - Complete guide to detecting, validating, and protecting secrets in code, configuration, and logs
-- **[Security Model](./security-model.md)** - Detailed threat model, attack vectors, and security guarantees
-- **[Secret Management Best Practices](./secret-management.md)** - Recommended approaches for handling secrets in ContextHelp
-- **[Configuration Security](./configuration-security.md)** - Securing configuration files and environment variables
+Related:
 
-### Related Documentation
+- [dPKMS Security](../dpkms/security.md)
+- [Security environment variables](../environment-variables/security.md) — secrets backend, `CTXT_POLICY_FILE`, backup passphrase
+- [Inbound auth, roles and scopes](../manual/reference/config-and-permissions.md#inbound-auth-roles-and-scopes)
 
-- [dPKMS Security](../dpkms/security.md) - dPKMS-specific security considerations
-- [Plugin Security](../plugins/plugin-isolation.md) - Plugin sandboxing and isolation
-- [Environment Variables Security Section](../environment-variables.md#security) - Secrets in environment variables
+## What protects you today
 
-## Quick Start
+- **Config secret scan.** `ctxt config validate` and `ctxt config doctor` flag values that look like plaintext secrets and print only a 4-character hint.
+- **Config file permissions.** `ctxt config doctor` warns on group- or world-readable config; `--fix` sets `0600`.
+- **Secret input.** `dpkms secret set` refuses a secret as a positional argument.
+- **Inbound auth.** `server.access` (`private` / `protected` / `public`) and static tokens with roles and scopes.
+- **Policy rules.** kit CEL rules in `policy/ctxt.yaml`, loaded by `dpkms serve`.
+- **Security alerts.** Auth-failure and ACL-denial thresholds write audit entries and, if configured, post to a webhook or SMTP (`security.alerts`).
 
-### For Developers
+## What does not
 
-1. **Understanding Secrets in ContextHelp**: Start with [Secrets Validation & Log Sanitization](./secrets-validation-and-log-sanitization.md) to learn what patterns are detected and protected
-2. **Configuration Security**: Review [Configuration Security](./configuration-security.md) for safe configuration management
-3. **Incident Response**: Check the [Secrets Validation & Log Sanitization](./secrets-validation-and-log-sanitization.md) guide for incident response procedures
+- **Logs are not sanitized.** `slog` output, including `-V` / `--verbose`, is written as-is; no config key or env var redacts it. Check logs before sharing them.
+- **`ctxt config show --format json|yaml`** prints the effective config unredacted, tokens included.
+- **Installed steps run as the dpkms user.** There is no plugin system ([ADR-078](../decisions/ADR-078-no-plugin-system.md)). Under process isolation, the default, an installed step can read and write what the dpkms user can and reach the network; only container isolation confines it ([Add a custom step](../manual/admin-extensibility/custom-steps.md#isolation)).
 
-### For Operations Teams
+Details: [What output shows secrets](./secrets-validation-and-log-sanitization.md#what-output-shows-secrets).
 
-1. **Deployment Security**: Read [Security Model](./security-model.md) for architectural guarantees
-2. **Monitoring Logs**: Use the log sanitization features described in [Secrets Validation & Log Sanitization](./secrets-validation-and-log-sanitization.md)
-3. **Secret Rotation**: Follow procedures in [Secret Management Best Practices](./secret-management.md)
+## If a secret leaked
 
-### For Plugin Developers
-
-1. **Plugin Security Considerations**: Read [Plugin Security](../plugins/plugin-isolation.md)
-2. **Handling Secrets in Plugins**: Review [Secret Management Best Practices](./secret-management.md#for-plugin-developers)
-3. **Configuration in Plugins**: Check the plugin configuration section in [Configuration Security](./configuration-security.md)
-
-## Key Principles
-
-ContextHelp's security approach is built on these principles:
-
-- **Defense in Depth**: Multiple layers of protection (validation, sanitization, isolation)
-- **Zero-Trust Configuration**: All external sources and configurations are treated as untrusted
-- **Local-First Privacy**: Minimal external communication by default
-- **Explicit Enablement**: Remote features require explicit configuration
-- **Auditability**: Security events are logged and traceable
-- **Principle of Least Privilege**: Components have minimal necessary permissions
-
-## Security Threat Model
-
-### Protected Assets
-
-- API keys and tokens
-- Database credentials
-- Encryption keys and passphrases
-- Registry authentication secrets
-- User data and knowledge objects
-- System configuration
-
-### Threats Mitigated
-
-- Accidental secret exposure in logs
-- Secret leakage through error messages
-- Misconfigured file permissions
-- Injection attacks through configuration
-- Unauthorized access to registries or external services
-- Data exfiltration through plugins
+1. Rotate it — [Secret Rotation](./secret-management.md#secret-rotation).
+2. Follow [Incident Response](./secret-management.md#incident-response).
+3. Scan logs and data directories for other copies, e.g. with `gitleaks dir <dir> --redact` (see [the validation guide](./secrets-validation-and-log-sanitization.md#what-output-shows-secrets)).
 
 ## Related ADRs
 
 - [ADR-019: Encryption and Privacy](../decisions/ADR-019-encryption-and-privacy.md)
 - [ADR-023: Authentication and Authorization Model](../decisions/ADR-023-authentication-authorization-model.md)
-- [ADR-027: Plugin Isolation and Sandboxing](../decisions/ADR-027-plugin-isolation-sandboxing.md)
+- [ADR-078: No Plugin System](../decisions/ADR-078-no-plugin-system.md)
 
-## Incident Response
+## Reporting a vulnerability
 
-If you suspect a secret has been exposed:
-
-1. **Immediate Actions**: See [Secret Management Best Practices - Incident Response](./secret-management.md#incident-response)
-2. **Verification**: Check logs for exposure evidence using the guides in [Secrets Validation & Log Sanitization](./secrets-validation-and-log-sanitization.md#verifying-log-sanitization)
-3. **Remediation**: Follow the rotation procedures in [Secret Management Best Practices](./secret-management.md#secret-rotation)
-
-## Contributing
-
-When adding security features or documentation:
-
-1. Update the relevant documents in this directory
-2. Add tests for secret detection patterns
-3. Document configuration options and examples
-4. Consider cross-references in related documentation
-5. Ensure examples don't contain actual secrets
-
-## Security Reporting
-
-For security vulnerabilities, please follow responsible disclosure practices:
-
-1. Do not disclose publicly
-2. Contact the security team through the official channels
-3. Include reproduction steps and impact assessment
-4. Allow reasonable time for patching before disclosure
-
----
-
-**Last Updated**: 2025-01-26
-**Status**: Active
-**Maintained by**: Security & Platform Teams
+Do not disclose publicly. See [../SECURITY.md](../SECURITY.md) for how to report.

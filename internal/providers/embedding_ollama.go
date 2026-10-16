@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"unicode/utf8"
+
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 )
 
 // ollamaSpecialTokenReserve is the part of the context kept free for the
@@ -226,14 +228,15 @@ func positiveInt(v any) (int, bool) {
 // post sends a JSON body to path and decodes a 200 response into out. An
 // error names Ollama's own message when the body carries one.
 func (p *OllamaEmbeddingProvider) post(ctx context.Context, path string, body []byte, out any) error {
+	// Request errors quote the URL: mask a credential the endpoint embeds.
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.endpoint+path, bytes.NewReader(body))
 	if err != nil {
-		return err
+		return config.RedactURLError(err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := p.client.Do(req)
 	if err != nil {
-		return err
+		return config.RedactURLError(err)
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)

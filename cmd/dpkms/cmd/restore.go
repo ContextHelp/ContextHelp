@@ -3,12 +3,15 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 	kitcli "hop.top/kit/go/console/cli"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 )
 
 var restoreCmd = &cobra.Command{
@@ -17,30 +20,49 @@ var restoreCmd = &cobra.Command{
 	Long: `Restore a ctxt backup from a .tar.gz archive or an extracted directory.
 
 Restores:
-  - SQLite database
-  - Config files + keys (if present in backup)
-  - Blob files (if present in backup)
+  - SQLite database, to storage.path
+  - the config file the backup ran with, to the config file this run
+    uses (--config, CTXT_CONFIG, else contexthelp/dpkms.yaml in the
+    config directory)
+  - the config directory's files, keys/ included, when the backup was
+    made with --include-configs, into that same directory
+  - blobs, when the backup was made with --include-blobs, into the
+    storage.blob store
 
-The target data directory is taken from config (storage.path) unless
-overridden with --data-dir. Existing files are overwritten.
+--skip-configs skips both kinds of config file.
+
+storage.path defaults to db.sqlite in the data directory (--data-dir,
+CTXT_DATA_DIR or storage.data_dir), so --data-dir moves the default
+target. Existing files are overwritten. The database is replaced
+atomically: written beside storage.path, fsynced, then renamed over it,
+and the old database's -wal, -shm and -journal files are removed. A
+failed restore leaves the old database as it was.
+
+Restore refuses, --dry-run included, while a dpkms serve runs on that
+database (every serve holds the database lock, <storage.path>.lock, for
+as long as it runs) or a live pidfile of this data directory names it:
+stop it first with dpkms shutdown. Restore holds that lock itself while
+it replaces the database.
+
+` + cliconv.DestructiveTokenHelp + `
 
 Examples:
-  dpkms restore ctxt-backup-2026-04-25T13-51-54Z.tar.gz
-  dpkms restore /path/to/extracted/backup/
-  dpkms restore backup.tar.gz --data-dir /new/location`,
+  dpkms restore ctxt-backup-2026-04-25T13-51-54Z.tar.gz --confirm-token=<sha>
+  dpkms restore /path/to/extracted/backup/ --confirm-token=<sha>
+  dpkms restore backup.tar.gz --data-dir /new/location --confirm-token=<sha>`,
 	Args: cobra.ExactArgs(1),
 	RunE: runRestore,
 }
 
 func init() {
 	rootCmd.AddCommand(restoreCmd)
-	restoreCmd.Flags().Bool("skip-configs", false, "skip restoring config files")
+	restoreCmd.Flags().Bool("skip-configs", false, "skip restoring the config file and config directory files")
 	// --dry-run is NOT declared here: kit owns it as a root persistent
 	// flag. The former local declaration shadowed the inherited one and
 	// left the kit.dry_run viper binding unset. Read via kitcli.IsDryRun.
 
-	// Restore overwrites the live database, config and blobs in place
-	// with whatever the archive holds; there is no undo short of
+	// Restore replaces the database, config and blobs with whatever
+	// the archive holds; there is no undo short of
 	// another backup. Destructive-local because the blast radius is
 	// this instance's data directory, and typed-token because an
 	// operator who restores the wrong archive loses everything since
@@ -56,17 +78,34 @@ func runRestore(cmd *cobra.Command, args []string) error {
 
 	dbPath := cfg.Storage.Path
 	if dbPath == "" {
-		dbPath = "dpkms.db"
+		dbPath = fallbackDBPath
+	}
+
+	// Running instances of this data dir record their database in
+	// their pidfiles; restore refuses while one serves dbPath.
+	runDir, err := config.RunDirPath(dataDir())
+	if err != nil {
+		return fmt.Errorf("restore: %w", err)
 	}
 
 	configPath := resolveConfigPath()
-
 	opts := service.RestoreOpts{
 		Source:      source,
 		DBPath:      dbPath,
-		ConfigDir:   configPath,
+		ConfigDir:   filepath.Dir(configPath),
+		ConfigFile:  filepath.Base(configPath),
+		RunDir:      runDir,
 		SkipConfigs: skipConfigs,
 		DryRun:      dryRun,
+	}
+	// Blobs go to the configured store (storage.blob), not a path
+	// derived here. A dry run writes nothing, so opens none.
+	if !dryRun {
+		bs, err := blob.New(cfg.Storage.Blob)
+		if err != nil {
+			return fmt.Errorf("restore: open blob store: %w", err)
+		}
+		opts.Blobs = bs
 	}
 
 	fmt.Fprintf(os.Stderr, "-> restoring from %s...\n", source)

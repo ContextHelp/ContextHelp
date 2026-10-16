@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 // SavedSearchStore implements storage.SavedSearchStore for SQLite.
@@ -15,12 +16,17 @@ type SavedSearchStore struct {
 	db *sql.DB
 }
 
+const savedSearchColumns = `id, name, query, profile_id, alert_on, notify, owner_principal, created_at, updated_at`
+
+// Create inserts ss. An empty OwnerPrincipal is stored as the instance
+// owner; ownership is fixed at creation (Update leaves it alone).
 func (s *SavedSearchStore) Create(ctx context.Context, ss *storage.SavedSearch) error {
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO saved_searches
-			(id, name, query, profile_id, alert_on, notify, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			(`+savedSearchColumns+`)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		ss.ID, ss.Name, ss.Query, ss.ProfileID, ss.AlertOn, ss.Notify,
+		storage.PrincipalOrOwner(ss.OwnerPrincipal),
 		ss.CreatedAt.UTC().Format(time.RFC3339),
 		ss.UpdatedAt.UTC().Format(time.RFC3339),
 	)
@@ -32,7 +38,7 @@ func (s *SavedSearchStore) Create(ctx context.Context, ss *storage.SavedSearch) 
 
 func (s *SavedSearchStore) GetByName(ctx context.Context, name string) (*storage.SavedSearch, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, name, query, profile_id, alert_on, notify, created_at, updated_at
+		SELECT `+savedSearchColumns+`
 		FROM saved_searches WHERE name = ?`, name)
 	ss, err := scanSavedSearch(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -44,19 +50,8 @@ func (s *SavedSearchStore) GetByName(ctx context.Context, name string) (*storage
 func (s *SavedSearchStore) List(
 	ctx context.Context, f storage.SavedSearchFilter,
 ) ([]*storage.SavedSearch, error) {
-	query := `SELECT id, name, query, profile_id, alert_on, notify, created_at, updated_at
-		FROM saved_searches WHERE 1=1`
-	var args []any
-
-	if f.ProfileID != "" {
-		query += " AND profile_id = ?"
-		args = append(args, f.ProfileID)
-	}
-	query += " ORDER BY created_at DESC"
-	if f.Limit > 0 {
-		query += " LIMIT ? OFFSET ?"
-		args = append(args, f.Limit, f.Offset)
-	}
+	query, args := principalPage(`SELECT `+savedSearchColumns+`
+		FROM saved_searches WHERE 1=1`, orderNewestFirst, f.OwnerPrincipal, f.ProfileID, f.Limit, f.Offset)
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -64,15 +59,7 @@ func (s *SavedSearchStore) List(
 	}
 	defer rows.Close()
 
-	var out []*storage.SavedSearch
-	for rows.Next() {
-		ss, err := scanSavedSearch(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, ss)
-	}
-	return out, rows.Err()
+	return rowscan.AllScanner(rows, scanSavedSearch)
 }
 
 func (s *SavedSearchStore) Update(ctx context.Context, ss *storage.SavedSearch) error {
@@ -103,7 +90,7 @@ func scanSavedSearch(row interface{ Scan(...any) error }) (*storage.SavedSearch,
 	var createdAt, updatedAt string
 	if err := row.Scan(
 		&ss.ID, &ss.Name, &ss.Query, &ss.ProfileID,
-		&ss.AlertOn, &ss.Notify, &createdAt, &updatedAt,
+		&ss.AlertOn, &ss.Notify, &ss.OwnerPrincipal, &createdAt, &updatedAt,
 	); err != nil {
 		return nil, fmt.Errorf("scan saved_search: %w", err)
 	}

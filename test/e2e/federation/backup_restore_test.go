@@ -1,6 +1,6 @@
 //go:build federation_e2e
 
-// Backup + restore + federation rebuild e2e test for US-0322 (T-0171).
+// Backup + restore + federation rebuild e2e test for US-0322.
 //
 // AC under test:
 //   - source DB is the source of truth; downstream is derivable
@@ -109,7 +109,7 @@ func wipeSQLite(t *testing.T, path string) {
 // Differs from mustOpenInstance only in expected pre-existing schema.
 func reopenInstance(t *testing.T, name, path string) *instance {
 	t.Helper()
-	drv, err := storageutil.NewDriver("sqlite", path)
+	drv, err := storageutil.NewDriver("sqlite", path, storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatalf("reopen %s: %v", name, err)
 	}
@@ -169,7 +169,7 @@ func pushFromPathFn(t *testing.T, tgtPath string) func(srcPath, fedName string) 
 	t.Helper()
 	return func(srcPath, fedName string) error {
 		ctx := context.Background()
-		drv, err := storageutil.NewDriver("sqlite", srcPath)
+		drv, err := storageutil.NewDriver("sqlite", srcPath, storageutil.NewTestBlobStore(t))
 		if err != nil {
 			return err
 		}
@@ -189,6 +189,6 @@ func pushFromPathFn(t *testing.T, tgtPath string) func(srcPath, fedName string) 
 		for _, o := range objs {
 			batch = append(batch, *o)
 		}
-		return federation.NewLocalPusher(fedName, tgtPath).Push(ctx, batch, nil, nil)
+		return federation.NewLocalPusher(fedName, tgtPath, nil, storageutil.NewTestBlobStore(t)).Push(ctx, batch, nil, nil)
 	}
 }

@@ -246,7 +246,7 @@ v.BindEnv("storage.blob.s3.region", "CTXT_BLOB_S3_REGION")
 v.BindEnv("storage.blob.s3.bucket", "CTXT_BLOB_S3_BUCKET")
 v.BindEnv("storage.blob.s3.prefix", "CTXT_BLOB_S3_PREFIX")
 v.BindEnv("storage.blob.s3.access_key", "CTXT_BLOB_S3_ACCESS_KEY")
-v.BindEnv("storage.blob.s3.secret_key", "CTXT_BLOB_S3_SECRET_KEY")
+v.BindEnv("storage.blob.s3.secret_key", "CTXT_BLOB_S3_SECRET_KEY") // gitleaks:allow env var name
 ```
 
 **Step 4: Run test to verify it passes**
@@ -566,7 +566,7 @@ func TestPutIdempotent(t *testing.T) {
 func TestKeySharding(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
-	key := "abcdef1234567890"
+	key := "abcdef1234567890" // gitleaks:allow blob key, not a secret
 
 	_ = s.Put(ctx, key, bytes.NewReader([]byte("x")), storage.BlobMeta{Size: 1})
 

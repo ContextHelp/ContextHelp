@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 func (s *FeedStore) Create(ctx context.Context, feed *storage.Feed) error {
@@ -14,7 +15,7 @@ func (s *FeedStore) Create(ctx context.Context, feed *storage.Feed) error {
 	feed.CreatedAt = now
 	feed.UpdatedAt = now
 	if feed.Status == "" {
-		feed.Status = "active"
+		feed.Status = storage.FeedStatusActive
 	}
 	if feed.SyncInterval == "" {
 		feed.SyncInterval = "1h"
@@ -62,15 +63,7 @@ func (s *FeedStore) List(ctx context.Context, filter storage.FeedFilter) ([]*sto
 	}
 	defer rows.Close()
 
-	var feeds []*storage.Feed
-	for rows.Next() {
-		f, err := scanFeedRow(rows)
-		if err != nil {
-			return nil, err
-		}
-		feeds = append(feeds, f)
-	}
-	return feeds, rows.Err()
+	return rowscan.All(rows, scanFeedRow)
 }
 
 func (s *FeedStore) Update(ctx context.Context, feed *storage.Feed) error {

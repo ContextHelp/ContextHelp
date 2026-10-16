@@ -42,7 +42,7 @@ func inboxFixture(t *testing.T) *dpkmstest.Server {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	return dpkmstest.Start(t, driver, dpkmstest.WithStaticTokens())
+	return dpkmstest.Start(t, driver, dpkmstest.WithKeys())
 }
 
 func roleClient(t *testing.T, srv *dpkmstest.Server, role string) *dpkmsclient.Client {
@@ -61,7 +61,7 @@ func objectStatus(t *testing.T, srv *dpkmstest.Server, id string) string {
 
 func TestListInbox(t *testing.T) {
 	srv := inboxFixture(t)
-	c := roleClient(t, srv, dpkmstest.RoleReader)
+	c := roleClient(t, srv, dpkmstest.RoleAdmin)
 	ctx := context.Background()
 
 	objs, total, err := c.ListInbox(ctx, dpkmsclient.InboxListRequest{Limit: 10})
@@ -91,7 +91,7 @@ func TestListInbox(t *testing.T) {
 
 func TestListInboxQueue(t *testing.T) {
 	srv := inboxFixture(t)
-	c := roleClient(t, srv, dpkmstest.RoleReader)
+	c := roleClient(t, srv, dpkmstest.RoleAdmin)
 
 	items, total, err := c.ListInboxQueue(context.Background(), dpkmsclient.InboxQueueRequest{Limit: 50})
 	if err != nil {

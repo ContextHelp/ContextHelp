@@ -1,7 +1,6 @@
 package http
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -13,7 +12,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
+	"github.com/ideacrafterslabs/ctxt/internal/auth/authtest"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing/sharingtest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
@@ -29,8 +30,11 @@ func seedQueryEntities(t *testing.T, es storage.EntityStore) {
 		{Slug: "zz.late", Title: "Late CHECKOUT page", Namespace: "zz"},
 		{Slug: "resolve", Title: "An entity named like the route", Namespace: "zz"},
 	} {
+		// Registry-served, so a granted non-owner sees them without a
+		// mention (ADR-080 §6).
+		e.RegistryURL = "https://registry.test"
 		e.CreatedAt, e.UpdatedAt = now, now
-		require.NoError(t, es.Upsert(context.Background(), e))
+		require.NoError(t, es.Upsert(ownerCtx(), e))
 	}
 }
 
@@ -50,7 +54,7 @@ func entitySlugs(t *testing.T, body []byte) []string {
 func TestSearchEntities(t *testing.T) {
 	ts := newTestServerBundle(t)
 	defer ts.Close()
-	seedQueryEntities(t, ts.svc.Store.Entities())
+	seedQueryEntities(t, ts.svc.Store(ownerCtx()).Entities())
 
 	cases := []struct {
 		query string
@@ -72,7 +76,7 @@ func TestSearchEntities(t *testing.T) {
 func TestResolveEntity(t *testing.T) {
 	ts := newTestServerBundle(t)
 	defer ts.Close()
-	seedQueryEntities(t, ts.svc.Store.Entities())
+	seedQueryEntities(t, ts.svc.Store(ownerCtx()).Entities())
 
 	for mention, want := range map[string]string{
 		"ui.cart": "ui.cart", // slug
@@ -102,24 +106,27 @@ func TestResolveEntity(t *testing.T) {
 // a principal without read:objects gets 403 naming it.
 func TestEntityQueryRoutesRequireReadObjects(t *testing.T) {
 	svc := newScopeTestService(t)
-	seedQueryEntities(t, svc.Store.Entities())
-	provider, err := authn.NewStatic([]authn.StaticToken{
-		{Token: "tok-reader", Principal: "tablet", Roles: []string{authn.RoleReader}},
-	})
-	require.NoError(t, err)
+	seedQueryEntities(t, svc.Store(ownerCtx()).Entities())
+	// The reader is a non-owner principal: it sees entities only
+	// through a share grant.
+	sharingtest.EnsurePrincipal(t, svc.Store(ownerCtx()), "tablet", storage.PrincipalKindPerson, authn.RoleReader)
+	sharingtest.GrantEverything(t, svc.Store(ownerCtx()), "tablet")
+	provider := authtest.TokenChain(
+		authtest.Token{Token: "tok-reader-fixture-0123456789abcdef0123456789", Principal: "tablet", Roles: []string{authn.RoleReader}},
+	)
 	ts := newScopedServer(t, svc, provider)
 
 	for _, path := range []string{"/api/v1/entities?q=cart", "/api/v1/entities/resolve?mention=basket"} {
-		resp, body := roleDo(t, http.MethodGet, ts+path, "tok-reader", nil)
+		resp, body := roleDo(t, http.MethodGet, ts+path, "tok-reader-fixture-0123456789abcdef0123456789", nil)
 		assert.Equal(t, http.StatusOK, resp.StatusCode, "reader %s: %s", path, body)
 
 		resp, body = roleDo(t, http.MethodGet, ts+path, "", nil)
 		assert.Equal(t, http.StatusUnauthorized, resp.StatusCode, "no token %s: %s", path, body)
 	}
 
-	scopeless := newScopedServer(t, svc, fixedProvider{p: &authn.Principal{
+	scopeless := newScopedServer(t, svc, authtest.Fixed(&authn.Principal{
 		ID: "almost", Scopes: []authn.Scope{authn.ScopeReadInbox, authn.ScopeWriteObjects},
-	}})
+	}))
 	for _, path := range []string{"/api/v1/entities?q=cart", "/api/v1/entities/resolve?mention=basket"} {
 		resp, body := roleDo(t, http.MethodGet, scopeless+path, "any", nil)
 		assertScopeDenied(t, resp, body, authn.ScopeReadObjects)
@@ -141,16 +148,16 @@ func TestEntityQueryRoutesGateNonAdmin(t *testing.T) {
 
 	resp, body = gatedDo(t, http.MethodGet, ts.URL+"/api/v1/entities/resolve?mention=ai.bert")
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(body))
-	events, err := driver.Metering().List(context.Background(), storage.MeteringFilter{RegistryName: "ops"})
+	events, err := driver.Metering().List(ownerCtx(), storage.MeteringFilter{RegistryName: "ops"})
 	require.NoError(t, err)
 	require.Len(t, events, 1, "a resolve is a metered entity read")
 	assert.Equal(t, storage.MeteringEventEntityResolve, events[0].EventType)
 }
 
-// newScopedServer serves svc behind provider and returns its base URL.
-func newScopedServer(t *testing.T, svc *service.Service, provider authn.Provider) string {
+// newScopedServer serves svc behind chain and returns its base URL.
+func newScopedServer(t *testing.T, svc *service.Service, chain *authn.Chain) string {
 	t.Helper()
-	ts := httptest.NewServer(NewRouterWithConfig(svc, RouterConfig{Auth: provider}))
+	ts := httptest.NewServer(NewRouterWithConfig(svc, RouterConfig{Auth: chain}))
 	t.Cleanup(ts.Close)
 	return ts.URL
 }

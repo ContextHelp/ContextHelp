@@ -1,5 +1,5 @@
-// Package cmd: ctxt upgrade {status,plan,run} — operator-facing surface
-// for ADR-070 dpkms bucket upgrades (T-0580, ADR-070 Phase 2).
+// ctxt upgrade {status,plan,run} is the operator-facing surface for
+// ADR-070 dpkms bucket upgrades (ADR-070 Phase 2).
 //
 // These subcommands are SEPARATE from `ctxt upgrade {check,install,snooze,
 // notes}` (defined in upgrade.go) which handle binary self-update via
@@ -23,6 +23,7 @@
 //   - --watch loops until state goes idle (or the user interrupts).
 //   - status exits 1 when state == "failed", 70 when the daemon is
 //     unreachable.
+
 package cmd
 
 import (
@@ -41,7 +42,9 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/ideacrafterslabs/ctxt/internal/upgrade"
 	"github.com/spf13/cobra"
 	"hop.top/kit/go/console/output"
@@ -95,7 +98,13 @@ Examples:
 var upgradePlanCmd = &cobra.Command{
 	Use:   "plan",
 	Short: "Preview what 'ctxt upgrade run' would do (read-only)",
-	Long: `plan summarises pending work across the three ADR-070 buckets:
+	Long: `plan first reads the store's schema version read-only and compares it
+with the latest this binary migrates to. When migrations are pending it
+reports them, and where the next open snapshots the database, then stops:
+the buckets below read the migrated schema, and plan never migrates.
+
+With the schema current, plan summarises pending work across the three
+ADR-070 buckets:
 
   reindex_auto        based on the current FTS signature comparison
   reingest_selective  count of objects below the current pipeline @vN
@@ -167,7 +176,7 @@ func init() {
 	cliconv.WithIdempotency(upgradePlanCmd, cliconv.IdempotencyYes)
 	cliconv.WithExamples(upgradePlanCmd, []cliconv.Example{
 		{Title: "Preview pending re-ingest work", Command: "ctxt upgrade plan"},
-		{Title: "Emit plan as JSON", Command: "ctxt upgrade plan --json"},
+		{Title: "Emit plan as JSON", Command: "ctxt upgrade plan --format json"},
 	})
 
 	cliconv.WithSideEffect(upgradeRunCmd, cliconv.SideEffectWrite)
@@ -211,7 +220,7 @@ func runUpgradeStatus(cmd *cobra.Command, _ []string) error {
 		// Exit cleanly when the upgrade returns to idle so --watch is
 		// usable in scripts ("wait until upgrade is done").
 		env, ferr := fetchUpgradeHealthz(ctx, client)
-		if ferr == nil && (env.Upgrade == nil || env.Upgrade.State == "idle") {
+		if ferr == nil && (env.Upgrade == nil || env.Upgrade.State == string(upgrade.StateIdle)) {
 			return nil
 		}
 		if err != nil {
@@ -240,7 +249,7 @@ func upgradeStatusOnce(cmd *cobra.Command, client *dpkmsclient.Client) error {
 		// Idle is represented as {"state":"idle"} for shape stability.
 		payload := env.Upgrade
 		if payload == nil {
-			payload = &upgradeEnvelope{State: "idle"}
+			payload = &upgradeEnvelope{State: string(upgrade.StateIdle)}
 		}
 		if err := outputJSON(cmd.OutOrStdout(), payload); err != nil {
 			return err
@@ -252,15 +261,15 @@ func upgradeStatusOnce(cmd *cobra.Command, client *dpkmsclient.Client) error {
 	// GENERIC by construction: the daemon answered, the upgrade failed.
 	// last_error is free text from the worker (often a provider's
 	// "connection refused"), so it must not reach the message classifier.
-	if env.Upgrade != nil && env.Upgrade.State == "failed" {
+	if env.Upgrade != nil && env.Upgrade.State == string(upgrade.StateFailed) {
 		return output.GenericError("upgrade failed: " + env.Upgrade.LastError)
 	}
 	return nil
 }
 
-// renderUpgradeStatus prints the human-readable view per the T-0580 spec.
+// renderUpgradeStatus prints the human-readable view per the upgrade-status spec.
 func renderUpgradeStatus(w io.Writer, up *upgradeEnvelope) {
-	if up == nil || up.State == "idle" || up.State == "" {
+	if up == nil || up.State == string(upgrade.StateIdle) || up.State == "" {
 		fmt.Fprintln(w, "Upgrade state: idle")
 		return
 	}
@@ -271,7 +280,7 @@ func renderUpgradeStatus(w io.Writer, up *upgradeEnvelope) {
 	if up.Target != "" {
 		fmt.Fprintf(w, "  Target:    %s\n", up.Target)
 	}
-	if up.State == "in_progress" && up.Total > 0 {
+	if up.State == string(upgrade.StateInProgress) && up.Total > 0 {
 		pct := int(up.Progress*100 + 0.5)
 		fmt.Fprintf(w, "  Progress:  %d/%d (%d%%)\n", up.Done, up.Total, pct)
 		fmt.Fprintf(w, "  ETA:       %ds\n", up.EtaSeconds)
@@ -279,19 +288,19 @@ func renderUpgradeStatus(w io.Writer, up *upgradeEnvelope) {
 			fmt.Fprintf(w, "  Started:   %s\n", up.StartedAt)
 		}
 	}
-	if up.State == "failed" && up.Total > 0 {
+	if up.State == string(upgrade.StateFailed) && up.Total > 0 {
 		fmt.Fprintf(w, "  Progress:  %d/%d\n", up.Done, up.Total)
 	}
 	if up.Failed > 0 {
 		fmt.Fprintf(w, "  Failed:    %d objects\n", up.Failed)
 	}
-	if up.State == "failed" && up.LastError != "" {
+	if up.State == string(upgrade.StateFailed) && up.LastError != "" {
 		fmt.Fprintf(w, "  Last error: %s\n", up.LastError)
 	}
 }
 
 // runUpgradePlan implements `ctxt upgrade plan` — the predicate-driven
-// preview of pending work (ADR-070 §1, T-0581).
+// preview of pending work (ADR-070 §1).
 //
 // For each pipeline registered in the in-process registry, plan parses every
 // `pipeline` value in the `objects` table and counts rows whose version is
@@ -300,10 +309,35 @@ func renderUpgradeStatus(w io.Writer, up *upgradeEnvelope) {
 // concrete `ctxt upgrade run --filter` invocation that would clear it.
 //
 // reindex_auto and reingest_all are summarised at a glance: reindex_auto is
-// driven by signature comparison (handled out-of-band in T-0579 and the
+// driven by signature comparison (handled out-of-band by signature detection and the
 // daemon's startup path); reingest_all is reserved for embedding-model
-// swaps and out of scope for T-0581.
+// swaps and out of scope here.
 func runUpgradePlan(cmd *cobra.Command, _ []string) error {
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	out := cmd.OutOrStdout()
+
+	// The schema check runs before anything opens the store: a normal
+	// open (newService) applies pending migrations, so plan reads the
+	// version read-only and stops at the schema section when one is
+	// pending. The re-ingest buckets read the migrated schema.
+	schema, err := previewSchema(ctx)
+	if err != nil {
+		return fmt.Errorf("upgrade plan: %w", err)
+	}
+	if schema.Pending() {
+		if isJSONOutput() {
+			return outputJSON(out, map[string]any{"schema": schema})
+		}
+		fmt.Fprintln(out, "Upgrade plan:")
+		renderSchemaPreview(out, schema)
+		fmt.Fprintln(out, "  reindex_auto, reingest_selective, reingest_all:")
+		fmt.Fprintln(out, "    not computed until the schema migration runs (plan never migrates)")
+		return nil
+	}
+
 	svc, cleanup, err := newService()
 	if err != nil {
 		return fmt.Errorf("upgrade plan: %w", err)
@@ -315,16 +349,16 @@ func runUpgradePlan(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	plan, total, err := computeReingestSelectivePlan(cmd.Context(), db, svc.Pipes)
+	plan, total, err := computeReingestSelectivePlan(ctx, db, svc.Pipes)
 	if err != nil {
 		return fmt.Errorf("upgrade plan: %w", err)
 	}
 
-	out := cmd.OutOrStdout()
 	if isJSONOutput() {
 		// JSON shape mirrors the human-readable layout so jq pipelines can
 		// pluck either the per-bucket sub-tree or just the total.
 		payload := map[string]any{
+			"schema": schema,
 			"reindex_auto": map[string]any{
 				"summary": "objects_fts: signature ok (no rebuild needed)",
 			},
@@ -341,6 +375,7 @@ func runUpgradePlan(cmd *cobra.Command, _ []string) error {
 	}
 
 	fmt.Fprintln(out, "Upgrade plan:")
+	renderSchemaPreview(out, schema)
 	fmt.Fprintln(out, "  reindex_auto:")
 	fmt.Fprintln(out, "    objects_fts: signature ok (no rebuild needed)")
 	fmt.Fprintln(out, "  reingest_selective:")
@@ -366,6 +401,68 @@ func runUpgradePlan(cmd *cobra.Command, _ []string) error {
 	fmt.Fprintln(out)
 	fmt.Fprintf(out, "Total objects pending: %d\n", total)
 	return nil
+}
+
+// schemaPreview is the schema section of `ctxt upgrade plan`: the
+// configured store's schema version against the latest this binary
+// migrates to, read without migrating.
+type schemaPreview struct {
+	Backend string `json:"backend"`
+	storage.SchemaStatus
+	// Pending mirrors SchemaStatus.Pending for JSON consumers.
+	PendingFlag bool `json:"pending"`
+	// SnapshotDir is where the next open writes its pre-migration
+	// snapshot; empty when it writes none (nothing pending, new
+	// database, Postgres, or storage.migrate_snapshot=false).
+	SnapshotDir string `json:"snapshot_dir,omitempty"`
+}
+
+// previewSchema reads the configured store's schema version read-only
+// (storageutil.CheckSchema), resolving the store the way newService
+// does.
+func previewSchema(ctx context.Context) (schemaPreview, error) {
+	typ := cfg.Storage.Type
+	if typ == "" {
+		typ = storageTypeSQLite
+	}
+	path, err := resolveStoragePath()
+	if err != nil {
+		return schemaPreview{}, err
+	}
+	if path == "" {
+		return schemaPreview{}, errors.New("storage path not configured")
+	}
+	st, err := storageutil.CheckSchema(ctx, typ, path)
+	if err != nil {
+		return schemaPreview{}, err
+	}
+	p := schemaPreview{Backend: typ, SchemaStatus: st, PendingFlag: st.Pending()}
+	if typ == storageTypeSQLite && st.Pending() && !st.New && cfg.Storage.MigrateSnapshot {
+		p.SnapshotDir = sqlite.SnapshotDir(path)
+	}
+	return p, nil
+}
+
+// renderSchemaPreview prints the schema section of the human plan.
+func renderSchemaPreview(w io.Writer, p schemaPreview) {
+	fmt.Fprintln(w, "  schema:")
+	switch {
+	case p.Pending() && p.New:
+		fmt.Fprintf(w, "    new database; next open creates schema v%d\n", p.Target)
+	case p.Pending():
+		next := "next open will snapshot to " + p.SnapshotDir
+		switch {
+		case p.Backend == "postgres":
+			next = "next open migrates without a snapshot (Postgres: take a pg_dump first)"
+		case p.SnapshotDir == "":
+			next = "next open migrates without a snapshot (storage.migrate_snapshot=false)"
+		}
+		fmt.Fprintf(w, "    v%d → v%d pending; %s\n", p.Current, p.Target, next)
+	case p.Ahead():
+		fmt.Fprintf(w, "    v%d is newer than this binary's v%d; upgrade ctxt\n", p.Current, p.Latest)
+	default:
+		fmt.Fprintf(w, "    v%d current\n", p.Current)
+	}
 }
 
 // reingestSelectiveRow is one (from→to) transition in the upgrade plan.
@@ -423,10 +520,10 @@ func computeReingestSelectivePlan(ctx context.Context, db *sql.DB, reg pipeline.
 // not the SQLite driver — the in-process upgrade flow only supports SQLite
 // (S3 / future remote backends will go through the daemon's gRPC endpoint).
 func upgradeServiceDB(svc *service.Service) (*sql.DB, error) {
-	if svc == nil || svc.Store == nil {
+	if svc == nil {
 		return nil, errors.New("upgrade: service has no storage")
 	}
-	d, ok := svc.Store.(*sqlite.Driver)
+	d, ok := svc.Store(asOwner(context.Background())).(*sqlite.Driver)
 	if !ok {
 		return nil, errors.New("upgrade: only SQLite storage supports in-process upgrade run")
 	}
@@ -434,7 +531,7 @@ func upgradeServiceDB(svc *service.Service) (*sql.DB, error) {
 }
 
 // runUpgradeRun executes the reingest_selective worker against a parsed
-// selector (ADR-070 §1, T-0581). The bucket-3 (`--all`) form is reserved
+// selector (ADR-070 §1). The bucket-3 (`--all`) form is reserved
 // for an embedding-model-swap worker that lands in a future task; for now
 // this command refuses with a pointer to ADR-070.
 //
@@ -506,7 +603,7 @@ func runUpgradeRun(cmd *cobra.Command, _ []string) error {
 	// (e.g. flock on the shadow path) is a follow-up — for now the
 	// worker's Manager.Start guard is single-process.
 	shadowPath := ""
-	if runDir, runErr := config.RunDir(); runErr == nil {
+	if runDir, runErr := config.RunDir(dataDir()); runErr == nil {
 		shadowPath = filepath.Join(runDir, "upgrade-state.json")
 	}
 	mgr := upgrade.NewManager(shadowPath)

@@ -46,7 +46,7 @@ func TestUS0059_RecommendationCompositionHasCorrectHeader(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	env.svc.Pipes.Upsert("rec.header", &pipeline.Pipeline{
 		PipelineName: "rec.header",
@@ -92,7 +92,7 @@ func TestUS0059_RecommendationContainsSourceObjectReference(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	env.svc.Pipes.Upsert("rec.reference", &pipeline.Pipeline{
 		PipelineName: "rec.reference",
@@ -145,7 +145,7 @@ func TestUS0059_MultipleSourcesProduceSingleRecommendation(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	summaries := []string{
 		"Security audit found 5 vulnerabilities in auth layer.",
@@ -178,12 +178,7 @@ func TestUS0059_MultipleSourcesProduceSingleRecommendation(t *testing.T) {
 		job := waitForJob(t, env.URL, jobID, storage.JobCompleted)
 		require.NotEmpty(t, job.ResultID)
 
-		resp, err := gohttp.Get(fmt.Sprintf("%s/api/v1/objects/%s", env.URL, job.ResultID))
-		require.NoError(t, err)
-		defer resp.Body.Close()
-
-		var obj storage.KnowledgeObject
-		require.NoError(t, json.NewDecoder(resp.Body).Decode(&obj))
+		obj := getObject(t, env.URL, job.ResultID)
 		objects = append(objects, &obj)
 	}
 
@@ -203,7 +198,7 @@ func TestUS0059_OpenDecisionsGenerateActionableRecommendations(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	env.svc.Pipes.Upsert("rec.open", &pipeline.Pipeline{
 		PipelineName: "rec.open",

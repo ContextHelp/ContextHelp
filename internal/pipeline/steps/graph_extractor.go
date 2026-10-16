@@ -9,7 +9,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // graphExtractorPrompt is the system prompt sent to the LLM.
@@ -63,6 +62,20 @@ func NewGraphExtractorWithLLM(llm providers.LLMProvider) *GraphExtractor {
 	return g
 }
 
+// trimToJSONObject strips what an LLM wraps around a JSON object
+// (markdown code fences, prose): everything before the first '{' and
+// after the last '}'.
+func trimToJSONObject(raw string) string {
+	cleaned := strings.TrimSpace(raw)
+	if idx := strings.Index(cleaned, "{"); idx > 0 {
+		cleaned = cleaned[idx:]
+	}
+	if end := strings.LastIndex(cleaned, "}"); end >= 0 && end < len(cleaned)-1 {
+		cleaned = cleaned[:end+1]
+	}
+	return cleaned
+}
+
 // Name returns the step identifier.
 func (g *GraphExtractor) Name() string { return "graph_extractor" }
 
@@ -90,15 +103,7 @@ func (g *GraphExtractor) Run(ctx context.Context, ko *storage.KnowledgeObject) (
 	}
 
 	var resp graphExtractResponse
-	// Strip markdown code fences if the LLM wrapped the JSON.
-	cleaned := strings.TrimSpace(raw)
-	if idx := strings.Index(cleaned, "{"); idx > 0 {
-		cleaned = cleaned[idx:]
-	}
-	if end := strings.LastIndex(cleaned, "}"); end >= 0 && end < len(cleaned)-1 {
-		cleaned = cleaned[:end+1]
-	}
-	if err := json.Unmarshal([]byte(cleaned), &resp); err != nil {
+	if err := json.Unmarshal([]byte(trimToJSONObject(raw)), &resp); err != nil {
 		// LLMs do not reliably emit valid JSON; an unparseable response is
 		// an expected outcome, not a pipeline fault. Same degradation as
 		// an outright generation failure.
@@ -106,7 +111,7 @@ func (g *GraphExtractor) Run(ctx context.Context, ko *storage.KnowledgeObject) (
 	}
 
 	if ko.Graph == nil {
-		ko.Graph = &pluginapi.ObjectGraph{}
+		ko.Graph = &storage.ObjectGraph{}
 	}
 
 	// Root node ID: use KO ID when set, else a placeholder.
@@ -119,29 +124,29 @@ func (g *GraphExtractor) Run(ctx context.Context, ko *storage.KnowledgeObject) (
 
 	// Helper to append a node + EdgeTypeContains from root.
 	addNode := func(nodeType, label, content string) {
-		nodeID := pluginapi.NewNodeID(rootID, nodeType, ordinal)
+		nodeID := storage.NewNodeID(rootID, nodeType, ordinal)
 		if ko.Graph.FindNode(nodeID) != nil {
 			return
 		}
-		ko.Graph.Nodes = append(ko.Graph.Nodes, pluginapi.GraphNode{
+		ko.Graph.Nodes = append(ko.Graph.Nodes, storage.GraphNode{
 			ID:       nodeID,
 			NodeType: nodeType,
 			Label:    label,
 			Content:  content,
 			Order:    ordinal,
 		})
-		ko.Graph.Edges = append(ko.Graph.Edges, pluginapi.GraphEdge{
+		ko.Graph.Edges = append(ko.Graph.Edges, storage.GraphEdge{
 			ID:       fmt.Sprintf("%s->%s", rootID, nodeID),
 			FromID:   rootID,
 			ToID:     nodeID,
-			EdgeType: pluginapi.EdgeTypeContains,
+			EdgeType: storage.EdgeTypeContains,
 		})
 		ordinal++
 	}
 
 	// Summary node.
 	if resp.Summary != "" {
-		addNode(pluginapi.NodeTypeSummary, resp.Summary, resp.Summary)
+		addNode(storage.NodeTypeSummary, resp.Summary, resp.Summary)
 	}
 
 	// Tag/topic nodes.
@@ -150,7 +155,7 @@ func (g *GraphExtractor) Run(ctx context.Context, ko *storage.KnowledgeObject) (
 		if t == "" {
 			continue
 		}
-		addNode(pluginapi.NodeTypeTag, t, t)
+		addNode(storage.NodeTypeTag, t, t)
 	}
 
 	// Decision nodes.
@@ -159,7 +164,7 @@ func (g *GraphExtractor) Run(ctx context.Context, ko *storage.KnowledgeObject) (
 		if d == "" {
 			continue
 		}
-		addNode(pluginapi.NodeTypeDecision, d, d)
+		addNode(storage.NodeTypeDecision, d, d)
 	}
 
 	// Open-question nodes.
@@ -168,7 +173,7 @@ func (g *GraphExtractor) Run(ctx context.Context, ko *storage.KnowledgeObject) (
 		if oq == "" {
 			continue
 		}
-		addNode(pluginapi.NodeTypeOpenQuestion, oq, oq)
+		addNode(storage.NodeTypeOpenQuestion, oq, oq)
 	}
 
 	// Artifact nodes.
@@ -177,7 +182,7 @@ func (g *GraphExtractor) Run(ctx context.Context, ko *storage.KnowledgeObject) (
 		if a == "" {
 			continue
 		}
-		addNode(pluginapi.NodeTypeArtifact, a, a)
+		addNode(storage.NodeTypeArtifact, a, a)
 	}
 
 	return ko, nil

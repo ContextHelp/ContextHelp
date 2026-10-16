@@ -3,6 +3,7 @@ package steps
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"testing"
 	"time"
 
@@ -62,6 +63,8 @@ func (s *stubEntityStore) List(_ context.Context, _ storage.EntityFilter) ([]*st
 	return out, nil
 }
 
+func (s *stubEntityStore) Namespaces(_ context.Context) ([]string, error) { return nil, nil }
+
 func (s *stubEntityStore) Resolve(_ context.Context, mention string) (*storage.Entity, error) {
 	if e, ok := s.entities[mention]; ok {
 		return e, nil
@@ -96,6 +99,40 @@ func (s *stubEdgeStore) CountMentionsTo(_ context.Context, _, _ string) (int, er
 
 func (s *stubEdgeStore) RelatedObjectIDs(_ context.Context, _ string, _, _ int) ([]string, error) {
 	return nil, nil
+}
+
+func (s *stubEdgeStore) CreateAll(ctx context.Context, edges []*storage.Edge) error {
+	for _, e := range edges {
+		_ = s.Create(ctx, e)
+	}
+	return nil
+}
+
+// CreateMissing keeps the store's contract: an edge between the same
+// nodes with the same type is stored once.
+func (s *stubEdgeStore) CreateMissing(ctx context.Context, edges []*storage.Edge) (int, error) {
+	n := 0
+	for _, e := range edges {
+		if s.has(e) {
+			continue
+		}
+		_ = s.Create(ctx, e)
+		n++
+	}
+	return n, nil
+}
+
+func (s *stubEdgeStore) has(e *storage.Edge) bool {
+	for _, c := range s.created {
+		if c.FromType == e.FromType && c.FromID == e.FromID && c.ToType == e.ToType && c.ToID == e.ToID && c.EdgeType == e.EdgeType {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *stubEdgeStore) DeleteMatching(_ context.Context, _ []storage.EdgeMatch) (int, error) {
+	return 0, nil
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -182,11 +219,41 @@ func TestEntityResolverResolvesKnownEntity(t *testing.T) {
 	if e.FromType != "object" || e.FromID != "obj-1" {
 		t.Errorf("edge from: want object/obj-1, got %s/%s", e.FromType, e.FromID)
 	}
-	if e.ToType != "entity" || e.ToID != "project/alpha" {
-		t.Errorf("edge to: want entity/project/alpha, got %s/%s", e.ToType, e.ToID)
+	// The edge names the entity by the mention's canonical URI, as every
+	// mention-edge writer does, never by the bare slug.
+	if e.ToType != "entity" || e.ToID != "ctxt://entity/project/alpha" {
+		t.Errorf("edge to: want entity/ctxt://entity/project/alpha, got %s/%s", e.ToType, e.ToID)
 	}
 	if e.EdgeType != "mentions" {
 		t.Errorf("edge type: want mentions, got %s", e.EdgeType)
+	}
+}
+
+// TestEntityResolverOneEdgePerEntity pins that a mention repeated on the
+// draft, and a second run over the same draft (a retried job), add no
+// second edge to the entity.
+func TestEntityResolverOneEdgePerEntity(t *testing.T) {
+	entities := newStubEntityStore()
+	edges := &stubEdgeStore{}
+	step := NewEntityResolverWithStores(entities, edges)
+
+	draft := &storage.KnowledgeObject{
+		ID: "obj-dup",
+		Mentions: []uri.URI{
+			mustURI(t, "ctxt://entity/project/alpha"),
+			mustURI(t, "ctxt://entity/project/alpha"),
+		},
+	}
+	for run := 1; run <= 2; run++ {
+		if _, err := step.Run(context.Background(), draft); err != nil {
+			t.Fatalf("run %d: %v", run, err)
+		}
+		if len(edges.created) != 1 {
+			t.Fatalf("run %d: expected 1 edge, got %d", run, len(edges.created))
+		}
+	}
+	if e := edges.created[0]; e.ToID != "ctxt://entity/project/alpha" || e.EdgeType != "mentions" {
+		t.Errorf("edge = %s %s, want a mentions edge to ctxt://entity/project/alpha", e.EdgeType, e.ToID)
 	}
 }
 
@@ -326,25 +393,43 @@ func TestEntityResolverDoesNotWriteIntraObjectGraph(t *testing.T) {
 	}
 }
 
-func TestMentionSlug(t *testing.T) {
-	cases := []struct {
-		uriStr string
-		want   string
-	}{
-		{"ctxt://entity/project/alpha", "project/alpha"},
-		{"ctxt://entity/person/alice", "person/alice"},
-		{"ctxt://entity/stripe/api/checkout", "stripe/api/checkout"},
-		{"ctxt://object/foo", ""},
-		{"other://entity/bar", ""},
+// TestEntityResolverRecordsProvenance pins the provenance each mention
+// edge carries: the entity_mention node of the draft's graph that holds
+// the mention and the field that node recorded, or the mentions field
+// alone when the graph has no node for it.
+func TestEntityResolverRecordsProvenance(t *testing.T) {
+	entities := newStubEntityStore()
+	edges := &stubEdgeStore{}
+	step := NewEntityResolverWithStores(entities, edges)
+
+	nodeID := storage.NewNodeID("obj-3", storage.NodeTypeEntityMention, 0)
+	draft := &storage.KnowledgeObject{
+		ID: "obj-3",
+		Mentions: []uri.URI{
+			mustURI(t, "ctxt://entity/person/alice"),
+			mustURI(t, "ctxt://entity/org/acme"),
+		},
+		Graph: &storage.ObjectGraph{Nodes: []storage.GraphNode{{
+			ID:       nodeID,
+			NodeType: storage.NodeTypeEntityMention,
+			Label:    "ctxt://entity/person/alice",
+			Metadata: map[string]any{storage.ProvenanceSourceField: storage.MentionSourceRawContent},
+		}}},
 	}
-	for _, tc := range cases {
-		u, err := uri.Parse(tc.uriStr)
-		if err != nil {
-			t.Fatalf("parse %q: %v", tc.uriStr, err)
-		}
-		got := mentionSlug(u)
-		if got != tc.want {
-			t.Errorf("mentionSlug(%q) = %q, want %q", tc.uriStr, got, tc.want)
+	if _, err := step.Run(context.Background(), draft); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []map[string]any{
+		{storage.ProvenanceSourceNode: nodeID, storage.ProvenanceSourceField: storage.MentionSourceRawContent},
+		{storage.ProvenanceSourceNode: "", storage.ProvenanceSourceField: storage.MentionSourceMentions},
+	}
+	if len(edges.created) != len(want) {
+		t.Fatalf("expected %d edges, got %d", len(want), len(edges.created))
+	}
+	for i, e := range edges.created {
+		if !reflect.DeepEqual(e.Metadata, want[i]) {
+			t.Errorf("edge[%d] %s metadata = %v, want %v", i, e.ToID, e.Metadata, want[i])
 		}
 	}
 }

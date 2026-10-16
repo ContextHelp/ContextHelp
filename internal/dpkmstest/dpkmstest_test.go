@@ -60,11 +60,12 @@ func TestStartServesDriverOverAPI(t *testing.T) {
 	}
 }
 
-// TestWithStaticTokensProtectsEveryRole: a protected instance refuses a
-// missing or foreign token and accepts each role's own.
-func TestWithStaticTokensProtectsEveryRole(t *testing.T) {
+// TestWithKeysProtectsEveryRole: a protected instance refuses a
+// missing or foreign key and accepts each role's own, each bound to its
+// own registry principal.
+func TestWithKeysProtectsEveryRole(t *testing.T) {
 	driver := storageutil.NewTestDriver(t)
-	srv := dpkmstest.Start(t, driver, dpkmstest.WithStaticTokens())
+	srv := dpkmstest.Start(t, driver, dpkmstest.WithKeys())
 	seed(t, driver, "obj_fixture_2")
 
 	if code, _ := get(t, srv, "/api/v1/objects/obj_fixture_2", ""); code != http.StatusUnauthorized {
@@ -80,9 +81,13 @@ func TestWithStaticTokensProtectsEveryRole(t *testing.T) {
 		if code, body := get(t, srv, "/api/v1/objects/obj_fixture_2", role); code != http.StatusOK {
 			t.Errorf("role %s: %d %v, want 200", role, code, body)
 		}
+		code, who := get(t, srv, "/api/v1/whoami", role)
+		if code != http.StatusOK || who["principal"] != srv.Principal(role) || who["provider"] != authn.MethodAPIKey {
+			t.Errorf("role %s whoami: %d %v, want principal %s via api_key", role, code, who, srv.Principal(role))
+		}
 	}
 
-	other := dpkmstest.Start(t, storageutil.NewTestDriver(t), dpkmstest.WithStaticTokens())
+	other := dpkmstest.Start(t, storageutil.NewTestDriver(t), dpkmstest.WithKeys())
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL+"/api/v1/objects", nil)
 	req.Header.Set("Authorization", "Bearer "+other.Token(dpkmstest.RoleAdmin))
 	foreign, err := http.DefaultClient.Do(req)
@@ -95,24 +100,26 @@ func TestWithStaticTokensProtectsEveryRole(t *testing.T) {
 	}
 }
 
-type oneTokenProvider struct{ token string }
+// oneTokenMethod is a carried method that admits one token as a reader.
+type oneTokenMethod struct{ token string }
 
-func (oneTokenProvider) Name() string { return "dpkmstest-custom" }
+func (oneTokenMethod) Name() string  { return "dpkmstest-custom" }
+func (oneTokenMethod) Ambient() bool { return false }
 
-func (p oneTokenProvider) Authenticate(_ context.Context, c authn.Credential) (*authn.Principal, error) {
-	if c.Empty() {
-		return nil, authn.ErrNoCredential
+func (m oneTokenMethod) Authenticate(_ context.Context, c authn.Credential) (*authn.Principal, bool, error) {
+	if c.Token == "" {
+		return nil, false, nil
 	}
-	if c.Token != p.token {
-		return nil, authn.ErrInvalidCredential
+	if c.Token != m.token {
+		return nil, false, authn.ErrInvalidCredential
 	}
-	return &authn.Principal{ID: "custom", Roles: []string{dpkmstest.RoleReader}, Scopes: authn.ScopesForRoles([]string{dpkmstest.RoleReader})}, nil
+	return &authn.Principal{ID: "custom", Roles: []string{dpkmstest.RoleReader}, Scopes: authn.ScopesForRoles([]string{dpkmstest.RoleReader})}, true, nil
 }
 
-// TestWithAuthProviderIsTheSeam: an injected provider, not the static
-// table, decides who gets in.
-func TestWithAuthProviderIsTheSeam(t *testing.T) {
-	srv := dpkmstest.Start(t, storageutil.NewTestDriver(t), dpkmstest.WithAuthProvider(oneTokenProvider{token: "let-me-in"}))
+// TestWithAuthMethodsIsTheSeam: an injected chain, not the registry,
+// decides who gets in.
+func TestWithAuthMethodsIsTheSeam(t *testing.T) {
+	srv := dpkmstest.Start(t, storageutil.NewTestDriver(t), dpkmstest.WithAuthMethods(oneTokenMethod{token: "let-me-in"}))
 	for tok, want := range map[string]int{"": http.StatusUnauthorized, "nope": http.StatusUnauthorized, "let-me-in": http.StatusOK} {
 		req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL+"/api/v1/objects", nil)
 		if tok != "" {
@@ -128,8 +135,128 @@ func TestWithAuthProviderIsTheSeam(t *testing.T) {
 		}
 	}
 	if srv.Token(dpkmstest.RoleAdmin) != "" {
-		t.Error("custom provider: Token(admin) should be empty; the test owns credentials")
+		t.Error("custom methods: Token(admin) should be empty; the test owns credentials")
 	}
+}
+
+// signIn mints a login code with role's key and exchanges it the way
+// the web UI does, returning the session cookie.
+func signIn(t *testing.T, srv *dpkmstest.Server, role string) *http.Cookie {
+	t.Helper()
+	resp := srv.Request(t, http.MethodPost, "/api/v1/ui/login-codes", role, nil)
+	var lc struct {
+		Code string `json:"code"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&lc); err != nil || resp.StatusCode != http.StatusCreated || lc.Code == "" {
+		t.Fatalf("mint login code: %d %v", resp.StatusCode, err)
+	}
+	resp.Body.Close()
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, srv.URL+"/ui/auth/session", strings.NewReader(`{"code":"`+lc.Code+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	req.Header.Set("X-Ctxt-CSRF", "1")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("exchange: %d", resp.StatusCode)
+	}
+	for _, c := range resp.Cookies() {
+		if strings.HasPrefix(c.Name, "__Host-dpkms_") {
+			return c
+		}
+	}
+	t.Fatal("no session cookie")
+	return nil
+}
+
+// withCookie sends GET path with the session cookie and the browser
+// headers the web UI sends.
+func withCookie(t *testing.T, srv *dpkmstest.Server, path string, c *http.Cookie) *http.Response {
+	t.Helper()
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL+path, nil)
+	req.AddCookie(c)
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { resp.Body.Close() })
+	return resp
+}
+
+// TestRevocationEndToEnd: over the real API, revoking a key fails its
+// next use and ends the browser session it signed in, clearing the
+// cookie; revoking a principal fails its remaining key and session too;
+// another principal is untouched.
+func TestRevocationEndToEnd(t *testing.T) {
+	driver := storageutil.NewTestDriver(t)
+	srv := dpkmstest.Start(t, driver, dpkmstest.WithKeys())
+	ctx := context.Background()
+
+	readerCookie := signIn(t, srv, dpkmstest.RoleReader)
+	if resp := withCookie(t, srv, "/api/v1/objects", readerCookie); resp.StatusCode != http.StatusOK {
+		t.Fatalf("reader session: %d", resp.StatusCode)
+	}
+
+	// Revoke the reader's key: the key and its session end.
+	keyID, err := keyIDOf(ctx, srv, dpkmstest.RoleReader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.Stack.Keys.Revoke(ctx, keyID); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := get(t, srv, "/api/v1/objects", dpkmstest.RoleReader); code != http.StatusUnauthorized {
+		t.Errorf("revoked key: %d, want 401", code)
+	}
+	resp := withCookie(t, srv, "/api/v1/objects", readerCookie)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("session of a revoked key: %d, want 401", resp.StatusCode)
+	}
+	if !clearsCookie(resp, readerCookie.Name) {
+		t.Error("the dead cookie was not cleared")
+	}
+
+	// Revoke the writer principal: its key and session end; the owner's do not.
+	writerCookie := signIn(t, srv, dpkmstest.RoleWriter)
+	ownerCookie := signIn(t, srv, dpkmstest.RoleAdmin)
+	if err := driver.Auth().Principals().Revoke(ctx, dpkmstest.PrincipalWriter, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := get(t, srv, "/api/v1/objects", dpkmstest.RoleWriter); code != http.StatusUnauthorized {
+		t.Errorf("key of a revoked principal: %d, want 401", code)
+	}
+	if resp := withCookie(t, srv, "/api/v1/objects", writerCookie); resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("session of a revoked principal: %d, want 401", resp.StatusCode)
+	}
+	if code, _ := get(t, srv, "/api/v1/objects", dpkmstest.RoleAdmin); code != http.StatusOK {
+		t.Errorf("owner key after another principal's revocation: %d, want 200", code)
+	}
+	if resp := withCookie(t, srv, "/api/v1/objects", ownerCookie); resp.StatusCode != http.StatusOK {
+		t.Errorf("owner session after another principal's revocation: %d, want 200", resp.StatusCode)
+	}
+}
+
+// keyIDOf returns the id of role's key, as the api_key method resolves it.
+func keyIDOf(ctx context.Context, srv *dpkmstest.Server, role string) (string, error) {
+	res, err := srv.Stack.RouteAuth.Authenticate(ctx, authn.Credential{Scheme: authn.SchemeBearer, Token: srv.Token(role)})
+	if err != nil {
+		return "", err
+	}
+	return res.Principal.Meta[authn.MetaKeyID], nil
+}
+
+// clearsCookie reports whether resp sets the cookie named name to expire.
+func clearsCookie(resp *http.Response, name string) bool {
+	for _, c := range resp.Cookies() {
+		if c.Name == name && c.MaxAge < 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // TestUnreachableRefusesConnections: the unreachable variant's URL has
@@ -156,7 +283,7 @@ func TestStartReachesNoModelServer(t *testing.T) {
 	for _, a := range addrs {
 		t.Cleanup(testguard.Active.Block(a))
 	}
-	dpkmstest.Start(t, storageutil.NewTestDriver(t), dpkmstest.WithStaticTokens())
+	dpkmstest.Start(t, storageutil.NewTestDriver(t), dpkmstest.WithKeys())
 	for _, a := range addrs {
 		if n := testguard.Active.Take(a); n != 0 {
 			t.Errorf("building the stack sent %d request(s) to %s", n, a)

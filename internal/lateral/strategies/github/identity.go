@@ -34,7 +34,7 @@ const (
 // ExtractIdentityKey lifts the identity key from a Candidate. Reads
 // the typed Candidate.IdentityKey field first, falling back to the
 // legacy Preview[PreviewKeyIdentityKey] entry for backward compat
-// during the T-0309 migration window. Returns "" when neither is set.
+// during the typed-field migration window. Returns "" when neither is set.
 //
 // Deprecated: prefer reading lateral.Candidate.IdentityKey directly,
 // or use identitykey.Of(c) for the same dual-read semantics applied
@@ -69,18 +69,21 @@ const (
 	IdentityKeyKindOrg
 )
 
-// String returns the lowercase kind name.
+// identityKeyKindNames are the lowercase kind names, indexed by kind.
+var identityKeyKindNames = [...]string{
+	IdentityKeyKindUnknown: "unknown",
+	IdentityKeyKindRepo:    "repo",
+	IdentityKeyKindUser:    "user",
+	IdentityKeyKindOrg:     "org",
+}
+
+// String returns the lowercase kind name; "unknown" for a kind outside
+// the enumeration.
 func (k IdentityKeyKind) String() string {
-	switch k {
-	case IdentityKeyKindRepo:
-		return "repo"
-	case IdentityKeyKindUser:
-		return "user"
-	case IdentityKeyKindOrg:
-		return "org"
-	default:
-		return "unknown"
+	if k < 0 || int(k) >= len(identityKeyKindNames) {
+		return identityKeyKindNames[IdentityKeyKindUnknown]
 	}
+	return identityKeyKindNames[k]
 }
 
 // ParsedIdentityKey is the structured form of an identity key.

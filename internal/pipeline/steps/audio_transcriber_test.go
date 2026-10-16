@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 func TestAudioTranscriberSetsTranscript(t *testing.T) {
@@ -40,13 +39,13 @@ func TestAudioTranscriberEmitsGraphNodes(t *testing.T) {
 	if got.Graph == nil {
 		t.Fatal("graph is nil; expected nodes")
 	}
-	rootID := pluginapi.NewNodeID("obj-audio-001", pluginapi.NodeTypeSummary, 0)
+	rootID := storage.NewNodeID("obj-audio-001", storage.NodeTypeSummary, 0)
 	if got.Graph.FindNode(rootID) == nil {
 		t.Errorf("root summary node %q not found", rootID)
 	}
-	var sections []*pluginapi.GraphNode
+	var sections []*storage.GraphNode
 	for i := range got.Graph.Nodes {
-		if got.Graph.Nodes[i].NodeType == pluginapi.NodeTypeSection {
+		if got.Graph.Nodes[i].NodeType == storage.NodeTypeSection {
 			sections = append(sections, &got.Graph.Nodes[i])
 		}
 	}

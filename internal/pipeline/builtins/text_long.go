@@ -1,10 +1,13 @@
 package builtins
 
-import "github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
+import (
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
+)
 
 // text.long routes any text with len >= 500 OR with markdown structure
 // (heading or >=5 bullet items) to the heavy NLP pipeline that includes
-// sectioner. The markdown-structure OR fixes T-0575: structured bullet
+// sectioner. The markdown-structure OR exists because structured bullet
 // lists were previously routed to text.short whenever the length test
 // was borderline or the routing input was truncated upstream. Choosing
 // to OR into text.long (instead of registering a separate
@@ -12,7 +15,7 @@ import "github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
 // entry, just a broader predicate plus a Priority bump so structured
 // content wins the tie against text.short when both ContentTests match.
 func init() {
-	MustRegister("text.long", Def{
+	MustRegister(pipeline.TextLong, Def{
 		Description: "Long text pipeline (>= 500 chars, or structured markdown)",
 		ContentTest: func(content string) bool {
 			return len(content) >= 500 || steps.HasMarkdownStructure(content)

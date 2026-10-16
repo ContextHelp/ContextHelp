@@ -71,9 +71,19 @@ func marshalSyslog(e *storage.AuditEntry) string {
 	// PRI = facility 16 (local0), severity 6 (informational) → 16*8+6 = 134
 	const pri = 134
 	ts := e.CreatedAt.UTC().Format(time.RFC3339)
-	sd := fmt.Sprintf(`[ctxt@32473 event_type="%s" object_id="%s" actor="%s" id="%s"]`,
-		escSD(e.EventType), escSD(e.ObjectID), escSD(e.Actor), escSD(e.ID))
+	sd := "[ctxt@32473 " + strings.Join([]string{
+		sdParam("event_type", e.EventType),
+		sdParam("object_id", e.ObjectID),
+		sdParam("actor", e.Actor),
+		sdParam("id", e.ID),
+	}, " ") + "]"
 	return fmt.Sprintf("<%d>1 %s - ctxt - %s %s -", pri, ts, e.ID, sd)
+}
+
+// sdParam renders one RFC 5424 SD-PARAM, name="value", with value escaped
+// by escSD (not Go %q quoting, which escapes differently).
+func sdParam(name, value string) string {
+	return name + `="` + escSD(value) + `"`
 }
 
 // escCEF escapes CEF extension field values (| \ =).

@@ -9,6 +9,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 type testDB struct {
@@ -21,7 +22,7 @@ func setupTestDB(t *testing.T) *testDB {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
 
-	driver, err := sqlite.New(dbPath)
+	driver, err := sqlite.New(dbPath, storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatalf("new sqlite: %v", err)
 	}

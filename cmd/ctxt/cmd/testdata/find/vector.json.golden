@@ -1,0 +1,29 @@
+{
+  "diagnostics": {
+    "candidate_count": 1,
+    "below_threshold_count": 0,
+    "threshold": 0,
+    "semantic": {
+      "status": "ok",
+      "model_id": "arctic-find"
+    }
+  },
+  "mode": "vector",
+  "objects": [
+    {
+      "id": "note-vec",
+      "type": "note",
+      "raw_content": "unrelated wording",
+      "text_content": "unrelated wording",
+      "metadata": {
+        "score": 1
+      },
+      "status": "active",
+      "created_at": "2026-03-04T05:06:07Z",
+      "updated_at": "2026-03-04T05:06:07Z",
+      "fts_indexed": true
+    }
+  ],
+  "query": "rotating signing keys without downtime",
+  "total": 1
+}

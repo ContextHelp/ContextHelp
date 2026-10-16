@@ -40,7 +40,6 @@ Inspect a blocked job:
 
 ```bash
 ctxt job status <job_id>
-ctxt job log <job_id>
 ```
 
 Typical fixes:
@@ -61,7 +60,6 @@ Capture detailed failure info:
 
 ```bash
 ctxt job status <job_id>
-ctxt job log <job_id>
 ```
 
 Then verify the input class and pipeline:
@@ -84,7 +82,7 @@ Start broad, then constrain:
 
 ```bash
 ctxt find "checkout conversion issues" --limit 10
-ctxt list --tag checkout,conversion --after 2026-02-01 --limit 20
+ctxt list --tagged checkout --after 2026-02-01 --limit 20
 ctxt list --q "type==url;tag=in=(checkout,conversion)" --limit 20
 ```
 
@@ -130,7 +128,7 @@ Validate source scope first:
 
 ```bash
 ctxt find "checkout redesign decisions" --limit 10
-ctxt list --tag checkout,decision --after 2026-02-01 --limit 20
+ctxt list --q "tag=in=(checkout,decision)" --limit 20
 ```
 
 Then regenerate with tighter filters:
@@ -169,7 +167,7 @@ dpkms pipeline step registry update <registry-url>
 
 Related stories: `US-0101` to `US-0113`, `US-0029`
 
-## 8) Why do plugin-style integrations fail at runtime?
+## 8) Why does an installed step fail at runtime?
 
 Treat as compatibility + capability issue:
 
@@ -180,9 +178,9 @@ Treat as compatibility + capability issue:
 Helpful references:
 
 - [`../reference/config-and-permissions.md`](../reference/config-and-permissions.md)
-- [`../admin-extensibility/plugin-development.md`](../admin-extensibility/plugin-development.md)
+- [`../admin-extensibility/pipeline-management.md`](../admin-extensibility/pipeline-management.md)
 
-Related stories: `US-0042` to `US-0045`, `US-0112`
+Related stories: `US-0029`, `US-0112`
 
 ## 9) How do I safely run maintenance commands?
 
@@ -212,7 +210,7 @@ Related stories: `US-0034`, `US-0035`, `US-0036`
 
 - `SEV-1`: data-loss risk, write-path outage, persistent health-check failure.
 - `SEV-2`: high queue failure rate, severe query latency, broad ingestion delays.
-- `SEV-3`: isolated step/plugin failures, minor ranking quality regressions.
+- `SEV-3`: isolated step failures, minor ranking quality regressions.
 
 For active incidents, follow: [`../operations/runbook.md`](../operations/runbook.md)
 

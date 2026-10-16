@@ -45,30 +45,35 @@ To use the web UI of a remote instance in a browser, see
 Health check:
 
 ```bash
-curl http://127.0.0.1:8080/health
+curl http://127.0.0.1:8080/health     # {"status":"ok"}; 503 when the store is unhealthy
+dpkms healthcheck                     # /healthz envelope: db, queue, watchers, version
 ```
+
+For a supervised service (launchd/systemd) use `dpkms install`; for backups,
+`dpkms backup` / `dpkms restore` (SQLite only). See the
+[operations persona](https://github.com/ContextHelp/ContextHelp/blob/next/docs/personas/operations.md) for details.
 
 ### 2. Monitor queue health and flow
 
 ```bash
-ctxt job list --state pending --limit 50
-ctxt job list --state running --limit 50
-ctxt job list --state failed --limit 50
+dpkms job list --state pending --limit 50
+dpkms job list --state running --limit 50
+dpkms job list --state failed --limit 50
 ```
 
 Drill into failures:
 
 ```bash
-ctxt job status <job_id>
-ctxt job log <job_id>
-ctxt job retry <job_id>
+dpkms job status <job_id>
+dpkms job log <job_id>
+dpkms job retry <job_id>
 ```
 
 ### 3. Validate search and composition path health
 
 ```bash
 ctxt find "system health check query" --limit 5
-ctxt make summary --since 2026-02-01 --output-file ops-health-summary.md
+ctxt compose summary --since 2026-02-01 --output-file ops-health-summary.md
 ```
 
 ### 4. Maintain data and index health
@@ -104,7 +109,7 @@ dpkms pipeline step registry list
 
 1. Validate config and start `dpkms serve`.
 2. Hit `/health` successfully.
-3. Confirm queue visibility with `ctxt job list`.
+3. Confirm queue visibility with `dpkms job list`.
 4. Retry at least one failed job (or simulate and retry).
 5. Run `housekeeping reindex`.
 6. Sync one configured registry.

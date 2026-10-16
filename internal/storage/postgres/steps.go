@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 func (s *StepStore) Create(ctx context.Context, step *storage.RegisteredStep) error {
@@ -59,6 +60,7 @@ func (s *StepStore) List(ctx context.Context, source string) ([]*storage.Registe
 		return nil, 0, fmt.Errorf("count steps: %w", err)
 	}
 
+	// #nosec G202 -- where joins fixed column predicates whose values are bound placeholders in args; no caller text reaches the SQL.
 	query := `SELECT name, source, path, metadata, installed_at, updated_at FROM steps ` + where + " ORDER BY installed_at DESC"
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
@@ -67,15 +69,11 @@ func (s *StepStore) List(ctx context.Context, source string) ([]*storage.Registe
 	}
 	defer rows.Close()
 
-	var steps []*storage.RegisteredStep
-	for rows.Next() {
-		step, err := scanStep(rows)
-		if err != nil {
-			return nil, 0, err
-		}
-		steps = append(steps, step)
+	steps, err := rowscan.AllScanner(rows, scanStep)
+	if err != nil {
+		return nil, 0, err
 	}
-	return steps, total, rows.Err()
+	return steps, total, nil
 }
 
 func (s *StepStore) Unregister(ctx context.Context, name string) error {
@@ -116,7 +114,7 @@ func scanStep(row interface{ Scan(...any) error }) (*storage.RegisteredStep, err
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("step not found")
+			return nil, fmt.Errorf("step: %w", storage.ErrNotFound)
 		}
 		return nil, fmt.Errorf("scan step: %w", err)
 	}

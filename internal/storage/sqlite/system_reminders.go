@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 type ReminderStore struct {
@@ -60,10 +61,11 @@ func (s *ReminderStore) List(ctx context.Context, activeOnly bool) ([]*storage.S
 		return nil, 0, fmt.Errorf("count reminders: %w", err)
 	}
 
+	// #nosec G202 -- where joins fixed column predicates whose values are bound placeholders in args; no caller text reaches the SQL.
 	query := `SELECT
 		id, type, title, message, source, action_url, dismissed,
 		created_at, updated_at
-	FROM system_reminders ` + where + " ORDER BY created_at DESC"
+	FROM system_reminders ` + where + orderNewestFirst
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -71,15 +73,8 @@ func (s *ReminderStore) List(ctx context.Context, activeOnly bool) ([]*storage.S
 	}
 	defer rows.Close()
 
-	var reminders []*storage.SystemReminder
-	for rows.Next() {
-		r, err := scanReminder(rows)
-		if err != nil {
-			return nil, 0, err
-		}
-		reminders = append(reminders, r)
-	}
-	if err := rows.Err(); err != nil {
+	reminders, err := rowscan.AllScanner(rows, scanReminder)
+	if err != nil {
 		return nil, 0, fmt.Errorf("iterate reminders: %w", err)
 	}
 

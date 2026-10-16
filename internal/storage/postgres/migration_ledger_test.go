@@ -12,8 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	pgdrv "github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // freshIntegrationDriver provisions a brand-new database on the integration
@@ -25,7 +26,7 @@ import (
 func freshIntegrationDriver(t *testing.T) (*pgdrv.Driver, string) {
 	t.Helper()
 	dsn, name := freshDatabaseDSN(t)
-	drv, err := pgdrv.New(dsn)
+	drv, err := pgdrv.New(dsn, storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatalf("postgres.New(fresh): %v", err)
 	}
@@ -165,7 +166,7 @@ func TestPostgres_FreshDatabase_ObjectRoundtrip(t *testing.T) {
 	drv, _ := freshIntegrationDriver(t)
 	ctx := context.Background()
 
-	ko := &pluginapi.KnowledgeObject{
+	ko := &storage.KnowledgeObject{
 		ID:        "fresh-rt-1",
 		Type:      "note",
 		Status:    "active",
@@ -192,7 +193,7 @@ func TestPostgres_FreshDatabase_ObjectRoundtrip(t *testing.T) {
 	}
 
 	// The source-key dedup index must reject duplicates of a non-empty key.
-	dup := &pluginapi.KnowledgeObject{
+	dup := &storage.KnowledgeObject{
 		ID: "fresh-rt-2", Type: "note", Status: "active",
 		SourceKey: ko.SourceKey,
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),

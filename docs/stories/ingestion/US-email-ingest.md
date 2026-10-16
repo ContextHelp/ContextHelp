@@ -21,7 +21,7 @@ past communications as knowledge objects in ctxt.
 Agents need access to email history for context-aware replies,
 decision recall, and thread continuity. Himalaya provides a CLI
 interface to IMAP mailboxes. This adapter bridges himalaya's
-envelope/message output to ctxt's ingestion contract (T-0381):
+envelope/message output to ctxt's ingestion contract:
 JSON array of `{id, type, content, tags[], metadata{}}` objects.
 
 Thread grouping uses In-Reply-To and References headers to chain
@@ -36,7 +36,7 @@ reply boundaries (see US-contact-scope).
       and reads message bodies + headers.
 - [ ] Messages are grouped into threads using In-Reply-To /
       References header chains.
-- [ ] Output is a JSON array conforming to the T-0381 adapter
+- [ ] Output is a JSON array conforming to the adapter
       contract: `{id, type, content, tags[], metadata{}}`.
 - [ ] Each object has type "email" and a stable dedup ID:
       `himalaya:<account>:<envelope_id>`.

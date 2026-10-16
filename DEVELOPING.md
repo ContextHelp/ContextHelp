@@ -8,10 +8,48 @@ see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 | You want to... | Read |
 |---|---|
+| Know what to run before you push | [Before you push](#before-you-push) |
 | Build the binaries and run the tests | this file |
 | Know which test tier needs Docker | this file |
 | Propose a feature, file an issue, open a PR | [CONTRIBUTING.md](CONTRIBUTING.md) |
 | Install a released binary as a user | [INSTALL.md](INSTALL.md) |
+
+---
+
+## Before you push
+
+```bash
+make ci
+```
+
+`make ci` runs every job of `.github/workflows/ci.yml` on your machine:
+the same make targets each CI step calls, in the same order, with the
+`mise.toml` tool versions. Jobs keep going after a failure, as in CI, and a
+summary lists each job as PASS, FAIL or SKIP. A green `make ci` means CI
+goes green, apart from the platform gaps listed below.
+
+One job at a time: `make ci-<job>`, for example `make ci-lint` or
+`make ci-test`. The job names are the ones in `ci.yml`.
+
+A job that needs something a CI runner provides and your machine lacks is
+SKIPPED, with the command that provides it. Skips never count as a pass:
+the run ends `INCOMPLETE`, and `CI_STRICT=1 make ci` exits non-zero on
+one. What cannot match CI locally, and what the runner does about it:
+
+| Gap | Local run |
+|---|---|
+| `test` runs on Linux **and** macOS runners | runs once, on your OS |
+| `integration` needs the job's Postgres service | SKIP unless Postgres is reachable; the skip prints the `docker run` for CI's image and credentials |
+| `windows` cross-compiles with mingw-w64 | SKIP without `x86_64-w64-mingw32-gcc` (`brew install mingw-w64`) |
+| e2e headless viewer checks need Chrome | run when Chrome is found, else a PARTIAL notice (the tests skip themselves) |
+| Trivy scan, SARIF and Codecov uploads, build artifact | CI only; they report and never block |
+| `go.mod` local-path `replace` for `hop.top/kit` or `hop.top/c12n` | CI drops it; `make ci` fails until you remove it |
+| a local `go.work` | ignored (`GOWORK=off`), as CI has none |
+| secrets | none needed: CI uses none |
+
+`make lint-new` lints only the findings your branch adds, against the merge
+base with `origin/next` (`LINT_BASE=<commit>` or `LINT_BASE_REF=<branch>` to
+override). It is a quick local check. The gate CI runs is the full scan.
 
 ---
 
@@ -23,15 +61,27 @@ Tool versions are managed by [mise](https://mise.jdx.dev). From the repo root:
 mise install
 ```
 
-This installs the pinned Go toolchain plus `age` and `fnox`. Verify:
+This installs every tool `mise.toml` pins: Go, golangci-lint, gitleaks,
+GoReleaser (`make goreleaser-check`), and the Node version that builds the
+embedded web bundles (`web/ui`, `web/searchgraph`). Verify:
 
 ```bash
-go version   # must match the `go` directive in go.mod
+go version   # must match the `go` pin in mise.toml
 ```
 
-The Go version in `go.mod` is the single source of truth. `test/parity` has a
-test (`TestGoVersionParity`) that fails if a Dockerfile or compose file drifts
-from it, so bumping Go means bumping those together.
+Every `make ci-*`, lint and pre-commit path runs its tools through
+`scripts/ci/tools.sh`, which picks mise's install of the pin and fails when
+the tool is missing or another version is first on `PATH`. It never falls
+back to whatever is installed. In a fresh worktree, run `mise trust` once.
+
+`mise.toml` is the single source of truth for tool versions. CI reads its
+`go`, `golangci-lint`, `node` and `goreleaser` pins at run time, and `make toolchain-check`
+fails when anything else disagrees: a Dockerfile, compose file or workflow
+image, a hardcoded `go-version`/`node-version`, `.nvmrc`/`.node-version`,
+`package.json` `engines.node`, or a workflow action or tool on a floating ref
+(`@master`, `@latest`, `~> v2`). The `go` directive in `go.mod` is a minimum
+the pin must satisfy, not the version you build with. Bump a tool in
+`mise.toml` first, then run `make toolchain-check` to find the stragglers.
 
 ### CGo and the `fts5` build tag are mandatory
 
@@ -78,10 +128,11 @@ Docker.
 | Target | Scope | Needs |
 |---|---|---|
 | `make test-unit` | `./cmd/...`, `./internal/...` | nothing |
-| `make test-integration` | `./test/integration/...` | Postgres + Redis |
+| `make test-integration` | `./test/integration/...` without the `integration` tag | nothing |
+| `make test-integration-services` | CI's integration job (alias of `make ci-integration`) | Postgres |
 | `make test-smoke` | `./test/smoke/...` | nothing |
 | `make test-e2e` | `./test/e2e/...` against a built binary | Chrome/Chromium for the headless checks (optional) |
-| `make test` | everything, with coverage | as above |
+| `make test` | every test CI runs (CI_TEST_JOBS: unit and e2e, viewer JS, Postgres integration) with CI's flags; stops at the first failure | Postgres (fails and prints the `docker run` without it); Chrome/Chromium optional |
 | `make test-all` | unit + integration + smoke | as above |
 
 ### Unit tests
@@ -120,6 +171,10 @@ func TestMain(m *testing.M) { os.Exit(testguard.Main(m, nil, "ctxt")) }
 A helper that builds its own subprocess env must set `server.url` or
 `server.urls` itself. It must never drop back to an empty config dir.
 
+A test that spawns `dpkms serve` passes free ports for `--port` and
+`--grpc-port` and `--cookie-bridge-port 0`, so the instance never binds a
+default port (`test/testutil.StartDpkms` does all three).
+
 #### A dpkms for command tests
 
 `setupTestDB(t)` in `cmd/ctxt/cmd` creates a temporary SQLite database and
@@ -129,8 +184,8 @@ real router and service, built by the same `internal/server/stack.Build` that
 Seed through `db.Driver`; a command reaches the same data over the API.
 
 ```go
-db := setupTestDB(t, dpkmstest.WithStaticTokens()) // protected; admin/writer/reader tokens
-db.useRole(t, dpkmstest.RoleReader)                // the client now sends the reader token
+db := setupTestDB(t, dpkmstest.WithKeys()) // protected; owner/writer/reader API keys
+db.useRole(t, dpkmstest.RoleReader)                // the client now sends the reader's key
 out, err := db.exec("status")                      // routed to db.Server.URL
 resp := db.Server.Request(t, http.MethodGet, "/api/v1/objects/"+id, dpkmstest.RoleAdmin, nil)
 ```
@@ -138,8 +193,8 @@ resp := db.Server.Request(t, http.MethodGet, "/api/v1/objects/"+id, dpkmstest.Ro
 - `server.url`, plus `server.token` for a protected instance, goes into the
   user-level config (`db.ClientConfigPath`). `--config` layers over it, so a
   test that writes its own `server` section wins.
-- Options: `WithStaticTokens()`, `WithAuthProvider(p)` to plug in another
-  `auth.Provider`, `Unreachable()` for a closed port.
+- Options: `WithKeys()`, `WithAuthMethods(m...)` to plug in another chain
+  of `auth.Method`, `Unreachable()` for a closed port.
 - The fixture is hermetic. Every provider backend is the stub, and the
   embedding provider is a stub on a closed port. No worker pool runs, so
   enqueued jobs stay pending.
@@ -155,8 +210,8 @@ binary and runs `dpkms serve` for the test:
 
 - in a hermetic HOME and XDG root, with `CTXT_*`, `CH_*`, `DPKMS_*` and
   `BUS_TOKEN` removed from the inherited env;
-- with a protected config (mode 0600), static admin, writer and reader tokens,
-  and stub providers;
+- with a protected config (mode 0600), API keys for the owner, a writer
+  device and a reader person seeded in its registry, and stub providers;
 - on free ephemeral HTTP and gRPC ports. It reads the actual ports back from
   the instance's pidfile.
 
@@ -214,11 +269,11 @@ Integration tests are the only tier that needs containers. Bring up the
 side-services first:
 
 ```bash
-docker compose -f docker-compose.dev.yml up -d postgres redis
+docker compose -f docker-compose.dev.yml up -d postgres
 ```
 
-Postgres **must** be the pgvector-bundled image (`pgvector/pgvector:pg16`, which
-is what the compose file pins). The Postgres driver's first migration is
+Postgres **must** be the pgvector-bundled image
+(`pgvector/pgvector:0.8.6-pg16-bookworm`, which is what the compose file pins). The Postgres driver's first migration is
 `CREATE EXTENSION vector`; a plain `postgres:16` image cannot load it and every
 test fails at migration 1.
 
@@ -227,24 +282,18 @@ Then run the tier, pointing it at those services:
 ```bash
 POSTGRES_HOST=localhost POSTGRES_PORT=5432 \
 POSTGRES_USER=ctxt POSTGRES_PASSWORD=ctxt POSTGRES_DB=ctxt \
-REDIS_HOST=localhost REDIS_PORT=6379 \
 go test -tags=integration,fts5 ./test/integration/...
 ```
 
-Note that CI runs a **wider** set than `make test-integration` does. The
-Postgres driver and embeddings-registry conformance suites live next to their
-code, carry the same `integration` tag, and read the same `POSTGRES_*` block,
-so CI lists them explicitly:
-
-```bash
-go test -tags=integration,fts5 \
-  ./test/integration/... \
-  ./internal/storage/postgres/... \
-  ./internal/embeddings/registry/...
-```
-
-Run that form before pushing if you touched either area — `make
-test-integration` alone will not cover them.
+That is only the first tree CI covers. The Postgres driver, storage factory
+and embeddings-registry suites live next to their code, carry the same
+`integration` tag and read the same `POSTGRES_*` block, and the job-queue,
+HTTP handler, embeddings journey and search-graph Postgres tests run by name.
+`make ci-integration` runs exactly the commands of CI's integration job.
+Its `POSTGRES_*` defaults are the CI service's (`contexthelp` /
+`test_password` / `contexthelp_test` on `localhost:5432`); export the block
+above to use the compose Postgres instead. Run it before pushing if you
+touched storage, jobs, the HTTP server or embeddings.
 
 Tear down with `docker compose -f docker-compose.dev.yml down`.
 
@@ -261,29 +310,21 @@ make test-docker
 
 ## Lint and formatting
 
-CI gates on three things, in this order:
-
 ```bash
-golangci-lint run --timeout=5m   # pinned to v2.1.6 in CI
-gofmt -l .                       # must print nothing
-go vet -tags fts5 ./...
+make ci-lint
 ```
 
-**Pin your local golangci-lint to the CI version.** Findings differ between
-minor releases, so a newer local binary will disagree with CI in both
-directions:
-
-```bash
-go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6
-```
+That is CI's lint job: golangci-lint on findings new since the merge base
+(blocking), the full-repo scan (advisory, as in CI), `gofmt -l .` and
+`go vet -tags fts5 ./...`. golangci-lint is the `mise.toml` pin;
+findings differ between releases, so no other version is accepted.
 
 Formatting is fixed with `gofmt -w .` (or `make fmt`).
 
-> **Heads up:** the tree currently carries a large pre-existing lint and
-> formatting backlog, so a full-repo `golangci-lint run` or `gofmt -l .` will
-> report findings that predate your change. Judge your own diff, not the
-> repo-wide total. The pre-commit hooks below are scoped to changed files for
-> exactly this reason.
+The full scan (`make ci-lint-full`, `make lint`) is the blocking gate, in CI
+and in `make ci-lint`. The tree is at zero findings at the pinned version, so
+any finding the scan reports is yours to fix. `make lint-new` narrows the run
+to your branch when you want a faster loop.
 
 ### Pre-commit hooks
 
@@ -299,12 +340,15 @@ You do **not** run `pre-commit install`. That command refuses to run while
 `core.hooksPath` is set — and this repo sets it to `.githooks` for the gitleaks
 scan below. Instead, `.githooks/pre-commit` chains to `pre-commit hook-impl`
 after the secret scan, so both gates run from one hook. If `pre-commit` is not
-on your `PATH`, the lint gate is skipped and only the secret scan runs.
+on your `PATH`, the lint gate does not run and every commit prints a warning
+saying so.
 
-The hooks are scoped so the tree's pre-existing backlog does not block you:
-`gofmt` and `go vet` see only the staged files, and `golangci-lint` runs with
-`--new-from-rev=HEAD`, so only findings *your* diff introduces fail the commit.
-Editing a file that already has findings is fine.
+The hooks are scoped for speed: `gofmt` and `go vet` see only the staged
+files, and `golangci-lint` runs with `--new-from-rev=HEAD` over the staged
+packages, so only findings your commit introduces fail it. The full scan in
+CI catches anything that scope misses. All three use the pinned
+tools: a missing or different golangci-lint fails the commit instead of
+being skipped.
 
 Run the hooks manually against your staged diff with `pre-commit run`, or
 against everything with `pre-commit run --all-files` (expect a lot of
@@ -312,21 +356,26 @@ pre-existing findings).
 
 ### Secret scanning
 
-Secret scanning runs locally rather than in CI, because `gitleaks-action`
-requires a paid license for organization-owned repos:
+The pre-commit hook scans staged changes; CI's `secret-scan` job scans
+the full history with the same pinned gitleaks:
 
 ```bash
-make install-gitleaks   # one-time
+make install-gitleaks   # one-time; the version mise.toml pins
 make install-hooks      # wires .githooks (pre-commit gitleaks, pre-push chain)
-make secret-scan-local  # scan the working tree on demand
+make secret-scan-local  # scan the working tree (tracked + untracked) on demand
+make security-scan      # scan the history of HEAD, minus the .gitleaksignore baseline
 ```
+
+See [docs/git-hooks.md](docs/git-hooks.md#history-scan-and-baseline) for
+the baseline.
 
 ---
 
 ## Other gates
 
 ```bash
-make gosec        # static security analysis, fails on medium+ severity
+make gosec        # static security analysis, fails on medium+ severity (CI security job)
+make govulncheck  # known vulnerabilities in reachable code (CI security job)
 make vuln-scan    # govulncheck + nancy
 make eva          # JSON-shape contract tests (contracts/*.eva.yaml)
 make check        # the pre-merge gate: test + eva
@@ -344,9 +393,8 @@ make run-dpkms    # start the substrate: API, gRPC, workers
 make run-ctxt     # the CLI
 ```
 
-Copy `.env.example` to `.env` first. `scripts/dev-setup.sh` will also generate a
-starting `.env` if you do not have one; it is not marked executable, so run it
-as `bash scripts/dev-setup.sh`.
+Nothing loads `.env` automatically. To use one, copy `.env.example` to `.env`
+and export it into your shell first: `set -a; . ./.env; set +a`.
 
 For a containerized dev environment with hot reload:
 
@@ -385,7 +433,8 @@ contracts/    eva JSON-shape contracts
 test/         integration, smoke, e2e, and parity suites
 web/ui/       React front end
 docs/         documentation, ADRs, analyses
-plugins/      plugin implementations
+extensions/   integrations outside ctxt (Raycast), each with a catalog.json
+skills/       agent skills, each with a catalog.json
 ```
 
 `test/parity` is worth knowing about: it holds static-analysis tests that catch

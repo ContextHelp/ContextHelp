@@ -1,13 +1,11 @@
 # Storage
 
-The storage layer in ContextHelp gains new responsibilities with the introduction of **Mentions**, the **Entity Graph**, and a growing **Plugin Ecosystem**.
+The storage layer in ContextHelp gains new responsibilities with the introduction of **Mentions** and the **Entity Graph**.
 While it continues to store bookmarks, jobs, traces, and tracking fields, it now additionally supports:
 
 - **mention persistence**
 - **entity resolution caching** (optional)
 - **reverse lookup indexing** for entity → bookmark relationships
-- **plugin-scoped metadata storage**, isolated per plugin
-- **plugin-defined bookmark types**
 
 These enhancements preserve the system’s core principles of decentralization, determinism, extensibility, and local-first operation.
 
@@ -21,17 +19,14 @@ ContextHelp treats local storage as the canonical source of truth for:
 - ingestion jobs
 - entity-resolution cache (optional)
 - backlink index (entity → bookmarks)
-- plugin-defined metadata blocks
-- plugin-defined bookmark types
 
 Networked registries enrich the system but do not override or replace local data unless explicitly configured.
 
 Key principles:
 
-- **User Ownership** — All knowledge, including mentions and plugin metadata, belongs to the user.
-- **Offline First** — Mentions, entities, and plugin logic remain usable without network connectivity.
-- **Transparent & Inspectable** — Bookmarks, mentions, and plugin-scoped metadata are visible, exportable, and non-proprietary.
-- **Plugin Isolation** — Plugins manage their own metadata without modifying core storage schemas.
+- **User Ownership** — All knowledge, including mentions, belongs to the user.
+- **Offline First** — Mentions and entities remain usable without network connectivity.
+- **Transparent & Inspectable** — Bookmarks and mentions are visible, exportable, and non-proprietary.
 
 ---
 
@@ -43,7 +38,6 @@ The storage subsystem now handles:
   - tags
   - hints
   - **mentions**
-  - **plugin metadata blocks**
   - **content hash** (SHA-256 for deduplication)
   - **reinforcement count** and **last reinforced timestamp**
 - Maintaining the **entity–bookmark backlink index**
@@ -51,54 +45,16 @@ The storage subsystem now handles:
 - **Content-hash deduplication** — detecting duplicate content via normalized hash lookup
 - **Reinforcement tracking** — merging metadata and incrementing encounter count on re-ingestion
 - Supporting mention-based filtering and query evaluation
-- Supporting plugin-defined bookmark types and metadata
-- Ensuring plugin state remains isolated, deterministic, and user-controlled
 
 Storage does **not** handle:
 
 - mention extraction (pipeline responsibility)
 - entity resolution (resolver + registry client)
-- refresh scheduling (Refresh Plugin)
-- price monitoring, feed detection, alert management (plugin responsibilities)
+- refresh scheduling and feed fetching (jobs)
 - ranking or reranking
 - pipeline execution
 
 These remain outside the storage layer.
-
----
-
-## Plugin Storage Model
-
-Plugins may maintain **their own storage** independently of core storage, using:
-
-- plugin JSON files (recommended)
-- lightweight internal indexing
-- ephemeral runtime caches
-
-Core storage does **not** store plugin state unless the plugin explicitly writes metadata inside the bookmark under:
-
-```
-bookmark.plugins.<pluginName>
-```
-
-This namespace is documented, reserved for plugin use, and fully isolated.
-
-Examples:
-
-```
-plugins: {
-  "rss_feed": {
-    "item_pipeline": "text.long",
-    "last_fetch": 1710000000
-  },
-  "price_monitor": {
-    "current_price": 1299.99,
-    "threshold_percent": 10
-  }
-}
-```
-
-The storage layer treats these fields as opaque JSON.
 
 ---
 
@@ -113,8 +69,6 @@ Pipelines write:
 - bookmark record
 - mentions
 - backlink entries
-- plugin metadata blocks
-- plugin-defined bookmark types
 
 Flow:
 
@@ -124,7 +78,6 @@ Raw Input
  → Pipeline Execution
  → Mention Extraction
  → Entity Resolution
- → Plugin Hooks
  → Content-Hash Dedup Check
    → Match found: Reinforce (merge tags/mentions, increment count)
    → No match: Bookmark Creation
@@ -143,11 +96,10 @@ Query evaluation may include:
 - tag filters
 - hint filters
 - **mention filters**
-- plugin-defined filters (via AST translation rules)
 - boolean logic
 - text search
 
-Storage returns local results; registry and plugin layers may merge or enhance them.
+Storage returns local results; registry layers may merge or enhance them.
 
 ---
 
@@ -161,21 +113,7 @@ Bookmarks now include:
 mentions: ["<entity-id>", ...]
 ```
 
-Additional optional structures:
-
-```
-plugins: {
-  "<pluginName>": { ... plugin metadata ... }
-}
-```
-
-and plugin-defined bookmark types:
-
-```
-type: "feed"
-type: "feed_item"
-type: "price_track"
-```
+`type` is free-form (`"feed"`, `"feed_item"`, ...); storage does not validate it.
 
 Other core fields remain unchanged.
 
@@ -187,16 +125,15 @@ Mentions may reference:
 
 ### Jobs
 
-Jobs remain unchanged, but job steps may contain plugin diagnostic data or mention-resolution traces.
+Jobs remain unchanged, but job steps may contain step diagnostic data or mention-resolution traces.
 
 ### Job Steps
 
 Optional but useful for:
 
 - mention extraction logging
-- plugin debug output
+- step debug output
 - feed parsing diagnostics
-- price extraction results
 
 ---
 
@@ -206,7 +143,6 @@ Local storage introduces or extends a lightweight backlink table enabling:
 
 - efficient mention-based queries
 - bidirectional graph navigation
-- plugin-enhanced semantic graph operations
 
 A minimal model:
 
@@ -217,117 +153,25 @@ Backends may optimize or denormalize this.
 
 ---
 
-## Plugin Metadata Storage Expectations
-
-Storage places no constraints on plugin metadata except:
-
-- must not conflict with core fields
-- must stay inside `bookmark.plugins.<pluginName>`
-- must be valid JSON
-- must not alter core table schemas
-
-Plugins may also maintain private persistent files under:
-
-```
-~/.contexthelp/plugins/<pluginName>/
-```
-
-This supports:
-
-- notifications
-- price histories
-- feed sync state
-- cached query results
-- plugin-specific indices
-
----
-
 ## Storage Backends
 
-Backends must support mention persistence, backlinking, and plugin metadata storage.
+`storage.type` selects the driver; `internal/storageutil/factory.go` accepts
+only two values and fails startup on anything else.
 
-### JSON Storage
+| `storage.type` | `storage.path` | Vector search |
+|---|---|---|
+| `sqlite` (default) | database file | `sqlite-vec` `vec0` table, cosine distance |
+| `postgres` | connection string | `pgvector`, cosine `<=>` |
 
-Pros: simple, inspectable
-Cons: full scans for mention queries
+Both drivers keep `mentions` as a JSON column on the object row (`JSON` on
+SQLite, `JSONB` on PostgreSQL). Content above `storage.blob.threshold` is
+written to the blob store set by `storage.blob.backend`: `local` (default),
+`s3`, or `garage` (S3 with Garage defaults).
 
-Expectations:
-- store `mentions` and `plugins` JSON fields inside each file
-- plugin-specific state remains outside core storage
-- optional in-memory backlink index may improve repeated queries
-
-### SQLite (recommended)
-
-Pros: fast, reliable, ideal for mention + entity graph behavior
-
-Recommended tables:
-```
-bookmarks (JSON columns allowed)
-bookmark_mentions (bookmark_id, entity_id)
-```
-
-Additional expectations:
-- plugin metadata stored inside JSON field `plugins`
-- entity backlinks indexed
-- plugin-defined bookmark types stored in `type` column
-
-### Postgres
-
-Use JSONB + GIN for:
-- mentions
-- plugin metadata
-
-Use join table for backlink index when needed.
-
-### LEANN (experimental, highly efficient)
-
-**[LEANN](https://github.com/yichuan-w/LEANN)** is a graph-based RAG system with 97% storage efficiency through on-demand embedding recomputation.
-
-Pros:
-- **97% storage savings** vs traditional vector DBs (no pre-computed embeddings)
-- Faster query performance via graph-based selective traversal
-- Local-first, 100% private (zero telemetry)
-- Multimodal support (text + vision via ColQwen)
-- Built-in MCP integration for live data sources
-
-Cons:
-- Slower index build (graph construction)
-- Experimental, less mature ecosystem than SQLite/Postgres
-- Requires separate installation and configuration
-
-**Integration approach:**
-- **Hybrid storage**: LEANN for vector/similarity search, SQLite for entities/backlinks
-- **Backend plugin**: ContextHelp plugin wraps LEANN as storage interface
-- **MCP connector**: ContextHelp queries LEANN via MCP for data sources
-
-**Configuration:**
-```yaml
-storage:
-  type: leann
-  path: ~/.local/share/contexthelp/leann
-  options:
-    recompute: true  # Enable on-demand embedding generation
-    graph_degree: 32
-    build_complexity: 64
-    compact: true
-    backend: hnsw  # or diskann
-```
-
-**Data separation:**
-- **LEANN**: Stores chunks, embeddings (recomputed on demand), similarity index
-- **ContextHelp (SQLite)**: Stores bookmarks, mentions, entities, backlinks, plugin metadata
-- **Query flow**: Metadata/mentions/graph → SQLite; Similarity → LEANN; Merge → ContextHelp
-
-See [LEANN Integration Documentation](./leann-integration.md) for complete details.
-
-### Custom Backends
-
-Must support:
-- mentions
-- backlink lookups
-- plugin metadata persistence
-
-Graph DBs may handle backlinks natively.
+There is no JSON-file backend, no LEANN backend and no custom-backend hook:
+adding a backend means adding a case to the factory. See
+[embeddings.md](embeddings.md) for vector indexing and
+[../scaling.md](../scaling.md) for choosing between the two drivers.
 
 ---
 
@@ -335,8 +179,6 @@ Graph DBs may handle backlinks natively.
 
 Adds support for:
 
-- plugin metadata read/write
-- plugin-defined bookmark types
 - content-hash deduplication and reinforcement
 
 ### Save
@@ -345,7 +187,6 @@ Save:
 
 - core bookmark fields
 - mentions
-- plugin metadata
 - backlink entries
 - content hash (computed from normalized raw content + source)
 - reinforcement count (initialized to 1)
@@ -368,15 +209,13 @@ Atomic (transactional) operation that:
 Update must maintain:
 
 - backlink index integrity
-- plugin metadata isolation
 
 ### List
 
 Query filters may include:
 
 - `mention:<id>`
-- `plugin.<pluginName>.<field>` (plugin-defined)
-- `type:<pluginType>`
+- `type:<type>`
 
 Backends translate AST queries accordingly.
 
@@ -386,7 +225,6 @@ Must:
 
 - remove bookmark
 - prune backlink entries
-- prune plugin metadata
 
 ### IncrementView / IncrementMatch
 
@@ -396,9 +234,7 @@ Unchanged.
 
 ## JobStore Interface
 
-Same responsibilities, but plugins may store arbitrary debug metadata in job steps.
-
-Storage treats plugin data as opaque.
+Same responsibilities; steps may store arbitrary debug metadata in job steps, which storage treats as opaque.
 
 ---
 
@@ -413,8 +249,6 @@ if entity_id in bookmark.mentions:
     include
 ```
 
-Plugin metadata queries also require scanning.
-
 ### SQLite / Postgres
 
 Use recommended schema:
@@ -423,59 +257,15 @@ Use recommended schema:
 bookmark_mentions(entity_id, bookmark_id)
 ```
 
-Plugin-defined bookmark types become simple indexed filters.
+Bookmark types become simple indexed filters.
 
 Prefix indexing recommended for:
 
 - entity namespaces
-- plugin-defined type hierarchies
 
 ---
 
-## Plugin-Defined Bookmark Types
-
-Storage must support:
-
-- arbitrary `type` values
-- optional `subtype` values
-- plugin namespaces (recommended but not required)
-
-Examples:
-
-```
-type: "feed"
-type: "feed_item"
-type: "price_track"
-type: "notification_ref"
-```
-
-Core storage does not validate or restrict plugin values.
-
----
-
-## Plugin Metadata Persistence
-
-Bookmark metadata block:
-
-```
-plugins: {
-  "<pluginName>": {
-     "...": "..."
-  }
-}
-```
-
-Rules:
-
-- core must not interpret plugin metadata
-- core must preserve plugin metadata through updates
-- plugin metadata must be merge-stable
-
-Plugins are responsible for ensuring consistency.
-
----
-
-## Mermaid Diagram: Plugin-Aware Write Path
+## Mermaid Diagram: Write Path
 
 ```mermaid
 flowchart TD
@@ -483,10 +273,8 @@ flowchart TD
 A[Job Execution] --> B[Pipeline Steps]
 B --> C[Mention Extraction]
 C --> D[Entity Resolution]
-D --> E[Plugin Hooks]
-E --> F[Bookmark Creation]
+D --> F[Bookmark Creation]
 F --> G[Save Mentions + Backlinks]
-G --> H[Store Plugin Metadata]
 ```
 
 ---
@@ -499,16 +287,13 @@ Rules remain:
 
 - only ingestion workers write
 - readers never block writers
-- plugin code must not circumvent single-writer guarantees
-
-Plugins may write private JSON files independently.
+- step code must not circumvent single-writer guarantees
 
 ---
 
 ## Tracking Behavior
 
 Same as before.
-Plugins may implement their own tracking inside plugin metadata or private files.
 
 ---
 
@@ -520,19 +305,8 @@ Rules:
 
 - local entity definitions stored only in entity registry
 - mentions store IDs referencing entities
-- entity resolution cached optionally in plugin metadata
+- entity resolution cached optionally
 - registry sync never overwrites bookmarks
-
----
-
-## Plugin State & Core Storage Separation
-
-Storage ensures:
-
-- plugin metadata stays isolated
-- plugins cannot alter core schemas
-- plugins may maintain external state freely
-- plugins never block or corrupt ingestion
 
 ---
 
@@ -542,24 +316,20 @@ Exports include:
 
 ```
 mentions: [...]
-plugins: {...}
 ```
 
 Imports must:
 
 - restore mentions
-- restore plugin metadata
 - rebuild backlink index
-- never execute plugin logic automatically
+- never run pipelines automatically
 
 ---
 
 ## Future Enhancements
 
-- native plugin metadata indexing
 - hybrid graph + vector retrieval
-- pluggable storage backends with plugin-defined partitions
-- encrypted plugin-specific fields
+- encrypted per-field storage
 
 ---
 
@@ -570,11 +340,6 @@ The Storage layer now provides:
 - deterministic ingestion including mention persistence
 - **content-hash deduplication** with reinforcement tracking
 - entity → bookmark backlink indexing
-- full support for plugin metadata inside bookmarks
-- stable support for plugin-defined bookmark types
-- plugin-isolated persistent storage without core modification
 - optimized mention-aware querying
 - strict read/write separation
 - registry-safe semantics
-
-This enables a powerful plugin ecosystem—including refresh logic, feed consumption, price monitoring, and notifications—**without requiring plugins to modify or extend core storage schemas**.

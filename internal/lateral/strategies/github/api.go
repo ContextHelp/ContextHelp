@@ -8,7 +8,7 @@ import "context"
 // stub to this interface so the strategy never imports a vendor SDK.
 //
 // Implementations MUST handle rate-limit observability (see ratelimit.go
-// for the dynamic-floor helper) and breaker integration (T-0261).
+// for the dynamic-floor helper) and breaker integration.
 //
 // All methods accept and respect ctx for cancellation.
 type APIClient interface {

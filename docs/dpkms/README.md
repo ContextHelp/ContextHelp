@@ -25,7 +25,6 @@ dPKMS provides the **mechanical guarantees** that make the system sovereign, dur
 - [jobs-and-ingestion.md](jobs-and-ingestion.md) - Transactional job queue
 - [events.md](events.md) - CloudEvents-based event bus
 - [query-language-spec.md](query-language-spec.md) - AST-based query engine
-- [caching.md](caching.md) - Caching strategies
 
 ### Semantic Identity
 - [knowledge-graph.md](knowledge-graph.md) - Graph index, edges, traversal

@@ -76,14 +76,19 @@ func (s *Service) GetTopicEntries(
 	if idx == nil {
 		return nil, nil
 	}
+	return idx.Entries(topic), nil
+}
+
+// Entries returns the entries of the first category whose name equals
+// or starts with topic, ignoring case; nil when none does.
+func (idx *TopicIndex) Entries(topic string) []TopicEntry {
 	lower := strings.ToLower(topic)
 	for _, cat := range idx.Categories {
-		if strings.ToLower(cat.Topic) == lower ||
-			strings.HasPrefix(strings.ToLower(cat.Topic), lower) {
-			return cat.Entries, nil
+		if strings.HasPrefix(strings.ToLower(cat.Topic), lower) {
+			return cat.Entries
 		}
 	}
-	return nil, nil
+	return nil
 }
 
 // UpdateTopicIndexIncremental adds a single object to the existing
@@ -145,7 +150,7 @@ func (s *Service) UpdateTopicIndexIncremental(
 
 // buildIndex scans all objects and groups by topic.
 func (s *Service) buildIndex(ctx context.Context) (*TopicIndex, error) {
-	objects, _, err := s.Store.Objects().List(ctx, storage.ObjectFilter{
+	objects, _, err := s.Store(ctx).Objects().List(ctx, storage.ObjectFilter{
 		Limit:  10000,
 		Status: "all",
 	})
@@ -154,7 +159,9 @@ func (s *Service) buildIndex(ctx context.Context) (*TopicIndex, error) {
 	}
 
 	catMap := make(map[string][]TopicEntry)
-	var objectIDs []string
+	// Left nil until an object has topics: an empty index stores
+	// object_ids as null, as it always has.
+	var objectIDs []string //nolint:prealloc // see above; preallocating would store [] instead
 
 	for _, obj := range objects {
 		if obj.Type == TopicIndexType {
@@ -208,7 +215,7 @@ func (s *Service) storeIndex(
 	if existing != nil {
 		existing.RawContent = string(data)
 		existing.UpdatedAt = now
-		if err := s.Store.Objects().Update(ctx, existing); err != nil {
+		if err := s.Store(ctx).Objects().Update(ctx, existing); err != nil {
 			return "", fmt.Errorf("update topic index: %w", err)
 		}
 		return existing.ID, nil
@@ -222,7 +229,7 @@ func (s *Service) storeIndex(
 		CreatedAt:  now,
 		UpdatedAt:  now,
 	}
-	if err := s.Store.Objects().Create(ctx, obj); err != nil {
+	if err := s.Store(ctx).Objects().Create(ctx, obj); err != nil {
 		return "", fmt.Errorf("create topic index: %w", err)
 	}
 	return obj.ID, nil
@@ -232,7 +239,7 @@ func (s *Service) storeIndex(
 func (s *Service) getIndexObject(
 	ctx context.Context,
 ) (*storage.KnowledgeObject, error) {
-	objects, _, err := s.Store.Objects().List(ctx, storage.ObjectFilter{
+	objects, _, err := s.Store(ctx).Objects().List(ctx, storage.ObjectFilter{
 		Type:   TopicIndexType,
 		Limit:  1,
 		Status: "all",
@@ -260,8 +267,7 @@ func extractTopicsAndSummary(
 	}
 
 	var topics []string
-	switch m := raw.(type) {
-	case map[string]any:
+	if m, ok := raw.(map[string]any); ok {
 		if t, ok := m["topics"]; ok {
 			switch tv := t.(type) {
 			case []any:

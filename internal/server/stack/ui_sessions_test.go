@@ -13,32 +13,35 @@ import (
 )
 
 func TestNewUISessions_PrivateHasNone(t *testing.T) {
-	store := storageutil.NewTestDriver(t).UISessions()
+	driver := storageutil.NewTestDriver(t)
 	var out bytes.Buffer
-	s, err := newUISessions(context.Background(), &out, store, nil, config.AccessPrivate, config.UISessionConfig{})
+	s, err := newUISessions(context.Background(), &out, driver, nil, config.AccessPrivate, config.UISessionConfig{})
 	if err != nil || s != nil {
 		t.Fatalf("private instance: sessions = %v, err = %v; want none", s, err)
 	}
 }
 
-func TestNewUISessions_ProtectedSweepsRemovedTokens(t *testing.T) {
-	store := storageutil.NewTestDriver(t).UISessions()
+// A protected instance gets a session manager with the configured
+// bounds; sessions that ended long ago are pruned at start, live ones
+// kept.
+func TestNewUISessions_ProtectedPrunesEndedSessions(t *testing.T) {
+	driver := storageutil.NewTestDriver(t)
 	ctx := context.Background()
+	idn := &storage.Identity{PrincipalID: storage.OwnerPrincipal, Method: storage.IdentityMethodAPIKey, Subject: "k1"}
+	if err := driver.Auth().Identities().Create(ctx, idn); err != nil {
+		t.Fatal(err)
+	}
 	now := time.Now().UTC()
-	for id, hash := range map[string]string{"uis_gone": authn.HashSecret("tok-removed"), "uis_kept": authn.HashSecret("tok-1")} {
-		if err := store.Create(ctx, &storage.UISession{
-			ID: id, SecretHash: "s-" + id, PrincipalID: "ops", TokenHash: hash, Scope: authn.SessionKindUI,
-			CreatedAt: now, LastSeenAt: now, IdleExpiresAt: now.Add(time.Hour), ExpiresAt: now.Add(2 * time.Hour),
+	for id, created := range map[string]time.Time{"uis_old": now.Add(-60 * 24 * time.Hour), "uis_live": now} {
+		if err := driver.UISessions().Create(ctx, &storage.UISession{
+			ID: id, SecretHash: "s-" + id, PrincipalID: storage.OwnerPrincipal, IdentityID: idn.ID, Scope: authn.SessionKindUI,
+			CreatedAt: created, LastSeenAt: created, IdleExpiresAt: created.Add(time.Hour), ExpiresAt: created.Add(2 * time.Hour),
 		}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	provider, err := authn.FromConfig(staticAuthCfg())
-	if err != nil {
-		t.Fatal(err)
-	}
 	var out bytes.Buffer
-	s, err := newUISessions(ctx, &out, store, provider, config.AccessProtected,
+	s, err := newUISessions(ctx, &out, driver, authn.NewKeysOver(driver.Auth(), nil), config.AccessProtected,
 		config.UISessionConfig{IdleTTL: time.Hour, MaxTTL: 24 * time.Hour})
 	if err != nil || s == nil {
 		t.Fatalf("protected instance: sessions = %v, err = %v", s, err)
@@ -46,23 +49,13 @@ func TestNewUISessions_ProtectedSweepsRemovedTokens(t *testing.T) {
 	if s.IdleTTL() != time.Hour || s.MaxTTL() != 24*time.Hour {
 		t.Errorf("bounds = %s/%s, want the configured 1h/24h", s.IdleTTL(), s.MaxTTL())
 	}
-	gone, err := store.Get(ctx, "uis_gone")
-	if err != nil {
-		t.Fatal(err)
+	if _, err := driver.UISessions().Get(ctx, "uis_old"); err == nil {
+		t.Error("a session that ended 60 days ago survived the start-up prune")
 	}
-	if gone.RevokeReason != authn.RevokeReasonTokenRemoved {
-		t.Errorf("session of a removed token: revoke reason %q, want %q", gone.RevokeReason, authn.RevokeReasonTokenRemoved)
+	if _, err := driver.UISessions().Get(ctx, "uis_live"); err != nil {
+		t.Errorf("a live session was pruned: %v", err)
 	}
-	kept, err := store.Get(ctx, "uis_kept")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if kept.RevokedAt != nil {
-		t.Error("session of a configured token was revoked")
-	}
-	for _, want := range []string{"revoked 1 session(s)", "ctxt ui open"} {
-		if !bytes.Contains(out.Bytes(), []byte(want)) {
-			t.Errorf("serve output lacks %q:\n%s", want, out.String())
-		}
+	if !bytes.Contains(out.Bytes(), []byte("ctxt ui open")) {
+		t.Errorf("serve output lacks the sign-in note:\n%s", out.String())
 	}
 }

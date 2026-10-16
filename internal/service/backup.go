@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	blobfactory "github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
@@ -49,29 +51,9 @@ type BackupResult struct {
 func Backup(ctx context.Context, opts BackupOpts) (BackupResult, error) {
 	start := time.Now()
 
-	outDir := opts.OutputDir
-	if outDir == "" {
-		var err error
-		outDir, err = os.Getwd()
-		if err != nil {
-			return BackupResult{}, fmt.Errorf("backup: resolve output dir: %w", err)
-		}
-	}
-
-	if info, err := os.Stat(outDir); err != nil {
-		if !os.IsNotExist(err) {
-			return BackupResult{}, fmt.Errorf("backup: stat output dir: %w", err)
-		}
-		if err := os.MkdirAll(outDir, 0750); err != nil {
-			return BackupResult{}, fmt.Errorf("backup: create output dir: %w", err)
-		}
-	} else if info.IsDir() {
-		entries, _ := os.ReadDir(outDir)
-		if len(entries) > 0 {
-			return BackupResult{}, fmt.Errorf(
-				"backup: output dir %q is not empty (%d items); use an empty or new directory",
-				outDir, len(entries))
-		}
+	outDir, err := prepareBackupDir(opts.OutputDir)
+	if err != nil {
+		return BackupResult{}, err
 	}
 
 	ts := time.Now().UTC().Format("2006-01-02T15-04-05Z")
@@ -86,10 +68,10 @@ func Backup(ctx context.Context, opts BackupOpts) (BackupResult, error) {
 	var result BackupResult
 	result.Path = archivePath
 
-	abort := func(cause error) (BackupResult, error) {
+	abort := func(cause error) error {
 		f.Close()
 		os.Remove(archivePath) //nolint:errcheck
-		return BackupResult{}, cause
+		return cause
 	}
 
 	gz := gzip.NewWriter(f)
@@ -100,83 +82,41 @@ func Backup(ctx context.Context, opts BackupOpts) (BackupResult, error) {
 	defer os.Remove(tmpDB) //nolint:errcheck
 
 	if err := storageutil.SQLiteSnapshot(opts.DBPath, tmpDB); err != nil {
-		return abort(fmt.Errorf("backup: snapshot db: %w", err))
+		return BackupResult{}, abort(fmt.Errorf("backup: snapshot db: %w", err))
 	}
 
 	dbInfo, err := os.Stat(tmpDB)
 	if err != nil {
-		return abort(fmt.Errorf("backup: stat snapshot: %w", err))
+		return BackupResult{}, abort(fmt.Errorf("backup: stat snapshot: %w", err))
 	}
 	result.DBSize = dbInfo.Size()
 
 	if err := addFileToTar(tw, tmpDB, "ctxt-backup/ctxt.db"); err != nil {
-		return abort(fmt.Errorf("backup: tar db: %w", err))
+		return BackupResult{}, abort(fmt.Errorf("backup: tar db: %w", err))
 	}
 
 	// 1b. Optional config.yaml — non-fatal if missing.
-	configIncluded := false
-	if opts.ConfigPath != "" {
-		if _, serr := os.Stat(opts.ConfigPath); serr == nil {
-			if terr := addFileToTar(tw, opts.ConfigPath, "ctxt-backup/config.yaml"); terr != nil {
-				return abort(fmt.Errorf("backup: tar config: %w", terr))
-			}
-			configIncluded = true
-		} else {
-			fmt.Fprintf(os.Stderr, "backup: config file not found, skipping: %s\n", opts.ConfigPath)
-		}
+	activeConfig, err := archiveActiveConfig(tw, opts.ConfigPath)
+	if err != nil {
+		return BackupResult{}, abort(err)
 	}
+	configIncluded := activeConfig != nil
 
 	// 1c. Optional full config dir (keys/, etc.).
 	if opts.IncludeConfigs && opts.ConfigDir != "" {
-		if cInfo, serr := os.Stat(opts.ConfigDir); serr == nil && cInfo.IsDir() {
-			err := filepath.Walk(opts.ConfigDir, func(path string, info os.FileInfo, werr error) error {
-				if werr != nil || info.IsDir() {
-					return werr
-				}
-				rel, _ := filepath.Rel(opts.ConfigDir, path)
-				return addFileToTar(tw, path, filepath.Join("ctxt-backup/config", rel))
-			})
-			if err != nil {
-				return abort(fmt.Errorf("backup: tar config dir: %w", err))
-			}
+		if err := archiveConfigDir(tw, opts.ConfigDir, activeConfig); err != nil {
+			return BackupResult{}, abort(err)
 		}
 	}
 
-	// 2. Optional blobs (local backend only).
-	if opts.IncludeBlobs && opts.BlobCfg.Backend == "local" {
-		bs, err := blobfactory.New(opts.BlobCfg)
+	// 2. Optional blobs (local backend only; blob.New reads an empty
+	// backend as local).
+	if opts.IncludeBlobs && (opts.BlobCfg.Backend == "" || opts.BlobCfg.Backend == "local") {
+		n, err := archiveBlobs(ctx, tw, opts.BlobCfg, opts.SkipBlobErrors)
 		if err != nil {
-			return abort(fmt.Errorf("backup: open blob store: %w", err))
+			return BackupResult{}, abort(err)
 		}
-		items, err := bs.List(ctx, "")
-		if err != nil {
-			return abort(fmt.Errorf("backup: list blobs: %w", err))
-		}
-		for _, item := range items {
-			rc, _, err := bs.Get(ctx, item.Key)
-			if err != nil {
-				if opts.SkipBlobErrors {
-					continue
-				}
-				return abort(fmt.Errorf("backup: get blob %q: %w", item.Key, err))
-			}
-			hdr := &tar.Header{
-				Name:    fmt.Sprintf("ctxt-backup/blobs/%s", item.Key),
-				Size:    item.Size,
-				Mode:    0644,
-				ModTime: item.UpdatedAt,
-			}
-			if werr := tw.WriteHeader(hdr); werr != nil {
-				rc.Close()
-				return abort(fmt.Errorf("backup: tar blob header: %w", werr))
-			}
-			if _, cerr := io.Copy(tw, rc); cerr != nil {
-				rc.Close()
-				return abort(fmt.Errorf("backup: tar blob data: %w", cerr))
-			}
-			rc.Close()
-			result.BlobCount++
-		}
+		result.BlobCount = n
 	}
 
 	// 3. manifest.json — written last; its presence signals a complete backup.
@@ -196,21 +136,187 @@ func Backup(ctx context.Context, opts BackupOpts) (BackupResult, error) {
 		Mode:    0644,
 		ModTime: time.Now(),
 	}
-	tw.WriteHeader(hdr)     //nolint:errcheck
-	tw.Write(manifestBytes) //nolint:errcheck
+	if err := tw.WriteHeader(hdr); err != nil {
+		return BackupResult{}, abort(fmt.Errorf("backup: tar manifest header: %w", err))
+	}
+	if _, err := tw.Write(manifestBytes); err != nil {
+		return BackupResult{}, abort(fmt.Errorf("backup: tar manifest: %w", err))
+	}
 
 	if err := tw.Close(); err != nil {
-		return abort(fmt.Errorf("backup: close tar: %w", err))
+		return BackupResult{}, abort(fmt.Errorf("backup: close tar: %w", err))
 	}
 	if err := gz.Close(); err != nil {
-		return abort(fmt.Errorf("backup: close gzip: %w", err))
+		return BackupResult{}, abort(fmt.Errorf("backup: close gzip: %w", err))
 	}
 	if err := f.Close(); err != nil {
-		return abort(fmt.Errorf("backup: close file: %w", err))
+		return BackupResult{}, abort(fmt.Errorf("backup: close file: %w", err))
 	}
 
 	result.Duration = time.Since(start)
 	return result, nil
+}
+
+// prepareBackupDir resolves the archive's directory (the working
+// directory when dir is empty), creating it when absent and refusing
+// one that already holds anything.
+func prepareBackupDir(dir string) (string, error) {
+	if dir == "" {
+		var err error
+		dir, err = os.Getwd()
+		if err != nil {
+			return "", fmt.Errorf("backup: resolve output dir: %w", err)
+		}
+	}
+
+	if info, err := os.Stat(dir); err != nil {
+		if !os.IsNotExist(err) {
+			return "", fmt.Errorf("backup: stat output dir: %w", err)
+		}
+		if err := os.MkdirAll(dir, 0750); err != nil {
+			return "", fmt.Errorf("backup: create output dir: %w", err)
+		}
+	} else if info.IsDir() {
+		entries, _ := os.ReadDir(dir)
+		if len(entries) > 0 {
+			return "", fmt.Errorf(
+				"backup: output dir %q is not empty (%d items); use an empty or new directory",
+				dir, len(entries))
+		}
+	}
+	return dir, nil
+}
+
+// archiveActiveConfig archives the active config file as config.yaml and
+// returns its FileInfo. A missing file is noted on stderr and skipped
+// (nil FileInfo, nil error); so is an empty path, silently.
+func archiveActiveConfig(tw *tar.Writer, path string) (os.FileInfo, error) {
+	if path == "" {
+		return nil, nil
+	}
+	info := statOrNil(path)
+	if info == nil {
+		fmt.Fprintf(os.Stderr, "backup: config file not found, skipping: %s\n", path)
+		return nil, nil
+	}
+	if err := addFileToTar(tw, path, "ctxt-backup/config.yaml"); err != nil {
+		return nil, fmt.Errorf("backup: tar config: %w", err)
+	}
+	return info, nil
+}
+
+// archiveConfigDir archives every file under dir as config/<rel>. The
+// active config file, already archived as config.yaml, is skipped when
+// it lives here (dpkms's config dir is its directory): config.yaml
+// restores it to the target's own config file, whatever that is named,
+// so a second copy under config/ would only restore it twice. A missing
+// dir, or one that is not a directory, archives nothing.
+func archiveConfigDir(tw *tar.Writer, dir string, activeConfig os.FileInfo) error {
+	if info := statOrNil(dir); info == nil || !info.IsDir() {
+		return nil
+	}
+	err := filepath.Walk(dir, func(p string, info os.FileInfo, werr error) error {
+		if werr != nil || info.IsDir() {
+			return werr
+		}
+		if activeConfig != nil {
+			if fi, serr := os.Stat(p); serr == nil && os.SameFile(fi, activeConfig) {
+				return nil
+			}
+		}
+		rel, _ := filepath.Rel(dir, p)
+		return addFileToTar(tw, p, path.Join("ctxt-backup/config", filepath.ToSlash(rel)))
+	})
+	if err != nil {
+		return fmt.Errorf("backup: tar config dir: %w", err)
+	}
+	return nil
+}
+
+// statOrNil stats p, answering nil when it cannot: the optional config
+// inputs of a backup are skipped, not failed on, when absent or
+// unreadable.
+func statOrNil(p string) os.FileInfo {
+	info, err := os.Stat(p)
+	if err != nil {
+		return nil
+	}
+	return info
+}
+
+// archiveBlobs archives every blob of the store cfg opens as
+// blobs/<key>, preceded by its BlobMeta as blobmeta/<key>.json, both
+// read through the store, so its on-disk layout never leaks into the
+// archive; Restore writes them back through the target's store. A blob
+// that cannot be read is skipped when skipErrors is set. It returns the
+// number archived.
+func archiveBlobs(ctx context.Context, tw *tar.Writer, cfg config.BlobConfig, skipErrors bool) (int, error) {
+	bs, err := blobfactory.New(cfg)
+	if err != nil {
+		return 0, fmt.Errorf("backup: open blob store: %w", err)
+	}
+	items, err := bs.List(ctx, "")
+	if err != nil {
+		return 0, fmt.Errorf("backup: list blobs: %w", err)
+	}
+	n := 0
+	for _, item := range items {
+		rc, meta, err := bs.Get(ctx, item.Key)
+		if err != nil {
+			if skipErrors {
+				continue
+			}
+			return 0, fmt.Errorf("backup: get blob %q: %w", item.Key, err)
+		}
+		err = addBlob(tw, item, meta, rc)
+		rc.Close()
+		if err != nil {
+			return 0, err
+		}
+		n++
+	}
+	return n, nil
+}
+
+// addBlob archives one blob's metadata, then its content from rc.
+func addBlob(tw *tar.Writer, item storage.BlobInfo, meta storage.BlobMeta, rc io.Reader) error {
+	if err := addBlobMeta(tw, item, meta); err != nil {
+		return err
+	}
+	hdr := &tar.Header{
+		Name:    fmt.Sprintf("ctxt-backup/blobs/%s", item.Key),
+		Size:    item.Size,
+		Mode:    0644,
+		ModTime: item.UpdatedAt,
+	}
+	if err := tw.WriteHeader(hdr); err != nil {
+		return fmt.Errorf("backup: tar blob header: %w", err)
+	}
+	if _, err := io.Copy(tw, rc); err != nil {
+		return fmt.Errorf("backup: tar blob data: %w", err)
+	}
+	return nil
+}
+
+// addBlobMeta archives one blob's metadata as blobmeta/<key>.json.
+func addBlobMeta(tw *tar.Writer, item storage.BlobInfo, meta storage.BlobMeta) error {
+	data, err := json.Marshal(meta)
+	if err != nil {
+		return fmt.Errorf("backup: marshal blob metadata %q: %w", item.Key, err)
+	}
+	hdr := &tar.Header{
+		Name:    fmt.Sprintf("ctxt-backup/blobmeta/%s.json", item.Key),
+		Size:    int64(len(data)),
+		Mode:    0644,
+		ModTime: item.UpdatedAt,
+	}
+	if err := tw.WriteHeader(hdr); err != nil {
+		return fmt.Errorf("backup: tar blob metadata header: %w", err)
+	}
+	if _, err := tw.Write(data); err != nil {
+		return fmt.Errorf("backup: tar blob metadata: %w", err)
+	}
+	return nil
 }
 
 func addFileToTar(tw *tar.Writer, srcPath, tarName string) error {

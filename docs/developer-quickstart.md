@@ -15,7 +15,7 @@ Get up and running with **dPKMS + `ctxt`** development in under 5 minutes.
 
 - **Task** — Modern task runner ([Install](https://taskfile.dev/installation/))
 - **golangci-lint** — Fast linter ([Install](https://golangci-lint.run/usage/install/))
-- **Docker** — For optional services (Postgres, Redis, Qdrant)
+- **Docker** — For the optional Postgres service
 
 ### Media Processing Dependencies
 
@@ -180,20 +180,23 @@ go build -o bin/dpkms ./cmd/dpkms
 task install:tools
 
 # Or individually
-go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-go install github.com/go-task/task/v3/cmd/task@latest
-go install golang.org/x/vuln/cmd/govulncheck@latest
-go install github.com/securego/gosec/v2/cmd/gosec@latest
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6
+go install github.com/go-task/task/v3/cmd/task@v3.53.1
+go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+go install github.com/securego/gosec/v2/cmd/gosec@v2.29.0
 ```
 
-### 5. Create Environment File
+### 5. Environment Overrides (Optional)
+
+The defaults work for local development, so this step is optional.
+Nothing loads a `.env` file automatically: not `ctxt`, `dpkms`, `task`,
+`make` nor the compose files. To keep overrides in one, copy the template
+and export it into your shell:
 
 ```bash
-# Copy example environment file
 cp .env.example .env
-
-# Edit as needed (defaults work for local development)
-vim .env
+$EDITOR .env               # uncomment what you need
+set -a; . ./.env; set +a   # export it into the current shell
 ```
 
 ---
@@ -290,33 +293,31 @@ ctxt/
 ### Default Configuration (Zero-Config)
 
 The system works out-of-the-box with sensible defaults:
-- **Storage:** SQLite at `./data/sqlite/contexthelp.db`
+- **Storage:** SQLite at `$XDG_DATA_HOME/contexthelp/db.sqlite`
 - **Workers:** 4 background workers
 - **Jobs:** Persistent queue in SQLite
 - **API:** REST on `:8080`, gRPC on `:9090`
 
 ### Custom Configuration
 
-Create `.env` from `.env.example`:
+Export overrides in the shell (neither binary loads a `.env` file):
 
 ```bash
 # Storage
-STORAGE_BACKEND=sqlite
-SQLITE_PATH=./data/sqlite/contexthelp.db
+CH_STORAGE_TYPE=sqlite
 
-# Workers
-WORKER_COUNT=4
+# Workers (config key server.workers)
+DPKMS_WORKERS=4
 
 # API
-API_PORT=8080
-GRPC_PORT=9090
-
-# Logging
-LOG_LEVEL=debug
-LOG_FORMAT=console
+CH_SERVER_PORT=8080
+CH_GRPC_PORT=9090
 ```
 
-See `docs/environment-variables.md` for complete reference.
+The database path is the `storage.path` config key (`-c storage.path=...`);
+logging has no env var: pass `--verbose` for debug output.
+
+See [environment-variables/README.md](environment-variables/README.md) for the complete reference.
 
 ---
 
@@ -325,7 +326,7 @@ See `docs/environment-variables.md` for complete reference.
 For advanced development, start optional services:
 
 ```bash
-# Start Postgres, Redis, Qdrant via Docker Compose
+# Start Postgres via Docker Compose
 task services:up
 
 # View logs
@@ -337,25 +338,16 @@ task services:down
 
 Services:
 - **PostgreSQL** - Alternative storage backend (`:5432`)
-- **Redis** - Distributed job queue (`:6379`)
-- **Qdrant** - Vector search (`:6333`)
 
 ---
 
 ## Common Tasks
 
-### Create and Run a Migration
+### Add a Database Migration
 
-```bash
-# Create new migration
-task db:migrate:create -- add_new_field
-
-# Run migrations
-task db:migrate:up
-
-# Rollback last migration
-task db:migrate:down
-```
+Migrations are embedded in the binaries and run automatically whenever
+dpkms or ctxt opens the database. To add one, see
+[Database & Migrations](development.md#database--migrations).
 
 ### Lint and Format Code
 
@@ -411,17 +403,18 @@ task build
 
 ### Database Locked
 
+Another dpkms instance usually holds the database:
+
 ```bash
-# Reset database (WARNING: deletes all data)
-task db:reset
+dpkms ps         # list running instances
+dpkms shutdown   # stop the running instance
 ```
 
 ### Port Already in Use
 
 ```bash
-# Change ports in .env
-API_PORT=8081
-GRPC_PORT=9091
+# Start on other ports (or --port / --grpc-port)
+CH_SERVER_PORT=8081 CH_GRPC_PORT=9091 dpkms serve
 ```
 
 ---
@@ -440,7 +433,7 @@ GRPC_PORT=9091
 **For DevOps:**
 1. Review [ci-cd.md](ci-cd.md) — CI/CD pipeline
 2. Check [scaling.md](scaling.md) — Deployment patterns
-3. Read [environment-variables.md](environment-variables.md) — Configuration reference
+3. Read [environment-variables/README.md](environment-variables/README.md) — Environment variable reference
 
 ---
 
@@ -479,7 +472,6 @@ task security           # Security scan
 
 # Clean
 task clean              # Remove build artifacts
-task db:reset           # Reset database
 
 # Services
 task services:up        # Start Docker services

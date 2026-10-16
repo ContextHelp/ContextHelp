@@ -106,7 +106,7 @@ func TestCrossSiteWritesRefused(t *testing.T) {
 		})
 	}
 
-	items, _, err := bundle.svc.Store.Objects().List(t.Context(), storage.ObjectFilter{})
+	items, _, err := bundle.svc.Store(ownerCtx()).Objects().List(t.Context(), storage.ObjectFilter{})
 	require.NoError(t, err)
 	assert.Empty(t, items, "a refused request must not store anything")
 }
@@ -136,7 +136,7 @@ func TestWriteBodiesMustBeJSON(t *testing.T) {
 		})
 	}
 
-	items, _, err := bundle.svc.Store.Objects().List(t.Context(), storage.ObjectFilter{})
+	items, _, err := bundle.svc.Store(ownerCtx()).Objects().List(t.Context(), storage.ObjectFilter{})
 	require.NoError(t, err)
 	assert.Empty(t, items, "a refused request must not store anything")
 }
@@ -200,7 +200,7 @@ func TestLegitimateClientsPass(t *testing.T) {
 // Federation peers push JSON with no Origin; the guard lets them through
 // to the handler.
 func TestFederationPushPassesGuard(t *testing.T) {
-	ts := newFedTestBundle(t, "")
+	ts := newFedTestBundle(t)
 	defer ts.Close()
 
 	body := makePushBody(t, []storage.KnowledgeObject{makeKO("o1", "h1")}, nil)

@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,7 +13,9 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliformat"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	kitcli "hop.top/kit/go/console/cli"
@@ -85,9 +88,9 @@ func (l *lineWriter) println(args ...any) {
 func openDB() (*sqlite.Driver, func(), error) {
 	storageType := cfg.Storage.Type
 	if storageType == "" {
-		storageType = "sqlite"
+		storageType = storageTypeSQLite
 	}
-	if storageType != "sqlite" {
+	if storageType != storageTypeSQLite {
 		return nil, nil, fmt.Errorf("housekeeping only supports sqlite storage (got %s)", storageType)
 	}
 	storagePath := cfg.Storage.Path
@@ -95,16 +98,21 @@ func openDB() (*sqlite.Driver, func(), error) {
 		return nil, nil, fmt.Errorf("storage path not configured")
 	}
 
-	driver, err := sqlite.New(storagePath)
+	opened, err := storageutil.Open(storageType, storagePath, cfg.Storage.Blob,
+		storageutil.WithMigrateSnapshot(cfg.Storage.MigrateSnapshot))
 	if err != nil {
 		return nil, nil, fmt.Errorf("open database: %w", err)
 	}
 	ctx := context.Background()
-	if err := driver.Init(ctx); err != nil {
-		driver.Close(ctx)
-		return nil, nil, fmt.Errorf("init database: %w", err)
+	driver, ok := opened.(*sqlite.Driver)
+	if !ok {
+		_ = opened.Close(ctx)
+		return nil, nil, fmt.Errorf("open database: %T is not a sqlite driver", opened)
 	}
-	cleanup := func() { driver.Close(context.Background()) }
+	if err := driver.Init(ctx); err != nil {
+		return nil, nil, errors.Join(fmt.Errorf("init database: %w", err), driver.Close(ctx))
+	}
+	cleanup := func() { closeStorage(driver) }
 	return driver, cleanup, nil
 }
 
@@ -165,11 +173,12 @@ var runAllCmd = &cobra.Command{
 	Long: `Run all maintenance tasks in sequence:
   1. WAL checkpoint
   2. VACUUM SQLite DB
-  3. Purge orphaned blobs
+  3. Purge orphaned blobs (no object refers to them, older than --blob-grace)
   4. Compact embeddings table
   5. Prune jobs history >30 days
-  6. Detect zombie jobs (running but stale)
-  7. Print stats summary`,
+  6. Prune the object id lists of read audit entries older than sharing.audit.retention (90 days by default)
+  7. Detect zombie jobs (running but stale)
+  8. Print stats summary`,
 	RunE: runAll,
 }
 
@@ -206,6 +215,8 @@ func init() {
 	// use kitcli.IsDryRun(cmd).
 	runAllCmd.Flags().Duration("zombie-threshold", zombieThreshold,
 		"jobs running longer than this are considered zombies")
+	runAllCmd.Flags().Duration("blob-grace", blob.DefaultSweepGrace,
+		"keep unreferenced blobs younger than this (an ingest may not have written its object yet)")
 
 	// Side-effect tiers. Kit refuses --dry-run on any leaf that has not
 	// declared one, and uses the tier to decide whether the confirmation
@@ -448,7 +459,13 @@ func runPrune(cmd *cobra.Command, args []string) error {
 	// for JSON must get a document rather than the sentence "No
 	// objects found", whose only reading is by eye.
 	if kitcli.IsDryRun(cmd) {
-		actions := make([]cliformat.Action, 0, len(objects))
+		// The blobs a real prune deletes with its objects: those no
+		// object outside the pruned set still refers to.
+		blobKeys, err := blob.PlanDelete(ctx, driver, objects)
+		if err != nil {
+			return fmt.Errorf("plan blob deletes: %w", err)
+		}
+		actions := make([]cliformat.Action, 0, len(objects)+len(blobKeys))
 		for _, obj := range objects {
 			actions = append(actions, cliformat.Action{
 				Kind:       "delete",
@@ -456,6 +473,15 @@ func runPrune(cmd *cobra.Command, args []string) error {
 				Count:      1,
 				Reversible: false,
 				Detail:     "created before " + before,
+			})
+		}
+		for _, key := range blobKeys {
+			actions = append(actions, cliformat.Action{
+				Kind:       "delete",
+				Target:     "blob:" + key,
+				Count:      1,
+				Reversible: false,
+				Detail:     "content of a pruned object; no other object refers to it",
 			})
 		}
 		return renderPreviewPlan(cmd, cliformat.NewPlan(cmd.CommandPath(), actions), func(w *lineWriter) {
@@ -469,6 +495,12 @@ func runPrune(cmd *cobra.Command, args []string) error {
 			for _, obj := range objects {
 				w.printf("  delete object %s\n", obj.ID)
 			}
+			if len(blobKeys) > 0 {
+				w.printf("Would delete %d blob(s) no other object refers to:\n", len(blobKeys))
+				for _, key := range blobKeys {
+					w.printf("  delete blob %s\n", key)
+				}
+			}
 		})
 	}
 
@@ -481,34 +513,55 @@ func runPrune(cmd *cobra.Command, args []string) error {
 
 	fmt.Print("Proceed with deletion? (y/N): ")
 	var response string
-	fmt.Scanln(&response)
+	// No answer (EOF, empty line) leaves response empty: not confirmed.
+	_, _ = fmt.Scanln(&response)
 	if response != "y" && response != "Y" {
 		fmt.Println("Pruning cancelled.")
 		return nil
 	}
 
+	// Each object goes the way DELETE /objects/{id} deletes it: edges,
+	// row, then the blob its content is externalized to. A blob that
+	// can't be deleted is left as an orphan and listed, never a row
+	// whose ref names no blob.
 	deleted := 0
+	var orphans []blob.Orphan
 	for _, obj := range objects {
-		if err := driver.Objects().Delete(ctx, obj.ID); err != nil {
+		left, err := blob.DeleteObject(ctx, driver, obj.ID)
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "  warning: delete %s: %v\n", obj.ID, err)
 			continue
 		}
 		deleted++
+		orphans = append(orphans, left...)
 	}
 	fmt.Printf("\nPruned %d objects\n", deleted)
+	if len(orphans) > 0 {
+		fmt.Printf("Left %d orphan blob(s): their objects are gone, deleting them failed:\n", len(orphans))
+		for _, o := range orphans {
+			fmt.Printf("  %s\n", o)
+		}
+	}
 	return nil
 }
 
 // housekeepingStats collects counters during a full maintenance run.
 type housekeepingStats struct {
-	PagesBefore   int64
-	PagesAfter    int64
-	PageSize      int64
-	JobsPruned    int64
-	ZombiesFound  int64
-	ZombiesReset  int64
-	OrphanBlobs   int64
-	EmbeddingsOpt bool
+	PagesBefore int64
+	PagesAfter  int64
+	PageSize    int64
+	JobsPruned  int64
+	// AuditObjectsPruned counts the read audit object ids pruned past
+	// sharing.audit.retention; the entries and their counts stay.
+	AuditObjectsPruned int64
+	ZombiesFound       int64
+	ZombiesReset       int64
+	OrphanBlobs        int64
+	// OrphanBlobsYoung are unreferenced blobs inside the grace period,
+	// kept; OrphanBlobsFailed could not be deleted.
+	OrphanBlobsYoung  int64
+	OrphanBlobsFailed int64
+	EmbeddingsOpt     bool
 }
 
 // progress writes a narration line to stderr. A full housekeeping run
@@ -524,13 +577,16 @@ func progress(line string) {
 // precomputed so a caller need not know the page arithmetic.
 func (s housekeepingStats) summary() map[string]any {
 	return map[string]any{
-		"db_size_mb":       s.PagesAfter * s.PageSize / (1024 * 1024),
-		"reclaimed_kb":     (s.PagesBefore - s.PagesAfter) * s.PageSize / 1024,
-		"jobs_pruned":      s.JobsPruned,
-		"zombies_found":    s.ZombiesFound,
-		"zombies_reset":    s.ZombiesReset,
-		"orphan_blobs":     s.OrphanBlobs,
-		"embeddings_optim": s.EmbeddingsOpt,
+		"db_size_mb":           s.PagesAfter * s.PageSize / (1024 * 1024),
+		"reclaimed_kb":         (s.PagesBefore - s.PagesAfter) * s.PageSize / 1024,
+		"jobs_pruned":          s.JobsPruned,
+		"audit_objects_pruned": s.AuditObjectsPruned,
+		"zombies_found":        s.ZombiesFound,
+		"zombies_reset":        s.ZombiesReset,
+		"orphan_blobs":         s.OrphanBlobs,
+		"orphan_blobs_young":   s.OrphanBlobsYoung,
+		"orphan_blobs_failed":  s.OrphanBlobsFailed,
+		"embeddings_optim":     s.EmbeddingsOpt,
 	}
 }
 
@@ -538,15 +594,16 @@ func (s housekeepingStats) summary() map[string]any {
 // actions a real run would carry out.
 //
 // One action per mutating step, in execution order, and exactly the
-// six the command's own help documents: checkpoint, vacuum, optimize
-// embeddings, purge orphan blobs, prune jobs history, reset zombies.
+// seven the command's own help documents: checkpoint, vacuum, optimize
+// embeddings, purge orphan blobs, prune jobs history, prune read audit
+// object lists, reset zombies.
 // The counts come from the same read-only queries the dry path already
 // ran, so the projection reports real magnitudes rather than
 // placeholders — which is what makes it reviewable. The seventh step
 // the help lists, "print stats summary", is not an action: it changes
 // nothing, and padding the plan with it would make the list disagree
 // with the work.
-func (s housekeepingStats) plan(command string, threshold time.Duration) cliformat.Plan {
+func (s housekeepingStats) plan(command string, threshold, grace, retention time.Duration) cliformat.Plan {
 	return cliformat.NewPlan(command, []cliformat.Action{
 		{
 			Kind: "checkpoint", Target: "wal:" + cfg.Storage.Path, Count: 0,
@@ -563,12 +620,18 @@ func (s housekeepingStats) plan(command string, threshold time.Duration) cliform
 			Reversible: true, Detail: "optimize the embeddings index if the table exists",
 		},
 		{
-			Kind: "delete", Target: "table:blobs", Count: s.OrphanBlobs,
-			Reversible: false, Detail: "purge blobs whose object no longer exists",
+			Kind: "delete", Target: "blob-store", Count: s.OrphanBlobs,
+			Reversible: false,
+			Detail:     fmt.Sprintf("purge blobs no object refers to, older than %s", grace),
 		},
 		{
 			Kind: "delete", Target: "table:jobs", Count: s.JobsPruned,
 			Reversible: false, Detail: "prune completed, failed and canceled jobs older than 30 days",
+		},
+		{
+			Kind: "delete", Target: "table:access_log_objects", Count: s.AuditObjectsPruned,
+			Reversible: false,
+			Detail:     fmt.Sprintf("prune the object id lists of read audit entries older than %s (sharing.audit.retention); the entries and their counts stay", retention),
 		},
 		{
 			Kind: "update", Target: "table:jobs", Count: s.ZombiesFound,
@@ -593,8 +656,10 @@ func (s housekeepingStats) print(w *lineWriter) {
 	w.printf("  DB size now    : %d MB\n", currentMB)
 	w.printf("  Space reclaimed: %d KB\n", reclaimedKB)
 	w.printf("  Jobs pruned    : %d\n", s.JobsPruned)
+	w.printf("  Audit ids pruned: %d\n", s.AuditObjectsPruned)
 	w.printf("  Zombie jobs    : %d found, %d reset to pending\n", s.ZombiesFound, s.ZombiesReset)
-	w.printf("  Orphan blobs   : %d\n", s.OrphanBlobs)
+	w.printf("  Orphan blobs   : %d purged, %d kept (younger than grace), %d failed\n",
+		s.OrphanBlobs, s.OrphanBlobsYoung, s.OrphanBlobsFailed)
 	if s.EmbeddingsOpt {
 		w.println("  Embeddings     : optimized")
 	} else {
@@ -605,6 +670,7 @@ func (s housekeepingStats) print(w *lineWriter) {
 
 func runAll(cmd *cobra.Command, _ []string) error {
 	threshold, _ := cmd.Flags().GetDuration("zombie-threshold")
+	grace, _ := cmd.Flags().GetDuration("blob-grace")
 	dryRun := kitcli.IsDryRun(cmd)
 
 	driver, cleanup, err := openDB()
@@ -655,19 +721,18 @@ func runAll(cmd *cobra.Command, _ []string) error {
 	}
 	progress("done")
 
-	// 5. Orphaned blobs: blobs whose object_id references no known object.
+	// 5. Orphaned blobs: blobs in the blob store no object refers to,
+	// older than the grace period (see blob.Sweep).
 	progress("Purging orphaned blobs...")
-	if !dryRun {
-		res, err := db.ExecContext(ctx, `DELETE FROM blobs WHERE object_id NOT IN (SELECT id FROM objects)`)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "warning: purge blobs: %v\n", err)
-		} else {
-			stats.OrphanBlobs, _ = res.RowsAffected()
-		}
-	} else {
-		_ = db.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM blobs WHERE object_id NOT IN (SELECT id FROM objects)`).
-			Scan(&stats.OrphanBlobs)
+	swept, err := blob.Sweep(ctx, driver, blob.SweepOptions{Grace: grace, DryRun: dryRun})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: purge blobs: %v\n", err)
+	}
+	stats.OrphanBlobs = int64(len(swept.Deleted))
+	stats.OrphanBlobsYoung = int64(swept.Young)
+	stats.OrphanBlobsFailed = int64(len(swept.Failed))
+	for _, o := range swept.Failed {
+		fmt.Fprintf(os.Stderr, "warning: purge blob %s\n", o)
 	}
 	progress("done")
 
@@ -687,6 +752,26 @@ func runAll(cmd *cobra.Command, _ []string) error {
 		_ = db.QueryRowContext(ctx,
 			"SELECT COUNT(*) FROM jobs WHERE status IN ('completed','failed','cancelled') AND updated_at < ?",
 			cutoff).Scan(&stats.JobsPruned)
+	}
+	progress("done")
+
+	// 6b. Read audit retention (ADR-080 §9): the object id lists of
+	// entries older than sharing.audit.retention go; the entries and
+	// their counts stay.
+	progress("Pruning read audit object lists...")
+	retention := cfg.Sharing.Audit.EffectiveRetention()
+	auditCutoff := time.Now().Add(-retention)
+	if !dryRun {
+		n, err := driver.Sharing().AccessLog().Prune(ctx, auditCutoff)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: prune read audit: %v\n", err)
+		} else {
+			stats.AuditObjectsPruned = n
+		}
+	} else {
+		_ = db.QueryRowContext(ctx,
+			"SELECT COUNT(*) FROM access_log_objects WHERE access_id IN (SELECT id FROM access_log WHERE at < ?)",
+			auditCutoff.UnixMilli()).Scan(&stats.AuditObjectsPruned)
 	}
 	progress("done")
 
@@ -716,7 +801,7 @@ func runAll(cmd *cobra.Command, _ []string) error {
 	// from a projection that pruned nothing because it was never
 	// going to. The plan states dry_run outright and names each step.
 	if dryRun {
-		return renderPreviewPlan(cmd, stats.plan(cmd.CommandPath(), threshold), func(w *lineWriter) {
+		return renderPreviewPlan(cmd, stats.plan(cmd.CommandPath(), threshold, grace, retention), func(w *lineWriter) {
 			stats.print(w)
 		})
 	}

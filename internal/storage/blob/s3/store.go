@@ -1,3 +1,4 @@
+// Package s3 implements storage.BlobStore on an S3-compatible backend.
 package s3
 
 import (
@@ -8,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"strings"
 	"time"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -128,8 +130,11 @@ func (s *Store) Get(ctx context.Context, key string) (io.ReadCloser, storage.Blo
 		Bucket: &s.bucket,
 		Key:    &objKey,
 	})
+	if isNotFound(err) {
+		return nil, storage.BlobMeta{}, fmt.Errorf("blob %q: %w: %w", key, storage.ErrBlobNotFound, err)
+	}
 	if err != nil {
-		return nil, storage.BlobMeta{}, fmt.Errorf("blob %q not found: %w", key, err)
+		return nil, storage.BlobMeta{}, fmt.Errorf("blob s3 get %q: %w", key, err)
 	}
 
 	var meta storage.BlobMeta
@@ -176,9 +181,7 @@ func (s *Store) Exists(ctx context.Context, key string) (bool, error) {
 		// unknown, and reporting it as absent would let callers overwrite
 		// or re-upload live data. Mirrors the local store, which returns
 		// the error for any stat failure other than ErrNotExist.
-		var notFound *types.NotFound
-		var noSuchKey *types.NoSuchKey
-		if errors.As(err, &notFound) || errors.As(err, &noSuchKey) {
+		if isNotFound(err) {
 			return false, nil
 		}
 		return false, fmt.Errorf("blob s3 exists: %w", err)
@@ -186,44 +189,52 @@ func (s *Store) Exists(ctx context.Context, key string) (bool, error) {
 	return true, nil
 }
 
+// List returns the blobs whose key starts with prefix, every blob for
+// an empty one. Keys are stored sharded (keyPath), so a prefix of four
+// or more characters lists its shard alone; a shorter one lists the
+// whole store and filters on the key. Like the local store, it matches
+// the key itself, never the shard directories it sits under.
 func (s *Store) List(ctx context.Context, prefix string) ([]storage.BlobInfo, error) {
-	listPrefix := s.prefix
-	if prefix != "" {
-		if listPrefix != "" {
-			listPrefix = path.Join(listPrefix, prefix)
-		} else {
-			listPrefix = prefix
-		}
+	root := ""
+	if s.prefix != "" {
+		root = strings.TrimSuffix(s.prefix, "/") + "/"
+	}
+	listPrefix := root
+	if len(prefix) >= 4 {
+		listPrefix = s.keyPath(prefix)
 	}
 
-	result, err := s.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+	// A page holds at most 1000 keys: follow the continuation token to
+	// the end, so a caller (the orphan sweep) sees every blob.
+	var items []storage.BlobInfo
+	pages := s3.NewListObjectsV2Paginator(s.client, &s3.ListObjectsV2Input{
 		Bucket: &s.bucket,
 		Prefix: &listPrefix,
 	})
-	if err != nil {
-		return nil, fmt.Errorf("blob s3 list: %w", err)
-	}
-
-	var items []storage.BlobInfo
-	for _, obj := range result.Contents {
-		key := path.Base(*obj.Key)
-		// Skip meta files.
-		if len(key) > 10 && key[len(key)-10:] == ".meta.json" {
-			continue
+	for pages.HasMorePages() {
+		result, err := pages.NextPage(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("blob s3 list: %w", err)
 		}
-		size := int64(0)
-		if obj.Size != nil {
-			size = *obj.Size
+		for _, obj := range result.Contents {
+			key := path.Base(*obj.Key)
+			if strings.HasSuffix(key, ".meta.json") || !strings.HasPrefix(key, prefix) {
+				continue
+			}
+			size := int64(0)
+			if obj.Size != nil {
+				size = *obj.Size
+			}
+			updatedAt := time.Time{}
+			if obj.LastModified != nil {
+				updatedAt = *obj.LastModified
+			}
+			items = append(items, storage.BlobInfo{
+				Key:       key,
+				Size:      size,
+				UpdatedAt: updatedAt,
+			})
 		}
-		updatedAt := time.Time{}
-		if obj.LastModified != nil {
-			updatedAt = *obj.LastModified
-		}
-		items = append(items, storage.BlobInfo{
-			Key:       key,
-			Size:      size,
-			UpdatedAt: updatedAt,
-		})
 	}
 	return items, nil
 }
@@ -239,4 +250,14 @@ func (s *Store) URL(ctx context.Context, key string) (string, error) {
 		return "", fmt.Errorf("blob s3 url: %w", err)
 	}
 	return result.URL, nil
+}
+
+// isNotFound reports whether err is S3's definitive "no such key": a
+// NoSuchKey or NotFound error (HeadObject has no body to name it). Any
+// other failure (auth, network, throttling, 5xx) leaves the object's
+// existence unknown.
+func isNotFound(err error) bool {
+	var notFound *types.NotFound
+	var noSuchKey *types.NoSuchKey
+	return errors.As(err, &notFound) || errors.As(err, &noSuchKey)
 }

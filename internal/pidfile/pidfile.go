@@ -4,9 +4,14 @@
 //
 //	$XDG_DATA_HOME/contexthelp/run/<port>.pid
 //
-// On clean shutdown the file is removed. On startup, dpkms ps validates
-// each pidfile by checking whether the recorded pid is alive (kill -0);
-// stale files (from crashes or reboots) are silently removed.
+// On clean shutdown the file is removed. Readers (dpkms ps, shutdown,
+// reboot, ctxt) validate each pidfile by checking whether the recorded
+// pid is alive (kill -0) and, when the OS reports it, that the process
+// started no later than the entry's started_at: a later start means the
+// pid was reused by an unrelated process. Stale files (from crashes or
+// reboots) are silently removed. At startup, serve also treats an entry recording its
+// own pid as stale: it has not registered yet, so the entry is a leftover
+// from an earlier process that had the same pid (a container's PID 1).
 package pidfile
 
 import (
@@ -56,7 +61,11 @@ func Remove(dir string, port int) error {
 }
 
 // Scan reads all pidfiles in dir, removes stale ones, and returns live entries.
-func Scan(dir string) ([]Info, error) {
+func Scan(dir string) ([]Info, error) { return scan(dir, 0) }
+
+// scan is Scan, also treating entries that record pid self as stale
+// (self 0 disables this).
+func scan(dir string, self int) ([]Info, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -65,7 +74,7 @@ func Scan(dir string) ([]Info, error) {
 		return nil, err
 	}
 
-	var live []Info
+	live := make([]Info, 0, len(entries))
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".pid") {
 			continue
@@ -81,7 +90,7 @@ func Scan(dir string) ([]Info, error) {
 			os.Remove(path)
 			continue
 		}
-		if !alive(info.PID) {
+		if (self > 0 && info.PID == self) || !alive(info.PID) || !sameProcess(info) {
 			os.Remove(path)
 			continue
 		}
@@ -105,14 +114,19 @@ func FindByName(dir, name string) (Info, bool, error) {
 	return Info{}, false, nil
 }
 
-// CheckNameConflict returns an error if any live instance in dir already uses name.
+// CheckNameConflict returns an error if any live instance in dir already
+// uses name. It is the startup check, run before the caller writes its
+// own pidfile, so an entry recording the caller's pid cannot be a running
+// instance: it is pruned as stale, letting the caller's write replace it.
 func CheckNameConflict(dir, name string) error {
-	_, found, err := FindByName(dir, name)
+	infos, err := scan(dir, os.Getpid())
 	if err != nil {
 		return err
 	}
-	if found {
-		return fmt.Errorf("instance name %q is already in use by a running dpkms process", name)
+	for _, info := range infos {
+		if info.Name == name {
+			return fmt.Errorf("instance name %q is already in use by a running dpkms process", name)
+		}
 	}
 	return nil
 }

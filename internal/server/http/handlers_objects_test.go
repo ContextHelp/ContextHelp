@@ -2,7 +2,6 @@ package http
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/url"
@@ -12,7 +11,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
-// TestListObjectsEmptyCollection ensures empty DB returns [] not null (T-0219).
+// TestListObjectsEmptyCollection ensures empty DB returns [] not null.
 func TestListObjectsEmptyCollection(t *testing.T) {
 	ts := newTestServerBundle(t)
 	defer ts.Close()
@@ -44,7 +43,7 @@ func TestGetObject(t *testing.T) {
 	defer ts.Close()
 
 	now := time.Now().Truncate(time.Second)
-	ts.svc.Store.Objects().Create(context.Background(), &storage.KnowledgeObject{
+	ts.svc.Store(ownerCtx()).Objects().Create(ownerCtx(), &storage.KnowledgeObject{
 		ID: "obj-1", Type: "article", CreatedAt: now, UpdatedAt: now,
 	})
 
@@ -92,7 +91,7 @@ func TestListObjects(t *testing.T) {
 
 	now := time.Now().Truncate(time.Second)
 	for _, id := range []string{"obj-a", "obj-b", "obj-c"} {
-		ts.svc.Store.Objects().Create(context.Background(), &storage.KnowledgeObject{
+		ts.svc.Store(ownerCtx()).Objects().Create(ownerCtx(), &storage.KnowledgeObject{
 			ID: id, Type: "article", CreatedAt: now, UpdatedAt: now,
 		})
 	}
@@ -122,10 +121,10 @@ func TestListObjectsWithFilter(t *testing.T) {
 	defer ts.Close()
 
 	now := time.Now().Truncate(time.Second)
-	ts.svc.Store.Objects().Create(context.Background(), &storage.KnowledgeObject{
+	ts.svc.Store(ownerCtx()).Objects().Create(ownerCtx(), &storage.KnowledgeObject{
 		ID: "obj-1", Type: "article", CreatedAt: now, UpdatedAt: now,
 	})
-	ts.svc.Store.Objects().Create(context.Background(), &storage.KnowledgeObject{
+	ts.svc.Store(ownerCtx()).Objects().Create(ownerCtx(), &storage.KnowledgeObject{
 		ID: "obj-2", Type: "note", CreatedAt: now, UpdatedAt: now,
 	})
 
@@ -150,7 +149,7 @@ func TestUpdateObject(t *testing.T) {
 	defer ts.Close()
 
 	now := time.Now().Truncate(time.Second)
-	ts.svc.Store.Objects().Create(context.Background(), &storage.KnowledgeObject{
+	ts.svc.Store(ownerCtx()).Objects().Create(ownerCtx(), &storage.KnowledgeObject{
 		ID: "obj-1", Type: "article", CreatedAt: now, UpdatedAt: now,
 	})
 
@@ -181,7 +180,7 @@ func TestDeleteObject(t *testing.T) {
 	defer ts.Close()
 
 	now := time.Now().Truncate(time.Second)
-	ts.svc.Store.Objects().Create(context.Background(), &storage.KnowledgeObject{
+	ts.svc.Store(ownerCtx()).Objects().Create(ownerCtx(), &storage.KnowledgeObject{
 		ID: "obj-1", Type: "article", CreatedAt: now, UpdatedAt: now,
 	})
 
@@ -223,6 +222,11 @@ func TestDeleteObject_FTSSearchStaysHealthy(t *testing.T) {
 		t.Fatalf("analyze: status %d, body %v", resp.StatusCode, analyzed)
 	}
 	objID := analyzed["job_id"] // raw path returns the object ID
+	// A raw object is not a search hit; the repro needs one a search
+	// reaches, so activate it first.
+	if err := ts.svc.Store(ownerCtx()).Objects().TransitionStatus(ownerCtx(), objID, "raw", "active", time.Now()); err != nil {
+		t.Fatalf("activate object: %v", err)
+	}
 
 	searchURL := ts.URL + "/api/v1/search?q=" + url.QueryEscape(`similar=="`+token+`"`)
 	search := func() (int, int) {

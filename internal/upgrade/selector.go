@@ -1,5 +1,5 @@
-// Package upgrade: Selector — predicate parsing for ADR-070
-// reingest_selective upgrades (T-0581).
+// Selector — predicate parsing for ADR-070
+// reingest_selective upgrades.
 //
 // Two surface forms:
 //
@@ -9,7 +9,7 @@
 //     family by accident is exactly the footgun ADR-070 §1 calls out.
 //
 //   - SQL WHERE: `where:<predicate>`. Escape hatch for selectivity that the
-//     pipeline filter can't express (e.g. T-0565's
+//     pipeline filter can't express (e.g. the text.short backfill's
 //     `graph_json IS NULL AND pipeline LIKE 'text.short%'`). The `where:`
 //     prefix is mandatory so a typo'd pipeline filter
 //     ("pipline=text.short@v1") falls back to a parse error rather than
@@ -29,6 +29,7 @@
 //   - Pre-warm the query plan via `EXPLAIN QUERY PLAN SELECT id FROM
 //     objects WHERE <pred>` — if SQLite rejects, the predicate is
 //     malformed (column doesn't exist, syntax error).
+
 package upgrade
 
 import (

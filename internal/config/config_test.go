@@ -131,20 +131,6 @@ func TestEnsureConfigDir(t *testing.T) {
 	}
 }
 
-func TestEnsureDataDir(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv(EnvDataDir, filepath.Join(dir, "data"))
-
-	err := EnsureDataDir()
-	if err != nil {
-		t.Fatalf("EnsureDataDir should succeed: %v", err)
-	}
-
-	if _, err := os.Stat(filepath.Join(dir, "data")); os.IsNotExist(err) {
-		t.Error("data directory should have been created")
-	}
-}
-
 func TestLoadWithRegistries(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")
@@ -172,36 +158,6 @@ func TestLoadWithRegistries(t *testing.T) {
 	}
 	if cfg.Registries[1].URL != "https://devtools.registry.io" {
 		t.Errorf("expected second registry URL, got %s", cfg.Registries[1].URL)
-	}
-}
-
-func TestLoadWithPlugins(t *testing.T) {
-	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, "config.yaml")
-
-	content := []byte(`plugins:
-  - type: enrichment
-    plugin: custom-extractor
-    config:
-      model: gpt-4
-`)
-	if err := os.WriteFile(cfgPath, content, 0644); err != nil {
-		t.Fatalf("failed to write config file: %v", err)
-	}
-
-	cfg, err := Load("ctxt", cfgPath)
-	if err != nil {
-		t.Fatalf("Load should succeed: %v", err)
-	}
-
-	if len(cfg.Plugins) != 1 {
-		t.Fatalf("expected 1 plugin, got %d", len(cfg.Plugins))
-	}
-	if cfg.Plugins[0].Type != "enrichment" {
-		t.Errorf("expected plugin type=enrichment, got %s", cfg.Plugins[0].Type)
-	}
-	if cfg.Plugins[0].Plugin != "custom-extractor" {
-		t.Errorf("expected plugin name=custom-extractor, got %s", cfg.Plugins[0].Plugin)
 	}
 }
 
@@ -243,7 +199,7 @@ func TestLoadWithI18n(t *testing.T) {
 // TestLoad_EnvOverridesFile asserts that env > file precedence holds for
 // bound env vars. Regression test for kit/core/config.Load adoption: the
 // naive "stage 1 env-into-cfg, stage 2 file-into-cfg" wiring would have
-// silently let files override env vars. T-0199, PR #33 review (Copilot).
+// silently let files override env vars (PR #33 review).
 func TestLoad_EnvOverridesFile(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "ctxt.yaml")
@@ -376,11 +332,11 @@ func TestDuplicatesValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.cfg.Validate()
+			errs := Validate(&tt.cfg)
 			if tt.wantErr {
-				require.Error(t, err)
+				require.NotEmpty(t, errs)
 			} else {
-				require.NoError(t, err)
+				require.Empty(t, errs)
 			}
 		})
 	}
@@ -554,14 +510,14 @@ func TestFederationsValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.cfg.Validate()
+			errs := Validate(&tt.cfg)
 			if tt.wantErr {
-				require.Error(t, err)
+				require.NotEmpty(t, errs)
 				if tt.errFrag != "" {
-					assert.Contains(t, err.Error(), tt.errFrag)
+					assert.Contains(t, errs[0].Error(), tt.errFrag)
 				}
 			} else {
-				require.NoError(t, err)
+				require.Empty(t, errs)
 			}
 		})
 	}

@@ -1,3 +1,5 @@
+// Package modals holds the TUI overlays that capture new content and
+// request a composition (brief, plan, summary, draft).
 package modals
 
 import (
@@ -82,18 +84,17 @@ func (m *CaptureModal) Update(msg tea.Msg) (*CaptureModal, tea.Cmd) {
 		return m, nil
 	}
 
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		k := msg.Key()
+	if km, ok := msg.(tea.KeyMsg); ok {
+		k := km.Key()
 		switch {
 		case k.Code == tea.KeyEsc:
 			m.active = false
 			m.textarea.Reset()
 			return m, nil
-		case k.Code == 's' && k.Mod&tea.ModCtrl != 0:
-			return m, m.Submit()
-		case k.Code == tea.KeyEnter && k.Mod&tea.ModAlt != 0:
-			return m, m.Submit()
+		case k.Code == 's' && k.Mod&tea.ModCtrl != 0,
+			k.Code == tea.KeyEnter && k.Mod&tea.ModAlt != 0:
+			cmd := m.Submit()
+			return m, cmd
 		}
 	}
 

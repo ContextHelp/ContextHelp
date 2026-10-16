@@ -20,7 +20,7 @@ import (
 // rule denies a kit pre_persisted publish whose payload op is "delete"
 // and whose context.note is empty.
 func TestInit_DefaultBundle_RejectsDeleteWithoutNote(t *testing.T) {
-	t.Setenv("CTXT_POLICY_FILE", filepath.Join("policies_default.yaml"))
+	t.Setenv("CTXT_POLICY_FILE", "policies_default.yaml")
 
 	b := bus.New()
 	t.Cleanup(func() { _ = b.Close(context.Background()) })
@@ -49,7 +49,7 @@ func TestInit_DefaultBundle_RejectsDeleteWithoutNote(t *testing.T) {
 // passes when the host stuffs a non-empty note into ctx via
 // policy.ContextAttrsKey before publishing.
 func TestInit_DefaultBundle_AllowsDeleteWithNote(t *testing.T) {
-	t.Setenv("CTXT_POLICY_FILE", filepath.Join("policies_default.yaml"))
+	t.Setenv("CTXT_POLICY_FILE", "policies_default.yaml")
 
 	b := bus.New()
 	t.Cleanup(func() { _ = b.Close(context.Background()) })
@@ -74,7 +74,7 @@ func TestInit_DefaultBundle_AllowsDeleteWithNote(t *testing.T) {
 // gates archive (Update + action=archive) and delete; everything else
 // stays open.
 func TestInit_DefaultBundle_AllowsCreateWithoutNote(t *testing.T) {
-	t.Setenv("CTXT_POLICY_FILE", filepath.Join("policies_default.yaml"))
+	t.Setenv("CTXT_POLICY_FILE", "policies_default.yaml")
 
 	b := bus.New()
 	t.Cleanup(func() { _ = b.Close(context.Background()) })
@@ -95,7 +95,7 @@ func TestInit_DefaultBundle_AllowsCreateWithoutNote(t *testing.T) {
 // rule fires on Update with action=archive and empty note. Update
 // without action=archive (e.g. unarchive) must NOT trigger this rule.
 func TestInit_DefaultBundle_RejectsArchiveWithoutNote(t *testing.T) {
-	t.Setenv("CTXT_POLICY_FILE", filepath.Join("policies_default.yaml"))
+	t.Setenv("CTXT_POLICY_FILE", "policies_default.yaml")
 
 	b := bus.New()
 	t.Cleanup(func() { _ = b.Close(context.Background()) })

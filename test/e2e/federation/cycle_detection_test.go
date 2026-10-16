@@ -3,7 +3,7 @@
 // Cycle detection e2e tests for US-0318 ("Configure federation targets").
 //
 // AC under test: "Cycle in federation DAG detected at startup and rejected
-// with descriptive error". T-0174 shipped Phase 1 detection inside
+// with descriptive error". Phase 1 detection lives inside
 // federation.New(): self-loop, duplicate target name, empty target name.
 // Multi-hop A→B→A across remote instances is deferred to Phase 2 (US-0322
 // topology API) and is covered by a documented Skip below.
@@ -34,7 +34,7 @@ import (
 func newCycleSrc(t *testing.T) (drv storage.StorageDriver, path string) {
 	t.Helper()
 	path = filepath.Join(t.TempDir(), "self.db")
-	d, err := storageutil.NewDriver("sqlite", path)
+	d, err := storageutil.NewDriver("sqlite", path, storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatalf("newCycleSrc: open: %v", err)
 	}

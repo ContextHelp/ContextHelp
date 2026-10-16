@@ -9,16 +9,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"maps"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
-
-// SchemeSession is a web UI session cookie. The HTTP middleware reads
-// it only from the instance's own cookie, never from a header, so a
-// session secret pasted into Authorization is just an invalid bearer.
-const SchemeSession = "session"
 
 // SessionKindUI is the kind of a web UI browser session, stored with
 // each session and login code. Its scopes are UISessionScopes.
@@ -46,11 +40,12 @@ const (
 	ViaSession = "session"
 )
 
-// Session revocation reasons recorded in the store.
+// Session revocation reasons recorded in the store. The cascades from
+// the principal registry write storage.RevokeReasonIdentityRevoked and
+// storage.RevokeReasonPrincipalRevoked.
 const (
-	RevokeReasonLogout       = "logout"
-	RevokeReasonRevoked      = "revoked"
-	RevokeReasonTokenRemoved = "token removed"
+	RevokeReasonLogout  = "logout"
+	RevokeReasonRevoked = "revoked"
 )
 
 // Defaults for SessionOptions fields left zero.
@@ -80,18 +75,11 @@ func (p *Principal) SessionKind() string {
 	return p.Meta[MetaSessionKind]
 }
 
-// HashSecret returns the hex SHA-256 of a token, login code or cookie
-// secret: the only form in which any of them is stored.
+// HashSecret returns the hex SHA-256 of a login code or cookie secret:
+// the only form in which either is stored.
 func HashSecret(secret string) string {
 	sum := sha256.Sum256([]byte(secret))
 	return hex.EncodeToString(sum[:])
-}
-
-// TokenHashResolver maps the hash of a configured token to the
-// principal the config assigns it today. Sessions consult it on every
-// request, so a session dies with the token that minted it.
-type TokenHashResolver interface {
-	PrincipalForTokenHash(hash string) (*Principal, bool)
 }
 
 // SessionOptions tunes Sessions. Zero fields take the Default* values.
@@ -143,27 +131,30 @@ type Minted struct {
 }
 
 // Sessions mints login codes, exchanges them for browser sessions and
-// authenticates session cookies. A session acts as the principal of the
-// static token that minted its code, with that principal's scopes
-// narrowed to its kind's (SessionScopes),
-// and ends at its idle or absolute expiry, on revocation, or as soon as
-// that token is no longer configured.
+// authenticates session cookies. A login code records the identity
+// (the registry API key) of the caller that minted it; the session
+// acts as that identity's principal with the identity's scopes narrowed
+// to the session kind's set, and ends at its idle or absolute expiry,
+// on revocation, and as soon as the identity or the principal is
+// revoked (the stores cascade; Authenticate checks again).
 type Sessions struct {
-	store    storage.UISessionStore
-	resolver TokenHashResolver
-	opts     SessionOptions
+	store storage.UISessionStore
+	auth  storage.AuthStore
+	keys  *Keys
+	opts  SessionOptions
 }
 
-// NewSessions builds a session manager over store. resolver is the
-// configured token provider (see StaticProvider).
-func NewSessions(store storage.UISessionStore, resolver TokenHashResolver, opts SessionOptions) (*Sessions, error) {
+// NewSessions builds a session manager over store and the principal
+// registry in auth. keys resolves the scopes of the key behind each
+// session; nil narrows the principal's role scopes instead.
+func NewSessions(store storage.UISessionStore, auth storage.AuthStore, keys *Keys, opts SessionOptions) (*Sessions, error) {
 	if store == nil {
 		return nil, errors.New("auth: sessions need a session store")
 	}
-	if resolver == nil {
-		return nil, errors.New("auth: sessions need a token resolver")
+	if auth == nil {
+		return nil, errors.New("auth: sessions need the principal registry")
 	}
-	return &Sessions{store: store, resolver: resolver, opts: opts.withDefaults()}, nil
+	return &Sessions{store: store, auth: auth, keys: keys, opts: opts.withDefaults()}, nil
 }
 
 // IdleTTL returns the effective idle timeout.
@@ -183,6 +174,16 @@ func randomSecret() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
+// wellFormedSecret reports whether s has the shape randomSecret mints:
+// 32 bytes of base64url. Anything else was never issued by this server.
+func wellFormedSecret(s string) bool {
+	if len(s) != base64.RawURLEncoding.EncodedLen(secretBytes) {
+		return false
+	}
+	b, err := base64.RawURLEncoding.DecodeString(s)
+	return err == nil && len(b) == secretBytes
+}
+
 func newSessionID() (string, error) {
 	b := make([]byte, 12)
 	if _, err := rand.Read(b); err != nil {
@@ -191,17 +192,26 @@ func newSessionID() (string, error) {
 	return "uis_" + hex.EncodeToString(b), nil
 }
 
-// MintCode issues a single-use login code for the principal of token,
-// a configured static token. The code is returned once; only its hash
-// is stored.
-func (s *Sessions) MintCode(ctx context.Context, token string) (string, time.Time, error) {
-	if token == "" {
+// ErrNoIdentity is a login code requested by a caller whose credential
+// has no identity row: a key declared in server.auth.keys. Only a
+// registry key (dpkms auth key create) can sign a browser in, because
+// the session must die with the credential that minted it.
+var ErrNoIdentity = fmt.Errorf("%w: the credential has no identity to bind a session to", ErrInvalidCredential)
+
+// MintCode issues a single-use login code for p, the authenticated
+// caller, bound to the identity that authenticated it. The code is
+// returned once; only its hash is stored. A caller without an identity
+// (ErrNoIdentity) or that is itself a session cannot mint.
+func (s *Sessions) MintCode(ctx context.Context, p *Principal) (string, time.Time, error) {
+	if p == nil {
 		return "", time.Time{}, ErrNoCredential
 	}
-	tokenHash := HashSecret(token)
-	p, ok := s.resolver.PrincipalForTokenHash(tokenHash)
-	if !ok {
-		return "", time.Time{}, ErrInvalidCredential
+	if p.IsSession() {
+		return "", time.Time{}, fmt.Errorf("%w: a session cannot mint a session", ErrInvalidCredential)
+	}
+	idn := p.Meta[MetaIdentityID]
+	if idn == "" {
+		return "", time.Time{}, ErrNoIdentity
 	}
 	code, err := randomSecret()
 	if err != nil {
@@ -212,7 +222,7 @@ func (s *Sessions) MintCode(ctx context.Context, token string) (string, time.Tim
 	if err := s.store.CreateLoginCode(ctx, &storage.UILoginCode{
 		CodeHash:    HashSecret(code),
 		PrincipalID: p.ID,
-		TokenHash:   tokenHash,
+		IdentityID:  idn,
 		Scope:       SessionKindUI,
 		CreatedAt:   now,
 		ExpiresAt:   expires,
@@ -223,8 +233,8 @@ func (s *Sessions) MintCode(ctx context.Context, token string) (string, time.Tim
 }
 
 // Exchange trades a login code for a new session. An unknown, used or
-// expired code, or one whose minting token is gone, is
-// ErrInvalidCredential; the code is spent either way.
+// expired code, or one whose identity or principal is no longer active,
+// is ErrInvalidCredential; the code is spent either way.
 func (s *Sessions) Exchange(ctx context.Context, code string, ci ClientInfo) (*Minted, error) {
 	if code == "" {
 		return nil, ErrNoCredential
@@ -243,9 +253,24 @@ func (s *Sessions) Exchange(ctx context.Context, code string, ci ClientInfo) (*M
 	if subtle.ConstantTimeCompare([]byte(lc.CodeHash), []byte(codeHash)) != 1 {
 		return nil, ErrInvalidCredential
 	}
-	p, ok := s.resolver.PrincipalForTokenHash(lc.TokenHash)
-	if !ok || p.ID != lc.PrincipalID {
-		return nil, ErrInvalidCredential
+	return s.mintFor(ctx, lc.IdentityID, lc.PrincipalID, lc.Scope, ci)
+}
+
+// MintFor opens a new session for principalID through identityID, the
+// credential the sign-in ceremony (an invite, a sign-in link) bound to
+// it. The session carries the principal's role scopes narrowed to the
+// kind's set, since a link identity has no scopes of its own, and ends
+// when the identity or the principal is revoked. An identity or
+// principal that is gone, revoked, suspended or mismatched is
+// ErrInvalidCredential.
+func (s *Sessions) MintFor(ctx context.Context, principalID, identityID string, ci ClientInfo) (*Minted, error) {
+	return s.mintFor(ctx, identityID, principalID, SessionKindUI, ci)
+}
+
+func (s *Sessions) mintFor(ctx context.Context, identityID, principalID, kind string, ci ClientInfo) (*Minted, error) {
+	p, idn, scopes, err := s.resolve(ctx, identityID, principalID)
+	if err != nil {
+		return nil, err
 	}
 	secret, err := randomSecret()
 	if err != nil {
@@ -255,13 +280,14 @@ func (s *Sessions) Exchange(ctx context.Context, code string, ci ClientInfo) (*M
 	if err != nil {
 		return nil, err
 	}
+	now := s.opts.Now().UTC()
 	expires := now.Add(s.opts.MaxTTL)
 	sess := &storage.UISession{
 		ID:            id,
 		SecretHash:    HashSecret(secret),
 		PrincipalID:   p.ID,
-		TokenHash:     lc.TokenHash,
-		Scope:         lc.Scope,
+		IdentityID:    idn.ID,
+		Scope:         kind,
 		UserAgent:     truncate(ci.UserAgent, 256),
 		RemoteAddr:    truncate(ci.RemoteAddr, 64),
 		CreatedAt:     now,
@@ -272,18 +298,64 @@ func (s *Sessions) Exchange(ctx context.Context, code string, ci ClientInfo) (*M
 	if err := s.store.Create(ctx, sess); err != nil {
 		return nil, err
 	}
-	return &Minted{Secret: secret, Session: sess, Principal: sessionPrincipal(p, sess)}, nil
+	return &Minted{Secret: secret, Session: sess, Principal: sessionPrincipal(p, scopes, sess)}, nil
+}
+
+// ListByPrincipal returns the sessions of principalID, newest first:
+// the active ones only unless all is set.
+func (s *Sessions) ListByPrincipal(ctx context.Context, principalID string, all bool) ([]*storage.UISession, error) {
+	return s.store.List(ctx, storage.UISessionFilter{
+		ActiveOnly: !all, Now: s.opts.Now().UTC(), PrincipalID: principalID,
+	})
+}
+
+// Now returns the session clock's time.
+func (s *Sessions) Now() time.Time { return s.opts.Now().UTC() }
+
+// resolve loads the identity and principal behind a code or session
+// and the scopes the identity's credential holds. An identity or
+// principal that is gone, revoked or suspended, or bound to another
+// principal, is ErrInvalidCredential.
+func (s *Sessions) resolve(ctx context.Context, identityID, principalID string) (*storage.Principal, *storage.Identity, []Scope, error) {
+	idn, err := s.auth.Identities().Get(ctx, identityID)
+	if errors.Is(err, storage.ErrNotFound) {
+		return nil, nil, nil, fmt.Errorf("%w: identity %s is gone", ErrInvalidCredential, identityID)
+	}
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if !idn.Active() || idn.PrincipalID != principalID {
+		return nil, nil, nil, fmt.Errorf("%w: identity %s was revoked", ErrInvalidCredential, identityID)
+	}
+	p, err := s.auth.Principals().Get(ctx, principalID)
+	if errors.Is(err, storage.ErrNotFound) {
+		return nil, nil, nil, fmt.Errorf("%w: principal %s is gone", ErrInvalidCredential, principalID)
+	}
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if !p.Active() {
+		return nil, nil, nil, fmt.Errorf("%w: principal %s is %s", ErrInvalidCredential, p.ID, p.Status)
+	}
+	scopes := ScopesForRoles(p.Roles)
+	if s.keys != nil {
+		if scopes, err = s.keys.ScopesOf(ctx, p, idn); err != nil {
+			return nil, nil, nil, err
+		}
+	}
+	return p, idn, scopes, nil
 }
 
 // Authenticate resolves a cookie secret to its session and principal.
-// Anything but an active session whose minting token is still
-// configured for the same principal is ErrInvalidCredential. A session
-// whose token is gone is revoked on the spot.
+// Anything but an active session whose identity and principal are
+// still active is ErrInvalidCredential. A session the registry has
+// outrun (its identity or principal revoked without the cascade) is
+// revoked on the spot.
 func (s *Sessions) Authenticate(ctx context.Context, secret string) (*Principal, *storage.UISession, error) {
 	if secret == "" {
 		return nil, nil, ErrNoCredential
 	}
-	sess, p, err := s.active(ctx, HashSecret(secret))
+	sess, p, scopes, err := s.active(ctx, HashSecret(secret))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -295,34 +367,37 @@ func (s *Sessions) Authenticate(ctx context.Context, secret string) (*Principal,
 		sess.LastSeenAt = now
 		sess.IdleExpiresAt = minTime(now.Add(s.opts.IdleTTL), sess.ExpiresAt)
 	}
-	return sessionPrincipal(p, sess), sess, nil
+	return sessionPrincipal(p, scopes, sess), sess, nil
 }
 
 // Check reports whether the session with secretHash is still active,
 // without touching it. Long-lived requests (the event stream) call it
 // to end when their session does.
 func (s *Sessions) Check(ctx context.Context, secretHash string) error {
-	_, _, err := s.active(ctx, secretHash)
+	_, _, _, err := s.active(ctx, secretHash)
 	return err
 }
 
-func (s *Sessions) active(ctx context.Context, secretHash string) (*storage.UISession, *Principal, error) {
+func (s *Sessions) active(ctx context.Context, secretHash string) (*storage.UISession, *storage.Principal, []Scope, error) {
 	now := s.opts.Now().UTC()
 	sess, err := s.store.Lookup(ctx, secretHash, now)
 	if errors.Is(err, storage.ErrNotFound) {
-		return nil, nil, ErrInvalidCredential
+		return nil, nil, nil, ErrInvalidCredential
 	}
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	p, ok := s.resolver.PrincipalForTokenHash(sess.TokenHash)
-	if !ok || p.ID != sess.PrincipalID {
-		if err := s.store.Revoke(ctx, sess.ID, now, RevokeReasonTokenRemoved); err != nil {
-			return nil, nil, err
+	p, _, scopes, err := s.resolve(ctx, sess.IdentityID, sess.PrincipalID)
+	if errors.Is(err, ErrInvalidCredential) {
+		if rerr := s.store.Revoke(ctx, sess.ID, now, storage.RevokeReasonIdentityRevoked); rerr != nil {
+			return nil, nil, nil, rerr
 		}
-		return nil, nil, ErrInvalidCredential
+		return nil, nil, nil, err
 	}
-	return sess, p, nil
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return sess, p, scopes, nil
 }
 
 // Revoke ends the session with id. An unknown id is storage.ErrNotFound.
@@ -330,70 +405,64 @@ func (s *Sessions) Revoke(ctx context.Context, id, reason string) error {
 	return s.store.Revoke(ctx, id, s.opts.Now().UTC(), reason)
 }
 
-// SweepRemovedTokens revokes every active session whose minting token
-// is no longer configured, and returns how many it revoked. Serve runs
-// it at start so listings match what requests would see.
-func (s *Sessions) SweepRemovedTokens(ctx context.Context) (int, error) {
-	now := s.opts.Now().UTC()
-	active, err := s.store.List(ctx, storage.UISessionFilter{ActiveOnly: true, Now: now})
+// Get returns the session with id whatever its state; an unknown id is
+// storage.ErrNotFound.
+func (s *Sessions) Get(ctx context.Context, id string) (*storage.UISession, error) {
+	return s.store.Get(ctx, id)
+}
+
+// sessionPrincipal is p acting through sess: same ID, name, kind and
+// roles, so entitlements, metering and policy apply unchanged; its
+// effective scopes are the minting credential's intersected with the
+// session kind's fixed set, plus the session-only signout:ui
+// (SessionScopesFor), so a session never holds more than its key, nor
+// more than a browser needs. Plus the session markers the HTTP layer
+// reads.
+func sessionPrincipal(p *storage.Principal, scopes []Scope, sess *storage.UISession) *Principal {
+	out := registryPrincipal(p, SessionScopesFor(scopes, sess.Scope), MethodSession)
+	out.Meta = map[string]string{
+		MetaVia:         ViaSession,
+		MetaSessionKind: sess.Scope,
+		MetaSessionID:   sess.ID,
+		MetaIdentityID:  sess.IdentityID,
+	}
+	return out
+}
+
+// Method returns the session Method over s: the instance's own cookie,
+// ambient.
+func (s *Sessions) Method() *SessionMethod { return &SessionMethod{sessions: s} }
+
+// SessionMethod is the session Method: the web UI session cookie.
+type SessionMethod struct{ sessions *Sessions }
+
+// Name implements Method.
+func (*SessionMethod) Name() string { return MethodSession }
+
+// Ambient implements Method: a browser sends the cookie on every
+// request, chosen or not.
+func (*SessionMethod) Ambient() bool { return true }
+
+// Authenticate implements Method. No cookie is absent. A cookie that
+// could never have been issued here (wrong shape) fails its integrity
+// check and is refused; one that was issued but is expired, unknown or
+// revoked is absent, so the chain clears it and another method or a
+// fresh sign-in can take over (ADR-079 §3).
+func (m *SessionMethod) Authenticate(ctx context.Context, cred Credential) (*Principal, bool, error) {
+	if cred.Cookie == "" {
+		return nil, false, nil
+	}
+	if !wellFormedSecret(cred.Cookie) {
+		return nil, false, fmt.Errorf("%w: malformed session cookie", ErrInvalidCredential)
+	}
+	p, _, err := m.sessions.Authenticate(ctx, cred.Cookie)
+	if errors.Is(err, ErrInvalidCredential) {
+		return nil, false, nil
+	}
 	if err != nil {
-		return 0, err
+		return nil, false, fmt.Errorf("auth: session: %w", err)
 	}
-	gone := map[string]bool{}
-	for _, sess := range active {
-		if p, ok := s.resolver.PrincipalForTokenHash(sess.TokenHash); !ok || p.ID != sess.PrincipalID {
-			gone[sess.TokenHash] = true
-		}
-	}
-	revoked := 0
-	for hash := range gone {
-		n, err := s.store.RevokeByTokenHash(ctx, hash, now, RevokeReasonTokenRemoved)
-		if err != nil {
-			return revoked, err
-		}
-		revoked += n
-	}
-	return revoked, nil
-}
-
-// sessionPrincipal is p acting through sess: same ID, name, provider
-// and roles, so entitlements, metering and policy apply unchanged; its
-// effective scopes are p's intersected with the session kind's fixed
-// set, plus the session-only signout:ui (SessionScopesFor), so a
-// session never holds more than its token, nor more than a browser
-// needs. Plus the session markers the HTTP layer reads.
-func sessionPrincipal(p *Principal, sess *storage.UISession) *Principal {
-	out := *p
-	out.Roles = append([]string(nil), p.Roles...)
-	out.Scopes = SessionScopesFor(p.Scopes, sess.Scope)
-	out.Meta = make(map[string]string, len(p.Meta)+3)
-	maps.Copy(out.Meta, p.Meta)
-	out.Meta[MetaVia] = ViaSession
-	out.Meta[MetaSessionKind] = sess.Scope
-	out.Meta[MetaSessionID] = sess.ID
-	return &out
-}
-
-// Provider returns base extended with session cookies: a SchemeSession
-// credential authenticates against the session store, anything else
-// goes to base unchanged.
-func (s *Sessions) Provider(base Provider) Provider {
-	return &sessionProvider{base: base, sessions: s}
-}
-
-type sessionProvider struct {
-	base     Provider
-	sessions *Sessions
-}
-
-func (p *sessionProvider) Name() string { return p.base.Name() }
-
-func (p *sessionProvider) Authenticate(ctx context.Context, cred Credential) (*Principal, error) {
-	if cred.Scheme != SchemeSession {
-		return p.base.Authenticate(ctx, cred)
-	}
-	princ, _, err := p.sessions.Authenticate(ctx, cred.Token)
-	return princ, err
+	return p, true, nil
 }
 
 func minTime(a, b time.Time) time.Time {
@@ -408,10 +477,4 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n]
-}
-
-// Get returns the session with id whatever its state; an unknown id is
-// storage.ErrNotFound.
-func (s *Sessions) Get(ctx context.Context, id string) (*storage.UISession, error) {
-	return s.store.Get(ctx, id)
 }

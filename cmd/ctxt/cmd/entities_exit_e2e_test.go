@@ -13,7 +13,7 @@ func TestE2EEntityAndResolveExitCodes(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e: -short")
 	}
-	db := setupTestDB(t, dpkmstest.WithStaticTokens())
+	db := setupTestDB(t, dpkmstest.WithKeys())
 	seedEntityCommands(t, db)
 	detachLocalStore(t, db)
 

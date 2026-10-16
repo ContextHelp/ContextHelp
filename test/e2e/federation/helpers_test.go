@@ -57,7 +57,7 @@ func setupTwoInstances(t *testing.T) instances {
 
 func mustOpenInstance(t *testing.T, name, path string) *instance {
 	t.Helper()
-	drv, err := storageutil.NewDriver("sqlite", path)
+	drv, err := storageutil.NewDriver("sqlite", path, storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatalf("setupTwoInstances: open %s: %v", name, err)
 	}
@@ -99,67 +99,13 @@ func captureBookmark(t *testing.T, inst *instance, id, contentHash, content stri
 	return obj
 }
 
-// pushOnce drives one synchronous federation push from src.tgt. This stands
-// in for what the async worker should do on each tick. Tests that need to
-// verify the worker's behavior (not its scheduling) use this directly.
-//
-// Mirrors Worker.tick: lists objects, collects edges touching them, then
-// resolves entities referenced by edges with to_type='entity' (ADR-049
-// mention edges) so the receiver doesn't dangle.
+// pushOnce drives one synchronous federation sync from src to tgt: what
+// the async worker does on each tick (federation.Sync).
 func pushOnce(t *testing.T, ix instances) error {
 	t.Helper()
-	ctx := context.Background()
-	objs, _, err := ix.src.drv.Objects().List(ctx, storage.ObjectFilter{Status: "all"})
-	if err != nil {
-		return fmt.Errorf("list source objects: %w", err)
-	}
-	// Materialize []KnowledgeObject from []*KnowledgeObject for Pusher API.
-	materialized := make([]storage.KnowledgeObject, 0, len(objs))
-	for _, o := range objs {
-		materialized = append(materialized, *o)
-	}
-	// Collect edges that touch any of the pushed objects.
-	allEdges := []storage.Edge{}
-	for _, o := range objs {
-		from, ferr := ix.src.drv.Edges().ListFrom(ctx, "object", o.ID)
-		if ferr != nil {
-			return fmt.Errorf("list edges for %q: %w", o.ID, ferr)
-		}
-		for _, e := range from {
-			allEdges = append(allEdges, *e)
-		}
-	}
-	// Resolve entities referenced by mention edges (ADR-049).
-	entities := collectEntitiesForEdges(ctx, ix.src.drv, allEdges)
-	pusher := federation.NewLocalPusher(ix.fedName, ix.tgt.path)
-	return pusher.Push(ctx, materialized, allEdges, entities)
-}
-
-// collectEntitiesForEdges returns entity rows for edges with to_type='entity'.
-// Mirrors federation.collectEntitiesForEdges (unexported there). Missing
-// entities are silently dropped: a dangling source-side mention is not a
-// federation concern (matches Worker.tick semantics).
-func collectEntitiesForEdges(
-	ctx context.Context,
-	src storage.StorageDriver,
-	edges []storage.Edge,
-) []storage.Entity {
-	seen := map[string]bool{}
-	var ents []storage.Entity
-	store := src.Entities()
-	for i := range edges {
-		e := &edges[i]
-		if e.ToType != "entity" || e.ToID == "" || seen[e.ToID] {
-			continue
-		}
-		seen[e.ToID] = true
-		ent, err := store.Get(ctx, e.ToID)
-		if err != nil || ent == nil {
-			continue
-		}
-		ents = append(ents, *ent)
-	}
-	return ents
+	pusher := federation.NewLocalPusher(ix.fedName, ix.tgt.path, nil, ix.src.drv.Blobs())
+	_, err := federation.Sync(context.Background(), ix.src.drv, pusher, 0)
+	return err
 }
 
 // waitForFederation polls the target until obj.ID appears or timeout fires.
@@ -184,34 +130,33 @@ func waitForFederation(t *testing.T, tgt *instance, objectID string, timeout tim
 	)
 }
 
-// readWatermark reads federation_watermarks.last_synced_at via raw SQL.
-// US-0319 specifies this table but ctxt has NO Go API for it (no Watermark
-// store on storage.StorageDriver). Tests use this helper to inspect it
-// directly. Returns ("", nil) if no row exists for the federation name.
-func readWatermark(t *testing.T, dbPath, fedName string) (string, error) {
+// readWatermark reads federation_watermarks.last_change_seq via raw
+// SQL, independent of the WatermarkStore under test. Returns (0, nil)
+// if no row exists for the federation name.
+func readWatermark(t *testing.T, dbPath, fedName string) (int64, error) {
 	t.Helper()
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
-		return "", fmt.Errorf("open %s: %w", dbPath, err)
+		return 0, fmt.Errorf("open %s: %w", dbPath, err)
 	}
 	defer func() {
 		if cerr := db.Close(); cerr != nil {
 			t.Logf("readWatermark close %s: %v", dbPath, cerr)
 		}
 	}()
-	var lastSyncedAt string
+	var seq int64
 	err = db.QueryRowContext(
 		context.Background(),
-		`SELECT last_synced_at FROM federation_watermarks WHERE federation_name = ?`,
+		`SELECT last_change_seq FROM federation_watermarks WHERE federation_name = ?`,
 		fedName,
-	).Scan(&lastSyncedAt)
+	).Scan(&seq)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", nil
+		return 0, nil
 	}
 	if err != nil {
-		return "", fmt.Errorf("query watermark: %w", err)
+		return 0, fmt.Errorf("query watermark: %w", err)
 	}
-	return lastSyncedAt, nil
+	return seq, nil
 }
 
 // countTargetObjects returns how many rows exist in the target's objects

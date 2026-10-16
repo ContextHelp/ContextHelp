@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -16,37 +17,70 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
+	"github.com/ideacrafterslabs/ctxt/internal/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
+	"github.com/ideacrafterslabs/ctxt/internal/secrets"
 	"github.com/ideacrafterslabs/ctxt/internal/server/stack"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
+	"github.com/spf13/cobra"
+	"hop.top/kit/go/storage/secret"
 )
+
+// asSystem returns ctx carrying the unrestricted viewer: a dpkms command
+// at the host's terminal, and the daemon's own loops, act as the
+// instance itself and read the service unscoped (ADR-080 §4). Request
+// handlers never call it; their viewer comes from authentication.
+func asSystem(ctx context.Context) context.Context {
+	return sharing.WithViewer(ctx, sharing.Unrestricted)
+}
+
+// closeStorage closes a storage driver at the end of a command, warning
+// on stderr when the close fails: the command's own result stands.
+func closeStorage(d interface{ Close(context.Context) error }) {
+	if err := d.Close(context.Background()); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to close storage: %v\n", err)
+	}
+}
+
+// markFlagsRequired marks each named flag on cmd required. Cobra only
+// fails here when no such flag is defined, which is a wiring bug in the
+// command's init — so it panics at startup instead of silently leaving
+// the flag optional.
+func markFlagsRequired(cmd *cobra.Command, names ...string) {
+	for _, name := range names {
+		if err := cmd.MarkFlagRequired(name); err != nil {
+			panic(fmt.Sprintf("%s: mark --%s required: %v", cmd.CommandPath(), name, err))
+		}
+	}
+}
 
 // newService creates a Service wired to the configured storage backend.
 // Returns the service and a cleanup function that must be deferred.
 func newService() (*service.Service, func(), error) {
 	storageType := cfg.Storage.Type
 	if storageType == "" {
-		storageType = "sqlite"
+		storageType = storageTypeSQLite
 	}
 	storagePath := cfg.Storage.Path
 	if storagePath == "" {
 		return nil, nil, fmt.Errorf("storage path not configured")
 	}
 
-	driver, err := storageutil.NewDriver(storageType, storagePath)
+	driver, err := storageutil.Open(storageType, storagePath, cfg.Storage.Blob,
+		storageutil.WithMigrateSnapshot(cfg.Storage.MigrateSnapshot))
 	if err != nil {
 		return nil, nil, fmt.Errorf("init storage: %w", err)
 	}
 	ctx := context.Background()
 	if err := driver.Init(ctx); err != nil {
-		driver.Close(ctx)
-		return nil, nil, fmt.Errorf("init storage: %w", err)
+		return nil, nil, errors.Join(fmt.Errorf("init storage: %w", err), driver.Close(ctx))
 	}
 
 	queue := jobs.NewQueue(driver.Jobs())
-	pipes := builtins.ConfiguredRegistryWithOpts(embeddingBuildOpts(driver, newEmbeddingResolver()))
+	pipes := builtins.ConfiguredRegistryWithOpts(registryBuildOpts(driver))
 	engine := search.NewEngine(driver)
 
 	queue.SetPipelineValidator(func(name string) error {
@@ -58,14 +92,36 @@ func newService() (*service.Service, func(), error) {
 		fmt.Fprintf(os.Stderr, "Warning: failed to load detectors: %v\n", err)
 	}
 
-	svc := service.New(driver, queue, pipes, engine, "", nil, *cfg)
-	cleanup := func() { driver.Close(context.Background()) }
+	// Registry tokens come from secrets.backend under registry/<name>,
+	// opened on the first authenticated registry request only.
+	secretsCfg := cfg.Secrets
+	svc := service.NewWithOptions(driver, queue, pipes, engine, "", nil,
+		[]service.Option{service.WithRegistryTokens(registry.SecretTokens(func() (secret.Store, error) {
+			return secrets.New(secretsCfg)
+		}))}, *cfg)
+	cleanup := func() { closeStorage(driver) }
 
-	if err := svc.EnsureDefaultRegistry(ctx); err != nil {
+	if err := svc.EnsureDefaultRegistry(asSystem(ctx)); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to load default registry: %v\n", err)
 	}
 
 	return svc, cleanup, nil
+}
+
+// registryBuildOpts is the direct-store pipeline registry's wiring, as
+// serve's (stack.New): the embedding write path plus the driver's blob
+// store and storage.blob.threshold, without which externalize_content
+// is pruned.
+func registryBuildOpts(driver storage.StorageDriver) builtins.BuildOpts {
+	opts := embeddingBuildOpts(driver, newEmbeddingResolver())
+	opts.BlobStore = driver.Blobs()
+	if cfg != nil {
+		opts.BlobThreshold = cfg.Storage.Blob.Threshold
+		opts.Access = cfg.Server.EffectiveAccess()
+		opts.ClassRules = builtins.ClassRulesFromConfig(cfg.Sharing)
+	}
+	opts.FetchGuard = config.FetchGuard(cfg)
+	return opts
 }
 
 // embeddingBuildOpts is the dpkms CLI's embedding write path for the

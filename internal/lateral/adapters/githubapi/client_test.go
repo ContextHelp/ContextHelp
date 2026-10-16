@@ -18,8 +18,6 @@ func TestNewREST_SatisfiesAPIClient(t *testing.T) {
 	if c == nil {
 		t.Fatal("NewREST returned nil")
 	}
-	// Compile-time check: c must satisfy github.APIClient.
-	var _ github.APIClient = c
 }
 
 func TestNewREST_DefaultBaseURL(t *testing.T) {

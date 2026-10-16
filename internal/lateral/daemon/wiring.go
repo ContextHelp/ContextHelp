@@ -21,10 +21,10 @@ import (
 // through Build to per-strategy Register calls.
 //
 // Required:
-//   - Publisher: shared bus publisher (T-0318 adapter). All emit
+//   - Publisher: shared bus publisher (bus adapter). All emit
 //     helpers across jit, github, jobs use it.
 //
-// Per-strategy fetchers (T-0315 adapter) are passed via JITFetcher and
+// Per-strategy fetchers (fetcher adapter) are passed via JITFetcher and
 // GitHubFetcher. A single adapter instance can satisfy both interfaces
 // — the daemon typically constructs one ibr-backed fetcher and assigns
 // it to both fields — but the struct keeps them separate so a future
@@ -32,13 +32,13 @@ import (
 // without changing the wiring shape.
 //
 // Optional (zero value tolerated, defaults applied):
-//   - JITProposer / JITCache / JITClassifier: jit-specific (T-0314,
-//     T-0317). When JITProposer is nil and cfg.JIT.Enabled is true,
+//   - JITProposer / JITCache / JITClassifier: jit-specific. When
+//     JITProposer is nil and cfg.JIT.Enabled is true,
 //     Build panics — JIT can't run without an LLM.
-//   - GitHubAPI: REST adapter (T-0319). When nil and any github
+//   - GitHubAPI: REST adapter. When nil and any github
 //     strategy is enabled, Build panics — github family requires an
 //     API client.
-//   - GitHubBreaker: kit/core/breaker adapter (T-0316) for github API
+//   - GitHubBreaker: kit/core/breaker adapter for github API
 //     guarding. Optional; nil → no gating.
 //   - GitHubFloor: github-package-internal rate-limit floor tracker.
 //     Optional; nil → no throttle.

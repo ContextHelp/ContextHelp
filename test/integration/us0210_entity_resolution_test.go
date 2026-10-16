@@ -309,7 +309,7 @@ func TestUS0210_SameEntityFromTwoPlatformsMerged(t *testing.T) {
 		},
 	})
 
-	jobID1, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID1, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "https://github.com/janedoe",
 		Type:     "url",
 		Pipeline: "entity.github.person",
@@ -346,7 +346,7 @@ func TestUS0210_SameEntityFromTwoPlatformsMerged(t *testing.T) {
 		},
 	})
 
-	jobID2, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID2, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "https://linkedin.com/in/jane-doe",
 		Type:     "url",
 		Pipeline: "entity.linkedin.person",
@@ -415,7 +415,7 @@ func TestUS0210_LowConfidenceNotAutoLinked(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "https://x.com/janedoe99",
 		Type:     "url",
 		Pipeline: "entity.x.person",

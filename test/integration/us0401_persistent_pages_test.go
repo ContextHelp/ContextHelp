@@ -1,7 +1,6 @@
 package integration
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -47,7 +46,7 @@ func TestUS0401_IngestCreatesEntityPage(t *testing.T) {
 		},
 	})
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	// Ingest 3 objects mentioning the same entity.
 	for i := 1; i <= 3; i++ {
@@ -90,7 +89,7 @@ func TestUS0401_IncrementalUpdate(t *testing.T) {
 	svc := newTestServiceWithConfig(t, config.Config{
 		FanOut: config.DefaultFanOutConfig(),
 	})
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	slug := "concept.testing"
 
@@ -105,7 +104,7 @@ func TestUS0401_IncrementalUpdate(t *testing.T) {
 			CreatedAt:  time.Now(),
 			UpdatedAt:  time.Now(),
 		}
-		require.NoError(t, svc.Store.Objects().Create(ctx, obj))
+		require.NoError(t, svc.Store(ownerCtx()).Objects().Create(ctx, obj))
 		_, err := svc.PageUpsert(ctx, slug, id)
 		require.NoError(t, err)
 	}
@@ -124,7 +123,7 @@ func TestUS0401_IncrementalUpdate(t *testing.T) {
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
 	}
-	require.NoError(t, svc.Store.Objects().Create(ctx, obj4))
+	require.NoError(t, svc.Store(ownerCtx()).Objects().Create(ctx, obj4))
 
 	result, err := svc.PageUpsert(ctx, slug, "page-src-4")
 	require.NoError(t, err)
@@ -143,7 +142,7 @@ func TestUS0401_PageSearchable(t *testing.T) {
 	svc := newTestServiceWithConfig(t, config.Config{
 		FanOut: config.DefaultFanOutConfig(),
 	})
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	obj := &storage.KnowledgeObject{
 		ID:         "search-src-1",
@@ -153,7 +152,7 @@ func TestUS0401_PageSearchable(t *testing.T) {
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
 	}
-	require.NoError(t, svc.Store.Objects().Create(ctx, obj))
+	require.NoError(t, svc.Store(ownerCtx()).Objects().Create(ctx, obj))
 
 	_, err := svc.PageUpsert(ctx, "instrument.xylophone", "search-src-1")
 	require.NoError(t, err)
@@ -177,7 +176,7 @@ func TestUS0401_RevisionLogShowsAllUpdates(t *testing.T) {
 	svc := newTestServiceWithConfig(t, config.Config{
 		FanOut: config.DefaultFanOutConfig(),
 	})
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	slug := "project.revlog"
 	sourceIDs := []string{"rl-1", "rl-2", "rl-3"}
@@ -191,7 +190,7 @@ func TestUS0401_RevisionLogShowsAllUpdates(t *testing.T) {
 			CreatedAt:  time.Now(),
 			UpdatedAt:  time.Now(),
 		}
-		require.NoError(t, svc.Store.Objects().Create(ctx, obj))
+		require.NoError(t, svc.Store(ownerCtx()).Objects().Create(ctx, obj))
 		_, err := svc.PageUpsert(ctx, slug, id)
 		require.NoError(t, err)
 	}

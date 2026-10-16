@@ -1,6 +1,8 @@
 # Platform Integrators Guide
 
-This chapter is for teams extending dPKMS/`ctxt` via custom pipelines, step registries, and plugin-style integrations.
+This chapter is for teams extending dPKMS/`ctxt` via custom pipelines, steps, and registries.
+
+There is no plugin system ([ADR-078](https://github.com/ContextHelp/ContextHelp/blob/next/docs/decisions/ADR-078-no-plugin-system.md)).
 
 ## Goal
 
@@ -62,10 +64,14 @@ dpkms pipeline enqueue --pipeline custom-text-long --type text "Pipeline integra
 ### 3. Manage lifecycle: archive, unarchive, remove
 
 ```bash
-dpkms pipeline archive custom-text-long
+dpkms pipeline archive custom-text-long --note "superseded by v2"
 dpkms pipeline unarchive custom-text-long
-dpkms pipeline remove custom-text-long
+dpkms pipeline remove custom-text-long --note "integration test cleanup"
 ```
+
+The default policy bundle (`internal/policy/policies_default.yaml`, seeded to
+`$XDG_CONFIG_HOME/contexthelp/policies.yaml`) denies `archive` and `remove`
+without a non-empty `--note`.
 
 ### 4. Discover and install pipeline steps
 
@@ -133,12 +139,11 @@ dpkms pipeline step registry autoupdate <registry-url> --disable
 
 ## Story Alignment
 
-- Core integrator/admin: `US-0013`, `US-0014`, `US-0028`, `US-0029`, `US-0041`, `US-0042` to `US-0045`, `US-0050`
+- Core integrator/admin: `US-0013`, `US-0014`, `US-0028`, `US-0029`, `US-0041`, `US-0050`
 - Pipeline lifecycle: `US-0101` to `US-0113`
 
 ## Related Manual Sections
 
 - [`../admin-extensibility/pipeline-management.md`](../admin-extensibility/pipeline-management.md)
-- [`../admin-extensibility/plugin-development.md`](../admin-extensibility/plugin-development.md)
 - [`../reference/config-and-permissions.md`](../reference/config-and-permissions.md)
 - [`../operations/runbook.md`](../operations/runbook.md)

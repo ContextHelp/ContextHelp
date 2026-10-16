@@ -5,12 +5,14 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 
 	sqldriver "database/sql/driver"
 
 	"github.com/ideacrafterslabs/ctxt/internal/search/ftsq"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/indexsig"
 )
 
@@ -144,7 +146,10 @@ var pgMigrations = []pgMigration{
 	{Version: 18, Name: "objects.projection_version", fn: migrateProjectionVersion},
 	// Web UI browser sessions and their one-time login codes, mirroring
 	// SQLite migration 041. Only SHA-256 hashes of the cookie secret, the
-	// code and the minting static token are stored.
+	// code and the minting static token are stored. The token_hash index
+	// is guarded on the column: migration 29 drops token_hash, so a replay
+	// over the swapped tables skips it instead of failing; a database that
+	// has not reached 29 gets the index exactly as before.
 	{Version: 19, Name: "ui_sessions + ui_login_codes", Statements: []string{
 		`CREATE TABLE IF NOT EXISTS ui_sessions (
 			id              TEXT PRIMARY KEY,
@@ -161,7 +166,12 @@ var pgMigrations = []pgMigration{
 			revoked_at      TIMESTAMPTZ,
 			revoke_reason   TEXT NOT NULL DEFAULT ''
 		)`,
-		`CREATE INDEX IF NOT EXISTS idx_ui_sessions_token_hash ON ui_sessions (token_hash)`,
+		`DO $$ BEGIN
+			IF EXISTS (SELECT 1 FROM information_schema.columns
+				WHERE table_schema = current_schema() AND table_name = 'ui_sessions' AND column_name = 'token_hash') THEN
+				CREATE INDEX IF NOT EXISTS idx_ui_sessions_token_hash ON ui_sessions (token_hash);
+			END IF;
+		END $$`,
 		`CREATE INDEX IF NOT EXISTS idx_ui_sessions_principal ON ui_sessions (principal_id)`,
 		`CREATE TABLE IF NOT EXISTS ui_login_codes (
 			code_hash    TEXT PRIMARY KEY,
@@ -179,6 +189,587 @@ var pgMigrations = []pgMigration{
 	{Version: 20, Name: "entities.metadata empty array -> object", Statements: []string{
 		`UPDATE entities SET metadata = '{}'::jsonb WHERE metadata = '[]'::jsonb`,
 	}},
+	// Federation watermarks become change positions, mirroring SQLite
+	// migration 042: last_synced_at holds the updated_at and
+	// last_object_id the id of the last object a target acknowledged;
+	// objects get an index in that change order.
+	{Version: 21, Name: "federation change cursor", Statements: []string{
+		`ALTER TABLE federation_watermarks ADD COLUMN IF NOT EXISTS last_object_id TEXT NOT NULL DEFAULT ''`,
+		`CREATE INDEX IF NOT EXISTS idx_objects_change_order ON objects (updated_at, (id COLLATE "C"))`,
+	}},
+	// objects.change_seq, mirroring SQLite migration 043: a change
+	// position stamped from a counter on every insert and update,
+	// backfilled in (updated_at, id) order. Watermarks become the last
+	// acknowledged change_seq; no position converts, so targets start
+	// from 0 (receivers dedup the re-sent objects).
+	{Version: 22, Name: "objects.change_seq", Statements: objectChangeSeqStatements},
+	// aliases.object_id -> objects(id) ON DELETE CASCADE, mirroring SQLite
+	// migration 010: without it an alias outlived its object and kept
+	// resolving to a deleted id. Orphans are deleted before the constraint.
+	{Version: 23, Name: "aliases object FK with cascade", fn: migrateAliasesObjectFK},
+	// Approval queue for entities untrusted registries serve, mirroring
+	// SQLite migration 044.
+	{Version: 24, Name: "registry_pending_entities", Statements: []string{
+		`CREATE TABLE IF NOT EXISTS registry_pending_entities (
+			id               TEXT PRIMARY KEY,
+			registry_name    TEXT NOT NULL,
+			registry_url     TEXT NOT NULL,
+			slug             TEXT NOT NULL,
+			namespace        TEXT NOT NULL DEFAULT '',
+			title            TEXT NOT NULL DEFAULT '',
+			version          TEXT NOT NULL,
+			payload          JSONB NOT NULL,
+			signature_status TEXT NOT NULL,
+			first_seen_at    TIMESTAMPTZ NOT NULL,
+			last_seen_at     TIMESTAMPTZ NOT NULL,
+			UNIQUE (registry_name, slug, version)
+		)`,
+	}},
+	// Drop objects.plugins, mirroring SQLite migration 045: there is no
+	// plugin system (ADR-078) and no code reads or writes the column.
+	// Not part of the tsvector expression, so no re-projection follows.
+	{Version: 25, Name: "drop objects.plugins", Statements: []string{
+		`ALTER TABLE objects DROP COLUMN IF EXISTS plugins`,
+	}},
+	// object_proximity endpoints reference objects with ON DELETE
+	// CASCADE, mirroring SQLite migration 046: deleting an object drops
+	// its proximity pairs. Pairs whose object is already gone go first.
+	{Version: 26, Name: "object_proximity object FKs with cascade", fn: migrateProximityObjectFK},
+	// owner_principal on the per-principal tables, mirroring SQLite
+	// migration 047. Postgres had no search_history, saved_searches or
+	// resurfacing_queue (their stores are placeholders), so the tables
+	// are created here, after SQLite's 017 / 021 DDL, with the column in
+	// place; the ALTERs cover a table that already exists without it.
+	{Version: 27, Name: "owner_principal on per-principal tables", Statements: []string{
+		`CREATE TABLE IF NOT EXISTS saved_searches (
+			id              TEXT PRIMARY KEY,
+			name            TEXT NOT NULL UNIQUE,
+			query           TEXT NOT NULL,
+			profile_id      TEXT NOT NULL DEFAULT '',
+			alert_on        TEXT NOT NULL DEFAULT '',
+			notify          TEXT NOT NULL DEFAULT '',
+			owner_principal TEXT NOT NULL DEFAULT 'owner',
+			created_at      TIMESTAMPTZ NOT NULL,
+			updated_at      TIMESTAMPTZ NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS search_history (
+			id              TEXT PRIMARY KEY,
+			query           TEXT NOT NULL,
+			profile_id      TEXT NOT NULL DEFAULT '',
+			strategies_used TEXT NOT NULL DEFAULT '',
+			result_count    INTEGER NOT NULL DEFAULT 0,
+			owner_principal TEXT NOT NULL DEFAULT 'owner',
+			searched_at     TIMESTAMPTZ NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_search_history_profile_id ON search_history (profile_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_search_history_searched_at ON search_history (searched_at DESC)`,
+		`CREATE TABLE IF NOT EXISTS resurfacing_queue (
+			id              TEXT PRIMARY KEY,
+			object_id       TEXT NOT NULL REFERENCES objects(id) ON DELETE CASCADE,
+			profile_id      TEXT NOT NULL,
+			score           DOUBLE PRECISION NOT NULL,
+			reason          TEXT NOT NULL,
+			owner_principal TEXT NOT NULL DEFAULT 'owner',
+			surfaced_at     TIMESTAMPTZ,
+			dismissed_at    TIMESTAMPTZ,
+			created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_resurfacing_queue_profile_id ON resurfacing_queue (profile_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_resurfacing_queue_object_id ON resurfacing_queue (object_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_resurfacing_queue_unseen ON resurfacing_queue (profile_id, score)
+			WHERE surfaced_at IS NULL AND dismissed_at IS NULL`,
+		`ALTER TABLE saved_searches ADD COLUMN IF NOT EXISTS owner_principal TEXT NOT NULL DEFAULT 'owner'`,
+		`ALTER TABLE search_history ADD COLUMN IF NOT EXISTS owner_principal TEXT NOT NULL DEFAULT 'owner'`,
+		`ALTER TABLE resurfacing_queue ADD COLUMN IF NOT EXISTS owner_principal TEXT NOT NULL DEFAULT 'owner'`,
+	}},
+	// The principal registry (ADR-079), mirroring SQLite migration 048:
+	// principals, principal_identities, auth_tickets and the kv table
+	// for API key records, seeded with the one owner principal. The
+	// instance name lives in config, not the database, so the owner's
+	// display name is "Owner". IF NOT EXISTS and ON CONFLICT DO NOTHING
+	// make a replay a no-op.
+	{Version: 28, Name: "principal registry", Statements: []string{
+		`CREATE TABLE IF NOT EXISTS principals (
+			id           TEXT PRIMARY KEY,
+			kind         TEXT NOT NULL,
+			display_name TEXT NOT NULL,
+			roles        TEXT NOT NULL DEFAULT '["reader"]',
+			status       TEXT NOT NULL DEFAULT 'active',
+			created_at   TIMESTAMPTZ NOT NULL,
+			revoked_at   TIMESTAMPTZ
+		)`,
+		`CREATE TABLE IF NOT EXISTS principal_identities (
+			id           TEXT PRIMARY KEY,
+			principal_id TEXT NOT NULL REFERENCES principals(id),
+			method       TEXT NOT NULL,
+			issuer       TEXT NOT NULL DEFAULT '',
+			subject      TEXT NOT NULL,
+			name         TEXT NOT NULL DEFAULT '',
+			created_at   TIMESTAMPTZ NOT NULL,
+			revoked_at   TIMESTAMPTZ,
+			last_used_at TIMESTAMPTZ,
+			UNIQUE (method, issuer, subject)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_principal_identities_principal ON principal_identities (principal_id)`,
+		`CREATE TABLE IF NOT EXISTS auth_tickets (
+			hash         TEXT PRIMARY KEY,
+			kind         TEXT NOT NULL,
+			principal_id TEXT REFERENCES principals(id),
+			grants       TEXT NOT NULL DEFAULT '{}',
+			created_by   TEXT NOT NULL REFERENCES principals(id),
+			created_at   TIMESTAMPTZ NOT NULL,
+			expires_at   TIMESTAMPTZ NOT NULL,
+			redeemed_at  TIMESTAMPTZ
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_auth_tickets_expires ON auth_tickets (expires_at)`,
+		`CREATE TABLE IF NOT EXISTS kv (
+			key        TEXT PRIMARY KEY,
+			value      BYTEA NOT NULL,
+			updated_at TIMESTAMPTZ NOT NULL
+		)`,
+		`INSERT INTO principals (id, kind, display_name, roles, status, created_at)
+		 VALUES ('owner', 'owner', 'Owner', '["admin"]', 'active', NOW())
+		 ON CONFLICT (id) DO NOTHING`,
+	}},
+	// ui_sessions and ui_login_codes reference the identity that minted
+	// them (ADR-079) instead of the hash of a static token, mirroring
+	// SQLite migration 049. The rows, minted by static tokens that no
+	// longer authenticate, are dropped before the column swap.
+	{Version: 29, Name: "sessions bound to identities", fn: migrateSessionsBoundToIdentities},
+	// The columns ObjectStore.List filters and orders by, mirroring SQLite
+	// migration 050 (status has been indexed there since 009): the exact
+	// COUNT(*) of the default scope can be an index-only walk of
+	// idx_objects_status, and a page streams from its sort column's index
+	// to the first rows instead of sorting every active object. Indexes
+	// only; IF NOT EXISTS makes a replay a no-op.
+	{Version: 30, Name: "object list indexes", Statements: []string{
+		`CREATE INDEX IF NOT EXISTS idx_objects_status ON objects (status)`,
+		`CREATE INDEX IF NOT EXISTS idx_objects_created_at ON objects (created_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_objects_updated_at ON objects (updated_at)`,
+	}},
+	// The sharing registry (ADR-080), mirroring SQLite migration 051:
+	// audiences and their members, share policies, grants and the read
+	// audit; principals.deny_classes, principal_identities.share_policy_id;
+	// objects.classes and the masked shadow projection
+	// (projected_fts_body_masked with its generated fts_masked tsvector
+	// and GIN index); embeddings.variant, extending the primary key. The
+	// masked body is a projection output, so the projection version is
+	// bumped with it (indexsig.ProjectionVersion v5) and the
+	// re-projection fills it.
+	{Version: 31, Name: "sharing registry", fn: migrateSharing},
+	// metering_events, mirroring SQLite migration 019: the MeteringStore
+	// the inbound entitlement gate charges every non-admin entity read
+	// to. Postgres never had the table (its store was a placeholder), so
+	// a gated read failed closed with a 500. New table and indexes only;
+	// IF NOT EXISTS makes a replay a no-op.
+	{Version: 32, Name: "metering_events", Statements: []string{
+		`CREATE TABLE IF NOT EXISTS metering_events (
+			id            TEXT PRIMARY KEY,
+			registry_name TEXT NOT NULL,
+			event_type    TEXT NOT NULL,
+			namespace     TEXT NOT NULL DEFAULT '',
+			count         INTEGER NOT NULL DEFAULT 1,
+			occurred_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_metering_events_registry_name ON metering_events (registry_name)`,
+		`CREATE INDEX IF NOT EXISTS idx_metering_events_occurred_at ON metering_events (occurred_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_metering_events_registry_event ON metering_events (registry_name, event_type)`,
+	}},
+	// registry_entitlements.kind (outbound | inbound) keyed by (kind,
+	// registry_name), mirroring SQLite migration 053: a remote
+	// registry's synced entitlement and an operator's grant to a
+	// principal of the same name are separate rows.
+	{Version: 33, Name: "registry_entitlements.kind", fn: migrateEntitlementKind},
+	// Content-hash dedup stays inside a profile (ADR-080 §4), mirroring
+	// SQLite migration 052: a unique index on (content_hash, profile_id)
+	// over non-empty hashes, so a second object with the hash in the
+	// same profile is refused (storage.ErrAlreadyExists) and the dedup
+	// callers reinforce. Postgres never had a unique hash index, so a
+	// database may already hold such duplicates: the migration then
+	// refuses, naming them, and changes nothing (see
+	// migrateContentHashPerProfile). Index only, no re-projection.
+	{Version: 34, Name: "objects (content_hash, profile_id) unique", fn: migrateContentHashPerProfile},
+}
+
+// sharingRegistryStatements create the sharing registry and add the
+// sharing columns (migration 31). IF NOT EXISTS makes every statement
+// re-runnable.
+var sharingRegistryStatements = []string{
+	`CREATE TABLE IF NOT EXISTS audiences (
+		id         TEXT PRIMARY KEY,
+		name       TEXT NOT NULL UNIQUE,
+		created_at TIMESTAMPTZ NOT NULL
+	)`,
+	`CREATE TABLE IF NOT EXISTS audience_members (
+		audience_id  TEXT NOT NULL REFERENCES audiences(id) ON DELETE CASCADE,
+		principal_id TEXT NOT NULL REFERENCES principals(id),
+		expires_at   TIMESTAMPTZ,
+		added_by     TEXT NOT NULL,
+		added_at     TIMESTAMPTZ NOT NULL,
+		PRIMARY KEY (audience_id, principal_id)
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_audience_members_principal ON audience_members (principal_id)`,
+	`CREATE TABLE IF NOT EXISTS share_policies (
+		id         TEXT PRIMARY KEY,
+		name       TEXT NOT NULL UNIQUE,
+		version    INTEGER NOT NULL,
+		spec       JSONB NOT NULL,
+		updated_at TIMESTAMPTZ NOT NULL
+	)`,
+	`CREATE TABLE IF NOT EXISTS share_grants (
+		id          TEXT PRIMARY KEY,
+		audience_id TEXT NOT NULL REFERENCES audiences(id),
+		policy_id   TEXT NOT NULL REFERENCES share_policies(id),
+		expires_at  TIMESTAMPTZ,
+		created_by  TEXT NOT NULL,
+		created_at  TIMESTAMPTZ NOT NULL,
+		revoked_at  TIMESTAMPTZ
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_share_grants_audience ON share_grants (audience_id)`,
+	`CREATE TABLE IF NOT EXISTS access_log (
+		id              TEXT PRIMARY KEY,
+		at              TIMESTAMPTZ NOT NULL,
+		principal_id    TEXT NOT NULL,
+		identity_id     TEXT,
+		route           TEXT NOT NULL,
+		policy_versions TEXT NOT NULL,
+		object_count    INTEGER NOT NULL,
+		entity_count    INTEGER NOT NULL
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_access_log_principal ON access_log (principal_id, at)`,
+	`CREATE INDEX IF NOT EXISTS idx_access_log_at ON access_log (at)`,
+	`CREATE TABLE IF NOT EXISTS access_log_objects (
+		access_id TEXT NOT NULL REFERENCES access_log(id) ON DELETE CASCADE,
+		object_id TEXT NOT NULL,
+		PRIMARY KEY (access_id, object_id)
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_access_log_objects_object ON access_log_objects (object_id)`,
+	`ALTER TABLE principals ADD COLUMN IF NOT EXISTS deny_classes TEXT NOT NULL DEFAULT '[]'`,
+	`ALTER TABLE principal_identities ADD COLUMN IF NOT EXISTS share_policy_id TEXT REFERENCES share_policies(id)`,
+	`ALTER TABLE objects ADD COLUMN IF NOT EXISTS classes JSONB NOT NULL DEFAULT '[]'::jsonb`,
+	`ALTER TABLE objects ADD COLUMN IF NOT EXISTS projected_fts_body_masked TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE objects ADD COLUMN IF NOT EXISTS fts_masked tsvector
+		GENERATED ALWAYS AS (to_tsvector('` + ftsRegconfig + `', projected_fts_body_masked)) STORED`,
+	`CREATE INDEX IF NOT EXISTS idx_objects_fts_masked ON objects USING GIN (fts_masked)`,
+}
+
+// migrateSharing runs sharingRegistryStatements, then extends the
+// embeddings primary key with variant: the column is added with every
+// existing row raw, and the (object, model, chunk) key is replaced by
+// (object, model, chunk, variant). The key swap happens only while the
+// column is absent, so a replay is a no-op. The per-model partial HNSW
+// indexes are keyed by model_id and unaffected.
+func migrateSharing(ctx context.Context, d *Driver) error {
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, stmt := range sharingRegistryStatements {
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("create sharing registry: %w", err)
+		}
+	}
+	var hasVariant bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM information_schema.columns
+			WHERE table_schema = current_schema()
+			  AND table_name = 'embeddings' AND column_name = 'variant'
+		)`).Scan(&hasVariant); err != nil {
+		return fmt.Errorf("inspect embeddings.variant: %w", err)
+	}
+	if !hasVariant {
+		for _, stmt := range []string{
+			`ALTER TABLE embeddings ADD COLUMN variant TEXT NOT NULL DEFAULT 'raw'
+				CONSTRAINT embeddings_variant_known CHECK (variant IN ('raw', 'masked'))`,
+			`ALTER TABLE embeddings DROP CONSTRAINT IF EXISTS embeddings_pkey`,
+			`ALTER TABLE embeddings ADD CONSTRAINT embeddings_pkey PRIMARY KEY (object_id, model_id, chunk_idx, variant)`,
+		} {
+			if _, err := tx.ExecContext(ctx, stmt); err != nil {
+				return fmt.Errorf("extend embeddings key with variant: %w", err)
+			}
+		}
+	}
+	return tx.Commit()
+}
+
+// migrateSessionsBoundToIdentities swaps token_hash for identity_id
+// REFERENCES principal_identities(id) on ui_sessions and ui_login_codes.
+// Every existing row was minted by a static token, which no longer
+// authenticates, so both tables are emptied first; a NOT NULL column
+// then adds cleanly. IF EXISTS and IF NOT EXISTS make a replay a no-op.
+func migrateSessionsBoundToIdentities(ctx context.Context, d *Driver) error {
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, stmt := range []string{
+		`DELETE FROM ui_sessions WHERE EXISTS (SELECT 1 FROM information_schema.columns
+			WHERE table_name = 'ui_sessions' AND column_name = 'token_hash')`,
+		`DELETE FROM ui_login_codes WHERE EXISTS (SELECT 1 FROM information_schema.columns
+			WHERE table_name = 'ui_login_codes' AND column_name = 'token_hash')`,
+		`DROP INDEX IF EXISTS idx_ui_sessions_token_hash`,
+		`ALTER TABLE ui_sessions DROP COLUMN IF EXISTS token_hash`,
+		`ALTER TABLE ui_login_codes DROP COLUMN IF EXISTS token_hash`,
+		`ALTER TABLE ui_sessions ADD COLUMN IF NOT EXISTS identity_id TEXT NOT NULL REFERENCES principal_identities(id)`,
+		`ALTER TABLE ui_login_codes ADD COLUMN IF NOT EXISTS identity_id TEXT NOT NULL REFERENCES principal_identities(id)`,
+		`CREATE INDEX IF NOT EXISTS idx_ui_sessions_identity ON ui_sessions (identity_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_ui_login_codes_identity ON ui_login_codes (identity_id)`,
+	} {
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("sessions bound to identities: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+	return nil
+}
+
+// entitlementInboundShapeSQL matches a registry_entitlements row whose
+// name is principal-shaped: the owner principal or a minted prn_ ID.
+const entitlementInboundShapeSQL = `(registry_name = 'owner' OR left(registry_name, 4) = 'prn_')`
+
+// migrateEntitlementKind adds registry_entitlements.kind and re-keys
+// the table on (kind, registry_name), in one transaction. Backfill, as
+// SQLite 053: a principal-shaped name (owner, prn_*) becomes one
+// inbound row; any other name stays outbound and gains an inbound copy,
+// because a static-token principal ("phone") cannot be told from a
+// registry name and both readers used to see every row. A table that
+// already has kind is left alone, so a replay is a no-op.
+func migrateEntitlementKind(ctx context.Context, d *Driver) error {
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var has bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS (SELECT 1 FROM information_schema.columns
+		                WHERE table_schema = current_schema()
+		                  AND table_name = 'registry_entitlements' AND column_name = 'kind')`,
+	).Scan(&has); err != nil {
+		return fmt.Errorf("inspect registry_entitlements.kind: %w", err)
+	}
+	if has {
+		return nil
+	}
+
+	var pkey string
+	if err := tx.QueryRowContext(ctx, `
+		SELECT conname FROM pg_constraint
+		 WHERE conrelid = 'registry_entitlements'::regclass AND contype = 'p'`,
+	).Scan(&pkey); err != nil {
+		return fmt.Errorf("inspect registry_entitlements primary key: %w", err)
+	}
+
+	const cols = `registry_name, plan, namespaces, expires_at, fetched_at`
+	for _, stmt := range []string{
+		`ALTER TABLE registry_entitlements ADD COLUMN kind TEXT NOT NULL DEFAULT 'outbound'`,
+		`UPDATE registry_entitlements SET kind = 'inbound' WHERE ` + entitlementInboundShapeSQL,
+		`ALTER TABLE registry_entitlements DROP CONSTRAINT "` + pkey + `"`,
+		`INSERT INTO registry_entitlements (kind, ` + cols + `)
+		 SELECT 'inbound', ` + cols + ` FROM registry_entitlements
+		  WHERE kind = 'outbound' AND NOT ` + entitlementInboundShapeSQL,
+		`ALTER TABLE registry_entitlements ALTER COLUMN kind DROP DEFAULT`,
+		`ALTER TABLE registry_entitlements ADD CONSTRAINT registry_entitlements_kind_check
+			CHECK (kind IN ('outbound', 'inbound'))`,
+		`ALTER TABLE registry_entitlements ADD CONSTRAINT registry_entitlements_pkey
+			PRIMARY KEY (kind, registry_name)`,
+	} {
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("re-key registry_entitlements: %w", err)
+		}
+	}
+	return tx.Commit()
+}
+
+// contentHashDuplicatesShown is how many duplicate groups the error of
+// migrateContentHashPerProfile names.
+const contentHashDuplicatesShown = 5
+
+// migrateContentHashPerProfile creates idx_objects_content_hash_profile
+// (see the migrations entry). Objects that already share a non-empty
+// hash in one profile would fail the index: rather than pick which of
+// them to merge or drop, it returns an error naming them (the first
+// groups and how many there are) and leaves the schema at 33, so the
+// operator keeps one object per (content_hash, profile_id) and the next
+// start applies it. The objects table is share-locked from the check to
+// the index, so no write lands a duplicate in between. IF NOT EXISTS
+// makes a replay a no-op.
+func migrateContentHashPerProfile(ctx context.Context, d *Driver) error {
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, `LOCK TABLE objects IN SHARE MODE`); err != nil {
+		return fmt.Errorf("lock objects: %w", err)
+	}
+	groups, total, err := contentHashDuplicates(ctx, tx)
+	if err != nil {
+		return fmt.Errorf("find duplicate content hashes: %w", err)
+	}
+	if total > 0 {
+		shown := ""
+		if total > len(groups) {
+			shown = fmt.Sprintf("first %d: ", len(groups))
+		}
+		return fmt.Errorf("%d content hashes are each stored by more than one object of a profile (%s%s); "+
+			"keep one object per (content_hash, profile_id): delete or merge the others, "+
+			"or set their content_hash to '' to take them out of dedup, then start again",
+			total, shown, strings.Join(groups, "; "))
+	}
+
+	if _, err := tx.ExecContext(ctx, `CREATE UNIQUE INDEX IF NOT EXISTS idx_objects_content_hash_profile
+		ON objects (content_hash, profile_id) WHERE content_hash <> ''`); err != nil {
+		return fmt.Errorf("create content hash index: %w", err)
+	}
+	return tx.Commit()
+}
+
+// contentHashDuplicates describes the first contentHashDuplicatesShown
+// groups of objects sharing a non-empty hash in one profile, oldest
+// object first, and counts every such group.
+func contentHashDuplicates(ctx context.Context, tx *sql.Tx) ([]string, int, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT profile_id, content_hash, string_agg(id, ', ' ORDER BY created_at, id), COUNT(*) OVER ()
+		  FROM objects
+		 WHERE content_hash <> ''
+		 GROUP BY profile_id, content_hash
+		HAVING COUNT(*) > 1
+		 ORDER BY profile_id, content_hash
+		 LIMIT $1`, contentHashDuplicatesShown)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var groups []string
+	total := 0
+	for rows.Next() {
+		var profile, hash, ids string
+		if err := rows.Scan(&profile, &hash, &ids, &total); err != nil {
+			return nil, 0, err
+		}
+		groups = append(groups, fmt.Sprintf("profile %q hash %q: %s", profile, hash, ids))
+	}
+	return groups, total, rows.Err()
+}
+
+// migrateAliasesObjectFK deletes aliases whose object is gone, then adds
+// aliases_object_fk (ON DELETE CASCADE), guarded by a pg_constraint
+// lookup so a replay is a no-op. One transaction: the constraint never
+// lands without the cleanup it needs.
+func migrateAliasesObjectFK(ctx context.Context, d *Driver) error {
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM aliases a
+		 WHERE NOT EXISTS (SELECT 1 FROM objects o WHERE o.id = a.object_id)`); err != nil {
+		return fmt.Errorf("delete orphaned aliases: %w", err)
+	}
+	var exists bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS (SELECT 1 FROM pg_constraint
+		                WHERE conname = 'aliases_object_fk' AND conrelid = 'aliases'::regclass)`).Scan(&exists); err != nil {
+		return fmt.Errorf("inspect aliases_object_fk: %w", err)
+	}
+	if !exists {
+		if _, err := tx.ExecContext(ctx, `ALTER TABLE aliases ADD CONSTRAINT aliases_object_fk
+			FOREIGN KEY (object_id) REFERENCES objects(id) ON DELETE CASCADE`); err != nil {
+			return fmt.Errorf("add aliases_object_fk: %w", err)
+		}
+	}
+	return tx.Commit()
+}
+
+// migrateProximityObjectFK deletes object_proximity pairs with a missing
+// object on either side, then adds object_proximity_a_fk and
+// object_proximity_b_fk (ON DELETE CASCADE), each guarded by a
+// pg_constraint lookup so a replay is a no-op. One transaction, like
+// migrateAliasesObjectFK.
+func migrateProximityObjectFK(ctx context.Context, d *Driver) error {
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM object_proximity p
+		 WHERE NOT EXISTS (SELECT 1 FROM objects o WHERE o.id = p.object_a)
+		    OR NOT EXISTS (SELECT 1 FROM objects o WHERE o.id = p.object_b)`); err != nil {
+		return fmt.Errorf("delete orphaned proximity pairs: %w", err)
+	}
+	for _, fk := range []struct{ name, column string }{
+		{"object_proximity_a_fk", "object_a"},
+		{"object_proximity_b_fk", "object_b"},
+	} {
+		var exists bool
+		if err := tx.QueryRowContext(ctx, `
+			SELECT EXISTS (SELECT 1 FROM pg_constraint
+			                WHERE conname = $1 AND conrelid = 'object_proximity'::regclass)`,
+			fk.name).Scan(&exists); err != nil {
+			return fmt.Errorf("inspect %s: %w", fk.name, err)
+		}
+		if exists {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `ALTER TABLE object_proximity ADD CONSTRAINT `+fk.name+`
+			FOREIGN KEY (`+fk.column+`) REFERENCES objects(id) ON DELETE CASCADE`); err != nil {
+			return fmt.Errorf("add %s: %w", fk.name, err)
+		}
+	}
+	return tx.Commit()
+}
+
+// objectChangeSeqStatements install objects.change_seq (migration 22).
+// The trigger takes the next value from the single object_change_counter
+// row, whose row lock the writing transaction then holds until it
+// commits: concurrent object writes serialize on it, so change_seq
+// values commit in increasing order and a reader never sees a value
+// while a smaller one is still uncommitted. A SEQUENCE would not hold
+// that — its values commit out of order, and a watermark could pass a
+// change still in flight. Every statement is re-runnable: the backfill
+// numbers only unstamped rows, after the largest value already there.
+var objectChangeSeqStatements = []string{
+	`ALTER TABLE objects ADD COLUMN IF NOT EXISTS change_seq BIGINT NOT NULL DEFAULT 0`,
+	`DROP TRIGGER IF EXISTS objects_change_seq ON objects`,
+	`UPDATE objects o SET change_seq = r.base + r.rn
+	   FROM (SELECT id,
+	                row_number() OVER (ORDER BY updated_at, id COLLATE "C") AS rn,
+	                (SELECT COALESCE(MAX(change_seq), 0) FROM objects) AS base
+	           FROM objects WHERE change_seq = 0) r
+	  WHERE o.id = r.id`,
+	`CREATE TABLE IF NOT EXISTS object_change_counter (
+		id  SMALLINT PRIMARY KEY CHECK (id = 1),
+		seq BIGINT NOT NULL
+	)`,
+	`INSERT INTO object_change_counter (id, seq)
+	 SELECT 1, COALESCE(MAX(change_seq), 0) FROM objects
+	 ON CONFLICT (id) DO UPDATE SET seq = GREATEST(object_change_counter.seq, EXCLUDED.seq)`,
+	`CREATE OR REPLACE FUNCTION objects_stamp_change_seq() RETURNS trigger
+	 LANGUAGE plpgsql AS $$
+	 BEGIN
+		UPDATE object_change_counter SET seq = seq + 1 WHERE id = 1 RETURNING seq INTO NEW.change_seq;
+		RETURN NEW;
+	 END
+	 $$`,
+	`CREATE TRIGGER objects_change_seq BEFORE INSERT OR UPDATE ON objects
+	 FOR EACH ROW EXECUTE FUNCTION objects_stamp_change_seq()`,
+	`CREATE INDEX IF NOT EXISTS idx_objects_change_seq ON objects (change_seq)`,
+	`DROP INDEX IF EXISTS idx_objects_change_order`,
+	`ALTER TABLE federation_watermarks ADD COLUMN IF NOT EXISTS last_change_seq BIGINT NOT NULL DEFAULT 0`,
+	`ALTER TABLE federation_watermarks DROP COLUMN IF EXISTS last_object_id`,
+	`ALTER TABLE federation_watermarks DROP COLUMN IF EXISTS last_synced_at`,
 }
 
 // migrateProjectionVersion adds objects.projection_version, the projection
@@ -435,6 +1026,51 @@ func migrateObjectsEmbeddingDimension(ctx context.Context, d *Driver) error {
 // on one server migrate independently.
 const migrateLockKey int64 = 0x63747874 << 20 // "ctxt"
 
+// pgPendingTarget returns the highest migration version above current
+// and at most target, or 0 when no migration is pending.
+func pgPendingTarget(current, target int) int {
+	to := 0
+	for _, m := range pgMigrations {
+		if m.Version > current && m.Version <= target && m.Version > to {
+			to = m.Version
+		}
+	}
+	return to
+}
+
+// pgRowQuerier is the QueryRowContext of *sql.DB and *sql.Tx.
+type pgRowQuerier interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// pgHasNoOwnTables reports whether the current schema holds no tables
+// besides the migration ledger: a version-0 database with nothing to
+// lose. A version-0 database with tables (initialized before the
+// ledger existed) is an existing one. SQLite applies the same rule.
+func pgHasNoOwnTables(ctx context.Context, q pgRowQuerier) (bool, error) {
+	var empty bool
+	if err := q.QueryRowContext(ctx, `SELECT NOT EXISTS (
+		SELECT 1 FROM pg_catalog.pg_tables
+		 WHERE schemaname = current_schema() AND tablename <> 'schema_version')`).Scan(&empty); err != nil {
+		return false, fmt.Errorf("list tables: %w", err)
+	}
+	return empty, nil
+}
+
+// warnUnsnapshottedMigration warns before migrations run against an
+// existing Postgres database. Unlike SQLite, Postgres gets no automatic
+// snapshot: backing it up is the operator's job (pg_dump), so the
+// warning names both versions and the command. A brand-new database
+// (version 0, empty) has nothing to lose and gets no warning.
+func warnUnsnapshottedMigration(current, target int, empty bool) {
+	to := pgPendingTarget(current, target)
+	if to == 0 || (current == 0 && empty) {
+		return
+	}
+	slog.Warn(fmt.Sprintf("migrating Postgres schema v%d to v%d without a snapshot: dpkms never backs up Postgres; take a pg_dump before upgrading", current, to),
+		"from", current, "to", to)
+}
+
 func (d *Driver) Migrate(ctx context.Context) error {
 	return d.migrateThrough(ctx, pgMigrations[len(pgMigrations)-1].Version)
 }
@@ -453,7 +1089,9 @@ func (d *Driver) migrateThrough(ctx context.Context, target int) error {
 	if err != nil {
 		return fmt.Errorf("acquire migration connection: %w", err)
 	}
-	defer conn.Close()
+	// Close only hands the session back to the pool (or drops a poisoned
+	// one); there is no work left whose failure it could report.
+	defer func() { _ = conn.Close() }()
 	if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, migrateLockKey); err != nil {
 		return fmt.Errorf("acquire migration advisory lock: %w", err)
 	}
@@ -489,6 +1127,13 @@ func (d *Driver) migrateThrough(ctx context.Context, target int) error {
 		`SELECT COALESCE(MAX(version), 0) FROM schema_version`).Scan(&current); err != nil {
 		return fmt.Errorf("read schema version: %w", err)
 	}
+	empty := false
+	if current == 0 {
+		if empty, err = pgHasNoOwnTables(ctx, d.db); err != nil {
+			return fmt.Errorf("inspect unversioned database: %w", err)
+		}
+	}
+	warnUnsnapshottedMigration(current, target, empty)
 
 	for _, m := range pgMigrations {
 		if m.Version <= current || m.Version > target {
@@ -778,7 +1423,7 @@ var baselineSchema = []string{
 			federation_name TEXT PRIMARY KEY,
 			last_synced_at  TIMESTAMPTZ NOT NULL DEFAULT 'epoch'
 		)`,
-	// ADR-071 Phase 1 (T-0582): embedding_models registry +
+	// ADR-071 Phase 1: embedding_models registry +
 	// composite-key embeddings table. Mirrors the sqlite migration
 	// 032/033 surface; the partial unique index uses postgres'
 	// "WHERE" partial-index syntax and the ON CONFLICT path on
@@ -863,7 +1508,7 @@ func migrateJobsUserMentions(ctx context.Context, db *sql.DB) error {
 
 // migrateJobsUserHints adds user_hints TEXT column to jobs. Idempotent via
 // information_schema check so re-running on upgraded DBs is a no-op.
-// Mirrors migrateJobsUserMentions exactly (T-0573).
+// Mirrors migrateJobsUserMentions exactly.
 func migrateJobsUserHints(ctx context.Context, db *sql.DB) error {
 	var exists bool
 	err := db.QueryRowContext(ctx, `
@@ -888,7 +1533,7 @@ func migrateJobsUserHints(ctx context.Context, db *sql.DB) error {
 // migrateJobsUserProfileNote adds user_profile + user_note TEXT columns to
 // jobs. Idempotent per-column via information_schema checks; either
 // column can be missing independently after a partial upgrade. Mirrors
-// migrateJobsUserMentions / migrateJobsUserHints (T-0588).
+// migrateJobsUserMentions / migrateJobsUserHints.
 //
 // Unrolled to two constant ALTER statements (rather than looping with
 // string concatenation) so gosec's G201 SQL-injection lint stays
@@ -1007,10 +1652,23 @@ func migrateGraphCanonical(ctx context.Context, db *sql.DB) error {
 type ObjectStore struct {
 	db   *sql.DB
 	caps *pgCaps
+	// scope, when set, is the restricted viewer's visibility every read
+	// ANDs into its SQL (see scope.go); nil is the driver's own store.
+	scope *storage.Scope
 }
 type (
-	EntityStore   struct{ db *sql.DB }
-	EdgeStore     struct{ db *sql.DB }
+	EntityStore struct {
+		db *sql.DB
+		// scope, when set, keeps every read to the entities the viewer
+		// may see (see scope.go).
+		scope *storage.Scope
+	}
+	EdgeStore struct {
+		db *sql.DB
+		// scope, when set, keeps every read to the edges whose object
+		// ends the viewer may see (see scope.go).
+		scope *storage.Scope
+	}
 	JobStore      struct{ db *sql.DB }
 	PipelineStore struct{ db *sql.DB }
 	StepStore     struct{ db *sql.DB }

@@ -1,7 +1,6 @@
 ---
 status: paper
 adr: ADR-069
-task: T-0513, T-0514, T-0515, T-0516, T-0519
 ---
 
 # US-0217: Meeting Capture (Desktop, Audio + Video)
@@ -84,7 +83,7 @@ Mobile companions (iOS / Android) are deferred to Phase 6/7 — covered in [US-0
 - [ ] Active SessionID attached
 - [ ] Bus event `ctxt.ambient.meeting.enqueued` carries pipeline name + KO ID once available
 
-### Storage / retention (T-0519)
+### Storage / retention
 
 - [ ] Media files under `$XDG_STATE_HOME/ctxt/ambient/media/<session_id>/<uuid>.{mov,mp4,webm,m4a}`
 - [ ] Default retention: `meeting.media_retention_hours = 48` (file deleted after; transcript persists forever)
@@ -121,13 +120,13 @@ Mobile companions (iOS / Android) are deferred to Phase 6/7 — covered in [US-0
 
 ### Phasing
 
-Per the ambient-capture track:
+Per ADR-069:
 
-1. T-0513 — macOS audio-only (Phase 3a): smallest E2E to prove substrate
-2. T-0514 — macOS full audio + video (Phase 3b)
-3. T-0515 — Windows recorder (Phase 3c)
-4. T-0516 — Linux recorder (Phase 3d)
-5. T-0519 — media retention tier (parallel)
+1. macOS audio-only (Phase 3a): smallest E2E to prove substrate
+2. macOS full audio + video (Phase 3b)
+3. Windows recorder (Phase 3c)
+4. Linux recorder (Phase 3d)
+5. media retention tier (parallel)
 
 ### Why ScreenCaptureKit over BlackHole/Loopback.app
 
@@ -167,7 +166,7 @@ Per [ADR-069 §Decision](../../decisions/ADR-069-meeting-capture-source.md): mac
 ## Sprint
 
 **Skeleton 9.5 — Ambient Capture + Sessions + Agent-Native MCP**
-Implements ADR-069 desktop tracks (Phase 3a/3b/3c/3d) — see `tlc track show ambient-capture`, tasks **T-0513, T-0514, T-0515, T-0516, T-0519**.
+Implements ADR-069 desktop tracks (Phase 3a/3b/3c/3d).
 
 ---
 

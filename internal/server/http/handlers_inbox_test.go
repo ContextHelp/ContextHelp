@@ -2,17 +2,16 @@ package http
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
 
-// TestCaptureInbox_PersistsProfileAndNote is the regression for T-0588:
+// TestCaptureInbox_PersistsProfileAndNote is a regression guard:
 // the /api/v1/inbox endpoint must accept "profile" + "inbox_note" JSON
 // fields and persist them onto the resulting KnowledgeObject as
-// ProfileID + InboxNote. Pre-T-0588, "profile" was silently dropped
+// ProfileID + InboxNote. Previously "profile" was silently dropped
 // at the JSON-decode boundary because the inline request struct had
 // no field for it.
 func TestCaptureInbox_PersistsProfileAndNote(t *testing.T) {
@@ -47,7 +46,7 @@ func TestCaptureInbox_PersistsProfileAndNote(t *testing.T) {
 
 	// Round-trip via the storage layer to confirm the values landed
 	// where Service.CaptureToInbox is supposed to write them.
-	obj, err := ts.svc.Store.Objects().Get(context.Background(), id)
+	obj, err := ts.svc.Store(ownerCtx()).Objects().Get(ownerCtx(), id)
 	if err != nil {
 		t.Fatalf("get persisted object: %v", err)
 	}
@@ -64,7 +63,7 @@ func TestCaptureInbox_PersistsProfileAndNote(t *testing.T) {
 
 // TestCaptureInbox_MissingContent is a sanity check that the handler
 // rejects empty content with 400. Covers the InboxCaptureRequest happy
-// path's pre-condition rather than the new T-0588 fields specifically.
+// path's pre-condition rather than the profile/note fields specifically.
 func TestCaptureInbox_MissingContent(t *testing.T) {
 	ts := newTestServerBundle(t)
 	defer ts.Close()

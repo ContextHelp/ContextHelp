@@ -56,7 +56,9 @@ Both CLIs are built with:
 
 ### Configuration File
 
-Default location: `~/.config/contexthelp/config.yaml`
+Default location: `~/.config/contexthelp/ctxt.yaml` for `ctxt`,
+`~/.config/contexthelp/dpkms.yaml` for `dpkms` (cascade and precedence:
+[configuration-structure.md](configuration-structure.md))
 
 Example configuration:
 
@@ -68,8 +70,14 @@ storage:
 server:
   port: 8080
   grpc_port: 9090
+  cookie_bridge_port: 9377
   workers: 4
   public: false
+  dev: false
+  reminder_interval: 1m
+
+steps:
+  path: ~/.config/contexthelp/steps
 
 profile:
   default: founder
@@ -77,12 +85,6 @@ profile:
 registries:
   - name: uxpatterns
     url: https://uxpatterns.example.com
-
-plugins:
-  - type: plugin
-    plugin: ./plugins/screensuggester.so
-    config:
-      enabled: true
 
 i18n:
   enabled: false
@@ -104,6 +106,7 @@ Configuration can be overridden using environment variables:
 - `CH_STORAGE_TYPE` - Storage backend type
 - `CH_SERVER_PORT` - HTTP port
 - `CH_GRPC_PORT` - gRPC port
+- `CH_COOKIE_BRIDGE_PORT` - browser-extension cookie bridge port
 
 ### Flag Binding
 
@@ -111,6 +114,10 @@ All command flags are bound to Viper configuration keys, allowing:
 - Command-line flags to override config file
 - Environment variables to override config file
 - Precedence: CLI flags > Environment > Config file > Defaults
+
+`dpkms serve` binds none of its flags: it reads each setting from the
+loaded config (env over file over default) and a passed flag overrides
+it.
 
 Example from `analyze.go`:
 
@@ -176,9 +183,9 @@ ctxt analyze --file screenshot.png --type image
 ctxt analyze https://example.com --wait
 
 # Manage jobs
-ctxt job list
-ctxt job status job_12345678
-ctxt job retry job_12345678
+dpkms job list
+dpkms job status job_12345678
+dpkms job retry job_12345678
 
 # Query knowledge
 ctxt list --tag ux,onboarding --limit 10
@@ -204,7 +211,7 @@ ctxt registry list
 ctxt registry add uxpatterns https://uxpatterns.example.com
 ctxt registry info uxpatterns
 ctxt registry sync uxpatterns
-ctxt registry remove uxpatterns
+ctxt registry delete uxpatterns --confirm-token=<sha>
 
 # Entities
 ctxt entity list

@@ -34,13 +34,6 @@ func (f LintFinding) String() string {
 	return fmt.Sprintf("%-5s %s: %s", f.Severity, f.Field, f.Message)
 }
 
-// deprecatedKeys maps old config field paths to their replacement.
-// Add entries here when fields are removed or renamed.
-var deprecatedKeys = map[string]string{
-	// Example (uncomment when deprecated):
-	// "storage.blob.s3.endpoint_url": "storage.blob.s3.endpoint",
-}
-
 // LintConfig runs all lint checks on the given Config loaded from configPath.
 // It combines schema validation, secret scanning, file permission checks,
 // and deprecated key detection.
@@ -53,16 +46,14 @@ func LintConfig(cfg *Config, configPath string) []LintFinding {
 	findings = append(findings, lintSchema(cfg)...)
 	findings = append(findings, lintSecrets(cfg)...)
 	findings = append(findings, lintPermissions(configPath)...)
-	findings = append(findings, lintDeprecated(cfg)...)
 	findings = append(findings, lintAccess(cfg)...)
 
 	return findings
 }
 
 // lintAccess surfaces access-class smells that are not hard errors:
-// the deprecated server.public shorthand, and an inbound federation
-// token on a private instance (probably meant to be protected). Neither
-// flips the class — validation owns the hard rules.
+// the deprecated server.public shorthand. Validation owns the hard
+// rules.
 func lintAccess(cfg *Config) []LintFinding {
 	var findings []LintFinding
 	if cfg.Server.Access == "" && cfg.Server.Public {
@@ -71,21 +62,6 @@ func lintAccess(cfg *Config) []LintFinding {
 			Field:    "server.public",
 			Message:  "deprecated shorthand for server.access: public; set server.access explicitly",
 			Fix:      "set server.access: public and drop server.public",
-		})
-	}
-	if cfg.Server.EffectiveAccess() == AccessPrivate && cfg.Federation.Token != "" {
-		findings = append(findings, LintFinding{
-			Severity: SeverityWarn,
-			Field:    "federation.token",
-			Message:  "inbound federation token configured on a private instance — remote pushers cannot reach it; did you mean server.access: protected?",
-		})
-	}
-	if cfg.Server.EffectiveAccess() != AccessPrivate && cfg.Federation.Token == "" {
-		findings = append(findings, LintFinding{
-			Severity: SeverityWarn,
-			Field:    "federation.token",
-			Message:  "no federation.token on a non-private instance — the federation push route refuses all requests until one is configured",
-			Fix:      "set federation.token to enable inbound federation push, or ignore if this instance never receives pushes",
 		})
 	}
 	return findings
@@ -113,7 +89,7 @@ func lintSecrets(cfg *Config) []LintFinding {
 		findings = append(findings, LintFinding{
 			Severity: SeverityWarn,
 			Field:    w.Field,
-			Message:  fmt.Sprintf("looks like a plaintext secret (%s) — %s; use ${ENV_VAR} instead", w.Hint, w.Reason),
+			Message:  fmt.Sprintf("looks like a plaintext secret (%s) — %s; use the bound env var or move it to a second --config secrets file", w.Hint, w.Reason),
 		})
 	}
 	return findings
@@ -156,21 +132,6 @@ func lintPermissions(configPath string) []LintFinding {
 		}}
 	}
 	return nil
-}
-
-// lintDeprecated checks for deprecated config keys (by checking known field paths).
-// Currently a stub — add deprecated key mappings to deprecatedKeys above.
-func lintDeprecated(_ *Config) []LintFinding {
-	// deprecatedKeys is checked against raw YAML in RunE; here we surface any
-	// entries that are still non-empty in the struct (future use).
-	// When fields are actually removed, add struct checks here.
-	var findings []LintFinding
-	for old, replacement := range deprecatedKeys {
-		// Placeholder — future deprecated fields will be detected via reflection.
-		_ = old
-		_ = replacement
-	}
-	return findings
 }
 
 // FixPermissions applies the safe auto-fix for world/group-readable config files.

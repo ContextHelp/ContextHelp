@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -21,32 +22,48 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	httpserver "github.com/ideacrafterslabs/ctxt/internal/server/http"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
-const uiTestToken = "tok-ui-open"
-
 // uiDpkms is a real dpkms router with web UI sign-in on, counting the
-// login-code requests it gets.
+// login-code requests it gets. token is the API key of a reader
+// principal in its registry.
 type uiDpkms struct {
 	*httptest.Server
-	mints atomic.Int32
+	mints  atomic.Int32
+	token  string
+	driver storage.StorageDriver
 }
 
-func newUIDpkms(t *testing.T, private bool) *uiDpkms {
+// newUIDpkms starts an instance over its own store, or, with share,
+// over share's store: the same registry reached at a second URL, so
+// share's key opens both.
+func newUIDpkms(t *testing.T, private bool, share ...*uiDpkms) *uiDpkms {
 	t.Helper()
-	driver := storageutil.NewTestDriver(t)
+	d := &uiDpkms{}
+	if len(share) > 0 {
+		d.driver, d.token = share[0].driver, share[0].token
+	} else {
+		d.driver = storageutil.NewTestDriver(t)
+	}
+	driver := d.driver
 	svc := service.New(driver, jobs.NewQueue(driver.Jobs()), builtins.Registry(), search.NewEngine(driver), "", nil)
 	rc := httpserver.RouterConfig{}
 	if !private {
-		static, err := authn.NewStatic([]authn.StaticToken{{Token: uiTestToken, Principal: "ops", Roles: []string{authn.RoleReader}}})
+		ctx := context.Background()
+		keys := authn.NewKeysOver(driver.Auth(), nil)
+		if d.token == "" {
+			require.NoError(t, driver.Auth().Principals().Create(ctx, &storage.Principal{ID: "prn_ops", Kind: storage.PrincipalKindPerson, DisplayName: "ops", Roles: []string{authn.RoleReader}}))
+			secret, _, err := keys.Mint(ctx, authn.MintKey{PrincipalID: "prn_ops"})
+			require.NoError(t, err)
+			d.token = secret
+		}
+		sessions, err := authn.NewSessions(driver.UISessions(), driver.Auth(), keys, authn.SessionOptions{})
 		require.NoError(t, err)
-		sessions, err := authn.NewSessions(driver.UISessions(), static, authn.SessionOptions{})
-		require.NoError(t, err)
-		rc.Auth, rc.Sessions = sessions.Provider(static), sessions
+		rc.Auth, rc.Sessions = authn.NewChain(authn.NewAPIKeyMethod(keys, nil), sessions.Method()), sessions
 	}
 	router := httpserver.NewRouterWithConfig(svc, rc)
-	d := &uiDpkms{}
 	d.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/v1/ui/login-codes" {
 			d.mints.Add(1)
@@ -99,7 +116,7 @@ func TestUIOpen_NoBrowserPrintsLink(t *testing.T) {
 	d := newUIDpkms(t, false)
 	op := &fakeOpener{}
 	swapUISeams(t, op, func(io.Writer) bool { return true })
-	db := uiConfigured(t, d.URL, uiTestToken)
+	db := uiConfigured(t, d.URL, d.token)
 
 	out, err := db.exec("ui", "open", "--no-browser")
 	require.NoError(t, err, out)
@@ -115,7 +132,7 @@ func TestUIOpen_TerminalOpensBrowser(t *testing.T) {
 	d := newUIDpkms(t, false)
 	op := &fakeOpener{}
 	swapUISeams(t, op, func(io.Writer) bool { return true })
-	db := uiConfigured(t, d.URL, uiTestToken)
+	db := uiConfigured(t, d.URL, d.token)
 
 	out, err := db.exec("ui", "open")
 	require.NoError(t, err, out)
@@ -131,7 +148,7 @@ func TestUIOpen_NonTerminalPrintsLink(t *testing.T) {
 	d := newUIDpkms(t, false)
 	op := &fakeOpener{}
 	swapUISeams(t, op, func(io.Writer) bool { return false })
-	db := uiConfigured(t, d.URL, uiTestToken)
+	db := uiConfigured(t, d.URL, d.token)
 
 	out, err := db.exec("ui", "open")
 	require.NoError(t, err, out)
@@ -143,7 +160,7 @@ func TestUIOpen_BrowserFailureFallsBackToLink(t *testing.T) {
 	d := newUIDpkms(t, false)
 	op := &fakeOpener{err: io.ErrUnexpectedEOF}
 	swapUISeams(t, op, func(io.Writer) bool { return true })
-	db := uiConfigured(t, d.URL, uiTestToken)
+	db := uiConfigured(t, d.URL, d.token)
 
 	out, err := db.exec("ui", "open")
 	require.NoError(t, err, out)
@@ -154,7 +171,7 @@ func TestUIOpen_BrowserFailureFallsBackToLink(t *testing.T) {
 func TestUIOpen_JSON(t *testing.T) {
 	d := newUIDpkms(t, false)
 	swapUISeams(t, &fakeOpener{}, func(io.Writer) bool { return false })
-	db := uiConfigured(t, d.URL, uiTestToken)
+	db := uiConfigured(t, d.URL, d.token)
 
 	out, err := db.exec("ui", "open", "--no-browser", "--format", "json")
 	require.NoError(t, err, out)
@@ -192,9 +209,9 @@ func TestUIOpen_WrongTokenIsUnauthorized(t *testing.T) {
 
 func TestUIOpen_ServerFlagPinsInstance(t *testing.T) {
 	configured := newUIDpkms(t, false)
-	pinned := newUIDpkms(t, false)
+	pinned := newUIDpkms(t, false, configured)
 	swapUISeams(t, &fakeOpener{}, func(io.Writer) bool { return false })
-	db := uiConfigured(t, configured.URL, uiTestToken)
+	db := uiConfigured(t, configured.URL, configured.token)
 
 	out, err := db.exec("ui", "open", "--server", pinned.URL, "--no-browser")
 	require.NoError(t, err, out)
@@ -207,7 +224,7 @@ func TestUIOpen_DryRunMintsNothing(t *testing.T) {
 	d := newUIDpkms(t, false)
 	op := &fakeOpener{}
 	swapUISeams(t, op, func(io.Writer) bool { return true })
-	db := uiConfigured(t, d.URL, uiTestToken)
+	db := uiConfigured(t, d.URL, d.token)
 
 	out, err := db.exec("ui", "open", "--dry-run")
 	require.NoError(t, err, out)
@@ -227,7 +244,7 @@ func TestUIOpen_JSONAfterOpeningOmitsCode(t *testing.T) {
 	d := newUIDpkms(t, false)
 	op := &fakeOpener{}
 	swapUISeams(t, op, func(io.Writer) bool { return true })
-	db := uiConfigured(t, d.URL, uiTestToken)
+	db := uiConfigured(t, d.URL, d.token)
 
 	out, err := db.exec("ui", "open", "--format", "json")
 	require.NoError(t, err, out)

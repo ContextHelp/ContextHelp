@@ -2,7 +2,6 @@ package http_test
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -35,7 +34,7 @@ func RunObjectWriteSuite(t *testing.T, newDriver func(*testing.T) storage.Storag
 	fresh := func(t *testing.T) (*dpkmstest.Server, storage.StorageDriver) {
 		t.Helper()
 		driver := newDriver(t)
-		srv := dpkmstest.Start(t, driver, dpkmstest.WithStaticTokens())
+		srv := dpkmstest.Start(t, driver, dpkmstest.WithKeys())
 		seedWriteObject(t, driver)
 		return srv, driver
 	}
@@ -55,7 +54,7 @@ var writeSeedTime = time.Date(2026, 1, 10, 9, 0, 0, 0, time.UTC)
 // seedWriteObject stores o-w, the object every write case edits.
 func seedWriteObject(t *testing.T, driver storage.StorageDriver) {
 	t.Helper()
-	require.NoError(t, driver.Objects().Create(context.Background(), &storage.KnowledgeObject{
+	require.NoError(t, driver.Objects().Create(ownerCtx(), &storage.KnowledgeObject{
 		ID: "o-w", Type: "note", Subtype: "note.short", Status: "active",
 		RawContent: "raw body", TextContent: "text body",
 		Summaries: []string{"first summary", "second summary"},
@@ -87,7 +86,7 @@ func sendJSON(t *testing.T, srv *dpkmstest.Server, method, path, role string, bo
 
 func storedObject(t *testing.T, driver storage.StorageDriver, id string) *storage.KnowledgeObject {
 	t.Helper()
-	obj, err := driver.Objects().Get(context.Background(), id)
+	obj, err := driver.Objects().Get(ownerCtx(), id)
 	require.NoError(t, err)
 	return obj
 }
@@ -227,7 +226,7 @@ func testDelete(t *testing.T, fresh freshFn) {
 
 	resp, body := sendJSON(t, srv, http.MethodDelete, "/api/v1/objects/o-w", dpkmstest.RoleAdmin, nil)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode, string(body))
-	_, err := driver.Objects().Get(context.Background(), "o-w")
+	_, err := driver.Objects().Get(ownerCtx(), "o-w")
 	assert.ErrorIs(t, err, storage.ErrNotFound)
 
 	resp, body = sendJSON(t, srv, http.MethodDelete, "/api/v1/objects/o-w", dpkmstest.RoleAdmin, nil)
@@ -253,7 +252,7 @@ func testReprocess(t *testing.T, fresh freshFn) {
 			assert.Equal(t, "o-w", out.ObjectID)
 			assert.Equal(t, step, out.Step)
 
-			job, err := driver.Jobs().Get(context.Background(), out.JobID)
+			job, err := driver.Jobs().Get(ownerCtx(), out.JobID)
 			require.NoError(t, err)
 			assert.Equal(t, jobs.ReprocessJobType, job.Type)
 			assert.Equal(t, storage.JobPending, job.Status)
@@ -278,12 +277,12 @@ func testReprocess(t *testing.T, fresh freshFn) {
 	}
 	for _, tc := range rejects {
 		t.Run(tc.name, func(t *testing.T) {
-			_, total, err := driver.Jobs().List(context.Background(), storage.JobFilter{Type: jobs.ReprocessJobType})
+			_, total, err := driver.Jobs().List(ownerCtx(), storage.JobFilter{Type: jobs.ReprocessJobType})
 			require.NoError(t, err)
 			resp, body := sendJSON(t, srv, http.MethodPost, tc.path, dpkmstest.RoleWriter, tc.body)
 			require.Equal(t, tc.status, resp.StatusCode, string(body))
 			assert.Equal(t, tc.code, apiErrorCode(t, body))
-			_, after, err := driver.Jobs().List(context.Background(), storage.JobFilter{Type: jobs.ReprocessJobType})
+			_, after, err := driver.Jobs().List(ownerCtx(), storage.JobFilter{Type: jobs.ReprocessJobType})
 			require.NoError(t, err)
 			assert.Equal(t, total, after, "a rejected reprocess must enqueue nothing")
 		})
@@ -348,7 +347,7 @@ func assertInsufficientScope(t *testing.T, resp *http.Response, body []byte, sco
 // storage.ErrNotFound on every driver, so the API can tell a missing
 // object (404) from a storage failure (500).
 func testDriverNotFound(t *testing.T, driver storage.StorageDriver) {
-	ctx := context.Background()
+	ctx := ownerCtx()
 	err := driver.Objects().Delete(ctx, "o-none")
 	assert.True(t, errors.Is(err, storage.ErrNotFound), "Delete: %v", err)
 	err = driver.Objects().Update(ctx, &storage.KnowledgeObject{ID: "o-none", Type: "note", UpdatedAt: writeSeedTime})

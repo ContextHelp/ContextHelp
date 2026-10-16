@@ -5,7 +5,7 @@ This document consolidates the full set of detailed design documents for the **t
 - **dPKMS** — decentralized knowledge substrate (storage, jobs, security, federation)
 - **`ctxt`** — agentic context brain (capture, enrichment, surfacing, composition)
 
-It provides a comprehensive engineering blueprint including architecture, pipelines, jobs, storage, registries, plugins, query language, ranking, configuration, I18N/L10N, APIs, security, and testing.
+It provides a comprehensive engineering blueprint including architecture, pipelines, jobs, storage, registries, extension surfaces, query language, ranking, configuration, I18N/L10N, APIs, security, and testing.
 
 This design separates **mechanics** (dPKMS) from **meaning** (`ctxt`).
 
@@ -41,7 +41,6 @@ The system consists of two packages:
 - `ctxt` CLI (primary user interface)
 - `dpkms serve` (background worker daemon)
 - HTTP/gRPC API server (for integrations)
-- Plugin-extended modes
 
 ## High-Level Component Diagram
 
@@ -53,7 +52,6 @@ The system consists of two packages:
 - Graph Index (Objects ↔ Entities)
 - Registry Connectors (Federated)
 - Encryption & Auth
-- Plugin System (dPKMS layer)
 
 **`ctxt` Components:**
 - Capture Layer (CLI, TUI, Browser, Mobile)
@@ -62,7 +60,6 @@ The system consists of two packages:
 - Surfacing Engine (Just-In-Time)
 - Composition Engine (Briefs, Plans, Drafts)
 - Search UX
-- Plugin System (`ctxt` layer)
 
 ## Write Path (Ingestion)
 
@@ -107,36 +104,15 @@ The system consists of two packages:
 7. `ctxt` attaches provenance metadata.
 8. User receives traceable, verifiable brief.
 
-## Plugin Integration Points
+## Extension Points
 
-**dPKMS Plugin Points:**
-- Storage backends
-- Encryption providers
-- Query operators (RSQL extensions)
-- Query strategies (FTS, Vector, Graph, Metadata, Registry)
-- NLQ Normalizers (intent classification, strategy selection)
-- Registry connectors
-- Graph algorithms
-- Job types
-- Pipeline runtime hooks
-- Reranking algorithms
-
-**`ctxt` Plugin Points:**
-- Capture interfaces
-- Enrichment recipes
-- Pipeline steps
-- Focus profiles
-- Surfacing rules
-- Composition templates
-- CLI commands
-- Output formatters
-- Query schema providers
-
-**Cross-Layer Plugin Points:**
-- AI providers (used for NLQ normalization, enrichment, ranking)
-- Background observers (screen watcher, etc.)
-- Notification handlers
-- Export/import formats
+There is no plugin system ([ADR-078](decisions/ADR-078-no-plugin-system.md)).
+ctxt and dpkms are extended through pipeline overrides, custom pipelines,
+steps installed from a step registry (out-of-process execution designed in
+ADR-058, not wired yet), registries, and external hooks (ADR-075, not
+implemented yet). Storage backends, encryption, query
+operators, CLI commands, capture interfaces and observers are not extension
+points.
 
 ---
 
@@ -217,11 +193,8 @@ Each step must implement:
 
 ## Custom Pipelines
 
-Plugins may register:
-
-- New pipeline step types
-- Entire pipelines
-- Conditional branching logic
+Pipelines are changed through `pipelines.overrides` in the dpkms config and
+through steps installed from a step registry (`dpkms pipeline step install`).
 
 ## AI Step Providers and Constrained Generation
 
@@ -233,9 +206,9 @@ When enrichment steps call AI models for structured extraction, constrained gene
 - **Pipeline Selector at Ingestion** — closed-set constraint over all registered pipeline names (always routes to valid handler)
 - **Inline Branching** — alters extracted fields based on intermediate model decision without extra round-trip
 
-**Constraint Enforcement:**
-- **Local models only** (llama.cpp, HuggingFace) via LMQL token-level logit masking provide full hard constraints.
-- **API-hosted models** (OpenAI, Anthropic) use `type: instructor` (Pydantic retry-on-schema-failure) or `type: outlines` (regex/schema guided sampling).
+**Constraint enforcement:** not implemented. Steps call the configured
+`providers.*` backend and parse its output; there is no LMQL, instructor or
+outlines integration and no token-level constraint.
 
 ## Execution Guarantees
 
@@ -415,7 +388,7 @@ vectors in the `embeddings` table, keyed `(object_id, model_id, chunk_idx)`
 
 ## Purpose
 
-Defines dual-path query architecture: RSQL for agents/deterministic queries, NLQ for humans/semantic queries (ADR-010).
+Defines the two query paths: RSQL for agents/deterministic queries, free-text search for humans (ADR-010 describes the original NLQ design; the AI normalizer it proposed is not implemented).
 
 ## Dual-Path Query Architecture
 
@@ -431,72 +404,31 @@ Used by agents and systems requiring explicit, reproducible queries.
 
 **Example:** `mentions=="user errors";type=in=summary,decision;created_at>2025-01-01`
 
-### Path 2: Natural Language (Human/Semantic)
+### Path 2: Free-Text Search (Human)
 
-Used by humans and contexts requiring natural query expression.
+Natural-language or keyword text goes to `ctxt find` (`POST /api/v1/find`).
+There is no AI-backed NLQ normalizer: no intent classification, entity
+extraction or AI strategy selection, and no LMQL/instructor/outlines constrained
+generation. What runs instead:
 
-**NLQ Normalization Process:**
+- **Hybrid search (default):** FTS and vector legs fused with reciprocal rank
+  fusion (RRF). `--fts` or `--semantic` runs one leg; `--fts-weight`,
+  `--vector-weight`, `--rrf-k` and the pool sizes override the profile's
+  `search_strategy` and the global `search` config.
+- **Query clean-up:** common stopwords are stripped before the query is embedded.
+- **Reranking:** the default reranker adds small mention, backlink and
+  word-overlap bonuses on top of RRF order (`internal/ranking`).
+- **Filters:** `--meta-type`, `--topic`, `--person`, `--source-type`, `--since`,
+  `--until`, and the active focus profile.
 
-1. User inputs: `"how does the system handle user errors"`
-2. Semantic Normalizer (AI-backed) performs:
-   - **Intent Classification:** Detects intent type (relationship, summary, temporal, similarity, discovery)
-   - **Entity Extraction:** Identifies entities and context ("system", "user errors")
-   - **Strategy Selection:** Determines optimal query strategy mix based on intent:
-     - Relationship queries → Graph traversal primary
-     - Semantic/pattern queries → Vector search primary
-     - Keyword/mention queries → FTS primary
-     - Temporal/filtered queries → Metadata filters
-   - **Context Injection:** Applies focus profile constraints
-3. Normalizer emits **Direct Query Plan** (multi-strategy parallel execution):
-   ```
-   [
-     { strategy: "graph", intent: "traverse mentions of 'user errors'" },
-     { strategy: "vector", intent: "semantically similar to error handling patterns" },
-     { strategy: "metadata", filter: { type: { in: ["concept", "decision"] } } }
-   ]
-   ```
-4. Query Plan executes strategies in parallel, results merged and reranked.
-
-#### LMQL-Constrained Normalization (Optional)
-
-For locally-hosted models, LMQL replaces the free-form AI call with single-pass multi-slot constrained extraction.
-The normalizer can enforce:
-- **Intent** — closed set of 6 intent types (relationship, summary, temporal, similarity, discovery, metadata-filter)
-- **Entities** — regex-constrained to `@namespace.slug` format with automatic validation
-- **Strategy Selection** — yes/no per strategy (graph, vector, fts, metadata) with inter-slot constraints
-
-This eliminates post-hoc validation and ensures output is always parseable. For API-hosted models (OpenAI, Anthropic), use `type: instructor` with Pydantic dataclass constraints as the fallback, or `type: outlines` for regex-constrained generation.
-
-**Important:** Full token-level constraint enforcement requires locally-hosted backends. API-hosted models fall back to prompt-engineering hints only.
-
-**Intent Pattern Examples:**
-
-| Natural Language | Detected Intent | Primary Strategy | Secondary |
-|---|---|---|---|
-| "what are insights on X" | Semantic summary | Vector (similarity) | Metadata (type=summary) |
-| "how does A handle B" | Relationship pattern | Graph (traversal) | Vector (pattern matching) |
-| "find recent decisions about X" | Temporal entity | Metadata (date filter) | FTS (keyword) |
-| "show related work on X" | Similarity discovery | Vector (embeddings) | Graph (relationships) |
+`ctxt list --q "<rsql>"` runs an RSQL query instead.
 
 **Agent Query Support:**
 
-Agents have two modes:
-
-1. **Structured Mode (Recommended):** Use RSQL for deterministic queries
-   - Agent receives `/query-schema` endpoint: list of queryable properties, operators, examples
-   - Agent constructs explicit RSQL: `type==article;tags=in=recommended;created_at>2025-01-01`
-   - Deterministic, cacheable, audit-friendly
-
-2. **Natural Mode (Fallback):** Ask in natural language, system translates
-   - Agent asks: `"show me recent recommended articles"`
-   - System translates via normalizer → multi-strategy execution
-   - Useful for ad-hoc queries but less reproducible
-
-**Recommended Agent Pattern:**
-- Agent receives query schema and intent examples on startup
-- Agent constructs RSQL for primary/deterministic queries
-- Agent may use NLQ for refinement or clarification follow-ups
-- System logs both agent intent (NLQ) and execution query (RSQL/plan) for transparency
+- Agents construct RSQL for deterministic queries (`ctxt list --q`), or call
+  `ctxt find` for ranked free-text results.
+- The dpkms MCP endpoint (`/api/v1/mcp`) exposes a `schema` tool (object kinds,
+  edge types, pipelines) and a `search` tool.
 
 ## RSQL Core Operators
 
@@ -537,10 +469,9 @@ Nodes:
 - AST → Query Plan (compiler)
 - Single-strategy dispatch (primarily SQL metadata filtering)
 
-### NLQ Path (Semantic)
-- NLQ → Intent + Entities (normalizer)
-- Intent → Multi-Strategy Query Plan (direct, no AST)
-- Parallel execution of optimal strategies
+### Free-Text Path
+- Query → FTS leg + vector leg (dpkms embeds the query with its default model)
+- RRF fusion, then reranking
 
 ### Query Plan Execution (Both Paths)
 
@@ -571,17 +502,13 @@ Different sources produce incompatible scores; results must be unified.
 - Reciprocal Rank Fusion (RRF)
 - Weighted Sum Ranking
 - SoftMax normalization
-- Plugin-provided ranking methods
 
-### AI-Backed Reranking
+### Reranking in code
 
-LMQL can express batch scoring in a single multi-slot constrained pass where each result's relevance score is constrained (int 0–10 or categorical label), and cross-variable constraints can enforce monotonic ranking across the batch. This allows a single query to score and rank all results without iterating over items.
-
-For API-hosted models, a cross-encoder reranking model (fine-tuned for relevance) can score batches efficiently, though it requires a separate HTTP call per batch rather than token-level constraint enforcement.
-
-**Constraint Enforcement:**
-- **Local models only** (LMQL) provide full token-level constraint enforcement and batch scoring in a single pass.
-- **API-hosted models** use cross-encoder embeddings or pairwise LLM comparison as reranking fallback.
+`internal/ranking.DefaultReranker` adds outbound-mention and inbound-backlink
+boosts on top of the per-leg RRF scores. There is no AI-backed reranking: no
+LMQL batch scoring, cross-encoder or pairwise LLM comparison, and no
+pluggable ranking methods.
 
 ## Deduplication Strategy
 
@@ -639,7 +566,6 @@ Specifies registry protocol & behavior (ADR-008, ADR-009).
 
 - API key
 - OAuth device flow
-- Plugin-driven authentication
 
 ## Conflict Resolution
 
@@ -650,107 +576,27 @@ Specifies registry protocol & behavior (ADR-008, ADR-009).
 
 ---
 
-# plugins.md
+# extension surfaces
 
 ## Purpose
 
-Defines plugin model and lifecycle (ADR-012).
+States how ctxt and dpkms are extended. Decision: no plugin system
+([ADR-078](decisions/ADR-078-no-plugin-system.md), superseding ADR-012 and
+ADR-027).
 
-## Goals
+## What exists
 
-- Extensible in all major system layers
-- Safe execution
-- Explicit user permissions
+- **Pipelines:** `pipelines.overrides.<pipeline>` (`providers`, `skip_steps`,
+  `insert_steps`) and custom pipelines (`dpkms pipeline create`).
+- **Steps:** built-in steps, plus installed steps (`dpkms pipeline step
+  install`), run out of process (ADR-058) where `insert_steps` places them.
+- **Registries:** entity, taxonomy and step registries.
+- **Hooks:** pre and post hooks on ctxt and dpkms events (ADR-075, not implemented yet).
 
-## Plugin Types
+## What does not exist
 
-- Pipeline extension
-- Storage backend
-- Registry adapter
-- Query operators
-- AI provider
-- Background observer (screen watcher)
-- Translation provider
-- Alias/command enhancer
-
-### AI Provider Plugin Example: LMQL Provider
-
-An AI provider plugin registers constrained extraction capabilities:
-
-**Plugin Responsibilities:**
-- Implement `EnrichmentProvider` interface (execute AI step with structured output)
-- Implement `ClassifierClient` interface (normalize NLQ intent/entities/strategy-selection)
-- Register config schema extension for `type: lmql` in polymorphic config loader
-
-**Plugin Manifest (YAML):**
-```yaml
-apiVersion: dpkms/v1
-kind: Plugin
-metadata:
-  name: lmql-provider
-  version: 0.1.0
-spec:
-  pluginPath: ./plugins/lmql-provider.so
-  permissions:
-    subprocess: true
-    network: localhost:8080
-  configSchema:
-    type: object
-    properties:
-      type: { const: "lmql" }
-      backend: { enum: ["local", "api-fallback"] }
-      model: { type: string }
-      endpoint: { type: string, format: "url" }
-      fallback: { $ref: "#/definitions/aiProviderConfig" }
-```
-
-**Alternative AI provider plugins:**
-- `instructor` — Pydantic-based schema validation with automatic retry on schema failure
-- `outlines` — Regex or JSON schema-constrained token generation
-
-## Plugin Interface
-
-Plugins expose:
-
-```
-Register(HostContext)
-```
-
-Where HostContext allows registering:
-
-- pipelines
-- commands
-- operators
-- registry connectors
-- config schemas
-
-## Permission Model
-
-User must explicitly approve:
-
-- screen capture
-- clipboard monitoring
-- network calls
-- modifying bookmarks
-- filesystem writes
-
-## Configuration
-
-Polymorphic config loading:
-
-```
-myplugin:
-  type: plugin
-  plugin: "./plugins/myplugin.so"
-  config:
-    foo: bar
-```
-
-## Packaging
-
-- Static linking
-- `.so` dynamic modules
-- Distributed through registries or GitHub
+No in-process plugin API, plugin registry, plugin manifest, `plugins:` config
+key or AI-provider plugins (LMQL, instructor, outlines).
 
 ---
 
@@ -762,82 +608,74 @@ Formalizes polymorphic config system (ADR-005, ADR-012).
 
 ## Config Loader
 
-Loads YAML/JSON with:
-
-- `type` tag dispatching
-- plugin schema registration
-- environment variable overrides
+Each binary loads its own YAML file (`ctxt.yaml` or `dpkms.yaml`) through viper
+and `hop.top/kit/go/core/config`: `/etc/contexthelp/<bin>.yaml`, then
+`$XDG_CONFIG_HOME/contexthelp/<bin>.yaml`, then the nearest
+`.contexthelp/<bin>.yaml` walking up from the working directory. `CTXT_CONFIG`
+replaces the cascade; `-c/--config <file>` layers extra files and `-c key=value`
+overrides single keys. A fixed list of env vars maps onto keys. There is no
+`type:`-tag dispatch or external schema registration. Values are literal: `${VAR}`
+is not expanded. `ctxt config validate` checks the result.
 
 ## Example Config
 
-```
+```yaml
 storage:
   type: sqlite
   path: ./data/db.sqlite
 
-# Required for NLQ (Natural Language Query) support
-aiProvider:
-  type: openai
-  model: gpt-4
-  apiKey: ${CH_OPENAI_API_KEY}
-
-# Optional: for semantic/vector search
-embeddingProvider:
-  type: openai
-  model: text-embedding-3-large
-
-# Optional: NLQ Normalizer configuration
-nlqNormalizer:
-  enabled: true
-  provider: ${aiProvider}  # uses configured AI provider
-  intentPatterns: ./config/intent-patterns.yaml
-  strategy_selection: adaptive  # or fixed
+# AI backends used by pipeline steps (tagging, sectioning, entity and
+# metadata extraction). Keys come from OPENAI_API_KEY / ANTHROPIC_API_KEY
+# (or the secrets backend), never from this file.
+providers:
+  llm:
+    backend: openai          # openai | anthropic | ollama | stub | auto (empty)
+    model: gpt-4o
+  embedding:
+    backend: ollama          # ollama (default) | stub
+    model: nomic-embed-text
+    endpoint: http://localhost:11434
 
 registries:
   - name: uxpatterns
     url: https://uxpatterns.example.com
-
-plugins:
-  - type: plugin
-    plugin: ./plugins/screensuggester.so
 ```
 
-## AI Provider Options
+There is no `aiProvider`, `embeddingProvider` or `nlqNormalizer` key.
 
-The `aiProvider` (and per-step `enrichmentProvider`) config block dispatches on the `type` key.
+## Provider Configuration
 
-| `type` | Runtime | Constraint enforcement | Notes |
-|---|---|---|---|
-| `openai` | OpenAI Chat API | Prompt-engineering only | Default |
-| `anthropic` | Anthropic Messages API | Prompt-engineering only | |
-| `ollama` | Local Ollama server | Full token-level (LMQL) | Requires local model |
-| `lmql` | LMQL Python runtime | Full token-level | Local models only |
-| `instructor` | Instructor + Pydantic | Schema-guided retry | API-hosted models |
-| `outlines` | Outlines library | Regex/schema constrained | Local models preferred |
+`providers.<kind>` takes `backend`, plus optional `model`, `endpoint` and
+`language`. Backends are a fixed set compiled into dpkms
+(`internal/providers/factory.go`):
 
-**LMQL config example:**
+| Kind | Backends | Empty / `auto` |
+|---|---|---|
+| `llm` | `openai`, `anthropic`, `ollama`, `stub` | Anthropic if `ANTHROPIC_API_KEY` resolves, else OpenAI if `OPENAI_API_KEY` resolves, else Ollama at `http://localhost:11434` |
+| `vision` | `ollama`, `openai`, `anthropic`, `gemini`, `openrouter`, `stub` | Ollama if reachable, else the first hosted key that resolves (OpenAI, Anthropic, Gemini, OpenRouter), else `stub` |
+| `transcription` | `whisper-cli`, `ollama`, `stub` | `whisper-cli` if installed, else `stub` |
+| `ocr` | `tesseract`, `stub` | `tesseract` if installed, else `stub` |
+| `document` | `pdftotext`, `golib`, `stub` | `golib` (pure Go) |
+| `video` | `ffmpeg`, `stub` | `ffmpeg` if installed, else `stub` |
+| `diarization` | `pyannote`, `stub` | `pyannote` if installed, else `stub` |
 
-```yaml
-aiProvider:
-  type: lmql
-  backend: local
-  model: llama3
-  endpoint: http://localhost:8080
-  fallback:
-    type: openai
-    model: gpt-4o
-    apiKey: ${CH_OPENAI_API_KEY}
-```
+`providers.embedding` takes `backend`, `model`, `endpoint`, `api_key_env` (the
+name of the env var holding the key) and `dimension`; the effective embedding
+provider is resolved per field from flags, env, `-c` overrides, the model
+registry (`embeddings:`), this block and built-in defaults.
 
-**Important:** LMQL token-level logit masking operates only against locally-hosted backends.
-When `backend: api-fallback`, LMQL degrades to prompt-engineering hints with no hard enforcement.
-For API-hosted constrained extraction, prefer `type: instructor` or `type: outlines`.
+API keys are read from the secrets backend first, then the process environment:
+`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`.
+Constrained generation (LMQL, instructor, outlines) and provider fallback chains
+are not implemented.
 
 ## Environment Overrides
 
 - `CH_STORAGE_TYPE=postgres`
-- `CH_OPENAI_API_KEY=<key>`
-- `CH_PREF_LANG=fr`
+- `OPENAI_API_KEY=<key>` (provider keys use their own names)
+
+Language preferences have no env var: set `i18n.preferred_languages`.
+Full list: [environment-variables/README.md](environment-variables/README.md).
 
 ---
 
@@ -883,7 +721,7 @@ i18n:
   skipOnAnalyzeDefault: false
 ```
 
-## Plugin Responsibilities
+## Step Responsibilities
 
 - Language detection
 - Translation API integration
@@ -1002,19 +840,17 @@ Defines gRPC API and message contracts.
 
 ## Purpose
 
-Defines security model for plugins, registries, and local data.
+Defines security model for installed steps, registries, and local data.
 
 ## Threat Model
 
-- malicious plugins
+- malicious installed steps
 - untrusted registries
 - unsafe external commands
 - sensitive local data exposure
 
 ## Controls
 
-- explicit permissions for plugins
-- sandbox-like execution
 - registry authentication
 - configurable network restrictions
 - optional storage encryption
@@ -1076,9 +912,9 @@ Provides meaningful behaviors:
 ## Shared
 
 Cross-cutting concerns:
-- **plugins.md** — Extensibility for both layers
+- **extension surfaces** — Pipelines, steps, registries and hooks for both layers
 - **architecture.md** (semantic identity) — Entities + mentions + graph
-- **configuration.md** (polymorphic config) — Plugin and provider config
+- **configuration.md** (polymorphic config) — Pipeline and provider config
 
 Together these form the **complete engineering blueprint** for the dPKMS + `ctxt` system.
 

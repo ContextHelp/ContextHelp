@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 // errJobNotFound is returned by scanJob when no row matches.
@@ -134,11 +135,12 @@ func (s *JobStore) List(ctx context.Context, filter storage.JobFilter) ([]*stora
 		return nil, 0, fmt.Errorf("count jobs: %w", err)
 	}
 
+	// #nosec G202 -- where joins fixed column predicates whose values are bound placeholders in args; no caller text reaches the SQL.
 	query := `SELECT
 		id, type, status, payload, pipeline, source, result_id, error,
 		retry_count, max_retries, created_at, updated_at, started_at, completed_at,
 		user_mentions, user_hints, user_profile, user_note, idempotency_key
-	FROM jobs ` + where + " ORDER BY created_at DESC"
+	FROM jobs ` + where + orderNewestFirst
 
 	if filter.Limit > 0 {
 		query += fmt.Sprintf(" LIMIT %d", filter.Limit)
@@ -153,15 +155,11 @@ func (s *JobStore) List(ctx context.Context, filter storage.JobFilter) ([]*stora
 	}
 	defer rows.Close()
 
-	var jobs []*storage.Job
-	for rows.Next() {
-		j, err := scanJobFromRows(rows)
-		if err != nil {
-			return nil, 0, err
-		}
-		jobs = append(jobs, j)
+	jobs, err := rowscan.All(rows, scanJobFromRows)
+	if err != nil {
+		return nil, 0, err
 	}
-	return jobs, total, rows.Err()
+	return jobs, total, nil
 }
 
 func (s *JobStore) AcquireNext(ctx context.Context) (*storage.Job, error) {

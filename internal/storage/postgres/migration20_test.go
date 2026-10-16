@@ -8,6 +8,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	pgdrv "github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // TestPgMigration20_RepairsThinEntityMetadata migrates a schema-19 database
@@ -17,7 +18,7 @@ import (
 // which no writer produces — is left as is.
 func TestPgMigration20_RepairsThinEntityMetadata(t *testing.T) {
 	dsn, _ := freshDatabaseDSN(t)
-	drv, err := pgdrv.New(dsn)
+	drv, err := pgdrv.New(dsn, storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatalf("postgres.New: %v", err)
 	}

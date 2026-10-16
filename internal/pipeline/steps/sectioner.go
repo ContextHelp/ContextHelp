@@ -8,7 +8,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 type Sectioner struct {
@@ -112,34 +111,34 @@ func (s *Sectioner) Run(ctx context.Context, draft *storage.KnowledgeObject) (*s
 		return draft, nil
 	}
 	if draft.Graph == nil {
-		draft.Graph = &pluginapi.ObjectGraph{}
+		draft.Graph = &storage.ObjectGraph{}
 	}
-	rootID := pluginapi.NewNodeID(draft.ID, pluginapi.NodeTypeSummary, 0)
+	rootID := storage.NewNodeID(draft.ID, storage.NodeTypeSummary, 0)
 	// Only add root if not already present (textcleaner may have added it).
 	if draft.Graph.FindNode(rootID) == nil {
-		draft.Graph.Nodes = append(draft.Graph.Nodes, pluginapi.GraphNode{
+		draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
 			ID:       rootID,
-			NodeType: pluginapi.NodeTypeSummary,
+			NodeType: storage.NodeTypeSummary,
 			Label:    "root",
 			Content:  draft.RawContent,
 			Order:    0,
 		})
 	}
 	for i, sec := range sections {
-		secID := pluginapi.NewNodeID(draft.ID, pluginapi.NodeTypeSection, i)
-		draft.Graph.Nodes = append(draft.Graph.Nodes, pluginapi.GraphNode{
+		secID := storage.NewNodeID(draft.ID, storage.NodeTypeSection, i)
+		draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
 			ID:       secID,
-			NodeType: pluginapi.NodeTypeSection,
+			NodeType: storage.NodeTypeSection,
 			Label:    sec.Title,
 			Content:  sec.Content,
 			Order:    i,
 			Metadata: sec.Metadata,
 		})
-		draft.Graph.Edges = append(draft.Graph.Edges, pluginapi.GraphEdge{
+		draft.Graph.Edges = append(draft.Graph.Edges, storage.GraphEdge{
 			ID:       fmt.Sprintf("%s->%s", rootID, secID),
 			FromID:   rootID,
 			ToID:     secID,
-			EdgeType: pluginapi.EdgeTypeContains,
+			EdgeType: storage.EdgeTypeContains,
 		})
 	}
 

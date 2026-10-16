@@ -2,12 +2,17 @@ package s3
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob/blobtest"
 )
 
 func TestNewMissingBucket(t *testing.T) {
@@ -109,5 +114,129 @@ func TestExistsAccessDeniedIsError(t *testing.T) {
 	}
 	if ok {
 		t.Error("Exists = true alongside an error, want false")
+	}
+}
+
+// TestListFollowsContinuation pins that List returns every page of a
+// truncated ListObjectsV2 listing, not just the first (S3 caps a page at
+// 1000 keys). The orphan-blob sweep relies on seeing every key.
+func TestListFollowsContinuation(t *testing.T) {
+	const page = `<?xml version="1.0" encoding="UTF-8"?>
+<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+<Name>test-bucket</Name><IsTruncated>%s</IsTruncated>%s
+<Contents><Key>%s</Key><Size>3</Size><LastModified>2026-01-02T03:04:05.000Z</LastModified></Contents>
+<Contents><Key>%s.meta.json</Key><Size>2</Size><LastModified>2026-01-02T03:04:05.000Z</LastModified></Contents>
+</ListBucketResult>`
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/xml")
+		if r.URL.Query().Get("continuation-token") == "" {
+			fmt.Fprintf(w, page, "true", "<NextContinuationToken>next</NextContinuationToken>", "ab/cd/abcdfirst", "ab/cd/abcdfirst")
+			return
+		}
+		fmt.Fprintf(w, page, "false", "", "ef/01/ef01second", "ef/01/ef01second")
+	}))
+	defer srv.Close()
+
+	items, err := newTestStore(t, srv).List(context.Background(), "")
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	var keys []string
+	for _, it := range items {
+		keys = append(keys, it.Key)
+	}
+	if len(keys) != 2 || keys[0] != "abcdfirst" || keys[1] != "ef01second" {
+		t.Errorf("List keys = %v, want [abcdfirst ef01second] (calls: %d)", keys, calls)
+	}
+}
+
+// Get pins the not-found half of the BlobStore contract: S3's
+// NoSuchKey is storage.ErrBlobNotFound; any other failure is an error
+// that is not, so callers can tell a blob that is gone from a store
+// they could not read. A bare 404 names no key: S3, MinIO and Garage
+// all answer a missing key with NoSuchKey, so a bare one is more likely
+// a misrouted endpoint than a lost blob.
+func TestGetNotFound(t *testing.T) {
+	const noSuchKey = `<?xml version="1.0" encoding="UTF-8"?>
+<Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message></Error>`
+	for _, tc := range []struct {
+		name     string
+		status   int
+		body     string
+		notFound bool
+	}{
+		{"NoSuchKey", http.StatusNotFound, noSuchKey, true},
+		{"bare 404", http.StatusNotFound, "", false},
+		{"access denied", http.StatusForbidden,
+			`<Error><Code>AccessDenied</Code><Message>Access Denied</Message></Error>`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				if tc.body != "" {
+					w.Header().Set("Content-Type", "application/xml")
+				}
+				w.WriteHeader(tc.status)
+				fmt.Fprint(w, tc.body)
+			}))
+			defer srv.Close()
+
+			_, _, err := newTestStore(t, srv).Get(context.Background(), "abcdef1234")
+			if err == nil {
+				t.Fatal("Get: no error")
+			}
+			if got := errors.Is(err, storage.ErrBlobNotFound); got != tc.notFound {
+				t.Errorf("errors.Is(err, ErrBlobNotFound) = %v, want %v; err = %v", got, tc.notFound, err)
+			}
+		})
+	}
+}
+
+// TestListConformance runs the backend-shared List(prefix) contract
+// against the in-process fake, with and without a store prefix.
+func TestListConformance(t *testing.T) {
+	t.Run("no store prefix", func(t *testing.T) {
+		_, s := newFakeS3(t, "test-bucket", "")
+		blobtest.ListConformance(t, s)
+	})
+	t.Run("store prefix", func(t *testing.T) {
+		f, s := newFakeS3(t, "test-bucket", "data")
+		// Another prefix sharing the store prefix's first characters
+		// holds none of this store's blobs.
+		f.put("data2/ab/cd/abcdother", []byte("not ours"))
+		f.put("data2/ab9", []byte("not ours"))
+		blobtest.ListConformance(t, s)
+	})
+}
+
+// TestFakeRoundTrip checks the fake against the store's own calls, so
+// a List failure is List's and not the fake's.
+func TestFakeRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	f, s := newFakeS3(t, "test-bucket", "")
+	if err := s.Put(ctx, "abcdef01", strings.NewReader("payload"), storage.BlobMeta{ContentType: "text/plain"}); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	if _, ok := f.objects["ab/cd/abcdef01"]; !ok {
+		t.Fatalf("Put stored %v, want ab/cd/abcdef01 and its meta", f.objects)
+	}
+	rc, meta, err := s.Get(ctx, "abcdef01")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	got, _ := io.ReadAll(rc)
+	rc.Close()
+	if string(got) != "payload" || meta.ContentType != "text/plain" {
+		t.Errorf("Get = %q, %+v", got, meta)
+	}
+	if ok, err := s.Exists(ctx, "abcdef01"); err != nil || !ok {
+		t.Errorf("Exists = %v, %v", ok, err)
+	}
+	if err := s.Delete(ctx, "abcdef01"); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if ok, err := s.Exists(ctx, "abcdef01"); err != nil || ok {
+		t.Errorf("Exists after Delete = %v, %v", ok, err)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 type PipelineStore struct {
@@ -84,10 +85,11 @@ func (s *PipelineStore) List(ctx context.Context, filter storage.PipelineFilter)
 		return nil, 0, fmt.Errorf("count pipelines: %w", err)
 	}
 
+	// #nosec G202 -- where joins fixed column predicates whose values are bound placeholders in args; no caller text reaches the SQL.
 	query := `SELECT
 		id, name, description, steps, is_built_in, archived, sandbox,
 		created_at, updated_at
-	FROM pipelines ` + where + " ORDER BY created_at DESC"
+	FROM pipelines ` + where + orderNewestFirst
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -95,15 +97,8 @@ func (s *PipelineStore) List(ctx context.Context, filter storage.PipelineFilter)
 	}
 	defer rows.Close()
 
-	var pipelines []*storage.Pipeline
-	for rows.Next() {
-		p, err := scanPipeline(rows)
-		if err != nil {
-			return nil, 0, err
-		}
-		pipelines = append(pipelines, p)
-	}
-	if err := rows.Err(); err != nil {
+	pipelines, err := rowscan.AllScanner(rows, scanPipeline)
+	if err != nil {
 		return nil, 0, fmt.Errorf("iterate pipelines: %w", err)
 	}
 

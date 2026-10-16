@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 // SetReminder sets remind_at on the object (clears any previous reminded_at).
@@ -77,24 +78,16 @@ func (s *ObjectStore) ListPendingReminders(ctx context.Context) ([]*storage.Know
 }
 
 // reminderSelectCols is the shared SELECT column list used by reminder queries.
-// Must match the column order expected by scanObjectFromRows (30 fields).
+// Must match the column order expected by scanObjectFromRows (31 fields).
 const reminderSelectCols = `SELECT
 	id, type, subtype, raw_content, content_type, text_content,
 	metadata, summaries, sections, tags, mentions,
 	decisions, tasks, pipeline, source,
-	registry_influences, plugins, content_hash, reinforcement_count, last_reinforced_at,
+	registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 	created_at, updated_at, fts_indexed, status, inbox_note,
-	remind_at, reminded_at, profile_id, graph_json, source_key
+	remind_at, reminded_at, profile_id, graph_json, source_key, change_seq, classes
 `
 
 func collectReminderRows(rows *sql.Rows) ([]*storage.KnowledgeObject, error) {
-	var objects []*storage.KnowledgeObject
-	for rows.Next() {
-		obj, err := scanObjectFromRows(rows)
-		if err != nil {
-			return nil, err
-		}
-		objects = append(objects, obj)
-	}
-	return objects, rows.Err()
+	return rowscan.All(rows, scanObjectFromRows)
 }

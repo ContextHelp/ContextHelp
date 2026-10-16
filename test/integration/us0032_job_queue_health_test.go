@@ -56,7 +56,7 @@ func TestUS0032_JobCounts(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	// Register a pipeline that always fails.
 	env.svc.Pipes.Upsert("us0032.fail", &pipeline.Pipeline{

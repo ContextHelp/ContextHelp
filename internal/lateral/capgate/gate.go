@@ -1,3 +1,5 @@
+// Package capgate keeps the scored lateral candidates that clear the score
+// threshold, up to a top-K per candidate type.
 package capgate
 
 import "sort"

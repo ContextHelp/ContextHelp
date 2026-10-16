@@ -1,7 +1,7 @@
 package rollout
 
 // GateConfig is the daemon-side flat shape mapped from the layered
-// config's strategies block. Reload (T-0328) translates the typed
+// config's strategies block. Reload translates the typed
 // daemon.Config gates into this map and applies it to a StrategyGate.
 //
 // Wire-shape compatibility: the keys mirror the substrate's strategy

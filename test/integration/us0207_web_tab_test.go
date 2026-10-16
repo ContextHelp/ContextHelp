@@ -114,7 +114,7 @@ func TestUS0207_FullPageCapture(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  string(msgJSON),
 		Type:     "url",
 		Pipeline: "web.page",
@@ -169,7 +169,7 @@ func TestUS0207_SelectionCapture(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  string(msgJSON),
 		Type:     "text",
 		Pipeline: "web.selection",
@@ -257,7 +257,7 @@ func TestUS0207_AuthStateStoredInMetadata(t *testing.T) {
 	}
 	msgJSON, _ := json.Marshal(msg)
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  string(msgJSON),
 		Type:     "url",
 		Pipeline: "web.page",

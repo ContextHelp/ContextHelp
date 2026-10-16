@@ -20,11 +20,12 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/mentions"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	uri "hop.top/cite/scheme"
 )
 
-// parseUserMentions converts caller-asserted @namespace.slug strings (T-0190)
+// parseUserMentions converts caller-asserted @namespace.slug strings
 // to the URI form draft.Mentions expects. Empty / unparseable tokens are
 // silently dropped — the user's free-form input shouldn't kill the job.
 func parseUserMentions(raw []string) []uri.URI {
@@ -34,7 +35,7 @@ func parseUserMentions(raw []string) []uri.URI {
 	return mentions.ParseSlice(raw)
 }
 
-// parseUserHints converts caller-asserted hint strings (T-0573) into the
+// parseUserHints converts caller-asserted hint strings into the
 // Tag form draft.Tags expects, with Source:"user". Blank / whitespace-only
 // hints are silently dropped — `--hint ""` shouldn't kill the job.
 // The auto-tagger (pipeline/steps/tagger.go) merges with these rather
@@ -198,15 +199,15 @@ func (p *WorkerPool) processWithHops(ctx context.Context, job *storage.Job) (*st
 		Pipeline:   job.Pipeline,
 		Source:     job.Source,
 		CreatedAt:  time.Now(),
-		// T-0190: caller-asserted mentions (`ctxt analyze --mentions`) start
+		// caller-asserted mentions (`ctxt analyze --mentions`) start
 		// life on the draft so entity_extractor's text-scan can merge with
 		// them by slug instead of overwriting them.
 		Mentions: parseUserMentions(job.UserMentions),
-		// T-0573: caller-asserted hints (`ctxt capture --hint`) start life
+		// caller-asserted hints (`ctxt capture --hint`) start life
 		// on the draft so the auto-tagger's heuristic+LLM tags can merge
 		// with them by lowercase label instead of overwriting them.
 		Tags: parseUserHints(job.UserHints),
-		// T-0588: caller-asserted profile + note pre-populate the draft
+		// caller-asserted profile + note pre-populate the draft
 		// so they survive pipeline execution and land on the persisted
 		// KnowledgeObject. Pipeline steps that don't touch these fields
 		// preserve them; steps that overwrite (none today) would need
@@ -252,8 +253,7 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 		var perm *pipeline.PermanentError
 		if errors.As(err, &perm) {
 			slog.Debug("jobs: permanent error, skipping retry", "job", job.ID, "err", err)
-			p.queue.Fail(ctx, job.ID, err.Error())
-			p.emitFailed(ctx, job.ID, err.Error())
+			p.markFailed(ctx, job.ID, err.Error())
 			return
 		}
 		p.retryOrFail(ctx, job.ID, err.Error())
@@ -265,7 +265,9 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 
 	durationMs := time.Since(start).Milliseconds()
 
-	existing, err := p.store.Objects().GetByContentHash(ctx, draft.ContentHash)
+	// Dedup stays inside the draft's profile (ADR-080 §4): the same
+	// content under another profile becomes its own object.
+	existing, err := p.store.Objects().GetByContentHash(ctx, draft.ContentHash, draft.ProfileID)
 	if err == nil && existing != nil {
 		existingID, err := p.store.Objects().Reinforce(ctx, draft.ContentHash, draft)
 		if err != nil {
@@ -275,8 +277,7 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 			return
 		}
 		p.putVectors(ctx, existingID, draft)
-		p.queue.Complete(ctx, job.ID, existingID)
-		p.emitCompleted(ctx, job.ID, existingID, durationMs)
+		p.markCompleted(ctx, job.ID, existingID, durationMs)
 		return
 	}
 
@@ -285,96 +286,54 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 		// answers with the existing object's ID, as analyze does for an
 		// exact duplicate.
 		slog.Info("jobs: near-duplicate dropped, not stored", "job", job.ID, "duplicate_of", dupOf)
-		if err := p.queue.Complete(ctx, job.ID, dupOf); err != nil {
-			slog.Warn("jobs: mark completed", "job", job.ID, "err", err)
-		}
-		p.emitCompleted(ctx, job.ID, dupOf, durationMs)
+		p.markCompleted(ctx, job.ID, dupOf, durationMs)
 		return
 	}
 
 	draft.ReinforcementCount = 1
 
 	if err := p.store.Objects().Create(ctx, draft); err != nil {
-		// Unique constraint race: another worker inserted the same hash concurrently.
-		// The other worker's insert may not be visible yet (WAL delay), so retry
-		// with short backoff before giving up.
-		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
-			backoffs := []time.Duration{50 * time.Millisecond, 100 * time.Millisecond, 200 * time.Millisecond}
-			var existingID string
-			var rerr error
-			for i, delay := range backoffs {
-				existingID, rerr = p.store.Objects().Reinforce(ctx, draft.ContentHash, draft)
-				if rerr == nil {
-					break
-				}
-				if !errors.Is(rerr, sql.ErrNoRows) {
-					break
-				}
-				slog.Debug("jobs: reinforce after race retry",
-					"attempt", i+1,
-					"delay", delay,
-					"hash", draft.ContentHash,
-				)
-				// Don't sleep after the last attempt.
-				if i >= len(backoffs)-1 {
-					break
-				}
-				timer := time.NewTimer(delay)
-				select {
-				case <-ctx.Done():
-					timer.Stop()
-					rerr = ctx.Err()
-				case <-timer.C:
-				}
-				if ctx.Err() != nil {
-					rerr = ctx.Err()
-					break
-				}
-			}
+		// Unique constraint race: another worker inserted the same hash
+		// (in the same profile) concurrently.
+		if errors.Is(err, storage.ErrAlreadyExists) {
+			existingID, rerr := p.reinforceAfterRace(ctx, draft)
 			if rerr != nil {
-				p.queue.Fail(ctx, job.ID, fmt.Sprintf("reinforce after race: %s", rerr))
-				p.emitFailed(ctx, job.ID, fmt.Sprintf("reinforce after race: %s", rerr), draft.ID)
+				p.markFailed(ctx, job.ID, fmt.Sprintf("reinforce after race: %s", rerr), draft.ID)
 				return
 			}
 			p.putVectors(ctx, existingID, draft)
-			p.queue.Complete(ctx, job.ID, existingID)
-			p.emitCompleted(ctx, job.ID, existingID, durationMs)
+			p.markCompleted(ctx, job.ID, existingID, durationMs)
 			return
 		}
-		p.queue.Fail(ctx, job.ID, fmt.Sprintf("store: %s", err))
-		p.emitFailed(ctx, job.ID, fmt.Sprintf("store: %s", err), draft.ID)
+		p.markFailed(ctx, job.ID, fmt.Sprintf("store: %s", err), draft.ID)
+		return
+	}
+	// A delete or sweep of the same blob key may have deleted the blob
+	// the externalize step put before this row landed: put it back. If
+	// that fails, the retry runs the pipeline again, which puts it.
+	if err := blob.Ensure(ctx, p.store.Blobs(), draft); err != nil {
+		p.retryOrFail(ctx, job.ID, fmt.Sprintf("store: %s", err), draft.ID)
 		return
 	}
 	p.putVectors(ctx, draft.ID, draft)
 
-	// Write edges for mentions (ADR-049).
-	// Any edge write failure rolls back by failing the job; the object has
-	// already been persisted but no edges exist yet, so the job is retryable
-	// and a subsequent run will re-create the object (content-hash dedup) and
-	// re-attempt edge writes.
-	for _, mention := range draft.Mentions {
-		edge := &storage.Edge{
-			ID:        uuid.New().String(),
-			FromType:  "object",
-			FromID:    draft.ID,
-			ToType:    "entity",
-			ToID:      mention.String(),
-			EdgeType:  "mentions",
-			Weight:    1.0,
-			CreatedAt: time.Now(),
-		}
-		if err := p.store.Edges().Create(ctx, edge); err != nil {
-			reason := fmt.Sprintf("edge write: mention %s: %s", mention.String(), err)
-			p.queue.Fail(ctx, job.ID, reason)
-			p.emitFailed(ctx, job.ID, reason, draft.ID)
-			return
-		}
+	// Write the mention edges (ADR-049): one per entity, named by
+	// storage.MentionTarget as every mention-edge writer names it, each
+	// carrying the entity_mention node of draft.Graph that holds its
+	// mention and the field it came from. The store keeps an edge an
+	// earlier run stored for the pair. Any edge write failure fails the
+	// job; the object has already been persisted but no edges exist yet,
+	// so the job is retryable and a subsequent run will re-create the
+	// object (content-hash dedup) and re-attempt edge writes.
+	edges := storage.MentionEdges(draft, draft.Mentions, false, time.Now())
+	if _, err := p.store.Edges().CreateMissing(ctx, edges); err != nil {
+		p.markFailed(ctx, job.ID, fmt.Sprintf("edge write: mentions: %s", err), draft.ID)
+		return
 	}
 
 	durationMs = time.Since(start).Milliseconds()
 	p.emitObjectIngested(ctx, draft, durationMs)
-	p.queue.Complete(ctx, job.ID, draft.ID)
-	p.emitCompleted(ctx, job.ID, draft.ID, durationMs)
+	p.markCompleted(ctx, job.ID, draft.ID, durationMs)
 
 	// Post-ingest fan-out enrichment (bidirectional edges, audit log).
 	if p.fanOut != nil && !strings.HasSuffix(job.Type, ":nofanout") {
@@ -385,6 +344,45 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 
 	// Fan out per-item jobs if the pipeline staged items for enqueueing.
 	p.fanOutItems(ctx, draft)
+}
+
+// reinforceAfterRace reinforces the object another worker inserted with
+// draft's content hash concurrently. That insert may not be visible yet (WAL
+// delay), so a missing row is retried with short backoff before giving up.
+func (p *WorkerPool) reinforceAfterRace(ctx context.Context, draft *storage.KnowledgeObject) (string, error) {
+	backoffs := []time.Duration{50 * time.Millisecond, 100 * time.Millisecond, 200 * time.Millisecond}
+	var existingID string
+	var rerr error
+	for i, delay := range backoffs {
+		existingID, rerr = p.store.Objects().Reinforce(ctx, draft.ContentHash, draft)
+		if rerr == nil {
+			break
+		}
+		if !errors.Is(rerr, sql.ErrNoRows) {
+			break
+		}
+		slog.Debug("jobs: reinforce after race retry",
+			"attempt", i+1,
+			"delay", delay,
+			"hash", draft.ContentHash,
+		)
+		// Don't sleep after the last attempt.
+		if i >= len(backoffs)-1 {
+			break
+		}
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			rerr = ctx.Err()
+		case <-timer.C:
+		}
+		if ctx.Err() != nil {
+			rerr = ctx.Err()
+			break
+		}
+	}
+	return existingID, rerr
 }
 
 // suppressedDuplicate reports whether the dedup step marked draft
@@ -414,11 +412,27 @@ func (p *WorkerPool) putVectors(ctx context.Context, objectID string, draft *sto
 // its retries are exhausted.
 func (p *WorkerPool) retryOrFail(ctx context.Context, jobID, msg string, resultIDs ...string) {
 	if err := p.queue.Retry(ctx, jobID); err != nil {
-		if ferr := p.queue.Fail(ctx, jobID, msg); ferr != nil {
-			slog.Warn("jobs: mark failed", "job", jobID, "err", ferr)
-		}
-		p.emitFailed(ctx, jobID, msg, resultIDs...)
+		p.markFailed(ctx, jobID, msg, resultIDs...)
 	}
+}
+
+// markCompleted settles jobID as completed with resultID and publishes
+// job.completed. A store that rejects the write leaves the job running
+// until stale recovery re-runs it, so the rejection is logged.
+func (p *WorkerPool) markCompleted(ctx context.Context, jobID, resultID string, durationMs int64) {
+	if err := p.queue.Complete(ctx, jobID, resultID); err != nil {
+		slog.Warn("jobs: mark completed", "job", jobID, "err", err)
+	}
+	p.emitCompleted(ctx, jobID, durationMs)
+}
+
+// markFailed settles jobID as failed with reason and publishes job.failed,
+// logging a store that rejects the write.
+func (p *WorkerPool) markFailed(ctx context.Context, jobID, reason string, objectID ...string) {
+	if err := p.queue.Fail(ctx, jobID, reason); err != nil {
+		slog.Warn("jobs: mark failed", "job", jobID, "err", err)
+	}
+	p.emitFailed(ctx, jobID, reason, objectID...)
 }
 
 // fanOutItems enqueues per-item jobs from Metadata["items_to_enqueue"].
@@ -472,7 +486,7 @@ func (p *WorkerPool) fanOutItems(ctx context.Context, draft *storage.KnowledgeOb
 	}
 }
 
-func (p *WorkerPool) emitCompleted(ctx context.Context, jobID, resultID string, durationMs int64) {
+func (p *WorkerPool) emitCompleted(ctx context.Context, jobID string, durationMs int64) {
 	if p.bus == nil {
 		return
 	}
@@ -538,7 +552,9 @@ func (p *WorkerPool) recoverStaleLoop(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			p.queue.RecoverStale(ctx, int64(p.staleTimeout.Seconds()))
+			if _, err := p.queue.RecoverStale(ctx, int64(p.staleTimeout.Seconds())); err != nil {
+				slog.Warn("jobs: recover stale", "err", err)
+			}
 		}
 	}
 }

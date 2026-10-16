@@ -9,7 +9,6 @@ package integration
 // consistency) that underpin the story.
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -24,7 +23,7 @@ func TestUS0055_ResurfacingQueueActsAsRecommendation(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 
 	// Create an object to resurface.
@@ -35,7 +34,7 @@ func TestUS0055_ResurfacingQueueActsAsRecommendation(t *testing.T) {
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, obj))
+	require.NoError(t, env.driver.Objects().Create(ctx, obj))
 
 	// Enqueue as a resurfacing candidate (simulating "recommendation from history").
 	entry := &storage.ResurfacingEntry{
@@ -46,10 +45,10 @@ func TestUS0055_ResurfacingQueueActsAsRecommendation(t *testing.T) {
 		Reason:    "frequently searched topic",
 		CreatedAt: now,
 	}
-	require.NoError(t, env.svc.Store.Resurfacing().Upsert(ctx, entry))
+	require.NoError(t, env.driver.Resurfacing().Upsert(ctx, entry))
 
 	// List resurfacing queue — must include the entry.
-	entries, err := env.svc.Store.Resurfacing().List(ctx, storage.ResurfacingFilter{
+	entries, err := env.driver.Resurfacing().List(ctx, storage.ResurfacingFilter{
 		ProfileID:  "default",
 		UnseenOnly: true,
 	})
@@ -64,7 +63,7 @@ func TestUS0055_RepeatedSearchReturnsConsistentResults(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 
 	for _, tc := range []struct{ id, typ string }{
@@ -72,7 +71,7 @@ func TestUS0055_RepeatedSearchReturnsConsistentResults(t *testing.T) {
 		{"hist-rep-2", "decision"},
 		{"hist-rep-3", "note"},
 	} {
-		require.NoError(t, env.svc.Store.Objects().Create(ctx, &storage.KnowledgeObject{
+		require.NoError(t, env.driver.Objects().Create(ctx, &storage.KnowledgeObject{
 			ID:        tc.id,
 			Type:      tc.typ,
 			CreatedAt: now,
@@ -104,7 +103,7 @@ func TestUS0055_DismissingResurfacingEntryHidesItFromUnseenList(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := nowTrunc()
 
 	obj := &storage.KnowledgeObject{
@@ -113,7 +112,7 @@ func TestUS0055_DismissingResurfacingEntryHidesItFromUnseenList(t *testing.T) {
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	require.NoError(t, env.svc.Store.Objects().Create(ctx, obj))
+	require.NoError(t, env.driver.Objects().Create(ctx, obj))
 
 	entry := &storage.ResurfacingEntry{
 		ID:        "entry-dismiss-01",
@@ -123,10 +122,10 @@ func TestUS0055_DismissingResurfacingEntryHidesItFromUnseenList(t *testing.T) {
 		Reason:    "test recommendation",
 		CreatedAt: now,
 	}
-	require.NoError(t, env.svc.Store.Resurfacing().Upsert(ctx, entry))
+	require.NoError(t, env.driver.Resurfacing().Upsert(ctx, entry))
 
 	// Confirm it appears as unseen.
-	before, err := env.svc.Store.Resurfacing().List(ctx, storage.ResurfacingFilter{
+	before, err := env.driver.Resurfacing().List(ctx, storage.ResurfacingFilter{
 		ProfileID:  "default",
 		UnseenOnly: true,
 	})
@@ -134,10 +133,10 @@ func TestUS0055_DismissingResurfacingEntryHidesItFromUnseenList(t *testing.T) {
 	require.NotEmpty(t, before)
 
 	// Dismiss the entry.
-	require.NoError(t, env.svc.Store.Resurfacing().Dismiss(ctx, entry.ID, time.Now()))
+	require.NoError(t, env.driver.Resurfacing().Dismiss(ctx, entry.ID, time.Now()))
 
 	// Must no longer appear in unseen list.
-	after, err := env.svc.Store.Resurfacing().List(ctx, storage.ResurfacingFilter{
+	after, err := env.driver.Resurfacing().List(ctx, storage.ResurfacingFilter{
 		ProfileID:  "default",
 		UnseenOnly: true,
 	})
@@ -153,8 +152,8 @@ func TestUS0055_EmptyResurfacingQueueReturnsNoError(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
-	entries, err := env.svc.Store.Resurfacing().List(ctx, storage.ResurfacingFilter{
+	ctx := ownerCtx()
+	entries, err := env.driver.Resurfacing().List(ctx, storage.ResurfacingFilter{
 		ProfileID:  "nonexistent",
 		UnseenOnly: true,
 	})

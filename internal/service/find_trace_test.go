@@ -1,7 +1,6 @@
 package service_test
 
 import (
-	"context"
 	"errors"
 	"testing"
 
@@ -28,7 +27,7 @@ func traceFixture(t *testing.T, withModel bool) *servicetest.HybridFixture {
 // asked for.
 func TestFind_TraceMatchesHybridFind(t *testing.T) {
 	f := traceFixture(t, true)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	minScore := 0.0
 	req := service.FindRequest{
 		Query: servicetest.ProfileQuery, Profile: "alpha", Limit: 1,
@@ -72,7 +71,7 @@ func TestFind_TraceMatchesHybridFind(t *testing.T) {
 // A trace is always hybrid: an empty mode is hybrid, others are refused.
 func TestFind_TraceRejectsOtherModesAndBadParams(t *testing.T) {
 	f := traceFixture(t, true)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	neg := -1.0
 	for name, req := range map[string]service.FindRequest{
 		"fts mode":     {Query: "x", Mode: service.FindModeFTS, Trace: true},
@@ -93,7 +92,7 @@ func TestFind_TraceRejectsOtherModesAndBadParams(t *testing.T) {
 // Without a default model the trace is the full-text-only one, not an error.
 func TestFind_TraceFTSOnlyWithoutModel(t *testing.T) {
 	f := traceFixture(t, false)
-	res, err := f.Svc.Find(context.Background(), service.FindRequest{
+	res, err := f.Svc.Find(ownerCtx(), service.FindRequest{
 		Query: servicetest.ProfileQuery, Profile: "alpha", Trace: true,
 	}, f.Sem)
 	require.NoError(t, err)

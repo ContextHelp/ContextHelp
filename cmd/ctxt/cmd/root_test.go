@@ -155,7 +155,7 @@ func TestRootHasFormat(t *testing.T) {
 	// kit v0.5 keeps --output (shorthand -o) registered as the output-path
 	// flag, but hides it: --format is the sole user-facing output flag, the
 	// rest of the output suite is implementation detail. (Supersedes the
-	// earlier T-0457 contract where --output was user-facing.)
+	// earlier contract where --output was user-facing.)
 	outFlag := rootCmd.PersistentFlags().Lookup("output")
 	if outFlag == nil {
 		t.Fatal("--output should still be registered by kit/cli as the output-path flag")

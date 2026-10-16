@@ -13,8 +13,6 @@ import (
 	"runtime"
 	"strings"
 	"time"
-
-	"github.com/ideacrafterslabs/ctxt/internal/service"
 )
 
 // ScreenConfig holds screen watcher configuration.
@@ -89,7 +87,7 @@ func saveScreenState(path string, s *screenState) error {
 // and enqueues a pipeline job for qualifying content.
 type ScreenWatcher struct {
 	cfg       ScreenConfig
-	ingester  Ingester
+	ingester  Analyzer
 	statePath string
 	capture   func(focus string) ([]byte, error)   // injectable for tests
 	ocr       func(imgData []byte) (string, error) // injectable for tests
@@ -97,7 +95,7 @@ type ScreenWatcher struct {
 
 // NewScreenWatcher creates a ScreenWatcher.
 // captureFunc is the screen-capture function; pass nil to use the real one.
-func NewScreenWatcher(cfg ScreenConfig, ingester Ingester, captureFunc func(focus string) ([]byte, error)) *ScreenWatcher {
+func NewScreenWatcher(cfg ScreenConfig, ingester Analyzer, captureFunc func(focus string) ([]byte, error)) *ScreenWatcher {
 	if captureFunc == nil {
 		captureFunc = captureScreen
 	}
@@ -198,9 +196,9 @@ func (sw *ScreenWatcher) tick(ctx context.Context, focus string, minLen int, sta
 	}
 
 	h := sw.contentHash(imgData, text)
-	req := service.AnalyzeRequest{
+	req := Request{
 		Content:   text,
-		Type:      "text",
+		Type:      contentTypeText,
 		Source:    "watcher/screen",
 		KnownHash: h,
 	}
@@ -232,7 +230,7 @@ func captureScreen(focus string) ([]byte, error) {
 // TODO: integrate a real OCR engine (e.g. tesseract via go-tesseract or
 // an external process call). Current stub returns empty string.
 func (sw *ScreenWatcher) extractText(_ []byte) (string, error) {
-	// TODO(T-0155): call tesseract or equivalent OCR engine.
+	// TODO: call tesseract or equivalent OCR engine.
 	return "", nil
 }
 

@@ -6,27 +6,28 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blobref"
 )
 
 // ProjectDocument derives a DocumentProjection from a KnowledgeObject.
 // Uses graph nodes when Graph is non-nil and non-empty; falls back to flat fields.
-func ProjectDocument(ko *pluginapi.KnowledgeObject) pluginapi.DocumentProjection {
+func ProjectDocument(ko *storage.KnowledgeObject) storage.DocumentProjection {
 	if ko == nil {
-		return pluginapi.DocumentProjection{}
+		return storage.DocumentProjection{}
 	}
 	if ko.Graph == nil || len(ko.Graph.Nodes) == 0 {
-		return pluginapi.DocumentProjection{
+		return storage.DocumentProjection{
 			Body:     ko.TextContent,
 			Sections: ko.Sections,
 		}
 	}
-	var sections []pluginapi.Section
+	sections := make([]storage.Section, 0, len(ko.Graph.Nodes))
 	for _, n := range ko.Graph.Nodes {
-		if n.NodeType != pluginapi.NodeTypeSection {
+		if n.NodeType != storage.NodeTypeSection {
 			continue
 		}
-		sections = append(sections, pluginapi.Section{
+		sections = append(sections, storage.Section{
 			Title:   n.Label,
 			Content: n.Content,
 			Order:   n.Order,
@@ -35,33 +36,41 @@ func ProjectDocument(ko *pluginapi.KnowledgeObject) pluginapi.DocumentProjection
 	sort.SliceStable(sections, func(i, j int) bool {
 		return sections[i].Order < sections[j].Order
 	})
-	return pluginapi.DocumentProjection{Sections: sections}
+	return storage.DocumentProjection{Sections: sections}
 }
 
 // ProjectIndex derives an IndexProjection from a KnowledgeObject.
 // Uses graph nodes when Graph is non-nil and non-empty; falls back to flat fields.
-func ProjectIndex(ko *pluginapi.KnowledgeObject) pluginapi.IndexProjection {
+// The masked fields follow (see masked).
+func ProjectIndex(ko *storage.KnowledgeObject) storage.IndexProjection {
 	if ko == nil {
-		return pluginapi.IndexProjection{}
+		return storage.IndexProjection{}
 	}
+	p := rawIndexProjection(ko)
+	masked(ko, &p)
+	return p
+}
+
+// rawIndexProjection is ProjectIndex without the masked fields.
+func rawIndexProjection(ko *storage.KnowledgeObject) storage.IndexProjection {
 	if ko.Graph == nil || len(ko.Graph.Nodes) == 0 {
 		return flatIndexProjection(ko)
 	}
 	var parts segments
-	var tags []pluginapi.Tag
+	var tags []storage.Tag
 	var mentions []string
 
 	for _, n := range ko.Graph.Nodes {
 		switch n.NodeType {
-		case pluginapi.NodeTypeSummary, pluginapi.NodeTypeSection:
+		case storage.NodeTypeSummary, storage.NodeTypeSection:
 			parts.add(n.Content)
-		case pluginapi.NodeTypeTag:
+		case storage.NodeTypeTag:
 			label := n.Label
 			if label == "" {
 				label = n.Content
 			}
-			tags = append(tags, pluginapi.Tag{Label: label})
-		case pluginapi.NodeTypeEntityMention:
+			tags = append(tags, storage.Tag{Label: label})
+		case storage.NodeTypeEntityMention:
 			if n.Content != "" {
 				mentions = append(mentions, n.Content)
 			}
@@ -78,7 +87,7 @@ func ProjectIndex(ko *pluginapi.KnowledgeObject) pluginapi.IndexProjection {
 		flat.Mentions = mentions
 		return flat
 	}
-	return pluginapi.IndexProjection{
+	return storage.IndexProjection{
 		FTSBody:       strings.Join(parts.list, " "),
 		Tags:          tags,
 		Mentions:      mentions,
@@ -86,7 +95,7 @@ func ProjectIndex(ko *pluginapi.KnowledgeObject) pluginapi.IndexProjection {
 	}
 }
 
-func flatIndexProjection(ko *pluginapi.KnowledgeObject) pluginapi.IndexProjection {
+func flatIndexProjection(ko *storage.KnowledgeObject) storage.IndexProjection {
 	var parts segments
 	parts.add(ko.TextContent)
 	for _, s := range ko.Summaries {
@@ -95,11 +104,11 @@ func flatIndexProjection(ko *pluginapi.KnowledgeObject) pluginapi.IndexProjectio
 	for _, s := range ko.Sections {
 		parts.add(s.Content)
 	}
-	var mentions []string
+	mentions := make([]string, len(ko.Mentions))
 	for i := range ko.Mentions {
-		mentions = append(mentions, ko.Mentions[i].String())
+		mentions[i] = ko.Mentions[i].String()
 	}
-	return pluginapi.IndexProjection{
+	return storage.IndexProjection{
 		FTSBody:       strings.Join(parts.list, " "),
 		Tags:          ko.Tags,
 		Mentions:      mentions,
@@ -112,7 +121,7 @@ func flatIndexProjection(ko *pluginapi.KnowledgeObject) pluginapi.IndexProjectio
 // often carry the same text, and a body can repeat its summary; indexing
 // both copies doubles the text in the FTS body and the embedding input.
 // Segments compare after trimming surrounding whitespace; empty segments
-// are dropped.
+// and blob:// refs (pointers to content, not text) are dropped.
 type segments struct {
 	list []string
 	seen map[string]struct{}
@@ -120,7 +129,7 @@ type segments struct {
 
 func (p *segments) add(s string) {
 	key := strings.TrimSpace(s)
-	if key == "" {
+	if key == "" || blobref.Is(key) {
 		return
 	}
 	if _, dup := p.seen[key]; dup {

@@ -4,10 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 type StepStore struct {
@@ -63,6 +65,7 @@ func (s *StepStore) List(ctx context.Context, source string) ([]*storage.Registe
 		return nil, 0, fmt.Errorf("count steps: %w", err)
 	}
 
+	// #nosec G202 -- where joins fixed column predicates whose values are bound placeholders in args; no caller text reaches the SQL.
 	query := `SELECT
 		name, source, path, metadata, installed_at, updated_at
 	FROM steps ` + where + " ORDER BY installed_at DESC"
@@ -73,15 +76,8 @@ func (s *StepStore) List(ctx context.Context, source string) ([]*storage.Registe
 	}
 	defer rows.Close()
 
-	var steps []*storage.RegisteredStep
-	for rows.Next() {
-		s, err := scanStep(rows)
-		if err != nil {
-			return nil, 0, err
-		}
-		steps = append(steps, s)
-	}
-	if err := rows.Err(); err != nil {
+	steps, err := rowscan.AllScanner(rows, scanStep)
+	if err != nil {
 		return nil, 0, fmt.Errorf("iterate steps: %w", err)
 	}
 
@@ -128,6 +124,9 @@ func scanStep(row interface{ Scan(...any) error }) (*storage.RegisteredStep, err
 		&s.Name, &s.Source, &s.Path, &metadataJSON,
 		&installedAt, &updatedAt,
 	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("step: %w", storage.ErrNotFound)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("scan step: %w", err)
 	}

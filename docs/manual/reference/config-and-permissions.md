@@ -24,8 +24,8 @@ ctxt config edit
 
 Configuration behavior is layered (defaults, system, user, env, flags). For full details:
 
-- [`../../configuration-structure.md`](../../configuration-structure.md)
-- [`../../environment-variables/README.md`](../../environment-variables/README.md)
+- [`docs/configuration-structure.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/configuration-structure.md)
+- [`docs/environment-variables/README.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/environment-variables/README.md)
 
 ## Runtime controls
 
@@ -36,27 +36,53 @@ dpkms serve --port 8080 --grpc-port 9090 --workers 4
 dpkms serve --public
 ```
 
+The listener ports can also live in `dpkms.yaml` or the environment. The flag wins over the env var, the env var over the file:
+
+| Listener | Flag | Env var | Config key | Default |
+|---|---|---|---|---|
+| HTTP | `--port` | `CH_SERVER_PORT` | `server.port` | 8080 |
+| gRPC | `--grpc-port` | `CH_GRPC_PORT` | `server.grpc_port` | 9090 |
+| Cookie bridge (loopback) | `--cookie-bridge-port` | `CH_COOKIE_BRIDGE_PORT` | `server.cookie_bridge_port` | 9377 |
+
+A port set any of these ways is bound exactly; serve exits non-zero when it is busy. `0` takes an OS-assigned port. Only an unset port falls back from a busy default to a free one.
+
+The other serve settings follow the same order (flag, env var, file, default):
+
+| Setting | Flag | Env var | Config key | Default |
+|---|---|---|---|---|
+| Job workers | `--workers` | `DPKMS_WORKERS` | `server.workers` | 4 |
+| Dev-server CORS | `--dev` | | `server.dev` | false |
+| Reminder check interval | `--reminder-interval` | | `server.reminder_interval` | 1m |
+| External steps directory | `--steps-path` | | `steps.path` | `~/.config/contexthelp/steps` |
+| Default focus profile | `--profile` | `CTXT_PROFILE` | `profile.default` | the only profile, if one is defined |
+
 ### Inbound auth, roles and scopes
 
-A private instance (the default: loopback only, no `server.auth`) needs no token and grants every scope. A `protected` or `public` instance requires `server.auth`, and each token carries one or more roles:
+A private instance (the default: loopback only) needs no credential and grants every scope. A `protected` or `public` instance authenticates every request through an ordered chain of methods, `server.auth.methods`, against the principal registry in its database. Carried credentials (`api_key`, in `Authorization: Bearer` or `X-API-Key`) run before ambient ones (`session`, the web UI cookie) whatever order you list them in. The first match wins and the first refusal ends the request, so a bad key is never rescued by a cookie behind it. An expired or unknown cookie is treated as absent and cleared.
 
 ```yaml
 server:
   access: protected
+  public_url: https://dpkms.example.net   # base of every sign-in link; required unless sign_in is []
   auth:
-    provider: static
-    static:
-      tokens:
-        - token: ${DPKMS_TOKEN_OWNER}
-          principal: owner
-          roles: [admin]
-        - token: ${DPKMS_TOKEN_PHONE}
-          principal: phone
-          roles: [writer]   # capture-only device
-        - token: ${DPKMS_TOKEN_DASHBOARD}
-          principal: dashboard
-          roles: [reader]
+    methods: [api_key, session]           # default
+    sign_in: [invite, link]               # ceremonies that may mint a browser session; default
+    keys:                                 # optional: keys declared by hash, for infrastructure as code
+      - hash: sha256:3f9c...              # printf %s "$KEY" | sha256sum
+        principal: owner
+        roles: [reader]                   # narrows the key; default: the principal's roles
+        expires: 2027-12-31
 ```
+
+Keys are created on the dpkms host and stored as hashes:
+
+```bash
+dpkms auth key create --principal owner --name "laptop CLI"   # --expires 720h, or a date
+```
+
+The key is printed once. Every principal is a row in the instance database: `owner` is seeded by the schema, and every other principal (a person, a device, a federation peer) gets keys of its own, so one can be revoked without the others. A key holds its principal's role scopes, or fewer when it was narrowed at creation; it never reaches past its principal.
+
+A `protected` or `public` instance refuses to start until the owner holds an active key, or a `server.auth.keys` entry names one. The refusal names `dpkms auth key create --principal owner`. `server.auth.keys` takes hashes only, for infrastructure as code: a key written in the clear fails `ctxt config validate` and stops `dpkms serve`, naming the entry. A key declared in config cannot sign a browser in, since there is no identity row to bind the session to; use a created key for `ctxt ui open`. `server.public_url` is the base of every invite and sign-in link, so it is required whenever `sign_in` lists `invite` or `link`, which the default does. Set `sign_in: []` on an instance that mints no links.
 
 Every `/api/v1` route and gRPC method requires one scope. A role is a fixed bundle of scopes:
 
@@ -68,38 +94,47 @@ Every `/api/v1` route and gRPC method requires one scope. A role is a fixed bund
 
 `read:ui` (mint a web UI sign-in link) is a read scope, so every role holds it; a browser session never does, so a session cannot mint another. `signout:ui` (end your own browser session) belongs to browser sessions only: no role holds it.
 
-A token needs at least one known role; an unknown or missing role fails `ctxt config validate` and stops `dpkms serve`. A token without a route's scope gets 403 `INSUFFICIENT_SCOPE` naming the scope; a missing or invalid token gets 401. `GET /api/v1/whoami` shows the caller's principal, roles and scopes, and how it signed in (`via`: `token`, `session` or `none` on a private instance).
+A principal needs at least one known role; an unknown role on a declared key fails `ctxt config validate` and stops `dpkms serve`. A key without a route's scope gets 403 `INSUFFICIENT_SCOPE` naming the scope. A missing, revoked, expired or invalid key gets 401. `GET /api/v1/whoami` shows the caller's principal, roles and scopes, and how it signed in (`via`: `token`, `session` or `none` on a private instance).
 
 | Scope | Bundles | Routes (under `/api/v1`) and gRPC methods |
 |---|---|---|
-| `read:objects` | reader, writer, admin | `GET` objects (list, facets, show, related), search, the search graph, entities (list, search, resolve, show, backlinks), aliases, saved searches, search history, suggestions; `POST /find`; `GET /events`; gRPC `QueryService/*`, `EntityService/*` |
+| `read:objects` | reader, writer, admin | `GET` objects (list, facets, show, related, edges), search, the search graph, entities (list, search, resolve, show, backlinks), aliases, saved searches, search history; `POST /find`; `GET /events`; gRPC `QueryService/*`, `EntityService/*` |
 | `read:mcp` | reader, writer, admin | the MCP mount (`/mcp`) |
 | `read:inbox` | reader, writer, admin | `GET /inbox`, `inbox/queue` |
 | `read:feeds` | reader, writer, admin | `GET /feeds` |
 | `read:jobs` | reader, writer, admin | `GET` jobs, `import/{id}`, `importers/runs/{id}`, `capture/recent`; gRPC `JobService/*` |
 | `read:registries` | reader, writer, admin | `GET /steps/registries` |
 | `read:system` | reader, writer, admin | `GET /whoami`, `GET /system/reminders`; gRPC reflection |
+| `write:self` | reader, writer, admin; browser sessions | a principal's own credentials (`ctxt auth`): `GET`, `POST /self/keys`, `DELETE /self/keys/{key}`, `GET /self/identities`, `DELETE /self/identities/{identity}`, `GET /self/sessions`, `DELETE /self/sessions/{session}`, `PUT /self/keys/{key}/policy` (bind one's own key to a share policy); a target that is another principal's is 403 `NOT_SELF` |
 | `read:pipelines` | reader, writer, admin | `GET` pipelines and steps |
 | `read:watches` | reader, writer, admin | `GET` watches and watch files |
-| `write:objects` | writer, admin | `POST /analyze`, `capture/*`, `import`, `importers/*/run`, `pipelines/enqueue`, `aliases`, `saved-searches`, suggestion approve and reject, `entities/{slug}/pull`; `PATCH /objects/{id}`, `POST /objects/{id}/reprocess`; gRPC `AnalyzeService/Analyze` |
+| `write:objects` | writer, admin | `POST /analyze`, `capture/*`, `import`, `importers/*/run`, `pipelines/enqueue`, `aliases`, `saved-searches`, suggestion approve and reject, `entities/{slug}/pull`; `PATCH /objects/{id}`, `POST /objects/{id}/reprocess`, `POST /edges`; gRPC `AnalyzeService/Analyze` |
 | `write:inbox` | writer, admin | `POST /inbox` |
 | `write:feeds` | writer, admin | `POST /feeds`, `feeds/sync`, `feeds/{id}/sync` |
 | `write:jobs` | writer, admin | `POST /jobs/{id}/retry` |
 | `write:system` | writer, admin | `POST /system/reminders/{id}/dismiss` |
 | `delete:objects` | admin | `DELETE /objects/{id}` |
+| `delete:edges` | admin | `DELETE /edges` |
 | `delete:aliases` | admin | `DELETE /aliases/{alias}` |
 | `delete:searches` | admin | `DELETE /saved-searches/{name}`, `DELETE /search-history` |
 | `delete:feeds` | admin | `DELETE /feeds/{id}` |
 | `process:inbox` | admin | `POST /inbox/{id}/triage`, `inbox/{id}/discard`, `inbox/clear` |
+| `cancel:jobs` | admin | `POST /jobs/{id}/cancel` (`ctxt job cancel`) |
 | `sync:registries` | admin | `POST /steps/registries/fetch`, `steps/registries/{url}/update`, `entities/registry-sync` |
 | `admin:pipelines` | admin | `POST /pipelines`, `pipelines/{name}/archive`, `pipelines/{name}/unarchive`; `DELETE /pipelines/{name}` |
-| `admin:plugins` | admin | `POST /steps/install`; `DELETE /steps/{name}` |
+| `admin:steps` | admin | `POST /steps/install`; `DELETE /steps/{name}` |
 | `admin:watches` | admin | `POST /watches`, `watches/{id}/pause`, `watches/{id}/resume`; `PATCH` and `DELETE /watches/{id}` |
-| `admin:audit` | admin | `GET /audit-log` |
+| `admin:audit` | admin | `GET /audit-log`, `GET /share/audit` |
+| `admin:principals` | admin | the principal registry (`ctxt principal`, `ctxt auth key --principal`): `GET`, `POST /principals`, `GET /principals/{id}`, `POST /principals/{id}/suspend`, `/revoke`, `/links` (a sign-in link); `GET`, `POST /principals/{id}/identities`, `DELETE /principals/{id}/identities/{identity}`; `GET`, `POST /principals/{id}/keys`, `DELETE /principals/{id}/keys/{key}` |
+| `admin:shares` | admin; an admin's browser session | the sharing registry (`ctxt share`): `POST /share/invites` (with `audience`); `GET`, `POST /share/audiences`, `GET /share/audiences/{audience}`, `PUT`, `DELETE /share/audiences/{audience}/members/{principal}`; `GET`, `POST /share/policies`, `GET`, `PUT /share/policies/{policy}`; `GET /share/templates`, `POST /share/templates/{name}`; `GET`, `POST /share/grants`, `DELETE /share/grants/{grant}`; `GET`, `PUT /principals/{id}/ceiling`; `PUT /share/keys/{key}/policy`. Only the `admin` role holds it, and an admin's browser session does too: the Sharing page |
 | `read:ui` | reader, writer, admin; never a browser session | `POST /ui/login-codes` (`ctxt ui open`) |
 | `signout:ui` | browser sessions only | `DELETE /ui/session` |
 
-`POST /api/v1/federation/push` needs `write:objects` and, on non-private instances, the `federation.token` credential as well: the federation token must be a static token whose principal holds `writer` or `admin`. `/health`, `/healthz` and gRPC health are open.
+`POST /api/v1/federation/push` needs `write:objects` and, on non-private instances, the key of a principal of kind `peer`; any other principal gets 403 `PEER_REQUIRED`. `/health`, `/healthz` and gRPC health are open.
+
+Two rules hold on every route that yields a credential. Nothing widens: a principal created, an identity bound, a sign-in link or a key minted over the API holds at most the effective scopes of the caller that asked for it, so a narrowed admin key or a browser session cannot mint its way up or take over a more privileged principal (403 `SCOPE_NOT_HELD`; a key scope the principal's roles do not grant is 400 `INVALID_SCOPE`). The owner is protected: only the owner's own key touches the owner's keys, identities and sign-in links over the API; another admin gets 403 `OWNER_PROTECTED`, and `dpkms auth key create --principal owner` on the host stays the way back in.
+
+The sign-in ceremonies (`POST /ui/auth/session`, `/ui/invite/session` and `/ui/signin/session`) share one budget per client address: ten attempts a minute, then 429 `RATE_LIMITED` with a `Retry-After`. A ceremony on a request that already carries a live session is refused with 409 `SESSION_ACTIVE`: the browser signs out first. Every ticket is single use; a second redemption is 401 `INVALID_TICKET`.
 
 ### Reach dpkms by another host name
 
@@ -129,6 +164,33 @@ To open the web UI of a remote instance in a browser, put it behind a
 reverse proxy that signs you in and adds the token:
 [Put dpkms behind a reverse proxy](../operations/reverse-proxy.md).
 
+### Fetch intranet pages
+
+When dpkms ingests a URL (a captured page, a feed, the links a feed
+carries, or a redirect from any of them), it refuses to connect to a
+private-network address: loopback, `10/8`, `172.16/12`, `192.168/16`,
+unique-local IPv6, link-local (including the cloud metadata address
+`169.254.169.254`), CGNAT `100.64/10`, multicast and unspecified
+addresses, also in their IPv4-mapped IPv6 form. The job fails with
+`fetch refused: <host> is a <range> address` and is not retried. This
+stops a capture, or a page it redirects to, from making dpkms reach
+the services beside it.
+
+To capture pages from your intranet, allow them by name or by range:
+
+```yaml
+fetch:
+  allowed_hosts:
+    - wiki.corp.example   # exact name, whatever it resolves to
+  allowed_cidrs:
+    - 10.20.0.0/16        # a range, or a single address
+```
+
+`fetch.allow_private: true` turns the block off entirely. Host entries
+are exact names: no scheme, port or wildcard. These fetches ignore
+`HTTP_PROXY` / `HTTPS_PROXY`. Calls to configured endpoints (providers,
+registries, federation peers) are not affected.
+
 ### Send write requests from scripts
 
 A `POST`, `PATCH`, `PUT` or `DELETE` that carries a body must send
@@ -152,10 +214,15 @@ extension are not affected.
 
 `dpkms serve` also listens on `127.0.0.1:9377` (or a free port, printed
 as `Cookie bridge listening on ws://…`) for the ctxt browser extension
-to sync cookies. Whatever the instance's access class, the bridge accepts
-only WebSocket handshakes that come from a browser extension
-(`chrome-extension://`, `moz-extension://` or `safari-web-extension://`
-origin) and name `127.0.0.1:<port>` or `localhost:<port>` in `Host`.
+to sync cookies. `--cookie-bridge-port N` binds exactly `N` instead, and
+`0` an OS-assigned port. The extension connects to
+`ws://127.0.0.1:9377`, so move the bridge only if the extension is
+pointed at the new port too.
+
+Whatever the instance's access class, the bridge accepts only WebSocket
+handshakes that come from a browser extension (`chrome-extension://`,
+`moz-extension://` or `safari-web-extension://` origin) and name
+`127.0.0.1:<port>` or `localhost:<port>` in `Host`.
 Web pages, other local tools and clients that send no `Origin` get `403`
 `CROSS_ORIGIN_REQUEST`; other host names get `403` `HOST_NOT_ALLOWED`.
 `server.allowed_hosts` does not apply to the bridge.
@@ -181,29 +248,39 @@ server:
   used (two instances on one machine get different cookies), `HttpOnly`,
   `Secure`, `SameSite=Strict`, `Path=/`, expiring with the session.
   Browsers keep it only over HTTPS or on `localhost`.
-- **Principal**: the principal of the static token that minted the link,
-  with its roles; the session ends when that token leaves
-  `server.auth.static.tokens` (every request checks the tokens dpkms
-  loaded at start, so a removal takes effect on restart).
-- **Scopes**: the token's scopes narrowed to the web UI's set: `read:objects`,
+- **Principal**: the principal of the API key that minted the link,
+  with its roles. The session ends the moment that key, or the
+  principal, is revoked: the store ends it in the same transaction, and
+  the next request with the cookie gets `401` and the cookie cleared. A
+  key declared in `server.auth.keys` cannot mint a link. For a browser
+  signed in through an invite or a sign-in link, the session is bound to
+  the `link` identity the redemption created, with the principal's role
+  scopes narrowed to the web UI's set. `ctxt principal identity remove`
+  on that identity ends the session; revoking the principal also ends it.
+- **Scopes**: the key's scopes narrowed to the web UI's set: `read:objects`,
   `read:inbox`, `read:feeds`, `read:jobs`, `read:registries`,
-  `read:system`, `delete:objects`, `write:jobs`, plus `signout:ui`, which
-  only sessions hold. Apart from signing itself out, a session never
-  holds a scope its token lacks: a `reader` token's session only reads,
-  a `writer` token's may also retry jobs, an `admin` token's gets the
-  whole set and nothing more. It never holds `read:ui`, so it cannot
-  mint sign-in links. Every other route (pipelines, steps,
-  registry changes, watches, the audit log, federation, the MCP mount,
-  login links, other writes) answers `403` `INSUFFICIENT_SCOPE` naming
-  the scope. `/ws/bus` keeps its own bus token and gRPC keeps API tokens
-  only; a session cookie opens neither. `GET /api/v1/whoami` with the
-  cookie shows the session's scopes and times.
+  `read:system`, `delete:objects`, `write:jobs`, `write:self`,
+  `admin:shares`, plus `signout:ui`, which only sessions hold. Apart from
+  signing itself out, a session never holds a scope its key lacks. A
+  reader's session only reads and manages its own credentials. A
+  writer's may also retry jobs. An admin's gets the whole set and nothing
+  more: `admin:shares` is the one admin scope in the set, so the owner
+  manages sharing from the web UI's Sharing page while a reader's or
+  writer's session never holds it. A session never holds
+  `read:ui`, so it cannot mint sign-in links. Every other route
+  (pipelines, steps, registry changes, watches, the audit log,
+  federation, the MCP mount, login links, other writes) answers `403`
+  `INSUFFICIENT_SCOPE` naming the scope. `/ws/bus` keeps its own bus
+  token and gRPC keeps API keys only; a session cookie opens neither.
+  `GET /api/v1/whoami` with the cookie shows the session's scopes and
+  times.
 - **CSRF**: a request carrying the cookie must come from the instance's
-  own pages: writes need `Sec-Fetch-Site: same-origin` or a matching
+  own pages. Writes need `Sec-Fetch-Site: same-origin` or a matching
   `Origin` (`403` `CROSS_ORIGIN_REQUEST`) and the header `X-Ctxt-CSRF: 1`
-  (`403` `CSRF_HEADER_REQUIRED`); reads sent by another site or another
-  port on the host are refused. Requests with `Authorization` or
-  `X-API-Key` are unaffected, and those headers win over the cookie.
+  (`403` `CSRF_HEADER_REQUIRED`). Reads sent by another site or another
+  port on the host are refused. A request that also carries
+  `Authorization` or `X-API-Key` is decided by that key first: a valid
+  key lifts these rules, an invalid one is refused whatever the cookie.
 
 `dpkms session list [--all] [--principal P]` and
 `dpkms session revoke <id> | --principal P` manage sessions on the server
@@ -229,6 +306,23 @@ dpkms pipeline step list
 dpkms pipeline step registry list
 ```
 
+### Pipeline overrides
+
+`pipelines.overrides.<pipeline>` in `dpkms.yaml` changes one built-in pipeline. `dpkms config validate` checks every override against the pipelines and the installed steps, and `dpkms serve` refuses to start on the same errors.
+
+| Key | Value |
+|---|---|
+| `providers.<role>` | Backend for this pipeline only: `llm`, `ocr`, `vision`, `transcription`, `diarization`, `video`, `document`. `embedding` is ignored: each embedding model's registry entry decides its provider. |
+| `skip_steps` | Step names to drop. Each must be in the pipeline (`dedup` counts when `duplicates.check_similar` adds it). |
+| `insert_steps[].step` | Step to insert: a built-in step, or one installed with `dpkms pipeline step install`. |
+| `insert_steps[].before`, `insert_steps[].after` | A step in the pipeline once `skip_steps` and earlier inserts apply, named exactly once. Set one or neither; neither appends. |
+| `insert_steps[].on_error` | `fail` (default): the object fails and nothing is stored. `continue`: log the failure and pass the object on unchanged. Installed steps only. |
+| `insert_steps[].timeout` | Duration that overrides the step's SKILL.md timeout (default 30s). Installed steps only. |
+| `insert_steps[].isolation` | `container` runs the step in a container. It never lowers what the step or its registry requires. Installed steps only. |
+| `insert_steps[].config` | Map written to the file `DPKMS_STEP_CONFIG_PATH` names and checked against the step's `config_schema`. `config show` prints it, so keep credentials out. Installed steps only. |
+
+Install a step before you name it here, then restart `dpkms serve`. Walkthrough: [Add a custom step (PII masking)](../admin-extensibility/custom-steps.md).
+
 ### Registry update policy
 
 ```bash
@@ -238,12 +332,12 @@ dpkms pipeline step registry autoupdate <registry-url> --disable
 
 ## Permission and isolation policy references
 
-- Plugin isolation: [`../../plugins/plugin-isolation.md`](../../plugins/plugin-isolation.md)
-- Plugin API: [`../../plugins/plugins-api.md`](../../plugins/plugins-api.md)
+- No plugin system: [`docs/decisions/ADR-078-no-plugin-system.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/decisions/ADR-078-no-plugin-system.md)
+- External step protocol and isolation: [`docs/decisions/ADR-058-external-step-execution-protocol.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/decisions/ADR-058-external-step-execution-protocol.md)
 
 ## Operational safeguards
 
-1. Always run `ctxt config validate` before rollout.
+1. Always run `ctxt config validate` (and `dpkms config validate` for `dpkms.yaml`) before rollout.
 2. Use explicit registry auto-update policies.
 3. Prefer staged pipeline changes plus test enqueue runs.
 4. Track runtime flags used in production for reproducibility.
@@ -251,4 +345,4 @@ dpkms pipeline step registry autoupdate <registry-url> --disable
 ## Story alignment
 
 - Config/admin: `US-0027`, `US-0030`, `US-0031`
-- Plugin/pipeline permissions: `US-0029`, `US-0042` to `US-0045`, `US-0112`
+- Step/pipeline permissions: `US-0029`, `US-0112`

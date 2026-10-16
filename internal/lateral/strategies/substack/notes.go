@@ -9,6 +9,9 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/lateral/strategies/identitykey"
 )
 
+// segNote is the URL path segment naming a single Substack note.
+const segNote = "note"
+
 // NotesStrategy claims Substack Notes URLs. Recognised forms:
 //
 //   - https://substack.com/notes
@@ -40,11 +43,11 @@ func (*NotesStrategy) Applies(_ context.Context, ev lateral.CapturedEvent) later
 		return lateral.AppliesResult{}
 	}
 	switch parts[0] {
-	case "notes", "note":
+	case "notes", segNote:
 		return lateral.AppliesResult{Matches: true, Specificity: 3}
 	case "profile":
 		for _, p := range parts {
-			if p == "note" {
+			if p == segNote {
 				return lateral.AppliesResult{Matches: true, Specificity: 3}
 			}
 		}
@@ -67,7 +70,7 @@ func (*NotesStrategy) Probe(_ context.Context, ev lateral.CapturedEvent, _ later
 			IdentityKey:   identitykey.Build("substack", identitykey.EntityNote, "feed_global"),
 			Preview:       map[string]any{"feed": "global"},
 		}}, nil
-	case "note":
+	case segNote:
 		if len(parts) < 2 {
 			return nil, nil
 		}
@@ -80,7 +83,7 @@ func (*NotesStrategy) Probe(_ context.Context, ev lateral.CapturedEvent, _ later
 			Preview:       map[string]any{"note_id": id},
 		}}, nil
 	case "profile":
-		if len(parts) < 4 || parts[2] != "note" {
+		if len(parts) < 4 || parts[2] != segNote {
 			return nil, nil
 		}
 		profile, noteID := parts[1], parts[3]

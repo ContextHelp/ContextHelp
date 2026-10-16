@@ -22,7 +22,7 @@ func TestUISession_CSRF(t *testing.T) {
 	f := newUIFixture(t)
 	c := f.signIn()
 	obj := &storage.KnowledgeObject{ID: "obj-csrf", Type: "note", RawContent: "x", CreatedAt: time.Now(), UpdatedAt: time.Now()}
-	require.NoError(t, f.bundle.svc.Store.Objects().Create(context.Background(), obj))
+	require.NoError(t, f.bundle.svc.Store(ownerCtx()).Objects().Create(ownerCtx(), obj))
 
 	cases := []struct {
 		name     string
@@ -73,6 +73,8 @@ func TestUISession_ScopeRefusals(t *testing.T) {
 		{http.MethodPost, "/api/v1/inbox", authn.ScopeWriteInbox},
 		{http.MethodGet, "/api/v1/watches", authn.ScopeReadWatches},
 		{http.MethodPatch, "/api/v1/objects/x", authn.ScopeWriteObjects},
+		{http.MethodPost, "/api/v1/edges", authn.ScopeWriteObjects},
+		{http.MethodDelete, "/api/v1/edges", authn.ScopeDeleteEdges},
 		{http.MethodDelete, "/api/v1/aliases/x", authn.ScopeDeleteAliases},
 		{http.MethodDelete, "/api/v1/search-history", authn.ScopeDeleteSearches},
 		{http.MethodPost, "/api/v1/ui/login-codes", authn.ScopeReadUI},
@@ -93,7 +95,7 @@ func TestUISession_ScopeRefusals(t *testing.T) {
 
 	// The admin token behind the session reaches them: the refusal is the
 	// session's set, not the token's.
-	resp := f.do(http.MethodGet, "/api/v1/audit-log", nil, withBearer(uiOpsToken))
+	resp := f.do(http.MethodGet, "/api/v1/audit-log", nil, withBearer(f.ops))
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	// Past the scope check; the handler answers (the graph has no
@@ -109,16 +111,16 @@ func TestUISession_ScopeRefusals(t *testing.T) {
 // in the ui set; a writer's may retry, not delete.
 func TestUISession_ScopesFollowMintingToken(t *testing.T) {
 	f := newUIFixture(t,
-		authn.StaticToken{Token: uiOpsToken, Principal: "ops", Roles: []string{authn.RoleAdmin}},
-		authn.StaticToken{Token: "tok-reader", Principal: "tablet", Roles: []string{authn.RoleReader}},
-		authn.StaticToken{Token: "tok-writer", Principal: "phone", Roles: []string{authn.RoleWriter}},
+		uiPrincipal{ID: "ops", Kind: storage.PrincipalKindOwner, Roles: []string{authn.RoleAdmin}},
+		uiPrincipal{ID: "tablet", Kind: storage.PrincipalKindPerson, Roles: []string{authn.RoleReader}},
+		uiPrincipal{ID: "phone", Kind: storage.PrincipalKindDevice, Roles: []string{authn.RoleWriter}},
 	)
 	signInAs := func(tok string) *http.Cookie {
 		resp := f.exchange(f.mint(tok))
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 		return sessionCookieOf(t, resp)
 	}
-	reader, writer := signInAs("tok-reader"), signInAs("tok-writer")
+	reader, writer := signInAs(f.tokens["tablet"]), signInAs(f.tokens["phone"])
 
 	resp := f.do(http.MethodGet, "/api/v1/objects", nil, withCookie(reader), fromUI)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -136,7 +138,7 @@ func TestUISession_ScopesFollowMintingToken(t *testing.T) {
 		assert.Equal(t, string(tc.scope), decodeBody[ErrorEnvelope](t, resp).Error.Details["required_scope"])
 	}
 	resp = f.do(http.MethodPost, "/api/v1/jobs/x/retry", nil, withCookie(writer), fromUI)
-	assert.NotEqual(t, http.StatusForbidden, resp.StatusCode, "a writer's session retries jobs")
+	assert.NotEqual(t, CodeInsufficientScope, decodeBody[ErrorEnvelope](t, resp).Error.Code, "a writer's session holds write:jobs; only the owner-only capability of jobs refuses it")
 
 	who := decodeBody[whoamiResponse](t, f.do(http.MethodGet, "/api/v1/whoami", nil, withCookie(reader), fromUI))
 	assert.Equal(t, "tablet", who.Principal)
@@ -151,7 +153,7 @@ func TestWhoami_TokenSessionAndPrivate(t *testing.T) {
 	f := newUIFixture(t)
 	c := f.signIn()
 
-	tok := decodeBody[whoamiResponse](t, f.do(http.MethodGet, "/api/v1/whoami", nil, withBearer(uiOpsToken)))
+	tok := decodeBody[whoamiResponse](t, f.do(http.MethodGet, "/api/v1/whoami", nil, withBearer(f.ops)))
 	assert.Equal(t, viaToken, tok.Via)
 	admin, _ := authn.Bundle(authn.RoleAdmin)
 	assert.Equal(t, admin, tok.Scopes)
@@ -161,7 +163,7 @@ func TestWhoami_TokenSessionAndPrivate(t *testing.T) {
 	assert.Equal(t, "no-store", resp.Header.Get("Cache-Control"))
 	sess := decodeBody[whoamiResponse](t, resp)
 	assert.Equal(t, viaSession, sess.Via)
-	assert.Equal(t, "ops", sess.Principal)
+	assert.Equal(t, storage.OwnerPrincipal, sess.Principal)
 	assert.Equal(t, []string{authn.RoleAdmin}, sess.Roles)
 	assert.Equal(t, authn.UISessionScopes, sess.Scopes)
 	require.NotNil(t, sess.Session)
@@ -176,7 +178,7 @@ func TestWhoami_TokenSessionAndPrivate(t *testing.T) {
 	t.Cleanup(func() { res.Body.Close() })
 	local := decodeBody[whoamiResponse](t, res)
 	assert.Equal(t, viaNone, local.Via)
-	assert.Equal(t, "local", local.Principal)
+	assert.Equal(t, storage.OwnerPrincipal, local.Principal)
 	assert.Nil(t, local.Session)
 }
 
@@ -219,7 +221,7 @@ func TestUISession_EventStreamWithCookie(t *testing.T) {
 
 	// Revoking the session ends the open stream.
 	sid := decodeBody[whoamiResponse](t, f.do(http.MethodGet, "/api/v1/whoami", nil, withCookie(c), fromUI)).Session.ID
-	require.NoError(t, f.sessions.Revoke(context.Background(), sid, authn.RevokeReasonRevoked))
+	require.NoError(t, f.sessions.Revoke(ownerCtx(), sid, authn.RevokeReasonRevoked))
 	done := make(chan error, 1)
 	go func() {
 		_, err := io.Copy(io.Discard, bufio.NewReader(resp.Body))

@@ -9,7 +9,6 @@ status: shipped-no-e2e
 [Agents/LLMs/Tools](../../personas/agents-llms-tools.md)
 **Status:** paper
 **Author:** $USER
-**Task:** T-0089
 
 ---
 

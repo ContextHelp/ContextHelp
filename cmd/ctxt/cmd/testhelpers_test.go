@@ -8,9 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmstest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // testDB holds the temp database state for a test.
@@ -32,7 +34,7 @@ type testDB struct {
 // server.url (plus server.token for a protected instance) goes into the
 // user-level config, which --config layers over: a test that writes its
 // own server section into ConfigPath still wins. opts configure the
-// instance: dpkmstest.WithStaticTokens() makes it protected and the
+// instance: dpkmstest.WithKeys() makes it protected and the
 // client authenticates as admin (see useRole); dpkmstest.Unreachable()
 // routes the client to a closed port.
 // The config path must be passed as "--config", configPath to executeCommand args.
@@ -44,29 +46,26 @@ func setupTestDB(t *testing.T, opts ...dpkmstest.Option) *testDB {
 	// Hermeticize env so the CLI's instance-state lookup (RunDir → XDG_DATA_HOME)
 	// can't read the developer's real ~/.local/share/contexthelp/run/current-instance,
 	// which would silently override --config and route the test at the production DB
-	// (T-0186: data-safety hazard, not just a test-correctness bug).
+	// (data-safety hazard, not just a test-correctness bug).
 	//
 	// XDG_* + HOME redirect file-based lookups into the per-test tempdir.
 	// CTXT_DATA_DIR and CTXT_INSTANCE are explicitly cleared because both
 	// take precedence over the XDG path:
-	//   - config.RunDir() reads $CTXT_DATA_DIR before $XDG_DATA_HOME, so a
-	//     dev with CTXT_DATA_DIR exported in their shell would still hit
-	//     the prod run/ dir.
+	//   - CTXT_DATA_DIR sets storage.data_dir, the base of the run/ dir,
+	//     over the XDG default, so a dev with it exported in their shell
+	//     would still hit the prod run/ dir.
 	//   - activeInstanceName() reads CTXT_INSTANCE (via viper.BindEnv on
 	//     "instance" in root.go) before the state file, so a dev with
 	//     CTXT_INSTANCE=work exported would still route to that instance.
 	//
-	// Setting CTXT_DATA_DIR="" works (vs the obvious worry that it would
-	// clobber storage.path) because viper's bound-env-var lookup treats an
-	// empty env value as unset — see cascade_test.go:98 which uses the same
-	// pattern to let file values win in TestLoad_PicksUpUserConfigPerBinary.
+	// An empty env value counts as unset, so the XDG default applies.
 	t.Setenv("XDG_DATA_HOME", dir)
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	t.Setenv("HOME", dir)
 	t.Setenv("CTXT_DATA_DIR", "")
 	t.Setenv("CTXT_INSTANCE", "")
 
-	driver, err := sqlite.New(dbPath)
+	driver, err := sqlite.New(dbPath, storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatalf("new sqlite: %v", err)
 	}
@@ -131,4 +130,16 @@ func seedJob(t *testing.T, db *testDB, id, typ, pipeline string, status storage.
 	if err := db.Driver.Jobs().Create(context.Background(), job); err != nil {
 		t.Fatalf("seed job %s: %v", id, err)
 	}
+}
+
+// testDataDir is the data dir a CLI run under setupTestDB resolves:
+// CTXT_DATA_DIR is cleared and no config sets storage.data_dir, so it is
+// the XDG default inside the test's tempdir.
+func testDataDir(t *testing.T) string {
+	t.Helper()
+	dir, err := config.DefaultDataDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
 }

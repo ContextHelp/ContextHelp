@@ -27,6 +27,9 @@ func entityFixture(t *testing.T) storage.StorageDriver {
 		{Slug: "zz.late", Title: "Late CHECKOUT page", Namespace: "zz"},
 	} {
 		e.CreatedAt, e.UpdatedAt = now, now
+		// Registry-served, so a granted non-owner sees them without a
+		// mention (ADR-080 §6).
+		e.RegistryURL = "https://registry.test"
 		if err := drv.Entities().Upsert(ctx, e); err != nil {
 			t.Fatal(err)
 		}
@@ -55,7 +58,7 @@ func entitySlugs(es []*storage.Entity) []string {
 
 // Each entity read against a reader token on a protected instance.
 func TestEntities_Reader(t *testing.T) {
-	srv := dpkmstest.Start(t, entityFixture(t), dpkmstest.WithStaticTokens())
+	srv := dpkmstest.Start(t, entityFixture(t), dpkmstest.WithKeys())
 	c := newClient(t, dpkmsclient.Endpoint{URL: srv.URL, Token: srv.Token(dpkmstest.RoleReader)})
 	ctx := context.Background()
 
@@ -105,7 +108,7 @@ func TestEntities_Reader(t *testing.T) {
 // A miss is NOT_FOUND (exit 3), a missing token UNAUTHORIZED (exit 5) and
 // an empty mention USAGE (exit 2).
 func TestEntities_Errors(t *testing.T) {
-	srv := dpkmstest.Start(t, entityFixture(t), dpkmstest.WithStaticTokens())
+	srv := dpkmstest.Start(t, entityFixture(t), dpkmstest.WithKeys())
 	reader := newClient(t, dpkmsclient.Endpoint{URL: srv.URL, Token: srv.Token(dpkmstest.RoleReader)})
 	anon := newClient(t, dpkmsclient.Endpoint{URL: srv.URL})
 	ctx := context.Background()

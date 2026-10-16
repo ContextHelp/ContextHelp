@@ -1,3 +1,5 @@
+// Package testutil builds the ctxt and dpkms binaries for end-to-end tests,
+// runs them, and starts throwaway dpkms instances (StartDpkms).
 package testutil
 
 import (

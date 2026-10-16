@@ -42,7 +42,7 @@ func TestHealthzReturns200WhenHealthy(t *testing.T) {
 }
 
 // TestHealthzEnvelopeSchemaIsStable asserts every documented top-level
-// key is present so T-0580 (which extends the envelope) can rely on a
+// key is present so extensions (e.g. upgrade) can rely on a
 // fixed base shape.
 func TestHealthzEnvelopeSchemaIsStable(t *testing.T) {
 	ts := newTestServerBundle(t)
@@ -79,7 +79,7 @@ func TestHealthzReturns503WhenDBClosed(t *testing.T) {
 	ts := httptest.NewServer(NewRouter(svc, false, nil))
 	defer ts.Close()
 
-	require.NoError(t, svc.Store.Close(context.Background()))
+	require.NoError(t, svc.Store(ownerCtx()).Close(ownerCtx()))
 
 	resp, err := http.Get(ts.URL + "/healthz")
 	require.NoError(t, err)
@@ -102,7 +102,7 @@ func TestHealthzDegradedWhenQueueHasFailures(t *testing.T) {
 	defer ts.Close()
 
 	now := time.Now().Truncate(time.Second)
-	require.NoError(t, ts.svc.Store.Jobs().Create(context.Background(), &storage.Job{
+	require.NoError(t, ts.svc.Store(ownerCtx()).Jobs().Create(ownerCtx(), &storage.Job{
 		ID: "job_failed_1", Type: "ingest:text", Status: storage.JobFailed,
 		Payload: "x", Pipeline: "text.short", Source: "test",
 		MaxRetries: 3, CreatedAt: now, UpdatedAt: now,
@@ -121,7 +121,7 @@ func TestHealthzDegradedWhenQueueHasFailures(t *testing.T) {
 	assert.GreaterOrEqual(t, env.Checks.Queue.Failed, 1)
 }
 
-// TestHealthzUpgradeProbeFlipsHealthAndAttachesEnvelope verifies T-0580's
+// TestHealthzUpgradeProbeFlipsHealthAndAttachesEnvelope verifies the upgrade
 // extension: a probe that reports an in-progress upgrade flips the
 // top-level Health to "upgrading" AND attaches the upgrade envelope to
 // the response.
@@ -229,7 +229,7 @@ func TestHealthzRedactedForAnonymousOnPublic(t *testing.T) {
 	q := jobs.NewQueue(driver.Jobs())
 	svc := service.New(driver, q, builtins.Registry(), search.NewEngine(driver), "", nil)
 	srv := httptest.NewServer(NewRouterWithConfig(svc, RouterConfig{
-		Auth:          testProvider(t),
+		Auth:          testChain(t),
 		RedactHealthz: true,
 		Probes:        HealthzProbes{Version: "9.9.9"},
 	}))
@@ -251,7 +251,7 @@ func TestHealthzRedactedForAnonymousOnPublic(t *testing.T) {
 	// Authenticated: full envelope.
 	req, err := http.NewRequest(http.MethodGet, srv.URL+"/healthz", nil)
 	require.NoError(t, err)
-	req.Header.Set("Authorization", "Bearer tok-valid")
+	req.Header.Set("Authorization", "Bearer tok-valid-fixture-0123456789abcdef0123456789")
 	authResp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer authResp.Body.Close()

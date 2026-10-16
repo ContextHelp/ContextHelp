@@ -1,8 +1,7 @@
 // Package watchedfs is the watched-fs sensor adapter — an
 // fsnotify-based delta watcher.
 //
-// Per ADR-065 §Amendment 2026-05-06 and the policy/ambient.yaml
-// catalog in docs/ctxt/ambient.md: watched-fs differs from
+// Per ADR-065 §Amendment 2026-05-06: watched-fs differs from
 // files.local-fs in that it returns deltas (files modified or created
 // since the previous Fetch), not the full tree state. Lifecycle is
 // non-trivial: Start() registers fsnotify watchers on each configured

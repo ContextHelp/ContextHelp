@@ -68,7 +68,7 @@ func TestUS0011_TagsAssignedFromVocabulary(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "We decided to use PostgreSQL as our architecture decision for the database layer",
 		Type:     "text",
 		Pipeline: "text.tag-assign",
@@ -134,7 +134,7 @@ func TestUS0011_NoOutOfVocabularyTagsProduced(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "Security testing and performance benchmarks for the new API",
 		Type:     "text",
 		Pipeline: "text.tag-constrained",
@@ -179,7 +179,7 @@ func TestUS0011_VocabularyUsedRecordedInMetadata(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "API design discussion notes",
 		Type:     "text",
 		Pipeline: "text.tag-meta",
@@ -220,7 +220,7 @@ func TestUS0011_TagsStoredAsJSONArrayOnObject(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "API architecture review session",
 		Type:     "text",
 		Pipeline: "text.tag-array",

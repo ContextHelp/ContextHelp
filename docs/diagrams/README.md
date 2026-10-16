@@ -18,7 +18,7 @@ ADRs reference these files instead of inlining `\`\`\`mermaid` blocks so diagram
 
 ## Ambient capture (ADR-066/067/068/069)
 
-Four ADRs land the ambient capture substrate, sessions as a first-class type, the MCP read-surface, and meeting capture. Twelve diagrams cover their architecture, state machines, and flows.
+Design diagrams for four ADRs: the ambient capture substrate, sessions, the MCP read-surface, and meeting capture. **None of these designs is built**: there is no `ctxd` daemon, client-side buffer, work session, local MCP server or meeting recorder. The shipped MCP surface is dpkms `/api/v1/mcp/` with two tools, `search` and `schema`. Each diagram's title says so. What runs today: [`../ambient.md`](../ambient.md#what-runs-today).
 
 | File | Diagram | Source ADR |
 |---|---|---|
@@ -30,7 +30,7 @@ Four ADRs land the ambient capture substrate, sessions as a first-class type, th
 | [`ambient/067-replay-sequence.mmd`](ambient/067-replay-sequence.mmd) | Network-loss replay sequence demonstrating soft-FK behavior (events arrive before/after session row) | [ADR-067](../decisions/ADR-067-session-workunit.md) |
 | [`ambient/068-topology.mmd`](ambient/068-topology.mmd) | Two-server MCP topology: dpkms-side authoritative + ctxd-side local; agents attach to both | [ADR-068](../decisions/ADR-068-mcp-read-surface.md) |
 | [`ambient/068-tool-dispatch.mmd`](ambient/068-tool-dispatch.mmd) | MCP tool dispatch sequence with bus-event emission and CEL veto path | [ADR-068](../decisions/ADR-068-mcp-read-surface.md) |
-| [`ambient/068-tool-surface.mmd`](ambient/068-tool-surface.mmd) | Tool surface groupings: 10 dpkms-side tools + 5 ctxd-side tools, organized by purpose | [ADR-068](../decisions/ADR-068-mcp-read-surface.md) |
+| [`ambient/068-tool-surface.mmd`](ambient/068-tool-surface.mmd) | Designed tool surface: 10 dpkms-side + 5 ctxd-side tools (shipped: `search`, `schema`) | [ADR-068](../decisions/ADR-068-mcp-read-surface.md) |
 | [`ambient/069-recording-state.mmd`](ambient/069-recording-state.mmd) | Meeting recording state machine with first-class failure states | [ADR-069](../decisions/ADR-069-meeting-capture-source.md) |
 | [`ambient/069-multi-platform.mmd`](ambient/069-multi-platform.mmd) | Multi-platform architecture: Mac/Windows/Linux desktop + iOS/Android companions → enqueue | [ADR-069](../decisions/ADR-069-meeting-capture-source.md) |
 | [`ambient/069-recording-sequence.mmd`](ambient/069-recording-sequence.mmd) | End-to-end recording flow: trigger → permission → capture → file → pipeline → KO with bus events | [ADR-069](../decisions/ADR-069-meeting-capture-source.md) |

@@ -8,7 +8,7 @@ import (
 
 func TestMigrateFromScratch(t *testing.T) {
 	dir := t.TempDir()
-	d, err := New(filepath.Join(dir, "test.db"))
+	d, err := New(filepath.Join(dir, "test.db"), testBlobStore(t))
 	if err != nil {
 		t.Fatalf("new: %v", err)
 	}
@@ -33,7 +33,7 @@ func TestMigrateFromScratch(t *testing.T) {
 
 func TestMigrateIdempotent(t *testing.T) {
 	dir := t.TempDir()
-	d, err := New(filepath.Join(dir, "test.db"))
+	d, err := New(filepath.Join(dir, "test.db"), testBlobStore(t))
 	if err != nil {
 		t.Fatalf("new: %v", err)
 	}

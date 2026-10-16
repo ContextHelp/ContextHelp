@@ -76,17 +76,17 @@ func TestFactoryAutoDocument(t *testing.T) {
 	}
 	f := NewFactory(cfg, nil)
 	// auto for document should always return golib (pure Go, always available).
-	if f.Document().Name() != "golib" {
+	if f.Document().Name() != backendGolib {
 		t.Errorf("auto document: got %q, want golib", f.Document().Name())
 	}
 }
 
 func TestFactoryGolibDocument(t *testing.T) {
 	cfg := config.ProvidersConfig{
-		Document: config.ProviderBackendConfig{Backend: "golib"},
+		Document: config.ProviderBackendConfig{Backend: backendGolib},
 	}
 	f := NewFactory(cfg, nil)
-	if f.Document().Name() != "golib" {
+	if f.Document().Name() != backendGolib {
 		t.Errorf("golib document: got %q", f.Document().Name())
 	}
 }

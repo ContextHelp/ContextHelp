@@ -10,18 +10,14 @@
 #
 # ─── Scoping: why these hooks are not repo-wide ──────────────────────────────
 #
-# This tree carries a large pre-existing lint backlog (hundreds of golangci
-# findings in internal/ambient alone; 184 files fail `gofmt -l .`). A hook that
-# ran the full CI gate would fail on every commit regardless of what changed,
-# and would be disabled within a day.
-#
-# So each hook is scoped to what you are actually committing:
+# The repo is at zero golangci findings at the pinned version, and CI runs the
+# blocking full scan. The hooks exist for a fast local loop, so each one is
+# scoped to what you are actually committing:
 #   - gofmt / go vet   — run against the staged files (pre-commit passes them)
 #   - golangci-lint    — staged packages, filtered by --new-from-rev=HEAD so
 #                        only findings YOUR diff introduces fail the commit
 #
-# Net effect: touching a file that already has findings does not block you;
-# adding a new finding does.
+# Net effect: a commit is checked in seconds; CI checks the whole tree.
 #
 # Bypass once (sparingly): git commit --no-verify
 # Check the whole repo on demand: pre-commit run --all-files
@@ -33,7 +29,7 @@ repos:
       - id: check-yaml
         # Compose and workflow files use YAML features the default parser
         # rejects; they are covered by actionlint and compose config below.
-        exclude: ^(docker-compose.*\.yml|docker/docker-compose\.yml|\.github/workflows/.*)$
+        exclude: ^(docker-compose.*\.yml|\.github/workflows/.*)$
       - id: end-of-file-fixer
         # Conformance captures are recorded stdout/stderr bytes, asserted on
         # verbatim by the grading service. Normalizing them rewrites evidence.
@@ -74,8 +70,9 @@ repos:
         pass_filenames: true
         require_serial: true
 
-      # CI runs golangci-lint at the pinned version. --new-from-rev=HEAD means
-      # only findings introduced by this commit fail it.
+      # CI runs golangci-lint at the pinned version over the whole tree.
+      # --new-from-rev=HEAD means only findings introduced by this commit
+      # fail the hook.
       - id: golangci-lint
         name: golangci-lint (new findings only)
         entry: scripts/hooks/golangci-staged.sh

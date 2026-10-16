@@ -1,6 +1,6 @@
 # Mentions
 
-Mentions provide an explicit, canonical mechanism for referencing concepts, entities, APIs, components, patterns, and other named units of knowledge within the system. They are identity-level references, distinct from tags and hints, and form the backbone of semantic linking, entity resolution, plugin interoperability, and graph-based navigation.
+Mentions provide an explicit, canonical mechanism for referencing concepts, entities, APIs, components, patterns, and other named units of knowledge within the system. They are identity-level references, distinct from tags and hints, and form the backbone of semantic linking, entity resolution, and graph-based navigation.
 
 ---
 
@@ -19,7 +19,7 @@ A mention always refers to a **canonical entity**, which may be:
 - a **known registry entity**, or
 - a **local entity** (created implicitly if no registry defines it yet)
 
-Mentions maintain **stable, scope-independent identity** used across bookmarks, pipelines, plugins, agents, and the knowledge graph.
+Mentions maintain **stable, scope-independent identity** used across bookmarks, pipelines, agents, and the knowledge graph.
 
 ---
 
@@ -40,13 +40,13 @@ Examples:
 - Valid: `@stripe.api.checkout.v2`
 - Invalid: `@UI/BestPractice` (uppercase + slash)
 
-Plugins and pipelines must treat mentions as **literal slugs** without normalization beyond lowercasing and trimming.
+Pipelines and steps must treat mentions as **literal slugs** without normalization beyond lowercasing and trimming.
 
 ---
 
 ## Parsing Rules
 
-The mention extraction step operates consistently across all pipelines and plugin-defined ingestion flows.
+The mention extraction step operates consistently across all pipelines, built-in and custom.
 
 Rules:
 
@@ -56,7 +56,7 @@ Rules:
 - Validate slug against allowed characters.
 - Produce a structured mention list for the bookmark or item.
 
-Plugins may register additional extraction steps, but they must not alter base mention semantics.
+Extra and installed steps may add extraction, but they must not alter base mention semantics.
 
 ---
 
@@ -79,11 +79,11 @@ Guarantees:
 - Order not guaranteed
 - Unresolved entities remain stored literally
 - Resolution is performed lazily, not during extraction
-- Plugins may add new mentions, but cannot mutate canonical ones
+- Steps may add new mentions, but cannot mutate canonical ones
 
 > **API ingestion:** The `POST /analyze` and `POST /inbox` endpoints accept the legacy `mentions` field as `[]string` of `@namespace.slug` strings for backward compatibility. The pipeline converts them to `mention_uris` URIs internally.
 
-A lightweight **entity → bookmarks** reverse index (backlinks) supports graph queries and plugin lookups.
+A lightweight **entity → bookmarks** reverse index (backlinks) supports graph queries and lookups.
 
 ---
 
@@ -105,7 +105,7 @@ A lightweight **entity → bookmarks** reverse index (backlinks) supports graph 
 - Drive graph structure and entity lookup.
 - Primary vehicle for semantic precision.
 
-Plugins may consume tags and hints, but may **not** transform them into mentions automatically.
+Steps may consume tags and hints, but may **not** transform them into mentions automatically.
 
 ---
 
@@ -134,7 +134,7 @@ Entity definition example:
 }
 ```
 
-Plugins may read entity metadata to enhance behavior but cannot modify canonical entities without user consent.
+Steps may read entity metadata to enhance behavior but cannot modify canonical entities without user consent.
 
 ---
 
@@ -158,26 +158,24 @@ graph LR
   B3["Bookmark C"] --> E2
 ```
 
-Plugins and agents rely on this graph for:
+Pipelines and agents rely on this graph for:
 
 - entity pages
 - cross-reference navigation
 - semantic clustering
 - domain-scoped retrieval
-- entity-driven workflows (RSS, Price Monitor, etc.)
+- entity-driven workflows
 
 ---
 
-## Plugin Integration Rules
+## Step Integration Rules
 
-Plugins may:
+Pipeline steps may:
 
 - add mentions during ingestion or post-processing
-- read mentions for analytics, price-monitoring, feed discovery, etc.
-- define new bookmark types that include mentions
-- produce notifications based on mention-linked entities
+- read mentions for analytics, feed discovery, etc.
 
-Plugins may **not**:
+Steps may **not**:
 
 - reinterpret or rewrite mentions
 - override entity resolution
@@ -206,8 +204,6 @@ Mentions should be visually distinct (badge, highlight, etc.).
 - `GET /entities/{slug}`
 - `GET /entities/{slug}/related`
 
-Plugins may extend these with additional entity-related endpoints if scoped inside plugin namespaces.
-
 ---
 
 ## Reserved Characters
@@ -217,7 +213,7 @@ Plugins may extend these with additional entity-related endpoints if scoped insi
 - `:` reserved for query language
 - space terminates mention
 
-Plugins must respect these invariants.
+Steps must respect these invariants.
 
 ---
 
@@ -228,8 +224,6 @@ Plugins must respect these invariants.
 - Allowing uppercase characters or inconsistent casing
 - Silently resolving ambiguous entities without user awareness
 - Letting mentions influence tagging behavior
-
-Plugins must adhere to mention semantics and avoid reinterpreting them.
 
 ---
 
@@ -242,7 +236,6 @@ Localization applies only to:
 - entity title
 - description
 - UI rendering
-- plugin hints or messages
 
 Mentions themselves never change.
 
@@ -258,11 +251,10 @@ When hint frequency suggests the presence of an overlooked entity:
    - Create a local entity.
    - User may begin using `@new-entity`.
 
-Plugins may participate by:
+Steps may participate by:
 
 - recommending promotions
 - assisting with generating entity metadata
-- surfacing notifications via a notification plugin
 
 But they cannot unilaterally create entities.
 
@@ -273,11 +265,9 @@ But they cannot unilaterally create entities.
 Mentions provide ContextHelp with:
 
 - precise semantic identity
-- stable reference points for plugins and agents
+- stable reference points for pipelines and agents
 - grounding for the knowledge graph
 - multi-registry interoperability
 - durable user-defined entities
-
-They enable plugins like RSS Feed, Price Monitor, or Notification Plugin to interact with content safely and predictably, without altering core semantics.
 
 Mentions are the **semantic backbone** of the system: stable, explicit, resolvable, and foundational for the entire contextual ecosystem.

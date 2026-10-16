@@ -14,155 +14,26 @@ env:
   IMAGE_NAME: ${{ github.repository_owner }}/ctxt-dpkms
 
 jobs:
-  # mise.toml is the single source of truth for tool versions; see ci.yml.
-  toolchain:
-    name: Resolve toolchain pins
-    runs-on: ubuntu-latest
-    outputs:
-      go-version: ${{ steps.pins.outputs.go-version }}
-      golangci-version: ${{ steps.pins.outputs.golangci-version }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
+  # ── Gate 1: everything CI runs ───────────────────────────────────────────────
+  # ci.yml in full, as a reusable workflow, on the tagged commit: toolchain
+  # pin check, secret scan, lint, security, unit + e2e tests on Linux and
+  # macOS, viewer and web UI bundle drift, integration on Postgres, build.
+  # A release gates on exactly what a merge gates on, with no second copy
+  # of those jobs to drift. scripts/check-toolchain-pins.sh fails when this
+  # job is gone or any other job here can start before it passes.
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+      # ci.yml's security job uploads gosec and Trivy SARIF.
+      security-events: write
 
-      - name: Read pins from mise.toml
-        id: pins
-        run: |
-          go_version=$(sed -n 's/^go = "\(.*\)"$/\1/p' mise.toml)
-          golangci_version=$(sed -n 's/^"go:.*golangci-lint" = "\(.*\)"$/\1/p' mise.toml)
-          if [ -z "$go_version" ] || [ -z "$golangci_version" ]; then
-            echo "mise.toml is missing an exact go or golangci-lint pin" >&2
-            exit 1
-          fi
-          echo "go-version=$go_version" >>"$GITHUB_OUTPUT"
-          echo "golangci-version=$golangci_version" >>"$GITHUB_OUTPUT"
-          echo "go=$go_version golangci-lint=$golangci_version"
-
-  # ── Gate 1: secret scan ──────────────────────────────────────────────────────
-  # ── DISABLED: secret scanning runs locally ───────────────────────────────
-  # gitleaks-action requires a license for organization-owned repos and this
-  # repo is org-owned, so the job fails with "missing gitleaks license"
-  # before scanning anything. Until a GITLEAKS_LICENSE secret exists, secret
-  # scanning runs locally instead: `make install-hooks` wires a pre-commit
-  # hook, `make secret-scan-local` scans the working tree.
-  #
-  # To re-enable: obtain a free key at gitleaks.io, add it as the
-  # GITLEAKS_LICENSE secret, uncomment this job, and restore secret-scan to
-  # the build job's needs list.
-  # secret-scan:
-  #   name: Secret Scanning (gitleaks)
-  #   runs-on: ubuntu-latest
-  #   permissions:
-  #     contents: read
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@v7
-  #       with:
-  #         fetch-depth: 0
-  #
-  #     - name: Run gitleaks
-  #       uses: gitleaks/gitleaks-action@v3
-  #       env:
-  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  #         # Organization-owned repos need a (free) gitleaks license; personal
-  #         # accounts do not. This repo moved to the ContextHelp org, so the
-  #         # scan started failing with "missing gitleaks license". Obtain one
-  #         # at gitleaks.io and store it as the GITLEAKS_LICENSE secret.
-  #         GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
-  #
-  # # ── Gate 2: lint ─────────────────────────────────────────────────────────────
-  lint:
-    needs: toolchain
-    name: Lint
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
-
-      - name: Setup Go
-        uses: actions/setup-go@v7
-        with:
-          go-version: ${{ needs.toolchain.outputs.go-version }}
-          cache: true
-
-      # Must match ci.yml: .golangci.yml declares `version: "2"`, which the
-      # golangci-lint v1 line cannot parse.
-      - name: Install golangci-lint
-        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v${{ needs.toolchain.outputs.golangci-version }}
-
-      - name: Run golangci-lint
-        run: golangci-lint run --timeout=5m --verbose
-
-      - name: Check formatting
-        run: |
-          if [ -n "$(gofmt -l .)" ]; then
-            echo "Go code is not formatted. Run: gofmt -w ."
-            gofmt -d .
-            exit 1
-          fi
-
-      - name: Run go vet
-        run: go vet -tags fts5 ./...
-
-  # ── Gate 3: security scan ────────────────────────────────────────────────────
-  security:
-    needs: toolchain
-    name: Security Scan
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
-
-      - name: Setup Go
-        uses: actions/setup-go@v7
-        with:
-          go-version: ${{ needs.toolchain.outputs.go-version }}
-          cache: true
-
-      - name: Install gosec
-        run: go install github.com/securego/gosec/v2/cmd/gosec@v2.29.0
-
-      - name: Run gosec (fail on medium+ severity)
-        # -tags fts5 is required, not cosmetic: without it 34 packages fail to
-        # type-check and gosec logs "skipping SSA analysis, no ssa result" for
-        # each, so the taint-tracking rules silently analyze nothing there.
-        # No -conf: gosec parses that file as JSON, so the YAML config fails to
-        # load ("invalid character '#'") and the step exits 1 without scanning.
-        # Every setting it carried is passed as a flag below instead.
-        run: |
-          # install_launchd.go writes to ~/Library/LaunchAgents and
-          # ~/.config/systemd/user. launchd and systemd must traverse those
-          # directories and read the unit file, so 0755/0644 is required there
-          # rather than an oversight. Scoped to the one file so both rules stay
-          # live everywhere else.
-          gosec \
-            -tags fts5 \
-            -severity medium \
-            -confidence medium \
-            -exclude G104,G304,G307 \
-            -exclude-rules "cmd/dpkms/cmd/install_launchd.go:G301,G306" \
-            -exclude-dir vendor \
-            -exclude-dir docs \
-            -exclude-dir test/fixtures \
-            -fmt sarif \
-            -out gosec-results.sarif \
-            ./...
-
-      - name: Upload gosec results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v4
-        if: always()
-        with:
-          sarif_file: gosec-results.sarif
-
-      - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
-
-      - name: Run govulncheck
-        run: govulncheck -tags fts5 ./...
-
-  # ── Gate 4: Trivy CRITICAL scans (Dockerfile + filesystem) ──────────────────
+  # ── Gate 2: Trivy CRITICAL scans (Dockerfile + filesystem) ──────────────────
+  # Release-only and stricter than CI's Trivy step, which uploads SARIF
+  # without failing: a CRITICAL finding blocks the tag.
   trivy-release-gate:
-    needs: toolchain
+    needs: ci
     name: Trivy Release Gate
     runs-on: ubuntu-latest
     permissions:
@@ -193,118 +64,11 @@ jobs:
           severity: CRITICAL
           ignore-unfixed: true
 
-  # ── Gate 5: unit tests ────────────────────────────────────────────────────────
-  test:
-    needs: toolchain
-    name: Unit Tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
-
-      - name: Setup Go
-        uses: actions/setup-go@v7
-        with:
-          go-version: ${{ needs.toolchain.outputs.go-version }}
-          cache: true
-
-      - name: Download dependencies
-        run: go mod download
-
-      - name: Run unit tests
-        run: go test -v -short -race -tags fts5 -coverprofile=coverage.out -covermode=atomic ./...
-
-  # ── Gate 6: integration tests ─────────────────────────────────────────────────
-  integration:
-    needs: toolchain
-    name: Integration Tests
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: contexthelp
-          POSTGRES_PASSWORD: test_password
-          POSTGRES_DB: contexthelp_test
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-
-      redis:
-        image: redis:7-alpine
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 6379:6379
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
-
-      - name: Setup Go
-        uses: actions/setup-go@v7
-        with:
-          go-version: ${{ needs.toolchain.outputs.go-version }}
-          cache: true
-
-      - name: Run integration tests
-        run: go test -v -tags=integration,fts5 ./test/integration/...
-        env:
-          POSTGRES_HOST: localhost
-          POSTGRES_PORT: 5432
-          POSTGRES_USER: contexthelp
-          POSTGRES_PASSWORD: test_password
-          POSTGRES_DB: contexthelp_test
-          REDIS_HOST: localhost
-          REDIS_PORT: 6379
-
-  # ── Gate 7: build + smoke ────────────────────────────────────────────────────
-  build-smoke:
-    name: Build + Smoke
-    runs-on: ubuntu-latest
-    needs: [toolchain, lint, test]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
-
-      - name: Setup Go
-        uses: actions/setup-go@v7
-        with:
-          go-version: ${{ needs.toolchain.outputs.go-version }}
-          cache: true
-
-      - name: Build dpkms
-        run: CGO_ENABLED=1 go build -v -tags fts5 -o bin/dpkms ./cmd/dpkms
-
-      - name: Build ctxt
-        run: CGO_ENABLED=1 go build -v -tags fts5 -o bin/ctxt ./cmd/ctxt
-
-      - name: Smoke — binaries respond
-        run: |
-          ./bin/dpkms version || echo "dpkms built successfully"
-          ./bin/ctxt version  || echo "ctxt built successfully"
-
   # ── GoReleaser: publish only after full gate passes ──────────────────────────
   goreleaser:
     name: GoReleaser
     runs-on: ubuntu-latest
-    needs:
-      # - secret-scan  (job disabled above; gitleaks runs locally)
-      - lint
-      - security
-      - trivy-release-gate
-      - test
-      - integration
-      - build-smoke
-
-      - toolchain
+    needs: [ci, trivy-release-gate]
     env:
       # secrets context is unavailable in step-level `if`; surface presence via job env
       HAS_GPG: ${{ secrets.GPG_PRIVATE_KEY != '' }}
@@ -318,7 +82,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version: ${{ needs.toolchain.outputs.go-version }}
+          go-version: ${{ needs.ci.outputs.go-version }}
           cache: true
 
       - name: Install mingw-w64 (Windows CGO cross-compilation)
@@ -332,11 +96,14 @@ jobs:
           gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
           passphrase: ${{ secrets.GPG_PASSPHRASE }}
 
+      # Version from mise.toml, via ci.yml's toolchain job. OSS GoReleaser
+      # has no per-sign condition (signs[].if is Pro-only), so without a GPG
+      # key the sign pipe is skipped here rather than in .goreleaser.yaml.
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7
         with:
-          version: '~> v2'
-          args: release --clean
+          version: v${{ needs.ci.outputs.goreleaser-version }}
+          args: release --clean${{ env.HAS_GPG != 'true' && ' --skip=sign' || '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}

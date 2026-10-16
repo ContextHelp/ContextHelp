@@ -1,7 +1,6 @@
 package http_test
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -28,7 +27,7 @@ func TestInboxAPI_SQLite(t *testing.T) {
 // one raw object, and one job per status.
 func seedInboxCorpus(t *testing.T, driver storage.StorageDriver) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := ownerCtx()
 	objs := []*storage.KnowledgeObject{
 		{ID: "i-1", Type: "text", Status: "inbox", RawContent: "one", CreatedAt: day("2026-04-10T09:00:00Z"), UpdatedAt: day("2026-04-10T09:00:00Z")},
 		{ID: "i-2", Type: "text", Status: "inbox", RawContent: "two", CreatedAt: day("2026-04-11T09:00:00Z"), UpdatedAt: day("2026-04-11T09:00:00Z")},
@@ -80,7 +79,7 @@ type queueBody struct {
 
 func (e inboxEnv) queue(t *testing.T, rawQuery string) (ids []string, total int) {
 	t.Helper()
-	code, body := e.do(t, http.MethodGet, "/api/v1/inbox/queue?"+rawQuery, dpkmstest.RoleReader)
+	code, body := e.do(t, http.MethodGet, "/api/v1/inbox/queue?"+rawQuery, dpkmstest.RoleAdmin)
 	require.Equal(t, http.StatusOK, code, "GET /inbox/queue?%s: %s", rawQuery, body)
 	var out queueBody
 	require.NoError(t, json.Unmarshal(body, &out))
@@ -94,7 +93,7 @@ func (e inboxEnv) queue(t *testing.T, rawQuery string) (ids []string, total int)
 
 func (e inboxEnv) status(t *testing.T, id string) string {
 	t.Helper()
-	obj, err := e.srv.Driver.Objects().Get(context.Background(), id)
+	obj, err := e.srv.Driver.Objects().Get(ownerCtx(), id)
 	require.NoError(t, err, id)
 	return obj.Status
 }
@@ -105,7 +104,7 @@ func RunInboxSuite(t *testing.T, newDriver func(*testing.T) storage.StorageDrive
 	fresh := func(t *testing.T) inboxEnv {
 		t.Helper()
 		driver := newDriver(t)
-		srv := dpkmstest.Start(t, driver, dpkmstest.WithStaticTokens())
+		srv := dpkmstest.Start(t, driver, dpkmstest.WithKeys())
 		seedInboxCorpus(t, driver)
 		return inboxEnv{srv: srv}
 	}
@@ -151,13 +150,13 @@ func testInboxQueueBadParams(t *testing.T, env inboxEnv) {
 		"status=inbox":       "status",
 		"pending=true&bogus": "bogus",
 	} {
-		code, body := env.do(t, http.MethodGet, "/api/v1/inbox/queue?"+query, dpkmstest.RoleReader)
+		code, body := env.do(t, http.MethodGet, "/api/v1/inbox/queue?"+query, dpkmstest.RoleAdmin)
 		assertInvalidParam(t, code, body, param)
 	}
 }
 
 func testInboxQueueEmpty(t *testing.T, newDriver func(*testing.T) storage.StorageDriver) {
-	env := inboxEnv{srv: dpkmstest.Start(t, newDriver(t), dpkmstest.WithStaticTokens())}
+	env := inboxEnv{srv: dpkmstest.Start(t, newDriver(t), dpkmstest.WithKeys())}
 	ids, total := env.queue(t, "")
 	assert.Empty(t, ids)
 	assert.Zero(t, total)
@@ -180,7 +179,7 @@ func testInboxClear(t *testing.T, env inboxEnv) {
 	assert.Equal(t, "active", env.status(t, "a-1"))
 	assert.Equal(t, "raw", env.status(t, "r-1"))
 
-	code, body = env.do(t, http.MethodGet, "/api/v1/inbox", dpkmstest.RoleReader)
+	code, body = env.do(t, http.MethodGet, "/api/v1/inbox", dpkmstest.RoleAdmin)
 	require.Equal(t, http.StatusOK, code, "%s", body)
 	var list struct {
 		Total int `json:"total"`
@@ -193,14 +192,20 @@ func testInboxClear(t *testing.T, env inboxEnv) {
 	assert.JSONEq(t, `{"cleared":0}`, string(body))
 }
 
-// Reading the inbox and its queue is read:inbox; triage, discard and
-// clear are process:inbox, which only admin holds.
+// Reading the inbox and its queue is read:inbox, but the inbox is
+// owner-only (ADR-080 §6: its payloads are raw content): the owner
+// reads it and every other principal is answered 403 NOT_SHARED, never
+// an empty 200. Triage, discard and clear are process:inbox, which only
+// admin holds.
 func testInboxRoles(t *testing.T, env inboxEnv) {
-	for _, role := range dpkmstest.Roles {
-		code, body := env.do(t, http.MethodGet, "/api/v1/inbox/queue", role)
-		assert.Equal(t, http.StatusOK, code, "%s GET /inbox/queue: %s", role, body)
-		code, body = env.do(t, http.MethodGet, "/api/v1/inbox", role)
-		assert.Equal(t, http.StatusOK, code, "%s GET /inbox: %s", role, body)
+	for _, path := range []string{"/api/v1/inbox/queue", "/api/v1/inbox"} {
+		code, body := env.do(t, http.MethodGet, path, dpkmstest.RoleAdmin)
+		assert.Equal(t, http.StatusOK, code, "admin GET %s: %s", path, body)
+		for _, role := range []string{dpkmstest.RoleWriter, dpkmstest.RoleReader} {
+			code, body := env.do(t, http.MethodGet, path, role)
+			assert.Equal(t, http.StatusForbidden, code, "%s GET %s: %s", role, path, body)
+			assert.Contains(t, string(body), "NOT_SHARED", "%s GET %s", role, path)
+		}
 	}
 
 	for _, role := range []string{dpkmstest.RoleWriter, dpkmstest.RoleReader} {
@@ -225,7 +230,7 @@ func testInboxRoles(t *testing.T, env inboxEnv) {
 // currently an inbox item (active, discarded, raw or unknown) and change
 // nothing; inbox items still triage and discard.
 func testInboxTriageDiscardOnlyInbox(t *testing.T, env inboxEnv) {
-	ctx := context.Background()
+	ctx := ownerCtx()
 	jobCount := func() int {
 		_, n, err := env.srv.Driver.Jobs().List(ctx, storage.JobFilter{Limit: 100})
 		require.NoError(t, err)

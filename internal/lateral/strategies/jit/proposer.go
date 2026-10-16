@@ -13,7 +13,7 @@ import (
 // stays domain-focused (mirrors the pattern in pageshape/llm.go).
 //
 // Returned slice elements may be relative paths ("/about", "/team/$slug") or
-// absolute URLs; the executor (T-0246) is responsible for resolution against
+// absolute URLs; the executor is responsible for resolution against
 // the source domain.
 type Proposer interface {
 	Propose(ctx context.Context, domain string, pageType string) ([]string, error)

@@ -21,7 +21,7 @@ var installDepsCmd = &cobra.Command{
 	// Hidden from default --help via the MANAGEMENT group; surfaces under
 	// --help-all and --help-management. Invoked by 'make deps' in CI.
 	Long: `Install system and Python packages required by built-in pipelines
-and any registered plugins or custom detectors.
+and any registered custom detectors.
 
 Package manager detection order: brew → apt → dnf → pacman
 Python packages are installed via pip3 or pip.`,
@@ -63,7 +63,7 @@ func installDep(d deps.Dep, pkgMgr, pip string) error {
 
 	// Python-only dep (no system package defined): go straight to pip.
 	if d.PipPkg != "" && d.BrewPkg == "" && d.AptPkg == "" {
-		return installPip(d.PipPkg, d.Binary, pip)
+		return installPip(d.PipPkg, pip)
 	}
 
 	// System package manager available.
@@ -73,7 +73,7 @@ func installDep(d deps.Dep, pkgMgr, pip string) error {
 
 	// Fallback to pip if a PyPI package is defined.
 	if d.PipPkg != "" {
-		return installPip(d.PipPkg, d.Binary, pip)
+		return installPip(d.PipPkg, pip)
 	}
 
 	return fmt.Errorf("no supported package manager found (brew/apt/dnf/pacman); install %s manually", d.Binary)
@@ -82,7 +82,7 @@ func installDep(d deps.Dep, pkgMgr, pip string) error {
 func installSystem(d deps.Dep, mgr string) error {
 	var pkg string
 	switch mgr {
-	case "brew":
+	case pkgMgrBrew:
 		pkg = d.BrewPkg
 	case "apt-get":
 		pkg = d.AptPkg
@@ -97,7 +97,7 @@ func installSystem(d deps.Dep, mgr string) error {
 		// This manager has no package defined; try pip if available.
 		if d.PipPkg != "" {
 			pip := detectPip()
-			return installPip(d.PipPkg, d.Binary, pip)
+			return installPip(d.PipPkg, pip)
 		}
 		return fmt.Errorf("no package defined for manager %q; install %s manually", mgr, d.Binary)
 	}
@@ -107,7 +107,7 @@ func installSystem(d deps.Dep, mgr string) error {
 	return runInstallCmd(args[0], args[1:]...)
 }
 
-func installPip(pipPkg, binary, pip string) error {
+func installPip(pipPkg, pip string) error {
 	if pip == "" {
 		return fmt.Errorf("pip not found; install Python first (https://python.org) then: pip install %s", pipPkg)
 	}
@@ -117,8 +117,8 @@ func installPip(pipPkg, binary, pip string) error {
 
 func packageManagerArgs(mgr, pkg string) []string {
 	switch mgr {
-	case "brew":
-		return []string{"brew", "install", pkg}
+	case pkgMgrBrew:
+		return []string{pkgMgrBrew, "install", pkg}
 	case "apt-get":
 		return []string{"sudo", "apt-get", "install", "-y", pkg}
 	case "dnf":
@@ -143,11 +143,20 @@ func runInstallCmd(name string, args ...string) error {
 	return cmd.Run()
 }
 
+// pkgMgrBrew is Homebrew, as a package manager name and its binary.
+const pkgMgrBrew = "brew"
+
+// runtime.GOOS values the host-specific commands branch on.
+const (
+	goosDarwin = "darwin"
+	goosLinux  = "linux"
+)
+
 func detectPackageManager() string {
 	switch runtime.GOOS {
-	case "darwin":
-		if toolInstalled("brew") {
-			return "brew"
+	case goosDarwin:
+		if toolInstalled(pkgMgrBrew) {
+			return pkgMgrBrew
 		}
 		return ""
 	case "windows":

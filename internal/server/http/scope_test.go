@@ -19,31 +19,18 @@ import (
 	"github.com/stretchr/testify/require"
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
+	"github.com/ideacrafterslabs/ctxt/internal/auth/authtest"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/ideacrafterslabs/ctxt/internal/testguard"
 )
 
 func TestMain(m *testing.M) {
 	os.Exit(testguard.Main(m, nil))
-}
-
-// fixedProvider authenticates any presented credential as one fixed
-// principal: the route-coverage tests use it to call every route as a
-// principal holding no scope at all.
-type fixedProvider struct{ p *authn.Principal }
-
-func (fixedProvider) Name() string { return "fixed" }
-
-func (f fixedProvider) Authenticate(_ context.Context, cred authn.Credential) (*authn.Principal, error) {
-	if cred.Empty() {
-		return nil, authn.ErrNoCredential
-	}
-	out := *f.p
-	return &out, nil
 }
 
 func newScopeTestService(t *testing.T) *service.Service {
@@ -85,7 +72,7 @@ var urlParam = regexp.MustCompile(`\{[^}]+\}`)
 // the federation push, which keeps its own credential rule.
 func TestRouteCoverageEveryRouteDeclaresAScope(t *testing.T) {
 	svc := newScopeTestService(t)
-	rc := RouterConfig{Auth: fixedProvider{p: &authn.Principal{ID: "none"}}}
+	rc := RouterConfig{Auth: authtest.Fixed(&authn.Principal{ID: "none"})}
 	table := apiRoutes(svc, rc)
 	walked := walkAPIRoutes(t, NewRouterWithConfig(svc, rc))
 
@@ -103,7 +90,7 @@ func TestRouteCoverageEveryRouteDeclaresAScope(t *testing.T) {
 // route is really mounted behind RequireScope. Handlers never run.
 func TestRouteCoverageScopelessPrincipalDeniedEverywhere(t *testing.T) {
 	svc := newScopeTestService(t)
-	rc := RouterConfig{Auth: fixedProvider{p: &authn.Principal{ID: "none"}}}
+	rc := RouterConfig{Auth: authtest.Fixed(&authn.Principal{ID: "none"})}
 	table := apiRoutes(svc, rc)
 	router := NewRouterWithConfig(svc, rc)
 
@@ -113,7 +100,7 @@ func TestRouteCoverageScopelessPrincipalDeniedEverywhere(t *testing.T) {
 		method, pattern, _ := strings.Cut(w, " ")
 		// Bounded so a route that wrongly reaches a streaming handler
 		// (SSE) fails the assertion instead of hanging the run.
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(ownerCtx(), 2*time.Second)
 		req := httptest.NewRequestWithContext(ctx, method, urlParam.ReplaceAllString(pattern, "x"), nil)
 		req.Header.Set("Authorization", "Bearer any")
 		rec := httptest.NewRecorder()
@@ -131,16 +118,15 @@ func TestRouteCoverageScopelessPrincipalDeniedEverywhere(t *testing.T) {
 	}
 }
 
-// roleServer is an authenticated router with one static token per role.
+// roleServer is an authenticated router with one token per role.
 func roleServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	provider, err := authn.NewStatic([]authn.StaticToken{
-		{Token: "tok-admin", Principal: "owner", Roles: []string{authn.RoleAdmin}},
-		{Token: "tok-writer", Principal: "phone", Roles: []string{authn.RoleWriter}},
-		{Token: "tok-reader", Principal: "tablet", Roles: []string{authn.RoleReader}},
-	})
-	require.NoError(t, err)
-	ts := httptest.NewServer(NewRouterWithConfig(newScopeTestService(t), RouterConfig{Auth: provider}))
+	chain := authtest.TokenChain(
+		authtest.Token{Token: "tok-admin-fixture-0123456789abcdef0123456789", Principal: "owner", Roles: []string{authn.RoleAdmin}},
+		authtest.Token{Token: "tok-writer-fixture-0123456789abcdef0123456789", Principal: "phone", Roles: []string{authn.RoleWriter}},
+		authtest.Token{Token: "tok-reader-fixture-0123456789abcdef0123456789", Principal: "tablet", Roles: []string{authn.RoleReader}},
+	)
+	ts := httptest.NewServer(NewRouterWithConfig(newScopeTestService(t), RouterConfig{Auth: chain}))
 	t.Cleanup(ts.Close)
 	return ts
 }
@@ -183,44 +169,50 @@ func assertScopeDenied(t *testing.T, resp *http.Response, body []byte, scope aut
 func TestReaderCannotWrite(t *testing.T) {
 	ts := roleServer(t)
 
-	resp, body := roleDo(t, http.MethodPost, ts.URL+"/api/v1/analyze", "tok-reader", analyzeBody)
+	resp, body := roleDo(t, http.MethodPost, ts.URL+"/api/v1/analyze", "tok-reader-fixture-0123456789abcdef0123456789", analyzeBody)
 	assertScopeDenied(t, resp, body, authn.ScopeWriteObjects)
 
-	resp, _ = roleDo(t, http.MethodGet, ts.URL+"/api/v1/objects", "tok-reader", nil)
+	resp, _ = roleDo(t, http.MethodGet, ts.URL+"/api/v1/objects", "tok-reader-fixture-0123456789abcdef0123456789", nil)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
 func TestWriterWritesButCannotDeleteOrAdminister(t *testing.T) {
 	ts := roleServer(t)
 
-	resp, body := roleDo(t, http.MethodPost, ts.URL+"/api/v1/analyze", "tok-writer", analyzeBody)
+	resp, body := roleDo(t, http.MethodPost, ts.URL+"/api/v1/analyze", "tok-writer-fixture-0123456789abcdef0123456789", analyzeBody)
 	assert.Equal(t, http.StatusAccepted, resp.StatusCode, string(body))
 
-	resp, body = roleDo(t, http.MethodDelete, ts.URL+"/api/v1/objects/o-1", "tok-writer", nil)
+	resp, body = roleDo(t, http.MethodDelete, ts.URL+"/api/v1/objects/o-1", "tok-writer-fixture-0123456789abcdef0123456789", nil)
 	assertScopeDenied(t, resp, body, authn.ScopeDeleteObjects)
 
-	resp, body = roleDo(t, http.MethodPost, ts.URL+"/api/v1/inbox/i-1/triage", "tok-writer", nil)
+	resp, body = roleDo(t, http.MethodPost, ts.URL+"/api/v1/inbox/i-1/triage", "tok-writer-fixture-0123456789abcdef0123456789", nil)
 	assertScopeDenied(t, resp, body, authn.ScopeProcessInbox)
 
-	resp, body = roleDo(t, http.MethodGet, ts.URL+"/api/v1/audit-log", "tok-writer", nil)
+	resp, body = roleDo(t, http.MethodGet, ts.URL+"/api/v1/audit-log", "tok-writer-fixture-0123456789abcdef0123456789", nil)
 	assertScopeDenied(t, resp, body, authn.ScopeAdminAudit)
 
-	resp, body = roleDo(t, http.MethodPost, ts.URL+"/api/v1/steps/install", "tok-writer", map[string]string{})
-	assertScopeDenied(t, resp, body, authn.ScopeAdminPlugins)
+	resp, body = roleDo(t, http.MethodPost, ts.URL+"/api/v1/jobs/j-1/cancel", "tok-writer-fixture-0123456789abcdef0123456789", nil)
+	assertScopeDenied(t, resp, body, authn.ScopeCancelJobs)
+
+	resp, body = roleDo(t, http.MethodPost, ts.URL+"/api/v1/steps/install", "tok-writer-fixture-0123456789abcdef0123456789", map[string]string{})
+	assertScopeDenied(t, resp, body, "admin:steps")
+
+	resp, body = roleDo(t, http.MethodDelete, ts.URL+"/api/v1/steps/some-step", "tok-writer-fixture-0123456789abcdef0123456789", nil)
+	assertScopeDenied(t, resp, body, "admin:steps")
 }
 
 func TestAdminPassesEveryScope(t *testing.T) {
 	ts := roleServer(t)
 
-	resp, body := roleDo(t, http.MethodPost, ts.URL+"/api/v1/analyze", "tok-admin", analyzeBody)
+	resp, body := roleDo(t, http.MethodPost, ts.URL+"/api/v1/analyze", "tok-admin-fixture-0123456789abcdef0123456789", analyzeBody)
 	assert.Equal(t, http.StatusAccepted, resp.StatusCode, string(body))
 
 	// Past the scope check: the handler answers for the missing object.
-	resp, body = roleDo(t, http.MethodDelete, ts.URL+"/api/v1/objects/o-missing", "tok-admin", nil)
+	resp, body = roleDo(t, http.MethodDelete, ts.URL+"/api/v1/objects/o-missing", "tok-admin-fixture-0123456789abcdef0123456789", nil)
 	assert.NotEqual(t, http.StatusForbidden, resp.StatusCode, string(body))
 	assert.NotEqual(t, http.StatusUnauthorized, resp.StatusCode, string(body))
 
-	resp, body = roleDo(t, http.MethodGet, ts.URL+"/api/v1/audit-log", "tok-admin", nil)
+	resp, body = roleDo(t, http.MethodGet, ts.URL+"/api/v1/audit-log", "tok-admin-fixture-0123456789abcdef0123456789", nil)
 	assert.Equal(t, http.StatusOK, resp.StatusCode, string(body))
 }
 
@@ -252,7 +244,7 @@ func TestPrivateInstanceNeedsNoToken(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(body))
 	var who whoamiResponse
 	require.NoError(t, json.Unmarshal(body, &who))
-	assert.Equal(t, "local", who.Principal)
+	assert.Equal(t, storage.OwnerPrincipal, who.Principal)
 	assert.Equal(t, authn.AllScopes, who.Scopes)
 }
 
@@ -263,9 +255,9 @@ func TestWhoamiReportsPrincipalRolesScopes(t *testing.T) {
 		principal string
 		role      string
 	}{
-		"tok-admin":  {"owner", authn.RoleAdmin},
-		"tok-writer": {"phone", authn.RoleWriter},
-		"tok-reader": {"tablet", authn.RoleReader},
+		"tok-admin-fixture-0123456789abcdef0123456789":  {"owner", authn.RoleAdmin},
+		"tok-writer-fixture-0123456789abcdef0123456789": {"phone", authn.RoleWriter},
+		"tok-reader-fixture-0123456789abcdef0123456789": {"tablet", authn.RoleReader},
 	} {
 		resp, body := roleDo(t, http.MethodGet, ts.URL+"/api/v1/whoami", token, nil)
 		require.Equal(t, http.StatusOK, resp.StatusCode, string(body))
@@ -273,7 +265,7 @@ func TestWhoamiReportsPrincipalRolesScopes(t *testing.T) {
 		require.NoError(t, json.Unmarshal(body, &who))
 		bundle, _ := authn.Bundle(want.role)
 		assert.Equal(t, want.principal, who.Principal)
-		assert.Equal(t, authn.ProviderStatic, who.Provider)
+		assert.Equal(t, authn.MethodAPIKey, who.Provider)
 		assert.Equal(t, []string{want.role}, who.Roles)
 		assert.Equal(t, bundle, who.Scopes, token)
 	}
@@ -282,14 +274,14 @@ func TestWhoamiReportsPrincipalRolesScopes(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 }
 
-// Federation push needs write:objects on top of its federation.token
-// rule: a reader principal is refused before the handler runs; a writer
-// reaches the handler (which then applies the federation credential).
+// Federation push needs write:objects on top of its peer rule: a
+// reader principal is refused before the handler runs; a writer reaches
+// the handler (which then checks the principal is a peer).
 func TestFederationPushRequiresWriteObjects(t *testing.T) {
 	svc := newScopeTestService(t)
 	for role, wantScopeDenied := range map[string]bool{authn.RoleReader: true, authn.RoleWriter: false, authn.RoleAdmin: false} {
 		p := &authn.Principal{ID: role, Roles: []string{role}, Scopes: authn.ScopesForRoles([]string{role})}
-		router := NewRouterWithConfig(svc, RouterConfig{Auth: fixedProvider{p: p}})
+		router := NewRouterWithConfig(svc, RouterConfig{Auth: authtest.Fixed(p)})
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/federation/push", strings.NewReader("{}"))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer any")
@@ -310,6 +302,7 @@ var uiSessionRouteSet = []string{
 	"GET /api/v1/objects/facets",
 	"GET /api/v1/objects/{id}",
 	"GET /api/v1/objects/{id}/related",
+	"GET /api/v1/objects/{id}/edges",
 	"DELETE /api/v1/objects/{id}",
 	"GET /api/v1/jobs",
 	"GET /api/v1/jobs/{id}",
@@ -329,14 +322,34 @@ var uiSessionRouteSet = []string{
 	"GET /api/v1/inbox",
 	"GET /api/v1/inbox/queue",
 	"GET /api/v1/events",
-	"GET /api/v1/suggestions",
 	"GET /api/v1/aliases",
 	"GET /api/v1/aliases/{alias}",
 	"GET /api/v1/capture/recent",
 	"GET /api/v1/saved-searches",
 	"GET /api/v1/saved-searches/{name}",
 	"GET /api/v1/search-history",
+	"GET /api/v1/pages",
+	"GET /api/v1/pages/{slug}",
+	"GET /api/v1/topic-index",
+	"GET /api/v1/topic-index/{topic}",
+	"GET /api/v1/stats",
 	"DELETE /api/v1/ui/session",
+	// write:self: a session manages its own credentials.
+	"GET /api/v1/self/keys", "POST /api/v1/self/keys", "DELETE /api/v1/self/keys/{key}",
+	"GET /api/v1/self/identities", "DELETE /api/v1/self/identities/{identity}",
+	"GET /api/v1/self/sessions", "DELETE /api/v1/self/sessions/{session}",
+	"PUT /api/v1/self/keys/{key}/policy",
+	// admin:shares: the Sharing page (ADR-080 §11), which only an
+	// admin's session holds.
+	"POST /api/v1/share/invites",
+	"GET /api/v1/share/audiences", "POST /api/v1/share/audiences", "GET /api/v1/share/audiences/{audience}",
+	"PUT /api/v1/share/audiences/{audience}/members/{principal}", "DELETE /api/v1/share/audiences/{audience}/members/{principal}",
+	"GET /api/v1/share/policies", "POST /api/v1/share/policies",
+	"GET /api/v1/share/policies/{policy}", "PUT /api/v1/share/policies/{policy}",
+	"GET /api/v1/share/templates", "POST /api/v1/share/templates/{name}",
+	"GET /api/v1/share/grants", "POST /api/v1/share/grants", "DELETE /api/v1/share/grants/{grant}",
+	"GET /api/v1/principals/{id}/ceiling", "PUT /api/v1/principals/{id}/ceiling",
+	"PUT /api/v1/share/keys/{key}/policy",
 }
 
 // The ui scope set, applied to the route table, yields exactly the web
@@ -345,7 +358,7 @@ var uiSessionRouteSet = []string{
 // reach declare scopes outside the set.
 func TestUISessionRouteSetPinned(t *testing.T) {
 	svc := newScopeTestService(t)
-	rc := RouterConfig{Auth: fixedProvider{p: &authn.Principal{ID: "none"}}}
+	rc := RouterConfig{Auth: authtest.Fixed(&authn.Principal{ID: "none"})}
 	table := apiRoutes(svc, rc)
 
 	var got []string
@@ -376,6 +389,8 @@ func TestUISessionRouteSetPinned(t *testing.T) {
 		"POST /api/v1/steps/registries/fetch", "POST /api/v1/entities/registry-sync",
 		"DELETE /api/v1/aliases/{alias}", "DELETE /api/v1/saved-searches/{name}", "DELETE /api/v1/search-history",
 		"PATCH /api/v1/objects/{id}", "POST /api/v1/analyze",
+		"POST /api/v1/edges", "DELETE /api/v1/edges",
+		"POST /api/v1/pages/{slug}/refresh", "POST /api/v1/topic-index",
 	} {
 		rt, ok := tableEntry(table, w)
 		require.True(t, ok, "%s missing from the table", w)
@@ -392,7 +407,7 @@ func TestUISessionRefusedOutsideRouteSet(t *testing.T) {
 		ID: "ops", Roles: []string{authn.RoleAdmin}, Scopes: authn.UISessionScopes,
 		Meta: map[string]string{authn.MetaVia: authn.ViaSession, authn.MetaSessionKind: authn.SessionKindUI},
 	}
-	rc := RouterConfig{Auth: fixedProvider{p: sess}}
+	rc := RouterConfig{Auth: authtest.Fixed(sess)}
 	table := apiRoutes(svc, rc)
 	router := NewRouterWithConfig(svc, rc)
 

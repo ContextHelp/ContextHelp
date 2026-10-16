@@ -7,8 +7,6 @@ import (
 	"errors"
 	"io"
 	"time"
-
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // ErrEntityDefinitionUnavailable is returned when a thin entity's full definition
@@ -35,16 +33,41 @@ var ErrCapabilityMissing = errors.New("storage capability missing")
 // the driver and unequal between drivers.
 var ErrNotFound = errors.New("not found")
 
+// ErrBlobNotFound is the cross-backend sentinel for "the blob store
+// holds no blob under this key". BlobStore.Get returns an error wrapping
+// it for a missing key, and only then: a store it cannot reach (network,
+// timeout, 5xx, permissions) is some other error, so callers can tell a
+// blob that is gone from one they could not read this time.
+var ErrBlobNotFound = errors.New("blob not found")
+
+// ErrNotImplemented is returned by a store a backend does not implement
+// yet, so callers can tell a missing capability from a failed query.
+var ErrNotImplemented = errors.New("not implemented by this storage backend")
+
 // Alias represents a human-readable name that resolves to a knowledge object ID.
-// The canonical definition lives in pkg/pluginapi.
-type Alias = pluginapi.Alias
+type Alias struct {
+	Alias     string    `json:"alias"`
+	ObjectID  string    `json:"object_id"`
+	Scope     string    `json:"scope"`   // "global" | "profile"
+	Profile   string    `json:"profile"` // empty for global
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
 
 // AliasFilter restricts alias listing results.
-type AliasFilter = pluginapi.AliasFilter
+type AliasFilter struct {
+	ObjectID string
+	Scope    string
+	Profile  string
+}
 
-// AliasStore persists and retrieves object aliases.
-// The canonical definition lives in pkg/pluginapi.
-type AliasStore = pluginapi.AliasStore
+// AliasStore is the persistence interface for aliases.
+type AliasStore interface {
+	Create(ctx context.Context, a *Alias) error
+	Resolve(ctx context.Context, alias, profile string) (string, error)
+	List(ctx context.Context, filter AliasFilter) ([]*Alias, error)
+	Delete(ctx context.Context, alias, scope, profile string) error
+}
 
 // StorageDriver is the top-level interface for all persistence operations.
 type StorageDriver interface {
@@ -70,24 +93,33 @@ type StorageDriver interface {
 	Attachments() AttachmentStore
 	Resurfacing() ResurfacingQueueStore
 	Entitlements() EntitlementStore
+	PendingEntities() PendingEntityStore
 	Metering() MeteringStore
 	Embeddings() EmbeddingStore
 	SavedSearches() SavedSearchStore
 	SearchHistory() SearchHistoryStore
 	Watermarks() WatermarkStore
 	UISessions() UISessionStore
+	// Auth is the principal registry (ADR-079): principals, their
+	// identities, sign-in tickets and the API key records.
+	Auth() AuthStore
+	// Sharing is the sharing registry (ADR-080): audiences, share
+	// policies, grants, ceilings, key bindings and the read audit.
+	Sharing() SharingStore
 	Health(ctx context.Context) error
 }
 
-// WatermarkStore tracks per-federation last-synced timestamps for the
-// federation_watermarks table (US-0319). One row per federation name.
-// Missing rows are treated as the Unix epoch (never synced).
+// WatermarkStore keeps, per federation target, the ChangeSeq of the
+// last object the target acknowledged (federation_watermarks, one row
+// per federation name). Federation pushes only objects with a greater
+// ChangeSeq.
 type WatermarkStore interface {
-	// GetWatermark returns the last_synced_at for federationName.
-	// Missing rows return time.Unix(0, 0).UTC() with nil error.
-	GetWatermark(ctx context.Context, federationName string) (time.Time, error)
-	// SetWatermark upserts last_synced_at for federationName. Idempotent.
-	SetWatermark(ctx context.Context, federationName string, ts time.Time) error
+	// GetWatermark returns the ChangeSeq stored for federationName; 0,
+	// which precedes every object, when none is.
+	GetWatermark(ctx context.Context, federationName string) (int64, error)
+	// SetWatermark stores seq for federationName, replacing any
+	// previous one.
+	SetWatermark(ctx context.Context, federationName string, seq int64) error
 }
 
 // MeteringStore persists and queries metering events for paid registry access.
@@ -144,6 +176,8 @@ type AuditStore interface {
 // BlobStore manages external binary content.
 type BlobStore interface {
 	Put(ctx context.Context, key string, data io.Reader, meta BlobMeta) error
+	// Get opens the blob under key. A missing key is an error wrapping
+	// ErrBlobNotFound.
 	Get(ctx context.Context, key string) (io.ReadCloser, BlobMeta, error)
 	Delete(ctx context.Context, key string) error
 	Exists(ctx context.Context, key string) (bool, error)
@@ -153,11 +187,21 @@ type BlobStore interface {
 
 // ObjectStore persists and retrieves knowledge objects.
 type ObjectStore interface {
+	// Create stores obj. A taken id, or a non-empty content hash
+	// already stored under obj's profile (content-hash dedup, ADR-080
+	// §4), wraps ErrAlreadyExists: the dedup callers then Reinforce.
 	Create(ctx context.Context, obj *KnowledgeObject) error
 	Get(ctx context.Context, id string) (*KnowledgeObject, error)
-	GetByContentHash(ctx context.Context, hash string) (*KnowledgeObject, error)
+	// GetByContentHash returns the object of profileID whose content
+	// hash is hash, or (nil, nil) when there is none. Content-hash
+	// dedup stays inside a profile (ADR-080 §4): the same content under
+	// another profile is another object.
+	GetByContentHash(ctx context.Context, hash, profileID string) (*KnowledgeObject, error)
 	GetBySourceKey(ctx context.Context, key string) (*KnowledgeObject, error)
 	List(ctx context.Context, filter ObjectFilter) ([]*KnowledgeObject, int, error)
+	// CountByType counts every stored object, whatever its status, by
+	// type. Types with no object are absent.
+	CountByType(ctx context.Context) (map[string]int, error)
 	Update(ctx context.Context, obj *KnowledgeObject) error
 	// TransitionStatus moves object id from status from to status to and
 	// sets updated_at to at, in one conditional write: nothing changes
@@ -165,8 +209,27 @@ type ObjectStore interface {
 	// racing on the same object cannot both move it. A missing object,
 	// or one in any other status, wraps ErrNotFound.
 	TransitionStatus(ctx context.Context, id, from, to string, at time.Time) error
+	// Delete removes the object's row and the rows the database ties to
+	// it (its attachments, its index entries). A hard delete goes
+	// through blob.DeleteObject, which also deletes its edges and the
+	// blob its content is externalized to.
 	Delete(ctx context.Context, id string) error
-	ListBySQL(ctx context.Context, where string, args []any, limit, offset int) ([]*KnowledgeObject, int, error)
+	// CountBlobRefs counts the objects that refer to blob key: their
+	// raw_content or text_content is its blob:// ref, or metadata.blob_key
+	// names it. Keys are content hashes, so objects can share one.
+	CountBlobRefs(ctx context.Context, key string) (int, error)
+	// ListBySQL lists the objects List(filter) would return that also
+	// satisfy where, a raw predicate over the objects table in the
+	// driver's dialect whose values are bound in args (placeholders
+	// numbered from 1; the driver's own predicates come after). Status,
+	// profile, paging and order come from filter exactly as for List, so
+	// a query-language search never reaches an object a List would not.
+	ListBySQL(ctx context.Context, where string, args []any, filter ObjectFilter) ([]*KnowledgeObject, int, error)
+	// Reinforce merges mergeData's tags, mentions and content into the
+	// object of mergeData.ProfileID whose content hash is hash, bumps
+	// its reinforcement count and returns its ID. No such object in
+	// that profile is an error wrapping sql.ErrNoRows: the same content
+	// under another profile is never merged into (ADR-080 §4).
 	Reinforce(ctx context.Context, hash string, mergeData *KnowledgeObject) (string, error)
 	// SetReminder sets remind_at on the object identified by id.
 	SetReminder(ctx context.Context, id string, at time.Time) error
@@ -179,19 +242,21 @@ type ObjectStore interface {
 	// ListPendingReminders returns all objects with a non-null remind_at.
 	ListPendingReminders(ctx context.Context) ([]*KnowledgeObject, error)
 	// VectorSearch returns objects ranked by q.ModelID's index (cosine
-	// distance, closest first), filtered by filter and capped at
-	// filter.Limit. Each result carries Metadata["score"] = 1 - distance.
-	// Fails with ErrEmbeddingIndexMissing when the model has no index.
+	// distance, closest first), filtered by filter (its StatusScope
+	// included) and capped at filter.Limit. Each result carries
+	// Metadata["score"] = 1 - distance. Fails with
+	// ErrEmbeddingIndexMissing when the model has no index.
 	VectorSearch(ctx context.Context, q VectorQuery, filter ObjectFilter) ([]*KnowledgeObject, error)
-	// FTSSearch queries the objects_fts FTS5 virtual table using SQLite FTS5 MATCH syntax.
-	// Returns results ranked by FTS5 bm25 score, filtered by ObjectFilter.
+	// FTSSearch runs full-text search over the driver's index for raw
+	// query text and returns matches best first, filtered by filter (its
+	// StatusScope included). Each result carries Metadata["fts_score"].
 	FTSSearch(ctx context.Context, query string, filter ObjectFilter) ([]*KnowledgeObject, error)
 	// FTSSearchNodeAware runs FTS search and applies NodeAwareFilter post-query.
 	// When naf.NodeTypes is non-empty, only objects with ALL listed node types are returned.
-	FTSSearchNodeAware(ctx context.Context, query string, filter ObjectFilter, naf pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error)
+	FTSSearchNodeAware(ctx context.Context, query string, filter ObjectFilter, naf NodeAwareFilter) ([]*NodeAwareResult, error)
 	// VectorSearchNodeAware runs vector search and applies NodeAwareFilter post-query.
 	// When naf.NodeTypes is non-empty, only objects with ALL listed node types are returned.
-	VectorSearchNodeAware(ctx context.Context, q VectorQuery, filter ObjectFilter, naf pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error)
+	VectorSearchNodeAware(ctx context.Context, q VectorQuery, filter ObjectFilter, naf NodeAwareFilter) ([]*NodeAwareResult, error)
 }
 
 // EntityStore persists and retrieves named entities.
@@ -204,6 +269,9 @@ type EntityStore interface {
 	SetContentStatus(ctx context.Context, slug string, status ContentStatus) error
 	Get(ctx context.Context, slug string) (*Entity, error)
 	List(ctx context.Context, filter EntityFilter) ([]*Entity, error)
+	// Namespaces returns each distinct namespace of the stored entities
+	// once, ascending, the empty namespace included.
+	Namespaces(ctx context.Context) ([]string, error)
 	Resolve(ctx context.Context, mention string) (*Entity, error)
 }
 
@@ -221,6 +289,27 @@ type EdgeStore interface {
 	// at least one mention target with objectID; depth=2 extends one more hop.
 	// The seed objectID is never included in the result.
 	RelatedObjectIDs(ctx context.Context, objectID string, depth, limit int) ([]string, error)
+	// CreateAll stores every edge in one transaction: all of them or,
+	// on any error, none. A typed link and its inverse go in this way.
+	CreateAll(ctx context.Context, edges []*Edge) error
+	// CreateMissing stores, in one transaction, every edge in edges that
+	// no stored edge matches on (from, to, edge type), and returns how
+	// many it stored. An edge the call has just stored counts as stored,
+	// so a repeat within edges goes in once. The stored edge of a matched
+	// pair keeps its ID and metadata. The mention-edge writers share it.
+	CreateMissing(ctx context.Context, edges []*Edge) (int, error)
+	// DeleteMatching deletes, in one transaction, every edge a match
+	// selects and returns how many it deleted. A match with no edge
+	// types is an error, and nothing is deleted.
+	DeleteMatching(ctx context.Context, matches []EdgeMatch) (int, error)
+}
+
+// EdgeMatch selects the edges running from one node to another whose
+// type is one of EdgeTypes.
+type EdgeMatch struct {
+	FromType, FromID string
+	ToType, ToID     string
+	EdgeTypes        []string
 }
 
 // JobStore persists and retrieves jobs.
@@ -282,11 +371,20 @@ type RegistryStore interface {
 	Delete(ctx context.Context, url string) error
 }
 
-// EntitlementStore persists and retrieves registry entitlement records.
+// EntitlementStore persists and retrieves entitlement records, keyed by
+// (kind, name): an outbound row for a registry and an inbound grant for
+// a principal of the same name are separate rows.
 type EntitlementStore interface {
+	// Upsert inserts or replaces the row keyed by (e.Kind,
+	// e.RegistryName). An invalid Kind is refused.
 	Upsert(ctx context.Context, e *RegistryEntitlement) error
-	Get(ctx context.Context, registryName string) (*RegistryEntitlement, error)
-	List(ctx context.Context) ([]*RegistryEntitlement, error)
+	// Get returns the row keyed by (kind, name).
+	Get(ctx context.Context, kind EntitlementKind, name string) (*RegistryEntitlement, error)
+	// List returns every row of kind, ordered by name.
+	List(ctx context.Context, kind EntitlementKind) ([]*RegistryEntitlement, error)
+	// Delete removes the row keyed by (kind, name). Returns an error
+	// wrapping ErrNotFound when there is no such row.
+	Delete(ctx context.Context, kind EntitlementKind, name string) error
 }
 
 // ReminderStore persists and retrieves system reminders.
@@ -399,22 +497,27 @@ type AttachmentStore interface {
 
 // ResurfacingEntry is one candidate in the resurfacing queue.
 type ResurfacingEntry struct {
-	ID          string     `json:"id"`
-	ObjectID    string     `json:"object_id"`
-	ProfileID   string     `json:"profile_id"`
-	Score       float64    `json:"score"`
-	Reason      string     `json:"reason"`
-	SurfacedAt  *time.Time `json:"surfaced_at,omitempty"`
-	DismissedAt *time.Time `json:"dismissed_at,omitempty"`
-	CreatedAt   time.Time  `json:"created_at"`
+	ID        string  `json:"id"`
+	ObjectID  string  `json:"object_id"`
+	ProfileID string  `json:"profile_id"`
+	Score     float64 `json:"score"`
+	Reason    string  `json:"reason"`
+	// OwnerPrincipal is the principal the candidate is queued for; empty
+	// on write means OwnerPrincipal (the instance owner).
+	OwnerPrincipal string     `json:"owner_principal"`
+	SurfacedAt     *time.Time `json:"surfaced_at,omitempty"`
+	DismissedAt    *time.Time `json:"dismissed_at,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
 }
 
 // ResurfacingFilter restricts resurfacing queue queries.
 type ResurfacingFilter struct {
-	ProfileID  string
-	UnseenOnly bool // surfaced_at IS NULL AND dismissed_at IS NULL
-	MinScore   float64
-	Limit      int
+	ProfileID string
+	// OwnerPrincipal, when set, keeps that principal's candidates only.
+	OwnerPrincipal string
+	UnseenOnly     bool // surfaced_at IS NULL AND dismissed_at IS NULL
+	MinScore       float64
+	Limit          int
 }
 
 // ResurfacingQueueStore manages the resurfacing candidate queue.

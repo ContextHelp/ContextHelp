@@ -51,7 +51,7 @@ Type/date/tag filters:
 
 ```bash
 ctxt list --type url --after 2026-02-01 --limit 20
-ctxt list --tag checkout,pricing --limit 20
+ctxt list --tagged checkout --limit 20
 ```
 
 Query-language filters:

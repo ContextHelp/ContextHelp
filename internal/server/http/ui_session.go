@@ -20,8 +20,9 @@ import (
 
 // Web UI sign-in, in three steps:
 //
-//  1. The ctxt CLI, authenticated with its static token, calls
-//     POST /api/v1/ui/login-codes and gets a single-use code.
+//  1. The ctxt CLI, authenticated with its API key, calls
+//     POST /api/v1/ui/login-codes and gets a single-use code bound to
+//     that key's identity.
 //  2. It opens /ui/auth#code=<code>. The fragment never reaches the
 //     server, proxies or Referer.
 //  3. The page POSTs the code to /ui/auth/session and receives the
@@ -107,10 +108,65 @@ type uiSessionRoutes struct {
 	cop      *http.CrossOriginProtection
 	// warn receives operator warnings (plain-HTTP sign-in).
 	warn io.Writer
+	// tickets, signIn and publicURL serve the invite and sign-in link
+	// ceremonies (ui_ceremony.go); tickets is nil when none may run.
+	// reg is the registry a sign-in link's principal is read from.
+	tickets   *authn.Tickets
+	signIn    []string
+	publicURL string
+	reg       storage.AuthStore
+	// sharing resolves the audience an invite names (ADR-080 §11).
+	sharing storage.SharingStore
 }
 
 func newUISessionRoutes(rc RouterConfig) *uiSessionRoutes {
-	return &uiSessionRoutes{sessions: rc.Sessions, sec: rc.Security, cop: newSessionCOP(rc.DevCORS), warn: os.Stderr}
+	return &uiSessionRoutes{
+		sessions: rc.Sessions, sec: rc.Security, cop: newSessionCOP(rc.DevCORS), warn: os.Stderr,
+		tickets: rc.Tickets, signIn: rc.SignIn, publicURL: rc.PublicURL, reg: rc.Registry, sharing: rc.Sharing,
+	}
+}
+
+// browserChecks applies the rules every sign-in ceremony shares: the
+// request must come from this instance's own pages and carry the CSRF
+// header, and it must not already ride on a live session (ADR-079 §3:
+// the caller signs out first, so a code or ticket can never bind to a
+// browser that is someone else). A stale cookie is not a session: it
+// is cleared and the ceremony goes on.
+func (u *uiSessionRoutes) browserChecks(w http.ResponseWriter, r *http.Request) bool {
+	if !sameOriginWrite(u.cop, r) {
+		WriteError(w, http.StatusForbidden, "CROSS_ORIGIN_REQUEST", "sign-in must come from this instance's own web UI")
+		return false
+	}
+	if r.Header.Get(HeaderCSRF) != "1" {
+		WriteError(w, http.StatusForbidden, "CSRF_HEADER_REQUIRED", "sign-in must send "+HeaderCSRF+": 1")
+		return false
+	}
+	c, err := r.Cookie(SessionCookieName(r.Host))
+	if err != nil || c.Value == "" {
+		return true
+	}
+	if p, _, err := u.sessions.Authenticate(r.Context(), c.Value); err == nil {
+		WriteError(w, http.StatusConflict, CodeSessionActive,
+			"this browser is already signed in as "+p.ID+": sign out first, then open the link again")
+		return false
+	}
+	http.SetCookie(w, sessionCookie(r, "", time.Time{}))
+	return true
+}
+
+// finishSignIn sets the session cookie for m and answers the new
+// session's whoami, warning when the cookie will not stick.
+func (u *uiSessionRoutes) finishSignIn(w http.ResponseWriter, r *http.Request, m *authn.Minted) {
+	http.SetCookie(w, sessionCookie(r, m.Secret, m.Session.ExpiresAt))
+	who := whoamiFor(r, m.Principal, viaSession, nil)
+	who.Session = toSessionInfo(m.Session)
+	resp := exchangeResponse{whoamiResponse: who}
+	if plainHTTPRemote(r) {
+		resp.Warning = plainHTTPWarning
+		fmt.Fprintf(u.warn, "warning: web UI sign-in over plain HTTP from %s to %s: browsers drop the Secure session cookie there; serve dpkms behind TLS\n",
+			remoteHost(r), r.Host)
+	}
+	WriteJSON(w, http.StatusOK, resp)
 }
 
 type loginCodeResponse struct {
@@ -124,27 +180,29 @@ type loginCodeResponse struct {
 }
 
 // mintCode handles POST /api/v1/ui/login-codes, behind read:ui. Only a
-// token caller may mint: no session holds read:ui (a session minting
-// codes could extend itself forever), and the code is bound to
-// the presented token, so the new session's scopes derive from it.
+// key caller may mint: no session holds read:ui (a session minting
+// codes could extend itself forever), and the code is bound to the
+// identity of the presented key, so the new session's scopes derive
+// from it and it ends with it. A key declared in server.auth.keys has
+// no identity and cannot mint.
 func (u *uiSessionRoutes) mintCode(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	if u.sessions == nil {
 		WriteJSON(w, http.StatusOK, loginCodeResponse{SessionRequired: false, LoginPath: "/ui/"})
 		return
 	}
-	cred := credentialFromRequest(r)
-	if cred.Scheme != authn.SchemeBearer && cred.Scheme != authn.SchemeAPIKey {
-		WriteError(w, http.StatusUnauthorized, "UNAUTHORIZED", "login codes need an API token")
-		return
-	}
-	code, expires, err := u.sessions.MintCode(r.Context(), cred.Token)
+	p, _ := authn.FromContext(r.Context())
+	code, expires, err := u.sessions.MintCode(r.Context(), p)
 	if err != nil {
-		if errors.Is(err, authn.ErrInvalidCredential) || errors.Is(err, authn.ErrNoCredential) {
-			WriteError(w, http.StatusUnauthorized, "UNAUTHORIZED", "login codes need a configured API token")
-			return
+		switch {
+		case errors.Is(err, authn.ErrNoIdentity):
+			WriteError(w, http.StatusForbidden, "KEY_HAS_NO_IDENTITY",
+				"login codes need an API key created with dpkms auth key create; a key declared in server.auth.keys cannot sign a browser in")
+		case errors.Is(err, authn.ErrInvalidCredential), errors.Is(err, authn.ErrNoCredential):
+			WriteError(w, http.StatusUnauthorized, "UNAUTHORIZED", "login codes need an API key")
+		default:
+			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "could not mint a login code")
 		}
-		WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "could not mint a login code")
 		return
 	}
 	WriteJSON(w, http.StatusCreated, loginCodeResponse{
@@ -205,15 +263,10 @@ func (u *uiSessionRoutes) signOut(w http.ResponseWriter, r *http.Request) {
 func (u *uiSessionRoutes) exchange(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	if u.sessions == nil {
-		WriteError(w, http.StatusNotFound, "NOT_FOUND", "this instance needs no sign-in; open /ui/")
+		WriteError(w, http.StatusNotFound, CodeNotFound, "this instance needs no sign-in; open /ui/")
 		return
 	}
-	if !sameOriginWrite(u.cop, r) {
-		WriteError(w, http.StatusForbidden, "CROSS_ORIGIN_REQUEST", "sign-in must come from this instance's own web UI")
-		return
-	}
-	if r.Header.Get(HeaderCSRF) != "1" {
-		WriteError(w, http.StatusForbidden, "CSRF_HEADER_REQUIRED", "sign-in must send "+HeaderCSRF+": 1")
+	if !u.browserChecks(w, r) {
 		return
 	}
 	var req struct {
@@ -239,16 +292,7 @@ func (u *uiSessionRoutes) exchange(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "could not start a session")
 		return
 	}
-	http.SetCookie(w, sessionCookie(r, m.Secret, m.Session.ExpiresAt))
-	who := whoamiFor(r, m.Principal, viaSession, nil)
-	who.Session = toSessionInfo(m.Session)
-	resp := exchangeResponse{whoamiResponse: who}
-	if plainHTTPRemote(r) {
-		resp.Warning = plainHTTPWarning
-		fmt.Fprintf(u.warn, "warning: web UI sign-in over plain HTTP from %s to %s: browsers drop the Secure session cookie there; serve dpkms behind TLS\n",
-			remoteHost(r), r.Host)
-	}
-	WriteJSON(w, http.StatusOK, resp)
+	u.finishSignIn(w, r, m)
 }
 
 const plainHTTPWarning = "this instance is reached over plain HTTP: browsers keep the Secure session cookie only over HTTPS or on localhost, so the sign-in will not stick"

@@ -1,140 +1,67 @@
 # AI Providers Environment Variables
 
-Configuration for OpenAI, Anthropic, Ollama, and the embedding provider.
+API keys for the hosted LLM and vision providers, and the embedding
+provider.
 
 ---
 
-## OpenAI
+## API keys
 
-### OPENAI_API_KEY
-**Type:** string (secret)\
-**Default:** _(none)_\
-**Required:** For OpenAI models
+Each key is looked up by its name in the active secrets store
+(`secrets.backend`, set with `dpkms secret set <KEY>`) first, then in the
+environment of the process that runs the step — usually `dpkms serve`.
+When both hold a key, the secrets store wins. The provider factory
+resolves the key once and hands it to the client, so the key that selects
+a provider is the key it sends. **Never commit them to version control.**
 
-OpenAI API key. **Never commit to version control.**
+| Env var | Used by |
+|---------|---------|
+| `OPENAI_API_KEY` | `openai` LLM and vision backends |
+| `ANTHROPIC_API_KEY` | `anthropic` LLM and vision backends |
+| `GEMINI_API_KEY` | `gemini` vision backend |
+| `OPENROUTER_API_KEY` | `openrouter` vision backend |
 
 ```bash
 OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-**Security:** Use secret management:
+**Security:** use secret management:
 ```bash
 OPENAI_API_KEY=$(vault kv get -field=key secret/openai)
 ```
 
-### OPENAI_MODEL
-**Type:** string\
-**Default:** `gpt-4-turbo-preview`
-
-Default OpenAI model for text generation.
-
-```bash
-OPENAI_MODEL=gpt-4-turbo-preview
-```
-
-**Available models:**
-- `gpt-4-turbo-preview` — Latest GPT-4 Turbo
-- `gpt-4` — GPT-4 base
-- `gpt-3.5-turbo` — Fast, cost-effective
-
-### OPENAI_MAX_TOKENS
-**Type:** integer\
-**Default:** `4096`
-
-Maximum tokens per API call.
-
-```bash
-OPENAI_MAX_TOKENS=8192
-```
-
-### OPENAI_TEMPERATURE
-**Type:** float (0.0-2.0)\
-**Default:** `0.7`
-
-Sampling temperature for generation.
-
-```bash
-OPENAI_TEMPERATURE=0.5
-```
+With `backend: auto` (the default), a key found in either place also
+selects the provider:
+the LLM tries Anthropic, then OpenAI, then falls back to Ollama; vision
+tries a local Ollama first, then OpenAI, Anthropic, Gemini, OpenRouter.
 
 ---
 
-## Anthropic (Claude)
+## Backend, model and endpoint
 
-### ANTHROPIC_API_KEY
-**Type:** string (secret)\
-**Default:** _(none)_
+No env vars. Set them per provider kind (`llm`, `vision`, `ocr`,
+`transcription`, `video`, `document`, `diarization`) in the config file, or
+with `-c`:
 
-Anthropic API key. **Never commit to version control.**
-
-```bash
-ANTHROPIC_API_KEY=sk-ant-...
+```yaml
+providers:
+  llm:
+    backend: auto                    # auto | anthropic | openai | ollama | stub
+    model: ""                        # empty = backend default
+    endpoint: http://localhost:11434 # Ollama URL
+  vision:
+    backend: auto                    # auto | ollama | openai | anthropic | gemini | openrouter | stub
+    model: llava
+    endpoint: http://localhost:11434
 ```
 
-### ANTHROPIC_MODEL
-**Type:** string\
-**Default:** `claude-3-opus-20240229`
-
-Default Claude model.
+LLM defaults when `model` is empty: `claude-haiku-4-5-20251001`
+(Anthropic), `gpt-4o-mini` (OpenAI), `llama3` (Ollama).
 
 ```bash
-ANTHROPIC_MODEL=claude-3-sonnet-20240229
+dpkms serve -c providers.llm.backend=ollama -c providers.llm.model=mistral
 ```
-
-**Available models:**
-- `claude-3-opus-20240229` — Most capable
-- `claude-3-sonnet-20240229` — Balanced
-- `claude-3-haiku-20240307` — Fast, lightweight
-
-### ANTHROPIC_MAX_TOKENS
-**Type:** integer\
-**Default:** `4096`
-
-Maximum tokens per API call.
-
-```bash
-ANTHROPIC_MAX_TOKENS=8192
-```
-
----
-
-## Ollama (Local Models)
-
-### OLLAMA_ENABLED
-**Type:** boolean\
-**Default:** `false`
-
-Enable Ollama for local AI models.
-
-```bash
-OLLAMA_ENABLED=true
-```
-
-### OLLAMA_HOST
-**Type:** string\
-**Default:** `http://localhost:11434`
-
-Ollama server URL.
-
-```bash
-OLLAMA_HOST=http://ollama.internal:11434
-```
-
-### OLLAMA_MODEL
-**Type:** string\
-**Default:** `llama2`
-
-Default Ollama model.
-
-```bash
-OLLAMA_MODEL=mistral
-```
-
-**Available models (download first):**
-- `llama2` — Meta's Llama 2
-- `mistral` — Mistral AI
-- `codellama` — Code-specialized
-- `phi` — Microsoft Phi
 
 ---
 
@@ -144,6 +71,10 @@ Semantic and hybrid search (`ctxt find`), ingest, and re-embedding
 (`ctxt embeddings migrate`, run by dpkms) use one embedding provider. Set
 it once in config, and override it for a single run without editing
 config.
+
+`ctxt find` sends its query to dpkms, which embeds it with the settings
+where `dpkms serve` runs (its `dpkms.yaml` and environment). ctxt's own
+settings reach only the `ctxt embeddings` commands and `ctxt find --graph`.
 
 This section is the settings reference. To turn semantic search on, see
 [Turn on semantic search](../manual/workflows/semantic-search.md); to
@@ -176,7 +107,7 @@ Each setting is resolved on its own, highest first:
 
 | Layer | Example |
 |-------|---------|
-| Flag (on `find`, `embeddings provider`, `embeddings register`) | `--embedding-provider`, `--embedding-model`, `--embedding-endpoint` |
+| Flag (on `find --graph`, `embeddings provider`, `embeddings register`) | `--embedding-provider`, `--embedding-model`, `--embedding-endpoint` |
 | Environment | `CTXT_EMBEDDING_PROVIDER`, `CTXT_EMBEDDING_MODEL`, `CTXT_EMBEDDING_ENDPOINT`, `CTXT_EMBEDDING_API_KEY_ENV` |
 | `-c` override | `-c providers.embedding.model=snowflake-arctic-embed2` |
 | Registered model | the model's endpoint and `api_key_env`, when a command targets a `model_id` |
@@ -188,9 +119,9 @@ still uses the model from env or config. The environment outranks `-c`
 for these settings.
 
 ```bash
-ctxt find "onboarding" --embedding-model snowflake-arctic-embed2
-CTXT_EMBEDDING_MODEL=snowflake-arctic-embed2 ctxt find "onboarding"
-ctxt find "onboarding" -c providers.embedding.model=snowflake-arctic-embed2
+ctxt embeddings provider --embedding-model snowflake-arctic-embed2
+CTXT_EMBEDDING_MODEL=snowflake-arctic-embed2 ctxt embeddings provider
+ctxt embeddings provider -c providers.embedding.model=snowflake-arctic-embed2
 ```
 
 ### Use a remote Ollama for one run
@@ -199,8 +130,8 @@ Forward a local port to the remote machine's Ollama (port 11434), for
 example with an SSH tunnel on local port 11555, then point the run at it:
 
 ```bash
-ctxt find "onboarding" --embedding-endpoint http://127.0.0.1:11555
-CTXT_EMBEDDING_ENDPOINT=http://127.0.0.1:11555 dpkms serve   # ingest + embeddings migrate
+ctxt find "onboarding" --graph --embedding-endpoint http://127.0.0.1:11555
+CTXT_EMBEDDING_ENDPOINT=http://127.0.0.1:11555 dpkms serve   # ingest, embeddings migrate, find queries
 ```
 
 The remote Ollama must have the model pulled.
@@ -247,8 +178,8 @@ registry entry and shown as "fixed by registry" (and listed under `fixed`
 in JSON): its stored vectors came from that model. Flags, env and `-c` can still change its endpoint and
 `api_key_env`, for example to reach it through a tunnel, but a value that
 would change its backend, model or dimension fails the command
-(`ctxt find` answers from full-text search with a `provider_error` notice
-instead).
+(`ctxt find --graph` answers from full-text search with a `provider_error`
+notice instead).
 
 `dpkms serve` prints the resolved provider at startup.
 
@@ -256,58 +187,15 @@ instead).
 
 ## Examples
 
-### OpenAI Only
-```bash
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4-turbo-preview
-OPENAI_MAX_TOKENS=4096
-OPENAI_TEMPERATURE=0.7
-```
-
-### Anthropic Only
+### Hosted LLM (Anthropic)
 ```bash
 ANTHROPIC_API_KEY=sk-ant-...
-ANTHROPIC_MODEL=claude-3-opus-20240229
-ANTHROPIC_MAX_TOKENS=4096
+dpkms serve -c providers.llm.backend=anthropic
 ```
 
-### Local with Ollama
+### Local only (Ollama)
 ```bash
-OLLAMA_ENABLED=true
-OLLAMA_HOST=http://localhost:11434
-OLLAMA_MODEL=mistral
-```
-
-### Multi-Provider (with fallback)
-```bash
-# Primary: OpenAI
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4-turbo-preview
-
-# Fallback: Anthropic
-ANTHROPIC_API_KEY=sk-ant-...
-ANTHROPIC_MODEL=claude-3-sonnet-20240229
-
-# Local development: Ollama
-OLLAMA_ENABLED=true
-OLLAMA_MODEL=llama2
-```
-
----
-
-## Cost Optimization
-
-**High volume, cost-conscious:**
-```bash
-OPENAI_MODEL=gpt-3.5-turbo  # Cheaper
-OPENAI_MAX_TOKENS=2048      # Lower limits
-```
-
-**Quality-focused:**
-```bash
-OPENAI_MODEL=gpt-4-turbo-preview
-OPENAI_MAX_TOKENS=8192
-OPENAI_TEMPERATURE=0.3  # More deterministic
+dpkms serve -c providers.llm.backend=ollama -c providers.llm.model=mistral
 ```
 
 ---
@@ -317,4 +205,3 @@ OPENAI_TEMPERATURE=0.3  # More deterministic
 - [../manual/workflows/semantic-search.md](../manual/workflows/semantic-search.md) — Turn on semantic search
 - [../manual/operations/embeddings.md](../manual/operations/embeddings.md) — Operate embedding models
 - [../ctxt/pipelines.md](../ctxt/pipelines.md) — Pipeline AI integration
-- [../scaling.md](../scaling.md#cost-optimization) — Cost optimization

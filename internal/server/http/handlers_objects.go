@@ -19,7 +19,7 @@ func GetObject(svc *service.Service) http.HandlerFunc {
 		id := chi.URLParam(r, "id")
 		obj, err := svc.GetObject(r.Context(), id)
 		if err != nil {
-			WriteError(w, http.StatusNotFound, "NOT_FOUND", "object not found")
+			writeObjectError(w, err)
 			return
 		}
 		WriteJSON(w, http.StatusOK, obj)
@@ -30,7 +30,7 @@ func GetObject(svc *service.Service) http.HandlerFunc {
 // object, 500 otherwise.
 func writeObjectError(w http.ResponseWriter, err error) {
 	if errors.Is(err, storage.ErrNotFound) {
-		WriteError(w, http.StatusNotFound, "NOT_FOUND", "object not found")
+		WriteError(w, http.StatusNotFound, CodeNotFound, "object not found")
 		return
 	}
 	WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())

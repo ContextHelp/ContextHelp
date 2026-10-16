@@ -40,6 +40,12 @@ const (
 	OpOut                 // =out=
 )
 
+// Spellings of the named RSQL operators, shared by the lexer and parser.
+const (
+	opInText  = "=in="
+	opOutText = "=out="
+)
+
 var operatorStrings = [...]string{
 	OpEq:  "==",
 	OpNeq: "!=",
@@ -47,8 +53,8 @@ var operatorStrings = [...]string{
 	OpGte: ">=",
 	OpLt:  "<",
 	OpLte: "<=",
-	OpIn:  "=in=",
-	OpOut: "=out=",
+	OpIn:  opInText,
+	OpOut: opOutText,
 }
 
 func (o Operator) String() string {

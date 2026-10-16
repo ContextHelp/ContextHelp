@@ -16,7 +16,7 @@
 //	  }
 //	}
 //
-// The envelope is INTENTIONALLY EXTENSIBLE. T-0580 (ADR-070, Phase 2)
+// The envelope is INTENTIONALLY EXTENSIBLE. ADR-070 Phase 2
 // adds an `upgrade` top-level field with the upgrade-state envelope:
 //
 //	{
@@ -35,7 +35,7 @@
 //     conforms to the schema; consumers can read the `checks` map to
 //     diagnose without parsing free-form error strings.
 //
-// The shape is fixed at this T-0564 ship; only additions are allowed.
+// The shape is fixed; only additions are allowed.
 package http
 
 import (
@@ -57,12 +57,20 @@ const (
 	HealthHealthy   HealthStatus = "healthy"
 	HealthDegraded  HealthStatus = "degraded"
 	HealthFailed    HealthStatus = "failed"
-	HealthUpgrading HealthStatus = "upgrading" // reserved for T-0580
+	HealthUpgrading HealthStatus = "upgrading" // set while an upgrade runs
+)
+
+// Per-subsystem signals in HealthChecks (process, rest_api, grpc_api,
+// db.status).
+const (
+	checkOK      = "ok"
+	checkFailed  = "failed"
+	checkUnknown = "unknown"
 )
 
 // HealthzEnvelope is the wire shape of a GET /healthz response.
 //
-// New top-level fields (e.g. `Upgrade` for T-0580) MUST be added with
+// New top-level fields (e.g. `Upgrade`) MUST be added with
 // `omitempty` so older clients receive a byte-identical payload until
 // the field is populated.
 type HealthzEnvelope struct {
@@ -70,7 +78,7 @@ type HealthzEnvelope struct {
 	Version       string           `json:"version"`
 	UptimeSeconds int64            `json:"uptime_seconds"`
 	Checks        HealthChecks     `json:"checks"`
-	Upgrade       *UpgradeSnapshot `json:"upgrade,omitempty"` // ADR-070 §5, T-0580.
+	Upgrade       *UpgradeSnapshot `json:"upgrade,omitempty"` // ADR-070 §5.
 }
 
 // UpgradeSnapshot is the read-only view of the in-flight upgrade reported
@@ -158,7 +166,7 @@ type HealthzProbes struct {
 	Watchers func(ctx context.Context) []WatcherCheck
 	// Upgrade returns the current upgrade-state envelope or nil when no
 	// upgrade is in progress. Wired by dpkms serve to the in-process
-	// upgrade.Manager (ADR-070 §5, T-0580).
+	// upgrade.Manager (ADR-070 §5).
 	Upgrade func(ctx context.Context) *UpgradeSnapshot
 }
 
@@ -167,10 +175,10 @@ type HealthzProbes struct {
 // failure as "queue: ok with zero depth" rather than poisoning the
 // envelope.
 func queueDepthsFromService(ctx context.Context, svc *service.Service) QueueCheck {
-	if svc == nil || svc.Store == nil {
+	if svc == nil {
 		return QueueCheck{}
 	}
-	jobStore := svc.Store.Jobs()
+	jobStore := svc.Store(ctx).Jobs()
 	if jobStore == nil {
 		return QueueCheck{}
 	}
@@ -204,13 +212,13 @@ func Healthz(svc *service.Service, probes HealthzProbes) http.HandlerFunc {
 // verdict with the same status code — enough for an LB, nothing about
 // version, queue depths, or upgrade progress. Public instances mount
 // this instead of Healthz.
-func RedactedHealthz(svc *service.Service, probes HealthzProbes, provider authn.Provider) http.HandlerFunc {
+func RedactedHealthz(svc *service.Service, probes HealthzProbes, chain *authn.Chain) http.HandlerFunc {
 	build := healthzBuilder(svc, probes)
 	return func(w http.ResponseWriter, r *http.Request) {
 		env := build(r.Context())
 		code := healthzStatusCode(env)
-		if provider != nil {
-			if _, err := provider.Authenticate(r.Context(), credentialFromRequest(r)); err == nil {
+		if chain != nil {
+			if _, err := chain.Authenticate(r.Context(), credentialFromRequest(r)); err == nil {
 				WriteJSON(w, code, env)
 				return
 			}
@@ -244,19 +252,19 @@ func healthzBuilder(svc *service.Service, probes HealthzProbes) func(context.Con
 			Version:       probes.Version,
 			UptimeSeconds: int64(time.Since(time.Unix(0, startedRef.Load())).Seconds()),
 			Checks: HealthChecks{
-				Process:  "ok",
-				RESTAPI:  "ok",
-				GRPCAPI:  "unknown",
+				Process:  checkOK,
+				RESTAPI:  checkOK,
+				GRPCAPI:  checkUnknown,
 				Watchers: []WatcherCheck{},
 			},
 		}
 
 		// DB probe — failed DB is the canonical "failed" signal.
-		dbStatus := "ok"
-		if svc == nil || svc.Store == nil {
-			dbStatus = "failed"
-		} else if err := svc.Store.Health(ctx); err != nil {
-			dbStatus = "failed"
+		dbStatus := checkOK
+		if svc == nil {
+			dbStatus = checkFailed
+		} else if err := svc.Store(ctx).Health(ctx); err != nil {
+			dbStatus = checkFailed
 		}
 		env.Checks.DB = DBCheck{Status: dbStatus}
 
@@ -266,14 +274,14 @@ func healthzBuilder(svc *service.Service, probes HealthzProbes) func(context.Con
 		// gRPC probe — optional.
 		if probes.GRPC != nil {
 			if probes.GRPC(ctx) {
-				env.Checks.GRPCAPI = "ok"
+				env.Checks.GRPCAPI = checkOK
 			} else {
-				env.Checks.GRPCAPI = "failed"
+				env.Checks.GRPCAPI = checkFailed
 			}
 		}
 
-		// Watcher introspection — optional. Stubbed to [] in T-0564 when
-		// no provider is wired; T-0580 callers (or a future watcher API)
+		// Watcher introspection — optional. Stubbed to [] when
+		// no provider is wired; upgrade callers (or a future watcher API)
 		// can supply richer data.
 		if probes.Watchers != nil {
 			if list := probes.Watchers(ctx); list != nil {
@@ -281,7 +289,7 @@ func healthzBuilder(svc *service.Service, probes HealthzProbes) func(context.Con
 			}
 		}
 
-		// Upgrade probe — optional (T-0580). When present and reporting
+		// Upgrade probe — optional. When present and reporting
 		// in_progress, the top-level Health flips to "upgrading"; for
 		// any other non-nil state we attach the envelope for visibility
 		// but leave the verdict to computeHealth.
@@ -307,10 +315,10 @@ func healthzBuilder(svc *service.Service, probes HealthzProbes) func(context.Con
 //     is stale OR gRPC reports "unknown" while a probe was supplied).
 //   - healthy  = everything green.
 func computeHealth(c HealthChecks) HealthStatus {
-	if c.DB.Status != "ok" {
+	if c.DB.Status != checkOK {
 		return HealthFailed
 	}
-	if c.GRPCAPI == "failed" {
+	if c.GRPCAPI == checkFailed {
 		return HealthFailed
 	}
 	if c.Queue.Failed > 0 {

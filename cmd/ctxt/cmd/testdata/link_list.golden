@@ -1,0 +1,24 @@
+$ ctxt link list obj_1 --follow 3
+→ [extends] obj_2
+  → [supports] obj_3
+    → [related-to] obj_4
+    → [superseded-by] obj_7
+$ ctxt link list obj_3 --follow 3
+→ [related-to] obj_4
+→ [superseded-by] obj_7
+→ [supported-by] obj_2
+  → [contradicts] obj_5
+  → [extended-by] obj_1
+    → [derived-from] obj_6
+$ ctxt link list obj_3
+  → [related-to] obj_4
+  → [superseded-by] obj_7 (newer research)
+  → [supported-by] obj_2
+  ← [supports] obj_2
+  ← [supersedes] obj_7 (newer research)
+$ ctxt link list obj_3 --type supported-by
+  → [supported-by] obj_2
+$ ctxt link list obj_7 --follow 2 --type supersedes
+→ [supersedes] obj_3
+$ ctxt link list obj_6 --follow 1
+→ [derived-to] obj_5

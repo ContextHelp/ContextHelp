@@ -1,5 +1,4 @@
-// Package redact is the source-side redaction hook (per ADR-066 §Phase 4
-// + T-0507).
+// Package redact is the source-side redaction hook (per ADR-066 §Phase 4).
 //
 // Per the storage-lives-in-kit principle, this package is a THIN SHIM
 // over kit/go/core/redact. The kit/core/redact package handles pattern

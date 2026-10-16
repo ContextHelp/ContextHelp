@@ -4,7 +4,7 @@ Snapshot date: February 18, 2026.
 
 ## Source references
 
-- Story catalog: [`../../stories/README.md`](../../stories/README.md)
+- Story catalog: [`docs/stories/README.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/stories/README.md)
 - Story files: `docs/stories/*/US-*.md`
 
 ## Observed inventory
@@ -20,7 +20,6 @@ Category breakdown:
 - admin: 5
 - operations: 5
 - agents: 5
-- plugins: 4
 - pipelines: 13
 
 ## Documented status in story README

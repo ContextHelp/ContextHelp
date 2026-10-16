@@ -1,7 +1,6 @@
 package integration
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -18,7 +17,7 @@ import (
 func seedLinkObject(t *testing.T, driver storage.StorageDriver, id string) {
 	t.Helper()
 	now := time.Now().Truncate(time.Second)
-	err := driver.Objects().Create(context.Background(), &storage.KnowledgeObject{
+	err := driver.Objects().Create(ownerCtx(), &storage.KnowledgeObject{
 		ID: id, Type: "text", CreatedAt: now, UpdatedAt: now,
 	})
 	require.NoError(t, err)
@@ -32,7 +31,7 @@ func createLink(
 	lt graph.LinkType,
 ) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now().Truncate(time.Second)
 
 	fwd := &storage.Edge{
@@ -58,7 +57,7 @@ func createLink(
 // both A→B (extends) and B→A (extended-by).
 func TestUS0406_BidirectionalLink(t *testing.T) {
 	driver := storageutil.NewTestDriver(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	seedLinkObject(t, driver, "obj_a")
 	seedLinkObject(t, driver, "obj_b")
@@ -89,7 +88,7 @@ func TestUS0406_BidirectionalLink(t *testing.T) {
 // both outbound and inbound object-object edges.
 func TestUS0406_ListLinks(t *testing.T) {
 	driver := storageutil.NewTestDriver(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	seedLinkObject(t, driver, "obj_x")
 	seedLinkObject(t, driver, "obj_y")
@@ -118,7 +117,7 @@ func TestUS0406_ListLinks(t *testing.T) {
 // traversal from A reaches C.
 func TestUS0406_FollowTraversal(t *testing.T) {
 	driver := storageutil.NewTestDriver(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	for _, id := range []string{"obj_1", "obj_2", "obj_3"} {
 		seedLinkObject(t, driver, id)
@@ -157,7 +156,7 @@ func TestUS0406_FollowTraversal(t *testing.T) {
 // links from/to that object.
 func TestUS0406_DeleteCascade(t *testing.T) {
 	driver := storageutil.NewTestDriver(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	seedLinkObject(t, driver, "obj_del")
 	seedLinkObject(t, driver, "obj_keep")

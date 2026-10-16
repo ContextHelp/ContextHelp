@@ -1,11 +1,14 @@
 // Package registry manages per-registry auth tokens stored in the OS keychain.
 // Tokens are NEVER written to the YAML config file; the keychain is the sole
-// canonical store. The YAML auth block carries only type metadata and optional
-// env-var hints (${VAR}) for CI/headless environments.
+// canonical store. The YAML auth block carries only type metadata.
+//
+// Each entry binds the token to the registry origin it was issued for at
+// login (scheme + host + port); Credentials release it only to that origin.
 package registry
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -37,32 +40,57 @@ func NewTokenStore() *TokenStore {
 	return &TokenStore{kc: keyring.New(keychainService)}
 }
 
-// Set stores token for registryName in the keychain. Existing tokens are
-// silently overwritten.
-func (s *TokenStore) Set(registryName, token string) error {
+// StoredToken is a registry token and the canonical origin
+// (CanonicalOrigin) of the registry URL it was stored for.
+type StoredToken struct {
+	Origin string `json:"origin"`
+	Token  string `json:"token"`
+}
+
+// Set stores token for registryName, bound to origin, in the keychain.
+// Existing tokens are silently overwritten.
+func (s *TokenStore) Set(registryName, origin, token string) error {
 	if registryName == "" {
 		return errors.New("registry: name must not be empty")
+	}
+	if origin == "" {
+		return errors.New("registry: origin must not be empty")
 	}
 	if token == "" {
 		return errors.New("registry: token must not be empty")
 	}
-	if err := s.kc.Set(context.Background(), registryName, []byte(token)); err != nil {
+	value, err := json.Marshal(StoredToken{Origin: origin, Token: token})
+	if err != nil {
+		return fmt.Errorf("registry: encode token: %w", err)
+	}
+	if err := s.kc.Set(context.Background(), registryName, value); err != nil {
 		return fmt.Errorf("registry: store token: %w", err)
 	}
 	return nil
 }
 
 // Get retrieves the token for registryName from the keychain.
-// Returns ErrNoToken when nothing is stored.
-func (s *TokenStore) Get(registryName string) (string, error) {
+// Returns ErrNoToken when nothing is stored, or when the entry records no
+// origin (nothing to bind it to).
+func (s *TokenStore) Get(registryName string) (StoredToken, error) {
 	got, err := s.kc.Get(context.Background(), registryName)
 	if err != nil {
 		if errors.Is(err, secret.ErrNotFound) {
-			return "", ErrNoToken{RegistryName: registryName}
+			return StoredToken{}, ErrNoToken{RegistryName: registryName}
 		}
-		return "", fmt.Errorf("registry: retrieve token: %w", err)
+		return StoredToken{}, fmt.Errorf("registry: retrieve token: %w", err)
 	}
-	return string(got.Value), nil
+	return decodeStoredToken(registryName, got.Value)
+}
+
+// decodeStoredToken parses a stored {origin, token} entry. An entry that
+// is not that JSON, or lacks either field, counts as no token.
+func decodeStoredToken(registryName string, value []byte) (StoredToken, error) {
+	var st StoredToken
+	if json.Unmarshal(value, &st) != nil || st.Origin == "" || st.Token == "" {
+		return StoredToken{}, ErrNoToken{RegistryName: registryName}
+	}
+	return st, nil
 }
 
 // Delete removes the stored token for registryName from the keychain.

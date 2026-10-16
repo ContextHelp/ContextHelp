@@ -23,14 +23,40 @@ type apiRoute struct {
 	Handler http.Handler
 }
 
+// RouteSpec is one apiRoutes entry without its handler: method, pattern
+// and scope. The leak suite (internal/sharing/leaktest) enumerates the
+// table through it.
+type RouteSpec struct {
+	// Method is the HTTP method; "" mounts the handler for every method.
+	Method string
+	// Pattern is the chi pattern relative to /api/v1.
+	Pattern string
+	// Scope is the scope a principal needs to reach the route.
+	Scope authn.Scope
+}
+
+// APIRouteSpecs returns the /api/v1 route-to-scope table as specs, in
+// table order. The table is static: only its handlers depend on the
+// service and router config, and they are left out.
+func APIRouteSpecs() []RouteSpec {
+	routes := apiRoutes(nil, RouterConfig{})
+	out := make([]RouteSpec, len(routes))
+	for i, rt := range routes {
+		out[i] = RouteSpec{Method: rt.Method, Pattern: rt.Pattern, Scope: rt.Scope}
+	}
+	return out
+}
+
 // apiRoutes is the /api/v1 route-to-scope table.
 func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 	mgr := rc.Watcher
 	ui := newUISessionRoutes(rc)
-	get, post, patch, del := http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodDelete
+	reg := newRegistryRoutes(rc)
+	sh := newShareRoutes(rc)
+	get, post, put, patch, del := http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete
 	return []apiRoute{
 		// Identity
-		{Method: get, Pattern: "/whoami", Scope: authn.ScopeReadSystem, Handler: Whoami(rc.Auth != nil, rc.Sessions)},
+		{Method: get, Pattern: "/whoami", Scope: authn.ScopeReadSystem, Handler: Whoami(rc.Auth != nil, rc.Sessions, rc.Registry, rc.Sharing)},
 
 		// Objects
 		{Method: get, Pattern: "/objects", Scope: authn.ScopeReadObjects, Handler: ListObjects(svc)},
@@ -41,6 +67,12 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		{Method: del, Pattern: "/objects/{id}", Scope: authn.ScopeDeleteObjects, Handler: DeleteObject(svc)},
 		{Method: post, Pattern: "/objects/{id}/reprocess", Scope: authn.ScopeWriteObjects, Handler: ReprocessObject(svc)},
 
+		// Typed links between objects. A web UI session reads them
+		// (read:objects) but never links or unlinks.
+		{Method: post, Pattern: "/edges", Scope: authn.ScopeWriteObjects, Handler: CreateEdge(svc)},
+		{Method: get, Pattern: "/objects/{id}/edges", Scope: authn.ScopeReadObjects, Handler: ObjectEdges(svc)},
+		{Method: del, Pattern: "/edges", Scope: authn.ScopeDeleteEdges, Handler: DeleteEdges(svc)},
+
 		// Analyze
 		{Method: post, Pattern: "/analyze", Scope: authn.ScopeWriteObjects, Handler: Analyze(svc)},
 
@@ -48,6 +80,7 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		{Method: get, Pattern: "/jobs", Scope: authn.ScopeReadJobs, Handler: ListJobs(svc)},
 		{Method: get, Pattern: "/jobs/{id}", Scope: authn.ScopeReadJobs, Handler: GetJob(svc)},
 		{Method: post, Pattern: "/jobs/{id}/retry", Scope: authn.ScopeWriteJobs, Handler: RetryJob(svc)},
+		{Method: post, Pattern: "/jobs/{id}/cancel", Scope: authn.ScopeCancelJobs, Handler: CancelJob(svc)},
 
 		// Search
 		{Method: get, Pattern: "/search", Scope: authn.ScopeReadObjects, Handler: Search(svc)},
@@ -67,6 +100,23 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		{Method: post, Pattern: "/entities/{slug}/pull", Scope: authn.ScopeWriteObjects, Handler: PullEntity(svc, rc.Entitlements)},
 		// Thin sync: trigger entity index sync for a registry.
 		{Method: post, Pattern: "/entities/registry-sync", Scope: authn.ScopeSyncRegistries, Handler: SyncRegistryEntities(svc)},
+		// Approval queue: entities untrusted registries served. Admin
+		// only, listing included: the payloads are unreviewed content
+		// from registries the instance does not trust. Static, so the
+		// GET wins over /entities/{slug}.
+		{Method: get, Pattern: "/entities/registry-pending", Scope: authn.ScopeSyncRegistries, Handler: ListPendingEntities(svc)},
+		{Method: post, Pattern: "/entities/registry-pending/approve", Scope: authn.ScopeSyncRegistries, Handler: ApprovePendingEntities(svc)},
+		{Method: post, Pattern: "/entities/registry-pending/reject", Scope: authn.ScopeSyncRegistries, Handler: RejectPendingEntities(svc)},
+
+		// Entity pages, the topic index and stats. Reads are knowledge
+		// reads a browser session may make; refresh and rebuild write.
+		{Method: get, Pattern: "/pages", Scope: authn.ScopeReadObjects, Handler: ListPages(svc)},
+		{Method: get, Pattern: "/pages/{slug}", Scope: authn.ScopeReadObjects, Handler: GetPage(svc)},
+		{Method: post, Pattern: "/pages/{slug}/refresh", Scope: authn.ScopeWriteObjects, Handler: RefreshPage(svc)},
+		{Method: get, Pattern: "/topic-index", Scope: authn.ScopeReadObjects, Handler: GetTopicIndex(svc)},
+		{Method: get, Pattern: "/topic-index/{topic}", Scope: authn.ScopeReadObjects, Handler: GetTopicEntries(svc)},
+		{Method: post, Pattern: "/topic-index", Scope: authn.ScopeWriteObjects, Handler: RebuildTopicIndex(svc)},
+		{Method: get, Pattern: "/stats", Scope: authn.ScopeReadObjects, Handler: Stats(svc, rc.Entitlements)},
 
 		// Pipelines
 		{Method: post, Pattern: "/pipelines", Scope: authn.ScopeAdminPipelines, Handler: CreatePipeline(svc)},
@@ -80,8 +130,8 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		// Steps
 		{Method: get, Pattern: "/steps", Scope: authn.ScopeReadPipelines, Handler: ListSteps(svc)},
 		{Method: get, Pattern: "/steps/{name}", Scope: authn.ScopeReadPipelines, Handler: GetStep(svc)},
-		{Method: post, Pattern: "/steps/install", Scope: authn.ScopeAdminPlugins, Handler: InstallStep(svc)},
-		{Method: del, Pattern: "/steps/{name}", Scope: authn.ScopeAdminPlugins, Handler: UninstallStep(svc)},
+		{Method: post, Pattern: "/steps/install", Scope: authn.ScopeAdminSteps, Handler: InstallStep(svc)},
+		{Method: del, Pattern: "/steps/{name}", Scope: authn.ScopeAdminSteps, Handler: UninstallStep(svc)},
 
 		// Registries
 		{Method: post, Pattern: "/steps/registries/fetch", Scope: authn.ScopeSyncRegistries, Handler: FetchRegistry(svc)},
@@ -131,12 +181,7 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		// SSE event stream (real-time updates)
 		{Method: get, Pattern: "/events", Scope: authn.ScopeReadObjects, Handler: HandleSSE(svc)},
 
-		// Suggestions (autosuggest plugin)
-		{Method: get, Pattern: "/suggestions", Scope: authn.ScopeReadObjects, Handler: ListSuggestions(svc)},
-		{Method: post, Pattern: "/suggestions/{id}/approve", Scope: authn.ScopeWriteObjects, Handler: ApproveSuggestion(svc)},
-		{Method: post, Pattern: "/suggestions/{id}/reject", Scope: authn.ScopeWriteObjects, Handler: RejectSuggestion(svc)},
-
-		// Aliases (aliasing plugin)
+		// Aliases (core alias store)
 		{Method: post, Pattern: "/aliases", Scope: authn.ScopeWriteObjects, Handler: CreateAlias(svc)},
 		{Method: get, Pattern: "/aliases", Scope: authn.ScopeReadObjects, Handler: ListAliases(svc)},
 		{Method: get, Pattern: "/aliases/{alias}", Scope: authn.ScopeReadObjects, Handler: ResolveAlias(svc)},
@@ -158,14 +203,15 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		{Method: get, Pattern: "/search-history", Scope: authn.ScopeReadObjects, Handler: ListSearchHistory(svc)},
 		{Method: del, Pattern: "/search-history", Scope: authn.ScopeDeleteSearches, Handler: ClearSearchHistory(svc)},
 
-		// Audit log
+		// Audit log, and the read audit of shared viewers (ADR-080 §9).
 		{Method: get, Pattern: "/audit-log", Scope: authn.ScopeAdminAudit, Handler: ListAuditLog(svc)},
+		{Method: get, Pattern: "/share/audit", Scope: authn.ScopeAdminAudit, Handler: http.HandlerFunc(sh.ListShareAudit)},
 
-		// Federation push needs write:objects AND the federation
-		// credential: on non-private instances federation.token is
-		// mandatory and the handler checks it itself.
+		// Federation push needs write:objects AND, on non-private
+		// instances, a peer principal: an inbound push authenticates
+		// with a peer's API key (ADR-079 §1), never with any principal.
 		{Method: post, Pattern: "/federation/push", Scope: authn.ScopeWriteObjects,
-			Handler: FederationPush(svc, rc.RequireFederationCredential)},
+			Handler: FederationPush(svc, rc.RequirePeerPrincipal)},
 
 		// MCP read surface (ADR-068): JSON-RPC 2.0 over POST, mounted
 		// as a sibling of the REST routes. Tool dispatch happens inside
@@ -178,5 +224,56 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		// session.
 		{Method: post, Pattern: "/ui/login-codes", Scope: authn.ScopeReadUI, Handler: http.HandlerFunc(ui.mintCode)},
 		{Method: del, Pattern: "/ui/session", Scope: authn.ScopeSignoutUI, Handler: http.HandlerFunc(ui.signOut)},
+
+		// Principal registry (ADR-079 §5). admin:principals manages
+		// every principal, its identities and keys, and mints sign-in
+		// links; admin:shares mints invites (ADR-080).
+		{Method: get, Pattern: "/principals", Scope: authn.ScopeAdminPrincipals, Handler: http.HandlerFunc(reg.ListPrincipals)},
+		{Method: post, Pattern: "/principals", Scope: authn.ScopeAdminPrincipals, Handler: http.HandlerFunc(reg.CreatePrincipal)},
+		{Method: get, Pattern: "/principals/{id}", Scope: authn.ScopeAdminPrincipals, Handler: http.HandlerFunc(reg.GetPrincipal)},
+		{Method: post, Pattern: "/principals/{id}/suspend", Scope: authn.ScopeAdminPrincipals, Handler: http.HandlerFunc(reg.SuspendPrincipal)},
+		{Method: post, Pattern: "/principals/{id}/revoke", Scope: authn.ScopeAdminPrincipals, Handler: http.HandlerFunc(reg.RevokePrincipal)},
+		{Method: post, Pattern: "/principals/{id}/links", Scope: authn.ScopeAdminPrincipals, Handler: http.HandlerFunc(ui.mintLink)},
+		{Method: get, Pattern: "/principals/{id}/identities", Scope: authn.ScopeAdminPrincipals, Handler: http.HandlerFunc(reg.ListIdentities)},
+		{Method: post, Pattern: "/principals/{id}/identities", Scope: authn.ScopeAdminPrincipals, Handler: http.HandlerFunc(reg.AddIdentity)},
+		{Method: del, Pattern: "/principals/{id}/identities/{identity}", Scope: authn.ScopeAdminPrincipals, Handler: http.HandlerFunc(reg.RemoveIdentity)},
+		{Method: get, Pattern: "/principals/{id}/keys", Scope: authn.ScopeAdminPrincipals, Handler: http.HandlerFunc(reg.ListPrincipalKeys)},
+		{Method: post, Pattern: "/principals/{id}/keys", Scope: authn.ScopeAdminPrincipals, Handler: http.HandlerFunc(reg.CreatePrincipalKey)},
+		{Method: del, Pattern: "/principals/{id}/keys/{key}", Scope: authn.ScopeAdminPrincipals, Handler: http.HandlerFunc(reg.RevokePrincipalKey)},
+		{Method: post, Pattern: "/share/invites", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(ui.mintInvite)},
+
+		// Sharing registry (ADR-080 §11): audiences and members, share
+		// policies, the built-in templates, grants, the per-principal
+		// ceiling and the policy a key narrows to, under admin:shares.
+		{Method: get, Pattern: "/share/audiences", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(sh.ListAudiences)},
+		{Method: post, Pattern: "/share/audiences", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(sh.CreateAudience)},
+		{Method: get, Pattern: "/share/audiences/{audience}", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(sh.GetAudience)},
+		{Method: put, Pattern: "/share/audiences/{audience}/members/{principal}", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(sh.AddMember)},
+		{Method: del, Pattern: "/share/audiences/{audience}/members/{principal}", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(sh.RemoveMember)},
+		{Method: get, Pattern: "/share/policies", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(sh.ListPolicies)},
+		{Method: post, Pattern: "/share/policies", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(sh.CreatePolicy)},
+		{Method: get, Pattern: "/share/policies/{policy}", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(sh.GetPolicy)},
+		{Method: put, Pattern: "/share/policies/{policy}", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(sh.UpdatePolicy)},
+		{Method: get, Pattern: "/share/templates", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(sh.ListTemplates)},
+		{Method: post, Pattern: "/share/templates/{name}", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(sh.InstallTemplate)},
+		{Method: get, Pattern: "/share/grants", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(sh.ListGrants)},
+		{Method: post, Pattern: "/share/grants", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(sh.CreateGrant)},
+		{Method: del, Pattern: "/share/grants/{grant}", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(sh.RevokeGrant)},
+		{Method: get, Pattern: "/principals/{id}/ceiling", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(sh.GetCeiling)},
+		{Method: put, Pattern: "/principals/{id}/ceiling", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(sh.SetCeiling)},
+		{Method: put, Pattern: "/share/keys/{key}/policy", Scope: authn.ScopeAdminShares, Handler: http.HandlerFunc(sh.BindKeyPolicy)},
+
+		// A principal's own credentials and sessions (write:self): the
+		// handlers check the target is the caller's.
+		{Method: get, Pattern: "/self/keys", Scope: authn.ScopeWriteSelf, Handler: http.HandlerFunc(reg.ListOwnKeys)},
+		{Method: post, Pattern: "/self/keys", Scope: authn.ScopeWriteSelf, Handler: http.HandlerFunc(reg.CreateOwnKey)},
+		{Method: del, Pattern: "/self/keys/{key}", Scope: authn.ScopeWriteSelf, Handler: http.HandlerFunc(reg.RevokeOwnKey)},
+		{Method: get, Pattern: "/self/identities", Scope: authn.ScopeWriteSelf, Handler: http.HandlerFunc(reg.ListOwnIdentities)},
+		{Method: del, Pattern: "/self/identities/{identity}", Scope: authn.ScopeWriteSelf, Handler: http.HandlerFunc(reg.RemoveOwnIdentity)},
+		{Method: get, Pattern: "/self/sessions", Scope: authn.ScopeWriteSelf, Handler: http.HandlerFunc(reg.ListOwnSessions)},
+		{Method: del, Pattern: "/self/sessions/{session}", Scope: authn.ScopeWriteSelf, Handler: http.HandlerFunc(reg.EndOwnSession)},
+		// A key narrows its principal to a share policy (ADR-080 §2);
+		// the caller binds its own keys here.
+		{Method: put, Pattern: "/self/keys/{key}/policy", Scope: authn.ScopeWriteSelf, Handler: http.HandlerFunc(sh.BindOwnKeyPolicy)},
 	}
 }

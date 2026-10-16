@@ -1,12 +1,19 @@
+// Package config loads, validates and lints the configuration shared by ctxt
+// and dpkms: built-in defaults, the system/user/project file cascade,
+// environment overrides and -c layers.
 package config
 
 import (
+	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/safefetch"
 	"github.com/ideacrafterslabs/ctxt/internal/urlfilter"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
@@ -17,7 +24,8 @@ import (
 const (
 	// EnvConfigPath is the environment variable for config path override
 	EnvConfigPath = "CTXT_CONFIG"
-	// EnvDataDir is the environment variable for data directory override
+	// EnvDataDir is the environment variable for the data directory
+	// (storage.data_dir). It names a directory, never the database file.
 	EnvDataDir = "CTXT_DATA_DIR"
 	// EnvProfile is the environment variable for default focus profile
 	EnvProfile = "CTXT_PROFILE"
@@ -43,9 +51,6 @@ type Config struct {
 
 	// RegistriesGlobal holds registry-wide settings that apply to all registries.
 	RegistriesGlobal RegistriesGlobalConfig `mapstructure:"registries_global" yaml:"registries_global"`
-
-	// Plugins configuration
-	Plugins []PluginConfig `mapstructure:"plugins" yaml:"plugins"`
 
 	// I18n configuration
 	I18n I18nConfig `mapstructure:"i18n" yaml:"i18n"`
@@ -89,16 +94,8 @@ type Config struct {
 	// Privacy controls user-facing privacy preferences.
 	Privacy PrivacyConfig `mapstructure:"privacy" yaml:"privacy"`
 
-	// Offline forces local-only operation: no registry sync, no LLM/embedding API calls.
-	// Set via --offline flag or config key offline.enabled.
-	// Default: false.
-	Offline OfflineConfig `mapstructure:"offline" yaml:"offline"`
-
 	// Resurfacing controls the background resurfacing queue.
 	Resurfacing ResurfacingConfig `mapstructure:"resurfacing" yaml:"resurfacing"`
-
-	// Audit controls SIEM-ready audit log export and forwarding.
-	Audit AuditConfig `mapstructure:"audit" yaml:"audit"`
 
 	// Security configures security alerting hooks.
 	Security SecurityConfig `mapstructure:"security" yaml:"security"`
@@ -118,9 +115,18 @@ type Config struct {
 	// Capture configures browser capture (open tabs, history).
 	Capture CaptureConfig `mapstructure:"capture" yaml:"capture"`
 
+	// Fetch governs which addresses a fetch of a captured URL may reach.
+	Fetch FetchConfig `mapstructure:"fetch" yaml:"fetch"`
+
+	// Steps locates external pipeline steps.
+	Steps StepsConfig `mapstructure:"steps" yaml:"steps"`
+
 	// Embeddings configures the embedding-model lifecycle guards of
 	// `ctxt embeddings set-default` and `purge` (ADR-071).
 	Embeddings EmbeddingsConfig `mapstructure:"embeddings" yaml:"embeddings"`
+
+	// Sharing configures content classes and sharing (ADR-080).
+	Sharing SharingConfig `mapstructure:"sharing" yaml:"sharing"`
 }
 
 // Embedding-model lifecycle defaults (ADR-071 "Default-flip control").
@@ -148,14 +154,55 @@ type EmbeddingsConfig struct {
 }
 
 // Validate rejects a MinCoverage outside 0..1 and a negative GracePeriod.
+// The error is a ValidationError naming the field.
 func (c EmbeddingsConfig) Validate() error {
 	if c.MinCoverage < 0 || c.MinCoverage > 1 {
-		return fmt.Errorf("embeddings.min_coverage must be a fraction between 0 and 1 such as 0.99, got %v", c.MinCoverage)
+		return ValidationError{Field: "embeddings.min_coverage", Message: fmt.Sprintf("must be a fraction between 0 and 1 such as 0.99, got %v", c.MinCoverage)}
 	}
 	if c.GracePeriod < 0 {
-		return fmt.Errorf("embeddings.grace_period must not be negative (a duration such as 720h), got %s", c.GracePeriod)
+		return ValidationError{Field: "embeddings.grace_period", Message: fmt.Sprintf("must not be negative (a duration such as 720h), got %s", c.GracePeriod)}
 	}
 	return nil
+}
+
+// FetchConfig governs the fetches of URLs a user or a captured page
+// supplied: captured pages, feeds, the links they carry and every
+// redirect on the way. By default those fetches refuse private-network
+// addresses (loopback, RFC 1918, ULA, link-local including cloud
+// metadata, CGNAT, multicast, unspecified, and their IPv4-mapped IPv6
+// forms), so a capture cannot make dpkms reach the services beside it.
+// Calls to configured endpoints (providers, registries, federation
+// peers) are not governed by it.
+type FetchConfig struct {
+	// AllowPrivate turns the private-network block off. Default false.
+	AllowPrivate bool `mapstructure:"allow_private" yaml:"allow_private"`
+	// AllowedHosts are host names a fetch may reach whatever they
+	// resolve to, such as an intranet wiki. Exact names, matched
+	// case-insensitively; no scheme, port or wildcard.
+	AllowedHosts []string `mapstructure:"allowed_hosts" yaml:"allowed_hosts,omitempty"`
+	// AllowedCIDRs are private ranges (10.20.0.0/16) or addresses
+	// (10.20.0.5) a fetch may reach anyway.
+	AllowedCIDRs []string `mapstructure:"allowed_cidrs" yaml:"allowed_cidrs,omitempty"`
+}
+
+// Policy returns the fetch policy these settings describe, or an error
+// naming the first malformed allowed_hosts / allowed_cidrs entry.
+func (c FetchConfig) Policy() (safefetch.Policy, error) {
+	return safefetch.ParsePolicy("fetch", c.AllowPrivate, c.AllowedHosts, c.AllowedCIDRs)
+}
+
+// FetchGuard returns the guard fetches of captured URLs dial through. A
+// nil cfg, or settings Load would have rejected, yield the default
+// guard: every private range blocked.
+func FetchGuard(cfg *Config) *safefetch.Guard {
+	if cfg == nil {
+		return safefetch.Default()
+	}
+	p, err := cfg.Fetch.Policy()
+	if err != nil {
+		return safefetch.Default()
+	}
+	return safefetch.New(safefetch.Options{Policy: p})
 }
 
 // CaptureConfig configures browser capture.
@@ -235,10 +282,38 @@ type BrowserConfig struct {
 }
 
 // FederationConfig holds server-side (receive-side) federation settings.
+// Inbound pushes authenticate like every other request: on a protected
+// or public instance with an API key bound to a peer principal
+// (ADR-079 §1); there is no separate push token.
 type FederationConfig struct {
-	// Token is the expected Bearer token for incoming push requests.
-	// Empty = no auth check; any token accepted.
-	Token string `mapstructure:"token" yaml:"token"`
+	// MaxRequestBytes caps the body of one incoming push request; a
+	// larger one is refused with 413. 0 = DefaultFederationMaxRequestBytes.
+	MaxRequestBytes int64 `mapstructure:"max_request_bytes" yaml:"max_request_bytes"`
+}
+
+const (
+	// DefaultFederationMaxRequestBytes is federation.max_request_bytes
+	// unset. A pusher batches requests up to
+	// MinFederationMaxRequestBytes of objects but sends a larger object
+	// alone, content inline: raw and text, each JSON-escaped. The
+	// largest object a pipeline reads (file_reader's 50 MB cap) comes to
+	// about 100 MB that way, plus escaping; this leaves room for that.
+	// An object captured directly (CLI, POST /api/v1/objects), which
+	// nothing caps, can exceed it: its pusher skips it after 3 refusals.
+	DefaultFederationMaxRequestBytes int64 = 256 << 20
+	// MinFederationMaxRequestBytes is the encoded objects a pusher puts
+	// in one request (federation.DefaultMaxRequestBytes): a lower limit
+	// would refuse ordinary batches.
+	MinFederationMaxRequestBytes int64 = 4 << 20
+)
+
+// RequestLimit returns the push body limit: MaxRequestBytes, or
+// DefaultFederationMaxRequestBytes when it is 0.
+func (f FederationConfig) RequestLimit() int64 {
+	if f.MaxRequestBytes == 0 {
+		return DefaultFederationMaxRequestBytes
+	}
+	return f.MaxRequestBytes
 }
 
 // FederationEntry describes one remote dPKMS instance to federate with.
@@ -246,42 +321,35 @@ type FederationEntry struct {
 	// Name is a unique local identifier for this federation peer.
 	Name string `mapstructure:"name" yaml:"name"`
 	// URL is the address of the remote dPKMS instance (e.g. https://host:8080 or file:///path/to/db).
-	URL string `mapstructure:"url" yaml:"url"`
+	URL string `mapstructure:"url" yaml:"url" secret:"dsn"`
 	// Interval is how often to sync. Required for async mode; zero = no scheduled sync.
 	Interval time.Duration `mapstructure:"interval" yaml:"interval"`
 	// SyncMode controls how sync runs. Valid values: "async" | "inline".
 	SyncMode string `mapstructure:"sync_mode" yaml:"sync_mode"`
 	// Token is the Bearer token sent to the remote instance. Empty = no auth header sent.
 	// Tokens are stored here for remote HTTP peers only; local file targets use path-level auth.
-	Token string `mapstructure:"token" yaml:"token"`
+	Token string `mapstructure:"token" yaml:"token" secret:"true"`
+	// Blob is the blob store of a file target, shaped like storage.blob:
+	// a local push copies each pushed object's blob into it. Unset, it is
+	// the default store of a data dir holding the target database — local,
+	// blobs/ beside it; see FileTargetBlob. Only file targets take it.
+	Blob *BlobConfig `mapstructure:"blob" yaml:"blob,omitempty"`
 }
 
-// AuditConfig controls SIEM-ready audit log export and real-time forwarding.
-type AuditConfig struct {
-	// Syslog forwards each audit event to a remote syslog receiver.
-	Syslog AuditSyslogConfig `mapstructure:"syslog" yaml:"syslog"`
-	// Webhook POSTs each audit event as JSON to a configurable URL.
-	Webhook AuditWebhookConfig `mapstructure:"webhook" yaml:"webhook"`
-}
-
-// AuditSyslogConfig holds syslog forwarding settings.
-type AuditSyslogConfig struct {
-	// Enabled activates syslog forwarding. Default: false.
-	Enabled bool `mapstructure:"enabled" yaml:"enabled"`
-	// Protocol is the transport: "udp", "tcp", or "tls". Default: "udp".
-	Protocol string `mapstructure:"protocol" yaml:"protocol"`
-	// Address is host:port of the syslog receiver. Default: "localhost:514".
-	Address string `mapstructure:"address" yaml:"address"`
-	// Facility is the syslog facility name (e.g. "local0"). Default: "local0".
-	Facility string `mapstructure:"facility" yaml:"facility"`
-}
-
-// AuditWebhookConfig holds webhook delivery settings.
-type AuditWebhookConfig struct {
-	// Enabled activates webhook delivery. Default: false.
-	Enabled bool `mapstructure:"enabled" yaml:"enabled"`
-	// URL is the HTTP/HTTPS endpoint that receives POST requests.
-	URL string `mapstructure:"url" yaml:"url"`
+// FileTargetBlob is the blob store of the file federation target whose
+// database is at dbPath: set when the entry has one, else the default
+// store of a data dir holding that database (as resolveDataPaths fills
+// storage.blob): the local backend at BlobDirName beside it. A local set
+// without local.path gets that same path.
+func FileTargetBlob(dbPath string, set *BlobConfig) BlobConfig {
+	var b BlobConfig
+	if set != nil {
+		b = *set
+	}
+	if (b.Backend == "" || b.Backend == blobBackendLocal) && b.Local.Path == "" {
+		b.Local.Path = filepath.Join(filepath.Dir(dbPath), BlobDirName)
+	}
+	return b
 }
 
 // SecurityConfig holds security alerting hook settings.
@@ -298,9 +366,12 @@ type SecurityAlertsConfig struct {
 	// Default: 10.
 	ACLDenialThreshold int `mapstructure:"acl_denial_threshold" yaml:"acl_denial_threshold"`
 	// WebhookURL is an optional endpoint for webhook alerts (empty = disabled).
-	WebhookURL string `mapstructure:"webhook_url" yaml:"webhook_url"`
+	WebhookURL string `mapstructure:"webhook_url" yaml:"webhook_url" secret:"true"`
 	// SMTP holds optional SMTP delivery config.
 	SMTP SecuritySMTPConfig `mapstructure:"smtp" yaml:"smtp"`
+	// DeliveryTimeout bounds each webhook POST and SMTP session.
+	// Default: 10s.
+	DeliveryTimeout time.Duration `mapstructure:"delivery_timeout" yaml:"delivery_timeout"`
 }
 
 // SecuritySMTPConfig holds SMTP delivery settings for security alerts.
@@ -309,17 +380,6 @@ type SecuritySMTPConfig struct {
 	Port int    `mapstructure:"port" yaml:"port"`
 	From string `mapstructure:"from" yaml:"from"`
 	To   string `mapstructure:"to" yaml:"to"`
-}
-
-// OfflineConfig controls strict offline (air-gapped) operation mode.
-// When Enabled is true:
-//   - Registry sync jobs are queued but not executed.
-//   - Unresolved mentions create local stub entities.
-//   - LLM and embedding API calls are skipped; pipelines degrade gracefully.
-//   - Plugins that require network access are denied.
-type OfflineConfig struct {
-	// Enabled activates strict offline mode. Default: false.
-	Enabled bool `mapstructure:"enabled" yaml:"enabled"`
 }
 
 // ResurfacingConfig controls the background resurfacing queue process.
@@ -516,9 +576,51 @@ type BackupConfig struct {
 
 // StorageConfig represents storage configuration
 type StorageConfig struct {
-	Type string     `mapstructure:"type" yaml:"type"`
-	Path string     `mapstructure:"path" yaml:"path"`
+	Type string `mapstructure:"type" yaml:"type"`
+	// DataDir is the base data directory: the run/ dir (pidfiles,
+	// instance selection) and the defaults for Path and Blob.Local.Path
+	// live under it. Default: the XDG data dir for contexthelp.
+	DataDir string `mapstructure:"data_dir" yaml:"data_dir"`
+	// Path is the SQLite database file, or the PostgreSQL connection
+	// string. Default: <DataDir>/db.sqlite.
+	Path string     `mapstructure:"path" yaml:"path" secret:"dsn"`
 	Blob BlobConfig `mapstructure:"blob" yaml:"blob"`
+	// MigrateSnapshot copies a SQLite database into backups/ beside it
+	// before an open applies pending schema migrations. Default: true.
+	// Postgres is never snapshotted.
+	MigrateSnapshot bool `mapstructure:"migrate_snapshot" yaml:"migrate_snapshot"`
+}
+
+// Names of the default entries under the data directory.
+const (
+	// DBFileName is the default SQLite database file in the data dir.
+	DBFileName = "db.sqlite"
+	// BlobDirName is the default local blob directory in the data dir.
+	BlobDirName = "blobs"
+	// runDirName holds pidfiles and other runtime state.
+	runDirName = "run"
+)
+
+// resolveDataPaths fills every storage default that derives from the
+// data directory. It runs after all layers merged, so a data dir set by
+// a file, env or override moves the defaults with it, while an explicit
+// storage.path or storage.blob.local.path is left alone. This is the one
+// place those defaults are computed.
+func (s *StorageConfig) resolveDataPaths() error {
+	if s.DataDir == "" {
+		dir, err := DefaultDataDir()
+		if err != nil {
+			return err
+		}
+		s.DataDir = dir
+	}
+	if s.Path == "" {
+		s.Path = filepath.Join(s.DataDir, DBFileName)
+	}
+	if s.Blob.Local.Path == "" {
+		s.Blob.Local.Path = filepath.Join(s.DataDir, BlobDirName)
+	}
+	return nil
 }
 
 // BlobConfig holds configuration for the blob storage backend.
@@ -536,12 +638,12 @@ type BlobLocalConfig struct {
 
 // BlobS3Config configures the S3-compatible blob backend.
 type BlobS3Config struct {
-	Endpoint      string        `mapstructure:"endpoint" yaml:"endpoint"`
+	Endpoint      string        `mapstructure:"endpoint" yaml:"endpoint" secret:"dsn"`
 	Region        string        `mapstructure:"region" yaml:"region"`
 	Bucket        string        `mapstructure:"bucket" yaml:"bucket"`
 	Prefix        string        `mapstructure:"prefix" yaml:"prefix"`
-	AccessKey     string        `mapstructure:"access_key" yaml:"access_key"`
-	SecretKey     string        `mapstructure:"secret_key" yaml:"secret_key"`
+	AccessKey     string        `mapstructure:"access_key" yaml:"access_key" secret:"true"`
+	SecretKey     string        `mapstructure:"secret_key" yaml:"secret_key" secret:"true"`
 	UsePathStyle  bool          `mapstructure:"use_path_style" yaml:"use_path_style"`
 	PresignExpiry time.Duration `mapstructure:"presign_expiry" yaml:"presign_expiry"`
 	MaxRetries    int           `mapstructure:"max_retries" yaml:"max_retries"`
@@ -560,20 +662,57 @@ const (
 	AccessPublic = "public"
 )
 
+// Built-in listener ports of dpkms serve, used when no flag, env var or
+// config file sets one. Unlike a set port they are preferred, not
+// required: serve moves off a busy default to a free port.
+const (
+	DefaultServerPort = 8080
+	DefaultGRPCPort   = 9090
+	// DefaultCookieBridgePort is the port the browser extension
+	// connects to.
+	DefaultCookieBridgePort = 9377
+)
+
+// Built-in defaults of dpkms serve's other settings.
+const (
+	// DefaultServerWorkers is the job worker count (server.workers).
+	DefaultServerWorkers = 4
+	// DefaultReminderInterval is how often serve checks for due
+	// reminders (server.reminder_interval).
+	DefaultReminderInterval = time.Minute
+)
+
 // ServerConfig represents server configuration
 type ServerConfig struct {
-	Port     int  `mapstructure:"port" yaml:"port"`
-	GRPCPort int  `mapstructure:"grpc_port" yaml:"grpc_port"`
-	Workers  int  `mapstructure:"workers" yaml:"workers"`
-	Public   bool `mapstructure:"public" yaml:"public"`
+	// Port, GRPCPort and CookieBridgePort are serve's HTTP, gRPC and
+	// cookie-bridge listener ports. After Load each holds its effective
+	// value; PortSet, GRPCPortSet and CookieBridgePortSet report whether
+	// it came from a config file, -c override or env var rather than the
+	// built-in default. 0 asks for an OS-assigned port.
+	Port             int  `mapstructure:"port" yaml:"port"`
+	GRPCPort         int  `mapstructure:"grpc_port" yaml:"grpc_port"`
+	CookieBridgePort int  `mapstructure:"cookie_bridge_port" yaml:"cookie_bridge_port"`
+	Workers          int  `mapstructure:"workers" yaml:"workers"`
+	Public           bool `mapstructure:"public" yaml:"public"`
+
+	// Dev enables CORS for the Vite dev server (http://localhost:5173).
+	Dev bool `mapstructure:"dev" yaml:"dev"`
+	// ReminderInterval is how often serve checks for due reminders.
+	ReminderInterval time.Duration `mapstructure:"reminder_interval" yaml:"reminder_interval"`
 	// Access classifies the instance: "private" (default), "protected",
 	// or "public". Empty means unset; EffectiveAccess resolves the
 	// default and the legacy server.public shorthand.
 	Access string `mapstructure:"access" yaml:"access"`
-	// Auth selects and configures the inbound authentication provider.
-	// Consumed through the internal/auth Provider interface so the
-	// identity backend is an ops decision, never a rebuild.
-	Auth AuthConfig `mapstructure:"auth" yaml:"auth"`
+	// PublicURL is the URL people open the instance at: the base of
+	// every invite and sign-in link (ADR-079 §4). Required on a
+	// protected or public instance whose server.auth.sign_in lists a
+	// link method, which the default does.
+	PublicURL string `mapstructure:"public_url" yaml:"public_url,omitempty" secret:"false"`
+	// Auth configures inbound authentication on protected and public
+	// instances: the authenticator chain, the sign-in ceremonies and
+	// keys declared by hash. Credentials themselves live in the
+	// instance database (dpkms auth key create).
+	Auth AuthConfig `mapstructure:"auth" yaml:"auth,omitempty"`
 	// Quotas declares per-principal metering quotas enforced on the
 	// entity-serving surface of non-private instances. Namespace
 	// entitlement grants are data (entitlement rows keyed by principal
@@ -592,7 +731,7 @@ type ServerConfig struct {
 	// URL is the single dpkms instance clients route to when URLs is
 	// empty (also settable per command with --server where the flag
 	// exists). Validated at load: scheme http/https + host required.
-	URL string `mapstructure:"url" yaml:"url,omitempty"`
+	URL string `mapstructure:"url" yaml:"url,omitempty" secret:"dsn"`
 	// URLs lists the dpkms instances this client knows. Without a
 	// selection (--server, --instance, CTXT_INSTANCE, `ctxt instance
 	// use`) clients talk to the first entry and never to the others:
@@ -604,7 +743,58 @@ type ServerConfig struct {
 	// Token is the default bearer token clients attach to requests
 	// against instances whose URLs entry carries no token of its own.
 	// Empty = unauthenticated.
-	Token string `mapstructure:"token" yaml:"token,omitempty"`
+	Token string `mapstructure:"token" yaml:"token,omitempty" secret:"true"`
+
+	// portsSet records which listener ports a layer above the built-in
+	// defaults set; filled by Load.
+	portsSet struct{ http, grpc, cookieBridge bool }
+}
+
+// PortSet reports whether Port was set by a config file, -c override or
+// CH_SERVER_PORT rather than left at DefaultServerPort.
+func (s ServerConfig) PortSet() bool { return s.portsSet.http }
+
+// GRPCPortSet reports whether GRPCPort was set by a config file, -c
+// override or CH_GRPC_PORT rather than left at DefaultGRPCPort.
+func (s ServerConfig) GRPCPortSet() bool { return s.portsSet.grpc }
+
+// CookieBridgePortSet reports whether CookieBridgePort was set by a
+// config file, -c override or CH_COOKIE_BRIDGE_PORT rather than left at
+// DefaultCookieBridgePort.
+func (s ServerConfig) CookieBridgePortSet() bool { return s.portsSet.cookieBridge }
+
+// portUnset marks a listener port no layer has set yet. Load seeds the
+// ports with it before merging files, env and overrides; whatever is
+// still portUnset afterwards takes its built-in default. No YAML file or
+// env var plausibly carries this value, and 0 cannot serve as the
+// marker because it means "OS-assigned port".
+const portUnset = math.MinInt
+
+// seedListenPorts marks every listener port unset.
+func (s *ServerConfig) seedListenPorts() {
+	s.Port, s.GRPCPort, s.CookieBridgePort = portUnset, portUnset, portUnset
+}
+
+// resolveListenPorts gives each port still unset its built-in default
+// and records which ones a layer set.
+func (s *ServerConfig) resolveListenPorts() {
+	resolve := func(port *int, def int) bool {
+		if *port == portUnset {
+			*port = def
+			return false
+		}
+		return true
+	}
+	s.portsSet.http = resolve(&s.Port, DefaultServerPort)
+	s.portsSet.grpc = resolve(&s.GRPCPort, DefaultGRPCPort)
+	s.portsSet.cookieBridge = resolve(&s.CookieBridgePort, DefaultCookieBridgePort)
+}
+
+// StepsConfig locates external pipeline steps.
+type StepsConfig struct {
+	// Path is the external steps directory serve loads. Empty means
+	// ~/.config/contexthelp/steps.
+	Path string `mapstructure:"path" yaml:"path"`
 }
 
 // ServerUIConfig configures the web UI.
@@ -652,52 +842,130 @@ func (s ServerConfig) EffectiveAccess() string {
 	return AccessPrivate
 }
 
-// AuthConfig selects the inbound authentication provider and its settings.
+// Authenticators server.auth.methods may list (ADR-079 §2). Carried
+// methods present a credential the client chose for the request;
+// ambient ones ride along with every request a browser or proxy sends.
+const (
+	// AuthMethodAPIKey authenticates an API key in Authorization: Bearer
+	// or X-API-Key. Mandatory: every instance keeps a way in for the
+	// CLI and for bootstrap.
+	AuthMethodAPIKey = "api_key"
+	// AuthMethodSession authenticates the web UI session cookie.
+	AuthMethodSession = "session"
+)
+
+// AuthMethods lists the authenticators this build implements.
+var AuthMethods = []string{AuthMethodAPIKey, AuthMethodSession}
+
+// ReservedAuthMethods are named by ADR-079 but not yet implemented;
+// listing one fails validation naming it.
+var ReservedAuthMethods = []string{"proxy", "mtls", "jwt"}
+
+// Sign-in ceremonies server.auth.sign_in may list: the ways a browser
+// session gets minted (ADR-079 §2).
+const (
+	// AuthSignInInvite redeems a single-use invite link.
+	AuthSignInInvite = "invite"
+	// AuthSignInLink redeems a single-use sign-in link for an existing
+	// principal.
+	AuthSignInLink = "link"
+)
+
+// AuthSignIns lists the ceremonies this build implements.
+var AuthSignIns = []string{AuthSignInInvite, AuthSignInLink}
+
+// ReservedAuthSignIns are named by ADR-079 but not yet implemented.
+var ReservedAuthSignIns = []string{"passkey", "oidc"}
+
+// DefaultAuthMethods and DefaultAuthSignIn are what a protected or
+// public instance gets when the lists are unset.
+var (
+	DefaultAuthMethods = []string{AuthMethodAPIKey, AuthMethodSession}
+	DefaultAuthSignIn  = []string{AuthSignInInvite, AuthSignInLink}
+)
+
+// AuthConfig configures inbound authentication on protected and public
+// instances (ADR-079). A private instance ignores it.
 type AuthConfig struct {
-	// Provider names the authentication backend. "static" is implemented;
-	// "oidc" and "mtls" are reserved for future backends behind the same
-	// interface. Empty = no inbound auth configured.
-	Provider string `mapstructure:"provider" yaml:"provider"`
-	// Static configures the static token/API-key provider.
-	Static StaticAuthConfig `mapstructure:"static" yaml:"static"`
+	// Methods are the authenticators tried on every request. Carried
+	// methods run before ambient ones whatever the order here; within
+	// each group this order applies. Unset means DefaultAuthMethods;
+	// api_key is always required.
+	Methods []string `mapstructure:"methods" yaml:"methods,omitempty"`
+	// SignIn are the ceremonies allowed to mint a browser session. Unset
+	// means DefaultAuthSignIn; an empty list disables every ceremony.
+	SignIn []string `mapstructure:"sign_in" yaml:"sign_in,omitempty"`
+	// Keys declares API keys by hash, for infrastructure as code. A key
+	// written here in the clear is refused by validation.
+	Keys []AuthKeyConfig `mapstructure:"keys" yaml:"keys,omitempty"`
 }
 
-// StaticAuthConfig holds credentials for the static token provider.
-type StaticAuthConfig struct {
-	// Tokens maps bearer tokens / API keys to principals.
-	Tokens []StaticTokenConfig `mapstructure:"tokens" yaml:"tokens"`
-}
-
-// StaticTokenConfig is one accepted credential and the principal it
-// authenticates as.
-type StaticTokenConfig struct {
-	// Token is the shared secret presented by the caller.
-	Token string `mapstructure:"token" yaml:"token"`
-	// Principal is the stable identity assigned to callers of this token.
+// AuthKeyConfig is one API key declared by hash (ADR-079 §4): the
+// api_key method accepts a presented key whose SHA-256 matches Hash and
+// resolves it to Principal.
+type AuthKeyConfig struct {
+	// Hash is "sha256:" followed by the hex SHA-256 of the key itself:
+	// printf %s "$KEY" | sha256sum. Never the key.
+	Hash string `mapstructure:"hash" yaml:"hash"`
+	// Principal is the id of the principal the key acts for: owner, or a
+	// prn_ id the registry holds.
 	Principal string `mapstructure:"principal" yaml:"principal"`
-	// Roles grants fixed scope bundles to the principal: one or more of
-	// AuthRoles. admin holds every scope; writer every read and write
-	// scope; reader every read scope.
-	Roles []string `mapstructure:"roles" yaml:"roles"`
+	// Roles narrows the key to these role bundles; empty means the
+	// principal's own roles. A key never reaches past its principal.
+	Roles []string `mapstructure:"roles" yaml:"roles,omitempty"`
+	// Expires, when set, is when the key stops working: an RFC 3339
+	// time, or a date (2026-12-31), which expires at the end of that
+	// day, UTC.
+	Expires string `mapstructure:"expires" yaml:"expires,omitempty"`
 }
 
-// AuthRoles are the roles a static token may carry, most to least
-// privileged. The scope each one grants lives in internal/auth.
+// ExpiresAt parses Expires; zero when unset.
+func (k AuthKeyConfig) ExpiresAt() (time.Time, error) {
+	s := strings.TrimSpace(k.Expires)
+	if s == "" {
+		return time.Time{}, nil
+	}
+	if day, err := time.Parse(time.DateOnly, s); err == nil {
+		return day.AddDate(0, 0, 1), nil
+	}
+	at, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("expires %q: give an RFC 3339 time or a date (2026-12-31)", k.Expires)
+	}
+	return at.UTC(), nil
+}
+
+// AuthRoles are the roles a principal or a declared key may carry,
+// most to least privileged. The scope each one grants lives in
+// internal/auth.
 var AuthRoles = []string{"admin", "writer", "reader"}
 
-// HasInboundAuth reports whether the auth config carries a usable
-// credential set: a provider is selected and (for the static provider)
-// at least one token is configured. Reserved providers count as
-// configured here; their sub-config is validated at construction time.
-func (a AuthConfig) HasInboundAuth() bool {
-	switch a.Provider {
-	case "":
-		return false
-	case "static":
-		return len(a.Static.Tokens) > 0
-	default:
-		return true
+// EffectiveMethods returns Methods, or DefaultAuthMethods when unset.
+func (a AuthConfig) EffectiveMethods() []string {
+	if a.Methods == nil {
+		return slices.Clone(DefaultAuthMethods)
 	}
+	return slices.Clone(a.Methods)
+}
+
+// EffectiveSignIn returns SignIn, or DefaultAuthSignIn when unset. An
+// explicit empty list stays empty: no ceremony may mint a session.
+func (a AuthConfig) EffectiveSignIn() []string {
+	if a.SignIn == nil {
+		return slices.Clone(DefaultAuthSignIn)
+	}
+	return slices.Clone(a.SignIn)
+}
+
+// NeedsPublicURL reports whether the effective sign-in list holds a
+// method that builds links, which server.public_url is the base of.
+func (a AuthConfig) NeedsPublicURL() bool {
+	for _, m := range a.EffectiveSignIn() {
+		if m == AuthSignInInvite || m == AuthSignInLink {
+			return true
+		}
+	}
+	return false
 }
 
 // ServerEndpoint is one client-routing target: a dpkms base URL plus an
@@ -714,8 +982,8 @@ func (a AuthConfig) HasInboundAuth() bool {
 //	      token: s3cret
 type ServerEndpoint struct {
 	Name  string `mapstructure:"name,omitempty" yaml:"name,omitempty"`
-	URL   string `mapstructure:"url" yaml:"url"`
-	Token string `mapstructure:"token,omitempty" yaml:"token,omitempty"`
+	URL   string `mapstructure:"url" yaml:"url" secret:"dsn"`
+	Token string `mapstructure:"token,omitempty" yaml:"token,omitempty" secret:"true"`
 }
 
 // UnmarshalYAML accepts both entry forms: a bare string URL and a
@@ -820,10 +1088,31 @@ const (
 	RegistryAuthOAuth2 RegistryAuthType = "oauth2"
 )
 
+// DefaultRegistryAPIKeyHeader is the header api_key auth uses when
+// header_name is unset.
+const DefaultRegistryAPIKeyHeader = "X-API-Key"
+
+// Known reports whether t is a supported auth mechanism. The empty type
+// (no auth block) is not one: such a registry is public.
+func (t RegistryAuthType) Known() bool {
+	switch t {
+	case RegistryAuthBearer, RegistryAuthAPIKey, RegistryAuthOAuth2:
+		return true
+	}
+	return false
+}
+
 // RegistryAuthConfig holds auth metadata for a registry.
 // Tokens are NEVER stored here — they live in the OS keychain.
+//
+// A registry with a Type gets its stored token (ctxt registry login) on
+// every request to its host: bearer and oauth2 as "Authorization: Bearer
+// <token>", api_key as "<HeaderName>: <token>". A registry without one is
+// public: no token is looked up or sent.
 type RegistryAuthConfig struct {
 	// Type selects the auth mechanism: bearer | api_key | oauth2.
+	// oauth2 sends a stored access token as a bearer token; there is no
+	// refresh flow.
 	Type RegistryAuthType `mapstructure:"type" yaml:"type"`
 	// HeaderName overrides the HTTP header used for api_key auth.
 	// Defaults to "X-API-Key". Ignored for bearer and oauth2 types.
@@ -859,7 +1148,7 @@ const (
 // RegistryConfig represents a registry configuration
 type RegistryConfig struct {
 	Name     string             `mapstructure:"name"      yaml:"name"`
-	URL      string             `mapstructure:"url"       yaml:"url"`
+	URL      string             `mapstructure:"url"       yaml:"url" secret:"dsn"`
 	Auth     RegistryAuthConfig `mapstructure:"auth,omitempty" yaml:"auth,omitempty"`
 	SyncMode RegistrySyncMode   `mapstructure:"sync_mode" yaml:"sync_mode"`
 	// TrustLevel controls what the registry is allowed to do to the local graph.
@@ -870,7 +1159,7 @@ type RegistryConfig struct {
 	// When empty, no entitlement check is performed.
 	// Typically populated at runtime from the registry manifest; can also be
 	// declared explicitly in config for override scenarios.
-	EntitlementURL string `mapstructure:"entitlement_url,omitempty" yaml:"entitlement_url,omitempty"`
+	EntitlementURL string `mapstructure:"entitlement_url,omitempty" yaml:"entitlement_url,omitempty" secret:"dsn"`
 }
 
 // EffectiveTrustLevel returns the trust level with a safe default of untrusted.
@@ -881,13 +1170,6 @@ func (r RegistryConfig) EffectiveTrustLevel() RegistryTrustLevel {
 	default:
 		return RegistryTrustLevelUntrusted
 	}
-}
-
-// PluginConfig represents a plugin configuration
-type PluginConfig struct {
-	Type   string                 `mapstructure:"type" yaml:"type"`
-	Plugin string                 `mapstructure:"plugin" yaml:"plugin"`
-	Config map[string]interface{} `mapstructure:"config" yaml:"config"`
 }
 
 // I18nConfig represents i18n configuration
@@ -923,10 +1205,10 @@ type EmbeddingProviderConfig struct {
 	// Model is the provider-side model name (e.g. "nomic-embed-text").
 	Model string `mapstructure:"model,omitempty" yaml:"model,omitempty"`
 	// Endpoint is the provider base URL (e.g. "http://localhost:11434").
-	Endpoint string `mapstructure:"endpoint,omitempty" yaml:"endpoint,omitempty"`
+	Endpoint string `mapstructure:"endpoint,omitempty" yaml:"endpoint,omitempty" secret:"dsn"`
 	// APIKeyEnv names the environment variable that holds the API key.
 	// It is the variable NAME, never the key itself.
-	APIKeyEnv string `mapstructure:"api_key_env,omitempty" yaml:"api_key_env,omitempty"`
+	APIKeyEnv string `mapstructure:"api_key_env,omitempty" yaml:"api_key_env,omitempty" secret:"false"`
 	// Dimension is the expected vector dimension; 0 means unknown.
 	Dimension int `mapstructure:"dimension,omitempty" yaml:"dimension,omitempty"`
 }
@@ -937,7 +1219,7 @@ type ProviderBackendConfig struct {
 	// Model overrides the default model for LLM-based providers (vision, transcription via ollama).
 	Model string `mapstructure:"model,omitempty" yaml:"model,omitempty"`
 	// Endpoint overrides the default API endpoint (e.g. Ollama URL).
-	Endpoint string `mapstructure:"endpoint,omitempty" yaml:"endpoint,omitempty"`
+	Endpoint string `mapstructure:"endpoint,omitempty" yaml:"endpoint,omitempty" secret:"dsn"`
 	// Language sets a default language hint (e.g. for OCR, transcription).
 	Language string `mapstructure:"language,omitempty" yaml:"language,omitempty"`
 }
@@ -983,37 +1265,27 @@ func LoadWithOverrides(bin, cfgFile string, extraPaths []string, overrides map[s
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal defaults: %w", err)
 	}
+	// Listener ports carry no viper default: seeded unset here, they take
+	// their built-in default after the merge only when no layer set them,
+	// so serve can tell an operator's port from its own default.
+	cfg.Server.seedListenPorts()
 
 	// Stage 2: kit/core/config layered file merge. The cascade slots are
 	// explicit (no kitconfig.OptionsForTool here) because contexthelp
 	// uses a per-binary file under a shared "contexthelp/" namespace
 	// rather than a single tool-level config.yaml.
-	system, user, project := cascadeSlots(bin)
-	if cfgFile != "" {
-		// Legacy single-file override: replace cascade with just this file.
-		// Stays in ExtraConfigPaths (strict) — a caller naming a file
-		// outright means it, so a missing one is an error.
-		system, user, project = "", "", ""
-		extraPaths = append([]string{cfgFile}, extraPaths...)
-	} else if envCfg := os.Getenv(EnvConfigPath); envCfg != "" {
-		// CTXT_CONFIG goes in the `user` SLOT, not ExtraConfigPaths:
-		// kit's loader tolerates a missing cascade slot but treats a
-		// missing extra path as a hard error. This env var is ambient
-		// rather than per-invocation, and pointing it at a not-yet-
-		// created file is the normal first-run state — `ctxt setup` is
-		// the command that CREATES it.
-		//
-		// Explicit -c paths keep flowing through extraPaths, where
-		// strictness is correct: ParseConfigArgs has already proven
-		// those files exist, and -c still layers after (wins over) this.
-		system, user, project = "", envCfg, ""
-	}
+	system, user, project, extraPaths := layerSlots(bin, cfgFile, extraPaths)
 
 	// envOverride re-applies env-bound viper keys to dst after files merge,
 	// preserving viper's "env > file" precedence. Without this, a yaml file
 	// with `server.port: 4242` would silently override `CH_SERVER_PORT=9999`.
 	envOverride := func(dst any) {
-		applyEnvOverrides(v, dst.(*Config))
+		c, ok := dst.(*Config)
+		if !ok {
+			// kitconfig.Load hands back the dst it was given (&cfg below).
+			panic(fmt.Sprintf("config: EnvOverride got %T, want *Config", dst))
+		}
+		applyEnvOverrides(v, c)
 	}
 
 	if err := kitconfig.Load(&cfg, kitconfig.Options{
@@ -1025,6 +1297,10 @@ func LoadWithOverrides(bin, cfgFile string, extraPaths []string, overrides map[s
 		Overrides:         overrides,
 	}); err != nil {
 		return nil, fmt.Errorf("failed to load config: %w", err)
+	}
+	cfg.Server.resolveListenPorts()
+	if err := cfg.Storage.resolveDataPaths(); err != nil {
+		return nil, err
 	}
 
 	// Sync FocusProfile.Default bool → ProfileConfig.Default string.
@@ -1047,8 +1323,41 @@ func LoadWithOverrides(bin, cfgFile string, extraPaths []string, overrides map[s
 	if err := cfg.validateAllowedHosts(); err != nil {
 		return nil, err
 	}
+	// A malformed fetch allowlist entry would silently fall back to
+	// blocking what the operator meant to open; fail here.
+	if _, err := cfg.Fetch.Policy(); err != nil {
+		return nil, fmt.Errorf("config: %w", err)
+	}
 
 	return &cfg, nil
+}
+
+// layerSlots returns the file layers LoadWithOverrides hands kit's
+// loader: the system/user/project slots (missing files are skipped) and
+// the strict extra paths, in merge order.
+func layerSlots(bin, cfgFile string, extraPaths []string) (system, user, project string, extra []string) {
+	system, user, project = cascadeSlots(bin)
+	extra = extraPaths
+	if cfgFile != "" {
+		// Legacy single-file override: replace cascade with just this file.
+		// Stays in ExtraConfigPaths (strict) — a caller naming a file
+		// outright means it, so a missing one is an error.
+		system, user, project = "", "", ""
+		extra = append([]string{cfgFile}, extraPaths...)
+	} else if envCfg := os.Getenv(EnvConfigPath); envCfg != "" {
+		// CTXT_CONFIG goes in the `user` SLOT, not ExtraConfigPaths:
+		// kit's loader tolerates a missing cascade slot but treats a
+		// missing extra path as a hard error. This env var is ambient
+		// rather than per-invocation, and pointing it at a not-yet-
+		// created file is the normal first-run state — `ctxt setup` is
+		// the command that CREATES it.
+		//
+		// Explicit -c paths keep flowing through extraPaths, where
+		// strictness is correct: ParseConfigArgs has already proven
+		// those files exist, and -c still layers after (wins over) this.
+		system, user, project = "", envCfg, ""
+	}
+	return system, user, project, extra
 }
 
 // cascadeSlots returns the system/user/project paths for the given bin.
@@ -1076,7 +1385,7 @@ func cascadeSlots(bin string) (system, user, project string) {
 // short-circuit it. Callers building a resolver for `config path(s)` must
 // prepend those overrides before this chain.
 func CascadeSlots(bin string) (system, user, project string) {
-	system = filepath.Join("/etc", xdgTool, bin+".yaml")
+	system = filepath.Join(filepath.FromSlash("/etc"), xdgTool, bin+".yaml")
 	if dir, err := configDirXDG(); err == nil && dir != "" {
 		user = filepath.Join(dir, bin+".yaml")
 	}
@@ -1138,31 +1447,30 @@ func syncProfileDefault(cfg *Config) error {
 
 // setDefaults sets default configuration values
 func setDefaults(v *viper.Viper) {
-	dataDir, err := dataDirXDG()
-	if err != nil {
-		// Fallback only when XDG resolution fails (e.g. no $HOME).
-		home, _ := os.UserHomeDir()
-		dataDir = filepath.Join(home, ".local", "share", "contexthelp")
-	}
-
-	// Storage defaults
+	// Storage defaults. storage.data_dir, storage.path and
+	// storage.blob.local.path carry no viper default: they derive from
+	// the merged data dir after load (StorageConfig.resolveDataPaths).
 	v.SetDefault("storage.type", "sqlite")
-	v.SetDefault("storage.path", filepath.Join(dataDir, "db.sqlite"))
+	v.SetDefault("storage.migrate_snapshot", true)
 
 	// Blob storage defaults
-	v.SetDefault("storage.blob.backend", "local")
+	v.SetDefault("storage.blob.backend", blobBackendLocal)
 	v.SetDefault("storage.blob.threshold", int64(65536))
-	v.SetDefault("storage.blob.local.path", filepath.Join(dataDir, "blobs"))
 	v.SetDefault("storage.blob.s3.region", "us-east-1")
 	v.SetDefault("storage.blob.s3.use_path_style", false)
 	v.SetDefault("storage.blob.s3.presign_expiry", time.Hour)
 	v.SetDefault("storage.blob.s3.max_retries", 3)
 
-	// Server defaults
-	v.SetDefault("server.port", 8080)
-	v.SetDefault("server.grpc_port", 9090)
-	v.SetDefault("server.workers", 4)
+	// Server defaults. The listener ports (server.port, grpc_port,
+	// cookie_bridge_port) are resolved after the merge instead; see
+	// ServerConfig.resolveListenPorts.
+	v.SetDefault("server.workers", DefaultServerWorkers)
 	v.SetDefault("server.public", false)
+	v.SetDefault("server.dev", false)
+	v.SetDefault("server.reminder_interval", DefaultReminderInterval)
+
+	// Federation receive-side defaults
+	v.SetDefault("federation.max_request_bytes", DefaultFederationMaxRequestBytes)
 
 	// Profile defaults
 	v.SetDefault("profile.default", "")
@@ -1187,6 +1495,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("providers.llm.model", "")
 
 	// Jobs defaults (reproduce current hardcoded values)
+	v.SetDefault("sharing.audit.retention", DefaultAuditRetention)
 	v.SetDefault("jobs.poll_interval", 500*time.Millisecond)
 	v.SetDefault("jobs.stale_timeout", 30*time.Minute)
 	v.SetDefault("jobs.max_retries", 3)
@@ -1237,9 +1546,6 @@ func setDefaults(v *viper.Viper) {
 	// Privacy defaults — telemetry off by default (local-first)
 	v.SetDefault("privacy.telemetry", false)
 
-	// Offline mode — disabled by default; enable for air-gapped environments.
-	v.SetDefault("offline.enabled", false)
-
 	// Registries global — require_signatures is off by default (permissive).
 	v.SetDefault("registries_global.require_signatures", false)
 
@@ -1261,6 +1567,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("fanout.entities", true)
 	v.SetDefault("fanout.audit_log", true)
 
+	// Fetches of captured URLs refuse private-network addresses.
+	v.SetDefault("fetch.allow_private", false)
+
 	// Browser history capture: first-run lookback.
 	v.SetDefault("capture.history.initial_lookback", DefaultCaptureHistoryInitialLookback)
 
@@ -1272,6 +1581,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("security.alerts.auth_failure_threshold", 3)
 	v.SetDefault("security.alerts.acl_denial_threshold", 10)
 	v.SetDefault("security.alerts.smtp.port", 587)
+	v.SetDefault("security.alerts.delivery_timeout", 10*time.Second)
 }
 
 // bindEnvVars binds environment variables to configuration keys
@@ -1294,17 +1604,19 @@ func bindEnvVars(v *viper.Viper) {
 // viper.Get*; this list drives env > file overlay on the typed Config.
 var envBindings = []struct{ Key, Env string }{
 	{"storage.type", "CH_STORAGE_TYPE"},
-	{"storage.path", EnvDataDir},
+	{"storage.data_dir", EnvDataDir},
 	{"storage.blob.backend", "CTXT_BLOB_BACKEND"},
 	{"storage.blob.threshold", "CTXT_BLOB_THRESHOLD"},
 	{"storage.blob.s3.endpoint", "CTXT_BLOB_S3_ENDPOINT"},
 	{"storage.blob.s3.region", "CTXT_BLOB_S3_REGION"},
 	{"storage.blob.s3.bucket", "CTXT_BLOB_S3_BUCKET"},
 	{"storage.blob.s3.prefix", "CTXT_BLOB_S3_PREFIX"},
+	{"storage.blob.s3.use_path_style", "CTXT_BLOB_S3_USE_PATH_STYLE"},
 	{"storage.blob.s3.access_key", "CTXT_BLOB_S3_ACCESS_KEY"},
-	{"storage.blob.s3.secret_key", "CTXT_BLOB_S3_SECRET_KEY"},
+	{"storage.blob.s3.secret_key", "CTXT_BLOB_S3_SECRET_KEY"}, // gitleaks:allow env var name
 	{"server.port", "CH_SERVER_PORT"},
 	{"server.grpc_port", "CH_GRPC_PORT"},
+	{"server.cookie_bridge_port", "CH_COOKIE_BRIDGE_PORT"},
 	{"server.workers", EnvDPKMSWorkers},
 	{"server.public", "CH_PUBLIC"},
 	{"profile.default", EnvProfile},
@@ -1384,9 +1696,16 @@ func configDirXDG() (string, error) {
 	return xdg.RawConfigDir(xdgTool)
 }
 
-// dataDirXDG returns the XDG-resolved data directory for contexthelp.
-func dataDirXDG() (string, error) {
-	return xdg.RawDataDir(xdgTool)
+// DefaultDataDir returns the built-in data directory: the XDG data dir
+// for contexthelp. It is the bottom layer of storage.data_dir
+// (dpkms --data-dir > -c > CTXT_DATA_DIR > file > this); code holding a loaded
+// Config reads cfg.Storage.DataDir instead.
+func DefaultDataDir() (string, error) {
+	dir, err := xdg.RawDataDir(xdgTool)
+	if err != nil {
+		return "", fmt.Errorf("data dir: %w", err)
+	}
+	return dir, nil
 }
 
 // walkUpForMarker walks up from cwd looking for `.contexthelp/<bin>.yaml`,
@@ -1437,46 +1756,52 @@ func EnsureConfigDir(bin string) error {
 	return os.MkdirAll(configDir, 0o750)
 }
 
-// EnsureDataDir ensures the data directory exists.
-// Resolution order: $CTXT_DATA_DIR > kit/xdg DataDir.
-func EnsureDataDir() error {
-	dataDir := os.Getenv(EnvDataDir)
+// errNoDataDir rejects an unresolved data dir rather than falling back
+// to a process-wide default the caller's config may not point at.
+var errNoDataDir = errors.New("data dir: not resolved (storage.data_dir is empty)")
+
+// EnsureDataDir creates dataDir (cfg.Storage.DataDir).
+func EnsureDataDir(dataDir string) error {
 	if dataDir == "" {
-		var err error
-		dataDir, err = dataDirXDG()
-		if err != nil {
-			return fmt.Errorf("data dir: %w", err)
-		}
+		return errNoDataDir
 	}
 	// #nosec G703 -- dataDir derives from XDG_DATA_HOME or the
 	// operator's config, not from captured content or a request.
 	return os.MkdirAll(dataDir, 0o750)
 }
 
-// RunDir returns the directory used for runtime files (pidfiles).
-// Resolution order: $CTXT_DATA_DIR/run > kit/xdg DataDir/run.
-func RunDir() (string, error) {
-	base := os.Getenv(EnvDataDir)
-	if base == "" {
-		var err error
-		base, err = dataDirXDG()
-		if err != nil {
-			return "", fmt.Errorf("data dir: %w", err)
-		}
+// RunDir returns <dataDir>/run, the directory for runtime files
+// (pidfiles, upgrade state, the current-instance selection), creating
+// it on demand: for writers. Readers use RunDirPath. Pass
+// cfg.Storage.DataDir.
+func RunDir(dataDir string) (string, error) {
+	dir, err := RunDirPath(dataDir)
+	if err != nil {
+		return "", err
 	}
-	dir := filepath.Join(base, "run")
-	// #nosec G703 -- base is the operator's XDG state/runtime dir.
+	// #nosec G703 -- dataDir is the operator's data dir, not request input.
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return "", fmt.Errorf("run dir: %w", err)
 	}
 	return dir, nil
 }
 
+// RunDirPath returns <dataDir>/run without creating it, for readers
+// (ps, restore, instance routing): a run dir that does not exist holds
+// no pidfiles, and a read must not leave one behind.
+func RunDirPath(dataDir string) (string, error) {
+	if dataDir == "" {
+		return "", errNoDataDir
+	}
+	return filepath.Join(dataDir, runDirName), nil
+}
+
 // CurrentInstanceFile returns the path to the state file that stores the
-// user's chosen current instance name (written by `ctxt instance use`).
-// Stored alongside pidfiles: $XDG_DATA_HOME/contexthelp/run/current-instance
-func CurrentInstanceFile() (string, error) {
-	dir, err := RunDir()
+// user's chosen current instance name (written by `ctxt instance use`):
+// <dataDir>/run/current-instance. It creates nothing; a writer creates
+// the run dir first (RunDir).
+func CurrentInstanceFile(dataDir string) (string, error) {
+	dir, err := RunDirPath(dataDir)
 	if err != nil {
 		return "", err
 	}
@@ -1517,8 +1842,42 @@ type PipelineOverride struct {
 	// "dedup" removes the near-duplicate check that duplicates.check_similar
 	// inserts.
 	SkipSteps []string `mapstructure:"skip_steps" yaml:"skip_steps"`
-	// ExtraSteps is an ordered list of step names appended after existing steps.
-	ExtraSteps []string `mapstructure:"extra_steps" yaml:"extra_steps"`
+	// InsertSteps adds steps to the pipeline, in order, each before or
+	// after a named step (or appended when it names neither). A step is
+	// a built-in step or one installed with `dpkms pipeline step install`.
+	InsertSteps []StepInsert `mapstructure:"insert_steps" yaml:"insert_steps"`
+}
+
+// Step failure policies for an inserted step (StepInsert.OnError).
+const (
+	StepOnErrorFail     = "fail"
+	StepOnErrorContinue = "continue"
+)
+
+// StepInsert places one step in a pipeline. Before and After name a step
+// already in the pipeline (after skip_steps and earlier inserts apply);
+// at most one is set. OnError, Timeout, Isolation and Config apply to
+// installed steps only.
+type StepInsert struct {
+	// Step is the step's name.
+	Step string `mapstructure:"step" yaml:"step"`
+	// Before inserts the step right before the named step.
+	Before string `mapstructure:"before" yaml:"before,omitempty"`
+	// After inserts the step right after the named step.
+	After string `mapstructure:"after" yaml:"after,omitempty"`
+	// OnError is what a failed run does: "fail" (default) fails the
+	// object's job, nothing stored; "continue" logs the failure and
+	// passes the object on unchanged.
+	OnError string `mapstructure:"on_error" yaml:"on_error,omitempty"`
+	// Timeout overrides the step's own resource_requirements.timeout.
+	Timeout time.Duration `mapstructure:"timeout" yaml:"timeout,omitempty"`
+	// Isolation raises the step's isolation to "container"; it never
+	// lowers what the step or its registry requires.
+	Isolation string `mapstructure:"isolation" yaml:"isolation,omitempty"`
+	// Config is written to the file DPKMS_STEP_CONFIG_PATH names, after
+	// a check against the step's config_schema. config show prints it
+	// as is: it is not a place for credentials.
+	Config map[string]any `mapstructure:"config" yaml:"config,omitempty" secret:"false"`
 }
 
 // ConventionsConfig enforces naming rules across the system.
@@ -1554,10 +1913,10 @@ type SecretsConfig struct {
 	AgeIdentityFile string `mapstructure:"age_identity_file" yaml:"age_identity_file"`
 	// KeychainService is the macOS/Linux keychain service name.
 	// Defaults to "ctxt".
-	KeychainService string `mapstructure:"keychain_service" yaml:"keychain_service"`
+	KeychainService string `mapstructure:"keychain_service" yaml:"keychain_service" secret:"false"`
 	// OnePasswordVault is the 1Password vault name to read secrets from.
 	// Only used when Backend == "onepassword". Requires `op` CLI.
-	OnePasswordVault string `mapstructure:"onepassword_vault" yaml:"onepassword_vault"`
+	OnePasswordVault string `mapstructure:"onepassword_vault" yaml:"onepassword_vault" secret:"false"`
 	// GHRepo is the GitHub repository (owner/repo) for the ghsecrets backend.
 	// Only used when Backend == "ghsecrets". Defaults to current repo if empty.
 	// Requires `gh` CLI. Get() falls back to env; Set() writes to GitHub Actions secrets.

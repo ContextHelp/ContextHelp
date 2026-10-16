@@ -9,7 +9,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 var stopWords = map[string]bool{
@@ -54,12 +53,12 @@ func (t *Tagger) Name() string { return "tagger" }
 
 // Run extracts heuristic + (optional) LLM tags from draft.RawContent and
 // merges them with any pre-existing draft.Tags entries that have
-// Source:"user" (T-0573). User-asserted tags WIN on lowercase-label
+// Source:"user". User-asserted tags WIN on lowercase-label
 // collision — operator intent overrides auto-extraction. Non-user
 // pre-existing tags are dropped (the prior behaviour was to overwrite
 // the slice, so this keeps the same effective contract for them).
 func (t *Tagger) Run(ctx context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
-	// T-0573: preserve any caller-asserted user tags pre-populated on the
+	// preserve any caller-asserted user tags pre-populated on the
 	// draft (by jobs.worker via Job.UserHints, or by Service.Analyze on
 	// the raw path). They will be merged in below the auto-extracted set.
 	var userTags []storage.Tag
@@ -86,7 +85,7 @@ func (t *Tagger) Run(ctx context.Context, draft *storage.KnowledgeObject) (*stor
 		word  string
 		count int
 	}
-	var counts []wordCount
+	counts := make([]wordCount, 0, len(freq))
 	for w, c := range freq {
 		counts = append(counts, wordCount{w, c})
 	}
@@ -118,32 +117,10 @@ func (t *Tagger) Run(ctx context.Context, draft *storage.KnowledgeObject) (*stor
 
 	// If an LLM is available and content is substantial, augment with LLM-derived tags.
 	if t.llm != nil && len(draft.RawContent) >= 100 {
-		content := draft.RawContent
-		if len(content) > 1000 {
-			content = content[:1000]
-		}
-		prompt := "Extract 3-7 concise tags for this content. Return only a comma-separated list, no explanation.\n\nContent:\n" + content
-		if resp, err := t.llm.Generate(ctx, prompt); err == nil {
-			existing := make(map[string]bool)
-			for _, tag := range tags {
-				existing[strings.ToLower(tag.Label)] = true
-			}
-			for _, raw := range strings.Split(resp, ",") {
-				label := strings.ToLower(strings.TrimSpace(raw))
-				if label != "" && !existing[label] {
-					tags = append(tags, storage.Tag{
-						Label:  label,
-						Weight: 0.5,
-						Source: "llm",
-					})
-					existing[label] = true
-				}
-			}
-		}
-		// On LLM failure, silently fall back to heuristic tags already computed.
+		tags = t.addLLMTags(ctx, draft.RawContent, tags)
 	}
 
-	// T-0573: merge user-asserted tags with auto-extracted ones, dedup by
+	// merge user-asserted tags with auto-extracted ones, dedup by
 	// lowercase label. User tags win on collision — they come first in the
 	// final slice and the auto/llm entry is dropped.
 	merged := mergeUserTags(userTags, tags)
@@ -153,16 +130,16 @@ func (t *Tagger) Run(ctx context.Context, draft *storage.KnowledgeObject) (*stor
 	// Skip if ID is empty (in-pipeline drafts before ID assignment).
 	if draft.ID != "" {
 		if draft.Graph == nil {
-			draft.Graph = &pluginapi.ObjectGraph{}
+			draft.Graph = &storage.ObjectGraph{}
 		}
 		for i, tag := range merged {
-			tagID := pluginapi.NewNodeID(draft.ID, pluginapi.NodeTypeTag, i)
+			tagID := storage.NewNodeID(draft.ID, storage.NodeTypeTag, i)
 			if draft.Graph.FindNode(tagID) != nil {
 				continue
 			}
-			draft.Graph.Nodes = append(draft.Graph.Nodes, pluginapi.GraphNode{
+			draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
 				ID:       tagID,
-				NodeType: pluginapi.NodeTypeTag,
+				NodeType: storage.NodeTypeTag,
 				Label:    tag.Label,
 				Order:    i,
 				Metadata: map[string]any{
@@ -177,8 +154,8 @@ func (t *Tagger) Run(ctx context.Context, draft *storage.KnowledgeObject) (*stor
 }
 
 // mergeUserTags combines caller-asserted user tags (Source:"user") with
-// auto-extracted tags, with user tags WINNING on lowercase-label collision
-// (T-0573). User tags appear first in the result so downstream consumers
+// auto-extracted tags, with user tags WINNING on lowercase-label collision.
+// User tags appear first in the result so downstream consumers
 // that read positionally see operator intent at the top.
 func mergeUserTags(userTags, autoTags []storage.Tag) []storage.Tag {
 	if len(userTags) == 0 {
@@ -205,12 +182,42 @@ func mergeUserTags(userTags, autoTags []storage.Tag) []storage.Tag {
 	return out
 }
 
+// addLLMTags appends the LLM's tags for raw that tags does not already
+// hold, each at weight 0.5. On an LLM failure tags comes back unchanged.
+func (t *Tagger) addLLMTags(ctx context.Context, raw string, tags []storage.Tag) []storage.Tag {
+	content := raw
+	if len(content) > 1000 {
+		content = content[:1000]
+	}
+	prompt := "Extract 3-7 concise tags for this content. Return only a comma-separated list, no explanation.\n\nContent:\n" + content
+	if resp, err := t.llm.Generate(ctx, prompt); err == nil {
+		existing := make(map[string]bool)
+		for _, tag := range tags {
+			existing[strings.ToLower(tag.Label)] = true
+		}
+		for _, part := range strings.Split(resp, ",") {
+			label := strings.ToLower(strings.TrimSpace(part))
+			if label != "" && !existing[label] {
+				tags = append(tags, storage.Tag{
+					Label:  label,
+					Weight: 0.5,
+					Source: "llm",
+				})
+				existing[label] = true
+			}
+		}
+	}
+	// On LLM failure, silently fall back to heuristic tags already computed.
+	return tags
+}
+
 func tokenize(text string) []string {
-	var words []string
 	f := func(c rune) bool {
 		return !unicode.IsLetter(c) && !unicode.IsDigit(c)
 	}
-	for _, w := range strings.FieldsFunc(text, f) {
+	fields := strings.FieldsFunc(text, f)
+	words := make([]string, 0, len(fields))
+	for _, w := range fields {
 		words = append(words, strings.ToLower(w))
 	}
 	return words

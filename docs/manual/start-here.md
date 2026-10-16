@@ -8,7 +8,7 @@ This page gives a single onboarding path before you branch into role-specific ma
 - `dpkms (self-hosted)`: local or enterprise-managed substrate
 - `dpkms cloud`: managed substrate with reduced ops overhead
 
-Reference: [`../stories/README.md`](../stories/README.md)
+Reference: [`docs/stories/README.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/stories/README.md)
 
 ## 2. Verify your runtime
 
@@ -54,7 +54,6 @@ If ingestion is still running, inspect:
 
 ```bash
 ctxt job status <job_id>
-ctxt job log <job_id>
 ```
 
 Optional importer smoke test:
@@ -84,7 +83,6 @@ Reference: [`workflows/README.md`](./workflows/README.md)
 
 - Setup/security and governance: [`admin-extensibility/admin-configuration.md`](./admin-extensibility/admin-configuration.md)
 - Pipeline lifecycle and extensibility: [`admin-extensibility/pipeline-management.md`](./admin-extensibility/pipeline-management.md)
-- Plugin development: [`admin-extensibility/plugin-development.md`](./admin-extensibility/plugin-development.md)
 - Reliability/scaling: [`operations/runbook.md`](./operations/runbook.md)
 - API and CLI reference: [`reference/api-cli-reference.md`](./reference/api-cli-reference.md)
 - Query and ranking reference: [`reference/query-language-and-ranking.md`](./reference/query-language-and-ranking.md)

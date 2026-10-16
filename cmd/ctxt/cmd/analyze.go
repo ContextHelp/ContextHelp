@@ -13,6 +13,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/cli"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -62,7 +63,7 @@ func init() {
 		{Title: "Analyze a URL and wait for the job", Command: "ctxt analyze https://example.com --type url --wait"},
 	})
 	cliconv.WithNextSteps(analyzeCmd, []cliconv.NextStep{
-		{When: "on success", Suggest: "ctxt job status", Reason: "track the enqueued job"},
+		{When: "on success", Suggest: "ctxt job status <job-id>", Reason: "track the enqueued job"},
 		{When: "after enrichment completes", Suggest: "ctxt find <topic>", Reason: "discover related items"},
 	})
 	// "analyze" is not in kit's defaultIdempotency table. Each invocation
@@ -71,7 +72,7 @@ func init() {
 	cliconv.WithIdempotency(analyzeCmd, cliconv.IdempotencyConditional)
 
 	// Register flags on analyzeCmd for `ctxt analyze --help`.
-	analyzeCmd.Flags().String("type", "text", "input type (text|url|image|audio|video|feed|auto)")
+	analyzeCmd.Flags().String("type", objectTypeText, "input type (text|url|image|audio|video|feed|auto)")
 	analyzeCmd.Flags().StringP("file", "f", "", "read input from file")
 	analyzeCmd.Flags().StringSlice("hint", nil, "tagging hints attached to the captured object (repeatable, CSV)")
 	analyzeCmd.Flags().String("mention", "", "explicit mentions to attach (e.g., \"@entity.slug\")")
@@ -87,7 +88,7 @@ func init() {
 
 	// Mirror flags on rootCmd (local, not persistent) so `ctxt <content> --type url` works
 	// without leaking these flags into every subcommand's help.
-	rootCmd.Flags().String("type", "text", "input type (text|url|image|audio|video|feed|auto)")
+	rootCmd.Flags().String("type", objectTypeText, "input type (text|url|image|audio|video|feed|auto)")
 	rootCmd.Flags().StringP("file", "f", "", "read input from file")
 	rootCmd.Flags().StringSlice("hint", nil, "tagging hints attached to the captured object (repeatable, CSV)")
 	rootCmd.Flags().String("mention", "", "explicit mentions to attach (e.g., \"@entity.slug\")")
@@ -141,7 +142,7 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("failed to read file: %w", err)
 		}
 		content = string(data)
-		source = "file"
+		source = cli.SourceFile
 	} else {
 		var err error
 		content, source, err = cli.GetInput(args)
@@ -150,7 +151,7 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if source == "clipboard" {
+	if source == cli.SourceClipboard {
 		fmt.Fprintf(os.Stderr, "Using content from clipboard...\n")
 	}
 
@@ -175,7 +176,7 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 
 	sourceKey := flagString(cmd, "source-key", "analyze.source_key")
 
-	// T-0190: ship `--mention "@client.acme @project.foo"` through to the
+	// ship `--mention "@client.acme @project.foo"` through to the
 	// server so user-asserted mentions become real edges + entity rows
 	// (handled by service.Analyze + jobs/worker.go). The CLI flag is
 	// --mention; the server-side JSON field is still `mentions`.
@@ -185,7 +186,7 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 		userMentions = strings.Fields(mentionsFlag)
 	}
 
-	// T-0573: ship `--hint research,ux` (repeatable, CSV) through to the
+	// ship `--hint research,ux` (repeatable, CSV) through to the
 	// server as a JSON array. service.Analyze pre-populates draft.Tags
 	// with Source:"user"; the auto-tagger merges with these rather
 	// than overwriting.
@@ -237,7 +238,7 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// T-0562: --wait was previously a no-op. The CLI returned the job ID
+	// --wait was previously a no-op. The CLI returned the job ID
 	// from POST /analyze and exited even when the job was never persisted,
 	// so the user never learned the work was dropped. Poll GET /jobs/{id}
 	// on the instance that accepted the enqueue and fail loudly if the ID
@@ -288,10 +289,10 @@ func waitForJob(ctx context.Context, client *dpkmsclient.Client, jobID string) e
 		}
 
 		switch job.Status {
-		case "done", "completed", "succeeded":
+		case "done", string(storage.JobCompleted), "succeeded":
 			fmt.Printf("Job %s: %s\n", jobID, job.Status)
 			return nil
-		case "failed", "error":
+		case string(storage.JobFailed), "error":
 			return fmt.Errorf("job %s failed: %s", jobID, job.Error)
 		default:
 			time.Sleep(pollInterval)

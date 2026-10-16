@@ -7,24 +7,24 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/indexsig"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
-func summaryNode(s string) pluginapi.GraphNode {
-	return pluginapi.GraphNode{NodeType: pluginapi.NodeTypeSummary, Content: s}
+func summaryNode(s string) storage.GraphNode {
+	return storage.GraphNode{NodeType: storage.NodeTypeSummary, Content: s}
 }
 
-func sectionNode(s string, order int) pluginapi.GraphNode {
-	return pluginapi.GraphNode{NodeType: pluginapi.NodeTypeSection, Content: s, Order: order}
+func sectionNode(s string, order int) storage.GraphNode {
+	return storage.GraphNode{NodeType: storage.NodeTypeSection, Content: s, Order: order}
 }
 
 // A root summary carrying the same text as the only section must be
 // projected once, not as "X\nX".
 func TestProjectIndex_SummaryEqualToSectionProjectedOnce(t *testing.T) {
-	ko := &pluginapi.KnowledgeObject{
+	ko := &storage.KnowledgeObject{
 		ID: "obj-dup",
-		Graph: &pluginapi.ObjectGraph{Nodes: []pluginapi.GraphNode{
+		Graph: &storage.ObjectGraph{Nodes: []storage.GraphNode{
 			summaryNode("the numbat eats termites"),
 			sectionNode("the numbat eats termites", 0),
 		}},
@@ -42,29 +42,29 @@ func TestProjectIndex_SummaryEqualToSectionProjectedOnce(t *testing.T) {
 // keep their original order.
 func TestProjectIndex_RepeatedSegmentsKeepFirstOccurrence(t *testing.T) {
 	cases := map[string]struct {
-		nodes []pluginapi.GraphNode
+		nodes []storage.GraphNode
 		want  []string
 	}{
 		"adjacent sections": {
-			nodes: []pluginapi.GraphNode{sectionNode("alpha", 0), sectionNode("alpha", 1), sectionNode("beta", 2)},
+			nodes: []storage.GraphNode{sectionNode("alpha", 0), sectionNode("alpha", 1), sectionNode("beta", 2)},
 			want:  []string{"alpha", "beta"},
 		},
 		"non-adjacent sections": {
-			nodes: []pluginapi.GraphNode{sectionNode("alpha", 0), sectionNode("beta", 1), sectionNode("alpha", 2)},
+			nodes: []storage.GraphNode{sectionNode("alpha", 0), sectionNode("beta", 1), sectionNode("alpha", 2)},
 			want:  []string{"alpha", "beta"},
 		},
 		"summary repeated later": {
-			nodes: []pluginapi.GraphNode{summaryNode("root"), sectionNode("alpha", 0), sectionNode("root", 1), sectionNode("beta", 2)},
+			nodes: []storage.GraphNode{summaryNode("root"), sectionNode("alpha", 0), sectionNode("root", 1), sectionNode("beta", 2)},
 			want:  []string{"root", "alpha", "beta"},
 		},
 		"surrounding whitespace ignored": {
-			nodes: []pluginapi.GraphNode{summaryNode("root\n"), sectionNode("  root", 0)},
+			nodes: []storage.GraphNode{summaryNode("root\n"), sectionNode("  root", 0)},
 			want:  []string{"root\n"},
 		},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			ko := &pluginapi.KnowledgeObject{ID: "obj", Graph: &pluginapi.ObjectGraph{Nodes: tc.nodes}}
+			ko := &storage.KnowledgeObject{ID: "obj", Graph: &storage.ObjectGraph{Nodes: tc.nodes}}
 			idx := projection.ProjectIndex(ko)
 			if want := strings.Join(tc.want, "\n"); idx.EmbeddingText != want {
 				t.Errorf("EmbeddingText = %q, want %q", idx.EmbeddingText, want)
@@ -78,11 +78,11 @@ func TestProjectIndex_RepeatedSegmentsKeepFirstOccurrence(t *testing.T) {
 
 // Flat fields: a body equal to its summary or a section is projected once.
 func TestProjectIndex_FlatBodyEqualToSummaryAndSection(t *testing.T) {
-	ko := &pluginapi.KnowledgeObject{
+	ko := &storage.KnowledgeObject{
 		ID:          "obj-flat",
 		TextContent: "short note",
 		Summaries:   []string{"short note", "gist"},
-		Sections:    []pluginapi.Section{{Content: "short note"}, {Content: "gist"}, {Content: "tail"}},
+		Sections:    []storage.Section{{Content: "short note"}, {Content: "gist"}, {Content: "tail"}},
 	}
 	idx := projection.ProjectIndex(ko)
 	if want := "short note\ngist\ntail"; idx.EmbeddingText != want {
@@ -96,7 +96,7 @@ func TestProjectIndex_FlatBodyEqualToSummaryAndSection(t *testing.T) {
 // The body default (RawContent standing in for TextContent) must not add a
 // second copy of a summary that repeats it.
 func TestEmbeddingText_DefaultedBodyEqualToSummaryNotRepeated(t *testing.T) {
-	ko := &pluginapi.KnowledgeObject{
+	ko := &storage.KnowledgeObject{
 		ID:         "obj-raw",
 		RawContent: "call alice",
 		Summaries:  []string{"call alice"},
@@ -112,17 +112,23 @@ func TestEmbeddingText_DefaultedBodyEqualToSummaryNotRepeated(t *testing.T) {
 // existing index its bodies are stale. When this test fails, the projection
 // changed: bump indexsig.ProjectionVersion and add its digest here.
 var projectionGolden = map[string]string{
-	"v2": "909d8cb69b6e32369ec136ee652f1c0149ae8a792fff40e1d249a548e471359a",
+	// v4 projects as v3 did; it re-runs the re-projection for the
+	// ref-text repair (see indexsig.ProjectionVersion).
+	"v4": "e54352516ce44f81ead09346edfe05c4b0d468353fdbf2642f565a9399aecdc8",
+	// v5 adds the masked shadow projection beside the raw one; the raw
+	// FTS body and embedding text are unchanged, so the digest is v4's.
+	"v5": "e54352516ce44f81ead09346edfe05c4b0d468353fdbf2642f565a9399aecdc8",
 }
 
-var projectionCorpus = []*pluginapi.KnowledgeObject{
-	{TextContent: "body", Summaries: []string{"body", "gist"}, Sections: []pluginapi.Section{{Content: "gist"}, {Content: " tail "}}},
+var projectionCorpus = []*storage.KnowledgeObject{
+	{TextContent: "body", Summaries: []string{"body", "gist"}, Sections: []storage.Section{{Content: "gist"}, {Content: " tail "}}},
 	{RawContent: "raw only"},
-	{TextContent: "text", Graph: &pluginapi.ObjectGraph{Nodes: []pluginapi.GraphNode{
-		{NodeType: pluginapi.NodeTypeTag, Label: "tag"},
-		{NodeType: pluginapi.NodeTypeEntityMention, Content: "@people.alice"},
+	{RawContent: "blob://k", TextContent: "blob://k", Summaries: []string{"externalized gist"}},
+	{TextContent: "text", Graph: &storage.ObjectGraph{Nodes: []storage.GraphNode{
+		{NodeType: storage.NodeTypeTag, Label: "tag"},
+		{NodeType: storage.NodeTypeEntityMention, Content: "@people.alice"},
 	}}},
-	{Graph: &pluginapi.ObjectGraph{Nodes: []pluginapi.GraphNode{
+	{Graph: &storage.ObjectGraph{Nodes: []storage.GraphNode{
 		summaryNode("root"), sectionNode("root", 0), sectionNode("alpha", 1),
 		sectionNode("", 2), sectionNode("alpha", 3), sectionNode("beta", 4),
 	}}},

@@ -61,7 +61,7 @@ func ResolvePassphrase(explicit string, confirm bool) (string, error) {
 func loadPassphraseFromKeychain() (string, error) {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
-	case "darwin":
+	case goosDarwin:
 		cmd = exec.Command("security", "find-generic-password",
 			"-s", PassphraseKeychainService,
 			"-a", PassphraseKeychainAccount,

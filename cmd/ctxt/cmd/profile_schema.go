@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"regexp"
@@ -9,6 +10,8 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
+	"github.com/ideacrafterslabs/ctxt/internal/schemaevolution"
 	"github.com/spf13/cobra"
 )
 
@@ -23,8 +26,8 @@ Examples:
   ctxt profile schema add-type founder decision
   ctxt profile schema add-topic founder security
   ctxt profile schema add-rule founder "(?i)deploy" task
-  ctxt profile schema remove-type founder decision
-  ctxt profile schema remove-topic founder security
+  ctxt profile schema remove-type founder decision --confirm-token=<sha>
+  ctxt profile schema remove-topic founder security --confirm-token=<sha>
   ctxt profile schema evolve founder`,
 }
 
@@ -77,7 +80,7 @@ vocabulary. Fails when the type is not present. The schema version
 is bumped and the change is persisted by rewriting the resolved
 config file.
 
-Requires --confirm=yes (or --confirm=prompt for an interactive confirmation).`,
+` + cliconv.DestructiveTokenHelp,
 	Args: cobra.ExactArgs(2),
 	RunE: runSchemaRemoveType,
 }
@@ -90,7 +93,7 @@ vocabulary. Fails when the topic is not present. The schema version
 is bumped and the change is persisted by rewriting the resolved
 config file.
 
-Requires --confirm=yes (or --confirm=prompt for an interactive confirmation).`,
+` + cliconv.DestructiveTokenHelp,
 	Args: cobra.ExactArgs(2),
 	RunE: runSchemaRemoveTopic,
 }
@@ -98,10 +101,11 @@ Requires --confirm=yes (or --confirm=prompt for an interactive confirmation).`,
 var schemaEvolveCmd = &cobra.Command{
 	Use:   "evolve <profile>",
 	Short: "Suggest schema improvements from recent ingestions",
-	Long: `Analyse recently-ingested content and suggest new entity types
-or topics worth adding to the profile schema. Read-only against the
-schema itself; suggestions are printed alongside the exact
-'ctxt profile schema add-*' invocations that would apply them.`,
+	Long: `Analyse the 100 most recently created objects of the dpkms
+instance ctxt resolves and suggest new entity types or topics worth
+adding to the profile schema. The analysis runs locally and is
+read-only against the schema itself; suggestions are printed alongside
+the exact 'ctxt profile schema add-*' invocations that would apply them.`,
 	Args: cobra.ExactArgs(1),
 	RunE: runSchemaEvolve,
 }
@@ -115,11 +119,12 @@ func init() {
 	profileSchemaCmd.AddCommand(schemaRemoveTypeCmd)
 	profileSchemaCmd.AddCommand(schemaRemoveTopicCmd)
 	profileSchemaCmd.AddCommand(schemaEvolveCmd)
+	schemaEvolveCmd.Flags().String("server", "", serverFlagUsage)
 
 	cliconv.WithSideEffect(schemaShowCmd, cliconv.SideEffectRead)
 	cliconv.WithExamples(schemaShowCmd, []cliconv.Example{
 		{Title: "Show schema for a profile", Command: "ctxt profile schema show founder"},
-		{Title: "Show schema as JSON", Command: "ctxt profile schema show founder --json"},
+		{Title: "Show schema as JSON", Command: "ctxt profile schema show founder --format json"},
 	})
 
 	cliconv.WithSideEffect(schemaAddTypeCmd, cliconv.SideEffectWrite)
@@ -159,8 +164,7 @@ func init() {
 	cliconv.WithDestructiveToken(schemaRemoveTypeCmd)
 	cliconv.WithIdempotency(schemaRemoveTypeCmd, cliconv.IdempotencyYes)
 	cliconv.WithExamples(schemaRemoveTypeCmd, []cliconv.Example{
-		{Title: "Remove an entity type", Command: "ctxt profile schema remove-type founder decision --confirm=yes"},
-		{Title: "Remove with interactive confirmation", Command: "ctxt profile schema remove-type founder risk --confirm=prompt"},
+		{Title: "Remove an entity type", Command: "ctxt profile schema remove-type founder decision --confirm-token=<sha>"},
 	})
 	cliconv.WithNextSteps(schemaRemoveTypeCmd, []cliconv.NextStep{
 		{Suggest: "ctxt profile schema show <profile>", Reason: "confirm the type was dropped and the schema version bumped"},
@@ -171,8 +175,7 @@ func init() {
 	cliconv.WithDestructiveToken(schemaRemoveTopicCmd)
 	cliconv.WithIdempotency(schemaRemoveTopicCmd, cliconv.IdempotencyYes)
 	cliconv.WithExamples(schemaRemoveTopicCmd, []cliconv.Example{
-		{Title: "Remove a topic", Command: "ctxt profile schema remove-topic founder security --confirm=yes"},
-		{Title: "Remove with interactive confirmation", Command: "ctxt profile schema remove-topic founder pricing --confirm=prompt"},
+		{Title: "Remove a topic", Command: "ctxt profile schema remove-topic founder security --confirm-token=<sha>"},
 	})
 	cliconv.WithNextSteps(schemaRemoveTopicCmd, []cliconv.NextStep{
 		{Suggest: "ctxt profile schema show <profile>", Reason: "confirm the topic was dropped and the schema version bumped"},
@@ -183,7 +186,7 @@ func init() {
 	cliconv.WithIdempotency(schemaEvolveCmd, cliconv.IdempotencyYes)
 	cliconv.WithExamples(schemaEvolveCmd, []cliconv.Example{
 		{Title: "Suggest schema improvements", Command: "ctxt profile schema evolve founder"},
-		{Title: "Emit suggestions as JSON", Command: "ctxt profile schema evolve founder --json"},
+		{Title: "Emit suggestions as JSON", Command: "ctxt profile schema evolve founder --format json"},
 	})
 	cliconv.WithNextSteps(schemaEvolveCmd, []cliconv.NextStep{
 		{When: "for each suggested type", Suggest: "ctxt profile schema add-type <profile> <type>", Reason: "apply a recommended entity type"},
@@ -414,17 +417,25 @@ func runSchemaEvolve(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	svc, cleanup, err := newService()
+	// The most recently created objects come from the instance; the
+	// frequency analysis runs here.
+	client, err := newDpkmsClient(cmd, dpkmsclient.DefaultTimeout)
 	if err != nil {
-		return fmt.Errorf("failed to init service: %w", err)
+		return err
 	}
-	defer cleanup()
-
-	suggestions, err := svc.SuggestSchemaEvolution(
-		cmd.Context(), name, p.Schema)
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	objects, _, err := client.ListObjects(ctx, dpkmsclient.ObjectFilter{
+		Limit: schemaevolution.ScanLimit,
+		Sort:  "created_at",
+		Dir:   "desc",
+	})
 	if err != nil {
-		return fmt.Errorf("evolution analysis failed: %w", err)
+		return err
 	}
+	suggestions := schemaevolution.Suggest(name, p.Schema, objects)
 
 	if isJSONOutput() {
 		return outputJSON(os.Stdout, suggestions)

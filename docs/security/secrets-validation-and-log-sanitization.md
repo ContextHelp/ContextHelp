@@ -1,970 +1,232 @@
 # Secrets Validation and Log Sanitization
 
-This document provides comprehensive guidance on secrets validation and log sanitization in ContextHelp, including how the system detects and protects sensitive information.
+What ctxt does to keep secrets out of configuration files and command
+output, and where it does nothing.
 
-## Overview
+In short:
 
-Secrets validation and log sanitization are critical security features that prevent accidental exposure of sensitive information such as API keys, tokens, passwords, and database credentials. ContextHelp implements a multi-layered approach to detect potential secrets, validate them, and automatically sanitize logs to prevent leakage.
+- `ctxt config validate` and `ctxt config doctor` scan the effective
+  configuration for values that look like plaintext secrets.
+- `ctxt config show` redacts every credential, in every `--format`.
+- `ctxt config doctor` warns when the config file is group- or
+  world-readable and `--fix` sets it to `0600`.
+- There is **no log sanitization**. Logs are not scanned or redacted, and
+  no config key or env var changes that. There is no
+  `security.secrets` or `security.logging` config, no `CH_SECURITY_*`
+  env var and no `CH_DEBUG*` env var; the only `security` key is
+  `security.alerts`.
 
-### Key Features
+---
 
-- **Pattern-Based Detection**: Identifies common secret patterns (API keys, tokens, passwords, etc.)
-- **Contextual Analysis**: Distinguishes between actual secrets and false positives
-- **Automatic Log Sanitization**: Redacts sensitive information from all log output
-- **Configurable Rules**: Custom patterns and exclusions for your environment
-- **Audit Trail**: Maintains sanitized logs for compliance and troubleshooting
-- **Developer Feedback**: Helpful messages about detected secrets without exposing them
+## Config secret scan
 
-## Secrets Detection Patterns
+The scan (`internal/config/secrets_scan.go`) walks every string field of
+the effective config: all file layers, bound env vars and `-c` overrides
+merged.
 
-ContextHelp automatically detects potential secrets matching these patterns:
+A value is flagged when:
 
-### API Keys and Tokens
+| Rule | Detail |
+|---|---|
+| Value prefix | starts with `sk-ant-`, `sk-`, `eyJ` (JWT) or `ghp_` |
+| Field name | the dotted path contains `token`, `password`, `secret` or `key`, and the value is longer than 8 characters |
 
-| Pattern | Examples | Priority |
-|---------|----------|----------|
-| OpenAI API keys | `sk-proj-...` (40+ chars) | High |
-| Anthropic API keys | `sk-ant-...` (40+ chars) | High |
-| GitHub tokens | `ghp_...` (36+ chars) | High |
-| GitHub OAuth tokens | `gho_...` (36+ chars) | High |
-| GitHub Personal Access Tokens | `github_pat_...` | High |
-| AWS Access Keys | `AKIA` + 16 chars | High |
-| AWS Secret Access Keys | Long base64-like strings | High |
-| Azure credentials | `DefaultEndpointsProtocol=https;...` | High |
-| Google API keys | `AIza...` (39 chars) | High |
-| Stripe API keys | `sk_live_...` or `sk_test_...` | High |
-| JWT tokens | Pattern: `eyJ...eyJ....*` (base64 encoded) | High |
-| Bearer tokens | `Bearer [40+ alphanumeric]` | High |
-| API tokens (generic) | `(api|API)[-_]?(key|token)` + value | Medium |
+The field-name rule skips values that look like paths (start with `/`,
+`~/`, `./` or contain `/`, so URLs too) and known backend names such as
+`env`, `keyring`, `agefile`, `onepassword`, `ghsecrets`, `sqlite`,
+`postgres`, `s3`. Values written as `${VAR}` or `$VAR` are skipped by the
+scan; the validator rejects them separately, because config files never
+expand env vars.
 
-### Database Credentials
-
-| Pattern | Examples | Priority |
-|---------|----------|----------|
-| PostgreSQL connection strings | `postgres://user:pass@host/db` | High |
-| MySQL connection strings | `mysql://user:pass@host/db` | High |
-| MongoDB connection strings | `mongodb://user:pass@host/db` | High |
-| Password fields | `password` followed by value | High |
-| Database URLs | Any URL-like string with embedded credentials | High |
-
-### Encryption Keys and Passphrases
-
-| Pattern | Examples | Priority |
-|---------|----------|----------|
-| Private keys | `-----BEGIN PRIVATE KEY-----` | Critical |
-| PEM certificates | `-----BEGIN CERTIFICATE-----` | Critical |
-| RSA keys | `-----BEGIN RSA PRIVATE KEY-----` | Critical |
-| SSH keys | `-----BEGIN OPENSSH PRIVATE KEY-----` | Critical |
-| Encryption passphrases | `passphrase` followed by value | High |
-| ENCRYPTION_KEY patterns | Environment variables | High |
-
-### Authentication Headers
-
-| Pattern | Examples | Priority |
-|---------|----------|----------|
-| Authorization headers | `Authorization: [value]` | High |
-| X-API-Key headers | `X-API-Key: [value]` | High |
-| X-Auth-Token headers | `X-Auth-Token: [value]` | High |
-| Basic auth | `Authorization: Basic [base64]` | High |
-
-### Environment Variable Secrets
-
-| Pattern | Examples | Priority |
-|---------|----------|----------|
-| Key-value secrets | `POSTGRES_PASSWORD=...` | High |
-| Prefixed secrets | `CH_REGISTRY_TOKEN_*=...` | High |
-| Quoted values | `"api_key": "sk_..."` | High |
-| YAML nested secrets | `auth: token: sk_...` | High |
-
-### Configuration Secrets
-
-| Pattern | Examples | Priority |
-|---------|----------|----------|
-| YAML secrets | `password: ***` | High |
-| JSON secrets | `"secret": "value"` | High |
-| .env file secrets | `KEY=value` | High |
-| INI file secrets | `key = value` | Medium |
-
-## Detection Configuration
-
-### Built-In Detection Rules
-
-ContextHelp ships with detection rules for the most common secret patterns. These rules are:
-
-- **Always active** for API keys, database credentials, and private keys
-- **Highly accurate** with low false positive rates
-- **Continuously updated** to match new secret formats
-- **Configurable** through environment variables and configuration files
-
-### Enabling/Disabling Detection
-
-Detection is enabled by default. To configure:
-
-```yaml
-# config.yaml
-security:
-  secrets:
-    enabled: true
-    detection:
-      enabled: true
-      patterns:
-        # Enable/disable specific pattern categories
-        api_keys: true
-        database_credentials: true
-        private_keys: true
-        tokens: true
-        passwords: true
-      severity: high  # high, medium, low
-```
-
-Via environment variables:
+Each finding names the field, a hint (the value redacted as `config show`
+redacts it, see below) and the reason:
 
 ```bash
-# Enable all detection
-CH_SECURITY_SECRETS_DETECTION_ENABLED=true
-
-# Set severity threshold (only report high/critical)
-CH_SECURITY_SECRETS_DETECTION_SEVERITY=high
-
-# Enable specific pattern categories
-CH_SECURITY_SECRETS_DETECTION_API_KEYS=true
-CH_SECURITY_SECRETS_DETECTION_PASSWORDS=true
-```
-
-### Custom Detection Patterns
-
-Add custom patterns for organization-specific secrets:
-
-```yaml
-security:
-  secrets:
-    detection:
-      custom_patterns:
-        - name: internal_api_key
-          pattern: "x-internal-[a-z0-9]{32}"
-          case_insensitive: false
-          severity: high
-
-        - name: legacy_token
-          pattern: "token_legacy_[a-zA-Z0-9]{64}"
-          case_insensitive: false
-          severity: medium
-
-        - name: company_key
-          pattern: "COMPANY_SECRET_[A-Z0-9]{40}"
-          case_insensitive: false
-          severity: critical
-```
-
-Via environment variables:
-
-```bash
-# Load custom patterns from file
-CH_SECURITY_SECRETS_CUSTOM_PATTERNS_FILE=~/.config/contexthelp/secret-patterns.yaml
-
-# Or define inline (JSON format)
-CH_SECURITY_SECRETS_CUSTOM_PATTERNS='[{"name":"my_secret","pattern":"my_.*","severity":"high"}]'
-```
-
-## Log Sanitization
-
-Log sanitization automatically redacts sensitive information from all log output, preventing accidental exposure in:
-
-- Console output
-- Log files
-- Error messages
-- Debug traces
-- Stack traces
-- API response bodies
-
-### How Log Sanitization Works
-
-1. **Detection**: Before logging, the system scans content for secret patterns
-2. **Redaction**: Matched secrets are replaced with placeholders like `[REDACTED]`
-3. **Context Preservation**: Non-sensitive content is preserved for debugging
-4. **Logging**: Sanitized content is logged safely
-
-### Log Sanitization Configuration
-
-Enable sanitization globally:
-
-```yaml
-# config.yaml
-security:
-  logging:
-    sanitize: true
-    redaction_mode: full           # full, partial, hash
-    include_context: true
-    preserve_path_structure: true
-```
-
-Via environment variables:
-
-```bash
-# Enable log sanitization
-CH_SECURITY_LOGGING_SANITIZE=true
-
-# Choose redaction mode (full, partial, hash)
-CH_SECURITY_LOGGING_REDACTION_MODE=full
-
-# Include context around redacted values
-CH_SECURITY_LOGGING_INCLUDE_CONTEXT=true
-
-# Log level filters
-CH_SECURITY_LOGGING_MIN_LEVEL=warn  # Only sanitize warn and above
-```
-
-### Redaction Modes
-
-ContextHelp supports three redaction modes:
-
-#### Full Redaction (Recommended)
-
-Replaces entire secret with `[REDACTED]`:
-
-```
-[INFO] Connecting to postgres://user:password@host/db
-[INFO] Connecting to postgres://[REDACTED]@host/db
-```
-
-Configuration:
-
-```yaml
-security:
-  logging:
-    redaction_mode: full
-```
-
-#### Partial Redaction
-
-Shows beginning and end of secret:
-
-```
-[INFO] API key: sk-proj-1234567890abcdef...wxyz
-[INFO] API key: sk-proj-****...****
-```
-
-Configuration:
-
-```yaml
-security:
-  logging:
-    redaction_mode: partial
-    redaction_chars: 4  # Show first and last 4 characters
-```
-
-#### Hash Redaction
-
-Replaces secret with SHA256 hash (for matching secrets across logs):
-
-```
-[INFO] Token: sk-proj-abcdef1234567890
-[INFO] Token: [HASH:a3c5e7f9...]
-```
-
-Configuration:
-
-```yaml
-security:
-  logging:
-    redaction_mode: hash
-    hash_algorithm: sha256
-    hash_length: 8  # Show first 8 chars of hash
-```
-
-### Log Levels and Sanitization
-
-Configure which log levels trigger sanitization:
-
-```yaml
-security:
-  logging:
-    sanitize_levels:
-      error: true       # Sanitize error logs
-      warn: true        # Sanitize warnings
-      info: true        # Sanitize info
-      debug: false      # Don't sanitize debug logs (dev-only)
-      trace: false      # Don't sanitize trace logs (dev-only)
-```
-
-In development, you can disable sanitization for specific components:
-
-```bash
-# Disable sanitization for debugging (DANGEROUS - dev only!)
-export CH_SECURITY_LOGGING_SANITIZE_LEVELS_DEBUG=false
-export CH_DEBUG_SKIP_SANITIZATION=true
-```
-
-### Sanitization Examples
-
-#### Example 1: Database Connection
-
-Before sanitization:
-```
-[INFO] Database connection established: postgres://ctxt_user:SecurePass123!@db.example.com:5432/contexthelp
-[DEBUG] Connection string: postgresql://ctxt_user:SecurePass123!@db.example.com:5432/contexthelp?sslmode=require
-```
-
-After sanitization (full mode):
-```
-[INFO] Database connection established: postgres://[REDACTED]@db.example.com:5432/contexthelp
-[DEBUG] Connection string: postgresql://[REDACTED]@db.example.com:5432/contexthelp?sslmode=require
-```
-
-#### Example 2: API Key in Error
-
-Before sanitization:
-```
-[ERROR] Failed to authenticate with OpenAI: Authorization header 'Bearer sk-proj-...' was rejected
-[ERROR] Stack: at authenticate (openai.go:42) with key sk-proj-abc123def456
-```
-
-After sanitization (partial mode):
-```
-[ERROR] Failed to authenticate with OpenAI: Authorization header 'Bearer sk-proj-****...****' was rejected
-[ERROR] Stack: at authenticate (openai.go:42) with key sk-proj-****...****
-```
-
-#### Example 3: Configuration Dump
-
-Before sanitization:
-```yaml
-[DEBUG] Configuration loaded:
-registries:
-  - name: private-registry
-    url: https://registry.company.com
-    auth:
-      token: ghp_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6
-```
-
-After sanitization:
-```yaml
-[DEBUG] Configuration loaded:
-registries:
-  - name: private-registry
-    url: https://registry.company.com
-    auth:
-      token: [REDACTED]
-```
-
-## Handling False Positives
-
-Some legitimate values might match secret patterns. Handle these with:
-
-### Whitelisting Specific Values
-
-```yaml
-security:
-  secrets:
-    detection:
-      whitelist:
-        # Exact string matching
-        exact_matches:
-          - "example-token-that-looks-like-secret"
-
-        # Pattern-based whitelist
-        pattern_whitelist:
-          - pattern: "test_.*"  # Exclude test_ prefixed values
-            reason: "Test values only"
-```
-
-### Excluding Specific Fields
-
-```yaml
-security:
-  secrets:
-    detection:
-      exclusions:
-        # Don't check these file patterns
-        paths:
-          - "docs/**/*.md"
-          - "examples/**"
-          - "test/**"
-
-        # Don't check these config keys
-        config_keys:
-          - "example_values"
-          - "documentation"
-          - "deprecated_settings"
-```
-
-### File-Level Exclusions
-
-Add to specific files:
-
-```go
-// Allow secrets in this file (e.g., test fixtures)
-// contexthelp:skip-secret-check
-package fixtures
-
-const (
-    TestAPIKey = "sk-test-abc123def456"
-    TestPassword = "password123"
-)
-```
-
-### Using Comments for Inline Exclusions
-
-```bash
-#!/bin/bash
-
-# Example GitHub token for documentation
-# contexthelp:skip-secret-check: ghp_abc123def456
-
-# This will be flagged
-REAL_TOKEN="ghp_real_token_here"
-```
-
-## Validating Secrets in Code
-
-### Using the Validation API
-
-Programmatically check if strings contain secrets:
-
-```go
-package main
-
-import (
-    "fmt"
-    "github.com/ideacrafterslabs/ctxt/internal/security"
-)
-
-func main() {
-    validator := security.NewSecretsValidator()
-
-    // Check a single value
-    value := "sk-proj-abc123def456xyz"
-    result := validator.ValidateString(value)
-
-    if result.IsSecret {
-        fmt.Printf("Detected secret: %s (severity: %s)\n",
-            result.Pattern, result.Severity)
-    }
-
-    // Check with custom threshold
-    result = validator.ValidateStringWithThreshold(
-        value,
-        security.SeverityHigh,  // Only report high+ severity
-    )
-}
-```
-
-### Batch Validation
-
-```go
-package main
-
-import (
-    "github.com/ideacrafterslabs/ctxt/internal/security"
-)
-
-func main() {
-    validator := security.NewSecretsValidator()
-
-    content := `
-        OPENAI_API_KEY=sk-proj-abc123def456
-        DATABASE_URL=postgres://user:pass@localhost/db
-        DEBUG_TOKEN=test_token_123
-    `
-
-    results := validator.ValidateContent(content)
-
-    for _, result := range results {
-        if result.IsSecret {
-            fmt.Printf("Line %d: %s secret detected\n",
-                result.Line, result.Severity)
-        }
-    }
-}
-```
-
-### CLI Validation Command
-
-> **Note:** `ctxt security validate` is not implemented in the current release.
-> Use the shipped `ctxt config validate` for config structure checks, and
-> external tools for secret scanning:
-
-```bash
-# Validate config structure
+# Validation plus the secret scan (--check-secrets is on by default).
+# Exit code 1 on any validation error or secret warning.
 ctxt config validate
 
-# Validate detector rules
-ctxt detector list
+# Validation only
+ctxt config validate --check-secrets=false
 
-# Scan config directory for secrets — use gitleaks:
-gitleaks detect --source ~/.config/contexthelp/ --no-git --verbose --redact
-
-# Fail on detected secrets (CI usage):
-gitleaks detect --source . --no-git --exit-code 1
+# Lint: validation errors, secret warnings, file permissions, access smells
+ctxt config doctor
 ```
 
-## Configuration File Security
+The scan runs on ctxt's own config cascade. To check a dpkms config or a
+separate secrets file, layer it in: `ctxt config doctor -c <file>`.
 
-### Protecting Configuration Files
-
-Configuration files often contain secrets. Protect them:
+The scan is not configurable: there are no custom patterns, exclusion
+lists or inline skip comments. To scan files outside the config, use an
+external tool:
 
 ```bash
-# Secure file permissions (owner read/write only)
-chmod 600 ~/.config/contexthelp/config.yaml
+gitleaks dir ~/.config/contexthelp/ --verbose --redact
+```
+
+---
+
+## Config output redaction
+
+`ctxt config show` prints a redacted copy of the effective config, in the
+default view and every `--format` (`json`, `yaml`, ...). The secret-scan
+hints of `config validate` and `config doctor`, and the URL quoted in a
+`server.url` / `server.urls` load error, use the same masks:
+
+| Value | Shown as |
+|---|---|
+| Credential of 16 or more characters | `****` and its last 4 characters (`****9f2c`) |
+| Shorter credential | `****` |
+| Unset credential | empty, as before |
+| Password inside a URL or connection string | masked in place: `postgres://jad:****@db/ctxt`, `password=****` |
+
+Credentials are the tokens (`server.token`, `server.urls[].token`,
+`server.auth.static.tokens[].token`, `federation.token`,
+`federations[].token`), the S3 keys (`storage.blob.s3.access_key`,
+`secret_key`), and the audit and security-alert webhook URLs. Connection strings and URLs (`storage.path`, endpoints, registry
+and federation URLs) keep everything but an embedded password or
+secret-named parameter.
+
+The `secret` struct tag on the config fields (`internal/config/redact.go`)
+is the list: a new field whose name contains `token`, `password`,
+`secret` or `key` fails the tests until it is tagged. There is no flag to
+print credentials; read them from the config file itself.
+
+---
+
+## Config file permissions
+
+`ctxt config doctor` warns when the config file is world-readable or
+group-readable (`internal/config/lint.go`), and `ctxt config doctor --fix`
+runs the equivalent of `chmod 600` on it. The file checked is the last
+`-c <file>` given, otherwise `CTXT_CONFIG`, otherwise
+`$XDG_CONFIG_HOME/contexthelp/ctxt.yaml`. Directories, `dpkms.yaml` and
+other layers are not checked unless passed with `-c`; set them by hand:
+
+```bash
+chmod 600 ~/.config/contexthelp/ctxt.yaml ~/.config/contexthelp/dpkms.yaml
 chmod 700 ~/.config/contexthelp/
 
-# For system-wide config
-sudo chmod 600 /etc/contexthelp/config.yaml
-sudo chmod 700 /etc/contexthelp/
+# System-wide layer, if you use one
+sudo chmod 600 /etc/contexthelp/dpkms.yaml
 
-# Verify permissions
-ls -la ~/.config/contexthelp/config.yaml
-# Should show: -rw------- (600)
+ls -la ~/.config/contexthelp/
+# Should show: -rw------- for each file
 ```
 
-### Safe Configuration Patterns
+---
 
-Use environment variables for secrets, never hardcode them:
+## Keeping secrets out of config
+
+Config files take every value literally: `${VAR}` is not expanded, so a
+config file cannot pull a secret from the environment. Keep secrets out of
+committed config instead: provider API keys in the env vars the provider
+reads (`OPENAI_API_KEY`, ...), S3 blob credentials in
+`CTXT_BLOB_S3_ACCESS_KEY` / `CTXT_BLOB_S3_SECRET_KEY`, and tokens that
+must live in a config key (`server.auth`, `federation.token`) written
+literally in a gitignored file (0600) layered with a second `--config`
+(see [../deployment/docker.md#secrets](../deployment/docker.md#secrets)).
+
+Registry tokens never appear in config. The registry entry names the auth
+mechanism only; `ctxt registry login` stores the token in the OS keychain:
 
 ```yaml
-# GOOD - Use environment variable references
 registries:
   - name: private-registry
     url: https://registry.example.com
     auth:
-      token: ${CH_REGISTRY_TOKEN_PRIVATE}  # From env var
-
-# GOOD - Use file-based secrets
-registries:
-  - name: private-registry
-    url: https://registry.example.com
-    auth:
-      token_file: /etc/contexthelp/secrets/registry-token  # From file
+      type: bearer          # bearer | api_key | oauth2
 ```
 
 ```bash
-# BAD - Don't do this
-# Hardcoding secrets in config
-CH_REGISTRY_TOKEN_PRIVATE="ghp_abc123def456"  # DON'T
+# Prompts for the token; nothing lands in shell history
+ctxt registry login private-registry
 
-# GOOD - Source from secure storage
-export CH_REGISTRY_TOKEN_PRIVATE=$(pass show contexthelp/registry-token)
-export CH_REGISTRY_TOKEN_PRIVATE=$(aws secretsmanager get-secret-value --secret-id contexthelp/registry --query SecretString --output text)
+# Non-interactive: pass it from secure storage
+ctxt registry login private-registry --token "$(pass show contexthelp/registry-token)"
+
+# Remove it
+ctxt registry logout private-registry
 ```
 
-### Configuration as Code
+`config.RegistryConfig` has no token field, so code that builds a
+`config.Config` cannot carry a registry token either. Never assign a
+literal secret to a config struct field such as `server.token` or
+`federation.token` in source.
 
-When managing configuration in code:
+---
 
-```go
-// BAD - Hardcoded secret
-cfg := &config.Config{
-    Registries: []config.RegistryConfig{
-        {
-            Name:  "private",
-            Token: "ghp_hardcoded_secret_xyz",  // DON'T
-        },
-    },
-}
+## What output shows secrets
 
-// GOOD - Load from environment
-cfg := &config.Config{
-    Registries: []config.RegistryConfig{
-        {
-            Name:  "private",
-            Token: os.Getenv("CH_REGISTRY_TOKEN_PRIVATE"),
-        },
-    },
-}
+### Protected
 
-// GOOD - Load from secret file
-token, err := ioutil.ReadFile("/etc/contexthelp/secrets/registry-token")
-cfg := &config.Config{
-    Registries: []config.RegistryConfig{
-        {
-            Name:  "private",
-            Token: string(token),
-        },
-    },
-}
-```
+- `ctxt config validate` / `ctxt config doctor` print only the 4-character
+  hint of a flagged value.
+- `dpkms secret set` refuses a secret value as a positional argument; it
+  reads stdin, `--from-file` or `--prompt`.
+- `ctxt ui open --format json` drops the single-use login code from the
+  printed URL once the link was opened in a browser.
+- On a `public` instance, `/healthz` answers anonymous callers with the
+  health verdict only; version, queue depths and upgrade state need a
+  valid token.
 
-## Verifying Log Sanitization
+### Not protected
 
-### Testing Log Output
+- **Logs.** `slog` output, including `-V` / `--verbose` debug output, is
+  written as-is. Do not ship debug logs from an instance that handles
+  secrets without checking them first.
+- **`ctxt config show` with a structured format** (`--format json`,
+  `yaml`, ...) prints the whole effective config unredacted, including
+  `server.token`, `server.urls[].token`, `server.auth.static.tokens`,
+  `federation.token` and `storage.blob.s3` keys. The default text output
+  prints a summary that includes `storage.path`, so a PostgreSQL DSN with
+  an embedded password shows up there too.
+- **Unwired helper.** `internal/ambient/redact` (a wrapper over kit's
+  `core/redact`) exists with tests, but no runtime code path calls it.
 
-Verify logs are properly sanitized:
+To check a log or data directory for leaked secrets, scan it:
 
 ```bash
-# Test with a fake secret
-export OPENAI_API_KEY="sk-proj-test-123456789abcdef"
-ctxt analyze "test content" 2>&1 | grep -i "sk-proj"
-
-# Should output nothing (secret is redacted)
-
-# Check logs for redaction
-tail -f ~/.local/share/contexthelp/logs/contexthelp.log | grep REDACTED
+gitleaks dir ~/.local/share/contexthelp/ --verbose --redact
 ```
 
-### Audit Log Sanitization
+---
 
-Enable detailed sanitization audit logging:
+## Security alerts
+
+dpkms counts failed authentication (per client address) and ACL denials
+(per principal) in a 60-second window. Past the threshold, it writes
+a `security.auth_failure` / `security.acl_denial` entry to the audit log
+and, when configured, posts it to a webhook or sends it by SMTP:
 
 ```yaml
 security:
-  logging:
-    sanitize: true
-    audit_redactions: true  # Log what was redacted
+  alerts:
+    auth_failure_threshold: 3     # default
+    acl_denial_threshold: 10      # default
+    webhook_url: https://alerts.example.com/dpkms
 ```
 
 ```bash
-# View audit entries that mention redaction
-ctxt audit list --event-type secret.detected
-
-# Or grep the raw log file:
-grep "REDACTED" ~/.local/share/contexthelp/audit.log | wc -l
+ctxt audit list --event-type security.auth_failure --since 24h
 ```
 
-### Log Sanitization Verification
+---
 
-> **Note:** `ctxt security verify-logs` is not implemented in the current release.
-> Use gitleaks or direct grep to verify the audit log:
+## Examples
 
-```bash
-# Check audit log for any unredacted patterns:
-grep -E "sk-proj-|sk-ant-|ghp_|AKIA" \
-  ~/.local/share/contexthelp/audit.log \
-  && echo "WARNING: possible unredacted secret" || echo "clean"
-
-# Full scan via gitleaks:
-gitleaks detect --source ~/.local/share/contexthelp/ --no-git --verbose --redact
-```
-
-## Integration Points
-
-### For Developers Using ContextHelp APIs
-
-When calling ContextHelp APIs, logs are automatically sanitized:
-
-```go
-package main
-
-import (
-    "github.com/ideacrafterslabs/ctxt/pkg/client"
-    "github.com/ideacrafterslabs/ctxt/internal/security"
-)
-
-func setupClient() (*client.Client, error) {
-    // Create sanitized logger
-    logger := security.NewSanitizedLogger(
-        security.LoggerConfig{
-            RedactionMode: security.RedactionModeFull,
-        },
-    )
-
-    // Create client with sanitized logger
-    return client.NewClient(
-        client.WithLogger(logger),
-        client.WithSanitization(true),
-    )
-}
-```
-
-### For Plugin Developers
-
-Plugins should use the sanitization utilities:
-
-```go
-package myplugin
-
-import (
-    "github.com/ideacrafterslabs/ctxt/internal/security"
-)
-
-func ProcessData(data string) error {
-    // Get sanitized logger
-    logger := security.GetSanitizedLogger()
-
-    // This will automatically redact secrets
-    logger.Infof("Processing data: %s", data)
-
-    // Or manually sanitize strings
-    sanitized := security.SanitizeString(data)
-    return nil
-}
-```
-
-### For Custom Integrations
-
-When integrating external systems:
-
-```go
-package integration
-
-import (
-    "github.com/ideacrafterslabs/ctxt/internal/security"
-)
-
-func fetchFromRegistry(token string) error {
-    // Validate token doesn't leak
-    validator := security.NewSecretsValidator()
-    if result := validator.ValidateString(token); result.IsSecret {
-        return fmt.Errorf("token looks like a secret: %s", result.Pattern)
-    }
-
-    // Use token safely
-    result, err := callRegistry(token)
-
-    // Sanitize any response logging
-    logger := security.GetSanitizedLogger()
-    logger.Debugf("Response: %v", result)
-
-    return err
-}
-```
-
-## Best Practices
-
-### For Development
-
-1. **Use test/mock secrets**: Never use real secrets in code
-   ```go
-   const (
-       TestToken = "sk-test-mock-token-12345"  // Obviously fake
-       TestPassword = "test_password_123"       // Not real
-   )
-   ```
-
-2. **Load secrets from environment**: Don't hardcode
-   ```bash
-   export OPENAI_API_KEY=$(pass show openai-key)
-   go run main.go
-   ```
-
-3. **Use git hooks to prevent commits**: Prevent accidental secret commits
-   ```bash
-   # Install pre-commit hook
-   cp hooks/pre-commit .git/hooks/
-   chmod +x .git/hooks/pre-commit
-   ```
-
-4. **Enable debug logs safely**: Only enable in local dev
-   ```bash
-   # This redacts even in debug mode
-   export CH_DEBUG=true
-   export CH_SECURITY_LOGGING_SANITIZE_LEVELS_DEBUG=true
-   ```
-
-### For Operations
-
-1. **Audit logs regularly**: Check for any unredacted secrets
-   ```bash
-   # Daily cron: grep audit log for known secret prefixes
-   grep -E "sk-proj-|sk-ant-|ghp_|AKIA" \
-     ~/.local/share/contexthelp/audit.log && \
-     echo "ALERT: unredacted secret in audit log"
-   ```
-
-2. **Use log aggregation**: Ensure centralized logs are also sanitized
-   ```yaml
-   logging:
-     outputs:
-       - type: file
-         sanitize: true
-       - type: syslog
-         sanitize: true
-   ```
-
-3. **Monitor for suspicious patterns**: Watch for repeated redactions
-   ```bash
-   # Count redacted entries in audit log:
-   grep -c "REDACTED\|secret.detected" \
-     ~/.local/share/contexthelp/audit.log
-   ```
-
-4. **Rotate secrets regularly**: Follow schedule in [Secret Management](./secret-management.md#secret-rotation)
-
-### For Compliance
-
-1. **Maintain audit trails**: Logs show what was redacted (not the secret)
-   ```
-   [WARN] Sanitized 1 API key, 2 database passwords, 1 JWT token
-   ```
-
-2. **Generate compliance reports**: Document sanitization effectiveness
-   ```bash
-   # Export audit log in NDJSON for analysis / evidence:
-   ctxt audit export --format json > compliance-$(date +%Y-%m-%d).ndjson
-   ```
-
-3. **Test incident response**: Verify procedures work
-   ```bash
-   # Test gitleaks pattern against a fake key string:
-   echo "sk-proj-test-notreal-abc123" | \
-     gitleaks detect --pipe --verbose --redact
-   ```
-
-## Troubleshooting
-
-### Secrets Not Being Detected
-
-**Problem**: Expected secret isn't being detected
-
-**Solutions**:
-```bash
-# Check if detection is enabled (config)
-ctxt config show | grep -A5 "secrets:"
-
-# List active detector rules
-ctxt detector list
-
-# Test detection with gitleaks against a known pattern:
-echo "sk-proj-abc123def456" | gitleaks detect --pipe --verbose
-
-# Add a custom detector rule via ctxt:
-ctxt detector add --name "my-secret" --pattern "mysvc-[a-z0-9]{32}"
-```
-
-### False Positives
-
-**Problem**: Legitimate values being flagged as secrets
-
-**Solutions**:
-```bash
-# Disable specific detector rule
-ctxt detector disable <id>   # use: ctxt detector list  to get id
-
-# Or edit config manually:
-vim ~/.config/contexthelp/config.yaml
-# Add to security.secrets.detection.whitelist.exact_matches
-```
-
-### Logs Not Sanitized
-
-**Problem**: Secrets appearing in log files
-
-**Solutions**:
-```bash
-# Check sanitization is enabled
-ctxt config show | grep -A5 "logging:"
-
-# Verify log level
-export CH_SECURITY_LOGGING_SANITIZE_LEVELS_INFO=true
-
-# Check log file directly
-tail -f ~/.local/share/contexthelp/logs/contexthelp.log
-
-# Force sanitization on/off
-export CH_SECURITY_LOGGING_SANITIZE=true
-```
-
-### Performance Issues
-
-**Problem**: Log sanitization slowing down application
-
-**Solutions**:
-```bash
-# Use faster redaction mode
-export CH_SECURITY_LOGGING_REDACTION_MODE=partial
-
-# Reduce checked log levels
-export CH_SECURITY_LOGGING_SANITIZE_LEVELS_DEBUG=false
-export CH_SECURITY_LOGGING_SANITIZE_LEVELS_TRACE=false
-
-# Use sampling in high-volume scenarios
-export CH_SECURITY_LOGGING_SAMPLE_RATE=0.1  # Check 10% of logs
-```
-
-## API Reference
-
-### SecretsValidator Interface
-
-```go
-type SecretsValidator interface {
-    // Check if string contains a secret
-    ValidateString(value string) *ValidationResult
-
-    // Check with severity threshold
-    ValidateStringWithThreshold(value string, severity Severity) *ValidationResult
-
-    // Check content and return all matches
-    ValidateContent(content string) []*ValidationResult
-
-    // Check file
-    ValidateFile(path string) ([]*ValidationResult, error)
-
-    // Check directory recursively
-    ValidateDirectory(path string) ([]*ValidationResult, error)
-}
-
-type ValidationResult struct {
-    IsSecret    bool
-    Pattern     string
-    Severity    Severity
-    Line        int
-    Column      int
-    Match       string
-    Context     string
-}
-```
-
-### SanitizedLogger Interface
-
-```go
-type SanitizedLogger interface {
-    // Standard logging with automatic sanitization
-    Debugf(format string, args ...interface{})
-    Infof(format string, args ...interface{})
-    Warnf(format string, args ...interface{})
-    Errorf(format string, args ...interface{})
-
-    // Log with context
-    DebugfWithContext(ctx context.Context, format string, args ...interface{})
-
-    // Manual sanitization
-    Sanitize(value string) string
-}
-```
-
-## Related Documentation
-
-- [Secret Management Best Practices](./secret-management.md)
-- [Configuration Security](./configuration-security.md)
-- [dPKMS Security Model](../dpkms/security.md)
-- [Environment Variables - Security Section](../environment-variables.md#security)
-- [ADR-019: Encryption and Privacy](../decisions/ADR-019-encryption-and-privacy.md)
-- [ADR-023: Authentication and Authorization](../decisions/ADR-023-authentication-authorization-model.md)
-
-## Examples and Recipes
-
-### Example 1: Secure Registry Configuration
+### Database connection with the password from the environment
 
 ```yaml
-# config.yaml
-registries:
-  - name: company-registry
-    url: https://registry.company.com
-    type: taxonomy
-    auth:
-      token_file: ${CH_SECRETS_DIR}/registry-token
-```
-
-```bash
-# Store token securely
-mkdir -p ~/.config/contexthelp/secrets
-chmod 700 ~/.config/contexthelp/secrets
-echo "ghp_abc123def456" > ~/.config/contexthelp/secrets/registry-token
-chmod 600 ~/.config/contexthelp/secrets/registry-token
-```
-
-### Example 2: Database Connection with Rotation
-
-```yaml
-# config.yaml
+# ~/.config/contexthelp/dpkms.yaml
 storage:
   type: postgres
-  connection_string: ${CONTEXTHELP_DB_URL}
+  # No password here: config files do not expand env vars; libpq reads PGPASSWORD
+  path: postgresql://contexthelp@db.internal/contexthelp
 ```
 
 ```bash
-# Use connection string from environment
-export CONTEXTHELP_DB_URL=$(aws secretsmanager get-secret-value \
+export PGPASSWORD=$(aws secretsmanager get-secret-value \
   --secret-id contexthelp/db \
   --query SecretString \
   --output text)
@@ -972,41 +234,27 @@ export CONTEXTHELP_DB_URL=$(aws secretsmanager get-secret-value \
 dpkms serve
 ```
 
-### Example 3: Multi-Environment Configuration
+### Multi-environment shell setup
 
 ```bash
 # .envrc (using direnv)
 # Development
-export CH_STORAGE_TYPE=sqlite
-export CH_DEBUG=true
+export CH_STORAGE_TYPE=sqlite   # debug output: pass --verbose
 
 # Staging
 if [ "$ENVIRONMENT" = "staging" ]; then
   export CH_STORAGE_TYPE=postgres
-  export POSTGRES_PASSWORD=$(pass show staging/db)
+  export PGPASSWORD=$(pass show staging/db)
   export OPENAI_API_KEY=$(pass show staging/openai-key)
-fi
-
-# Production
-if [ "$ENVIRONMENT" = "production" ]; then
-  export CH_STORAGE_TYPE=postgres
-  export POSTGRES_PASSWORD=$(aws secretsmanager get-secret-value --secret-id prod/db --query SecretString --output text)
-  export OPENAI_API_KEY=$(aws secretsmanager get-secret-value --secret-id prod/openai --query SecretString --output text)
 fi
 ```
 
-## Support and Questions
-
-For questions about secrets validation or log sanitization:
-
-1. Check the [troubleshooting section](#troubleshooting)
-2. Review related documentation linked below
-3. Check the [FAQ](../FAQ.md#security)
-4. File an issue with details (without exposing secrets)
-
 ---
 
-**Last Updated**: 2025-01-26
-**Version**: 1.0
-**Status**: Active
-**Maintained by**: Security Team
+## Related Documentation
+
+- [validation.md](validation.md) — config, HTTP and query validation
+- [secret-management.md](secret-management.md) — secret lifecycle
+- [secrets-backends.md](secrets-backends.md) — where provider keys are read from
+- [Config and Permissions](../manual/reference/config-and-permissions.md) — server access, auth and scopes
+- [Environment variables: security](../environment-variables/security.md)

@@ -204,12 +204,13 @@ func TestResolveDefaultDir_HonoursOverride(t *testing.T) {
 
 func TestResolveDefaultDir_HonoursXDG(t *testing.T) {
 	t.Setenv("CTXT_AMBIENT_BUFFER_DIR", "")
-	t.Setenv("XDG_STATE_HOME", "/xdg/state")
+	xdg := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", xdg)
 	got, err := ResolveDefaultDir()
 	if err != nil {
 		t.Fatalf("ResolveDefaultDir: %v", err)
 	}
-	want := filepath.Join("/xdg/state", "ctxt", "ambient")
+	want := filepath.Join(xdg, "ctxt", "ambient")
 	if got != want {
 		t.Errorf("ResolveDefaultDir = %q, want %q", got, want)
 	}

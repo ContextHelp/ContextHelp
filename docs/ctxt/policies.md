@@ -62,9 +62,9 @@ the user policy file.
 > `$XDG_CONFIG_HOME/contexthelp/policies.yaml` (flat) was moved to
 > `policy/ctxt.yaml` (namespaced) by the
 > [ADR-065 amendment](../decisions/ADR-065-pluggable-adapters.md#amendment-2026-05-06--service-vs-sensor-distinction-ambient-capture-os-platform-slots).
-> The new `policy/` subdirectory groups `ctxt.yaml` (CEL gating rules)
-> and `ambient.yaml` ([sensor enablement config](ambient.md)) under one
-> roof. **Migration is automatic** on first boot after the upgrade;
+> The `policy/` subdirectory was meant to also hold `ambient.yaml`
+> (sensor enablement); no code reads that file — see [../ambient.md](../ambient.md#not-implemented).
+> **Migration is automatic** on first boot after the upgrade;
 > operators with custom `$CTXT_POLICY_FILE` overrides must update them
 > manually.
 
@@ -125,7 +125,7 @@ The CEL `when` expression sees four bindings (see ADR-0008 §4):
 | Binding | Type | Notes for ctxt |
 |---------|------|----------------|
 | `payload.Op` | string | `"create"`, `"update"`, or `"delete"` |
-| `payload.EntityID` | string | The pipeline name (Pipeline.GetID returns Name, not the UUID — T-1294) |
+| `payload.EntityID` | string | The pipeline name (`Pipeline.GetID` returns the name, not the UUID) |
 | `payload.Phase` | string | Always `"pre_persisted"` for ctxt today |
 | `principal.id` | string | Resolved from kit's `DefaultPrincipalResolver` (today: `$USER`). Aps profile lookup is a follow-up — see `internal/policy/policy.go` `ctxtPrincipalResolver` |
 | `principal.role` | string | From `KIT_POLICY_ROLE` env var. Empty when unset |
@@ -242,7 +242,7 @@ Error: POLICY_DENIED: policy "<name>" denied: <message>
   `POST /api/v1/pipelines/<name>/archive`, and
   `POST /api/v1/pipelines/<name>/unarchive`. Empty / missing header
   reads as `context.note == ""` in CEL.
-- To restore pre-T-1296 behavior temporarily, edit
+- To drop the `--note` requirement temporarily, edit
   `$XDG_CONFIG_HOME/contexthelp/policy/ctxt.yaml` (post-2026-05-06
   relocation; was `policies.yaml`) and remove the two default rules.
   ctxt does not re-seed once a non-empty user file exists, so the

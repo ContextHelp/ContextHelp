@@ -13,6 +13,9 @@ func ConfigFromAlerts(a config.SecurityAlertsConfig) Config {
 	if a.ACLDenialThreshold > 0 {
 		c.ACLDenialThreshold = a.ACLDenialThreshold
 	}
+	if a.DeliveryTimeout > 0 {
+		c.DeliveryTimeout = a.DeliveryTimeout
+	}
 	c.WebhookURL = a.WebhookURL
 	c.SMTP = SMTPConfig{
 		Host: a.SMTP.Host,

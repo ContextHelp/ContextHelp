@@ -34,7 +34,7 @@ export OPENAI_API_KEY=$(aws secretsmanager get-secret-value \
   --output text)
 
 # BAD - Hardcoded
-export OPENAI_API_KEY="sk-proj-hardcoded-key"  # DON'T DO THIS
+export OPENAI_API_KEY="sk-proj-..."  # DON'T DO THIS: a literal key
 ```
 
 ### Database Credentials
@@ -55,7 +55,7 @@ export POSTGRES_PASSWORD=$(aws secretsmanager get-secret-value \
 export POSTGRES_PASSWORD=$(vault kv get -field=password secret/prod/postgres)
 
 # BAD - In config file
-POSTGRES_PASSWORD=my_database_password  # DON'T
+POSTGRES_PASSWORD=<database-password>  # DON'T: a literal password
 ```
 
 ### Registry Tokens
@@ -63,18 +63,45 @@ POSTGRES_PASSWORD=my_database_password  # DON'T
 **Examples**: GitHub, GitLab, private registries
 **Sensitivity**: High
 **Rotation**: Quarterly or on scope change
-**Storage**: Environment variables or secret files
+**Storage**: OS keychain, via `ctxt registry login` (never the config
+file or an environment variable)
 
 ```bash
-# GOOD - From environment
-export CH_REGISTRY_TOKEN_PRIVATE=$(pass show registries/private-token)
+# GOOD - Prompt; the token goes straight to the OS keychain
+ctxt registry login private
 
-# GOOD - From secret file with restricted permissions
-export CH_REGISTRY_TOKEN_PRIVATE=$(cat /etc/contexthelp/secrets/registry-token)
+# GOOD - Non-interactive, from secure storage
+ctxt registry login private --token "$(pass show registries/private-token)"
 
-# BAD - Hardcoded in config
-CH_REGISTRY_TOKEN_PRIVATE: "ghp_abc123def456"  # DON'T
+# Rotate: login again overwrites the stored token; logout removes it
+ctxt registry logout private
 ```
+
+The config entry holds only the mechanism (`registries[].auth.type`:
+`bearer`, `api_key` or `oauth2`).
+
+**On a dpkms host** there is no login keychain. `dpkms serve` (manifest
+fetch and update, entity sync and pull, step install, bookmark search)
+reads a registry's token from the `secrets.backend` store under the key
+`registry/<name>`, where every character of the name other than an ASCII
+letter, digit or `_` becomes `_` (`team-ops` is `registry/team_ops`,
+`acme.io` is `registry/acme_io`). The value is JSON holding the origin
+the token is bound to and the token; the same rules apply as to a `ctxt
+registry login` token (sent only to that origin, over https or to a
+loopback host):
+
+```bash
+# GOOD - JSON from stdin; the token never reaches argv
+pass show registries/private-token |
+  jq -R '{origin: "https://registry.example.com", token: .}' |
+  dpkms secret set registry/private
+```
+
+With `secrets.backend: env`, set the variable instead: the key
+upper-cased with `/` as `_`, so `registry/team_ops` is
+`REGISTRY_TEAM_OPS`. Names that differ only in those replaced characters
+(`team-ops`, `team.ops`) share one key. A 401 or 403 from the registry
+names the key to set.
 
 ### Encryption Keys
 
@@ -234,8 +261,8 @@ metadata:
   name: contexthelp-secrets
 type: Opaque
 data:
-  openai-api-key: c2stcHJvai1hYmMxMjM=  # base64 encoded
-  postgres-password: cGFzc3dvcmQxMjM=
+  openai-api-key: <base64-encoded-key>
+  postgres-password: <base64-encoded-password>
 
 ---
 # Use in Pod
@@ -363,7 +390,7 @@ psql -U admin -d contexthelp -c \
   "ALTER USER ctxt_prod WITH PASSWORD '$NEW_PASSWORD';"
 
 # 3. Update in secret manager
-vault kv put secret/prod/postgres password="$NEW_PASSWORD"
+vault kv put secret/prod/postgres password="${NEW_PASSWORD}"
 
 # 4. Restart services (if no connection pooling)
 # Services with connection pooling pick up automatically
@@ -506,7 +533,7 @@ grep "authentication failed" ~/.local/share/contexthelp/logs/*.log
 #!/bin/bash
 # Incident response for exposed OpenAI key
 
-COMPROMISED_KEY="sk-proj-abc123def456"
+COMPROMISED_KEY="sk-proj-..."
 INCIDENT_ID="INC-2025-001"
 
 log() {
@@ -640,57 +667,25 @@ secret-scan:
   allow_failure: true
 ```
 
-## For Plugin Developers
+## For Step Developers
 
-### Handling Secrets in Plugins
-
-Never store hardcoded secrets:
+Installed steps run out of process (ADR-058). dpkms passes a step no
+secrets: its environment holds only the protocol variables, and its
+`config` (the file `DPKMS_STEP_CONFIG_PATH` names) is printed by
+`config show`. Never hardcode secrets in a step; under process isolation,
+read them from a file with restricted permissions that the step owns:
 
 ```go
 // BAD - Never do this
-func (p *MyPlugin) Init(config map[string]interface{}) error {
-    p.apiKey = "sk-proj-hardcoded"  // DON'T
-    return nil
+const apiKey = "sk-proj-hardcoded" // DON'T
+
+// GOOD - Read a key file the step's operator created (mode 0600).
+// dpkms passes no environment through, so os.Getenv finds nothing.
+key, err := os.ReadFile("/etc/mystep/api-key")
+if err != nil {
+    return fmt.Errorf("read api key: %w", err)
 }
-
-// GOOD - Get from environment
-func (p *MyPlugin) Init(config map[string]interface{}) error {
-    apiKey := os.Getenv("CH_PLUGIN_MYPLUGIN_API_KEY")
-    if apiKey == "" {
-        return fmt.Errorf("CH_PLUGIN_MYPLUGIN_API_KEY not set")
-    }
-    p.apiKey = apiKey
-    return nil
-}
-
-// GOOD - Get from config file with restricted permissions
-func (p *MyPlugin) Init(config map[string]interface{}) error {
-    configFile := os.Getenv("CH_PLUGIN_MYPLUGIN_CONFIG")
-    cfg, err := ioutil.ReadFile(configFile)
-    if err != nil {
-        return fmt.Errorf("failed to read config: %w", err)
-    }
-    // Parse config...
-    return nil
-}
-```
-
-### Configuration Example
-
-```yaml
-plugins:
-  load:
-    - name: my-plugin
-      config:
-        # GOOD - Reference environment variables
-        api_key: ${MY_PLUGIN_API_KEY}
-
-        # GOOD - Reference config files
-        credentials_file: /etc/contexthelp/secrets/my-plugin.yaml
-
-        # GOOD - Safe defaults, secrets from environment
-        endpoint: https://api.example.com
-        timeout: 30s
+apiKey := strings.TrimSpace(string(key))
 ```
 
 ## Monitoring & Audit
@@ -712,25 +707,24 @@ tail -f ~/.local/share/contexthelp/logs/contexthelp.log | grep "secret.*rotated"
 
 ### Audit Logging
 
-Configure comprehensive audit logging:
+The audit log is a table in the dpkms database, not a file (no path or
+format to configure; `fanout.audit_log: false` drops fan-out entries). It
+records security alerts (`security.auth_failure` and
+`security.acl_denial` past the `security.alerts` thresholds, quota
+exhaustion, signing failures), duplicate detection, fan-out enrichment and
+`ctxt doctor` runs. Secret reads, rotations and config changes are not
+recorded.
 
-```yaml
-logging:
-  audit:
-    enabled: true
-    level: all
-    events:
-      - authentication_attempt
-      - secret_access
-      - secret_rotation
-      - permission_check
-      - configuration_change
-      - registry_access
-    output:
-      file: /var/log/contexthelp/audit.log
-      syslog: true
-      format: json
+```bash
+# Recent entries
+ctxt audit list --since 24h
+
+# NDJSON for a SIEM (also cef, syslog); schedule it to ship the log
+ctxt audit export --format json --since 24h > audit.ndjson
 ```
+
+Over HTTP both need the `admin:audit` scope. See
+[SIEM integration](../operations/siem-integration.md).
 
 ### Metrics & Alerts
 
@@ -802,7 +796,7 @@ contexthelp_unauthorized_access_attempts_total
 
 - [Secrets Validation & Log Sanitization](./secrets-validation-and-log-sanitization.md)
 - [Configuration Security](./configuration-security.md)
-- [Environment Variables - Security Section](../environment-variables.md#security-best-practices)
+- [Security Environment Variables](../environment-variables/security.md)
 - [dPKMS Security](../dpkms/security.md)
 
 ---

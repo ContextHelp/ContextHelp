@@ -59,7 +59,7 @@ func (s *Service) PageUpsert(
 func (s *Service) findEntityPage(
 	ctx context.Context, entitySlug string,
 ) (*storage.KnowledgeObject, error) {
-	objs, _, err := s.Store.Objects().List(ctx, storage.ObjectFilter{
+	objs, _, err := s.Store(ctx).Objects().List(ctx, storage.ObjectFilter{
 		Type:   EntityPageType,
 		Limit:  500,
 		Status: "all",
@@ -81,7 +81,7 @@ func (s *Service) findEntityPage(
 func (s *Service) createEntityPage(
 	ctx context.Context, entitySlug, sourceObjectID string,
 ) (*PageUpsertResult, error) {
-	sourceObj, err := s.Store.Objects().Get(ctx, sourceObjectID)
+	sourceObj, err := s.Store(ctx).Objects().Get(ctx, sourceObjectID)
 	if err != nil {
 		return nil, fmt.Errorf("page create: get source: %w", err)
 	}
@@ -113,7 +113,7 @@ func (s *Service) createEntityPage(
 		CreatedAt:  now,
 		UpdatedAt:  now,
 	}
-	if err := s.Store.Objects().Create(ctx, obj); err != nil {
+	if err := s.Store(ctx).Objects().Create(ctx, obj); err != nil {
 		return nil, fmt.Errorf("page create: store: %w", err)
 	}
 
@@ -143,7 +143,7 @@ func (s *Service) updateEntityPage(
 		}
 	}
 
-	sourceObj, err := s.Store.Objects().Get(ctx, sourceObjectID)
+	sourceObj, err := s.Store(ctx).Objects().Get(ctx, sourceObjectID)
 	if err != nil {
 		return nil, fmt.Errorf("page update: get source: %w", err)
 	}
@@ -166,7 +166,7 @@ func (s *Service) updateEntityPage(
 	page.Metadata["entity_page"] = toMap(meta)
 	page.UpdatedAt = now
 
-	if err := s.Store.Objects().Update(ctx, page); err != nil {
+	if err := s.Store(ctx).Objects().Update(ctx, page); err != nil {
 		return nil, fmt.Errorf("page update: store: %w", err)
 	}
 
@@ -191,7 +191,7 @@ func (s *Service) ListEntityPages(
 	if limit <= 0 {
 		limit = 50
 	}
-	objs, _, err := s.Store.Objects().List(ctx, storage.ObjectFilter{
+	objs, _, err := s.Store(ctx).Objects().List(ctx, storage.ObjectFilter{
 		Type:   EntityPageType,
 		Limit:  limit,
 		Status: "all",
@@ -199,7 +199,8 @@ func (s *Service) ListEntityPages(
 	return objs, err
 }
 
-// RefreshEntityPage regenerates page content from all source objects.
+// RefreshEntityPage regenerates page content from all source objects. A
+// slug without a page wraps storage.ErrNotFound.
 func (s *Service) RefreshEntityPage(
 	ctx context.Context, entitySlug string,
 ) (*storage.KnowledgeObject, error) {
@@ -208,7 +209,7 @@ func (s *Service) RefreshEntityPage(
 		return nil, err
 	}
 	if page == nil {
-		return nil, fmt.Errorf("entity page not found: %s", entitySlug)
+		return nil, fmt.Errorf("entity page %s: %w", entitySlug, storage.ErrNotFound)
 	}
 
 	meta, _ := ExtractPageMeta(page)
@@ -216,7 +217,7 @@ func (s *Service) RefreshEntityPage(
 	page.RawContent = compilePageContent(entitySlug, snippets)
 	page.UpdatedAt = time.Now().Truncate(time.Second)
 
-	if err := s.Store.Objects().Update(ctx, page); err != nil {
+	if err := s.Store(ctx).Objects().Update(ctx, page); err != nil {
 		return nil, fmt.Errorf("refresh page: %w", err)
 	}
 	return page, nil
@@ -228,7 +229,7 @@ func (s *Service) collectSourceSnippets(
 ) []string {
 	snippets := make([]string, 0, len(sourceIDs))
 	for _, id := range sourceIDs {
-		obj, err := s.Store.Objects().Get(ctx, id)
+		obj, err := s.Store(ctx).Objects().Get(ctx, id)
 		if err != nil {
 			continue
 		}

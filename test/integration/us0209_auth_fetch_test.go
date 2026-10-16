@@ -120,7 +120,7 @@ func TestUS0209_CookieAuthSentToServer(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  srv.URL + "/private",
 		Type:     "url",
 		Pipeline: "web.authenticated",
@@ -152,7 +152,7 @@ func TestUS0209_APIKeyAuthSentToServer(t *testing.T) {
 		t.Skip("set INTEGRATION=1")
 	}
 
-	const apiKey = "super-secret-key-abc"
+	const apiKey = "super-secret-key-abc" // gitleaks:allow test vector
 	const headerName = "X-Api-Key"
 
 	srv := httptest.NewServer(gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
@@ -180,7 +180,7 @@ func TestUS0209_APIKeyAuthSentToServer(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  srv.URL + "/report",
 		Type:     "url",
 		Pipeline: "web.authenticated.api",
@@ -232,7 +232,7 @@ func TestUS0209_AuthMethodStoredInMetadata(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  srv.URL + "/data",
 		Type:     "url",
 		Pipeline: "web.authenticated.bearer",

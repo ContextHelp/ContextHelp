@@ -70,7 +70,7 @@ func TestPublication_ArchiveSharesIdentityKey(t *testing.T) {
 				if c.CandidateType != CandidateTypePublication {
 					continue
 				}
-				// Post-T-0309 the strategy emits the typed
+				// The strategy emits the typed
 				// IdentityKey field; the legacy Preview entry is
 				// no longer set.
 				if facet, _ := c.Preview["facet"].(string); facet == "archive" {
@@ -107,7 +107,7 @@ func TestProfile_Probe(t *testing.T) {
 	}
 }
 
-// TestHintsRoundTrip_MediumCustomDomain pins T-0310 for medium:
+// TestHintsRoundTrip_MediumCustomDomain pins hint round-tripping for medium:
 // MetaPlatform=medium on a non-medium host unlocks the parent
 // strategy's custom-domain branch.
 func TestHintsRoundTrip_MediumCustomDomain(t *testing.T) {

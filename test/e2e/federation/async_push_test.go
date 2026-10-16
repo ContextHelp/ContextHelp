@@ -10,6 +10,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/federation"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // TestFederation_AsyncPush_ObjectAppearsAtMergedDB verifies AC #1:
@@ -51,16 +52,15 @@ func TestFederation_AsyncPush_DedupeByContentHash(t *testing.T) {
 }
 
 // TestFederation_AsyncPush_WatermarkAdvances verifies AC #3:
-// "federation_watermarks table updated with last_synced_at after each
-// successful batch."
+// "federation_watermarks table updated after each successful batch" —
+// with the ChangeSeq of the batch's last object.
 //
-// Backed by T-0173 (Watermarks().GetWatermark/SetWatermark API) and T-0174
-// (LocalPusher advances watermark on success).
+// Backed by the Watermarks().GetWatermark/SetWatermark API and
+// LocalPusher advancing the watermark on success.
 func TestFederation_AsyncPush_WatermarkAdvances(t *testing.T) {
 	ix := setupTwoInstances(t)
 	captureBookmark(t, ix.src, "obj-wm-1", "hash-wm-1", "watermark probe", nil)
 
-	before := time.Now().UTC()
 	if err := pushOnce(t, ix); err != nil {
 		t.Fatalf("pushOnce: %v", err)
 	}
@@ -69,13 +69,13 @@ func TestFederation_AsyncPush_WatermarkAdvances(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetWatermark: %v", err)
 	}
-	if got.IsZero() {
-		t.Fatal("watermark not written: expected federation_watermarks row " +
-			"after successful push")
+	// The watermark is the ChangeSeq of the last object pushed.
+	obj, err := ix.src.drv.Objects().Get(context.Background(), "obj-wm-1")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
 	}
-	// Watermark must be at-or-after the push start (allowing clock equality).
-	if got.Before(before.Add(-time.Second)) {
-		t.Errorf("watermark not advanced: got %v, want >= %v", got, before)
+	if got != obj.ChangeSeq || got == 0 {
+		t.Fatalf("watermark = %d, want the pushed object's ChangeSeq %d", got, obj.ChangeSeq)
 	}
 }
 
@@ -100,7 +100,7 @@ func TestFederation_AsyncPush_CrashRecovery(t *testing.T) {
 	// matches the "nothing to recover" branch.
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	pusher := federation.NewLocalPusher(ix.fedName, ix.tgt.path)
+	pusher := federation.NewLocalPusher(ix.fedName, ix.tgt.path, nil, storageutil.NewTestBlobStore(t))
 	if err := pusher.Push(ctx, []storage.KnowledgeObject{}, nil, nil); err != nil {
 		t.Logf("Push on canceled empty batch: %v (expected nil or canceled)", err)
 	}
@@ -110,8 +110,8 @@ func TestFederation_AsyncPush_CrashRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("readWatermark: %v", err)
 	}
-	if wm != "" {
-		t.Errorf("watermark advanced despite crash: got %q, want empty", wm)
+	if wm != 0 {
+		t.Errorf("watermark advanced despite crash: got %d, want 0", wm)
 	}
 
 	// Restart: object should appear on next tick (proves source data is
@@ -126,8 +126,8 @@ func TestFederation_AsyncPush_CrashRecovery(t *testing.T) {
 	if gerr != nil {
 		t.Fatalf("GetWatermark after recovery: %v", gerr)
 	}
-	if got.IsZero() {
-		t.Error("watermark not advanced after successful recovery push")
+	if got == 0 {
+		t.Errorf("watermark not advanced after successful recovery push: %d", got)
 	}
 }
 
@@ -173,7 +173,7 @@ func TestFederation_AsyncPush_EdgesPushed(t *testing.T) {
 // "Mentions associated with pushed objects are upserted at target."
 //
 // Per ADR-049 mentions are object→entity edges with edge_type='mentions'.
-// T-0175 wired the LocalPusher to carry the referenced entities alongside
+// The LocalPusher is wired to carry the referenced entities alongside
 // edges so the receiver doesn't dangle. This test:
 //  1. seeds two entities at source (alice, bob)
 //  2. captures an object
@@ -259,22 +259,20 @@ func TestFederation_AsyncPush_NoChangesNoOp(t *testing.T) {
 		t.Errorf("no-op tick wrote rows: before=%d after=%d", before, after)
 	}
 
-	// Watermark must remain unchanged (currently always empty since
-	// nothing writes it; once watermark write lands, this assertion will
-	// need updating along with the AsyncPush_WatermarkAdvances test).
+	// Watermark must remain unwritten: nothing was pushed.
 	got, err := readWatermark(t, ix.tgt.path, ix.fedName)
 	if err != nil {
 		t.Fatalf("readWatermark: %v", err)
 	}
-	if got != "" {
-		t.Errorf("no-op tick advanced watermark: got %q, want empty", got)
+	if got != 0 {
+		t.Errorf("no-op tick advanced watermark: got %d, want 0", got)
 	}
 }
 
 // TestFederation_AsyncPush_GracefulShutdown verifies AC #9:
 // "Goroutine exits cleanly on server shutdown (context cancel respected)."
 //
-// Backed by T-0174 (WorkerSet.Start/Stop). Builds a real WorkerSet with one
+// Backed by WorkerSet.Start/Stop. Builds a real WorkerSet with one
 // async target, starts it, then asserts Stop returns nil (workers drained
 // within stopTimeout=5s).
 func TestFederation_AsyncPush_GracefulShutdown(t *testing.T) {

@@ -1,9 +1,11 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
+	"reflect"
 	"regexp"
 	"slices"
 	"strconv"
@@ -21,7 +23,11 @@ func (e ValidationError) Error() string {
 	return fmt.Sprintf("%s: %s", e.Field, e.Message)
 }
 
-// Validate returns a slice of field-level errors for the given Config.
+// Validate is the full config validator: it checks every section and
+// returns one field-level error per problem, never stopping at the
+// first. `ctxt config validate` and `ctxt config doctor` both report
+// its result. Checks that must hold for any command to run (endpoint
+// URLs, UI session bounds, allowed hosts) run at load time instead.
 func Validate(c *Config) []ValidationError {
 	var errs []ValidationError
 
@@ -32,17 +38,32 @@ func Validate(c *Config) []ValidationError {
 		errs = append(errs, ValidationError{Field: "storage.type", Message: fmt.Sprintf("unknown storage type %q", c.Storage.Type)})
 	}
 
-	if c.Server.Port != 0 && (c.Server.Port < 1024 || c.Server.Port > 65535) {
-		errs = append(errs, ValidationError{Field: "server.port", Message: fmt.Sprintf("must be 1024–65535, got %d", c.Server.Port)})
-	}
-
-	if c.Server.GRPCPort != 0 && (c.Server.GRPCPort < 1024 || c.Server.GRPCPort > 65535) {
-		errs = append(errs, ValidationError{Field: "server.grpc_port", Message: fmt.Sprintf("must be 1024–65535, got %d", c.Server.GRPCPort)})
-	}
-
+	errs = append(errs, validateServerPorts(&c.Server)...)
+	errs = append(errs, validateBlob(c.Storage.Blob, "storage.blob")...)
 	errs = append(errs, validateAccess(c)...)
-	errs = append(errs, validateAuthRoles(c)...)
+	errs = append(errs, validateAuth(c)...)
 	errs = append(errs, validateQuotas(c)...)
+	errs = append(errs, validateDuplicates(c.Duplicates)...)
+	errs = append(errs, c.Pipelines.Validate()...)
+	errs = append(errs, validateFederations(c.Federations)...)
+	if n := c.Federation.MaxRequestBytes; n != 0 && n < MinFederationMaxRequestBytes {
+		errs = append(errs, ValidationError{Field: "federation.max_request_bytes", Message: fmt.Sprintf(
+			"must be ≥%d (the objects a pusher sends per request) or 0 for the default; got %d",
+			MinFederationMaxRequestBytes, n)})
+	}
+	errs = append(errs, validateEnvRefs(c)...)
+	if err := c.Embeddings.Validate(); err != nil {
+		var ve ValidationError
+		if errors.As(err, &ve) {
+			errs = append(errs, ve)
+		}
+	}
+	errs = append(errs, validateRegistryAuth(c)...)
+	errs = append(errs, c.Sharing.Validate()...)
+	if _, err := c.Fetch.Policy(); err != nil {
+		field, msg, _ := strings.Cut(err.Error(), ": ")
+		errs = append(errs, ValidationError{Field: field, Message: msg})
+	}
 
 	if c.Jobs.PollInterval != 0 && c.Jobs.PollInterval < 50*time.Millisecond {
 		errs = append(errs, ValidationError{Field: "jobs.poll_interval", Message: fmt.Sprintf("must be ≥50ms, got %s", c.Jobs.PollInterval)})
@@ -61,18 +82,43 @@ func Validate(c *Config) []ValidationError {
 		}
 	}
 
-	switch c.Secrets.Backend {
+	errs = append(errs, validateSecretsBackend(c.Secrets.Backend)...)
+
+	return errs
+}
+
+// validateServerPorts checks each explicitly set listener port lies in
+// the unprivileged range; 0 means "use the default".
+func validateServerPorts(s *ServerConfig) []ValidationError {
+	var errs []ValidationError
+	for _, p := range []struct {
+		field string
+		port  int
+	}{
+		{"server.port", s.Port},
+		{"server.grpc_port", s.GRPCPort},
+		{"server.cookie_bridge_port", s.CookieBridgePort},
+	} {
+		if p.port != 0 && (p.port < 1024 || p.port > 65535) {
+			errs = append(errs, ValidationError{Field: p.field, Message: fmt.Sprintf("must be 1024–65535, got %d", p.port)})
+		}
+	}
+	return errs
+}
+
+// validateSecretsBackend accepts kit's canonical secrets backend names
+// and their deprecated aliases.
+func validateSecretsBackend(backend string) []ValidationError {
+	switch backend {
 	case "", "env",
 		// kit canonical names (preferred)
 		"keyring", "agefile", "onepassword", "ghsecrets",
 		// deprecated aliases (still accepted; emit deprecation warning at runtime)
 		"keychain", "age-file", "1password", "gh-secrets":
-		// valid
+		return nil
 	default:
-		errs = append(errs, ValidationError{Field: "secrets.backend", Message: fmt.Sprintf("unknown backend %q; must be one of env, keyring, agefile, onepassword, ghsecrets", c.Secrets.Backend)})
+		return []ValidationError{{Field: "secrets.backend", Message: fmt.Sprintf("unknown backend %q; must be one of env, keyring, agefile, onepassword, ghsecrets", backend)}}
 	}
-
-	return errs
 }
 
 // validateAccess enforces the server.access class rules:
@@ -80,10 +126,11 @@ func Validate(c *Config) []ValidationError {
 //   - the class must be one of private | protected | public (empty = unset,
 //     resolved to private by EffectiveAccess);
 //   - an explicit access: private combined with server.public / --public is
-//     a hard error (the two contradict each other);
-//   - a non-private instance must have inbound authentication configured —
-//     an exposed listener with zero auth is exactly the failure mode the
-//     class exists to delete.
+//     a hard error (the two contradict each other).
+//
+// Whether a non-private instance holds a credential is a question for
+// its database, not its config: dpkms serve refuses to start without an
+// active owner credential (ADR-079 §4).
 func validateAccess(c *Config) []ValidationError {
 	var errs []ValidationError
 
@@ -105,41 +152,106 @@ func validateAccess(c *Config) []ValidationError {
 		})
 	}
 
-	if eff := c.Server.EffectiveAccess(); eff != AccessPrivate && !c.Server.Auth.HasInboundAuth() {
-		errs = append(errs, ValidationError{
-			Field:   "server.access",
-			Message: fmt.Sprintf("%s instance requires inbound authentication — set server.auth.provider (e.g. \"static\" with at least one token under server.auth.static.tokens)", eff),
-		})
-	}
-
 	return errs
 }
 
-// validateAuthRoles requires every static token to carry at least one
-// known role. Roles are fixed scope bundles; a token without one could
-// reach no route, and a misspelled role must not silently lock a device
-// out.
-func validateAuthRoles(c *Config) []ValidationError {
+// URL schemes server.public_url accepts.
+const (
+	schemeHTTP  = "http"
+	schemeHTTPS = "https"
+)
+
+// keyHashRe is the only form server.auth.keys[].hash takes: sha256:
+// and 64 lowercase hex digits.
+var keyHashRe = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+
+// keyPlaceholder marks the hashes docker/dpkms-auth.example.yaml ships.
+const keyPlaceholder = "REPLACE_ME"
+
+// validateAuth checks server.auth on every instance, so a private one
+// that will be promoted gets its errors early: the method and sign-in
+// lists hold known names without repeats and api_key is listed; every
+// declared key is a hash with a principal, known roles and a parsable
+// expiry; and a non-private instance whose sign-in list builds links
+// names server.public_url, an absolute http(s) URL.
+func validateAuth(c *Config) []ValidationError {
 	var errs []ValidationError
-	for i, t := range c.Server.Auth.Static.Tokens {
-		field := fmt.Sprintf("server.auth.static.tokens[%d].roles", i)
-		if len(t.Roles) == 0 {
-			errs = append(errs, ValidationError{
-				Field:   field,
-				Message: fmt.Sprintf("at least one role is required; must be one of %s", strings.Join(AuthRoles, ", ")),
-			})
-			continue
+	a := c.Server.Auth
+
+	errs = append(errs, validateNameList("server.auth.methods", a.EffectiveMethods(), AuthMethods, ReservedAuthMethods)...)
+	if !slices.Contains(a.EffectiveMethods(), AuthMethodAPIKey) {
+		errs = append(errs, ValidationError{Field: "server.auth.methods", Message: fmt.Sprintf(
+			"%s is required: it is how the CLI, agents and dpkms auth key create reach the instance", AuthMethodAPIKey)})
+	}
+	errs = append(errs, validateNameList("server.auth.sign_in", a.EffectiveSignIn(), AuthSignIns, ReservedAuthSignIns)...)
+
+	for i, k := range a.Keys {
+		field := fmt.Sprintf("server.auth.keys[%d]", i)
+		switch {
+		case strings.Contains(strings.ToUpper(k.Hash), keyPlaceholder):
+			errs = append(errs, ValidationError{Field: field + ".hash", Message: fmt.Sprintf(
+				"hash is the example placeholder (contains %s); create a key with dpkms auth key create and put its sha256 here", keyPlaceholder)})
+		case !keyHashRe.MatchString(k.Hash):
+			errs = append(errs, ValidationError{Field: field + ".hash", Message: "must be sha256:<64 hex digits> of the key, never the key itself: printf %s \"$KEY\" | sha256sum"})
 		}
-		for _, r := range t.Roles {
+		if strings.TrimSpace(k.Principal) == "" {
+			errs = append(errs, ValidationError{Field: field + ".principal", Message: "principal is required (owner, or a prn_ id)"})
+		}
+		for _, r := range k.Roles {
 			if !slices.Contains(AuthRoles, r) {
-				errs = append(errs, ValidationError{
-					Field:   field,
-					Message: fmt.Sprintf("unknown role %q; must be one of %s", r, strings.Join(AuthRoles, ", ")),
-				})
+				errs = append(errs, ValidationError{Field: field + ".roles", Message: fmt.Sprintf(
+					"unknown role %q; must be one of %s", r, strings.Join(AuthRoles, ", "))})
 			}
 		}
+		if _, err := k.ExpiresAt(); err != nil {
+			errs = append(errs, ValidationError{Field: field + ".expires", Message: err.Error()})
+		}
+	}
+
+	if c.Server.EffectiveAccess() != AccessPrivate && a.NeedsPublicURL() {
+		errs = append(errs, validatePublicURL(c.Server.PublicURL)...)
 	}
 	return errs
+}
+
+// validateNameList reports unknown, reserved and repeated names in a
+// server.auth list.
+func validateNameList(field string, got, known, reserved []string) []ValidationError {
+	var errs []ValidationError
+	seen := map[string]bool{}
+	for _, name := range got {
+		switch {
+		case seen[name]:
+			errs = append(errs, ValidationError{Field: field, Message: fmt.Sprintf("%q is listed twice", name)})
+		case slices.Contains(reserved, name):
+			errs = append(errs, ValidationError{Field: field, Message: fmt.Sprintf(
+				"%q is reserved but not yet implemented; valid: %s", name, strings.Join(known, ", "))})
+		case !slices.Contains(known, name):
+			errs = append(errs, ValidationError{Field: field, Message: fmt.Sprintf(
+				"unknown entry %q; valid: %s", name, strings.Join(known, ", "))})
+		}
+		seen[name] = true
+	}
+	return errs
+}
+
+// validatePublicURL requires server.public_url on an instance that
+// mints links: an absolute http or https URL with a host and nothing
+// after the path.
+func validatePublicURL(raw string) []ValidationError {
+	const field = "server.public_url"
+	if strings.TrimSpace(raw) == "" {
+		return []ValidationError{{Field: field, Message: "required when server.auth.sign_in lists invite or link (the default): " +
+			"the URL people open this instance at, e.g. https://dpkms.example.com; or set sign_in: [] to mint no links"}}
+	}
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != schemeHTTP && u.Scheme != schemeHTTPS) || u.Host == "" {
+		return []ValidationError{{Field: field, Message: fmt.Sprintf("%q must be an absolute http or https URL with a host", raw)}}
+	}
+	if u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+		return []ValidationError{{Field: field, Message: fmt.Sprintf("%q must carry no query, fragment or credentials: it is the base of every link", raw)}}
+	}
+	return nil
 }
 
 // validateQuotas enforces server.quotas entry rules: a named principal,
@@ -185,13 +297,39 @@ func validateQuotas(c *Config) []ValidationError {
 	return errs
 }
 
-// ValidateAccess returns the access-class misconfiguration for c, if
-// any, as a single error. dpkms serve calls it (with the --public flag
-// folded into Server.Public) so a protected/public instance with no
-// credentials refuses to start instead of silently exposing 0.0.0.0
-// with zero auth.
+// headerNameRe matches an RFC 9110 field name (a token).
+var headerNameRe = regexp.MustCompile("^[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
+
+// validateRegistryAuth requires every registries[].auth.type to be a
+// supported mechanism and header_name to be a valid header field name.
+// An unknown type would otherwise surface only when a request fails.
+func validateRegistryAuth(c *Config) []ValidationError {
+	var errs []ValidationError
+	for i, r := range c.Registries {
+		if r.Auth.Type != "" && !r.Auth.Type.Known() {
+			errs = append(errs, ValidationError{
+				Field: fmt.Sprintf("registries[%d].auth.type", i),
+				Message: fmt.Sprintf("unknown auth type %q; must be one of %s, %s, %s",
+					r.Auth.Type, RegistryAuthBearer, RegistryAuthAPIKey, RegistryAuthOAuth2),
+			})
+		}
+		if r.Auth.HeaderName != "" && !headerNameRe.MatchString(r.Auth.HeaderName) {
+			errs = append(errs, ValidationError{
+				Field:   fmt.Sprintf("registries[%d].auth.header_name", i),
+				Message: fmt.Sprintf("invalid HTTP header name %q", r.Auth.HeaderName),
+			})
+		}
+	}
+	return errs
+}
+
+// ValidateAccess returns the access-class and inbound-auth
+// misconfiguration for c, if any, as a single error. dpkms serve calls
+// it (with the --public flag folded into Server.Public) so a
+// protected/public instance with a broken server.auth refuses to start
+// instead of silently exposing 0.0.0.0.
 func (c *Config) ValidateAccess() error {
-	errs := validateAccess(c)
+	errs := append(validateAccess(c), validateAuth(c)...)
 	if len(errs) == 0 {
 		return nil
 	}
@@ -202,47 +340,116 @@ func (c *Config) ValidateAccess() error {
 	return fmt.Errorf("config: %s", strings.Join(msgs, "; "))
 }
 
-// Validate checks that the Config is internally consistent.
-// Called after Load() when strict validation is desired.
-func (c *Config) Validate() error {
-	if err := c.validateDuplicates(); err != nil {
-		return err
+// envRefMessage is the error for a config value written as ${VAR}.
+const envRefMessage = "config does not expand ${VAR}; set the value literally, use the bound env var, or a second --config secrets file"
+
+// validateEnvRefs rejects every string value written as an env-var
+// reference. Neither this loader nor kit's expands one, so "${TOKEN}"
+// would be used as the literal token.
+func validateEnvRefs(c *Config) []ValidationError {
+	var errs []ValidationError
+	walkStrings(reflect.ValueOf(c), "", func(path, val string) {
+		if isEnvRef(val) {
+			errs = append(errs, ValidationError{Field: path, Message: envRefMessage})
+		}
+	})
+	return errs
+}
+
+// blobBackends are the storage.blob.backend values the blob factory
+// builds; empty selects local.
+// blobBackendLocal is the storage.blob.backend that keeps blobs on the
+// local filesystem; it is also the default when the backend is unset.
+const blobBackendLocal = "local"
+
+var blobBackends = []string{blobBackendLocal, "s3", "garage"}
+
+// Validate checks storage.blob: a known backend, and the S3 fields the
+// s3 and garage backends cannot start without. The blob factory calls
+// it before building the store, so `config validate` and startup agree.
+func (b BlobConfig) Validate() error {
+	errs := validateBlob(b, "storage.blob")
+	if len(errs) == 0 {
+		return nil
 	}
-	if err := c.validateFederations(); err != nil {
-		return err
+	joined := make([]error, len(errs))
+	for i, e := range errs {
+		joined[i] = e
 	}
-	return nil
+	return errors.Join(joined...)
+}
+
+// validateBlob checks the blob store config at field (storage.blob, or a
+// federation target's blob).
+func validateBlob(b BlobConfig, field string) []ValidationError {
+	backend := b.Backend
+	if backend == "" {
+		backend = blobBackendLocal
+	}
+	if !slices.Contains(blobBackends, backend) {
+		return []ValidationError{{
+			Field:   field + ".backend",
+			Message: fmt.Sprintf("unknown backend %q; must be one of %s", b.Backend, strings.Join(blobBackends, ", ")),
+		}}
+	}
+	var errs []ValidationError
+	if backend == "s3" || backend == "garage" {
+		if b.S3.Bucket == "" {
+			errs = append(errs, ValidationError{Field: field + ".s3.bucket", Message: fmt.Sprintf("required for the %s backend", backend)})
+		}
+	}
+	if backend == "garage" && b.S3.Endpoint == "" {
+		errs = append(errs, ValidationError{Field: field + ".s3.endpoint", Message: "required for the garage backend (e.g. http://localhost:3900)"})
+	}
+	return errs
 }
 
 // validateFederations checks federation entries for valid sync modes, required
 // intervals, and duplicate names (which would cause ambiguous routing).
 // Full topology-level cycle detection (A→B→A across remote configs) is deferred
 // to Phase 2 when remote config discovery is available.
-func (c *Config) validateFederations() error {
-	seen := make(map[string]struct{}, len(c.Federations))
-	for i, f := range c.Federations {
+func validateFederations(feds []FederationEntry) []ValidationError {
+	var errs []ValidationError
+	seen := make(map[string]struct{}, len(feds))
+	for i, f := range feds {
+		field := fmt.Sprintf("federations[%d]", i)
 		if f.Name == "" {
-			return fmt.Errorf("config: federations[%d].name must not be empty", i)
+			errs = append(errs, ValidationError{Field: field + ".name", Message: "name must not be empty"})
+		} else if _, dup := seen[f.Name]; dup {
+			errs = append(errs, ValidationError{Field: field + ".name", Message: fmt.Sprintf("duplicate name %q (names must be unique)", f.Name)})
+		} else {
+			seen[f.Name] = struct{}{}
 		}
-		if _, dup := seen[f.Name]; dup {
-			return fmt.Errorf("config: federations: duplicate name %q (names must be unique)", f.Name)
-		}
-		seen[f.Name] = struct{}{}
 
 		switch f.SyncMode {
 		case "async", "inline":
 			// valid
 		case "bidirectional":
-			return fmt.Errorf("config: federations[%d] (%q): bidirectional sync mode is not yet implemented (Phase 3)", i, f.Name)
+			errs = append(errs, ValidationError{Field: field + ".sync_mode", Message: "bidirectional sync mode is not yet implemented (Phase 3)"})
 		default:
-			return fmt.Errorf("config: federations[%d] (%q): sync_mode must be \"async\" or \"inline\"; got %q", i, f.Name, f.SyncMode)
+			errs = append(errs, ValidationError{Field: field + ".sync_mode", Message: fmt.Sprintf("must be \"async\" or \"inline\"; got %q", f.SyncMode)})
 		}
 
 		if f.SyncMode == "async" && f.Interval <= 0 {
-			return fmt.Errorf("config: federations[%d] (%q): interval is required and must be >0 for async sync_mode", i, f.Name)
+			errs = append(errs, ValidationError{Field: field + ".interval", Message: "interval is required and must be >0 for async sync_mode"})
+		}
+
+		if f.Blob != nil {
+			if isHTTPURL(f.URL) {
+				errs = append(errs, ValidationError{Field: field + ".blob", Message: "only file targets take a blob store; an http(s) receiver stores pushed content in its own"})
+			} else {
+				errs = append(errs, validateBlob(*f.Blob, field+".blob")...)
+			}
 		}
 	}
-	return nil
+	return errs
+}
+
+// isHTTPURL reports whether a federation url names a remote (http or
+// https) target rather than a file one.
+func isHTTPURL(raw string) bool {
+	u, err := url.Parse(raw)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https")
 }
 
 // validateServerEndpoints checks the client-routing endpoints. Runs at load
@@ -361,33 +568,82 @@ func validateEndpointURL(raw string) error {
 	if strings.TrimSpace(raw) == "" {
 		return fmt.Errorf("empty URL (each entry needs a base URL like http://127.0.0.1:8080)")
 	}
+	// The message quotes the URL with any embedded credential masked;
+	// url.Parse's own error repeats the raw URL, so only its cause is
+	// kept.
+	shown := RedactDSN(raw)
 	u, err := url.Parse(raw)
 	if err != nil {
-		return fmt.Errorf("invalid URL %q: %w", raw, err)
+		var uerr *url.Error
+		if errors.As(err, &uerr) {
+			err = uerr.Err
+		}
+		return fmt.Errorf("invalid URL %q: %w", shown, err)
 	}
 	if u.Scheme != "http" && u.Scheme != "https" {
-		return fmt.Errorf("invalid URL %q: scheme must be http or https", raw)
+		return fmt.Errorf("invalid URL %q: scheme must be http or https", shown)
 	}
 	if u.Host == "" {
-		return fmt.Errorf("invalid URL %q: missing host", raw)
+		return fmt.Errorf("invalid URL %q: missing host", shown)
 	}
 	return nil
 }
 
-func (c *Config) validateDuplicates() error {
-	d := c.Duplicates
-	policy := d.Policy
-	if policy == "" {
-		policy = "warn" // treat empty as default
-	}
-	switch policy {
-	case "warn", "drop", "keep":
-		// valid
+func validateDuplicates(d DuplicatesConfig) []ValidationError {
+	var errs []ValidationError
+	switch d.Policy {
+	case "", "warn", "drop", "keep":
+		// valid; empty is the default, warn
 	default:
-		return fmt.Errorf("config: duplicates.policy must be one of \"warn\", \"drop\", \"keep\"; got %q", d.Policy)
+		errs = append(errs, ValidationError{Field: "duplicates.policy", Message: fmt.Sprintf("must be one of \"warn\", \"drop\", \"keep\"; got %q", d.Policy)})
 	}
 	if d.SimilarityThreshold < 0.0 || d.SimilarityThreshold > 1.0 {
-		return fmt.Errorf("config: duplicates.similarity_threshold must be 0.0–1.0; got %f", d.SimilarityThreshold)
+		errs = append(errs, ValidationError{Field: "duplicates.similarity_threshold", Message: fmt.Sprintf("must be 0.0–1.0; got %f", d.SimilarityThreshold)})
 	}
-	return nil
+	return errs
+}
+
+// Validate checks the shape of each pipelines.overrides entry. Whether its pipeline, step and anchor names
+// exist is checked against the pipeline registry and the installed steps
+// (builtins.ValidateOverrides) by `dpkms config validate` and at serve
+// start.
+func (p PipelinesConfig) Validate() []ValidationError {
+	var errs []ValidationError
+	names := make([]string, 0, len(p.Overrides))
+	for name := range p.Overrides {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	for _, name := range names {
+		o := p.Overrides[name]
+		base := "pipelines.overrides." + name
+		for i, s := range o.SkipSteps {
+			if strings.TrimSpace(s) == "" {
+				errs = append(errs, ValidationError{Field: fmt.Sprintf("%s.skip_steps[%d]", base, i), Message: "empty step name"})
+			}
+		}
+		for i, ins := range o.InsertSteps {
+			field := fmt.Sprintf("%s.insert_steps[%d]", base, i)
+			if strings.TrimSpace(ins.Step) == "" {
+				errs = append(errs, ValidationError{Field: field + ".step", Message: "required: the name of the step to insert"})
+			}
+			if ins.Before != "" && ins.After != "" {
+				errs = append(errs, ValidationError{Field: field, Message: fmt.Sprintf("set before or after, not both (before %q, after %q)", ins.Before, ins.After)})
+			}
+			switch ins.OnError {
+			case "", StepOnErrorFail, StepOnErrorContinue:
+			default:
+				errs = append(errs, ValidationError{Field: field + ".on_error", Message: fmt.Sprintf("must be %q or %q, got %q", StepOnErrorFail, StepOnErrorContinue, ins.OnError)})
+			}
+			switch ins.Isolation {
+			case "", "container":
+			default:
+				errs = append(errs, ValidationError{Field: field + ".isolation", Message: fmt.Sprintf("must be \"container\" (isolation can only be raised), got %q", ins.Isolation)})
+			}
+			if ins.Timeout < 0 {
+				errs = append(errs, ValidationError{Field: field + ".timeout", Message: fmt.Sprintf("must be positive, got %s", ins.Timeout)})
+			}
+		}
+	}
+	return errs
 }

@@ -1,5 +1,5 @@
-# Devcontainer stack: the workspace container plus the two backing services
-# the integration suite expects.
+# Devcontainer stack: the workspace container plus the Postgres service the
+# integration suite expects.
 #
 # Why these services are declared here and not reused from the repo's
 # docker-compose.dev.yml: that file exists for a different job. It serves a
@@ -35,19 +35,15 @@ services:
       POSTGRES_USER: contexthelp
       POSTGRES_PASSWORD: test_password
       POSTGRES_DB: contexthelp_test
-      REDIS_HOST: redis
-      REDIS_PORT: '6379'
     depends_on:
       postgres:
-        condition: service_healthy
-      redis:
         condition: service_healthy
 
   # The pgvector-bundled image is required, not a preference: the Postgres
   # driver's first migration runs CREATE EXTENSION vector, which a plain
   # postgres image cannot load. Same image the CI workflow uses.
   postgres:
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector:0.8.6-pg16-bookworm
     environment:
       POSTGRES_USER: contexthelp
       POSTGRES_PASSWORD: test_password
@@ -61,14 +57,6 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
-
-  redis:
-    image: redis:7-alpine
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
 
 volumes:
   go-mod-cache:

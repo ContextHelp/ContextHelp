@@ -117,7 +117,7 @@ func scoreIndexEntry(entry RegistryIndexEntry, q string) int {
 
 	// Description match.
 	if strings.Contains(strings.ToLower(entry.Description), q) {
-		score += 1
+		score++
 	}
 
 	return score

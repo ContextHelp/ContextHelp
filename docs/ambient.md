@@ -1,63 +1,38 @@
 # Ambient Capture
 
-Continuous local-machine capture for ctxt — the `ctxd` daemon watches your clipboard, drop folder, browser history, foreground window, screenshots, and meetings while you work, feeding events into your dpkms knowledge graph automatically.
+Local-machine capture for ctxt: commands that run on your machine, read local state (clipboard, watched directories, browser tabs and history) and send it to the dpkms instance ctxt resolves.
 
-> This page is the high-level summary. For task-oriented walkthroughs, see [`manual/workflows/ambient-capture.md`](manual/workflows/ambient-capture.md). For the engineer-facing architecture reference, see [`architecture/ambient-capture.md`](architecture/ambient-capture.md). Decisions live in [ADR-066](decisions/ADR-066-ambient-capture-substrate.md), [067](decisions/ADR-067-session-workunit.md), [068](decisions/ADR-068-mcp-read-surface.md), [069](decisions/ADR-069-meeting-capture-source.md).
+> The continuous ambient daemon (`ctxd`) from [ADR-066](decisions/ADR-066-ambient-capture-substrate.md), with its six sources, client-side buffer, sessions ([ADR-067](decisions/ADR-067-session-workunit.md)) and local MCP server ([ADR-068](decisions/ADR-068-mcp-read-surface.md)), is not implemented. `ctxt capture --ambient` exits with "ambient mode not yet implemented", and there is no `ambient:` config block. The source, buffer and cutter code under `internal/ambient/` is library code no command runs yet. See [Not implemented](#not-implemented).
 
-## What it is
+## What runs today
 
-Six pluggable ambient sources, all running locally on your machine:
-
-| Source | What it captures | Pipeline |
+| Need | Command | Config |
 |---|---|---|
-| Clipboard | URL / text / code blocks you copy | url.generic / text.short |
-| File-watch | Files dropped into `~/Inbox/ctxt` | text.long / image.ocr / audio.transcribe / video.full |
-| Browser-history | Pages you visit (Chrome/FF/Safari/Edge) | url.generic / url.repo |
-| Foreground-window | macOS bundle id + app name + window title | (feeds session cutter; no pipeline) |
-| Screenshot | Hotkey-triggered screen capture | image.ocr |
-| Meeting | Video calls (Zoom/Meet/Teams/FaceTime/Discord) — explicit-trigger only | audio.transcribe / video.full |
+| Clipboard and directory watching | `ctxt watch enable clipboard`, `ctxt watch start` / `status` / `stop` | `watch.dirs`, `watch.patterns`, `watch.debounce`, `watch.clipboard.{enabled,poll_interval,min_length,auto_ingest}`; `CTXT_NO_CLIPBOARD=1` turns the clipboard watcher off |
+| Open browser tabs | `ctxt capture tabs` | `capture.browser`, `capture.url_filter` |
+| Browser history | `ctxt capture history` | `capture.history.initial_lookback`, `capture.url_filter` |
+| Tabs and history on a timer (macOS LaunchAgents) | `ctxt capture schedule install` | `--history-every` (default 5m), `--tabs-every` (default 30m) |
 
-Sessions ([ADR-067](decisions/ADR-067-session-workunit.md)) group these signals into bounded work units (idle 5m / soft-cut 3m / timeout 2h) so "what did I work on yesterday afternoon?" returns a coherent answer.
+Config lives in `ctxt.yaml` (see [`ctxt/configuration.md`](ctxt/configuration.md)). Local state:
+
+- `ctxt watch`: one state file per instance under `$XDG_STATE_HOME/ctxt/watch/`.
+- `ctxt capture history`: position file `$XDG_STATE_HOME/ctxt/ambient/browserhistory.state`, overridden by `CTXT_AMBIENT_HISTORY_STATE_FILE`.
+
+Walkthroughs: [`manual/workflows/browser-tab-capture.md`](manual/workflows/browser-tab-capture.md), [`manual/workflows/browser-history-capture.md`](manual/workflows/browser-history-capture.md), [`manual/workflows/browser-capture-schedule.md`](manual/workflows/browser-capture-schedule.md).
 
 ## Why client-side
 
-dpkms is often deployed remote (managed instance, household NAS, federated peer). A remote dpkms cannot read your clipboard, see what app has foreground focus, or capture system audio. Ambient capture runs in `ctxd` on your machine and POSTs to whichever dpkms is configured via the existing `ctxt analyze` HTTP path. dpkms remains a pure pipeline + storage worker.
-
-## Quick start
-
-```bash
-# Auto-config: launches ctxd in the background.
-ctxt capture --ambient
-
-# OR via service-manager (preferred for desktop installs).
-brew services start ctxd                                   # macOS Homebrew
-launchctl load ~/Library/LaunchAgents/io.ctxt.ctxd.plist   # macOS launchd
-systemctl --user enable --now ctxd.service                # Linux systemd
-
-# Status / sources / live tail
-ctxt capture --ambient status
-ctxt capture --ambient sources
-ctxt capture --ambient tail [--source clipboard]
-
-# Stop
-ctxt capture --ambient stop
-```
-
-Full walkthrough: [`manual/workflows/ambient-capture.md`](manual/workflows/ambient-capture.md).
+dpkms is often deployed remote (managed instance, household NAS, federated peer). A remote dpkms cannot read your clipboard or your browser profile. These commands run in `ctxt` on your machine and send content over the dpkms HTTP API, the same path `ctxt capture <url>` and `ctxt analyze` use. dpkms remains a pipeline + storage worker.
 
 ## Privacy posture
 
-Privacy enforcement happens **before the event leaves your machine** at three layers:
+Browser capture filters every URL on your machine, before anything is sent:
 
-1. **Source-side redaction** ([`internal/ambient/redact/`](../internal/ambient/redact)) strips known-sensitive shapes (passwords, OAuth tokens, AWS keys, GitHub PATs, SSNs, credit cards) from RawEvent payloads before emission.
-2. **kit/runtime/policy CEL guards** subscribe to `ctxt.ambient.event.captured` and can veto sensitive contexts ("drop clipboard while bundle-id matches `com.1password.*`"). Veto fires before the event is buffered or enqueued.
-3. **kit/runtime/bus** taps make every transformation (capture, redact, filter, dedup, compress, buffer, enqueue, succeeded/failed) independently observable for audit dashboards.
+- Only `http` and `https` pages are captured; localhost and loopback addresses are always dropped.
+- URLs matching your [URL filter](#keep-sites-out-of-browser-capture) are dropped.
+- `--dry-run` on `ctxt capture tabs` and `ctxt capture history` shows each decision and sends nothing.
 
-For continuous-capture sources (foreground, browser-history), the privacy posture is structural:
-
-- Foreground source captures **bundle id + window title only** — strictly NOT the AX tree, focused-element values, visible text, or keystrokes.
-- Browser-history runs on a configurable poll interval (default 5 min) and drops URLs matching your [URL filter](#keep-sites-out-of-browser-capture).
-- Meeting capture is **explicit-trigger only**; auto-detect prompt is opt-in and never starts recording without user confirmation.
+The clipboard watcher is off until you enable it (`watch.clipboard.enabled`, or `ctxt watch enable clipboard`).
 
 ### Keep sites out of browser capture
 
@@ -106,129 +81,34 @@ Rules add up across config layers too. Your user file, a project `.contexthelp/c
 
 Every other config key keeps normal layer precedence: the later layer wins.
 
-## Buffer + retention
-
-Events flow through a pluggable client-side buffer ([`internal/ambient/buffer/`](../internal/ambient/buffer)) that holds them while waiting for dpkms to be reachable:
-
-- **Local-FS** (default): XDG-compliant `$XDG_STATE_HOME/ctxt/ambient/`. 7-day TTL, 2 GB cap, LRU eviction. Uses [`hop.top/kit/go/storage/blob/local`](https://hop.top/kit) underneath.
-- **S3-compatible** (opt-in): AWS S3 / Cloudflare R2 / Backblaze B2 / MinIO. Provider lifecycle policies handle retention. Use case: cross-machine deployment, compliance retention.
-- **In-memory** (tests only): bounded ring.
-
-Configure in `~/.config/contexthelp/config.yaml`:
-
-```yaml
-ambient:
-  buffer:
-    backend: local-fs        # local-fs | s3 | memory
-    local_fs:
-      path: ~/.local/state/ctxt/ambient   # XDG_STATE_HOME-aware
-      max_gb: 2
-    s3:
-      bucket: ctxt-ambient-buffer
-      endpoint: https://r2.example.com    # optional
-      # credentials via standard env vars or kit/runtime/secrets
-```
-
-## Configuration reference
-
-```yaml
-ambient:
-  sources:
-    clipboard:
-      enabled: true
-      poll_interval: 2s
-      min_length: 80
-    filewatch:
-      enabled: true
-      directories: [~/Inbox/ctxt]
-      max_file_size_mb: 500
-    browserhistory:
-      enabled: true
-      poll_interval: 5m
-      browsers: [chrome, firefox, safari]
-    foreground:
-      enabled: true              # macOS only in v1
-      debounce_seconds: 1
-      capture_window_title: true
-      exclude_bundles:
-        - com.1password.macos
-    screenshot:
-      enabled: true
-      hotkey: "shift+cmd+s"
-      exclude_bundles: [com.1password.macos]
-    meeting:
-      enabled: false             # explicit opt-in
-      auto_detect:
-        enabled: false           # opt-in within opt-in
-        prompt_timeout: 10s
-      media_retention_hours: 48
-      local_max_gb: 20
-      s3_archive: false
-  session:
-    gap_minutes: 5
-    soft_cut_minutes: 3
-    max_session_hours: 2
-  buffer:
-    backend: local-fs
-```
-
-## What gets captured per source
-
-| Source | RawEvent.Payload | Metadata |
-|---|---|---|
-| Clipboard | The copied text/URL (string bytes) | `foreground_bundle_id` |
-| File-watch | Absolute file path | `file_path`, `file_size`, `file_mtime` |
-| Browser-history | The URL | `browser`, `title`, `visited_at`, `subtype=search-query` (if applicable) |
-| Foreground-window | `bundle_id` (string bytes) | `bundle_id`, `app_name`, `window_title` (toggleable) |
-| Screenshot | Image file path | `file_path`, `label`, `width`, `height`, `foreground_bundle_id` |
-| Meeting | Recording file path | `file_path`, `label`, `mode` (full/audio_only), `duration_sec`, `bytes`, `end_reason` |
-
-The dpkms-side enrichment pipelines (text.short, url.generic, image.ocr, audio.transcribe, video.full) extract entities, mentions, decisions, tasks, and embeddings from these inputs.
-
 ## Composition
 
-Once events are flowing, compose by session or time range:
+Compose what was captured in a time range:
 
 ```bash
-ctxt session list --since "yesterday"
-ctxt session show sess_a1b2c3d4e5f6
-ctxt compose brief --session sess_a1b2c3d4e5f6
-ctxt compose summary --since "2 hours ago" --until now
+ctxt compose summary --since 2026-10-12T13:00:00Z --until 2026-10-12T15:30:00Z
+ctxt compose brief --since 2026-10-12
 ```
+
+`--since` / `--until` take `YYYY-MM-DD` or RFC 3339 and filter on creation time.
 
 ## Agent integration (MCP)
 
-Two MCP read-surfaces (per [ADR-068](decisions/ADR-068-mcp-read-surface.md)):
+dpkms serves one MCP endpoint, `/api/v1/mcp/`, with the tools `search` and `schema`. Register it in your agent client yourself; there is no `ctxt mcp` command. Guide: [`manual/workflows/mcp-agents.md`](manual/workflows/mcp-agents.md).
 
-- **dpkms-side** (`/api/v1/mcp/`) — authoritative; 10 tools: `search`, `list`, `get`, `entity`, `recent`, `sessions`, `session`, `compose`, `mentions`, `schema`.
-- **ctxd-side** (`:8744/mcp`) — local-only; 5 tools: `current_session`, `recent_local`, `pending_enqueue`, `sources`, `health`.
+## Not implemented
 
-```bash
-ctxt mcp install claude-code        # OR claude-desktop / cursor / codex / opencode / mcp-json
-ctxt mcp status
-```
+Specced in ADR-066 to ADR-069, not built:
 
-Restart your agent client; both endpoints get registered. Full guide: [`manual/workflows/mcp-agents.md`](manual/workflows/mcp-agents.md).
-
-## Troubleshooting
-
-| Symptom | Likely cause | Fix |
-|---|---|---|
-| `ctxd: not running` after `ctxt capture --ambient` | Lockfile stale | `rm $XDG_STATE_HOME/ctxt/ambient/lock` and retry |
-| Source `foreground: failed (permission denied)` on macOS | AX permission missing | System Settings → Privacy & Security → Accessibility → grant `ctxd` |
-| `Endpoint: dpkms unreachable for >30m` | Network or auth | Check `dpkms.url` in config; `curl <dpkms.url>/health` |
-| Buffer at cap, evicting | Slow enqueue / dpkms down | Check `pending_enqueue()` MCP tool; investigate dpkms reachability |
-| Source meeting: not started | Auto-detect dismissed | Use explicit `ctxt capture meeting start` |
-| Session never starts | Foreground source disabled / no AX permission | Enable foreground source; grant macOS AX |
-
-For deeper troubleshooting (kit/policy rules, bus event taps, manual buffer flush, daemon restart procedures), see the internal dpkms-ambient ops runbook.
+- The `ctxd` daemon and its service files (brew service, launchd plist, systemd unit), and `ctxt capture --ambient` with `status`, `sources`, `tail`, `stop`, `buffer flush|purge`.
+- The foreground-window, screenshot, file-watch and meeting sources as running capture, and source-side redaction in the capture path.
+- The client-side buffer (local-fs / S3 / memory) and the `ambient.buffer`, `ambient.sources` and `ambient.session` config blocks.
+- Work sessions (`ctxt session ...`, [ADR-067](decisions/ADR-067-session-workunit.md)). The session cutter in `internal/ambient/session/` is library code no command runs; to compose a time range, see [Composition](#composition).
+- The local MCP server on port 8744 and its tools.
+- `policy/ambient.yaml` and `CTXT_AMBIENT_FILE` (per-sensor enablement, specced in the [ADR-065 amendment](decisions/ADR-065-pluggable-adapters.md#amendment-2026-05-06--service-vs-sensor-distinction-ambient-capture-os-platform-slots)); no code reads either.
 
 ## Related
 
-- [`architecture/ambient-capture.md`](architecture/ambient-capture.md) — engineer-facing architecture reference (substrate, source interface, runner, buffer, cutter, MCP)
-- [`manual/workflows/ambient-capture.md`](manual/workflows/ambient-capture.md) — task-oriented walkthrough
-- [`manual/workflows/meeting-capture.md`](manual/workflows/meeting-capture.md) — meeting-specific workflow
-- [`manual/workflows/sessions.md`](manual/workflows/sessions.md) — session/work-unit walkthrough
+- [`architecture/ambient-capture.md`](architecture/ambient-capture.md) — design reference for the unbuilt daemon
 - [`manual/workflows/mcp-agents.md`](manual/workflows/mcp-agents.md) — agent integration
-- [`meeting-capture.md`](meeting-capture.md) — meeting capture summary (companion page)
-- [`diagrams/ambient/`](diagrams/ambient/) — 12 mermaid diagrams covering substrate, sessions, MCP, meeting capture
+- [`diagrams/ambient/`](diagrams/ambient/) — design diagrams (substrate, sessions, MCP, meeting capture)

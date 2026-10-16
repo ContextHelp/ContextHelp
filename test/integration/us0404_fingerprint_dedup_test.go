@@ -53,7 +53,7 @@ func TestUS0404_ExactDuplicateBlocked(t *testing.T) {
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	}
-	require.NoError(t, env.svc.Store.Objects().Create(t.Context(), obj))
+	require.NoError(t, env.driver.Objects().Create(t.Context(), obj))
 
 	// POST same content — should be silently dropped and return existing ID.
 	status, result := postAnalyzeWithOpts(t, env.URL, map[string]any{
@@ -84,7 +84,7 @@ func TestUS0404_SourceKeyBlocked(t *testing.T) {
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
 	}
-	require.NoError(t, env.svc.Store.Objects().Create(t.Context(), obj))
+	require.NoError(t, env.driver.Objects().Create(t.Context(), obj))
 
 	// POST with same source_key — should match.
 	status, result := postAnalyzeWithOpts(t, env.URL, map[string]any{
@@ -141,7 +141,7 @@ func TestUS0404_ForceBypasses(t *testing.T) {
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	}
-	require.NoError(t, env.svc.Store.Objects().Create(t.Context(), obj))
+	require.NoError(t, env.driver.Objects().Create(t.Context(), obj))
 
 	// POST with force=true — should create new job despite duplicate.
 	status, result := postAnalyzeWithOpts(t, env.URL, map[string]any{
@@ -176,7 +176,7 @@ func TestUS0404_DedupAuditLog(t *testing.T) {
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	}
-	require.NoError(t, env.svc.Store.Objects().Create(t.Context(), obj))
+	require.NoError(t, env.driver.Objects().Create(t.Context(), obj))
 
 	// Trigger dedup.
 	postAnalyzeWithOpts(t, env.URL, map[string]any{
@@ -185,7 +185,7 @@ func TestUS0404_DedupAuditLog(t *testing.T) {
 	})
 
 	// Check audit log.
-	entries, err := env.svc.Store.AuditLog().GetObjectHistory(t.Context(), "us0404-audit-1")
+	entries, err := env.driver.AuditLog().GetObjectHistory(t.Context(), "us0404-audit-1")
 	require.NoError(t, err)
 	require.NotEmpty(t, entries)
 

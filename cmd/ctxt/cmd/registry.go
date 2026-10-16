@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -16,6 +18,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 	"gopkg.in/yaml.v3"
 )
 
@@ -28,10 +31,10 @@ Registries provide shared taxonomies, entities, and knowledge objects
 for federated search and enrichment.
 
 Examples:
-  # List all registries
+  # List cached registry manifests
   ctxt registry list
 
-  # Add a new registry
+  # Cache a registry's manifest (subscribe in the config file's registries list)
   ctxt registry add uxpatterns https://uxpatterns.example.com
 
   # Show registry information
@@ -44,24 +47,36 @@ Examples:
   ctxt registry sync --dry-run uxpatterns
 
   # Remove a registry
-  ctxt registry delete uxpatterns`,
+  ctxt registry delete uxpatterns --confirm-token=<sha>`,
 }
 
 var registryListCmd = &cobra.Command{
 	Use:   "list",
-	Short: "List all registries",
-	Long: `List every configured registry alongside the URL and the last
-fetch timestamp recorded in the local cache. Read-only.`,
+	Short: "List cached registry manifests",
+	Long: `List the registry manifests in the local cache (what add and sync
+fetched), with each URL and its last fetch timestamp. Read-only.
+
+The config file's registries list is a separate set: a cached manifest
+need not be configured, and a configured registry shows here only once
+it has been fetched. ctxt config show prints the configured list.`,
 	RunE: runRegistryList,
 }
 
 var registryAddCmd = &cobra.Command{
 	Use:   "add <name> <url>",
-	Short: "Add a new registry",
-	Long: `Fetch the manifest for the registry at <url>, cache it locally,
-and record the named subscription in the config file. Idempotent at
-the cache layer (the manifest is overwritten) but not idempotent at
-the config layer (each call appends a row).`,
+	Short: "Fetch and cache a registry's manifest",
+	Long: `Fetch the manifest for the registry at <url> and cache it locally,
+so it shows in ctxt registry list. Idempotent: a repeat call overwrites
+the cached manifest.
+
+add does not write the config file, and <name> only labels the output.
+sync, info, login and delete find a registry by name in the config
+file's registries list: add an entry there to subscribe (ctxt config
+edit opens the file):
+
+  registries:
+    - name: uxpatterns
+      url: https://uxpatterns.example.com`,
 	Args: cobra.ExactArgs(2),
 	RunE: runRegistryAdd,
 }
@@ -73,7 +88,7 @@ var registryRemoveCmd = &cobra.Command{
 matching entry from the config file. Fails when the registry is not
 present in the config.
 
-Requires --confirm=yes (or --confirm=prompt for an interactive confirmation).`,
+` + cliconv.DestructiveTokenHelp,
 	Args: cobra.ExactArgs(1),
 	RunE: runRegistryRemove,
 }
@@ -92,7 +107,13 @@ count). Read-only.`,
 var registrySyncCmd = &cobra.Command{
 	Use:   "sync <name>",
 	Short: "Sync registry metadata",
-	Long: `Sync registry metadata from the remote source.
+	Long: `Sync registry metadata from the remote source: fetch the registry's
+manifest from its url and replace the cached copy, so Last Fetched and
+the ETag advance (see ctxt registry info). When the manifest advertises
+capabilities.entity_sync, also sync the registry's entity index
+(/entities/index) into the local entity store; a registry that serves
+steps only is not asked for entities. A registry with auth.type gets the
+token ctxt registry login stored.
 
 With --dry-run, fetches the remote manifest and shows a diff of would-be
 additions, updates, and removals without writing anything to storage.`,
@@ -130,7 +151,7 @@ var registryEntitlementsCmd = &cobra.Command{
 
 Examples:
   ctxt registry entitlements
-  ctxt registry entitlements --json`,
+  ctxt registry entitlements --format json`,
 	RunE: runRegistryEntitlements,
 }
 
@@ -149,7 +170,7 @@ Examples:
   ctxt registry usage example-paid
 
   # Output as JSON
-  ctxt registry usage --json
+  ctxt registry usage --format json
 
   # Show usage for a custom period (days back from now)
   ctxt registry usage --days 30`,
@@ -171,7 +192,7 @@ Examples:
   ctxt registry search frontend
 
   # Output as JSON
-  ctxt registry search react --json
+  ctxt registry search react --format json
 
   # Use a custom index URL
   ctxt registry search devops --index-url https://myorg.example.com/registry-index.json`,
@@ -186,11 +207,20 @@ var registryLoginCmd = &cobra.Command{
 
 The token is NEVER written to the YAML config file.
 
+The token is bound to the origin (scheme, host, port) of the registry's
+url and is sent only there; login prints that origin. When the registry
+list comes from a project .contexthelp/ctxt.yaml (a cloned repository can
+ship one), login asks before binding; non-interactively it refuses unless
+--origin names that origin.
+
 Interactive (prompts for token):
   ctxt registry login example-paid
 
 Non-interactive (pass token via flag — prefer env-var to avoid shell history):
-  ctxt registry login example-paid --token "$TOKEN"`,
+  ctxt registry login example-paid --token "$TOKEN"
+
+Pin the origin (required non-interactively for a project-config registry):
+  ctxt registry login example-paid --token "$TOKEN" --origin https://registry.example.com`,
 	Args: cobra.ExactArgs(1),
 	RunE: runRegistryLogin,
 }
@@ -240,38 +270,39 @@ func init() {
 	// Flags for login subcommand
 	registryLoginCmd.Flags().String("token", "",
 		"auth token (reads from stdin prompt if omitted)")
+	registryLoginCmd.Flags().String("origin", "",
+		"origin the token is bound to (scheme://host[:port]); must match the registry url. Required to log in non-interactively when the registry comes from a project .contexthelp/ctxt.yaml")
 
 	cliconv.WithSideEffect(registryListCmd, cliconv.SideEffectRead)
 	cliconv.WithExamples(registryListCmd, []cliconv.Example{
-		{Title: "List all registries", Command: "ctxt registry list"},
-		{Title: "List as JSON", Command: "ctxt registry list --json"},
+		{Title: "List cached registry manifests", Command: "ctxt registry list"},
+		{Title: "List as JSON", Command: "ctxt registry list --format json"},
 	})
 
 	cliconv.WithSideEffect(registryAddCmd, cliconv.SideEffectWrite)
 	cliconv.WithExamples(registryAddCmd, []cliconv.Example{
 		{Title: "Add a registry by URL", Command: "ctxt registry add uxpatterns https://uxpatterns.example.com"},
-		{Title: "Add then inspect", Command: "ctxt registry add uxpatterns https://uxpatterns.example.com && ctxt registry info uxpatterns"},
+		{Title: "Add then list cached registries", Command: "ctxt registry add uxpatterns https://uxpatterns.example.com && ctxt registry list"},
 	})
 	cliconv.WithNextSteps(registryAddCmd, []cliconv.NextStep{
-		{Suggest: "ctxt registry info <name>", Reason: "review the cached manifest, trust status, and version"},
-		{Suggest: "ctxt registry sync <name>", Reason: "pull entities and taxonomies from the freshly-added registry"},
+		{Suggest: "ctxt config edit", Reason: "add a registries entry (name, url) so sync, info, login and delete find the registry"},
+		{Suggest: "ctxt registry sync <name>", Reason: "once configured: refresh the manifest, plus the entity index when the manifest advertises capabilities.entity_sync"},
 	})
 
 	cliconv.WithSideEffect(registryRemoveCmd, cliconv.SideEffectDestructive)
 	cliconv.WithDestructiveToken(registryRemoveCmd)
 	cliconv.WithExamples(registryRemoveCmd, []cliconv.Example{
-		{Title: "Delete a registry", Command: "ctxt registry delete uxpatterns --confirm=yes"},
-		{Title: "Delete with interactive confirmation", Command: "ctxt registry delete uxpatterns --confirm=prompt"},
+		{Title: "Delete a registry", Command: "ctxt registry delete uxpatterns --confirm-token=<sha>"},
 	})
 	cliconv.WithNextSteps(registryRemoveCmd, []cliconv.NextStep{
-		{Suggest: "ctxt registry list", Reason: "confirm the entry is gone from the configured set"},
+		{Suggest: "ctxt config show", Reason: "confirm the entry is gone from the configured registries"},
 		{Suggest: "ctxt registry logout <name>", Reason: "drop any leftover keychain token tied to the registry"},
 	})
 
 	cliconv.WithSideEffect(registryInfoCmd, cliconv.SideEffectRead)
 	cliconv.WithExamples(registryInfoCmd, []cliconv.Example{
 		{Title: "Show registry info", Command: "ctxt registry info uxpatterns"},
-		{Title: "Emit info as JSON", Command: "ctxt registry info uxpatterns --json"},
+		{Title: "Emit info as JSON", Command: "ctxt registry info uxpatterns --format json"},
 	})
 
 	cliconv.WithSideEffect(registrySyncCmd, cliconv.SideEffectWrite)
@@ -288,7 +319,7 @@ func init() {
 	cliconv.WithIdempotency(registrySubmitCmd, cliconv.IdempotencyYes)
 	cliconv.WithExamples(registrySubmitCmd, []cliconv.Example{
 		{Title: "Validate a bundle directory", Command: "ctxt registry submit ./mybundle"},
-		{Title: "Emit PR instructions as JSON", Command: "ctxt registry submit ./mybundle --json"},
+		{Title: "Emit PR instructions as JSON", Command: "ctxt registry submit ./mybundle --format json"},
 	})
 	cliconv.WithNextSteps(registrySubmitCmd, []cliconv.NextStep{
 		{Suggest: "open https://github.com/ideacrafterslabs/registry", Reason: "follow the printed PR template to upstream the bundle"},
@@ -328,7 +359,7 @@ func init() {
 	cliconv.WithIdempotency(registryEntitlementsCmd, cliconv.IdempotencyYes)
 	cliconv.WithExamples(registryEntitlementsCmd, []cliconv.Example{
 		{Title: "List active entitlements", Command: "ctxt registry entitlements"},
-		{Title: "Emit entitlements as JSON", Command: "ctxt registry entitlements --json"},
+		{Title: "Emit entitlements as JSON", Command: "ctxt registry entitlements --format json"},
 	})
 
 	cliconv.WithSideEffect(registryUsageCmd, cliconv.SideEffectRead)
@@ -341,7 +372,7 @@ func init() {
 	cliconv.WithSideEffect(registrySearchCmd, cliconv.SideEffectRead)
 	cliconv.WithExamples(registrySearchCmd, []cliconv.Example{
 		{Title: "Search registries by topic", Command: "ctxt registry search ai"},
-		{Title: "Search and emit JSON", Command: "ctxt registry search react --json"},
+		{Title: "Search and emit JSON", Command: "ctxt registry search react --format json"},
 	})
 }
 
@@ -352,27 +383,31 @@ func runRegistryList(cmd *cobra.Command, args []string) error {
 	}
 	defer cleanup()
 
-	ctx := context.Background()
+	ctx := asOwner(context.Background())
 	registries, total, err := svc.ListRegistries(ctx)
 	if err != nil {
 		return fmt.Errorf("list registries: %w", err)
 	}
 
 	if isJSONOutput() {
-		return outputJSON(os.Stdout, map[string]any{"registries": registries, "total": total})
+		shown := make([]*storage.RegistryCache, len(registries))
+		for i, r := range registries {
+			shown[i] = redactedRegistryCache(r)
+		}
+		return outputJSON(os.Stdout, map[string]any{"registries": shown, "total": total})
 	}
 
 	fmt.Printf("Registries (%d)\n\n", total)
 	if total == 0 {
-		fmt.Println("  No registries configured.")
-		fmt.Println("  Add one with: ctxt registry add <name> <url>")
+		fmt.Println("  No registry manifests cached.")
+		fmt.Println("  Fetch one with: ctxt registry add <name> <url>")
 		return nil
 	}
 	headers := []string{"URL", "Last Fetched"}
-	var rows [][]string
+	rows := make([][]string, 0, len(registries))
 	for _, r := range registries {
 		rows = append(rows, []string{
-			r.RegistryURL,
+			config.RedactDSN(r.RegistryURL),
 			r.LastFetched.Format("2006-01-02 15:04"),
 		})
 	}
@@ -390,13 +425,39 @@ func runRegistryAdd(cmd *cobra.Command, args []string) error {
 	}
 	defer cleanup()
 
-	ctx := context.Background()
-	fmt.Printf("Adding registry %s (%s)...\n", name, url)
+	ctx := asOwner(context.Background())
+	fmt.Printf("Adding registry %s (%s)...\n", name, config.RedactDSN(url))
 	if err := svc.FetchRegistry(ctx, url); err != nil {
 		return fmt.Errorf("fetch registry: %w", err)
 	}
-	fmt.Println("Registry added and metadata cached")
+	fmt.Println("Registry manifest cached")
+	if !registryConfigured(name, url) {
+		fmt.Printf("Not in config: add a registries entry (name: %s, url: %s) with ctxt config edit so sync, info, login and delete find it\n",
+			name, config.RedactDSN(url))
+	}
 	return nil
+}
+
+// redactedRegistryCache returns a copy of c for display: its
+// RegistryURL masks any credential the configured url embeds.
+func redactedRegistryCache(c *storage.RegistryCache) *storage.RegistryCache {
+	if c == nil {
+		return nil
+	}
+	shown := *c
+	shown.RegistryURL = config.RedactDSN(c.RegistryURL)
+	return &shown
+}
+
+// registryConfigured reports whether the loaded config's registries list
+// has an entry with this name and url.
+func registryConfigured(name, url string) bool {
+	for _, r := range cfg.Registries {
+		if r.Name == name && r.URL == url {
+			return true
+		}
+	}
+	return false
 }
 
 func runRegistryRemove(cmd *cobra.Command, args []string) error {
@@ -440,7 +501,7 @@ func runRegistryRemove(cmd *cobra.Command, args []string) error {
 	}
 	defer cleanup()
 
-	ctx := context.Background()
+	ctx := asOwner(context.Background())
 	if err := svc.RemoveRegistry(ctx, registryURL); err != nil {
 		return fmt.Errorf("remove registry cache: %w", err)
 	}
@@ -473,18 +534,18 @@ func runRegistryInfo(cmd *cobra.Command, args []string) error {
 	}
 	defer cleanup()
 
-	ctx := context.Background()
-	cache, err := svc.Store.Registries().GetCachedManifest(ctx, registryURL)
+	ctx := asOwner(context.Background())
+	cache, err := svc.Store(ctx).Registries().GetCachedManifest(ctx, registryURL)
 	if err != nil {
 		return fmt.Errorf("get registry cache: %w", err)
 	}
 
 	if isJSONOutput() {
-		return outputJSON(os.Stdout, cache)
+		return outputJSON(os.Stdout, redactedRegistryCache(cache))
 	}
 
 	fmt.Printf("Registry: %s\n\n", name)
-	fmt.Printf("URL:          %s\n", cache.RegistryURL)
+	fmt.Printf("URL:          %s\n", config.RedactDSN(cache.RegistryURL))
 	fmt.Printf("Last Fetched: %s\n", cache.LastFetched.Format("2006-01-02 15:04:05"))
 	if cache.ETag != "" {
 		fmt.Printf("ETag:         %s\n", cache.ETag)
@@ -543,33 +604,82 @@ func runRegistrySync(cmd *cobra.Command, args []string) error {
 	}
 	defer cleanup()
 
-	ctx := context.Background()
+	ctx := asOwner(context.Background())
 
 	if dryRun {
-		return runRegistrySyncDryRun(cmd, ctx, svc, name, registryURL)
+		return runRegistrySyncDryRun(ctx, svc, name, registryURL)
 	}
 
 	if reconcile {
-		return runRegistrySyncReconcile(cmd, ctx, svc, registry.MergeStrategy(mergeStrategy))
+		return runRegistrySyncReconcile(ctx, cmd, svc, registry.MergeStrategy(mergeStrategy))
 	}
 
-	fmt.Printf("Syncing registry %s...\n", name)
-	if err := svc.UpdateRegistry(ctx, registryURL); err != nil {
+	w := cmd.OutOrStdout()
+	if !isJSONOutput() {
+		fmt.Fprintf(w, "Syncing registry %s...\n", name)
+	}
+	res, err := svc.SyncRegistry(ctx, registryURL)
+	if err != nil {
 		return fmt.Errorf("sync registry: %w", err)
 	}
-	fmt.Println("Registry synced")
+	if isJSONOutput() {
+		return outputJSON(w, map[string]any{
+			"registry":         name,
+			"url":              config.RedactDSN(registryURL),
+			"entity_sync":      res.EntitySync,
+			"trust_level":      res.TrustLevel,
+			"upserted":         res.Upserted,
+			"pending_approval": res.PendingApproval,
+			"blocked":          res.Blocked,
+		})
+	}
+	fmt.Fprintln(w, "Registry synced")
+	if !res.EntitySync {
+		fmt.Fprintln(w, "Entities: none (manifest does not advertise capabilities.entity_sync)")
+		return nil
+	}
+	fmt.Fprintf(w, "Entities synced: %d\n", res.Upserted)
+	printHeldEntities(w, name, res.RegistryEntityCounts)
 	return nil
+}
+
+// printHeldEntities says how many entities the registry's trust_level
+// kept out of the local store, and why, so an untrusted registry does
+// not read as an empty one: an untrusted registry's wait in the approval
+// queue, a sandboxed one's are blocked. Prints nothing when none were
+// held.
+func printHeldEntities(w io.Writer, name string, c service.RegistryEntityCounts) {
+	level := "trust_level " + string(c.TrustLevel)
+	for _, r := range cfg.Registries {
+		if r.Name == name && r.TrustLevel == "" {
+			level = "trust_level unset, so untrusted"
+			break
+		}
+	}
+	if c.PendingApproval > 0 {
+		fmt.Fprintf(w, "Entities not written from %s: %d pending approval (ctxt registry pending --registry %s)\n",
+			name, c.PendingApproval, name)
+		fmt.Fprintf(w, "  registry not trusted (%s): review them, then ctxt registry approve or reject;\n", level)
+		fmt.Fprintln(w, "  or set trust_level: trusted on its registries entry (ctxt config edit) and sync again.")
+	}
+	if c.Blocked > 0 {
+		fmt.Fprintf(w, "Entities not written from %s: %d blocked (registry sandboxed: %s never writes to the local graph)\n",
+			name, c.Blocked, level)
+	}
 }
 
 // runRegistrySyncReconcile syncs all configured registries with multi-registry
 // entity reconciliation and prints the conflict report.
 func runRegistrySyncReconcile(
-	cmd *cobra.Command,
 	ctx context.Context,
+	cmd *cobra.Command,
 	svc *service.Service,
 	strategy registry.MergeStrategy,
 ) error {
-	fmt.Printf("Syncing all registries with reconciliation (strategy: %s)...\n", strategy)
+	w := cmd.OutOrStdout()
+	if !isJSONOutput() {
+		fmt.Fprintf(w, "Syncing all registries with reconciliation (strategy: %s)...\n", strategy)
+	}
 
 	result, err := svc.SyncAllRegistriesWithReconciliation(ctx, strategy, nil)
 	if err != nil {
@@ -577,19 +687,31 @@ func runRegistrySyncReconcile(
 	}
 
 	if isJSONOutput() {
-		return outputJSON(cmd.OutOrStdout(), map[string]any{
+		offline := make([]string, len(result.OfflineRegistries))
+		for i, u := range result.OfflineRegistries {
+			offline[i] = config.RedactDSN(u)
+		}
+		return outputJSON(w, map[string]any{
 			"merged":             result.Merged,
+			"pending_approval":   result.PendingApproval,
+			"blocked":            result.Blocked,
+			"registries":         result.Registries,
 			"conflicts":          result.Conflicts,
-			"offline_registries": result.OfflineRegistries,
+			"offline_registries": offline,
 		})
 	}
 
-	fmt.Printf("Entities merged: %d\n", result.Merged)
+	fmt.Fprintf(w, "Entities merged: %d\n", result.Merged)
+	for _, r := range result.Registries {
+		printHeldEntities(w, r.Name, service.RegistryEntityCounts{
+			TrustLevel: r.TrustLevel, PendingApproval: r.PendingApproval, Blocked: r.Blocked,
+		})
+	}
 
 	if len(result.OfflineRegistries) > 0 {
 		fmt.Fprintf(cmd.OutOrStdout(), "\nOffline registries (cached values preserved):\n")
 		for _, url := range result.OfflineRegistries {
-			fmt.Fprintf(cmd.OutOrStdout(), "  OFFLINE  %s\n", url)
+			fmt.Fprintf(cmd.OutOrStdout(), "  OFFLINE  %s\n", config.RedactDSN(url))
 		}
 	}
 
@@ -611,12 +733,13 @@ func runRegistrySyncReconcile(
 // runRegistrySyncDryRun fetches the remote manifest, diffs against local state,
 // and prints a table of would-be changes. Writes nothing to storage.
 func runRegistrySyncDryRun(
-	cmd *cobra.Command,
 	ctx context.Context,
 	svc *service.Service,
 	name, registryURL string,
 ) error {
-	fmt.Printf("Dry-run: fetching remote manifest for %s...\n\n", name)
+	if !isJSONOutput() {
+		fmt.Printf("Dry-run: fetching remote manifest for %s...\n\n", name)
+	}
 
 	diffs, err := svc.DiffRegistrySync(ctx, registryURL)
 	if err != nil {
@@ -626,7 +749,7 @@ func runRegistrySyncDryRun(
 	if isJSONOutput() {
 		return outputJSON(os.Stdout, map[string]any{
 			"registry": name,
-			"url":      registryURL,
+			"url":      config.RedactDSN(registryURL),
 			"dry_run":  true,
 			"changes":  diffs,
 			"total":    len(diffs),
@@ -721,7 +844,7 @@ func runRegistryUsage(cmd *cobra.Command, args []string) error {
 		periodStart = time.Now().UTC().AddDate(0, 0, -days)
 	}
 
-	ctx := context.Background()
+	ctx := asOwner(context.Background())
 
 	var registryName string
 	if len(args) > 0 {
@@ -780,17 +903,33 @@ func runRegistryLogin(cmd *cobra.Command, args []string) error {
 	name := args[0]
 
 	// Validate registry exists in config.
-	if !registryExistsInConfig(name) {
+	reg, ok := registryConfigByName(name)
+	if !ok {
 		return fmt.Errorf("registry %q not found in config — add it first with: ctxt registry add %s <url>", name, name)
+	}
+	// The token is bound to this origin: a config that later points the
+	// name elsewhere does not get it.
+	origin, err := registry.CanonicalOrigin(reg.URL)
+	if err != nil {
+		return fmt.Errorf("registry login: registry %q: %w", name, err)
 	}
 
 	token, err := cmd.Flags().GetString("token")
 	if err != nil {
 		return fmt.Errorf("token flag: %w", err)
 	}
+	pinned, err := cmd.Flags().GetString("origin")
+	if err != nil {
+		return fmt.Errorf("origin flag: %w", err)
+	}
+
+	in := bufio.NewReader(loginInput)
+	if err := confirmLoginOrigin(cmd, in, name, origin, pinned); err != nil {
+		return err
+	}
 
 	if token == "" {
-		token, err = readToken(cmd)
+		token, err = readToken(cmd, in)
 		if err != nil {
 			return fmt.Errorf("read token: %w", err)
 		}
@@ -801,12 +940,72 @@ func runRegistryLogin(cmd *cobra.Command, args []string) error {
 	}
 
 	store := registry.NewTokenStore()
-	if err := store.Set(name, token); err != nil {
+	if err := store.Set(name, origin, token); err != nil {
 		return fmt.Errorf("registry login: %w", err)
 	}
 
-	fmt.Fprintf(cmd.OutOrStdout(), "Token stored securely in keychain for registry %q.\n", name)
+	fmt.Fprintf(cmd.OutOrStdout(), "Token stored in keychain for registry %q; token bound to %s\n", name, origin)
+	if reg.Auth.Type == "" {
+		fmt.Fprintf(cmd.ErrOrStderr(),
+			"note: registry %q has no auth.type, so the token is not sent; set registries[].auth.type (bearer | api_key | oauth2)\n",
+			name)
+	}
+	if registry.InsecureOrigin(origin) {
+		fmt.Fprintf(cmd.ErrOrStderr(),
+			"note: registry %q is plain http; the token is sent only over https or to a loopback host\n", name)
+	}
 	return nil
+}
+
+// loginInput is where `registry login` reads the origin confirmation
+// and the prompted token; loginInteractive reports whether it is a
+// terminal. Tests replace both.
+var (
+	loginInput       io.Reader = os.Stdin
+	loginInteractive           = func() bool { return term.IsTerminal(int(os.Stdin.Fd())) }
+)
+
+// confirmLoginOrigin checks the origin `registry login` is about to bind
+// the token to. --origin pins it: it must name the registry url's own
+// origin. Without it, a registry list read from the project layer (a
+// `.contexthelp/ctxt.yaml` in the working tree, which a cloned repository
+// controls) needs a typed yes; non-interactively the login is refused.
+func confirmLoginOrigin(cmd *cobra.Command, in *bufio.Reader, name, origin, pinned string) error {
+	if pinned != "" {
+		want, err := registry.CanonicalOrigin(pinned)
+		if err != nil {
+			return fmt.Errorf("registry login: --origin: %w", err)
+		}
+		if want != origin {
+			return fmt.Errorf("registry login: --origin %s does not match registry %q, whose url is at %s", want, name, origin)
+		}
+		return nil
+	}
+
+	paths, _, _ := root.ConfigArgs()
+	src, found, err := config.RegistriesSource(binName, "", paths)
+	if err != nil {
+		return fmt.Errorf("registry login: %w", err)
+	}
+	if !found || src.Kind != config.LayerProject {
+		return nil
+	}
+	if !loginInteractive() {
+		return fmt.Errorf("registry login: registry %q url comes from the project config %s; "+
+			"to bind a token to %s, pass --origin %s", name, src.Path, origin, origin)
+	}
+	fmt.Fprintf(cmd.ErrOrStderr(),
+		"Registry %q url comes from the project config %s.\nBind the token to %s? [y/N] ", name, src.Path, origin)
+	answer, err := in.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return fmt.Errorf("registry login: read confirmation: %w", err)
+	}
+	switch strings.ToLower(strings.TrimSpace(answer)) {
+	case "y", confirmYes:
+		return nil
+	default:
+		return fmt.Errorf("registry login: not confirmed; no token stored")
+	}
 }
 
 // runRegistryLogout removes the stored auth token for the named registry.
@@ -826,18 +1025,22 @@ func runRegistryLogout(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// registryExistsInConfig reports whether name appears in cfg.Registries.
-func registryExistsInConfig(name string) bool {
+// registryConfigByName returns the cfg.Registries entry named name.
+func registryConfigByName(name string) (config.RegistryConfig, bool) {
 	if cfg == nil {
-		return false
+		return config.RegistryConfig{}, false
 	}
 	for _, r := range cfg.Registries {
 		if r.Name == name {
-			return true
+			return r, true
 		}
 	}
-	return false
+	return config.RegistryConfig{}, false
 }
+
+// defaultRegistryName names the bundled default registry
+// (registry.DefaultRegistryURL) on the command line.
+const defaultRegistryName = "default"
 
 // runRegistryCapabilities fetches the cached manifest for name and runs the
 // capability handshake, printing any version or feature warnings.
@@ -846,7 +1049,7 @@ func runRegistryCapabilities(cmd *cobra.Command, args []string) error {
 
 	// Resolve URL: "default" maps to the bundled sentinel URL.
 	registryURL := registry.DefaultRegistryURL
-	if name != "default" {
+	if name != defaultRegistryName {
 		for _, r := range cfg.Registries {
 			if r.Name == name {
 				registryURL = r.URL
@@ -864,7 +1067,7 @@ func runRegistryCapabilities(cmd *cobra.Command, args []string) error {
 	}
 	defer cleanup()
 
-	ctx := context.Background()
+	ctx := asOwner(context.Background())
 	warnings, err := svc.CheckRegistryCapabilities(ctx, registryURL, version,
 		"entity_sync", "taxonomy", "translations",
 	)
@@ -872,7 +1075,7 @@ func runRegistryCapabilities(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("capability check: %w", err)
 	}
 
-	cache, err := svc.Store.Registries().GetCachedManifest(ctx, registryURL)
+	cache, err := svc.Store(ctx).Registries().GetCachedManifest(ctx, registryURL)
 	if err != nil {
 		return fmt.Errorf("get registry: %w", err)
 	}
@@ -898,7 +1101,7 @@ func runRegistryCapabilities(cmd *cobra.Command, args []string) error {
 		mMinClient = cache.Manifest.MinClientVersion
 	}
 
-	var warnMaps []map[string]string
+	warnMaps := make([]map[string]string, 0, len(warnings))
 	for _, w := range warnings {
 		warnMaps = append(warnMaps, map[string]string{
 			"feature": w.Feature,
@@ -908,7 +1111,7 @@ func runRegistryCapabilities(cmd *cobra.Command, args []string) error {
 
 	result := capResult{
 		Name:         name,
-		URL:          registryURL,
+		URL:          config.RedactDSN(registryURL),
 		Version:      mVersion,
 		MinClient:    mMinClient,
 		Capabilities: caps,
@@ -920,7 +1123,7 @@ func runRegistryCapabilities(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Fprintf(cmd.OutOrStdout(), "Registry: %s\n", name)
-	fmt.Fprintf(cmd.OutOrStdout(), "URL:      %s\n", registryURL)
+	fmt.Fprintf(cmd.OutOrStdout(), "URL:      %s\n", result.URL)
 	if mVersion != "" {
 		fmt.Fprintf(cmd.OutOrStdout(), "Version:  %s\n", mVersion)
 	}
@@ -963,8 +1166,16 @@ func runRegistrySearch(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("index-url flag: %w", err)
 	}
 
-	ctx := context.Background()
-	idx, err := registry.FetchIndex(ctx, nil, indexURL)
+	// An index served by a configured registry gets that registry's token.
+	var regs []config.RegistryConfig
+	if cfg != nil {
+		regs = cfg.Registries
+	}
+	client := registry.NewCredentials(regs, registry.KeychainTokens()).
+		Client(&http.Client{Timeout: 15 * time.Second})
+
+	ctx := asOwner(context.Background())
+	idx, err := registry.FetchIndex(ctx, client, indexURL)
 	if err != nil {
 		return fmt.Errorf("fetch registry index: %w", err)
 	}
@@ -1030,16 +1241,16 @@ func runRegistrySearch(cmd *cobra.Command, args []string) error {
 // In interactive sessions the token is read line-by-line; input is not echoed
 // because the prompt instructs the user to paste rather than type.
 // For masked input in production use --token flag with an env-var reference.
-func readToken(cmd *cobra.Command) (string, error) {
+func readToken(cmd *cobra.Command, in *bufio.Reader) (string, error) {
 	fmt.Fprint(cmd.OutOrStdout(), "Enter token: ")
-	scanner := bufio.NewScanner(os.Stdin)
-	if scanner.Scan() {
-		return scanner.Text(), nil
-	}
-	if err := scanner.Err(); err != nil {
+	line, err := in.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
 		return "", fmt.Errorf("read token: %w", err)
 	}
-	return "", fmt.Errorf("no token provided on stdin")
+	if line == "" {
+		return "", fmt.Errorf("no token provided on stdin")
+	}
+	return strings.TrimRight(line, "\r\n"), nil
 }
 
 // runRegistryEntitlements lists active entitlement records stored locally.
@@ -1050,8 +1261,8 @@ func runRegistryEntitlements(cmd *cobra.Command, _ []string) error {
 	}
 	defer cleanup()
 
-	ctx := context.Background()
-	entitlements, err := svc.Store.Entitlements().List(ctx)
+	ctx := asOwner(context.Background())
+	entitlements, err := svc.Store(ctx).Entitlements().List(ctx, storage.EntitlementOutbound)
 	if err != nil {
 		return fmt.Errorf("list entitlements: %w", err)
 	}

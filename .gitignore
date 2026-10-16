@@ -26,11 +26,6 @@ config.production.yaml
 config.dev.yaml
 ~/.config/contexthelp/config.yaml
 
-# Plugin configurations (may contain API keys)
-plugins/*/config.yaml
-plugins/*/secrets/
-plugins/*/.env
-
 #############################################################################
 # Authentication & Credentials (CRITICAL)
 #############################################################################
@@ -128,6 +123,8 @@ coverage.txt
 coverage.html
 *.cover
 .coverage/
+# SARIF reports gosec and Trivy write (make gosec; CI uploads them)
+*.sarif
 
 # Test databases
 test.db
@@ -299,16 +296,6 @@ registries/cache/
 .registries/
 
 #############################################################################
-# Plugin Development
-#############################################################################
-# Plugin build artifacts
-plugins/*/bin/
-plugins/*/dist/
-
-# Plugin test data
-plugins/*/testdata/secrets/
-
-#############################################################################
 # AI and ML Model Files (Large Files)
 #############################################################################
 *.model
@@ -325,8 +312,6 @@ plugins/*/testdata/secrets/
 !.env.example
 !config/config.example.yaml
 !config/config.minimal.yaml
-!config/config.plugins.yaml
-!config/config.leann.yaml
 
 # Keep documentation
 !docs/**/*.md
@@ -342,6 +327,10 @@ plugins/*/testdata/secrets/
 .env.dev
 .env.prod
 .air/
+# Operator-owned dpkms inbound auth (docker/dpkms-auth.example.yaml)
+docker/dpkms-auth.yaml
+# Operator-owned dpkms blob storage + provider settings (docker/dpkms-local.example.yaml)
+docker/dpkms-local.yaml
 
 #############################################################################
 # User-Specific Ignores
@@ -363,3 +352,6 @@ web/ui/node_modules/
 extensions/browser/.output/
 extensions/browser/node_modules/
 .task/
+
+# Built example step executables
+/examples/steps/pii-mask/pii-mask

@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // ErrConfigArgsInvalid marks a fatal `-c`/`--config` failure: the user
@@ -56,4 +57,23 @@ func Bootstrap(binName string, paths []string, overrides map[string]any, parseEr
 		effectivePath = paths[len(paths)-1]
 	}
 	return cfg, effectivePath, nil
+}
+
+// WithOverride returns a copy of overrides (kit's nested -c key=value
+// map) with dotted key set to val, replacing any value already there. A
+// CLI flag bound to a config key uses it to rank above -c key=value:
+// apply it last, after root.ConfigArgs(). The input map is not mutated.
+func WithOverride(overrides map[string]any, key string, val any) map[string]any {
+	out := make(map[string]any, len(overrides)+1)
+	for k, v := range overrides {
+		out[k] = v
+	}
+	head, rest, nested := strings.Cut(key, ".")
+	if !nested {
+		out[head] = val
+		return out
+	}
+	child, _ := out[head].(map[string]any)
+	out[head] = WithOverride(child, rest, val)
+	return out
 }

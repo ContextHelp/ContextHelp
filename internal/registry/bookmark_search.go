@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -43,6 +44,7 @@ type SourceResult struct {
 // BookmarkSearchClient queries a single registry's bookmark search endpoint.
 type BookmarkSearchClient struct {
 	httpClient *http.Client
+	creds      *Credentials
 	timeout    time.Duration
 }
 
@@ -58,6 +60,14 @@ func NewBookmarkSearchClient(timeout time.Duration) *BookmarkSearchClient {
 	}
 }
 
+// WithCredentials authenticates each search with the stored token of the
+// registry it queries.
+func (c *BookmarkSearchClient) WithCredentials(creds *Credentials) *BookmarkSearchClient {
+	c.creds = creds
+	c.httpClient = creds.Client(c.httpClient)
+	return c
+}
+
 // Search calls GET <registryURL>/bookmarks/search?q=<query> and returns results.
 // On HTTP error or parse failure it returns a descriptive error; callers decide
 // whether to degrade gracefully.
@@ -68,7 +78,7 @@ func (c *BookmarkSearchClient) Search(
 	endpoint := registryURL + "/bookmarks/search"
 	u, err := url.Parse(endpoint)
 	if err != nil {
-		return nil, fmt.Errorf("bookmark search: invalid registry URL %q: %w", registryURL, err)
+		return nil, fmt.Errorf("bookmark search: invalid registry URL %q: %w", config.RedactDSN(registryURL), config.RedactURLError(err))
 	}
 
 	q := u.Query()
@@ -83,21 +93,24 @@ func (c *BookmarkSearchClient) Search(
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("bookmark search: %s: %w", registryURL, err)
+		return nil, fmt.Errorf("bookmark search: %s: %w", config.RedactDSN(registryURL), config.RedactURLError(err))
 	}
 	defer resp.Body.Close()
 
+	if err := c.creds.CheckResponse(resp); err != nil {
+		return nil, fmt.Errorf("bookmark search: %w", err)
+	}
 	if resp.StatusCode == http.StatusNotFound {
 		// Registry does not expose /bookmarks/search — skip silently.
 		return nil, nil
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("bookmark search: %s returned HTTP %d", registryURL, resp.StatusCode)
+		return nil, fmt.Errorf("bookmark search: %s returned HTTP %d", config.RedactDSN(registryURL), resp.StatusCode)
 	}
 
 	var results []RemoteBookmark
 	if err := json.NewDecoder(resp.Body).Decode(&results); err != nil {
-		return nil, fmt.Errorf("bookmark search: decode response from %s: %w", registryURL, err)
+		return nil, fmt.Errorf("bookmark search: decode response from %s: %w", config.RedactDSN(registryURL), err)
 	}
 
 	// Stamp registry source on each result.

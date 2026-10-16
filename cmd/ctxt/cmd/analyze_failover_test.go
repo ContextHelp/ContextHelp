@@ -174,7 +174,7 @@ func TestEnqueueRejectedTokenExits5WithoutRetry(t *testing.T) {
 func TestEnqueueRolesOnProtectedInstance(t *testing.T) {
 	for _, tc := range enqueueCommands {
 		t.Run(tc.name, func(t *testing.T) {
-			db := setupTestDB(t, dpkmstest.WithStaticTokens())
+			db := setupTestDB(t, dpkmstest.WithKeys())
 
 			db.useRole(t, dpkmstest.RoleReader)
 			pipeStdin(t, tc.stdin)

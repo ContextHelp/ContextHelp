@@ -1,16 +1,17 @@
 #!/bin/sh
 # Secret scanning, then the lint gate, on staged changes.
 #
-# gitleaks runs here rather than in CI: gitleaks-action needs a paid-tier
-# license for organization-owned repos, and this repo moved to an org. The
-# CI job is commented out until a GITLEAKS_LICENSE secret exists; this hook
-# is the stand-in, so secrets are caught before they ever reach a commit.
+# The hook catches secrets before they ever reach a commit; CI's
+# secret-scan job (make security-scan) rescans the full history.
 #
 # Install with: make install-hooks
 # Bypass once (use sparingly): git commit --no-verify
 
 # `gitleaks git --staged` is the 8.x form; `protect` is the deprecated alias.
 if command -v gitleaks >/dev/null 2>&1; then
+	# Warns (never blocks) when gitleaks differs from the mise.toml pin.
+	check="$(git rev-parse --show-toplevel)/scripts/gitleaks-version-check.sh"
+	if [ -x "$check" ]; then "$check" || true; fi
 	gitleaks git --staged --config .gitleaks.toml --redact --verbose || exit 1
 else
 	echo "gitleaks not found; skipping secret scan." >&2
@@ -21,10 +22,12 @@ fi
 #
 # pre-commit refuses to `install` while core.hooksPath is set, and this repo
 # needs that setting for the scan above — so it is chained here instead.
-# Skipped silently when pre-commit is not installed.
+# Without pre-commit the lint gate cannot run; say so on every commit.
 if command -v pre-commit >/dev/null 2>&1; then
 	exec pre-commit hook-impl \
 		--hook-type=pre-commit \
 		--hook-dir "$(dirname "$0")" \
 		-- "$@"
 fi
+echo "WARNING: pre-commit not installed; lint gate (gofmt, go vet, golangci-lint) NOT run." >&2
+echo "         Install https://pre-commit.com, or run 'make ci-lint' before pushing." >&2

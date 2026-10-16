@@ -1,3 +1,6 @@
+// Package ws serves the cookie bridge: a WebSocket endpoint the browser
+// extension pushes session cookies to, cached per domain with a one-hour
+// TTL.
 package ws
 
 import (
@@ -82,9 +85,6 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-// DefaultCookieBridgePort is the preferred port for the cookie bridge server.
-const DefaultCookieBridgePort = 9377
-
 // CookieBridgeServer is a standalone WebSocket server for browser-extension cookie sync.
 type CookieBridgeServer struct {
 	cache  *CookieCache
@@ -93,7 +93,8 @@ type CookieBridgeServer struct {
 
 // NewCookieBridgeServer creates a CookieBridgeServer. Serve it on a
 // listener the caller has already bound (preferred port
-// DefaultCookieBridgePort). hosts lists the Host headers the bridge
+// config.DefaultCookieBridgePort, the one the browser extension connects
+// to). hosts lists the Host headers the bridge
 // answers to (the loopback names on the port it bound); nil refuses
 // every request.
 func NewCookieBridgeServer(cache *CookieCache, hosts *httpserver.HostAllowlist) *CookieBridgeServer {
@@ -167,7 +168,9 @@ func (s *CookieBridgeServer) handleWS(w http.ResponseWriter, r *http.Request) {
 		log.Printf("ws: upgrade error: %v", err)
 		return
 	}
-	defer conn.Close()
+	// The read loop ends on a read error, so the socket is already dead
+	// or closing; a close error tells the bridge nothing new.
+	defer func() { _ = conn.Close() }()
 
 	for {
 		_, msg, err := conn.ReadMessage()

@@ -160,9 +160,9 @@ func parseOperator(s string) (Operator, error) {
 		return OpLt, nil
 	case "<=":
 		return OpLte, nil
-	case "=in=":
+	case opInText:
 		return OpIn, nil
-	case "=out=":
+	case opOutText:
 		return OpOut, nil
 	default:
 		return 0, fmt.Errorf("unknown operator: %s", s)

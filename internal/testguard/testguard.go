@@ -14,7 +14,10 @@
 //     gets connection-refused instead of whatever listens on :8080;
 //   - wraps http.DefaultTransport so a request to a default local server
 //     port is refused before connecting, and fails the run when any was
-//     attempted.
+//     attempted;
+//   - swaps the OS keychain for go-keyring's in-memory mock: with HOME
+//     moved there is no login keychain, and on macOS each write would
+//     raise a "Keychain Not Found" dialog.
 package testguard
 
 import (
@@ -31,6 +34,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/zalando/go-keyring"
 )
 
 // ClosedServerURL is the server.url tests get when they configure nothing.
@@ -328,9 +333,10 @@ func (g *DialGuard) Report(w io.Writer) int {
 	return len(g.trips)
 }
 
-// Main isolates the process env for bins, installs the dial guard, runs
-// setup (may be nil) and the tests, and returns the exit code: non-zero
-// when isolation failed or any guarded request was attempted.
+// Main isolates the process env for bins, installs the dial guard and the
+// keychain mock, runs setup (may be nil) and the tests, and returns the
+// exit code: non-zero when isolation failed or any guarded request was
+// attempted.
 func Main(m *testing.M, setup func(), bins ...string) int {
 	root, err := os.MkdirTemp("", "ctxt-testenv-")
 	if err != nil {
@@ -345,6 +351,7 @@ func Main(m *testing.M, setup func(), bins ...string) int {
 	}
 	g := InstallDialGuard()
 	Active = g
+	keyring.MockInit()
 	if setup != nil {
 		setup()
 	}

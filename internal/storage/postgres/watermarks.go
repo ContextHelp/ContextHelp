@@ -5,38 +5,38 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"time"
 )
 
-// watermarkStore persists per-federation last-synced timestamps in the
-// federation_watermarks table. One row per federation_name; missing rows
-// are treated as the Unix epoch.
+// watermarkStore persists per-federation watermarks in the
+// federation_watermarks table: last_change_seq is the ChangeSeq of the
+// last object the target acknowledged. One row per federation_name.
 type watermarkStore struct{ db *sql.DB }
 
-// GetWatermark returns last_synced_at for federationName or epoch when missing.
-func (s *watermarkStore) GetWatermark(ctx context.Context, federationName string) (time.Time, error) {
-	var ts time.Time
+// GetWatermark returns the ChangeSeq stored for federationName, or 0
+// when there is none.
+func (s *watermarkStore) GetWatermark(ctx context.Context, federationName string) (int64, error) {
+	var seq int64
 	err := s.db.QueryRowContext(ctx,
-		`SELECT last_synced_at FROM federation_watermarks WHERE federation_name = $1`,
+		`SELECT last_change_seq FROM federation_watermarks WHERE federation_name = $1`,
 		federationName,
-	).Scan(&ts)
+	).Scan(&seq)
 	if errors.Is(err, sql.ErrNoRows) {
-		return time.Unix(0, 0).UTC(), nil
+		return 0, nil
 	}
 	if err != nil {
-		return time.Time{}, fmt.Errorf("watermark get %q: %w", federationName, err)
+		return 0, fmt.Errorf("watermark get %q: %w", federationName, err)
 	}
-	return ts.UTC(), nil
+	return seq, nil
 }
 
-// SetWatermark upserts last_synced_at for federationName.
-func (s *watermarkStore) SetWatermark(ctx context.Context, federationName string, ts time.Time) error {
+// SetWatermark upserts seq for federationName.
+func (s *watermarkStore) SetWatermark(ctx context.Context, federationName string, seq int64) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO federation_watermarks (federation_name, last_synced_at)
+		`INSERT INTO federation_watermarks (federation_name, last_change_seq)
          VALUES ($1, $2)
          ON CONFLICT (federation_name)
-         DO UPDATE SET last_synced_at = EXCLUDED.last_synced_at`,
-		federationName, ts.UTC(),
+         DO UPDATE SET last_change_seq = EXCLUDED.last_change_seq`,
+		federationName, seq,
 	)
 	if err != nil {
 		return fmt.Errorf("watermark set %q: %w", federationName, err)

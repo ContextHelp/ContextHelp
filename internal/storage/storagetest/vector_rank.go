@@ -159,10 +159,10 @@ func RunVectorRankFixture(t *testing.T, drv storage.StorageDriver) {
 
 	// Pin the score mapping (1 - cosine_distance = cosine similarity), not
 	// just the ordering: a 1/(1+L2) mapping would report 0.5 here.
-	if s := results[0].Metadata["score"].(float64); math.Abs(s-1.0) > 0.01 {
-		t.Errorf("top score: got %f want ~1.0 (score = 1 - cosine_distance)", s)
+	if s, ok := results[0].Metadata["score"].(float64); !ok || math.Abs(s-1.0) > 0.01 {
+		t.Errorf("top score: got %#v want ~1.0 (score = 1 - cosine_distance)", results[0].Metadata["score"])
 	}
-	if s := results[len(results)-1].Metadata["score"].(float64); math.Abs(s-0.0) > 0.01 {
-		t.Errorf("orthogonal score: got %f want ~0.0 (score = 1 - cosine_distance)", s)
+	if s, ok := results[len(results)-1].Metadata["score"].(float64); !ok || math.Abs(s-0.0) > 0.01 {
+		t.Errorf("orthogonal score: got %#v want ~0.0 (score = 1 - cosine_distance)", results[len(results)-1].Metadata["score"])
 	}
 }

@@ -47,7 +47,7 @@ func TestAnalyzeCallsDPKMS(t *testing.T) {
 	}
 	// "argument" is the origin when content is passed as a CLI arg.
 	// (Previously this was hardcoded to "cli", which caused url_fetcher to
-	// attempt GET "cli" — see T-0227.)
+	// attempt GET "cli".)
 	if received["source"] != "argument" {
 		t.Errorf("source: got %q, want %q", received["source"], "argument")
 	}

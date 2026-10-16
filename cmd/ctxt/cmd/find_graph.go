@@ -223,7 +223,7 @@ func runFindGraph(ctx context.Context, cmd *cobra.Command, svc *service.Service,
 		return fmt.Errorf("find graph: %w", err)
 	}
 	printSemanticNotice(cmd, res.Diagnostics)
-	doc, err := searchgraph.Build(ctx, res.Trace, searchgraph.SourceFrom(svc.Store), opts)
+	doc, err := searchgraph.Build(ctx, res.Trace, searchgraph.SourceFrom(svc.Store(ctx)), opts)
 	if err != nil {
 		return findGraphBuildError(err)
 	}

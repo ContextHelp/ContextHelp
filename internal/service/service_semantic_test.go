@@ -1,7 +1,6 @@
 package service
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"strings"
@@ -44,7 +43,7 @@ type semanticFixture struct {
 // from the vector leg.
 func newSemanticFixture(t *testing.T) *semanticFixture {
 	t.Helper()
-	ctx := context.Background()
+	ctx := ownerCtx()
 	client, calls := providertest.OllamaClient(t, semanticCassettes)
 	emb := storagetest.NewMemEmbeddingStore()
 	drv := storagetest.WithEmbeddings(storageutil.NewTestDriver(t), emb)
@@ -110,7 +109,7 @@ func resultIDs(objs []*storage.KnowledgeObject) []string {
 // set-default flip made through another registry handle on the next query.
 func TestHybridSearch_SemanticLegReadsDefaultModelPerQuery(t *testing.T) {
 	f := newSemanticFixture(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	objs, diag, err := f.svc.HybridSearchFilteredWithDiagnostics(ctx, semanticQuery, storage.ObjectFilter{Limit: 10}, f.sem, semanticCfg(false))
 	require.NoError(t, err)
@@ -141,7 +140,7 @@ func TestHybridSearch_SemanticLegReadsDefaultModelPerQuery(t *testing.T) {
 // leg did not run, in the diagnostics and their JSON form.
 func TestHybridSearch_NoDefaultModelFallsBackVisibly(t *testing.T) {
 	f := newSemanticFixture(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 	_, err := f.db.Exec(`UPDATE embedding_models SET is_default = 0`)
 	require.NoError(t, err)
 
@@ -166,7 +165,7 @@ func TestHybridSearch_NoDefaultModelFallsBackVisibly(t *testing.T) {
 // Vector-only search degrades to FTS the same visible way.
 func TestSemanticSearchFiltered_FallsBackToFTSVisibly(t *testing.T) {
 	f := newSemanticFixture(t)
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	objs, diag, err := f.svc.SemanticSearchFiltered(ctx, semanticQuery, storage.ObjectFilter{Limit: 10}, f.sem, semanticCfg(true))
 	require.NoError(t, err)

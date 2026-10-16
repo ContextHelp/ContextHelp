@@ -8,7 +8,7 @@
 > and 13 (the `plugins/auditlog/` module) were never built and the empty scaffold
 > has been removed.
 >
-> Current-state reference: [docs/plugins/plugins-audit-log.md](../plugins/plugins-audit-log.md).
+> Current-state reference: docs/plugins/plugins-audit-log.md (removed).
 > Retained for design rationale only.
 
 **Goal:** Plugin that records all object mutations (create, update, delete, triage, discard, tag change, alias set) into an immutable append-only audit log. Queryable via `ctxt audit` CLI and `GET /api/v1/audit` REST endpoint.

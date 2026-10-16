@@ -1,7 +1,11 @@
+// Package vision analyzes images beyond OCR (scene description, labels)
+// through a local Ollama model or a hosted API (OpenAI, Anthropic, Gemini,
+// OpenRouter).
 package vision
 
 import (
 	"context"
+	"net/http"
 	"strings"
 )
 
@@ -56,4 +60,12 @@ func parseResponse(response string) (string, []string) {
 	}
 
 	return description, labels
+}
+
+// clientOr returns c, or http.DefaultClient when c is nil.
+func clientOr(c *http.Client) *http.Client {
+	if c == nil {
+		return http.DefaultClient
+	}
+	return c
 }

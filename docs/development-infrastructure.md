@@ -75,9 +75,7 @@ This document provides an overview of the development infrastructure for Context
 **Purpose:** Optional development services
 
 **Services Included:**
-- PostgreSQL 16 (alternative to SQLite)
-- Redis 7 (distributed job queue)
-- Qdrant 1.7 (vector search)
+- PostgreSQL 16 with pgvector (alternative to SQLite)
 
 **Features:**
 - Health checks for all services
@@ -96,7 +94,6 @@ This document provides an overview of the development infrastructure for Context
 - **Testing:** test, test:unit, test:integration, test:e2e, test:coverage
 - **Quality:** lint, fmt, vet, security
 - **CI:** ci, ci:lint, ci:test, ci:security
-- **Database:** db:migrate:up, db:migrate:down, db:reset, db:seed
 - **Docker:** services:up, services:down, services:logs
 - **Dependencies:** deps, deps:update
 - **Release:** release:prepare, release:build
@@ -141,7 +138,6 @@ This document provides an overview of the development infrastructure for Context
 **Sections:**
 - Environment settings (dev/prod)
 - Storage backends (SQLite, Postgres)
-- Optional services (Redis, Qdrant)
 - AI providers (OpenAI, Anthropic, Ollama)
 - Logging configuration
 - API server settings
@@ -159,31 +155,16 @@ This document provides an overview of the development infrastructure for Context
 
 ### 5. YAML Configuration (`config/config.example.yaml`)
 
-**Purpose:** Structured configuration for both dPKMS and ctxt
+**Purpose:** Template for `ctxt.yaml` and `dpkms.yaml`, which share one
+schema (the `Config` type in `internal/config/config.go`).
 
-**dPKMS Configuration:**
-- Storage backend settings
-- Job queue configuration
-- Security and encryption
-- Registry subscriptions
-- Graph settings
-- Query configuration
-- API (REST and gRPC)
-
-**ctxt Configuration:**
-- Pipeline settings
-- AI provider configuration
-- Profile management
-- Search settings
-- Vector search (optional)
-- Surfacing configuration
-- Composition templates
-- CLI preferences
-
-**Additional:**
-- Logging configuration
-- Monitoring and observability
-- Development settings
+- Every setting is commented out, so a fresh copy changes nothing;
+  each section names the binary that acts on it
+- Shows built-in defaults and the accepted values of enum keys
+- `config/config.minimal.yaml`: the few settings people change first
+- `internal/config/config_examples_test.go` decodes every `config/*.yaml`
+  strictly, as copied and with its settings uncommented, and runs
+  `config.Validate` on the result
 
 ---
 
@@ -211,7 +192,6 @@ This document provides an overview of the development infrastructure for Context
 
 **Integration Job:**
 - PostgreSQL service
-- Redis service
 - Integration test suite
 - Environment-based configuration
 
@@ -239,16 +219,16 @@ This document provides an overview of the development infrastructure for Context
 2. Creates directory structure
 3. Initializes Go modules
 4. Installs development tools
-5. Sets up SQLite database
-6. Creates initial migrations
-7. Generates `.env` file
-8. Installs Git pre-commit hooks
-9. Verifies installation
+5. Generates `.env` file
+6. Installs Git hooks (`make install-hooks`)
+7. Verifies installation
+
+It does not create a database: the binaries create and migrate it on first
+run from their embedded migrations.
 
 **Tools Installed:**
 - golangci-lint
 - Task (task runner)
-- golang-migrate
 - govulncheck
 
 **Features:**
@@ -263,20 +243,15 @@ This document provides an overview of the development infrastructure for Context
 
 ### Pre-commit Hook
 
-**Location:** `.git/hooks/pre-commit`
+**Location:** `.githooks/pre-commit` (tracked; git finds it through
+`core.hooksPath`, so it works in linked worktrees too)
 
 **Actions:**
-1. Run golangci-lint
-2. Run unit tests (`go test -short`)
-3. Report results
+1. gitleaks secret scan on staged changes
+2. Lint gate from `.pre-commit-config.yaml`, scoped to staged files
 
-**Benefits:**
-- Catches issues before push
-- Prevents broken commits
-- Enforces code quality
-- Fast feedback loop
-
-**Installation:** Automatic via `scripts/dev-setup.sh`
+**Installation:** `make install-hooks` (run by `scripts/dev-setup.sh`). See
+[DEVELOPING.md](../DEVELOPING.md#pre-commit-hooks) for details.
 
 ---
 
@@ -292,8 +267,6 @@ This document provides an overview of the development infrastructure for Context
 ### 2. Optional Scaling
 
 - **Postgres:** When multi-user testing needed
-- **Redis:** For distributed job queue testing
-- **Qdrant:** For vector search experimentation
 - **Easy toggle:** Environment variable switches
 
 ### 3. Comprehensive Testing
@@ -431,18 +404,9 @@ task verify
 
 ### Database Migrations
 
-```bash
-# Create new migration
-task db:migrate:create -- add_new_table
-
-# Edit migration files in data/migrations/
-
-# Apply migration
-task db:migrate:up
-
-# If needed, rollback
-task db:migrate:down
-```
+Migrations are embedded in the binaries and applied on every database
+open; there are no migration tasks. See
+[Database & Migrations](development.md#database--migrations).
 
 ---
 

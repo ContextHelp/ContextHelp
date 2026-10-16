@@ -27,13 +27,13 @@ const (
 	TopicInboxTriaged bus.Topic = "ctxt.runtime.inbox.triaged"
 
 	// TopicDpkmsUpgradeSignatureMismatch fires when daemon startup detects an
-	// index-signature drift (ADR-070 §3, T-0579). Detection only — the
-	// actual reindex worker (T-0581) subscribes downstream.
+	// index-signature drift (ADR-070 §3). Detection only — the
+	// actual reindex worker subscribes downstream.
 	TopicDpkmsUpgradeSignatureMismatch bus.Topic = "dpkms.upgrade.signature.mismatched"
 
 	// TopicDpkmsUpgradePlanComputed fires when `ctxt upgrade plan` (or a
 	// dry-run worker invocation) produces a plan summary. Carries
-	// UpgradePlanComputedPayload (ADR-070 §6, T-0581).
+	// UpgradePlanComputedPayload (ADR-070 §6).
 	TopicDpkmsUpgradePlanComputed bus.Topic = "dpkms.upgrade.plan.computed"
 	// TopicDpkmsUpgradeReingestStarted fires when the reingest_selective
 	// worker begins. Carries UpgradeReingestStartedPayload.
@@ -83,16 +83,6 @@ const (
 	// TopicCtxtEmbeddingsModelPurged fires when a deprecated model's
 	// rows, index and registry entry are deleted.
 	TopicCtxtEmbeddingsModelPurged bus.Topic = "ctxt.embeddings.model.purged"
-)
-
-// Plugin capability topics, published by the plugin CapabilityEnforcer on
-// behalf of a plugin that holds the matching permission.
-const (
-	// TopicPluginRefreshRequested fires when a plugin asked for a refresh.
-	TopicPluginRefreshRequested bus.Topic = "ctxt.plugin.refresh.requested"
-	// TopicPluginNotificationRequested fires when a plugin asked for a
-	// user notification.
-	TopicPluginNotificationRequested bus.Topic = "ctxt.plugin.notification.requested"
 )
 
 // Ambient capture substrate topics (ADR-066), published on the ctxd daemon
@@ -183,8 +173,8 @@ type JobFailedPayload struct {
 
 // UpgradeSignatureMismatchPayload is published when daemon startup detects
 // that an on-disk index signature does not match the build-time-known
-// signature (ADR-070 §3, T-0579). Per ADR-070 the bucket-1 reindex_auto
-// worker (T-0581) subscribes to act on this; in T-0579 we ship detection
+// signature (ADR-070 §3). Per ADR-070 the bucket-1 reindex_auto
+// worker subscribes to act on this; today it ships detection
 // only — receivers may log/notify but do not rebuild yet.
 type UpgradeSignatureMismatchPayload struct {
 	SignatureID   string `json:"signature_id"`
@@ -194,7 +184,7 @@ type UpgradeSignatureMismatchPayload struct {
 }
 
 // UpgradePlanComputedPayload describes the output of `ctxt upgrade plan` or
-// a dry-run worker invocation (ADR-070 §6, T-0581). PlanItems is keyed by
+// a dry-run worker invocation (ADR-070 §6). PlanItems is keyed by
 // "<from>→<to>" pipeline transitions (e.g. "text.short@v0→text.short@v1").
 type UpgradePlanComputedPayload struct {
 	Bucket    string         `json:"bucket"`

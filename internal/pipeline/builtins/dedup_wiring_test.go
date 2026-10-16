@@ -20,6 +20,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
@@ -61,7 +62,7 @@ type dedupEnv struct {
 // config on both.
 func newDedupEnv(t *testing.T, dup config.DuplicatesConfig, defaultModel bool) *dedupEnv {
 	t.Helper()
-	ctx := context.Background()
+	ctx := sharing.WithViewer(context.Background(), sharing.Unrestricted)
 	drv := storageutil.NewTestDriver(t)
 	reg, err := registry.ForDriver(drv)
 	if err != nil {
@@ -90,7 +91,7 @@ func newDedupEnv(t *testing.T, dup config.DuplicatesConfig, defaultModel bool) *
 // object's ID.
 func (e *dedupEnv) ingest(t *testing.T, body string) string {
 	t.Helper()
-	ctx := context.Background()
+	ctx := sharing.WithViewer(context.Background(), sharing.Unrestricted)
 	id, err := e.svc.Analyze(ctx, service.AnalyzeRequest{Content: body, Type: "text", Pipeline: "text.long", Source: "cli"})
 	if err != nil {
 		t.Fatalf("analyze %q: %v", body, err)
@@ -404,9 +405,12 @@ func TestPipelineOverridesInjectDedupAndHonourSkip(t *testing.T) {
 		Embeddings: embeddingtest.NewMemStore(),
 		Duplicates: dupCfg("warn", dedupBelowNear),
 	}
-	reg := ConfiguredRegistryWithPipelineOverrides(opts, config.ProvidersConfig{}, config.PipelinesConfig{
+	reg, err := ConfiguredRegistryWithPipelineOverrides(opts, config.ProvidersConfig{}, config.PipelinesConfig{
 		Overrides: map[string]config.PipelineOverride{"text.short": {SkipSteps: []string{"dedup"}}},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if names := stepNames(t, reg, "text.long"); !slices.Contains(names, "dedup") {
 		t.Errorf("text.long: dedup not injected: %v", names)
 	}

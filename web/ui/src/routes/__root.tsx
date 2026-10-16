@@ -1,8 +1,8 @@
 import { createRootRoute, Outlet, Link, useLocation } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { Database, Search, Briefcase, Globe, LayoutDashboard, Loader2 } from 'lucide-react';
-import { session, isAuthRequired } from '@/api';
+import { Database, Search, Briefcase, Globe, LayoutDashboard, Loader2, Share2 } from 'lucide-react';
+import { session, isAuthRequired, SCOPE_ADMIN_SHARES } from '@/api';
 import { Identity } from '@/components/Identity';
 import { SignInHelp } from '@/components/SignInHelp';
 
@@ -13,6 +13,9 @@ const NAV = [
   { to: '/jobs', label: 'Jobs', icon: Briefcase },
   { to: '/registry', label: 'Registry', icon: Globe },
 ];
+
+/** The Sharing page needs admin:shares; the item shows only to a session that holds it. */
+const SHARING_NAV = { to: '/sharing', label: 'Sharing', icon: Share2 };
 
 type LiveState = 'connecting' | 'open' | 'closed';
 
@@ -46,9 +49,13 @@ function Shell() {
   const loc = useLocation();
   const qc = useQueryClient();
   const who = useQuery({ queryKey: ['whoami'], queryFn: () => session.whoami(), retry: false });
-  const onSignIn = loc.pathname === '/auth';
+  // The sign-in pages render whatever the session state: a login code,
+  // an invite or a sign-in link each lands on its own.
+  const onSignIn = ['/auth', '/invite', '/signin'].includes(loc.pathname);
   const needsSignIn = isAuthRequired(who.error);
   const live = useLiveEvents(who.isSuccess);
+  const nav = who.data?.scopes.includes(SCOPE_ADMIN_SHARES) ? [...NAV, SHARING_NAV] : NAV;
+  const shared = who.data?.shared;
 
   const signOut = async () => {
     await session.signOut().catch(() => undefined);
@@ -63,7 +70,7 @@ function Shell() {
           <span className="brand-name">ctxt</span>
         </div>
         <nav className="sidebar-nav">
-          {NAV.map(({ to, label, icon: Icon }) => {
+          {nav.map(({ to, label, icon: Icon }) => {
             const active = to === '/' ? loc.pathname === '/' : loc.pathname.startsWith(to);
             return (
               <Link key={to} to={to} className={`nav-item${active ? ' active' : ''}`}>
@@ -86,6 +93,14 @@ function Shell() {
         </div>
       </aside>
       <main className="content">
+        {shared && (
+          <div className="shared-banner" role="status" data-shared-by={shared.owner}>
+            <Share2 size={13} />
+            <span>
+              shared by <strong>{shared.owner}</strong> · {shared.policies.join(', ')}
+            </span>
+          </div>
+        )}
         {needsSignIn && !onSignIn ? (
           <div className="view">
             <header className="view-header">

@@ -72,7 +72,7 @@ Search results from all sources are merged via a dedicated reranker
 (e.g., Reciprocal Rank Fusion, weighted scoring).
 Ensures consistent, meaningful ranking across heterogeneous sources.
 
-### **ADR-012 – Plugins Extend Any Layer**
+### **ADR-012 – Plugins Extend Any Layer (Superseded by ADR-078)**
 Plugins are first-class citizens and may extend:
 - pipelines
 - registries
@@ -227,7 +227,7 @@ dPKMS and ctxt implement comprehensive multimodal content processing with conten
 - Attachment preservation in export/import
 - Offline-first processing with graceful degradation
 
-### **ADR-027 – Plugin Isolation and Sandboxing**
+### **ADR-027 – Plugin Isolation and Sandboxing (Superseded by ADR-078)**
 ContextHelp implements mandatory capability-based plugin isolation with explicit permission declarations, runtime enforcement, user approval workflows, resource quotas, and comprehensive audit logging.
 
 **Features:**
@@ -509,6 +509,27 @@ ctxt never opens the dpkms store. Every command reaches dpkms through its REST A
 - **Authorization.** Every HTTP route and gRPC method declares an ADR-023 scope. The static provider's `admin`, `writer` (capture devices) and `reader` roles are fixed scope bundles. Private instances grant everything. Admin principals bypass the inbound entitlement and metering gate.
 - **Placement.** Every operator command stays in ctxt. The embedding lifecycle, registries, lint and upgrade runs sit behind admin-scoped endpoints; `upgrade run` accepts a pipeline filter only, with no raw SQL. Brain settings (profiles, search knobs) are resolved by ctxt and sent with each request.
 - **Local capture stays local.** Watchers, clipboard, browser and adapter sources enqueue over HTTP. Directory-watch dedup state and the browser-history position are kept client-side, per instance. Amends ADR-075 §2: the CLI is no longer a hook host.
+
+### **ADR-078 – No Plugin System (Accepted)**
+ctxt and dpkms load no plugins, now or later; there is no plugin API, registry, manifest or `plugins:` config key. Supersedes ADR-012 and ADR-027.
+- **Extension surfaces.** Pipelines (`pipelines.overrides`, `dpkms pipeline create`), steps (built-in, or installed from a step registry; out-of-process execution per ADR-058 is not wired yet), registries, and ADR-075 hooks (not implemented yet).
+- **Auth.** Extended through a trusted proxy or OIDC, to be designed as an ADR-023 extension.
+- **Model.** The knowledge-object types live in `internal/storage`; the step contract in `internal/pipeline`.
+
+### **ADR-079 – Authentication Methods, Principals and the kit/ctxt Split (Accepted)**
+Extends ADR-023. dpkms authenticates through an ordered chain of methods, each resolving to a principal in an instance-local registry. Plan: [`docs/plans/2026-10-14-auth-and-sharing.md`](../plans/2026-10-14-auth-and-sharing.md).
+- **Principals.** `owner` (one per instance), `person`, `agent`, `device`, `peer`; each can have several identities, bound only by an explicit act.
+- **Core methods (no external IdP).** Owner-local, API keys (replace static tokens), invite links, magic links, passkeys, trusted proxy identity (Tailscale, forward auth). Later and opt-in: mTLS, enterprise OIDC, social login. Passwords stay rejected.
+- **Chain.** Stops on the first match and on the first refusal; proxy headers count only from `trusted_proxies`.
+- **Split.** Generic verification (chain, proxy identity, passkeys, tickets, sessions, OIDC sign-in) goes to kit as proposals K1–K6; principals, scopes, audiences and sharing stay in ctxt.
+
+### **ADR-080 – Sharing: Audiences, Share Policies and Per-Viewer Visibility (Accepted)**
+Named share policies (RSQL data filter, class exclusions, field projection, redaction, capabilities) granted to audiences of principals; owner bypass with preview. Plan: [`docs/plans/2026-10-14-auth-and-sharing.md`](../plans/2026-10-14-auth-and-sharing.md).
+- **Rows.** A scoped storage driver ANDs the viewer predicate into every read, so counts, ranking and pagination never see hidden objects.
+- **Fields.** A render layer projects fields, rebuilds structured types (contacts) from visible fields, drops derived fields whose inputs are hidden, and masks detected PII spans.
+- **Derived data.** Edges, entities, backlinks, counts and multi-source objects inherit visibility through recorded provenance; content-derived entity attributes must go through `entity_facts`.
+- **Search.** Restricted viewers search a masked shadow index (FTS + masked vectors) plus `pii_terms` for revealed categories.
+- **Backstop.** A fail-closed check of every ID and every masked value in each response; a read audit of who saw what. Ingest-time masking (ADR-058 custom steps) stays the "never store" option.
 
 ---
 

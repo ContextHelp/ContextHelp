@@ -1,3 +1,5 @@
+// Package repl is the interactive `ctxt shell`: line editing, history,
+// completion, and dispatch of each line to a ctxt command.
 package repl
 
 import (
@@ -36,10 +38,15 @@ func NewSession(svc *service.Service, cfg *config.Config) *Session {
 }
 
 // Run starts the interactive read loop and blocks until the user exits.
-// Returns nil on clean exit (EOF / "exit" / "quit").
-func (s *Session) Run(ctx context.Context) error {
+// Returns nil on clean exit (EOF / "exit" / "quit"), or the error from
+// restoring the terminal mode liner changed.
+func (s *Session) Run(ctx context.Context) (err error) {
 	l := liner.NewLiner()
-	defer l.Close()
+	defer func() {
+		if cerr := l.Close(); cerr != nil {
+			err = errors.Join(err, fmt.Errorf("restore terminal: %w", cerr))
+		}
+	}()
 
 	l.SetCtrlCAborts(true)
 	l.SetMultiLineMode(false)
@@ -49,7 +56,7 @@ func (s *Session) Run(ctx context.Context) error {
 		return completer.Complete(line)
 	})
 
-	_ = LoadHistory(l)
+	_ = LoadHistory(l, s.dataDir())
 
 	if s.svc != nil {
 		s.watch = NewJobWatcher(s.svc.Bus, replPrompt, os.Stdout)
@@ -90,8 +97,16 @@ func (s *Session) Run(ctx context.Context) error {
 	if s.watch != nil {
 		s.watch.Stop()
 	}
-	_ = SaveHistory(l)
+	_ = SaveHistory(l, s.dataDir())
 	return nil
+}
+
+// dataDir is the session config's storage.data_dir, or "" without one.
+func (s *Session) dataDir() string {
+	if s.cfg == nil {
+		return ""
+	}
+	return s.cfg.Storage.DataDir
 }
 
 // buildCobraExecutor returns the function that re-enters the cobra command tree.

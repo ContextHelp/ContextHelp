@@ -31,7 +31,7 @@ func PullEntity(svc *service.Service, gate *registry.InboundGate) http.HandlerFu
 		if g := entityGate(r, gate); g != nil {
 			existing, err := svc.GetEntity(r.Context(), slug)
 			if err != nil || existing == nil {
-				WriteError(w, http.StatusNotFound, "NOT_FOUND", "entity not found")
+				WriteError(w, http.StatusNotFound, CodeNotFound, "entity not found")
 				return
 			}
 			if aerr := g.Authorize(r.Context(), gatePrincipal(r), existing.Namespace,
@@ -74,15 +74,21 @@ func SyncRegistryEntities(svc *service.Service) http.HandlerFunc {
 			return
 		}
 
-		count, err := svc.SyncRegistryEntities(r.Context(), req.URL)
+		counts, err := svc.SyncRegistryEntities(r.Context(), req.URL)
 		if err != nil {
 			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 			return
 		}
 
+		// pending_approval and blocked count the entities the registry's
+		// trust_level kept out of the store; upserted alone reads as an
+		// empty registry.
 		WriteJSON(w, http.StatusOK, map[string]any{
-			"status":   "synced",
-			"upserted": count,
+			"status":           "synced",
+			"upserted":         counts.Upserted,
+			"pending_approval": counts.PendingApproval,
+			"blocked":          counts.Blocked,
+			"trust_level":      counts.TrustLevel,
 		})
 	}
 }

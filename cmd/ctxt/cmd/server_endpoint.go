@@ -7,8 +7,8 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
-	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
 	"github.com/ideacrafterslabs/ctxt/internal/pidfile"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/spf13/cobra"
 )
 
@@ -51,7 +51,7 @@ func instanceSelector(cmd *cobra.Command) (string, dpkmsclient.Layer) {
 // currentInstance returns the selection `ctxt instance use` persisted,
 // or "" when there is none.
 func currentInstance() string {
-	stateFile, err := config.CurrentInstanceFile()
+	stateFile, err := config.CurrentInstanceFile(dataDir())
 	if err != nil {
 		return ""
 	}
@@ -65,7 +65,7 @@ func currentInstance() string {
 // localInstances lists the dpkms instances running on this machine, from
 // their pidfiles.
 func localInstances() ([]pidfile.Info, error) {
-	runDir, err := config.RunDir()
+	runDir, err := config.RunDirPath(dataDir())
 	if err != nil {
 		return nil, err
 	}
@@ -79,16 +79,31 @@ func newDpkmsClient(cmd *cobra.Command, timeout time.Duration) (*dpkmsclient.Cli
 	if err != nil {
 		return nil, err
 	}
-	return dpkmsclient.New(r.Endpoint, dpkmsclient.WithTimeout(timeout))
+	return dpkmsclient.New(r.Endpoint, clientOptions(cmd, dpkmsclient.WithTimeout(timeout))...)
 }
 
-// bridgeEndpoints resolves this invocation's endpoint for the commands
-// still routed through idxbridge. The list always holds exactly one
-// endpoint, so the bridge never walks to another instance.
-func bridgeEndpoints(cmd *cobra.Command) ([]idxbridge.Endpoint, error) {
-	r, err := resolveEndpoint(cmd)
-	if err != nil {
-		return nil, err
+// previewAs is the viewer `ctxt share preview` runs its command as; it
+// overrides the --as global while that command runs.
+var previewAs string
+
+// viewAs returns the viewer this invocation runs as (ADR-080 §2, owner
+// bypass): the share preview target, else the --as global; "" runs as
+// the caller.
+func viewAs(cmd *cobra.Command) string {
+	if previewAs != "" {
+		return previewAs
 	}
-	return []idxbridge.Endpoint{{URL: r.URL, Token: r.Token}}, nil
+	if f := cmd.Root().PersistentFlags().Lookup("as"); f != nil {
+		return strings.TrimSpace(f.Value.String())
+	}
+	return ""
+}
+
+// clientOptions returns opts plus, when the invocation runs as another
+// viewer, the X-Ctxt-View-As header on every request.
+func clientOptions(cmd *cobra.Command, opts ...dpkmsclient.Option) []dpkmsclient.Option {
+	if as := viewAs(cmd); as != "" {
+		opts = append(opts, dpkmsclient.WithHeader(sharing.HeaderViewAs, as))
+	}
+	return opts
 }

@@ -65,11 +65,13 @@ ContextHelp requires various secrets (API keys, tokens, passwords) to function. 
 # Set environment variables
 export OPENAI_API_KEY="sk-proj-..."
 export ANTHROPIC_API_KEY="sk-ant-..."
-export CH_REGISTRY_TOKEN_UXPATTERNS="token_..."
 
 # Run ContextHelp
 ctxt analyze "content"
 ```
+
+Registry tokens are not environment variables: `ctxt registry login <name>`
+stores them in the OS keychain (see [Registry Tokens](#registry-tokens)).
 
 **Advantages:**
 - ✅ Simple to use
@@ -81,24 +83,57 @@ ctxt analyze "content"
 - ⚠️ Inherited by child processes
 - ⚠️ No encryption at rest
 
-#### 2. Configuration Files with Environment Variable References
+#### 2. Config Files: No `${VAR}`, Secrets in Their Own File
 
-**config.yaml:**
+Config files (`ctxt.yaml`, `dpkms.yaml`) take every value literally:
+`${VAR_NAME}` is not expanded, so `token: ${MY_TOKEN}` sets the token to
+the string `${MY_TOKEN}`. Keep secrets out of the shared config:
+
+- Provider keys (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`,
+  `OPENROUTER_API_KEY`) resolve from the secrets store under that name,
+  then from the environment variable of the same name; the store wins.
+- The embedding provider's `providers.embedding.api_key_env` names the
+  variable holding its key, never the key itself.
+- S3 blob credentials: `CTXT_BLOB_S3_ACCESS_KEY` /
+  `CTXT_BLOB_S3_SECRET_KEY` override `storage.blob.s3.access_key` /
+  `secret_key`.
+- Registry tokens: `ctxt registry login <name>` stores them in the OS
+  keychain.
+- `secrets.backend` (`env` by default; `keyring`, `agefile`,
+  `onepassword`, `ghsecrets`) is the store `dpkms secret set|get|list`
+  manage. `auto` provider selection checks it for a key, but the provider
+  client itself reads the environment variable, so export the key too.
+
+Secrets that have no environment variable (`server.auth` tokens,
+`federation.token`) go into the config literally. Keep them in their own
+file, outside version control, and layer it with a second `--config`:
+
+**dpkms-secrets.yaml** (mode 0600, gitignored):
 ```yaml
-ai_providers:
-  openai:
-    key: ${OPENAI_API_KEY}  # References environment variable
+server:
+  auth:
+    provider: static
+    static:
+      tokens:
+        - token: <owner-token>   # openssl rand -hex 32
+          principal: owner
+          roles: [admin]
+```
+
+```bash
+dpkms serve --config dpkms.yaml --config dpkms-secrets.yaml
 ```
 
 **Advantages:**
-- ✅ Separation of config structure from secrets
-- ✅ Config files can be version controlled
-- ✅ Clear audit trail of what secrets are needed
+- ✅ The main config stays committable
+- ✅ One file to protect, rotate and back up separately
+- ✅ In containers the file mounts as a secret (see [Docker: Secrets](deployment/docker.md#secrets))
 
 **Best Practice:**
-- Always use `${VAR_NAME}` syntax
-- Never put plaintext secrets in config files
-- Add `config.yaml` to `.gitignore` if it contains plaintext secrets
+- Never put plaintext secrets in a committed config file
+- Prefer an env var where the code reads one (`OPENAI_API_KEY`, `CTXT_BLOB_S3_SECRET_KEY`, `PGPASSWORD`)
+- Add the secrets file to `.gitignore`
+- `ctxt config validate` flags plaintext secrets it finds and rejects `${VAR}` values, which config never expands
 
 #### 3. .env Files (Recommended for Local Development)
 
@@ -122,10 +157,15 @@ nano .env
 git check-ignore .env  # Should output: .env
 ```
 
+Neither `ctxt` nor `dpkms` loads `.env`; export it into the shell first:
+
+```bash
+set -a; . ./.env; set +a
+```
+
 **Advantages:**
 - ✅ Centralized secret management
 - ✅ Easy to rotate secrets
-- ✅ Automatically loaded by many tools
 
 **Important:** `.env` files are in `.gitignore` - verify before committing!
 
@@ -287,19 +327,22 @@ curl https://api.anthropic.com/v1/messages \
 3. Set expiration dates
 4. Use separate tokens per environment
 
-**Configuration:**
+#### Registry Tokens
+
+The config names the registry and its auth mechanism only; the token
+never goes in a config file or an environment variable:
+
 ```yaml
 registries:
-  enabled:
-    - name: uxpatterns
-      url: https://api.uxpatterns.io
-      auth:
-        token: ${CH_REGISTRY_TOKEN_UXPATTERNS}
+  - name: uxpatterns
+    url: https://api.uxpatterns.io
+    auth:
+      type: bearer          # bearer | api_key | oauth2
 ```
 
-**Environment variable:**
 ```bash
-export CH_REGISTRY_TOKEN_UXPATTERNS="eyJhbGc..."
+ctxt registry login uxpatterns    # prompts; stores the token in the OS keychain
+ctxt registry logout uxpatterns   # removes it
 ```
 
 ---
@@ -308,7 +351,7 @@ export CH_REGISTRY_TOKEN_UXPATTERNS="eyJhbGc..."
 
 ### Current Status
 
-**⚠️ IMPORTANT:** As of the current release, encryption features are **documented but not yet fully implemented**. See [ADR-019](docs/decisions/ADR-019-encryption-and-privacy.md) for the complete encryption architecture.
+**⚠️ IMPORTANT:** As of the current release, encryption features are **documented but not yet fully implemented**. See [ADR-019](decisions/ADR-019-encryption-and-privacy.md) for the complete encryption architecture.
 
 ### Planned Encryption Features
 
@@ -363,7 +406,7 @@ registries:
 
 **Current Mitigations:**
 1. Use encrypted filesystems (FileVault, LUKS, BitLocker)
-2. Restrict file permissions: `chmod 600 ~/.config/contexthelp/config.yaml`
+2. Restrict file permissions: `chmod 600 ~/.config/contexthelp/ctxt.yaml ~/.config/contexthelp/dpkms.yaml`
 3. Use encrypted backups
 4. Consider full-disk encryption
 
@@ -393,11 +436,6 @@ ls -l ~/.local/share/contexthelp/data.db
 storage:
   type: sqlite
   path: ~/.local/share/contexthelp/data.db
-  concurrency: safe
-  options:
-    journal_mode: WAL
-    synchronous: NORMAL
-    foreign_keys: ON
 ```
 
 ### PostgreSQL
@@ -408,14 +446,18 @@ storage:
 ```yaml
 # ❌ INSECURE - Password visible in config
 storage:
-  path: "postgresql://user:password@localhost/contexthelp"
+  path: "postgresql://user:<password>@localhost/contexthelp"
 ```
 
-**✅ Use environment variables:**
+**✅ Leave the password out of the DSN:** config files do not expand `${VAR}`, so let libpq read `PGPASSWORD` (or the other `PG*` variables):
 ```yaml
 storage:
   type: postgres
-  path: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}/${POSTGRES_DB}"
+  path: "postgresql://ctxt_user@db.internal/contexthelp"
+```
+
+```bash
+PGPASSWORD=$(vault kv get -field=password secret/db) dpkms serve
 ```
 
 **✅ Better: Use .pgpass file:**
@@ -440,7 +482,7 @@ user=ctxt_user
 ```
 
 ```yaml
-# config.yaml
+# dpkms.yaml
 storage:
   path: "service=contexthelp"
 ```
@@ -449,63 +491,101 @@ storage:
 ```yaml
 storage:
   type: postgres
-  path: "postgresql://user@host/db?sslmode=require"
-  options:
-    sslmode: require  # or verify-ca, verify-full
-    sslcert: /path/to/client.crt
-    sslkey: /path/to/client.key
-    sslrootcert: /path/to/ca.crt
+  # sslmode: require | verify-ca | verify-full
+  path: "postgresql://user@host/db?sslmode=verify-full&sslcert=/path/to/client.crt&sslkey=/path/to/client.key&sslrootcert=/path/to/ca.crt"
 ```
 
 ---
 
 ## 🔐 Authentication & Authorization
 
-### Current Status
+### Access classes
 
-**⚠️ IMPORTANT:** Authentication system is **designed but not yet implemented**.
-See [ADR-023](docs/decisions/ADR-023-authentication-authorization-model.md) for
-specifications. The server currently accepts unauthenticated requests to localhost.
+`server.access` decides who can reach a dpkms instance:
 
-**Operator guidance until ADR-023 ships:**
-- Keep `dpkms serve` on `127.0.0.1` (default; do not use `--public` without a
-  TLS-terminating reverse proxy and network ACLs).
-- If exposing the port on a shared machine, use firewall rules to restrict access
-  to trusted UIDs/IPs.
+| `server.access` | Binds | Inbound auth |
+|---|---|---|
+| `private` (default) | `127.0.0.1` only | none; every local caller gets every scope |
+| `protected` | all interfaces | required; for a trusted network or behind a reverse proxy |
+| `public` | all interfaces | required; internet-facing, and anonymous `/healthz` shows only the health verdict |
 
-### Planned Features (ADR-023)
+`dpkms serve --public` (or the deprecated `server.public: true`) is
+shorthand for `public`. A protected or public instance without
+`server.auth` fails `ctxt config validate`, and `dpkms serve` refuses to
+start before binding a port.
 
-#### 1. Personal Access Tokens (PATs)
+### Static tokens and roles
+
+The only implemented provider is `static` (`internal/auth`). `oidc` and
+`mtls` are reserved names with no backend behind them. Each token maps to a
+principal and one or more roles:
 
 ```yaml
-# Planned config — not active in current release
-security:
-  authentication:
-    enabled: true
-    jwt:
-      secret: ${JWT_SECRET}
-      expiration: 24h
+server:
+  access: protected
+  auth:
+    provider: static
+    static:
+      tokens:
+        - token: <owner-token>      # openssl rand -hex 32
+          principal: owner
+          roles: [admin]
+        - token: <phone-token>
+          principal: phone
+          roles: [writer]           # capture-only device
 ```
 
-#### 2. Registry Authentication (active)
+- Tokens must be at least 32 characters and must not contain `REPLACE_ME`
+  (the Docker example's placeholder). Keep them in a separate 0600 file
+  layered with a second `--config` (see
+  [Config Files](#2-config-files-no-var-secrets-in-their-own-file)).
+- Clients send `Authorization: Bearer <token>` or `X-API-Key: <token>`.
+- Roles are fixed scope bundles: `admin` holds every scope, `writer` every
+  `read:*` and `write:*` scope, `reader` every `read:*` scope.
+- Every `/api/v1` route and gRPC method requires one scope (`read:objects`,
+  `write:objects`, `delete:edges`, `read:mcp`, `admin:audit`, ...). A missing
+  or invalid token gets `401`; a token without the scope gets
+  `403 INSUFFICIENT_SCOPE`. `GET /api/v1/whoami` shows the caller's
+  principal, roles and scopes.
+- On non-private instances the federation push route also needs the
+  `federation.token` credential.
 
-Registry `login` / `logout` is shipped:
+The full scope table is in
+[Inbound auth, roles and scopes](manual/reference/config-and-permissions.md#inbound-auth-roles-and-scopes).
+On the client side, `server.token` or a `server.urls[].token` entry holds
+the token ctxt sends; see [Docker: Secrets](deployment/docker.md#secrets).
+
+### Web UI sessions
+
+`ctxt ui open` mints a single-use sign-in link for the web UI. The browser
+session acts as the principal of the token that minted it, but only with
+the scopes the web UI needs, and ends after `server.ui.session.idle_ttl`
+(default 12h) without a request, `server.ui.session.max_ttl` (default
+168h) after sign-in, or as soon as its token is removed from the config.
+`dpkms session list` and `dpkms session revoke` manage sessions. See
+[Sign In to the Web UI](manual/workflows/web-ui-sign-in.md).
+
+### Transport security
+
+dpkms serves plain HTTP and has no TLS settings. For remote access, put a
+protected instance behind a TLS-terminating reverse proxy
+([Put dpkms Behind a Reverse Proxy](manual/operations/reverse-proxy.md)),
+or keep it private and tunnel (`ssh -L 8080:127.0.0.1:8080 <host>`). Never
+proxy a private instance: it authenticates nobody.
+
+### Registry Authentication
+
 ```bash
-ctxt registry login <name>    # prompts for token; stores in secrets backend
+ctxt registry login <name>    # prompts for token; stores it in the OS keychain
 ctxt registry logout <name>
 ```
 
-#### 3. Plugin Capabilities (Planned — ADR-027)
+### Not implemented
 
-```yaml
-# Planned config — not active in current release
-plugins:
-  load:
-    - name: github-plugin
-      capabilities:
-        - network.github.com  # Restricted to GitHub API only
-        - storage.read        # Read-only storage access
-```
+OIDC/JWT and mTLS providers and per-user accounts are designed but not
+implemented; auth is to be extended through a trusted proxy or OIDC. There is
+no plugin system ([ADR-078](decisions/ADR-078-no-plugin-system.md)). The auth design is in
+[ADR-023](decisions/ADR-023-authentication-authorization-model.md).
 
 ---
 
@@ -520,54 +600,59 @@ export CTXT_CONFIG=./config.dev.yaml
 # Use separate data directory
 export CTXT_DATA_DIR=./dev-data
 
-# Enable debug logging
-export CH_LOG_LEVEL=debug
-export CH_DEBUG=true
+# Debug logging: no env var, pass --verbose
+dpkms serve --verbose
 ```
 
 ### Production Environment
 
 **Checklist:**
-- [ ] Use encrypted storage backend (SQLCipher or encrypted PostgreSQL)
-- [ ] Enable TLS for all network communication
-- [ ] Use production-grade secret management (Vault, AWS Secrets Manager)
-- [ ] Set restrictive file permissions (600 for config, 700 for data dirs)
-- [ ] Disable telemetry if required: `CH_DISABLE_TELEMETRY=true`
-- [ ] Enable audit logging
-- [ ] Configure automated backups (encrypted)
-- [ ] Set up monitoring and alerting
-- [ ] Use read-only filesystem where possible
-- [ ] Run with least-privilege user account
-- [ ] Enable rate limiting for API endpoints
-- [ ] Configure CORS properly for web interfaces
+- [ ] Keep `server.access: private` unless remote clients need the instance
+- [ ] For remote access: `server.access: protected`, static tokens with the
+      narrowest role each client needs, `server.allowed_hosts` set
+- [ ] Terminate TLS at a reverse proxy; dpkms has no TLS listener
+- [ ] Keep tokens and passwords out of committed config (separate 0600 file,
+      env vars, `PGPASSWORD`)
+- [ ] Set restrictive file permissions (600 for config, 700 for data dirs);
+      `ctxt config doctor` checks the ctxt config file
+- [ ] Run `ctxt config validate` before deploying a config change
+- [ ] Telemetry is off by default (`privacy.telemetry: false`);
+      `CH_DISABLE_TELEMETRY=true` forces it off
+- [ ] Ship the audit log with a scheduled `ctxt audit export` (no built-in
+      forwarding) and set `security.alerts` for auth-failure alerts
+- [ ] Use full-disk encryption for the data directory (no built-in
+      encryption at rest)
+- [ ] Configure automated backups
+- [ ] Run with a least-privilege user account
 
 **Example production config:**
 ```yaml
+# dpkms.yaml (committable)
 storage:
   type: postgres
-  path: "service=contexthelp_prod"
-  encryption:
-    enabled: true
+  # Password from PGPASSWORD or ~/.pgpass, never in this file
+  path: "postgresql://contexthelp@db.internal/contexthelp?sslmode=verify-full"
 
 server:
-  http:
-    port: 7700
-    public: false  # Only localhost
-    tls:
-      enabled: true
-      cert: /etc/ctxt/tls/cert.pem
-      key: /etc/ctxt/tls/key.pem
+  access: protected
+  allowed_hosts:
+    - dpkms.example.com
+```
 
-security:
-  telemetry: false
-  allow_external_pipelines: false
-  rate_limiting:
-    enabled: true
-    requests_per_minute: 60
+```yaml
+# dpkms-secrets.yaml (mode 0600, gitignored)
+server:
+  auth:
+    provider: static
+    static:
+      tokens:
+        - token: <owner-token>   # openssl rand -hex 32
+          principal: owner
+          roles: [admin]
+```
 
-audit:
-  enabled: true
-  log_file: /var/log/ctxt/audit.log
+```bash
+dpkms serve --config dpkms.yaml --config dpkms-secrets.yaml
 ```
 
 ### Docker/Container Deployment
@@ -684,27 +769,24 @@ spec:
 
 ### Logging
 
-**What is logged:**
-- Authentication attempts (success/failure)
-- API key usage (sanitized)
-- Configuration changes
-- Database operations
-- Plugin installations
+**What the audit log records:**
+- Security alerts: `security.auth_failure` and `security.acl_denial` once
+  the `security.alerts` thresholds are crossed, plus quota exhaustion,
+  signing failures and worker crash loops
+- Duplicate detection (`dedup.*`) and fan-out enrichment
+  (`fanout.completed`)
+- `ctxt doctor` runs (`doctor.run`)
 
-**What is NOT logged:**
-- API keys (sanitized as `sk-***`)
-- Passwords (sanitized as `***`)
-- Full connection strings (sanitized)
-- User content (unless explicitly enabled)
+Successful sign-ins, configuration changes and step installs are not
+recorded.
 
-**Audit log location:**
-```bash
-# Default location
-~/.local/share/contexthelp/audit.log
+**Process logs are not sanitized.** ctxt and dpkms log to stderr through
+`slog` with no redaction layer; see
+[What output shows secrets](security/secrets-validation-and-log-sanitization.md#what-output-shows-secrets).
 
-# Custom location
-export CH_AUDIT_LOG=/var/log/ctxt/audit.log
-```
+**Audit log location:** the audit log is kept by dpkms, not in a file.
+Read it with `ctxt audit list` / `ctxt audit export`. Nothing forwards it:
+ship it to a SIEM with a scheduled `ctxt audit export`.
 
 **Review audit logs:**
 ```bash
@@ -712,7 +794,7 @@ export CH_AUDIT_LOG=/var/log/ctxt/audit.log
 ctxt audit list --limit 100
 
 # Filter by event type and time window
-ctxt audit list --event-type auth --since 24h
+ctxt audit list --event-type security.auth_failure --since 24h
 
 # Export for analysis
 ctxt audit export --format json > audit-2024-01.json
@@ -722,21 +804,24 @@ ctxt audit export --format json > audit-2024-01.json
 
 **Pre-commit hooks:**
 ```bash
-# Install gitleaks
-brew install gitleaks
+# Install the pinned gitleaks, then the repo's hooks
+make install-gitleaks
+make install-hooks
+# pre-commit runs: gitleaks git --staged --config .gitleaks.toml --redact --verbose
+```
 
-# Add pre-commit hook
-cat > .git/hooks/pre-commit << 'EOF'
-#!/bin/bash
-gitleaks detect --no-git --verbose --redact
-EOF
-chmod +x .git/hooks/pre-commit
+**Scan the working tree** (tracked plus untracked, non-ignored files):
+```bash
+make secret-scan-local   # scripts/secret-scan-tree.sh: gitleaks dir on that file set
 ```
 
 **Scan repository history:**
 ```bash
-# Using gitleaks
-gitleaks detect --verbose --redact --report-path gitleaks-report.json
+# Using gitleaks: new findings only, .gitleaksignore is the baseline
+make security-scan
+# or directly, with a report
+gitleaks git . --config .gitleaks.toml --gitleaks-ignore-path .gitleaksignore \
+  --redact --verbose --report-path gitleaks-report.json
 
 # Using trufflehog
 trufflehog git file://. --json > trufflehog-report.json
@@ -744,14 +829,14 @@ trufflehog git file://. --json > trufflehog-report.json
 
 **Configuration validation:**
 ```bash
-# Validate config structure
+# Validate config and scan it for plaintext secrets
 ctxt config validate
 
-# Lint for common issues
-ctxt config lint
+# Lint: validation, secrets, file permissions, access smells
+ctxt config doctor
 
-# Check for plaintext secrets — use gitleaks on config files:
-gitleaks detect --source ~/.config/contexthelp/ --no-git --verbose
+# Scan the config directory as files — use gitleaks:
+gitleaks dir ~/.config/contexthelp/ --verbose --redact
 ```
 
 ---
@@ -784,11 +869,10 @@ export OPENAI_API_KEY_NEW="sk-proj-new..."
 curl https://api.openai.com/v1/models \
   -H "Authorization: Bearer $OPENAI_API_KEY_NEW"
 
-# 3. Update configuration — edit config file or update env var
-# Option A: edit config.yaml directly
-$EDITOR ~/.config/contexthelp/config.yaml
-# Option B: set env var (overrides config)
+# 3. Update the env var the provider client reads
+#    (and the secrets store, if you keep the key there too)
 export OPENAI_API_KEY="${OPENAI_API_KEY_NEW}"
+printf '%s' "$OPENAI_API_KEY_NEW" | dpkms secret set OPENAI_API_KEY
 
 # 4. Restart services
 systemctl restart dpkms
@@ -823,16 +907,13 @@ systemctl restart dpkms
 
 ```bash
 # 1. Generate new token in registry dashboard
-# 2. Update environment variable
-export CH_REGISTRY_TOKEN_UXPATTERNS="new_token_..."
+# 2. Replace the stored token (overwrites the keychain entry)
+ctxt registry login uxpatterns
 
 # 3. Test registry access
 ctxt registry sync uxpatterns
 
-# 4. Persist to environment
-echo "export CH_REGISTRY_TOKEN_UXPATTERNS='new_token_...'" >> ~/.bashrc
-
-# 5. Revoke old token
+# 4. Revoke old token
 ```
 
 ---
@@ -890,7 +971,7 @@ echo "export CH_REGISTRY_TOKEN_UXPATTERNS='new_token_...'" >> ~/.bashrc
 
 ```bash
 # 1. Remove from current repository
-git filter-repo --invert-paths --path config.yaml
+git filter-repo --invert-paths --path path/to/leaked-file
 
 # 2. Force push (CAUTION: coordinate with team)
 git push --force --all
@@ -911,7 +992,7 @@ git push --force --tags
 - [ ] Review `.env.example` and create `.env` with your secrets
 - [ ] Verify `.env` is in `.gitignore`
 - [ ] Set file permissions: `chmod 600 .env`
-- [ ] Use `${VAR_NAME}` syntax in `config.yaml`
+- [ ] Keep secrets out of committed `ctxt.yaml` / `dpkms.yaml`: env vars where the code reads them, otherwise a gitignored file passed as a second `--config` (config files do not expand `${VAR}`)
 - [ ] Validate configuration: `ctxt config validate`
 - [ ] Enable OS-level disk encryption (FileVault / LUKS / BitLocker) until ADR-019 ships
 
@@ -927,17 +1008,18 @@ git push --force --tags
 ### Production Deployment
 
 - [ ] Use production-grade secret management (Vault, AWS Secrets Manager)
-- [ ] Enable encryption at rest
-- [ ] Configure TLS for all network communication
+- [ ] Remote access only as `server.access: protected` (or `public`) with
+      static tokens, narrowest role per client, `server.allowed_hosts` set
+- [ ] Terminate TLS at a reverse proxy (dpkms has no TLS listener)
+- [ ] Use disk encryption for the data directory (no built-in encryption at rest)
 - [ ] Set restrictive file permissions (600/700)
 - [ ] Disable telemetry: `CH_DISABLE_TELEMETRY=true`
-- [ ] Enable audit logging
+- [ ] Ship the audit log with a scheduled `ctxt audit export` and set `security.alerts`
 - [ ] Configure automated backups (encrypted)
 - [ ] Set up monitoring and alerting
 - [ ] Run as non-root user
 - [ ] Use read-only filesystem where possible
-- [ ] Configure rate limiting
-- [ ] Review security logs weekly
+- [ ] Review the audit log and `dpkms session list` weekly
 
 ### Regular Maintenance
 
@@ -955,13 +1037,13 @@ git push --force --tags
 
 ### Documentation
 
-- [Environment Variables Reference](docs/environment-variables.md)
-- [Configuration Guide](docs/ctxt/configuration.md)
-- [CLI Flag Binding](docs/ctxt/cli-flag-binding.md)
-- [ADR-019: Encryption Architecture](docs/decisions/ADR-019-encryption-and-privacy.md)
-- [ADR-023: Authentication Model](docs/decisions/ADR-023-authentication-authorization-model.md)
-- [Security Design](docs/dpkms/security.md)
-- [Compliance — GDPR, SOC 2, erasure, dependency assessment](docs/operations/compliance.md)
+- [Environment Variables Reference](environment-variables/README.md)
+- [Configuration Guide](ctxt/configuration.md)
+- [CLI Flag Binding](ctxt/cli-flag-binding.md)
+- [ADR-019: Encryption Architecture](decisions/ADR-019-encryption-and-privacy.md)
+- [ADR-023: Authentication Model](decisions/ADR-023-authentication-authorization-model.md)
+- [Security Design](dpkms/security.md)
+- [Compliance — GDPR, SOC 2, erasure, dependency assessment](operations/compliance.md)
 
 ### External Resources
 

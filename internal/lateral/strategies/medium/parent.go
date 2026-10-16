@@ -9,6 +9,9 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/lateral/strategies/identitykey"
 )
 
+// mediumHost is Medium's apex host.
+const mediumHost = "medium.com"
+
 // ParentStrategy is the catch-all MediumStrategy. It claims captures
 // on medium.com, on Medium-hosted subdomains, and on custom domains
 // the customdomain detector tags as Medium-hosted.
@@ -35,7 +38,7 @@ func (*ParentStrategy) Applies(_ context.Context, ev lateral.CapturedEvent) late
 	switch {
 	case d.CustomHost:
 		return lateral.AppliesResult{Matches: true, Specificity: 1}
-	case d.Host == "medium.com":
+	case d.Host == mediumHost:
 		return lateral.AppliesResult{Matches: true, Specificity: 1}
 	default:
 		return lateral.AppliesResult{Matches: true, Specificity: 2}

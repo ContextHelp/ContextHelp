@@ -12,6 +12,10 @@ import (
 	"strings"
 )
 
+// goosDarwin is runtime.GOOS on macOS, where keys live in the login
+// keychain via security(1); everywhere else uses secret-tool(1).
+const goosDarwin = "darwin"
+
 // StorePrivateKey persists the private key in the OS keychain under KeychainService/KeychainAccount.
 // macOS: uses `security add-generic-password`.
 // Linux: uses `secret-tool store`.
@@ -19,7 +23,7 @@ func StorePrivateKey(priv ed25519.PrivateKey) error {
 	encoded := hex.EncodeToString(priv)
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
-	case "darwin":
+	case goosDarwin:
 		cmd = exec.Command("security", "add-generic-password", // #nosec G204 -- args are compile-time constants
 			"-s", KeychainService,
 			"-a", KeychainAccount,
@@ -42,7 +46,7 @@ func StorePrivateKey(priv ed25519.PrivateKey) error {
 func LoadPrivateKey() (ed25519.PrivateKey, error) {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
-	case "darwin":
+	case goosDarwin:
 		cmd = exec.Command("security", "find-generic-password",
 			"-s", KeychainService,
 			"-a", KeychainAccount,
@@ -54,7 +58,7 @@ func LoadPrivateKey() (ed25519.PrivateKey, error) {
 	}
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("bundle: load private key (run `ctxt key init` first): %w", err)
+		return nil, fmt.Errorf("bundle: load private key (run `dpkms key init` first): %w", err)
 	}
 	encoded := strings.TrimRight(string(out), "\n")
 	decoded, err := hex.DecodeString(encoded)

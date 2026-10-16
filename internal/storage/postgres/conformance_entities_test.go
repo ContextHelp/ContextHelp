@@ -21,3 +21,17 @@ func TestConformance_EntityQuery(t *testing.T) {
 	drv, _ := freshIntegrationDriver(t)
 	storagetest.EntityQueryConformance(t, drv)
 }
+
+// TestConformance_PendingEntities runs the cross-driver approval queue
+// contract against a fresh Postgres database.
+func TestConformance_PendingEntities(t *testing.T) {
+	drv, _ := freshIntegrationDriver(t)
+	storagetest.PendingEntityConformance(t, drv)
+}
+
+// TestConformance_EntityNamespaces runs the cross-driver namespace
+// listing and restriction contract against a fresh Postgres database.
+func TestConformance_EntityNamespaces(t *testing.T) {
+	drv, _ := freshIntegrationDriver(t)
+	storagetest.EntityNamespaceConformance(t, drv)
+}

@@ -53,7 +53,7 @@ ctxt profile view <name>
 ctxt profile create <name> --config <file>
 ctxt profile set <name>
 ctxt profile unset <name>
-ctxt profile rm <name> --confirm=yes
+ctxt profile rm <name> --confirm-token=<sha>
 ```
 
 ### 4. Validate registry configuration
@@ -70,9 +70,9 @@ Use config plus environment variables for sensitive values; avoid embedding secr
 
 Reference docs:
 
-- [`../../configuration-structure.md`](../../configuration-structure.md)
-- [`../../environment-variables/README.md`](../../environment-variables/README.md)
-- [`../../security/security-model.md`](../../security/security-model.md)
+- [`docs/configuration-structure.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/configuration-structure.md)
+- [`docs/environment-variables/README.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/environment-variables/README.md)
+- [`docs/security/security-model.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/security/security-model.md)
 
 ## Change checklist
 

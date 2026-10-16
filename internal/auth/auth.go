@@ -1,37 +1,25 @@
-// Package auth defines the provider-agnostic inbound authentication
-// boundary for dpkms servers.
+// Package auth is the inbound authentication boundary of dpkms servers
+// (ADR-079).
 //
-// A Provider validates a transport-level Credential and resolves it to a
-// Principal. The concrete backend (static tokens today; OIDC/JWT and mTLS
-// later) is selected purely via server config (server.auth.provider) —
-// HTTP middleware, gRPC interceptors, and the MCP mount consume the
-// Provider interface and never a concrete scheme, so switching identity
-// backends is an ops decision, not a rebuild.
+// A request is authenticated by an ordered Chain of Methods (chain.go):
+// each method resolves one kind of credential to a Principal, a row of
+// the instance's principal registry. The transports (HTTP middleware,
+// gRPC interceptors) only lift credentials out of the wire into a
+// Credential and hand it to the chain; which methods run is server
+// config (server.auth.methods), never a rebuild.
 //
-// The Principal shape is stable across providers: downstream consumers
+// The Principal shape is stable across methods: downstream consumers
 // (policy engine, entitlements, metering, security events) key off
 // Principal fields only.
 package auth
 
 import (
-	"context"
 	"crypto/tls"
 	"errors"
 	"slices"
 )
 
-// Provider names accepted in server.auth.provider.
-const (
-	// ProviderStatic validates against a fixed token→principal table
-	// from server config.
-	ProviderStatic = "static"
-	// ProviderOIDC is reserved for the OIDC/JWT backend.
-	ProviderOIDC = "oidc"
-	// ProviderMTLS is reserved for the mutual-TLS client-cert backend.
-	ProviderMTLS = "mtls"
-)
-
-// Credential schemes describing how the secret arrived on the wire.
+// Credential schemes describing how a carried secret arrived on the wire.
 const (
 	// SchemeBearer is an RFC 6750 Authorization: Bearer header.
 	SchemeBearer = "bearer"
@@ -39,38 +27,43 @@ const (
 	SchemeAPIKey = "apikey"
 )
 
-// Sentinel errors returned by Provider.Authenticate. Transport layers
+// Sentinel errors the chain and its methods return. Transport layers
 // map both to 401/UNAUTHENTICATED; they differ only for logging and
 // security-event granularity.
 var (
 	// ErrNoCredential means the request presented no credential at all.
 	ErrNoCredential = errors.New("auth: no credential presented")
 	// ErrInvalidCredential means a credential was presented but did not
-	// resolve to a principal.
+	// resolve to a principal: it is unknown, wrong, expired or revoked.
 	ErrInvalidCredential = errors.New("auth: invalid credential")
 )
 
 // Principal is the authenticated caller identity. Its shape is stable
-// across providers: downstream code must not depend on provider-specific
+// across methods: downstream code must not depend on method-specific
 // extras outside Meta.
 type Principal struct {
-	// ID is the stable unique identifier for the caller
-	// (config principal name, OIDC subject, certificate CN, ...).
+	// ID is the principal's registry id: storage.OwnerPrincipal for the
+	// owner, prn_<ULID> otherwise.
 	ID string
 	// Name is an optional human-readable display name.
 	Name string
-	// Provider records which backend authenticated the caller
-	// (ProviderStatic, ProviderOIDC, ProviderMTLS).
+	// Kind is the principal kind (storage.PrincipalKind*): owner,
+	// person, device or peer.
+	Kind string
+	// Provider records which method authenticated the caller on this
+	// request (MethodAPIKey, MethodSession), or "none" on a private
+	// instance.
 	Provider string
 	// Roles carries the role grants (RoleAdmin, RoleWriter,
 	// RoleReader). Only the entity-gate bypass reads them; route
 	// authorization reads Scopes.
 	Roles []string
 	// Scopes is the effective scope set every route and RPC is checked
-	// against. The static provider expands Roles into it; other
-	// providers may map claims onto it directly.
+	// against: the principal's role scopes, narrowed by the key or the
+	// session kind that authenticated it.
 	Scopes []Scope
-	// Meta holds provider-specific attributes (claims, cert fields).
+	// Meta holds method-specific attributes (key id, identity id,
+	// session id).
 	Meta map[string]string
 }
 
@@ -80,31 +73,26 @@ func (p *Principal) HasRole(role string) bool {
 }
 
 // Credential is the transport-level secret material extracted by the
-// HTTP middleware / gRPC interceptor, normalized so providers never
-// parse headers or metadata themselves.
+// HTTP middleware / gRPC interceptor, normalized so methods never parse
+// headers or metadata themselves. A request can carry a header
+// credential and a session cookie at once; the chain decides which one
+// counts (carried before ambient).
 type Credential struct {
-	// Scheme says how the credential arrived: SchemeBearer, SchemeAPIKey,
-	// or "" when nothing was presented.
+	// Scheme says how the carried credential arrived: SchemeBearer,
+	// SchemeAPIKey, or "" when no header was presented.
 	Scheme string
-	// Token is the opaque secret (bearer token, API key, JWT compact form).
+	// Token is the opaque carried secret (bearer token, API key).
 	Token string
-	// TLS carries the connection state for mTLS providers; nil otherwise.
+	// TLS carries the connection state for mTLS methods; nil otherwise.
 	TLS *tls.ConnectionState
+	// Cookie is the value of the instance's own web UI session cookie,
+	// "" when the request carries none. The HTTP middleware reads it
+	// only from that cookie, never from a header, so a session secret
+	// pasted into Authorization is just an invalid bearer.
+	Cookie string
 }
 
-// Empty reports whether no credential material was presented.
+// Empty reports whether no credential material was presented at all.
 func (c Credential) Empty() bool {
-	return c.Token == "" && (c.TLS == nil || len(c.TLS.PeerCertificates) == 0)
-}
-
-// Provider validates credentials against one identity backend.
-// Implementations must be safe for concurrent use.
-type Provider interface {
-	// Name identifies the backend (ProviderStatic, ...).
-	Name() string
-	// Authenticate resolves cred to a Principal. It returns
-	// ErrNoCredential when cred is empty and ErrInvalidCredential when
-	// cred does not resolve; any other error is an internal provider
-	// failure (e.g. issuer unreachable).
-	Authenticate(ctx context.Context, cred Credential) (*Principal, error)
+	return c.Token == "" && c.Cookie == "" && (c.TLS == nil || len(c.TLS.PeerCertificates) == 0)
 }

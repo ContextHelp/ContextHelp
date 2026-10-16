@@ -9,8 +9,6 @@ vars:
   BINARY_CTXT: ./bin/ctxt
   MAIN_DPKMS: ./cmd/dpkms
   MAIN_CTXT: ./cmd/ctxt
-  DB_PATH: ./data/sqlite/contexthelp.db
-  MIGRATION_PATH: ./data/migrations
   BUILD_TAGS: -tags fts5 -buildvcs=false
 
 env:
@@ -108,32 +106,32 @@ tasks:
   test:
     desc: Run all tests
     cmds:
-      - go test {{.BUILD_TAGS}} -v -race -cover ./...
+      - go test -failfast {{.BUILD_TAGS}} -v -race -cover ./...
 
   test:unit:
     desc: Run unit tests only
     cmds:
-      - go test {{.BUILD_TAGS}} -v -short -race -cover ./...
+      - go test -failfast {{.BUILD_TAGS}} -v -short -race -cover ./...
 
   test:integration:
     desc: Run integration tests
     cmds:
-      - go test -tags "fts5,integration" -buildvcs=false -v -race ./test/integration/...
+      - go test -failfast -tags "fts5,integration" -buildvcs=false -v -race ./test/integration/...
 
   test:e2e:
     desc: Run focused end-to-end integration scenarios
     cmds:
-      - go test {{.BUILD_TAGS}} -v -race ./test/integration -run '^Test(FullWritePath|FullReadPath|JobRetry|EdgesCreated|IngestThenSearch|ConcurrentIngestion|ObjectDeleteCascade)$'
+      - go test -failfast {{.BUILD_TAGS}} -v -race ./test/integration -run '^Test(FullWritePath|FullReadPath|JobRetry|EdgesCreated|IngestThenSearch|ConcurrentIngestion|ObjectDeleteCascade)$'
 
   test:smoke:
     desc: Run binary smoke tests
     cmds:
-      - go test -tags "fts5,smoke" -buildvcs=false -v ./test/smoke/...
+      - go test -failfast -tags "fts5,smoke" -buildvcs=false -v ./test/smoke/...
 
   test:coverage:
     desc: Generate test coverage report
     cmds:
-      - go test {{.BUILD_TAGS}} -v -race -coverprofile=coverage.out -covermode=atomic ./...
+      - go test -failfast {{.BUILD_TAGS}} -v -race -coverprofile=coverage.out -covermode=atomic ./...
       - go tool cover -html=coverage.out -o coverage.html
       - 'echo "Coverage report generated: coverage.html"'
       - go tool cover -func=coverage.out
@@ -148,23 +146,23 @@ tasks:
   test:race:
     desc: Run tests with race detector
     cmds:
-      - go test {{.BUILD_TAGS}} -v -race ./...
+      - go test -failfast {{.BUILD_TAGS}} -v -race ./...
 
   test:bench:
     desc: Run benchmarks
     cmds:
-      - go test {{.BUILD_TAGS}} -v -bench=. -benchmem ./...
+      - go test -failfast {{.BUILD_TAGS}} -v -bench=. -benchmem ./...
 
   # Code quality tasks
   lint:
-    desc: Run linters
+    desc: Run golangci-lint (pinned version) over the whole repo
     cmds:
-      - golangci-lint run --timeout=5m
+      - scripts/ci/tools.sh golangci-lint,go -- golangci-lint run --timeout=10m
 
   lint:fix:
     desc: Run linters and auto-fix issues
     cmds:
-      - golangci-lint run --fix --timeout=5m
+      - scripts/ci/tools.sh golangci-lint,go -- golangci-lint run --fix --timeout=10m
 
   fmt:
     desc: Format code
@@ -173,74 +171,50 @@ tasks:
       - goimports -w -local github.com/ideacrafterslabs/contexthelp .
 
   vet:
-    desc: Run go vet
+    desc: Run go vet as CI does
     cmds:
-      - go vet ./...
+      - make ci-vet
 
   security:
-    desc: Run security scans
+    desc: Run security scans as CI does (gosec, govulncheck)
     cmds:
-      - govulncheck ./...
-      - gosec -quiet ./...
+      - make gosec govulncheck
 
-  # CI tasks (match GitHub Actions)
+  # CI tasks: the Makefile's ci-<job> targets run exactly what each job of
+  # .github/workflows/ci.yml runs (scripts/check-ci-parity.sh holds them
+  # together), so these delegate rather than keep a copy.
   ci:
-    desc: Run all CI checks locally
-    deps: [ci:lint, ci:security, ci:test, ci:build]
+    desc: Run every CI job locally (make ci)
+    cmds:
+      - make ci
 
   ci:lint:
-    desc: CI lint checks
+    desc: CI lint job (make ci-lint)
     cmds:
-      - task: lint
-      - task: fmt
-      - task: vet
+      - make ci-lint
 
   ci:security:
-    desc: CI security checks
+    desc: CI security job (make ci-security)
     cmds:
-      - task: security
+      - make ci-security
 
   ci:test:
-    desc: CI test suite
+    desc: CI test job (make ci-test)
     cmds:
-      - task: test:unit
-      - task: test:coverage
+      - make ci-test
 
   ci:build:
-    desc: CI build check
+    desc: CI build job (make ci-build)
     cmds:
-      - task: build
+      - make ci-build
 
-  # Database tasks
-  db:migrate:up:
-    desc: Run database migrations
-    cmds:
-      - migrate -path {{.MIGRATION_PATH}} -database "sqlite3://{{.DB_PATH}}" up
-
-  db:migrate:down:
-    desc: Rollback database migrations
-    cmds:
-      - migrate -path {{.MIGRATION_PATH}} -database "sqlite3://{{.DB_PATH}}" down 1
-
-  db:migrate:create:
-    desc: "Create new migration (usage: task db:migrate:create -- name)"
-    cmds:
-      - migrate create -ext sql -dir {{.MIGRATION_PATH}} -seq {{.CLI_ARGS}}
-
-  db:reset:
-    desc: Reset database (drop all tables and re-run migrations)
-    cmds:
-      - rm -f {{.DB_PATH}}
-      - task: db:migrate:up
-
-  db:seed:
-    desc: Seed database with test data
-    cmds:
-      - go run ./scripts/seed.go
+  # Database: no tasks. Schema lives in migrations embedded in the
+  # binaries (internal/storage/sqlite/migrations, internal/storage/postgres)
+  # and is applied whenever dpkms or ctxt opens the database.
 
   # Docker tasks
   services:up:
-    desc: Start Docker services (Postgres, Redis)
+    desc: Start Docker services (Postgres)
     cmds:
       - docker-compose -f docker-compose.dev.yml up -d
       - echo "Waiting for services to be ready..."
@@ -417,10 +391,9 @@ tasks:
         # ── go dev tools ──────────────────────────────────────────────────
         if [ "$GROUP" = all ] || [ "$GROUP" = gotools ]; then
           echo "▶ Go dev tools"
-          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest && ok golangci-lint || fail golangci-lint
-          go install golang.org/x/vuln/cmd/govulncheck@latest && ok govulncheck || fail govulncheck
-          go install github.com/securego/gosec/v2/cmd/gosec@latest && ok gosec || fail gosec
-          go install -tags 'sqlite3' github.com/golang-migrate/migrate/v4/cmd/migrate@latest && ok migrate || fail migrate
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6 && ok golangci-lint || fail golangci-lint
+          go install golang.org/x/vuln/cmd/govulncheck@v1.8.0 && ok govulncheck || fail govulncheck
+          go install github.com/securego/gosec/v2/cmd/gosec@v2.29.0 && ok gosec || fail gosec
         fi
 
         echo ""
@@ -499,10 +472,9 @@ tasks:
 
         if ($Group -eq "all" -or $Group -eq "gotools") {
           Write-Host "▶ Go dev tools"
-          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest && ok "golangci-lint" || fail "golangci-lint"
-          go install golang.org/x/vuln/cmd/govulncheck@latest && ok "govulncheck" || fail "govulncheck"
-          go install github.com/securego/gosec/v2/cmd/gosec@latest && ok "gosec" || fail "gosec"
-          go install -tags sqlite3 github.com/golang-migrate/migrate/v4/cmd/migrate@latest && ok "migrate" || fail "migrate"
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6 && ok "golangci-lint" || fail "golangci-lint"
+          go install golang.org/x/vuln/cmd/govulncheck@v1.8.0 && ok "govulncheck" || fail "govulncheck"
+          go install github.com/securego/gosec/v2/cmd/gosec@v2.29.0 && ok "gosec" || fail "gosec"
         }
 
         Write-Host ""
@@ -546,7 +518,6 @@ tasks:
         check_bin task         "task (taskfile)"
         check_bin golangci-lint "golangci-lint"
         check_bin govulncheck  "govulncheck"
-        check_bin migrate      "migrate"
 
         echo "── OCR ──────────────────────────────────────────────────────"
         check_bin tesseract    "tesseract"
@@ -624,7 +595,6 @@ tasks:
         check_bin task "task (taskfile)"
         check_bin golangci-lint
         check_bin govulncheck
-        check_bin migrate
 
         Write-Host "── OCR ──────────────────────────────────────────────────────"
         check_bin tesseract
@@ -676,11 +646,10 @@ tasks:
   install:tools:
     desc: Install development tools
     cmds:
-      - go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-      - go install github.com/go-task/task/v3/cmd/task@latest
-      - go install -tags 'sqlite3' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
-      - go install golang.org/x/vuln/cmd/govulncheck@latest
-      - go install github.com/securego/gosec/v2/cmd/gosec@latest
+      - go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6
+      - go install github.com/go-task/task/v3/cmd/task@v3.53.1
+      - go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+      - go install github.com/securego/gosec/v2/cmd/gosec@v2.29.0
       - echo "Development tools installed"
 
   # Documentation tasks
@@ -737,9 +706,6 @@ tasks:
       - go version
       - task --version || echo "Task not found"
       - golangci-lint --version || echo "golangci-lint not found"
-      - migrate -version || echo "migrate not found"
       - govulncheck -version || echo "govulncheck not found"
-      - echo "=== Database ==="
-      - 'ls -lh {{.DB_PATH}} || echo "Database not found (run: task db:migrate:up)"'
       - echo "=== Binaries ==="
       - 'ls -lh bin/ || echo "Binaries not found (run: task build)"'

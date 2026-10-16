@@ -1,7 +1,6 @@
 ---
 status: paper
 adr: ADR-066
-task: T-0501
 ---
 
 # US-0213: File-Watch / Drop-Folder Source
@@ -77,7 +76,7 @@ internal/ambient/filewatch/filewatch.go
 
 ### Routing logic (`route.go`)
 
-Extension table maps to existing pipelines (already shipped in `internal/pipeline/builtins/`). New file types added via plugin extension point per [ADR-012](../../decisions/ADR-012-plugins-extend-any-layer.md).
+Extension table maps to existing pipelines (already shipped in `internal/pipeline/builtins/`). New file types are added by extending that table (there is no plugin system, [ADR-078](../../decisions/ADR-078-no-plugin-system.md)).
 
 ### Privacy
 
@@ -136,7 +135,7 @@ ctxt capture --ambient sources    # shows watched directories + recent-events co
 ## Sprint
 
 **Skeleton 9.5 — Ambient Capture + Sessions + Agent-Native MCP**
-Implements ADR-066 Phase 3 (file-watch source) — see `tlc track show ambient-capture`, task **T-0501**.
+Implements ADR-066 Phase 3 (file-watch source).
 
 ---
 

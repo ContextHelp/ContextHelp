@@ -71,7 +71,7 @@ Enterprise CTA:
 
 - Paid subscriptions to your registry
 - Credits for metered operations (JIT pulls, exports, derivations)
-- Paid extensions (plugins/pipelines/templates)
+- Paid extensions (steps/pipelines/templates)
 
 ### How you protect value
 

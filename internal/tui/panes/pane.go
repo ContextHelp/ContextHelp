@@ -1,3 +1,4 @@
+// Package panes holds the TUI panes: search, preview, graph and the status bar.
 package panes
 
 import tea "charm.land/bubbletea/v2"

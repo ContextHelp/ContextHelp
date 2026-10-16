@@ -293,7 +293,7 @@ func TestCaptureHistory_SinceAloneAdvances(t *testing.T) {
 	// A --since earlier than the position resends that window and never
 	// moves the position back, even when a send fails early in it.
 	e.resetRequests()
-	e.fail[b.URL] = true
+	e.failOn(b.URL, true)
 	e.mustRun(1, historyArgs("--since", "6h")...)
 	assertSent(t, e, a.URL, b.URL, c.URL, d.URL)
 	assertPosition(t, e, d.At)
@@ -401,7 +401,7 @@ func TestCaptureHistory_PartialFailureAdvancesToSafePoint(t *testing.T) {
 	b := hVisit("https://example.com/b", now.Add(-2*time.Hour))
 	c := hVisit("https://example.com/c", now.Add(-time.Hour))
 	e := newHistoryEnv(t, "", a, b, c)
-	e.fail[b.URL] = true
+	e.failOn(b.URL, true)
 
 	_, errOut := e.mustRun(1, historyArgs()...)
 	// The failure does not stop the later sends...
@@ -412,7 +412,7 @@ func TestCaptureHistory_PartialFailureAdvancesToSafePoint(t *testing.T) {
 		t.Errorf("stderr missing failure count:\n%s", errOut)
 	}
 
-	delete(e.fail, b.URL)
+	e.failOn(b.URL, false)
 	e.resetRequests()
 	e.mustRun(0, historyArgs()...)
 	assertSent(t, e, b.URL, c.URL)
@@ -427,12 +427,12 @@ func TestCaptureHistory_PartialFailureWithTimestampTie(t *testing.T) {
 	b1 := hVisit("https://example.com/b1", now.Add(-2*time.Hour))
 	b2 := hVisit("https://example.com/b2", now.Add(-2*time.Hour))
 	e := newHistoryEnv(t, "", a, b1, b2)
-	e.fail[b2.URL] = true
+	e.failOn(b2.URL, true)
 
 	e.mustRun(1, historyArgs()...)
 	assertPosition(t, e, a.At)
 
-	delete(e.fail, b2.URL)
+	e.failOn(b2.URL, false)
 	e.resetRequests()
 	e.mustRun(0, historyArgs()...)
 	assertSent(t, e, b1.URL, b2.URL)
@@ -717,7 +717,7 @@ func TestCaptureHistory_StderrNeverCarriesURLs(t *testing.T) {
 	b := hVisit("https://example.org/b", now.Add(-2*time.Hour))
 	crm := hVisit("https://crm.example.net/deal/42", now.Add(-time.Hour))
 	e := newHistoryEnv(t, crmDeny, a, b, crm)
-	e.fail[b.URL] = true
+	e.failOn(b.URL, true)
 
 	for _, args := range [][]string{
 		historyArgs("-V", "--dry-run"),

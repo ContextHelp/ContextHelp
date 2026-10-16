@@ -32,8 +32,8 @@ func TestExport_JSONFallback(t *testing.T) {
 	db := setupTestDB(t)
 	seedExportObject(t, db)
 
-	// No --format requested: kit v0.5 defaults --format to "table", which
-	// export treats as "no generator plugin" and falls back to JSON.
+	// No --format requested: kit v0.5 defaults --format to "table", and
+	// export prints JSON for every format but yaml.
 	out, err := db.exec("export", "obj_exp001")
 	if err != nil {
 		t.Fatalf("export JSON should succeed: %v", err)
@@ -54,7 +54,8 @@ func TestExport_UnknownFormat(t *testing.T) {
 	}
 }
 
-// TestExport_Help verifies the export command has --format and --dest flags.
+// TestExport_Help verifies the export command lists --format and no
+// longer offers --dest.
 func TestExport_Help(t *testing.T) {
 	out, err := executeCommand("export", "--help")
 	if err != nil {
@@ -63,7 +64,7 @@ func TestExport_Help(t *testing.T) {
 	if !strings.Contains(out, "--format") {
 		t.Error("export help should list --format flag")
 	}
-	if !strings.Contains(out, "--dest") {
-		t.Error("export help should list --dest flag")
+	if strings.Contains(out, "--dest") {
+		t.Error("export help lists --dest; the flag is removed")
 	}
 }

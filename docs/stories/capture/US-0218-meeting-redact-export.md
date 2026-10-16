@@ -1,7 +1,6 @@
 ---
 status: paper
 adr: ADR-069
-task: T-0518
 ---
 
 # US-0218: Meeting Redact + Export
@@ -164,7 +163,7 @@ ctxt show obj_xyz --include-superseded
 ## Sprint
 
 **Skeleton 9.5 — Ambient Capture + Sessions + Agent-Native MCP**
-Implements ADR-069 §6 (redact + export commands) — see `tlc track show ambient-capture`, task **T-0518**.
+Implements ADR-069 §6 (redact + export commands).
 
 ---
 

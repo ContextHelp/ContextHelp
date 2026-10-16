@@ -7,9 +7,26 @@
 # This script is the gate that keeps all of them in step.
 #
 # Checks:
-#   1. Dockerfile + docker/Dockerfile.dpkms golang base image == mise go pin
+#   1. Dockerfile golang base image == mise go pin, and so is every golang
+#      image a compose file (docker-compose*.yml, docker/, .devcontainer/) or
+#      a workflow (.github/workflows/*.yml: services, job containers,
+#      docker:// steps) runs; every other image those files pull and every
+#      Dockerfile base image names an exact release (X.Y.Z tag, dated tag or
+#      digest), never a floating tag
 #   2. go.mod `go` directive is satisfied by the mise go pin (pin >= directive)
-#   3. no workflow hardcodes a go-version literal instead of deriving it
+#   3. no workflow hardcodes a go-version literal instead of deriving it,
+#      nor a golangci-lint or goreleaser-action version
+#   4. node: mise pins an exact version; no workflow hardcodes node-version;
+#      every node image (compose, workflows, Dockerfile FROM) runs the pin;
+#      .nvmrc / .node-version equal it; package.json engines.node is the pin
+#      or a >= minimum the pin satisfies
+#   5. no workflow names a floating ref: @master/@main/@latest on an action
+#      or a `go install`, a `~>` range, or `version: latest`
+#   6. release.yml runs ci.yml as a reusable workflow ahead of every other
+#      job, and ci.yml has nothing that skips a job in that called run (a
+#      release gates on at least what a merge gates on)
+#   7. Makefile, Taskfile and scripts/ install no go tool at @latest (or a
+#      branch), and any golangci-lint they install is the v2 mise.toml pin
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -25,18 +42,26 @@ mise_go=$(sed -n 's/^go = "\(.*\)"$/\1/p' mise.toml)
 # golangci-lint is declared via the `go:` backend, so the key is quoted:
 #   "go:github.com/golangci/golangci-lint/v2/cmd/golangci-lint" = "2.1.6"
 mise_lint=$(sed -n 's/^"go:.*golangci-lint" = "\(.*\)"$/\1/p' mise.toml)
+mise_node=$(sed -n 's/^node = "\(.*\)"$/\1/p' mise.toml)
+mise_goreleaser=$(sed -n 's/^goreleaser = "\(.*\)"$/\1/p' mise.toml)
 
 [ -n "$mise_go" ] || err "mise.toml has no exact 'go' pin"
 [ -n "$mise_lint" ] || err "mise.toml has no exact 'golangci-lint' pin"
 case "$mise_go" in
 *latest* | "") err "mise.toml go pin must be an exact version, got '$mise_go'" ;;
 esac
-echo "mise.toml: go=$mise_go golangci-lint=$mise_lint"
+# node builds the embedded web bundles; an alias (lts, latest) or a major
+# line (22) installs whatever is newest today.
+[[ "$mise_node" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
+	err "mise.toml node pin must be an exact X.Y.Z version, got '$mise_node'"
+[[ "$mise_goreleaser" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
+	err "mise.toml goreleaser pin must be an exact X.Y.Z version, got '$mise_goreleaser'"
+echo "mise.toml: go=$mise_go golangci-lint=$mise_lint node=$mise_node goreleaser=$mise_goreleaser"
 
 # ── 1. Dockerfiles ───────────────────────────────────────────────────────────
 # Both build stages must use the same Go as mise/CI, or a container build can
 # succeed (or fail) on a compiler the rest of the toolchain never sees.
-for df in Dockerfile docker/Dockerfile.dpkms; do
+for df in Dockerfile; do
 	[ -f "$df" ] || continue
 	while read -r img; do
 		[ -n "$img" ] || continue
@@ -49,6 +74,170 @@ for df in Dockerfile docker/Dockerfile.dpkms; do
 			echo "ok: $df -> golang:$ver"
 		fi
 	done < <(grep -oE '\bgolang:[0-9][^ ]*' "$df" || true)
+done
+
+# Every other image must name one release as well. mise.toml pins no
+# service versions, so the tag itself is the pin: a major or minor tag
+# (redis:7-alpine, node:22.23-alpine), a codename (debian:bookworm-slim),
+# latest or no tag at all pulls whatever the registry points at today.
+#
+# exact_ref <ref>: true when ref is a digest, or its tag carries a full
+# X.Y.Z version or a YYYYMMDD date stamp (debian:bookworm-20260918-slim).
+exact_ref() {
+	local ref=$1 name tag
+	case "$ref" in *@sha256:*) return 0 ;; esac
+	name=${ref##*/} # registry.local:5000/redis:7 -> redis:7
+	case "$name" in
+	*:*) tag=${name##*:} ;;
+	*) return 1 ;;
+	esac
+	[[ "$tag" =~ (^|[^0-9.])[0-9]+\.[0-9]+\.[0-9]+([^0-9.]|$) ]] && return 0
+	[[ "$tag" =~ (^|-)20[0-9]{6}(-|$) ]] && return 0
+	return 1
+}
+floating="a floating tag; pin an exact release (X.Y.Z or a dated tag) or a digest"
+
+# toolchain_mismatch <ref>: prints why an image that carries a toolchain
+# mise.toml pins (golang, node) runs a different version; prints nothing
+# for an image that agrees or carries no pinned toolchain. Compose files,
+# workflows and Dockerfiles run these images directly (the dev service
+# builds and hot-reloads inside one), so exact is not enough: it must be
+# the pin.
+toolchain_mismatch() {
+	local name=${1##*/} tag ver
+	name=${name%%@*} # golang:1.26.8@sha256:... -> golang:1.26.8
+	case "$name" in
+	golang | golang:*)
+		tag=${name#golang}
+		tag=${tag#:}
+		ver=${tag%%-*}
+		[ "$ver" = "$mise_go" ] ||
+			echo "but mise.toml pins go $mise_go (use golang:$mise_go-<variant>)"
+		;;
+	node | node:*)
+		tag=${name#node}
+		tag=${tag#:}
+		ver=${tag%%-*}
+		[ "$ver" = "$mise_node" ] ||
+			echo "but mise.toml pins node $mise_node (use node:$mise_node-<variant>)"
+		;;
+	esac
+}
+
+for cf in docker-compose*.yml docker/docker-compose*.yml .devcontainer/docker-compose*.yml; do
+	[ -f "$cf" ] || continue
+	while read -r img; do
+		[ -n "$img" ] || continue
+		# The project's own image is the local build output (`build:`),
+		# tagged by $TAG; nothing pulls it from a registry.
+		case "$img" in ctxt/*) continue ;; esac
+		ref=$img
+		# ${VAR:-default} / ${VAR-default}: check the default compose uses.
+		while [[ "$ref" =~ \$\{[A-Za-z_][A-Za-z0-9_]*:?-([^}]*)\} ]]; do
+			ref=${ref/"${BASH_REMATCH[0]}"/"${BASH_REMATCH[1]}"}
+		done
+		if [[ "$ref" == *'$'* ]]; then
+			err "$cf runs image $img, which has no default to check; give it an exact default"
+		elif ! exact_ref "$ref"; then
+			err "$cf runs image $img, $floating"
+		elif why=$(toolchain_mismatch "$ref") && [ -n "$why" ]; then
+			err "$cf runs image $img $why"
+		else
+			echo "ok: $cf -> $img"
+		fi
+	done < <(sed -n "s/^[[:space:]]*image:[[:space:]]*//p" "$cf" | sed -e 's/[[:space:]]#.*$//' -e 's/[[:space:]]*$//' -e "s/^[\"']//" -e "s/[\"']\$//")
+done
+
+# Workflows pull images as well: service containers (services.*.image), a
+# job's container (`container: <image>` or `container: {image: ...}`) and
+# `uses: docker://<image>` steps. Same rule as compose. An expression such
+# as ${{ matrix.image }} resolves at run time, so the gate cannot check it.
+workflow_images() {
+	sed -n -E \
+		-e 's/^[[:space:]]*(-[[:space:]]+)?image:[[:space:]]*//p' \
+		-e 's/^[[:space:]]*container:[[:space:]]*([^[:space:]#].*)$/\1/p' \
+		-e 's|^[[:space:]]*(-[[:space:]]+)?uses:[[:space:]]*["'"'"']?docker://||p' "$1" |
+		sed -e 's/[[:space:]]#.*$//' -e 's/[[:space:]]*$//' -e "s/^[\"']//" -e "s/[\"']\$//"
+}
+
+for wf in .github/workflows/*.yml .github/workflows/*.yaml; do
+	[ -f "$wf" ] || continue
+	while read -r img; do
+		[ -n "$img" ] || continue
+		# shellcheck disable=SC2016 # literal ${{ expression marker
+		if [[ "$img" == *'${{'* ]]; then
+			err "$wf runs image $img, an expression the gate cannot check; name an exact release"
+		elif ! exact_ref "$img"; then
+			err "$wf runs image $img, $floating"
+		elif why=$(toolchain_mismatch "$img") && [ -n "$why" ]; then
+			err "$wf runs image $img $why"
+		else
+			echo "ok: $wf -> $img"
+		fi
+	done < <(workflow_images "$wf")
+done
+
+# Dockerfile base images: every FROM that pulls an image. ARG defaults are
+# substituted; earlier build stages and scratch pull nothing.
+for df in Dockerfile Dockerfile.* docker/Dockerfile* docker/*/Dockerfile* .devcontainer/Dockerfile*; do
+	[ -f "$df" ] || continue
+	# `# syntax=` pulls the BuildKit frontend image before any FROM. Parser
+	# directives are only directives on the leading comment lines.
+	while IFS= read -r line; do
+		[[ "$line" =~ ^#[[:space:]]*([A-Za-z]+)[[:space:]]*=[[:space:]]*([^[:space:]]+) ]] || break
+		[[ "${BASH_REMATCH[1]}" == [Ss][Yy][Nn][Tt][Aa][Xx] ]] || continue
+		fe=${BASH_REMATCH[2]}
+		if exact_ref "$fe"; then
+			echo "ok: $df -> syntax $fe"
+		else
+			err "$df uses frontend $fe, $floating"
+		fi
+	done <"$df"
+
+	arg_names=()
+	arg_values=()
+	stages=" scratch "
+	while IFS= read -r line; do
+		if [[ "$line" =~ ^[[:space:]]*[Aa][Rr][Gg][[:space:]]+([A-Za-z_][A-Za-z0-9_]*)=([^[:space:]]+) ]]; then
+			v=${BASH_REMATCH[2]}
+			v=${v#[\"\']}
+			v=${v%[\"\']}
+			arg_names+=("${BASH_REMATCH[1]}")
+			arg_values+=("$v")
+			continue
+		fi
+		[[ "$line" =~ ^[[:space:]]*[Ff][Rr][Oo][Mm][[:space:]]+(.*)$ ]] || continue
+		set -f
+		# shellcheck disable=SC2086 # split FROM into its words
+		set -- ${BASH_REMATCH[1]}
+		set +f
+		while [ $# -gt 0 ] && [[ "$1" == --* ]]; do shift; done # --platform=...
+		img=${1:-}
+		stage=""
+		if [ $# -ge 3 ] && [[ "$2" == [Aa][Ss] ]]; then stage=$3; fi
+		ref=$img
+		i=${#arg_names[@]}
+		while [ "$i" -gt 0 ]; do
+			i=$((i - 1))
+			n=${arg_names[$i]}
+			# shellcheck disable=SC2016 # literal ${NAME} pattern
+			pat='${'"$n"'}'
+			ref=${ref//"$pat"/${arg_values[$i]}}
+			ref=${ref//"\$$n"/${arg_values[$i]}}
+		done
+		if [[ "$stages" == *" $ref "* ]]; then
+			: # an earlier stage, or scratch
+		elif [[ "$ref" == *'$'* ]]; then
+			err "$df builds FROM $img, which has no ARG default to check; give it an exact default"
+		elif ! exact_ref "$ref"; then
+			err "$df builds FROM $img, $floating"
+		elif why=$(toolchain_mismatch "$ref") && [ -n "$why" ]; then
+			err "$df builds FROM $img $why"
+		else
+			echo "ok: $df -> FROM $ref"
+		fi
+		[ -n "$stage" ] && stages="$stages$stage "
+	done <"$df"
 done
 
 # The devcontainer parameterises its base image via ARG, so the literal-tag
@@ -104,6 +293,302 @@ while read -r hit; do
 	[ -n "$hit" ] || continue
 	err "workflow hardcodes a golangci-lint version, derive it from mise.toml instead: $hit"
 done < <(grep -rnE "golangci-lint.*@v?[0-9]+\.[0-9]+|golangci-lint/(master|v[0-9])" .github/workflows/ | grep -vE 'golangci-lint/v2/cmd/golangci-lint@v\$\{\{' || true)
+
+# goreleaser-action's `version:`: release.yml publishes with it and ci.yml
+# checks .goreleaser.yaml with it, so both derive it from the mise.toml pin
+# (ci.yml's toolchain job output). A literal lets the release run a
+# GoReleaser the config was never checked against.
+while read -r hit; do
+	[ -n "$hit" ] || continue
+	err "workflow hardcodes a GoReleaser version, derive it from mise.toml instead: $hit"
+done < <(awk '
+	FNR == 1 { gr = 0 }
+	{ line = $0; sub(/(^|[ \t])#.*$/, "", line) }
+	line ~ /^[ \t]*-[ \t]/ { gr = 0 }
+	line ~ /uses:[ \t]*["\047]?goreleaser\/goreleaser-action@/ { gr = 1; next }
+	gr && line ~ /^[ \t]+version:/ && line !~ /version:[ \t]*["\047]?v?\$\{\{/ {
+		sub(/^[ \t]+/, "", line)
+		printf "%s:%d: %s\n", FILENAME, FNR, line
+	}
+' /dev/null $(find .github/workflows -type f \( -name '*.yml' -o -name '*.yaml' \) 2>/dev/null | sort))
+
+# ── 4. node ──────────────────────────────────────────────────────────────────
+# setup-node cannot read mise.toml, so CI derives node-version from it in the
+# toolchain job, exactly like go-version. A literal (even today's pin) or a
+# version file is a second source of truth.
+while read -r hit; do
+	[ -n "$hit" ] || continue
+	err "workflow hardcodes a Node version, derive it from mise.toml instead: $hit"
+done < <(grep -rnE "^\s*(NODE_VERSION|node-version):" .github/workflows/ | grep -vE "(NODE_VERSION|node-version):\s*['\"]?\\$\{\{" || true)
+
+while read -r hit; do
+	[ -n "$hit" ] || continue
+	err "workflow reads node-version-file instead of the mise.toml pin: $hit"
+done < <(grep -rnE "^\s*node-version-file:" .github/workflows/ || true)
+
+# engines_node <package.json>: the engines.node constraint, if any.
+engines_node() {
+	awk '
+		/"engines"[[:space:]]*:[[:space:]]*[{]/ { in_e = 1 }
+		in_e && match($0, /"node"[[:space:]]*:[[:space:]]*"[^"]*"/) {
+			s = substr($0, RSTART, RLENGTH)
+			sub(/^"node"[[:space:]]*:[[:space:]]*"/, "", s)
+			sub(/"$/, "", s)
+			print s
+			exit
+		}
+		in_e && /[}]/ { in_e = 0 }
+	' "$1"
+}
+
+# nvm, fnm, setup-node and corepack read these, so a contradicting value
+# builds the bundles with a different Node depending on who runs them.
+while IFS= read -r f; do
+	f=${f#./}
+	case "$f" in
+	*package.json)
+		eng=$(engines_node "$f")
+		[ -n "$eng" ] || continue
+		e=${eng// /}
+		case "$e" in
+		">="*)
+			min=${e#>=}
+			min=${min#v}
+			if [[ "$min" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]] &&
+				[ "$(printf '%s\n%s\n' "$mise_node" "$min" | sort -V | head -1)" = "$min" ]; then
+				echo "ok: $f -> engines.node $eng"
+			else
+				err "$f engines.node $eng is not satisfied by mise.toml node pin $mise_node"
+			fi
+			;;
+		*)
+			if [ "${e#v}" = "$mise_node" ]; then
+				echo "ok: $f -> engines.node $eng"
+			else
+				err "$f engines.node $eng: use the mise.toml pin $mise_node or a >= minimum it satisfies"
+			fi
+			;;
+		esac
+		;;
+	*)
+		v=$(head -1 "$f" | tr -d '[:space:]')
+		v=${v#v}
+		if [ "$v" != "$mise_node" ]; then
+			err "$f pins node $v but mise.toml pins node $mise_node"
+		else
+			echo "ok: $f -> node $v"
+		fi
+		;;
+	esac
+done < <(find . \( -name node_modules -o -name .git \) -prune -o -type f \( -name .nvmrc -o -name .node-version -o -name package.json \) -print | sort)
+
+# ── 5. floating refs in workflows ────────────────────────────────────────────
+# A branch (@master, @main), @latest or a range (`~> v2`, `version: latest`)
+# runs whatever upstream publishes the day the job starts: a release built
+# from it cannot be rebuilt, and a broken or compromised upstream release
+# lands without a diff. Pin a release tag (or commit SHA) at least two weeks
+# old. Comments are ignored; `image-ref: ...:latest` names a scan target, not
+# a dependency, and does not match.
+floating_refs() {
+	awk '{
+		line = $0
+		sub(/(^|[ \t])#.*$/, "", line)
+		if (line ~ /@(master|main|latest)([^A-Za-z0-9._\/-]|$)/ ||
+			line ~ /~>/ ||
+			line ~ /^[ \t]*version:[ \t]*["\047]?latest["\047]?[ \t]*$/) {
+			sub(/^[ \t]+/, "", line)
+			printf "%s:%d: %s\n", FILENAME, FNR, line
+		}
+	}' "$@"
+}
+workflows=()
+for wf in .github/workflows/*.yml .github/workflows/*.yaml; do
+	[ -f "$wf" ] && workflows+=("$wf")
+done
+if [ ${#workflows[@]} -gt 0 ]; then
+	while read -r hit; do
+		[ -n "$hit" ] || continue
+		err "$hit is floating; pin a release tag or commit SHA"
+	done < <(floating_refs "${workflows[@]}")
+fi
+
+# ── 6. release gates on everything CI gates on ───────────────────────────────
+# release.yml publishes a tag, so it must gate on at least what a merge
+# gates on. It does that by running ci.yml itself as a reusable workflow
+# rather than a hand-kept copy of its jobs, which drifted (unit tests on
+# Linux only, no e2e, no drop-replaces step). The gate holds the three
+# things that arrangement depends on:
+#   - ci.yml declares `workflow_call`, so release.yml can run it;
+#   - no ci.yml job carries a job-level `if:`: in a called run the github
+#     context is the caller's (event push, ref refs/tags/v*), so a
+#     condition written for ci.yml's own triggers can skip a gate on release;
+#   - release.yml has a job that `uses:` ci.yml, and every other job needs
+#     it, directly or through another job, so nothing (above all the
+#     publish job) starts before CI has passed on the tag.
+# Jobs are read at two-space indentation, keys at four, as in every
+# workflow here.
+#
+# ci_workflow_problems <ci.yml>: one line per violation.
+ci_workflow_problems() {
+	awk -v wf="$1" '
+		{ line = $0; sub(/(^|[ \t])#.*$/, "", line) }
+		line ~ /^[^ \t]/ {
+			top = line
+			sub(/:.*/, "", top)
+			gsub(/["\047]/, "", top)
+			job = ""
+			if (top == "on" && line ~ /workflow_call/) called = 1
+			next
+		}
+		top == "on" && line ~ /^  workflow_call:/ { called = 1 }
+		top == "jobs" && line ~ /^  [A-Za-z0-9_-]+:[ \t]*$/ {
+			job = line
+			sub(/^  /, "", job)
+			sub(/:.*/, "", job)
+			next
+		}
+		top == "jobs" && job != "" && line ~ /^    if:/ {
+			printf "%s job %s has a job-level if:, which can skip it when release.yml runs %s as its gate (the github context there is the tag push); move the condition into its steps\n", wf, job, wf
+		}
+		END {
+			if (!called) printf "%s has no workflow_call trigger, so release.yml cannot run it as its gate\n", wf
+		}
+	' "$1"
+}
+
+# release_workflow_problems <release.yml> <ci.yml>: one line per violation,
+# or "ok <job>" naming the job that runs ci.yml.
+release_workflow_problems() {
+	awk -v wf="$1" -v ci="$2" '
+		function add_need(j, n) {
+			gsub(/["\047 \t]/, "", n)
+			if (n != "") needs[j] = needs[j] " " n " "
+		}
+		{ line = $0; sub(/(^|[ \t])#.*$/, "", line) }
+		line ~ /^[^ \t]/ {
+			top = line
+			sub(/:.*/, "", top)
+			job = ""
+			inneeds = 0
+			next
+		}
+		top != "jobs" { next }
+		line ~ /^  [A-Za-z0-9_-]+:[ \t]*$/ {
+			job = line
+			sub(/^  /, "", job)
+			sub(/:.*/, "", job)
+			jobs[++njobs] = job
+			inneeds = 0
+			next
+		}
+		job == "" { next }
+		inneeds && line ~ /^      - / {
+			v = line
+			sub(/^      - /, "", v)
+			add_need(job, v)
+			next
+		}
+		line ~ /^    [A-Za-z]/ { inneeds = 0 }
+		line ~ /^    uses:/ {
+			v = line
+			sub(/^    uses:[ \t]*/, "", v)
+			gsub(/["\047 \t]/, "", v)
+			if (v == "./" ci) caller = job
+		}
+		line ~ /^    needs:/ {
+			v = line
+			sub(/^    needs:[ \t]*/, "", v)
+			if (v == "") { inneeds = 1; next }
+			gsub(/[][]/, "", v)
+			n = split(v, parts, ",")
+			for (i = 1; i <= n; i++) add_need(job, parts[i])
+		}
+		END {
+			if (caller == "") {
+				printf "%s has no job that runs %s (uses: ./%s); a release must gate on everything CI gates on\n", wf, ci, ci
+				exit
+			}
+			# A job is gated once it needs the caller or a gated job.
+			gated[caller] = 1
+			do {
+				changed = 0
+				for (i = 1; i <= njobs; i++) {
+					j = jobs[i]
+					if (gated[j]) continue
+					m = split(needs[j], ns, " ")
+					for (k = 1; k <= m; k++) if (gated[ns[k]]) { gated[j] = 1; changed = 1; break }
+				}
+			} while (changed)
+			bad = 0
+			for (i = 1; i <= njobs; i++) {
+				j = jobs[i]
+				if (gated[j]) continue
+				printf "%s job %s does not need %s, directly or through another job, so it can run before CI passes on the tag\n", wf, j, caller
+				bad = 1
+			}
+			if (!bad) printf "ok %s\n", caller
+		}
+	' "$1"
+}
+
+ci_wf=.github/workflows/ci.yml
+rel_wf=.github/workflows/release.yml
+if [ -f "$ci_wf" ] && [ -f "$rel_wf" ]; then
+	gate_ok=1
+	while IFS= read -r p; do
+		[ -n "$p" ] || continue
+		err "$p"
+		gate_ok=0
+	done < <(ci_workflow_problems "$ci_wf")
+	while IFS= read -r p; do
+		[ -n "$p" ] || continue
+		case "$p" in
+		"ok "*) caller=${p#ok } ;;
+		*)
+			err "$p"
+			gate_ok=0
+			;;
+		esac
+	done < <(release_workflow_problems "$rel_wf" "$ci_wf")
+	[ "$gate_ok" -eq 0 ] ||
+		echo "ok: $rel_wf runs $ci_wf (job $caller) before every other job"
+fi
+
+# ── 7. go tool installs in the Makefile, Taskfile and scripts ────────────────
+# `make vuln-scan`, `task install:tools` and scripts/dev-setup.sh install
+# the same tools CI does. @latest (or a branch) gives each developer
+# whatever was newest the day they ran it, so local scans and lint stop
+# being evidence about CI. golangci-lint must also be the mise.toml pin on
+# the v2 module path. Comments are ignored; *_test.go fixtures are skipped.
+dev_files=()
+for f in Makefile Taskfile.yml Taskfile.yaml; do
+	[ -f "$f" ] && dev_files+=("$f")
+done
+while IFS= read -r f; do
+	dev_files+=("$f")
+done < <(find scripts -type f ! -name '*_test.go' ! -path '*/testdata/*' 2>/dev/null | sort)
+if [ ${#dev_files[@]} -gt 0 ]; then
+	while read -r hit; do
+		[ -n "$hit" ] || continue
+		err "$hit installs a floating version; pin a release (the one the workflows use)"
+	done < <(awk '{
+		line = $0
+		sub(/(^|[ \t])#.*$/, "", line)
+		if (line ~ /go[ \t]+(install|run|get)[ \t].*[^ \t@]@(latest|master|main)([^A-Za-z0-9._\/-]|$)/) {
+			sub(/^[ \t]+/, "", line)
+			printf "%s:%d: %s\n", FILENAME, FNR, line
+		}
+	}' "${dev_files[@]}")
+
+	while IFS=: read -r f n ref; do
+		[ -n "$ref" ] || continue
+		case "$ref" in
+		*/v2/cmd/golangci-lint@v"$mise_lint" | */v2/cmd/golangci-lint@"$mise_lint") ;;
+		*/v2/cmd/*) err "$f:$n installs $ref but mise.toml pins golangci-lint $mise_lint" ;;
+		*) err "$f:$n installs $ref, the v1 module; .golangci.yml needs golangci-lint/v2 at the mise.toml pin $mise_lint" ;;
+		esac
+	done < <(grep -noE 'golangci-lint(/v[0-9]+)?/cmd/golangci-lint@v?[0-9][0-9.]*' "${dev_files[@]}" || true)
+fi
 
 if [ "$fail" -ne 0 ]; then
 	echo

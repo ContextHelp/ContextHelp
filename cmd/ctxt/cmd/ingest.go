@@ -11,8 +11,26 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/adapter/legacy"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/ingest"
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
 )
+
+// ingestClassifier is the class-rule classifier adapter ingest stores
+// objects through on a sharing instance (ADR-080 §3); nil on a private
+// one, which classes nothing.
+func ingestClassifier() ingest.Classifier {
+	if cfg == nil || !builtins.SharingEnabled(cfg.Server.EffectiveAccess()) {
+		return nil
+	}
+	rules := builtins.ClassRulesFromConfig(cfg.Sharing)
+	return func(o *storage.KnowledgeObject) []string { return sharing.ApplyClassRules(rules, o) }
+}
+
+// defaultAddressbook is the cardamum addressbook ingest reads when
+// none is named.
+const defaultAddressbook = "default"
 
 var ingestCmd = &cobra.Command{
 	Use:   "ingest",
@@ -45,7 +63,7 @@ func init() {
 	})
 	cliconv.WithNextSteps(ingestCmd, []cliconv.NextStep{
 		{When: "on success", Suggest: "ctxt list", Reason: "browse the freshly ingested objects"},
-		{When: "if a job stalled", Suggest: "ctxt job status", Reason: "inspect the queue"},
+		{When: "if a job stalled", Suggest: "ctxt job list --state pending", Reason: "inspect the queue"},
 	})
 	// "ingest" is not in kit's defaultIdempotency table; the runner
 	// dedups against existing objects, so re-ingesting the same adapter
@@ -58,7 +76,7 @@ func init() {
 	ingestCmd.Flags().String("type", "", "override object type")
 
 	// cardamum-specific flags
-	ingestCmd.Flags().String("addressbook", "default", "cardamum addressbook ID")
+	ingestCmd.Flags().String("addressbook", defaultAddressbook, "cardamum addressbook ID")
 	ingestCmd.Flags().String("account", "", "adapter account name")
 	ingestCmd.Flags().String("binary", "", "path to adapter binary")
 
@@ -66,7 +84,7 @@ func init() {
 	ingestCmd.Flags().String("folder", "INBOX", "himalaya IMAP folder")
 	ingestCmd.Flags().Int("max-items", 0, "max items to fetch (0=all)")
 
-	_ = ingestCmd.MarkFlagRequired("source")
+	markFlagsRequired(ingestCmd, "source")
 }
 
 func runIngest(cmd *cobra.Command, _ []string) error {
@@ -80,7 +98,7 @@ func runIngest(cmd *cobra.Command, _ []string) error {
 	}
 	defer cleanup()
 
-	runner := ingest.NewRunner(svc.Store.Objects())
+	runner := ingest.NewRunner(svc.Store(asOwner(cmd.Context())).Objects(), ingest.WithClassifier(ingestClassifier()))
 
 	if fromStdin {
 		res, err := runner.RunFromStdin(cmd.Context(), source, os.Stdin)
@@ -178,7 +196,7 @@ func printIngestResult(res *ingest.Result) {
 func IngestRegistry() *ingest.Registry {
 	reg := ingest.NewRegistry()
 	reg.Register("cardamum", func(args []string) (ingest.Adapter, error) {
-		ab := "default"
+		ab := defaultAddressbook
 		if len(args) > 0 {
 			ab = args[0]
 		}

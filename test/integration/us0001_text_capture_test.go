@@ -86,7 +86,7 @@ func TestUS0001_JobCompletesWithCorrectTypeAndPipeline(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "Short text insight for testing",
 		Type:     "text",
 		Pipeline: "text.short",
@@ -145,7 +145,7 @@ func TestUS0001_ProfileAndProjectPersistedInMetadata(t *testing.T) {
 		},
 	})
 
-	jobID, err := env.svc.Analyze(context.Background(), service.AnalyzeRequest{
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
 		Content:  "Insight with profile context",
 		Type:     "text",
 		Pipeline: "text.short",

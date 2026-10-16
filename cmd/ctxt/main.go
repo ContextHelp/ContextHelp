@@ -1,3 +1,4 @@
+// Command ctxt is the ContextHelp command-line client.
 package main
 
 import (

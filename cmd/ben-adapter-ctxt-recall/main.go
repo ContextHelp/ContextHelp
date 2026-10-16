@@ -12,7 +12,7 @@
 //	         The expected_ids are the relevant document IDs for the query.
 //	         k defaults to 5 if omitted.
 //	mode    — "fts_baseline" (default) — token-overlap recall using the
-//	          same lexical-fix semantics as the post-T-0565 text.short
+//	          same lexical-fix semantics as the text.short
 //	          pipeline (hyphen-tolerant, bullet-aware tokenization).
 //	          Future modes ("vector_baseline", "hybrid_rrf") may be added
 //	          when the embeddings code path lands (ADR-071 Phase 1).
@@ -151,7 +151,7 @@ func run(in io.Reader, out io.Writer) error {
 	case "fts_baseline", "vector_baseline":
 		// vector_baseline currently falls back to the lexical baseline; the
 		// suite shape exists per ADR-071 Phase 3 even though the candidate
-		// embedding-model code path lands later (T-0584).
+		// embedding-model code path lands later.
 	default:
 		return fmt.Errorf("unsupported mode %q (valid: fts_baseline, vector_baseline)", mode)
 	}
@@ -275,18 +275,18 @@ type ranked struct {
 
 // scoreCorpus returns a deterministic ranking of corpus objects for the
 // given query string. The current scorer is a token-overlap baseline that
-// mirrors the post-T-0565 text.short FTS behaviour:
+// mirrors the text.short FTS behaviour:
 //   - bullet markers (`-`, `*`) are treated as token separators (not part
 //     of any token), so bullet items are visible to the index;
 //   - hyphens inside words are preserved, which lets compound terms like
-//     "auth-flow" or "uri-scheme" match end-to-end (T-0565 fix);
+//     "auth-flow" or "uri-scheme" match end-to-end;
 //   - tags are weighted higher than body tokens (matches the tagger step's
 //     contribution to the FTS column).
 //
 // This is intentionally NOT a re-implementation of the full hybrid-search
 // stack. The harness measures recall regressions in a deterministic,
 // CGo-free environment; a future mode = "vector_baseline" can plug in the
-// embedding-model output once T-0582/T-0584 land.
+// embedding-model output once the vector leg lands.
 func scoreCorpus(corpus []corpusObject, query string, _ string) []ranked {
 	qTokens := tokenize(query)
 	if len(qTokens) == 0 {
@@ -336,7 +336,7 @@ func scoreCorpus(corpus []corpusObject, query string, _ string) []ranked {
 }
 
 // tokenize splits s into lowercased word tokens. Mirrors the bullet+hyphen
-// behaviour added to the text.short pipeline by T-0565: bullet markers are
+// behaviour added to the text.short pipeline: bullet markers are
 // separators (not tokens), hyphens inside words are preserved.
 func tokenize(s string) []string {
 	s = strings.ToLower(s)

@@ -49,7 +49,7 @@ appropriate config for the major MCP-aware clients; idempotent and reversible.
 ## Multimodal + Polyglot Ingestion Pipelines
 Text, URL, image, audio, video, documents, code snippets, and chat transcripts
 flow through configurable pipelines with extensible steps, custom AI models,
-mention extraction, entity resolution, multilingual handling, and plugin-defined
+mention extraction, entity resolution, multilingual handling, and custom step
 transformations.
 
 ## Structured Knowledge Objects (Formless → Atomic)
@@ -119,10 +119,10 @@ Action extraction identifies tasks, decisions, follow-ups, and commitments, with
 output builders that assemble drafts, briefs, plans, checklists, meeting packets,
 and publishing-ready artifacts from atomic nodes and graph context.
 
-## Plugin Architecture (Formal Contract + Permissions)
-Plugins extend pipelines, registries, commands, storage backends, query operators,
-AI providers, refresh policies, export formats, notification systems, UI surfaces,
-and automation hooks using a documented Plugin API and strict permission model.
+## Extension Surfaces (No Plugin System)
+Pipelines, steps installed from step registries, registries and external hooks
+extend ContextHelp under a strict permission model. There is no plugin API
+([ADR-078](decisions/ADR-078-no-plugin-system.md)).
 
 ## Language-Native Storage + Indexing (Multilingual by Design)
 Unicode-safe and RTL-safe storage and indexing support mixed-language knowledge

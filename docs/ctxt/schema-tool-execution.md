@@ -1,8 +1,8 @@
 # Tool Execution Memory Type Specification
 
-**Status:** Draft  
-**Version:** 0.1.0  
-**Last Updated:** 2026-02-18  
+**Status:** Draft
+**Version:** 0.1.0
+**Last Updated:** 2026-02-18
 
 ---
 
@@ -60,44 +60,43 @@ ToolExecution:
   id: string (UUID v4)
   createdAt: string (ISO8601)
   lastMatchedAt: string (ISO8601)
-  
+
   # Type Classification
   type: "tool_execution"
   subtype: string (from hierarchy above)
   raw: string (JSON-serialized input)
-  source: string (agent-cli | rest-api | mcp-server | plugin:<name>)
+  source: string (agent-cli | rest-api | mcp-server)
   pipeline: "tool_execution.capture"
-  
+
   # Deduplication
   contentHash: string (SHA-256)
   reinforcementCount: integer (default: 1)
   lastReinforcedAt: string (ISO8601 | null)
-  
+
   # Content
   title: string
   summary: string
-  
+
   # Tool-Specific Content
   content: ToolContent
-  
+
   # Semantic Fields
   tags: Tag[]
   hints: string[]
   mentions: Mention[]
   decisions: Decision[]
   questions: Question[]
-  
+
   # Extracted Knowledge
   extracted: ExtractedKnowledge
-  
+
   # Execution Context
   context: ExecutionContext
-  
+
   # Relations
   related: RelatedBookmark[]
   registry: RegistryAlignment
   metadata: object
-  plugins: object
   debug: DebugInfo
 ```
 
@@ -108,24 +107,24 @@ ToolContent:
   # Tool Identity
   tool_name: string (required)
   tool_version: string
-  tool_namespace: string (e.g., "mcp", "builtin", "plugin")
-  
+  tool_namespace: string (e.g., "mcp", "builtin")
+
   # Invocation Identity
   invocation_id: string (UUID v4)
   parent_invocation_id: string (UUID v4 | null)
   child_invocation_ids: string[] (UUID v4)
-  
+
   # Session Context
   session_id: string (UUID v4)
   agent_id: string
   conversation_id: string (UUID v4 | null)
-  
+
   # Input
   input:
     parameters: object (tool-specific)
     context: object (ambient context at invocation time)
     intent: string | null (inferred user intent)
-  
+
   # Output
   output:
     result: object (tool-specific)
@@ -135,7 +134,7 @@ ToolContent:
       message: string
       stack_trace: string | null
       recoverable: boolean
-  
+
   # Execution Metrics
   execution:
     duration_ms: integer
@@ -160,7 +159,7 @@ ExtractedKnowledge:
       outcome: string (expected result)
       confidence: float (0.0-1.0)
       examples: string[] (concrete examples)
-  
+
   # Failure modes identified
   failure_modes:
     - failure_id: string (UUID v4)
@@ -170,7 +169,7 @@ ExtractedKnowledge:
       fix: string (how to recover)
       prevention: string (how to avoid)
       confidence: float (0.0-1.0)
-  
+
   # Optimizations discovered
   optimizations:
     - optimization_id: string (UUID v4)
@@ -179,7 +178,7 @@ ExtractedKnowledge:
       improvement: string (quantified benefit)
       conditions: string[] (when to apply)
       confidence: float (0.0-1.0)
-  
+
   # Dependencies discovered
   dependencies:
     - tool_name: string
@@ -197,7 +196,7 @@ ExecutionContext:
     arch: string
     runtime: string
     runtime_version: string
-  
+
   # Project Context
   project:
     root_path: string | null
@@ -205,14 +204,14 @@ ExecutionContext:
     framework: string | null
     git_branch: string | null
     git_commit: string | null
-  
+
   # Agent State
   agent:
     model: string | null
     temperature: float | null
     system_prompt_hash: string | null
     tool_count: integer
-  
+
   # User Context
   user:
     user_id: string | null
@@ -228,13 +227,13 @@ DebugInfo:
     - timestamp: string (ISO8601)
       event: string
       data: object
-  
+
   # Performance
   performance:
     queue_time_ms: integer
     preprocess_time_ms: integer
     postprocess_time_ms: integer
-  
+
   # Raw Data (for debugging)
   raw_input: string (base64 encoded, optional)
   raw_output: string (base64 encoded, optional)
@@ -296,20 +295,20 @@ ToolMemoryCategory:
   path: string (e.g., "tool_memory/by_tool/llm_call/success")
   name: string
   description: string
-  
+
   # Auto-generation rules
   auto_categorize:
     conditions:
       - field: string (jsonpath)
         operator: "eq" | "in" | "regex" | "exists"
         value: any
-  
+
   # Aggregation
   aggregation:
     enabled: boolean
     max_items: integer (before compression)
     compression_strategy: "summarize" | "sample" | "cluster"
-  
+
   # Access patterns
   access:
     query_priority: integer (1-10)
@@ -407,20 +406,20 @@ ToolExecutionTag:
 ```yaml
 CaptureStage:
   name: "capture"
-  
+
   inputs:
     - tool_invocation: ToolInvocationEvent
-  
+
   outputs:
     - raw_trace: RawToolTrace
-  
+
   processing:
     - Hook into tool execution runtime
     - Capture input parameters
     - Capture execution context
     - Record timestamps
     - Capture output/error
-  
+
   error_handling:
     on_failure: "log and continue"
     timeout_ms: 5000
@@ -431,21 +430,21 @@ CaptureStage:
 ```yaml
 NormalizeStage:
   name: "normalize"
-  
+
   inputs:
     - raw_trace: RawToolTrace
-  
+
   outputs:
     - normalized_trace: ToolContent
     - content_hash: string
-  
+
   processing:
     - Validate against schema
     - Compute content hash
     - Check for duplicates (by hash)
     - Apply field defaults
     - Sanitize sensitive data
-  
+
   error_handling:
     on_validation_error: "reject with reason"
     on_duplicate: "emit reinforcement event"
@@ -456,14 +455,14 @@ NormalizeStage:
 ```yaml
 ExtractStage:
   name: "extract"
-  
+
   inputs:
     - normalized_trace: ToolContent
     - historical_patterns: ExtractedKnowledge[]
-  
+
   outputs:
     - extracted: ExtractedKnowledge
-  
+
   processing:
     - Analyze execution pattern
     - Compare with historical successes
@@ -471,13 +470,13 @@ ExtractStage:
     - Extract failure modes (if failure)
     - Identify optimizations
     - Map dependencies
-  
+
   llm_integration:
     provider: "configured_llm"
     model: "extraction-model"
     prompt_template: "tool_pattern_extraction"
     max_tokens: 2000
-  
+
   error_handling:
     on_llm_failure: "store without extraction, retry async"
     timeout_ms: 30000
@@ -488,23 +487,23 @@ ExtractStage:
 ```yaml
 CategorizeStage:
   name: "categorize"
-  
+
   inputs:
     - normalized_trace: ToolContent
     - extracted: ExtractedKnowledge
-  
+
   outputs:
     - categories: string[] (category paths)
     - tags: ToolExecutionTag[]
     - mentions: Mention[]
-  
+
   processing:
     - Apply categorization rules
     - Generate auto-tags
     - Infer domain/task tags
     - Extract mentions from content
     - Link to related executions
-  
+
   error_handling:
     on_no_match: "assign to 'uncategorized'"
 ```
@@ -514,25 +513,25 @@ CategorizeStage:
 ```yaml
 PersistStage:
   name: "persist"
-  
+
   inputs:
     - normalized_trace: ToolContent
     - extracted: ExtractedKnowledge
     - categories: string[]
     - tags: ToolExecutionTag[]
     - mentions: Mention[]
-  
+
   outputs:
     - bookmark: Bookmark
     - embedding_id: string
-  
+
   processing:
     - Construct final bookmark
     - Generate summary embedding
     - Store to database
     - Update category indexes
     - Emit events for subscribers
-  
+
   error_handling:
     on_storage_failure: "retry with backoff, max 3 attempts"
 ```
@@ -543,20 +542,20 @@ PersistStage:
 ToolExecutionPipeline:
   name: "tool_execution.capture"
   version: "1.0.0"
-  
+
   stages:
     - capture
     - normalize
     - extract
     - categorize
     - persist
-  
+
   settings:
     async_extraction: true
     batch_size: 10
     retry_attempts: 3
     timeout_total_ms: 60000
-  
+
   hooks:
     pre_capture: []
     post_persist:
@@ -580,11 +579,11 @@ Request:
   parent_invocation_id: string (UUID)
   session_id: string (required, UUID)
   agent_id: string (required)
-  
+
   input:
     parameters: object (required)
     context: object
-  
+
   output:
     result: object
     status: "success" | "failure" | "timeout" | "partial" (required)
@@ -592,7 +591,7 @@ Request:
       code: string
       message: string
       recoverable: boolean
-  
+
   execution:
     duration_ms: integer (required)
     tokens_used: integer
@@ -758,19 +757,19 @@ ctxt failure get <failure-id>
 ```yaml
 MCPToolHook:
   trigger: "before_tool_call" | "after_tool_call"
-  
+
   before_tool_call:
     actions:
       - Load relevant skills
       - Load relevant failure modes
       - Inject context into tool call
-  
+
   after_tool_call:
     actions:
       - Capture execution trace
       - Run extraction pipeline
       - Update agent context
-  
+
   configuration:
     enabled_tools: string[] | "*" (all)
     excluded_tools: string[]
@@ -784,13 +783,13 @@ MCPToolHook:
 type ToolExecutionRecorder interface {
     // BeforeInvocation records pre-execution state and loads context
     BeforeInvocation(ctx context.Context, inv *ToolInvocation) (*ExecutionContext, error)
-    
+
     // AfterInvocation records post-execution state
     AfterInvocation(ctx context.Context, inv *ToolInvocation, result *ToolResult) error
-    
+
     // RetrieveSkills loads relevant skills for a task
     RetrieveSkills(ctx context.Context, toolName string, task string) ([]Skill, error)
-    
+
     // RetrieveFailureModes loads relevant failure modes
     RetrieveFailureModes(ctx context.Context, toolName string, symptom string) ([]FailureMode, error)
 }
@@ -809,7 +808,7 @@ Events:
     subscribers:
       - "agent-context-updater"
       - "skill-notifier"
-  
+
   skill_extracted:
     payload:
       skill_id: string
@@ -819,7 +818,7 @@ Events:
     subscribers:
       - "skill-indexer"
       - "notification-service"
-  
+
   failure_mode_detected:
     payload:
       failure_id: string
@@ -841,42 +840,42 @@ Events:
 CREATE TABLE tool_executions (
     id UUID PRIMARY KEY,
     bookmark_id UUID REFERENCES bookmarks(id),
-    
+
     -- Tool identity
     tool_name VARCHAR(255) NOT NULL,
     tool_version VARCHAR(64),
     tool_namespace VARCHAR(64),
-    
+
     -- Invocation
     invocation_id UUID NOT NULL UNIQUE,
     parent_invocation_id UUID,
     session_id UUID NOT NULL,
     agent_id VARCHAR(255) NOT NULL,
     conversation_id UUID,
-    
+
     -- Status
     status VARCHAR(32) NOT NULL,
-    
+
     -- Metrics
     duration_ms INTEGER,
     tokens_used INTEGER,
     retry_count INTEGER DEFAULT 0,
-    
+
     -- Timestamps
     timestamp_start TIMESTAMPTZ NOT NULL,
     timestamp_end TIMESTAMPTZ NOT NULL,
-    
+
     -- Content (JSONB for flexibility)
     input JSONB,
     output JSONB,
     error JSONB,
     context JSONB,
-    
+
     -- Extracted knowledge
     extracted_skills JSONB,
     extracted_failure_modes JSONB,
     extracted_optimizations JSONB,
-    
+
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -892,26 +891,26 @@ CREATE INDEX idx_tool_executions_parent ON tool_executions(parent_invocation_id)
 CREATE TABLE extracted_skills (
     id UUID PRIMARY KEY,
     skill_id UUID NOT NULL UNIQUE,
-    
+
     -- Classification
     tool_name VARCHAR(255),
     domain VARCHAR(255),
-    
+
     -- Content
     pattern TEXT NOT NULL,
     preconditions TEXT[],
     steps TEXT[],
     outcome TEXT,
-    
+
     -- Metadata
     confidence FLOAT,
     usage_count INTEGER DEFAULT 0,
     last_used_at TIMESTAMPTZ,
-    
+
     -- Source
     source_execution_id UUID REFERENCES tool_executions(id),
     source_bookmark_id UUID REFERENCES bookmarks(id),
-    
+
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -920,27 +919,27 @@ CREATE TABLE extracted_skills (
 CREATE TABLE extracted_failure_modes (
     id UUID PRIMARY KEY,
     failure_id UUID NOT NULL UNIQUE,
-    
+
     -- Classification
     tool_name VARCHAR(255),
     error_code VARCHAR(255),
-    
+
     -- Content
     symptom TEXT NOT NULL,
     root_cause TEXT,
     detection TEXT,
     fix TEXT,
     prevention TEXT,
-    
+
     -- Metadata
     confidence FLOAT,
     occurrence_count INTEGER DEFAULT 1,
     last_occurred_at TIMESTAMPTZ,
-    
+
     -- Source
     source_execution_id UUID REFERENCES tool_executions(id),
     source_bookmark_id UUID REFERENCES bookmarks(id),
-    
+
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -961,19 +960,19 @@ CREATE TABLE tool_execution_hierarchy (
 CREATE TABLE tool_execution_embeddings (
     id UUID PRIMARY KEY,
     execution_id UUID REFERENCES tool_executions(id),
-    
+
     -- Embedding type
     embedding_type VARCHAR(32), -- 'summary', 'input', 'output', 'skill'
-    
+
     -- Vector
     embedding vector(1536), -- OpenAI ada-002 dimensions, adjust as needed
-    
+
     -- Metadata
     model VARCHAR(255),
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_tool_emb_vector ON tool_execution_embeddings 
+CREATE INDEX idx_tool_emb_vector ON tool_execution_embeddings
     USING ivfflat (embedding vector_cosine_ops)
     WITH (lists = 100);
 ```
@@ -1061,14 +1060,14 @@ CREATE INDEX idx_tool_emb_vector ON tool_execution_embeddings
   "type": "tool_execution",
   "subtype": "tool_execution.llm_call",
   "createdAt": "2026-02-18T10:30:00Z",
-  
+
   "content": {
     "tool_name": "llm_call",
     "tool_namespace": "builtin",
     "invocation_id": "660e8400-e29b-41d4-a716-446655440001",
     "session_id": "770e8400-e29b-41d4-a716-446655440002",
     "agent_id": "opencode",
-    
+
     "input": {
       "parameters": {
         "model": "claude-3-5-sonnet",
@@ -1076,14 +1075,14 @@ CREATE INDEX idx_tool_emb_vector ON tool_execution_embeddings
       },
       "intent": "code explanation"
     },
-    
+
     "output": {
       "result": {
         "response": "In Go, synchronous (sync) operations block..."
       },
       "status": "success"
     },
-    
+
     "execution": {
       "duration_ms": 1234,
       "tokens_used": 450,
@@ -1091,16 +1090,16 @@ CREATE INDEX idx_tool_emb_vector ON tool_execution_embeddings
       "timestamp_end": "2026-02-18T10:30:01.234Z"
     }
   },
-  
+
   "tags": [
     { "label": "tool.success", "namespace": "tool_execution", "confidence": 1.0, "source": "auto" },
     { "label": "domain.code-explanation", "namespace": "tool_execution", "confidence": 0.9, "source": "inferred" }
   ],
-  
+
   "mentions": [
     { "text": "Go", "mention_type": "Concept", "namespace": "concept", "slug": "go-language", "confidence": 0.95 }
   ],
-  
+
   "extracted": {
     "skills": [
       {
@@ -1124,14 +1123,14 @@ CREATE INDEX idx_tool_emb_vector ON tool_execution_embeddings
   "type": "tool_execution",
   "subtype": "tool_execution.file_op",
   "createdAt": "2026-02-18T11:00:00Z",
-  
+
   "content": {
     "tool_name": "write_file",
     "tool_namespace": "builtin",
     "invocation_id": "aa0e8400-e29b-41d4-a716-446655440005",
     "session_id": "770e8400-e29b-41d4-a716-446655440002",
     "agent_id": "opencode",
-    
+
     "input": {
       "parameters": {
         "path": "/etc/hosts",
@@ -1139,7 +1138,7 @@ CREATE INDEX idx_tool_emb_vector ON tool_execution_embeddings
       },
       "intent": "write system file"
     },
-    
+
     "output": {
       "result": null,
       "status": "failure",
@@ -1150,19 +1149,19 @@ CREATE INDEX idx_tool_emb_vector ON tool_execution_embeddings
         "recoverable": true
       }
     },
-    
+
     "execution": {
       "duration_ms": 5,
       "timestamp_start": "2026-02-18T11:00:00Z",
       "timestamp_end": "2026-02-18T11:00:00.005Z"
     }
   },
-  
+
   "tags": [
     { "label": "tool.failure", "namespace": "tool_execution", "confidence": 1.0, "source": "auto" },
     { "label": "error.recoverable", "namespace": "tool_execution", "confidence": 1.0, "source": "auto" }
   ],
-  
+
   "extracted": {
     "failure_modes": [
       {
@@ -1186,7 +1185,7 @@ CREATE INDEX idx_tool_emb_vector ON tool_execution_embeddings
 ```yaml
 tool_execution:
   enabled: true
-  
+
   capture:
     async: true
     timeout_ms: 5000
@@ -1194,14 +1193,14 @@ tool_execution:
       - "input.parameters.api_key"
       - "input.parameters.password"
       - "output.result.token"
-  
+
   extraction:
     enabled: true
     provider: "openai"
     model: "gpt-4o-mini"
     max_tokens: 2000
     timeout_ms: 30000
-  
+
   categorization:
     rules:
       - condition: "content.status == 'success'"
@@ -1210,12 +1209,12 @@ tool_execution:
         category: "tool_memory/by_tool/{tool_name}/failure"
       - condition: "extracted.skills.length > 0"
         category: "tool_memory/extracted/skills"
-  
+
   storage:
     retention_days: 365
     compression_after_days: 30
     max_trace_size_kb: 1024
-  
+
   retrieval:
     default_limit: 50
     max_limit: 200

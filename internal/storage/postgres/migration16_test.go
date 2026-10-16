@@ -9,6 +9,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	pgdrv "github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // TestPgMigration16_BackfillsTextContent migrates a schema-15 database
@@ -17,7 +18,7 @@ import (
 // is always raw_content.
 func TestPgMigration16_BackfillsTextContent(t *testing.T) {
 	dsn, _ := freshDatabaseDSN(t)
-	drv, err := pgdrv.New(dsn)
+	drv, err := pgdrv.New(dsn, storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatalf("postgres.New: %v", err)
 	}
@@ -114,7 +115,7 @@ func assertPgTextContentEverywhere(t *testing.T, objs storage.ObjectStore, term,
 	if listed[0].TextContent != want {
 		t.Errorf("List TextContent = %q, want %q", listed[0].TextContent, want)
 	}
-	bySQL, _, err := objs.ListBySQL(ctx, "id = $1", []any{"tc"}, 10, 0)
+	bySQL, _, err := objs.ListBySQL(ctx, "id = $1", []any{"tc"}, storage.ObjectFilter{Limit: 10})
 	if err != nil || len(bySQL) != 1 {
 		t.Fatalf("ListBySQL: %d objects, %v", len(bySQL), err)
 	}

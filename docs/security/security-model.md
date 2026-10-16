@@ -8,15 +8,17 @@ ContextHelp implements a **local-first, defense-in-depth security model** that p
 
 ### Core Security Guarantees
 
-> **Pre-alpha:** encryption at rest (ADR-019), API authentication (ADR-023), and
-> plugin sandboxing (ADR-027) are designed but not yet active at runtime.
+> **Pre-alpha:** encryption at rest (ADR-019) is designed but not active at
+> runtime. There is no plugin system ([ADR-078](../decisions/ADR-078-no-plugin-system.md)). API authentication is active:
+> static tokens with roles and scopes on protected and public instances.
 
 - **Local-First**: Minimal external communication by default ✅
 - **No Auto-Telemetry**: Zero automatic data transmission ✅
+- **Loopback by Default**: a `private` instance (the default) binds `127.0.0.1` only ✅
+- **Authenticated Remote Access**: `protected` / `public` instances require static tokens with roles ✅
 - **Encrypted Storage**: ⚠️ Planned — optional AES-256-GCM at rest (ADR-019)
-- **Process Isolation**: ⚠️ Planned — plugin/pipeline sandboxing (ADR-027)
-- **Secrets Protection**: Automatic detection and sanitization ✅
-- **Schema Validation**: All external inputs validated against strict schemas ✅
+- **Process Isolation**: ⚠️ Planned — sandboxing for installed steps (ADR-055)
+- **Secrets Protection**: plaintext-secret scan of config (`ctxt config validate`); logs are **not** sanitized
 - **Explicit Configuration**: Remote features require opt-in configuration ✅
 
 ## Threat Model
@@ -46,7 +48,6 @@ ContextHelp protects the following critical assets:
 
 4. **System Integrity**
    - Core application code
-   - Plugin manifests
    - Database schemas
    - Configuration files
 
@@ -63,11 +64,11 @@ ContextHelp protects the following critical assets:
 - Local privilege escalation
 
 **Mitigations**:
-- Localhost-only API binding by default
-- File permission validation (600 for sensitive files)
-- Optional storage encryption
-- User permission validation before data access
-- SELinux/AppArmor integration points
+- Localhost-only API binding by default (`server.access: private`)
+- Static-token authentication with role-based scopes on protected/public instances
+- Host header allowlist and cross-origin guard against DNS rebinding and CSRF
+- Config file permission check (`ctxt config doctor`, `--fix` sets 0600)
+- OS disk encryption for the data directory (no built-in encryption yet)
 
 #### 2. Credential Exposure
 
@@ -81,9 +82,10 @@ ContextHelp protects the following critical assets:
 - Version control history
 
 **Mitigations**:
-- Automatic log sanitization (all output redacted)
-- Secret pattern detection
-- Configuration validation
+- Plaintext-secret scan of config (`ctxt config validate`, `ctxt config doctor`)
+- Configuration validation (rejects `${VAR}` values, short or placeholder tokens)
+- Registry tokens in the OS keychain, never in config
+- No log sanitization: logs and `ctxt config show --format json` print values as-is
 - Pre-commit hook integration
 - Secrets management guidance
 
@@ -104,23 +106,23 @@ ContextHelp protects the following critical assets:
 - Configuration file integrity checks
 - Schema versioning for compatibility
 
-#### 4. Plugin/Pipeline Exploitation
+#### 4. Installed Step Exploitation
 
-**Threat**: Malicious or compromised plugins execute unauthorized code
+**Threat**: A malicious or compromised step installed from a step registry executes unauthorized code
 
 **Attack Vectors**:
-- Plugins access system resources
-- Plugins exfiltrate data
-- Plugins execute arbitrary commands
-- Plugins modify protected data
+- Steps access system resources
+- Steps exfiltrate data
+- Steps execute arbitrary commands
+- Steps modify protected data
 
 **Mitigations**:
-- Plugin sandboxing (capability-based)
-- Restricted file system access
-- No direct network access without permission
-- No access to other plugin data
-- Memory limits and execution timeouts
-- Permission manifest validation
+- Steps run out of process (ADR-058), never inside dpkms
+- Step install and uninstall need the `admin:steps` scope (admin role); a registry install needs a `trusted` or `sandboxed` registry and a matching archive sha256
+- The executable's sha256 is recorded at install and checked before every run
+- Process isolation: minimal environment, private working directory, timeout, CPU-time and stdout limits; no filesystem or network isolation
+- Container isolation (required for `sandboxed` registries): no network, read-only root, no capabilities, memory and CPU limits
+- A step may change only its writable object fields; a failing step fails its object
 
 #### 5. Data Exfiltration
 
@@ -128,7 +130,7 @@ ContextHelp protects the following critical assets:
 
 **Attack Vectors**:
 - Misconfigured external registries
-- Malicious plugins
+- Malicious installed steps
 - Compromised AI provider integrations
 - Unencrypted network traffic
 
@@ -137,24 +139,22 @@ ContextHelp protects the following critical assets:
 - No default external communication
 - TLS for all external connections
 - Registry permission scoping
-- Plugin data access restrictions
 - Audit logging of data access
 
 #### 6. Supply Chain Attacks
 
-**Threat**: Compromised dependencies, plugins, or registries
+**Threat**: Compromised dependencies, steps, or registries
 
 **Attack Vectors**:
-- Malicious plugin packages
+- Malicious steps published to a step registry
 - Compromised registry data
 - Vulnerable dependencies
-- Typosquatting on plugin names
+- Typosquatting on step names
 
 **Mitigations**:
-- Plugin manifest validation
 - Registry signature verification (future)
 - Dependency scanning
-- Plugin permission review before installation
+- Step review before installation
 - Allowlist/blocklist support
 - Version pinning recommendations
 
@@ -171,7 +171,7 @@ ContextHelp protects the following critical assets:
 **Mitigations**:
 - Input size limits
 - Execution timeouts
-- Memory limits per pipeline/plugin
+- Memory limits per pipeline/step
 - Rate limiting on registry access
 - Job queue backpressure
 - Resource monitoring and alerts
@@ -247,23 +247,21 @@ ContextHelp protects the following critical assets:
 - Rate limiting
 - Fallback to local models
 
-### Boundary 4: Plugins
+### Boundary 4: Installed Steps
 
 **Trust Level**: Low (Untrusted code)
 
 **Components**:
-- Plugin code
-- Plugin configuration
-- Plugin data access
-- Plugin network access
+- Step code installed from a step registry
+- Step configuration
+- Step data and network access
 
 **Protection**:
-- Capability-based permissions
-- Sandbox execution environment
+- Out-of-process execution (ADR-058, designed)
+- Sandbox isolation levels (ADR-055)
 - Memory and CPU limits
 - File system restrictions
 - Network access whitelisting
-- Data access scoping
 
 ### Boundary 5: REST/gRPC APIs
 
@@ -276,34 +274,50 @@ ContextHelp protects the following critical assets:
 - TLS certificates
 
 **Protection**:
-- Localhost binding by default
-- Optional TLS termination
-- Authentication/authorization checks
-- Input validation and rate limiting
-- Output sanitization
-- CORS restrictions
+- Localhost binding by default; `protected` / `public` bind all interfaces
+  and require inbound auth
+- Bearer / `X-API-Key` static tokens; one scope per route and gRPC method
+- Host header allowlist, cross-origin guard, JSON-only request bodies
+- `/healthz` details hidden from anonymous callers on public instances
+- No TLS in dpkms: terminate it at a reverse proxy
+- No rate limiting; per-principal quotas (`server.quotas`) cap the
+  entity-serving surface only
 
 ## Security Controls
 
 ### Authentication & Authorization
 
-> ⚠️ **Planned** — auth system designed in ADR-023; not yet enforced at runtime.
-> Current release binds to localhost by default; no token required for local access.
+**Access classes** (`server.access`):
+- `private` (default): binds `127.0.0.1`, authenticates nobody, every local
+  caller holds every scope. The Host check is always on.
+- `protected` / `public`: bind all interfaces and require
+  `server.auth.provider: static` with at least one token; `dpkms serve`
+  refuses to start otherwise.
 
-**REST API** (planned):
-- Optional JWT token authentication
-- Session-based authentication
-- mTLS support for internal connections
-- Per-user permission scopes
+**REST, gRPC and MCP** (`internal/auth`, active on protected/public):
+- Static tokens from `server.auth.static.tokens`, each with a `principal`
+  and one or more roles (`admin`, `writer`, `reader`); at least 32
+  characters, no `REPLACE_ME`. Sent as `Authorization: Bearer` or
+  `X-API-Key`.
+- Roles expand to scopes (`read:objects`, `write:objects`, `delete:edges`,
+  `read:mcp`, `admin:audit`, ...). Every `/api/v1` route and gRPC method
+  requires one; `401` without a valid token, `403 INSUFFICIENT_SCOPE`
+  without the scope.
+- Web UI sessions: `ctxt ui open` mints a single-use sign-in link; the
+  session holds the intersection of the web UI's scope set and its
+  token's scopes, expires on `server.ui.session.idle_ttl` / `max_ttl`, and
+  ends when the token is removed. `dpkms session list|revoke` manage them.
+- Federation push on non-private instances also needs `federation.token`.
+- Not implemented: `oidc` and `mtls` providers (reserved names), per-user
+  accounts.
 
-**gRPC API** (planned):
-- JWT token validation
-- Per-connection authentication
-- Stream-level authorization checks
+Reference: [Inbound auth, roles and scopes](../manual/reference/config-and-permissions.md#inbound-auth-roles-and-scopes),
+[Web UI sessions](../manual/reference/config-and-permissions.md#web-ui-sessions).
 
-**CLI** (active):
-- Local user authentication via OS file permissions (0600 config)
-- No network authentication needed for local-only operation
+**CLI**:
+- `server.token` / `server.urls[].token` hold the token ctxt sends to a
+  protected instance
+- Local-only operation needs no token
 
 ### Encryption
 
@@ -346,19 +360,14 @@ ContextHelp protects the following critical assets:
 **External Data**:
 - Registry response schema validation
 - AI provider response validation
-- Plugin manifest validation
 - Certificate validation
 
 ### Process Isolation
 
-**Plugin Isolation**:
-- Separate process or WASM runtime
-- Capability-based permission model
-- Memory limits (default: 256MB)
-- CPU time limits (default: 5 minutes)
-- Disk I/O restrictions
-- Network access restrictions
-- File system restrictions to plugin directory
+**Installed Step Isolation**:
+- Separate process or container (ADR-058, ADR-055; designed)
+- Memory and CPU time limits
+- Disk I/O and network access restrictions
 
 **Pipeline Isolation**:
 - Separate execution context
@@ -370,21 +379,27 @@ ContextHelp protects the following critical assets:
 ### Audit Logging
 
 **Events Logged**:
-- Authentication attempts (successes and failures)
-- Permission checks and denials
-- Configuration changes
-- Plugin installations/removals
-- Registry access attempts
-- Secrets detection (without exposing)
-- Data access patterns
-- Error conditions
+- Repeated authentication failures and ACL denials past the
+  `security.alerts` thresholds (`security.auth_failure`,
+  `security.acl_denial`) and quota exhaustion (`security.quota_exhausted`)
+- Duplicate detection (`dedup.*`) and fan-out enrichment (`fanout.completed`)
+- `ctxt doctor` runs (`doctor.run`)
+- Not recorded: successful sign-ins, configuration changes, step installs
 
 **Log Protection**:
-- Automatic sanitization of sensitive data
-- Structured logging for analysis
-- Immutable log appending
-- Log rotation and retention
-- Syslog integration for centralization
+- The audit log lives in the dpkms database; read it with `ctxt audit list`
+  / `ctxt audit export` (`admin:audit` scope over HTTP)
+- No forwarding: ship it to a SIEM with a scheduled `ctxt audit export`
+- Security alerts (`security.alerts`) to the audit log, a webhook or SMTP.
+  Their audit rows go through a bounded queue (1024 rows) with one writer:
+  `dpkms serve` writes the queued rows before it closes the store on
+  shutdown (within `jobs.drain_timeout`). A full queue drops rows instead
+  of slowing requests, with a `security: audit rows dropped` warning
+  (`dropped_total`) at most every 10s. Each webhook POST or SMTP session
+  ends after `security.alerts.delivery_timeout` (10s), and shutdown
+  cancels the ones still running when `jobs.drain_timeout` runs out
+- No sanitization: process logs are written as-is (see
+  [Secrets Validation and Log Sanitization](secrets-validation-and-log-sanitization.md#what-output-shows-secrets))
 
 ## Compliance & Standards
 
@@ -398,9 +413,9 @@ ContextHelp protects the following critical assets:
 | A04 Insecure Design | Threat modeling, secure defaults, least privilege |
 | A05 Security Misconfiguration | Validation tools, secure defaults, warnings |
 | A06 Vulnerable Components | Dependency scanning, version management |
-| A07 Authentication Failure | Optional auth, secure token handling |
+| A07 Authentication Failure | Mandatory static-token auth off loopback, 32-char minimum, placeholder rejection, constant-time compare |
 | A08 Data Integrity | Schema validation, HMAC verification |
-| A09 Logging & Monitoring | Audit logging, sanitization |
+| A09 Logging & Monitoring | Audit log, security alerts to webhook/SMTP (no audit forwarding, no log sanitization) |
 | A10 SSRF | No automatic external calls, whitelisting |
 
 ### Security Standards
@@ -414,29 +429,35 @@ ContextHelp protects the following critical assets:
 
 ### Local Development
 
-**Secure Defaults**:
+**Secure Defaults**: the defaults are already local-only. `dpkms serve`
+binds 127.0.0.1 while `server.access` is `private` (the default), storage
+is SQLite, telemetry is off. No env var is needed:
+
 ```bash
-# Dev config
-CH_DEBUG=true
-CH_LOG_LEVEL=debug
-CH_SECURITY_LOGGING_SANITIZE=true  # Even in dev
-CH_STORAGE_TYPE=sqlite
-CH_STORAGE_ENCRYPTION=false        # OK for local dev
+dpkms serve --verbose   # debug logs; there is no log-level env var
 ```
+
+There is no storage-encryption or log-sanitization setting; see
+[Encryption](#encryption) for at-rest protection.
 
 ### Server Deployment
 
 **Production Requirements**:
 ```bash
-# Production config
-CH_HTTP_PORT=8080
-CH_PUBLIC=false                    # Local only, or use reverse proxy
-ENCRYPTION_ENABLED=true
-ENCRYPTION_PASSPHRASE=${VAULT_KEY}
-POSTGRES_HOST=db.internal.local
-POSTGRES_PASSWORD=${VAULT_DB_PASS}
+CH_STORAGE_TYPE=postgres           # DSN goes in storage.path
+PGPASSWORD=$(vault kv get -field=password secret/db)
+CTXT_SECRETS_BACKEND=keyring       # provider API keys from the OS keychain
 CH_DISABLE_TELEMETRY=true
 ```
+
+Never put a `private` instance behind a reverse proxy: it authenticates
+nobody, so the proxy opens the whole API. For remote access use
+`server.access: protected` behind a TLS-terminating proxy
+([Put dpkms Behind a Reverse Proxy](../manual/operations/reverse-proxy.md)),
+or tunnel to a private instance over SSH. `protected` and `public`
+instances need inbound auth under `server.auth`, or serve refuses to
+start — see
+[Inbound auth, roles and scopes](../manual/reference/config-and-permissions.md#inbound-auth-roles-and-scopes).
 
 **Network Security**:
 - Run behind reverse proxy (nginx, HAProxy)
@@ -497,8 +518,8 @@ USER contexthelp
 Monitor for:
 - Unusual registry access patterns
 - Failed authentication attempts
-- Secrets detected in logs
-- Plugin crashes or resource overuse
+- `security.*` entries in the audit log (`ctxt audit list --event-type security.auth_failure`)
+- Step crashes or resource overuse
 - Unauthorized file access
 
 ### Response Procedures
@@ -514,7 +535,7 @@ See [Secret Management - Incident Response](./secret-management.md#incident-resp
 
 Planned security improvements:
 
-- **WASM Sandboxing**: Replace Go plugin sandbox with WebAssembly
+- **WASM Sandboxing**: WebAssembly runtime for installed steps
 - **Registry Signatures**: Cryptographic verification of registry data
 - **Distributed Trust**: Multi-signature support for critical operations
 - **Hardware Keys**: Hardware security module support
@@ -534,9 +555,9 @@ For security issues:
 ### Internal Documentation
 - [ADR-019: Encryption and Privacy](../decisions/ADR-019-encryption-and-privacy.md)
 - [ADR-023: Authentication and Authorization](../decisions/ADR-023-authentication-authorization-model.md)
-- [ADR-027: Plugin Isolation and Sandboxing](../decisions/ADR-027-plugin-isolation-sandboxing.md)
+- [ADR-055: Sandbox Isolation Levels](../decisions/ADR-055-sandbox-isolation-levels.md)
+- [ADR-078: No Plugin System](../decisions/ADR-078-no-plugin-system.md)
 - [dPKMS Security](../dpkms/security.md)
-- [Plugin Isolation](../plugins/plugin-isolation.md)
 
 ### External Standards
 - [NIST Cybersecurity Framework](https://www.nist.gov/cyberframework)
@@ -552,7 +573,7 @@ ContextHelp's security model provides:
 - **Local-first privacy** with explicit opt-in for external features
 - **Zero trust** for all external sources
 - **Automatic secret protection** through detection and sanitization
-- **Process isolation** for plugins and pipelines
+- **Process isolation** for installed steps and pipelines
 - **Comprehensive audit logging** for compliance
 - **Clear threat modeling** and documented mitigations
 

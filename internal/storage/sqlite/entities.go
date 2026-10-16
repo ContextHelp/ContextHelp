@@ -8,11 +8,22 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 type EntityStore struct {
 	db *sql.DB
+	// scope, when set, keeps every read to the entities the viewer may
+	// see (see scope.go).
+	scope *storage.Scope
 }
+
+// errEntityNotFound is the answer for a missing entity and for one the
+// scope hides alike.
+var errEntityNotFound = fmt.Errorf("entity %w", storage.ErrNotFound)
+
+// noEntities reports whether the scope admits no entity at all.
+func (s *EntityStore) noEntities() bool { return s.scope != nil && !s.scope.Entities }
 
 // Upsert inserts or fully replaces an entity. Sets content_status = 'full' unless
 // the caller has already populated it.
@@ -92,23 +103,46 @@ func (s *EntityStore) SetContentStatus(ctx context.Context, slug string, status 
 }
 
 func (s *EntityStore) Get(ctx context.Context, slug string) (*storage.Entity, error) {
+	if s.noEntities() {
+		return nil, errEntityNotFound
+	}
+	clause, sargs := entityScope(s.scope)
+	// #nosec G202 -- clause is fixed SQL over compiled predicates; values are bound.
 	row := s.db.QueryRowContext(ctx, `SELECT
 		slug, title, description, namespace, aliases, metadata,
 		content_status, version_hash, registry_url,
 		created_at, updated_at
-	FROM entities WHERE slug = ?`, slug)
+	FROM entities WHERE slug = ?`+clause, append([]any{slug}, sargs...)...)
 	return scanEntity(row)
 }
 
 func (s *EntityStore) List(ctx context.Context, filter storage.EntityFilter) ([]*storage.Entity, error) {
+	if s.noEntities() {
+		return []*storage.Entity{}, nil
+	}
 	query := `SELECT slug, title, description, namespace, aliases, metadata,
 		content_status, version_hash, registry_url,
 		created_at, updated_at FROM entities WHERE 1=1`
 	var args []any
+	if clause, sargs := entityScope(s.scope); clause != "" {
+		// #nosec G202 -- clause is fixed SQL over compiled predicates; values are bound.
+		query += clause
+		args = append(args, sargs...)
+	}
 
 	if filter.Namespace != "" {
 		query += " AND namespace = ?"
 		args = append(args, filter.Namespace)
+	}
+	if len(filter.Namespaces) > 0 {
+		// One JSON array parameter, however many namespaces: no
+		// variable-count limit to hit.
+		set, err := json.Marshal(filter.Namespaces)
+		if err != nil {
+			return nil, fmt.Errorf("list entities: encode namespaces: %w", err)
+		}
+		query += " AND namespace IN (SELECT value FROM json_each(?))"
+		args = append(args, string(set))
 	}
 	if filter.ContentStatus != "" {
 		query += " AND content_status = ?"
@@ -136,37 +170,58 @@ func (s *EntityStore) List(ctx context.Context, filter storage.EntityFilter) ([]
 	}
 	defer rows.Close()
 
-	var entities []*storage.Entity
-	for rows.Next() {
-		e, err := scanEntityFromRows(rows)
-		if err != nil {
-			return nil, err
-		}
-		entities = append(entities, e)
+	return rowscan.All(rows, scanEntityFromRows)
+}
+
+// Namespaces returns each distinct namespace of the stored entities
+// once, ascending. A scoped store lists the namespaces of the entities
+// its scope shows only, as List does.
+func (s *EntityStore) Namespaces(ctx context.Context) ([]string, error) {
+	if s.noEntities() {
+		return []string{}, nil
 	}
-	return entities, rows.Err()
+	clause, sargs := entityScope(s.scope)
+	// #nosec G202 -- clause is fixed SQL over compiled predicates; values are bound.
+	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT namespace FROM entities WHERE 1=1`+clause+` ORDER BY namespace`, sargs...)
+	if err != nil {
+		return nil, fmt.Errorf("list entity namespaces: %w", err)
+	}
+	defer rows.Close()
+	return rowscan.All(rows, scanNamespace)
+}
+
+func scanNamespace(rows *sql.Rows) (string, error) {
+	var ns string
+	err := rows.Scan(&ns)
+	return ns, err
 }
 
 func (s *EntityStore) Resolve(ctx context.Context, mention string) (*storage.Entity, error) {
+	if s.noEntities() {
+		return nil, errEntityNotFound
+	}
+	clause, sargs := entityScope(s.scope)
 	// First try exact slug match.
+	// #nosec G202 -- clause is fixed SQL over compiled predicates; values are bound.
 	row := s.db.QueryRowContext(ctx, `SELECT
 		slug, title, description, namespace, aliases, metadata,
 		content_status, version_hash, registry_url,
 		created_at, updated_at
-	FROM entities WHERE slug = ?`, mention)
+	FROM entities WHERE slug = ?`+clause, append([]any{mention}, sargs...)...)
 	entity, err := scanEntity(row)
 	if err == nil {
 		return entity, nil
 	}
 
 	// Try alias match.
+	// #nosec G202 -- clause is fixed SQL over compiled predicates; values are bound.
 	row = s.db.QueryRowContext(ctx, `SELECT
 		slug, title, description, namespace, aliases, metadata,
 		content_status, version_hash, registry_url,
 		created_at, updated_at
 	FROM entities WHERE EXISTS (
 		SELECT 1 FROM json_each(aliases) WHERE json_each.value = ?
-	)`, mention)
+	)`+clause, append([]any{mention}, sargs...)...)
 	return scanEntity(row)
 }
 

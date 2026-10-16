@@ -258,7 +258,7 @@ func (v *GraphSafetyValidator) ValidateMention(ctx context.Context, mention, ste
 func (v *GraphSafetyValidator) ValidateEdge(ctx context.Context, edge *storage.Edge, step string) Violations {
 	var vs Violations
 
-	if edge.ToType == "entity" {
+	if edge.ToType == storage.EdgeEndpointEntity {
 		// Validate entity target exists and slug is canonical.
 		if err := validateMentionSyntax(edge.ToID); err != nil {
 			vs = append(vs, &ErrIntegrityViolation{
@@ -333,7 +333,7 @@ func FindOrphanedEdges(ctx context.Context, es storage.EntityStore, edgeStore st
 	}
 	var orphans []string
 	for _, e := range edges {
-		if e.ToType != "entity" {
+		if e.ToType != storage.EdgeEndpointEntity {
 			continue
 		}
 		slug := mentionToSlug(e.ToID)
@@ -394,7 +394,7 @@ func validateMentionSyntax(s string) error {
 func mentionToSlug(s string) string {
 	s = strings.TrimPrefix(s, "@")
 	if strings.HasPrefix(s, "ctxt://entity/") {
-		// ctxt://entity/stripe/api/checkout → stripe.api.checkout
+		// The URI path becomes the dotted slug: stripe/api/checkout → stripe.api.checkout.
 		rest := strings.TrimPrefix(s, "ctxt://entity/")
 		return strings.ReplaceAll(rest, "/", ".")
 	}

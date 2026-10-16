@@ -1,7 +1,6 @@
 package http
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -13,12 +12,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
+	"github.com/ideacrafterslabs/ctxt/internal/auth/authtest"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/security"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing/sharingtest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
@@ -26,8 +27,8 @@ import (
 // newGatedServer builds an authenticated router with the inbound
 // entitlement gate and a threshold-1 security emitter, seeded with one
 // entity in a granted namespace and one outside it. The gated test
-// principal "ops" (token tok-valid, role writer) and the admin
-// principal "owner" (token tok-admin) are both granted "ai.*"; only the
+// principal "ops" (token tok-valid-fixture-0123456789abcdef0123456789, role writer) and the admin
+// principal "owner" (token tok-admin-fixture-0123456789abcdef0123456789) are both granted "ai.*"; only the
 // admin bypasses the gate.
 func newGatedServer(t *testing.T) (*httptest.Server, *registry.InboundGate, <-chan security.Alert) {
 	t.Helper()
@@ -42,20 +43,29 @@ func newGatedServerWithDriver(t *testing.T, driver storage.StorageDriver) (*http
 	q := jobs.NewQueue(driver.Jobs())
 	svc := service.New(driver, q, builtins.Registry(), search.NewEngine(driver), "", nil)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 	now := time.Now().Truncate(time.Second)
 	for slug, ns := range map[string]string{
 		"ai.bert":    "ai.models",
 		"med.claims": "med.records",
 	} {
+		// Registry-served entities: the gate is about namespace
+		// entitlements to a registry, and a registry entity is what a
+		// granted viewer may see without a mention (ADR-080 §6).
 		require.NoError(t, driver.Entities().Upsert(ctx, &storage.Entity{
-			Slug: slug, Title: slug, Namespace: ns, CreatedAt: now, UpdatedAt: now,
+			Slug: slug, Title: slug, Namespace: ns, RegistryURL: "https://registry.test",
+			CreatedAt: now, UpdatedAt: now,
 		}))
 	}
+	// The reader is a non-owner principal: it sees entities only
+	// through a share grant; the namespace entitlement narrows further.
+	sharingtest.EnsurePrincipal(t, driver, "ops", storage.PrincipalKindPerson, authn.RoleReader)
+	sharingtest.GrantEverything(t, driver, "ops")
 	// Both principals hold a grant limited to ai.*: only the admin
 	// bypass lets "owner" past it.
 	for _, principal := range []string{"ops", "owner"} {
 		require.NoError(t, driver.Entitlements().Upsert(ctx, &storage.RegistryEntitlement{
+			Kind:         storage.EntitlementInbound,
 			RegistryName: principal,
 			Plan:         "inbound",
 			Namespaces:   []string{"ai.*"},
@@ -65,11 +75,10 @@ func newGatedServerWithDriver(t *testing.T, driver storage.StorageDriver) (*http
 
 	gate := registry.NewInboundGate(driver.Entitlements(), driver.Metering())
 	em, alerts := newAlertCapture(t)
-	provider, err := authn.NewStatic([]authn.StaticToken{
-		{Token: "tok-valid", Principal: "ops", Roles: []string{authn.RoleWriter}},
-		{Token: "tok-admin", Principal: "owner", Roles: []string{authn.RoleAdmin}},
-	})
-	require.NoError(t, err)
+	provider := authtest.TokenChain(
+		authtest.Token{Token: "tok-valid-fixture-0123456789abcdef0123456789", Principal: "ops", Roles: []string{authn.RoleWriter}},
+		authtest.Token{Token: "tok-admin-fixture-0123456789abcdef0123456789", Principal: "owner", Roles: []string{authn.RoleAdmin}},
+	)
 	ts := httptest.NewServer(NewRouterWithConfig(svc, RouterConfig{
 		Auth:         provider,
 		Security:     em,
@@ -81,7 +90,7 @@ func newGatedServerWithDriver(t *testing.T, driver storage.StorageDriver) (*http
 
 func gatedDo(t *testing.T, method, url string) (*http.Response, []byte) {
 	t.Helper()
-	return gatedDoAs(t, "tok-valid", method, url)
+	return gatedDoAs(t, "tok-valid-fixture-0123456789abcdef0123456789", method, url)
 }
 
 func gatedDoAs(t *testing.T, token, method, url string) (*http.Response, []byte) {

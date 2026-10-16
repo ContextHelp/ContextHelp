@@ -41,7 +41,6 @@ export interface KnowledgeObject {
   pipeline?: string;
   source?: string;
   registry_influences?: string[];
-  plugins?: Record<string, unknown>;
   content_hash?: string;
   reinforcement_count?: number;
   last_reinforced_at?: string;

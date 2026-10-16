@@ -10,6 +10,26 @@ on:
       - main
       - next
   workflow_dispatch:
+  # release.yml runs this whole workflow as the gate in front of a
+  # release, so a tag ships only after every job here passes on it. In a
+  # called run the github context is the caller's (event push, ref
+  # refs/tags/v*), so a job-level `if:` written for the triggers above can
+  # skip a gate on release; scripts/check-toolchain-pins.sh refuses one.
+  workflow_call:
+    outputs:
+      go-version:
+        description: Go version pinned in mise.toml
+        value: ${{ jobs.toolchain.outputs.go-version }}
+      goreleaser-version:
+        description: GoReleaser version pinned in mise.toml
+        value: ${{ jobs.toolchain.outputs.goreleaser-version }}
+
+# Every check step below is `make <target>`: the Makefile holds the
+# commands, flags, tags and env, and `make ci-<job>` runs the same targets
+# in the same order on a laptop (`make ci` runs every job).
+# scripts/check-ci-parity.sh (the toolchain job runs it) fails when a step
+# runs anything inline or ci-<job> stops matching. Steps that only install
+# a tool are exempt; scripts/ci/tools.sh gives a local run the same pins.
 
 jobs:
   # mise.toml is the single source of truth for tool versions. This job parses
@@ -22,6 +42,9 @@ jobs:
     outputs:
       go-version: ${{ steps.pins.outputs.go-version }}
       golangci-version: ${{ steps.pins.outputs.golangci-version }}
+      node-version: ${{ steps.pins.outputs.node-version }}
+      gitleaks-version: ${{ steps.pins.outputs.gitleaks-version }}
+      goreleaser-version: ${{ steps.pins.outputs.goreleaser-version }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -31,49 +54,77 @@ jobs:
         run: |
           go_version=$(sed -n 's/^go = "\(.*\)"$/\1/p' mise.toml)
           golangci_version=$(sed -n 's/^"go:.*golangci-lint" = "\(.*\)"$/\1/p' mise.toml)
-          if [ -z "$go_version" ] || [ -z "$golangci_version" ]; then
-            echo "mise.toml is missing an exact go or golangci-lint pin" >&2
+          node_version=$(sed -n 's/^node = "\(.*\)"$/\1/p' mise.toml)
+          gitleaks_version=$(sed -n 's/^gitleaks = "\(.*\)"$/\1/p' mise.toml)
+          goreleaser_version=$(sed -n 's/^goreleaser = "\(.*\)"$/\1/p' mise.toml)
+          if [ -z "$go_version" ] || [ -z "$golangci_version" ] || [ -z "$node_version" ] || [ -z "$gitleaks_version" ] || [ -z "$goreleaser_version" ]; then
+            echo "mise.toml is missing an exact go, golangci-lint, node, gitleaks or goreleaser pin" >&2
             exit 1
           fi
-          echo "go-version=$go_version" >>"$GITHUB_OUTPUT"
-          echo "golangci-version=$golangci_version" >>"$GITHUB_OUTPUT"
-          echo "go=$go_version golangci-lint=$golangci_version"
+          {
+            echo "go-version=$go_version"
+            echo "golangci-version=$golangci_version"
+            echo "node-version=$node_version"
+            echo "gitleaks-version=$gitleaks_version"
+            echo "goreleaser-version=$goreleaser_version"
+          } >>"$GITHUB_OUTPUT"
+          echo "go=$go_version golangci-lint=$golangci_version node=$node_version gitleaks=$gitleaks_version goreleaser=$goreleaser_version"
 
       - name: Verify every toolchain declaration agrees
-        run: scripts/check-toolchain-pins.sh
+        run: make toolchain-check
 
-  # ── DISABLED: secret scanning runs locally ───────────────────────────────
-  # gitleaks-action requires a license for organization-owned repos and this
-  # repo is org-owned, so the job fails with "missing gitleaks license"
-  # before scanning anything. Until a GITLEAKS_LICENSE secret exists, secret
-  # scanning runs locally instead: `make install-hooks` wires a pre-commit
-  # hook, `make secret-scan-local` scans the working tree.
-  #
-  # To re-enable: obtain a free key at gitleaks.io, add it as the
-  # GITLEAKS_LICENSE secret, uncomment this job, and restore secret-scan to
-  # the build job's needs list.
-  # secret-scan:
-  #   name: Secret Scanning (gitleaks)
-  #   runs-on: ubuntu-latest
-  #   permissions:
-  #     contents: read
-  #     pull-requests: read
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@v7
-  #       with:
-  #         fetch-depth: 0
-  #
-  #     - name: Run gitleaks
-  #       uses: gitleaks/gitleaks-action@v3
-  #       env:
-  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  #         # Organization-owned repos need a (free) gitleaks license; personal
-  #         # accounts do not. This repo moved to the ContextHelp org, so the
-  #         # scan started failing with "missing gitleaks license". Obtain one
-  #         # at gitleaks.io and store it as the GITLEAKS_LICENSE secret.
-  #         GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
-  #
+      - name: Verify make ci-<job> runs what each job runs
+        run: make ci-parity-check
+
+      # The release binary at the mise.toml pin; release.yml runs the same.
+      - name: Install goreleaser
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          install-only: true
+          version: v${{ steps.pins.outputs.goreleaser-version }}
+
+      # A field this GoReleaser does not know fails here, not at tag time.
+      - name: Check GoReleaser config
+        run: make goreleaser-check
+
+  # History secret scan: every commit reachable from the checked-out ref,
+  # minus the reviewed findings baselined in .gitleaksignore, so only new
+  # findings fail. Runs the gitleaks CLI release pinned in mise.toml, not
+  # gitleaks-action: the action needs a GITLEAKS_LICENSE secret for
+  # organization-owned repos, the MIT-licensed CLI needs nothing.
+  secret-scan:
+    name: Secret Scanning (gitleaks)
+    needs: toolchain
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          # Full history: the scan walks every commit, not just the tip.
+          fetch-depth: 0
+
+      # The release tarball, checked against the release's checksum file.
+      # `go install` would build a binary whose `gitleaks version` is a
+      # placeholder, failing the pin check in `make install-gitleaks`.
+      - name: Install gitleaks
+        env:
+          GITLEAKS_VERSION: ${{ needs.toolchain.outputs.gitleaks-version }}
+        run: |
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          tarball="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          cd "$RUNNER_TEMP"
+          curl -sSfL -o "$tarball" "$base/$tarball"
+          curl -sSfL -o checksums.txt "$base/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          grep " $tarball\$" checksums.txt | sha256sum -c -
+          tar -xzf "$tarball" gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: Scan history
+        run: make security-scan
+
   lint:
     name: Lint
     needs: toolchain
@@ -93,42 +144,59 @@ jobs:
           go-version: ${{ needs.toolchain.outputs.go-version }}
           cache: true
 
-      # go.mod ships local-path replace directives for hop.top/kit and
-      # hop.top/c12n (developer convenience). Strip them before any Go
-      # step so published tags resolve via the module proxy. No-op when
-      # the directives are absent (e.g. on main after rollout).
+      # Strips local-path replaces of the CI_DROP_REPLACES modules, so
+      # published tags resolve via the module proxy; no-op without them.
       - name: Drop local-path replaces
-        run: go mod edit -dropreplace=hop.top/kit -dropreplace=hop.top/c12n
+        run: make ci-drop-replaces
 
       - name: Install golangci-lint
         run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v${{ needs.toolchain.outputs.golangci-version }}
 
-      # Gate on findings this branch INTRODUCES. The pre-existing backlog
-      # is real but large, and blocking every PR on it means the gate gets
-      # switched off — which is exactly what scripts/hooks/golangci-staged.sh
-      # already says about the local hook.
-      - name: Run golangci-lint (new findings)
-        run: |
-          base="${{ github.event.pull_request.base.sha }}"
-          [ -n "$base" ] || base="HEAD~1"
-          golangci-lint run --timeout=10m --new-from-rev="$base"
-
-      # The whole-repo scan stays visible so the backlog cannot grow
-      # unnoticed, but does not block: it reports the standing count.
-      - name: Run golangci-lint (full scan, advisory)
-        continue-on-error: true
-        run: golangci-lint run --timeout=10m
+      # The whole repo is at zero findings at the pinned version, so the
+      # full scan blocks. There is no new-findings step: a full scan is a
+      # superset of one. The local hook (scripts/hooks/golangci-staged.sh)
+      # keeps --new-from-rev for speed, and `make lint-new` does the same.
+      - name: Run golangci-lint (full scan)
+        run: make ci-lint-full
 
       - name: Check formatting
-        run: |
-          if [ -n "$(gofmt -l .)" ]; then
-            echo "Go code is not formatted. Run: gofmt -w ."
-            gofmt -d .
-            exit 1
-          fi
+        run: make ci-gofmt
 
       - name: Run go vet
-        run: go vet -tags fts5 ./...
+        run: make ci-vet
+
+  # GoReleaser ships windows/amd64 binaries, cross-compiled with CGO and
+  # mingw-w64 (release.yml). Type-check every package, tests included, for
+  # that target with the same toolchain so Unix-only syscalls fail here
+  # instead of at tag time, then build the two binaries as GoReleaser does
+  # (the C amalgamations compile and link only in that step).
+  windows:
+    name: Windows compile check
+    needs: toolchain
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: ${{ needs.toolchain.outputs.go-version }}
+          cache: true
+
+      # Strips local-path replaces of the CI_DROP_REPLACES modules, so
+      # published tags resolve via the module proxy; no-op without them.
+      - name: Drop local-path replaces
+        run: make ci-drop-replaces
+
+      - name: Install mingw-w64 (Windows CGO cross-compilation)
+        run: sudo apt-get install -y gcc-mingw-w64-x86-64
+
+      - name: Vet for windows/amd64
+        run: make ci-windows-vet
+
+      - name: Build ctxt and dpkms for windows/amd64
+        run: make ci-windows-build
 
   security:
     name: Security Scan
@@ -147,45 +215,16 @@ jobs:
           go-version: ${{ needs.toolchain.outputs.go-version }}
           cache: true
 
-      # go.mod ships local-path replace directives for hop.top/kit and
-      # hop.top/c12n (developer convenience). Strip them before any Go
-      # step so published tags resolve via the module proxy. No-op when
-      # the directives are absent (e.g. on main after rollout).
+      # Strips local-path replaces of the CI_DROP_REPLACES modules, so
+      # published tags resolve via the module proxy; no-op without them.
       - name: Drop local-path replaces
-        run: go mod edit -dropreplace=hop.top/kit -dropreplace=hop.top/c12n
+        run: make ci-drop-replaces
 
-      - name: Install gosec
-        run: go install github.com/securego/gosec/v2/cmd/gosec@v2.29.0
-
+      # gosec and govulncheck run via `go run <pkg>@<version>` at the
+      # Makefile's GOSEC_VERSION / GOVULNCHECK_VERSION. gosec needs -tags
+      # fts5 or it analyzes nothing in 34 packages; see the gosec target.
       - name: Run gosec (fail on medium+ severity)
-        # -tags fts5 is required, not cosmetic: without it 34 packages fail to
-        # type-check and gosec logs "skipping SSA analysis, no ssa result" for
-        # each, so the taint-tracking rules silently analyze nothing there.
-        run: |
-          # -tags fts5 is required, not cosmetic. The storage layer is
-          # compiled against SQLite's FTS5 module and guards the tag with
-          # a build sentinel, so without it 34 packages fail to type-check
-          # and gosec logs "skipping SSA analysis" and moves on — it
-          # reports success for code it never looked at. govulncheck in
-          # this same job already passes the tag.
-          #
-          # install_launchd.go writes to ~/Library/LaunchAgents and
-          # ~/.config/systemd/user. launchd and systemd must traverse
-          # those directories and read the unit file, so 0755/0644 is
-          # required there rather than an oversight. Scoped to the one
-          # file so the rules stay live everywhere else.
-          gosec \
-            -tags fts5 \
-            -severity medium \
-            -confidence medium \
-            -exclude G104,G304,G307 \
-            -exclude-rules "cmd/dpkms/cmd/install_launchd.go:G301,G306" \
-            -exclude-dir vendor \
-            -exclude-dir docs \
-            -exclude-dir test/fixtures \
-            -fmt sarif \
-            -out gosec-results.sarif \
-            ./...
+        run: make gosec
 
       - name: Upload gosec results to GitHub Security
         uses: github/codeql-action/upload-sarif@v4
@@ -194,14 +233,11 @@ jobs:
         with:
           sarif_file: gosec-results.sarif
 
-      - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
-
       - name: Run govulncheck
-        run: govulncheck -tags fts5 ./...
+        run: make govulncheck
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -220,6 +256,8 @@ jobs:
     needs: toolchain
     runs-on: ${{ matrix.os }}
     strategy:
+      # Stop the other OS once one fails; go test -failfast (Makefile) stops each package at its first failure.
+      fail-fast: true
       matrix:
         os: [ubuntu-latest, macos-latest]
     steps:
@@ -232,12 +270,10 @@ jobs:
           go-version: ${{ needs.toolchain.outputs.go-version }}
           cache: true
 
-      # go.mod ships local-path replace directives for hop.top/kit and
-      # hop.top/c12n (developer convenience). Strip them before any Go
-      # step so published tags resolve via the module proxy. No-op when
-      # the directives are absent (e.g. on main after rollout).
+      # Strips local-path replaces of the CI_DROP_REPLACES modules, so
+      # published tags resolve via the module proxy; no-op without them.
       - name: Drop local-path replaces
-        run: go mod edit -dropreplace=hop.top/kit -dropreplace=hop.top/c12n
+        run: make ci-drop-replaces
 
       - name: Download dependencies
         shell: bash
@@ -245,9 +281,7 @@ jobs:
 
       - name: Run unit tests
         shell: bash
-        env:
-          CGO_ENABLED: '1'
-        run: go test -v -short -race -tags fts5 -coverprofile=coverage.out -covermode=atomic ./...
+        run: make ci-test-unit
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v7
@@ -257,24 +291,21 @@ jobs:
           flags: unittests
           name: codecov-umbrella
 
-      # Black-box suites under test/e2e/ tagged e2e: each builds ctxt,
-      # seeds a throwaway store through the binary and asserts exit codes,
-      # output and files. Headless-browser smoke tests run when the runner
-      # has Chrome and skip otherwise. Other test/e2e suites carry their
-      # own tags and are not selected here.
+      # Black-box suites under test/e2e/ tagged e2e; headless-browser
+      # checks run when the runner has Chrome and skip otherwise.
       - name: Run e2e tests
         shell: bash
-        env:
-          CGO_ENABLED: '1'
-        run: go test -v -count=1 -tags 'fts5 e2e' ./test/e2e/...
+        run: make ci-test-e2e
 
   # Search-graph viewer (web/searchgraph): its JS unit tests, plus a drift
   # gate on the bundle the Go binary embeds from
   # internal/searchgraph/viewer/dist. No Go toolchain needed. pnpm's version
-  # comes from packageManager in web/searchgraph/package.json; node stays on
-  # the 22 LTS line.
+  # comes from packageManager in web/searchgraph/package.json; node's from
+  # the mise.toml pin via the toolchain job (setup-node cannot read
+  # mise.toml).
   viewer:
     name: Search-graph viewer
+    needs: toolchain
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -283,7 +314,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: '22.23.3'
+          node-version: ${{ needs.toolchain.outputs.node-version }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -303,6 +334,7 @@ jobs:
   # version comes from packageManager in web/ui/package.json.
   webui:
     name: Web UI bundle
+    needs: toolchain
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -311,7 +343,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: '22.23.3'
+          node-version: ${{ needs.toolchain.outputs.node-version }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -327,12 +359,11 @@ jobs:
     name: Integration Tests
     needs: toolchain
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/next'
     services:
       postgres:
         # pgvector-bundled image: the Postgres driver's first migration is
         # CREATE EXTENSION vector, which plain postgres images cannot load.
-        image: pgvector/pgvector:pg16
+        image: pgvector/pgvector:0.8.6-pg16-bookworm
         env:
           POSTGRES_USER: contexthelp
           POSTGRES_PASSWORD: test_password
@@ -345,16 +376,6 @@ jobs:
         ports:
           - 5432:5432
 
-      redis:
-        image: redis:7-alpine
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 6379:6379
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -365,84 +386,32 @@ jobs:
           go-version: ${{ needs.toolchain.outputs.go-version }}
           cache: true
 
-      # go.mod ships local-path replace directives for hop.top/kit and
-      # hop.top/c12n (developer convenience). Strip them before any Go
-      # step so published tags resolve via the module proxy. No-op when
-      # the directives are absent (e.g. on main after rollout).
+      # Strips local-path replaces of the CI_DROP_REPLACES modules, so
+      # published tags resolve via the module proxy; no-op without them.
       - name: Drop local-path replaces
-        run: go mod edit -dropreplace=hop.top/kit -dropreplace=hop.top/c12n
+        run: make ci-drop-replaces
 
-      # Postgres driver + embeddings registry conformance suites live next
-      # to the code, not under test/integration/. They carry the same
-      # integration build tag and read the same POSTGRES_* env block, so
-      # they must be listed here explicitly or CI never runs them.
+      # The POSTGRES_* env the tests read defaults to the service env
+      # above (Makefile, CI_INTEGRATION_STEPS).
       - name: Run integration tests
-        run: >-
-          go test -v -tags=integration,fts5
-          ./test/integration/...
-          ./internal/storage/postgres/...
-          ./internal/embeddings/registry/...
-        env:
-          CGO_ENABLED: '1'
-          POSTGRES_HOST: localhost
-          POSTGRES_PORT: 5432
-          POSTGRES_USER: contexthelp
-          POSTGRES_PASSWORD: test_password
-          POSTGRES_DB: contexthelp_test
-          REDIS_HOST: localhost
-          REDIS_PORT: 6379
+        run: make ci-integration-suites
 
-      # Task-job claim and re-projection scenarios on Postgres. They live
-      # next to the worker pool; only the Postgres variants run here (the
-      # SQLite ones run in the unit job).
       - name: Run task-job claim and re-projection tests on Postgres
-        run: >-
-          go test -v -tags=integration,fts5 -count=1
-          -run 'Test(Claim|Reproject)_.*_Postgres' ./internal/jobs/
-        env:
-          CGO_ENABLED: '1'
-          POSTGRES_HOST: localhost
-          POSTGRES_PORT: 5432
-          POSTGRES_USER: contexthelp
-          POSTGRES_PASSWORD: test_password
-          POSTGRES_DB: contexthelp_test
+        run: make ci-integration-jobs
 
-      # The embeddings journey drives the built ctxt and dpkms binaries; its
-      # Postgres variant lives next to the CLI it drives, so only that test
-      # runs here (the SQLite variant runs in the unit job).
+      - name: Run HTTP handler tests on Postgres
+        run: make ci-integration-http
+
       - name: Run embeddings journey on Postgres
-        run: >-
-          go test -v -tags=integration,fts5 -count=1
-          -run TestEmbeddingsJourney_Postgres ./cmd/ctxt/cmd/
-        env:
-          CGO_ENABLED: '1'
-          POSTGRES_HOST: localhost
-          POSTGRES_PORT: 5432
-          POSTGRES_USER: contexthelp
-          POSTGRES_PASSWORD: test_password
-          POSTGRES_DB: contexthelp_test
+        run: make ci-integration-journey
 
-      # The search-graph endpoint's black-box suite drives the built ctxt
-      # and dpkms binaries over throwaway databases; its Postgres run needs
-      # both the e2e and integration tags, so only that test runs here (the
-      # SQLite run is part of the test job's e2e step).
       - name: Run search-graph endpoint e2e on Postgres
-        run: >-
-          go test -v -count=1 -tags 'fts5 e2e integration'
-          -run TestDpkmsGraph_Postgres ./test/e2e/searchgraph/
-        env:
-          CGO_ENABLED: '1'
-          POSTGRES_HOST: localhost
-          POSTGRES_PORT: 5432
-          POSTGRES_USER: contexthelp
-          POSTGRES_PASSWORD: test_password
-          POSTGRES_DB: contexthelp_test
+        run: make ci-integration-searchgraph
 
   build:
     name: Build
     runs-on: ubuntu-latest
-    # secret-scan removed from needs while the gitleaks job is disabled above
-    needs: [toolchain, lint, security, test]
+    needs: [toolchain, lint, security, secret-scan, test]
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -453,23 +422,19 @@ jobs:
           go-version: ${{ needs.toolchain.outputs.go-version }}
           cache: true
 
-      # go.mod ships local-path replace directives for hop.top/kit and
-      # hop.top/c12n (developer convenience). Strip them before any Go
-      # step so published tags resolve via the module proxy. No-op when
-      # the directives are absent (e.g. on main after rollout).
+      # Strips local-path replaces of the CI_DROP_REPLACES modules, so
+      # published tags resolve via the module proxy; no-op without them.
       - name: Drop local-path replaces
-        run: go mod edit -dropreplace=hop.top/kit -dropreplace=hop.top/c12n
+        run: make ci-drop-replaces
 
       - name: Build dpkms
-        run: CGO_ENABLED=1 go build -v -tags fts5 -o bin/dpkms ./cmd/dpkms
+        run: make ci-build-dpkms
 
       - name: Build ctxt
-        run: CGO_ENABLED=1 go build -v -tags fts5 -o bin/ctxt ./cmd/ctxt
+        run: make ci-build-ctxt
 
       - name: Verify binaries
-        run: |
-          ./bin/dpkms version || echo "dpkms built successfully"
-          ./bin/ctxt version || echo "ctxt built successfully"
+        run: make ci-build-verify
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7

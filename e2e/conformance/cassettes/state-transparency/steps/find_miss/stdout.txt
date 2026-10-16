@@ -2,7 +2,12 @@
   "diagnostics": {
     "candidate_count": 0,
     "below_threshold_count": 0,
-    "threshold": 0
+    "threshold": 0,
+    "semantic": {
+      "status": "no_default_model",
+      "detail": "no default embedding model; register one with 'ctxt embeddings register' and make it the default",
+      "notice": "semantic search unavailable (no_default_model): no default embedding model; register one with 'ctxt embeddings register' and make it the default; results are full-text only"
+    }
   },
   "mode": "hybrid",
   "objects": [],

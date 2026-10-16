@@ -10,8 +10,7 @@ further setup, including the Postgres-backed integration suites.
 | Go | matches `GO_VERSION` in `.github/workflows/ci.yml` |
 | golangci-lint | matches the version the CI workflow installs |
 | SQLite headers | `libsqlite3-dev`, for the `CGO_ENABLED=1` + `-tags fts5` build |
-| Postgres | `pgvector/pgvector:pg16`, same image and credentials as CI |
-| Redis | `redis:7-alpine`, same image as CI |
+| Postgres | `pgvector/pgvector:0.8.6-pg16-bookworm`, same image and credentials as CI |
 
 ## Using it
 
@@ -29,14 +28,16 @@ make test                        # unit tests
 make test-integration-services   # integration suites, needs the services
 ```
 
-`make test-integration-services` covers all three build-tagged trees — the
-suites under `test/integration/` plus the Postgres driver and embeddings
-registry suites that live next to the code they cover. `make
-test-integration` runs only the first of those and needs no services.
+`make test-integration-services` runs the commands of CI's integration job:
+the suites under `test/integration/`, the Postgres driver, storage factory
+and embeddings registry suites that live next to the code they cover, and
+the named Postgres tests for the job queue, HTTP handlers, embeddings journey
+and search-graph endpoint. `make test-integration` runs only the
+`test/integration/` tree without the `integration` tag and needs no services.
 
 ## Notes
 
-- The `POSTGRES_*` / `REDIS_*` env block is set on the container, so a bare
+- The `POSTGRES_*` env block is set on the container, so a bare
   `go test -tags=integration,fts5 ...` behaves the same as the make target.
 - `CGO_ENABLED=1` and `-tags fts5` are baked into the image. Without the tag
   the build fails on a sentinel symbol rather than a clear error, so a plain

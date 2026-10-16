@@ -1,4 +1,4 @@
-// Package cmd: dpkms healthcheck — operator-facing healthcheck called
+// dpkms healthcheck is the operator-facing healthcheck called
 // directly on the dpkms host (e.g. from launchd or systemd). Identical
 // semantics to `ctxt status` but available without the user-facing CLI
 // installed.
@@ -9,6 +9,7 @@
 //	1 — server unreachable, returned 503, or response could not be parsed
 //
 // The envelope schema is defined in internal/server/http/handlers_healthz.go.
+
 package cmd
 
 import (
@@ -21,7 +22,8 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
-	"github.com/ideacrafterslabs/ctxt/internal/idxbridge"
+	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"hop.top/kit/go/console/output"
@@ -73,19 +75,22 @@ func runHealthcheck(cmd *cobra.Command, _ []string) error {
 	}
 	quiet, _ := cmd.Flags().GetBool("quiet")
 
-	if !watch {
-		return healthcheckOnce(cmd, ep, quiet)
-	}
-
-	ticker := time.NewTicker(time.Duration(interval) * time.Second)
-	defer ticker.Stop()
+	// cmd.Context() carries kit's --offline mark and Ctrl-C
+	// cancellation; it is nil only when RunE is called directly.
 	ctx := cmd.Context()
 	if ctx == nil {
 		ctx = context.Background()
 	}
+
+	if !watch {
+		return healthcheckOnce(ctx, cmd, ep, quiet)
+	}
+
+	ticker := time.NewTicker(time.Duration(interval) * time.Second)
+	defer ticker.Stop()
 	for {
 		fmt.Fprint(cmd.OutOrStdout(), "\033[H\033[2J")
-		_ = healthcheckOnce(cmd, ep, quiet)
+		_ = healthcheckOnce(ctx, cmd, ep, quiet)
 		select {
 		case <-ctx.Done():
 			return nil
@@ -94,10 +99,11 @@ func runHealthcheck(cmd *cobra.Command, _ []string) error {
 	}
 }
 
-func healthcheckOnce(cmd *cobra.Command, ep idxbridge.Endpoint, quiet bool) error {
+func healthcheckOnce(ctx context.Context, cmd *cobra.Command, ep dpkmsclient.Endpoint, quiet bool) error {
 	client := newEndpointClient(ep)
-	serverURL := strings.TrimRight(ep.URL, "/")
-	env, status, err := client.Healthz()
+	// For display: a credential the configured URL embeds is masked.
+	serverURL := config.RedactDSN(strings.TrimRight(ep.URL, "/"))
+	env, status, err := client.Healthz(ctx)
 	if err != nil {
 		// No hand-written stderr line here. The returned error is
 		// rendered once, as a structured envelope, by kit's RunE

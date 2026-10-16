@@ -3,11 +3,13 @@ package local
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"os"
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob/blobtest"
 )
 
 func newTestStore(t *testing.T) *Store {
@@ -155,7 +157,7 @@ func TestPutIdempotent(t *testing.T) {
 func TestKeySharding(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
-	key := "abcdef1234567890"
+	key := "abcdef1234567890" // gitleaks:allow blob key, not a secret
 
 	_ = s.Put(ctx, key, bytes.NewReader([]byte("x")), storage.BlobMeta{Size: 1})
 
@@ -167,3 +169,35 @@ func TestKeySharding(t *testing.T) {
 }
 
 var _ storage.BlobStore = (*Store)(nil)
+
+// Get of a missing key is storage.ErrBlobNotFound; a blob it cannot
+// open for another reason is an error that is not.
+func TestGetNotFound(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	if _, _, err := s.Get(ctx, "abcd0000missing"); !errors.Is(err, storage.ErrBlobNotFound) {
+		t.Errorf("Get missing key: err = %v, want ErrBlobNotFound", err)
+	}
+
+	if err := s.Put(ctx, "abcd0000locked", bytes.NewReader([]byte("x")), storage.BlobMeta{}); err != nil {
+		t.Fatal(err)
+	}
+	path := s.blobPath("abcd0000locked")
+	if err := os.Chmod(path, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0o600) })
+	if f, err := os.Open(path); err == nil {
+		f.Close()
+		t.Skip("running with permission to open a mode-000 file")
+	}
+	_, _, err := s.Get(ctx, "abcd0000locked")
+	if err == nil || errors.Is(err, storage.ErrBlobNotFound) {
+		t.Errorf("Get unreadable blob: err = %v, want an error that is not ErrBlobNotFound", err)
+	}
+}
+
+// TestListConformance runs the backend-shared List(prefix) contract.
+func TestListConformance(t *testing.T) {
+	blobtest.ListConformance(t, newTestStore(t))
+}

@@ -237,3 +237,100 @@ func equalStrings(a, b []string) bool {
 	}
 	return true
 }
+
+// EntityNamespaceConformance pins EntityStore.Namespaces and
+// EntityFilter.Namespaces across drivers.
+//
+// Namespaces lists each distinct namespace of the stored entities once,
+// ascending, the empty namespace included. A non-empty
+// EntityFilter.Namespaces keeps only entities in one of the listed
+// namespaces and is applied in the store before Limit and Offset, so a
+// page holds Limit matching entities whenever that many exist past
+// Offset, however many non-matching ones sort ahead of them, and walking
+// the offsets visits every match exactly once. It composes with
+// Namespace, Query and ContentStatus by intersection, and a listed
+// namespace that holds no entity matches nothing.
+func EntityNamespaceConformance(t *testing.T, drv storage.StorageDriver) {
+	t.Helper()
+	ctx := context.Background()
+	es := drv.Entities()
+	seed := []*storage.Entity{
+		{Slug: "a.1", Title: "Alpha one", Namespace: "hidden"},
+		{Slug: "a.2", Title: "Alpha two", Namespace: "hidden"},
+		{Slug: "a.3", Title: "Alpha three", Namespace: "hidden"},
+		{Slug: "b.1", Title: "Bravo one", Namespace: "shown.one"},
+		{Slug: "b.2", Title: "Bravo two", Namespace: "hidden"},
+		{Slug: "c.1", Title: "Charlie one", Namespace: "shown.two"},
+		{Slug: "c.2", Title: "Charlie two", Namespace: "shown.one"},
+		{Slug: "d.1", Title: "Delta one", Namespace: ""},
+		{Slug: "e.1", Title: "Echo one", Namespace: "shown.two"},
+	}
+	for _, e := range seed {
+		e.CreatedAt, e.UpdatedAt = fixtureTime(), fixtureTime()
+		if err := es.Upsert(ctx, e); err != nil {
+			t.Fatalf("seed %s: %v", e.Slug, err)
+		}
+	}
+	if err := es.UpsertThin(ctx, &storage.Entity{
+		Slug: "f.thin", Title: "Foxtrot stub", Namespace: "shown.two",
+		CreatedAt: fixtureTime(), UpdatedAt: fixtureTime(),
+	}); err != nil {
+		t.Fatalf("seed thin: %v", err)
+	}
+
+	slugs := func(es []*storage.Entity) []string {
+		out := make([]string, 0, len(es))
+		for _, e := range es {
+			out = append(out, e.Slug)
+		}
+		return out
+	}
+
+	t.Run("distinct namespaces", func(t *testing.T) {
+		got, err := es.Namespaces(ctx)
+		if err != nil {
+			t.Fatalf("Namespaces: %v", err)
+		}
+		want := []string{"", "hidden", "shown.one", "shown.two"}
+		if !equalStrings(got, want) {
+			t.Fatalf("Namespaces() = %q; want %q", got, want)
+		}
+	})
+
+	shown := []string{"shown.one", "shown.two"}
+	lists := []struct {
+		name   string
+		filter storage.EntityFilter
+		want   []string
+	}{
+		{"restricts to the set", storage.EntityFilter{Namespaces: shown},
+			[]string{"b.1", "c.1", "c.2", "e.1", "f.thin"}},
+		{"limit applies after the restriction", storage.EntityFilter{Namespaces: shown, Limit: 2},
+			[]string{"b.1", "c.1"}},
+		{"offset applies after the restriction", storage.EntityFilter{Namespaces: shown, Limit: 2, Offset: 2},
+			[]string{"c.2", "e.1"}},
+		{"last short page", storage.EntityFilter{Namespaces: shown, Limit: 2, Offset: 4},
+			[]string{"f.thin"}},
+		{"past the end", storage.EntityFilter{Namespaces: shown, Limit: 2, Offset: 6}, nil},
+		{"empty namespace is listable", storage.EntityFilter{Namespaces: []string{""}}, []string{"d.1"}},
+		{"unknown namespace matches nothing", storage.EntityFilter{Namespaces: []string{"no.such"}}, nil},
+		{"intersects namespace", storage.EntityFilter{Namespaces: shown, Namespace: "shown.two"},
+			[]string{"c.1", "e.1", "f.thin"}},
+		{"namespace outside the set", storage.EntityFilter{Namespaces: shown, Namespace: "hidden"}, nil},
+		{"intersects query", storage.EntityFilter{Namespaces: shown, Query: "one", Limit: 1},
+			[]string{"b.1"}},
+		{"intersects content status", storage.EntityFilter{Namespaces: shown, ContentStatus: storage.ContentStatusThin},
+			[]string{"f.thin"}},
+	}
+	for _, l := range lists {
+		t.Run("list/"+l.name, func(t *testing.T) {
+			got, err := es.List(ctx, l.filter)
+			if err != nil {
+				t.Fatalf("List(%+v): %v", l.filter, err)
+			}
+			if g := slugs(got); !equalStrings(g, l.want) {
+				t.Fatalf("List(%+v) = %v; want %v", l.filter, g, l.want)
+			}
+		})
+	}
+}

@@ -18,7 +18,7 @@ func (l *Linter) checkOrphans(ctx context.Context) ([]Issue, error) {
 	}
 
 	edgeStore := l.driver.Edges()
-	var issues []Issue
+	var issues []Issue //nolint:prealloc // a filter: most objects yield no issue, so sizing to len(objs) would over-allocate
 
 	for _, obj := range objs {
 		if len(obj.Tags) > 0 || len(obj.Mentions) > 0 || len(obj.Metadata) > 0 {
@@ -54,7 +54,7 @@ func (l *Linter) checkMissingMetadata(ctx context.Context) ([]Issue, error) {
 		return nil, err
 	}
 
-	var issues []Issue
+	var issues []Issue //nolint:prealloc // a filter: most objects yield no issue, so sizing to len(objs) would over-allocate
 	for _, obj := range objs {
 		if _, ok := obj.Metadata["enrichment.structured_metadata"]; ok {
 			continue
@@ -153,7 +153,7 @@ func (l *Linter) checkStale(ctx context.Context) ([]Issue, error) {
 
 	cutoff := time.Now().AddDate(0, 0, -l.cfg.StaleDays)
 	edgeStore := l.driver.Edges()
-	var issues []Issue
+	var issues []Issue //nolint:prealloc // a filter: most objects yield no issue, so sizing to len(objs) would over-allocate
 
 	for _, obj := range objs {
 		if obj.UpdatedAt.After(cutoff) {

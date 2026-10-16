@@ -76,7 +76,6 @@ Inspect one failed job:
 
 ```bash
 ctxt job status <job_id>
-ctxt job log <job_id>
 ctxt job retry <job_id>
 ```
 

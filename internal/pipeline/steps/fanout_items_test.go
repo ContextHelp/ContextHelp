@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 func stagedItems(t *testing.T, d *storage.KnowledgeObject) []map[string]any {
@@ -49,7 +48,7 @@ func TestItemEnqueuerStagesItemJobs(t *testing.T) {
 
 	contains := 0
 	for _, e := range got.Graph.Edges {
-		if e.EdgeType == pluginapi.EdgeTypeContains && e.FromID == "feed-1" {
+		if e.EdgeType == storage.EdgeTypeContains && e.FromID == "feed-1" {
 			contains++
 		}
 	}

@@ -186,6 +186,12 @@ func dayParam(q url.Values, name string) (*time.Time, *paramError) {
 	return &t, nil
 }
 
+// flagParam reports whether boolean query parameter name is exactly
+// "true"; anything else, absence included, is false.
+func flagParam(q url.Values, name string) bool {
+	return q.Get(name) == "true"
+}
+
 // intParam parses an integer in [lo, hi]; hi 0 means no upper bound.
 func intParam(q url.Values, name string, def, lo, hi int) (int, *paramError) {
 	v := q.Get(name)
@@ -283,7 +289,7 @@ func RelatedObjects(svc *service.Service) http.HandlerFunc {
 		id := chi.URLParam(r, "id")
 		if _, err := svc.GetObject(r.Context(), id); err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
-				WriteError(w, http.StatusNotFound, "NOT_FOUND", "object not found")
+				WriteError(w, http.StatusNotFound, CodeNotFound, "object not found")
 				return
 			}
 			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())

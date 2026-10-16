@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// CtxtObject is the adapter output format per the T-0381 ingestion
+// CtxtObject is the adapter output format per the ingestion adapter
 // contract. Adapters emit a JSON array of these to stdout; ctxt
 // reads, deduplicates by id+source, and indexes.
 type CtxtObject struct {
@@ -75,7 +75,7 @@ func buildTags(m Message) []string {
 // buildMetadata populates the metadata map for ctxt indexing.
 func buildMetadata(m Message, source string) map[string]string {
 	meta := map[string]string{
-		"source":      "himalaya",
+		"source":      adapterName,
 		"account":     source,
 		"envelope_id": m.EnvelopeID,
 	}
@@ -150,11 +150,9 @@ func subjectKeywords(subject string) []string {
 		s = strings.TrimSpace(s[idx+1:])
 	}
 
-	words := strings.FieldsFunc(s, func(r rune) bool {
-		return !((r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '_')
-	})
+	words := strings.FieldsFunc(s, func(r rune) bool { return !isKeywordRune(r) })
 
-	var kws []string
+	kws := make([]string, 0, len(words))
 	seen := make(map[string]bool)
 	for _, w := range words {
 		if len(w) < 3 || seen[w] {
@@ -164,6 +162,12 @@ func subjectKeywords(subject string) []string {
 		kws = append(kws, w)
 	}
 	return kws
+}
+
+// isKeywordRune reports whether r can appear in a subject keyword: a
+// lowercase ASCII letter, a digit, '-' or '_'.
+func isKeywordRune(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '_'
 }
 
 // normalizeEmail lowercases and trims an email address.

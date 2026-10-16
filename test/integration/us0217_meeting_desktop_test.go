@@ -1,6 +1,6 @@
 package integration
 
-// US-0217: Meeting Capture (Desktop, Audio + Video) — per ADR-069 + T-0513..T-0516, T-0519.
+// US-0217: Meeting Capture (Desktop, Audio + Video) — per ADR-069.
 //
 // E2E acceptance criteria from docs/stories/capture/US-0217-meeting-capture-desktop.md.
 // Verifies: per-OS MeetingRecorder implementations (ScreenCaptureKit on
@@ -11,7 +11,7 @@ package integration
 // tier evicts media files at TTL.
 //
 // **Status: skeleton.** Substrate (state machine + retention) is
-// implemented + unit-tested (T-0513..T-0519). Per-OS Recorder
+// implemented + unit-tested. Per-OS Recorder
 // implementations are deferred follow-ups behind GOOS build tags
 // (Swift bridge for ScreenCaptureKit / C++ for Media Foundation /
 // gstreamer for Linux).
@@ -22,32 +22,32 @@ import (
 
 func TestMeeting_AudioOnly_macOS(t *testing.T) {
 	skipUnlessE2E(t)
-	t.Skip("pending: macOS recorder (ScreenCaptureKit Swift bridge — T-0513 " +
+	t.Skip("pending: macOS recorder (ScreenCaptureKit Swift bridge " +
 		"follow-up). Substrate state machine is unit-tested with fakeRecorder")
 }
 
 func TestMeeting_Full_macOS(t *testing.T) {
 	skipUnlessE2E(t)
 	t.Skip("pending: macOS recorder full-mode (ScreenCaptureKit audio + window — " +
-		"T-0514 follow-up)")
+		"follow-up)")
 }
 
 func TestMeeting_Full_Windows(t *testing.T) {
 	skipUnlessE2E(t)
 	t.Skip("pending: Windows recorder (WASAPI loopback + Graphics Capture + " +
-		"Media Foundation C++ bridge — T-0515 follow-up)")
+		"Media Foundation C++ bridge follow-up)")
 }
 
 func TestMeeting_Full_LinuxWayland(t *testing.T) {
 	skipUnlessE2E(t)
 	t.Skip("pending: Linux recorder (xdg-desktop-portal + PipeWire + gstreamer — " +
-		"T-0516 follow-up)")
+		"follow-up)")
 }
 
 func TestMeeting_Full_LinuxX11Fallback(t *testing.T) {
 	skipUnlessE2E(t)
 	t.Skip("pending: Linux X11 recorder (XComposite + XDamage second-class " +
-		"fallback — part of T-0516)")
+		"fallback)")
 }
 
 func TestMeeting_HotkeyTrigger(t *testing.T) {

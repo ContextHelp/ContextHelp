@@ -31,7 +31,7 @@ func (*ParentStrategy) Applies(_ context.Context, ev lateral.CapturedEvent) late
 	if !isGoogleHost(host) {
 		return lateral.AppliesResult{}
 	}
-	if host == "google.com" {
+	if host == googleHost {
 		return lateral.AppliesResult{Matches: true, Specificity: 1}
 	}
 	return lateral.AppliesResult{Matches: true, Specificity: 2}

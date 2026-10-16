@@ -70,7 +70,8 @@ func TestListRecentCaptures(t *testing.T) {
 	defer ts.Close()
 	handler := ListRecentCaptures(ts.svc)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/capture/recent", nil)
+	// Called without the router, so the owner's viewer is attached by hand.
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/capture/recent", nil).WithContext(ownerCtx())
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 

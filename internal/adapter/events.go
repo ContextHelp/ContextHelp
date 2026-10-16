@@ -6,7 +6,7 @@ import "fmt"
 // lifecycle event. Topics follow kit/bus's 4-segment past-tense rule:
 // dpkms.adapter.lifecycle.<action>.
 //
-// Past-tense actions emitted by the runner (T-0487):
+// Past-tense actions emitted by the runner:
 //
 //   - started: the adapter's Start() was invoked. Emitted BEFORE
 //     Start to give subscribers a "transition begun" signal even if

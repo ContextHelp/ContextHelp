@@ -1,305 +1,268 @@
 # Configuration Structure for ContextHelp
 
-This document defines how configuration is organized across the dPKMS (substrate) and ctxt (brain) packages.
+How configuration is organized across `dpkms` (substrate) and `ctxt`
+(brain): which files exist, what goes in each, and the top-level keys.
+
+Source of truth: the `Config` type and `setDefaults` in
+`internal/config/config.go`. Precedence and the env vars bound to keys:
+[ctxt/cli-flag-binding.md](ctxt/cli-flag-binding.md).
 
 ---
 
-## Configuration File Location
+## Config Files
 
-**Primary config file:**
-```
-~/.config/contexthelp/config.yaml
-```
+Each binary reads its own file name under the shared `contexthelp/`
+namespace: `ctxt` reads `ctxt.yaml`, `dpkms` reads `dpkms.yaml`.
 
-Both `dpkms` and `ctxt` binaries read from this single file but consume different sections.
+| Slot | `ctxt` | `dpkms` |
+|------|--------|---------|
+| User | `$XDG_CONFIG_HOME/contexthelp/ctxt.yaml` | `$XDG_CONFIG_HOME/contexthelp/dpkms.yaml` |
+| Project | nearest `.contexthelp/ctxt.yaml` walking up from the working directory | nearest `.contexthelp/dpkms.yaml` |
+| System | `/etc/contexthelp/ctxt.yaml` | `/etc/contexthelp/dpkms.yaml` |
+
+`$XDG_CONFIG_HOME` defaults to `~/.config`. Missing files are skipped;
+with none present, the built-in defaults apply.
+
+- `CTXT_CONFIG=<path>` replaces all three slots with one file, for either
+  binary. Pointing both at the same file shares one config between them.
+- `-c <path>` layers more files on top; `-c key=value` overrides one key.
+
+```bash
+ctxt config paths     # files ctxt reads, in order
+dpkms config paths    # files dpkms reads, in order
+```
 
 ---
 
-## Full Configuration Example
+## One Schema, Two Files
+
+Both files share one schema: every key below is valid in either, and a
+binary ignores the settings its commands never use. Unknown keys are
+ignored without an error, so a misspelled key silently has no effect.
+Check the result with `ctxt config show --format json`.
+
+Put each setting where the binary that acts on it reads it:
+
+- **`dpkms.yaml`**: what `dpkms serve` runs with: listener ports,
+  `server.workers`, `server.access`, `server.auth`, `jobs`, `storage`,
+  `secrets`, `browser`, `steps`.
+- **`ctxt.yaml`**: what the client needs: which instance to talk to
+  (`server.url`, `server.urls`, `server.token`), `profile`, `capture`,
+  `watch`, `search` (sent with each `ctxt find` query), `resurfacing`,
+  `embeddings`, `uri`, `backup`.
+
+Both binaries read `storage` (ctxt commands that open the database
+directly) and `registries` (`ctxt registry` commands and dpkms's registry
+sync), so on a single machine keep those identical in both files, or share
+one file through `CTXT_CONFIG`.
+
+---
+
+## Example `dpkms.yaml`
 
 ```yaml
-#############################################################################
-# dPKMS Configuration (Substrate)
-#############################################################################
-
+# ~/.config/contexthelp/dpkms.yaml
 storage:
-  type: sqlite  # sqlite | postgres | leann | plugin-<name>
-  path: ~/.local/share/contexthelp/data.db
-  concurrency: safe
-  options: {}
-
-jobs:
-  workers: 4
-  retry_limit: 3
-  max_runtime_seconds: 600
-
-queue:
-  backend: sqlite  # sqlite | redis | memory | plugin-<name>
-  options: {}
-
-registries:
-  enabled:
-    - name: local-taxonomy
-      url: file://~/.config/contexthelp/taxonomy/
-      type: taxonomy
-
-    - name: uxpatterns
-      url: https://api.uxpatterns.io
-      type: taxonomy
-      auth:
-        token: ${CH_REGISTRY_TOKEN_UXPATTERNS}
-
-    - name: growth-weights
-      url: https://weights.growth.dev
-      type: weights
+  type: sqlite                 # sqlite | postgres
+  blob:
+    backend: local             # local | s3
+    threshold: 65536           # bytes
 
 server:
-  http:
-    port: 7700
-    public: false
-  grpc:
-    port: 7701
+  port: 8080                   # REST; dpkms serve --port wins. Set, it is exact:
+                               # serve exits if busy. Unset, a busy 8080 falls back
+  grpc_port: 9090
+  cookie_bridge_port: 9377     # always binds 127.0.0.1
+  workers: 4                   # job workers; --workers wins
+  access: private              # private | protected | public
+  reminder_interval: 1m
 
-security:
-  telemetry: false
-  allow_external_pipelines: false
+jobs:
+  poll_interval: 500ms
+  stale_timeout: 30m
+  max_retries: 3
+  max_hops: 5
+  drain_timeout: 30s
 
-refresh:
-  enabled: true
-  min_interval_seconds: 300
-  default_interval_seconds: 86400
+providers:
+  llm:
+    backend: auto
+    endpoint: http://localhost:11434
+  embedding:
+    backend: ollama
+    model: nomic-embed-text
 
-#############################################################################
-# ctxt Configuration (Brain)
-#############################################################################
+duplicates:
+  policy: warn                 # warn | drop | keep
+  check_exact: true
+  check_similar: false
 
-ai_providers:
-  openai:
-    key: ${OPENAI_API_KEY}
-    model: gpt-4o
+secrets:
+  backend: env                 # env | keyring | agefile | onepassword | ghsecrets
+```
 
-  anthropic:
-    key: ${ANTHROPIC_API_KEY}
-    model: claude-sonnet-4
+A `protected` or `public` instance also needs inbound auth under
+`server.auth`, or serve refuses to start: see
+[Inbound auth, roles and scopes](manual/reference/config-and-permissions.md#inbound-auth-roles-and-scopes).
 
-  local:
-    ollama_url: http://localhost:11434
-    model: llama3
+### Secrets
 
-pipelines:
-  enabled:
-    - text.short
-    - text.long
-    - url.generic
-    - url.repo
-    - image.ocr
-    - audio.transcript
+Config files do not expand `${VAR}`: every value is used exactly as
+written, so `token: ${X}` sets the literal string `${X}`. Keep secrets
+out of the shared config file:
 
-  defaults:
-    text: text.long
-    url: url.generic
-    image: image.ocr
+- **Provider API keys**: in the secrets store (`dpkms secret set
+  OPENAI_API_KEY`) or the env var of the same name; the store wins.
+- **S3 blob credentials**: `CTXT_BLOB_S3_ACCESS_KEY` /
+  `CTXT_BLOB_S3_SECRET_KEY`.
+- **Everything else** (`server.auth.keys` hashes, `federations[].token`):
+  the literal value in a gitignored secrets file loaded as a second
+  `--config`. Container pattern:
+  [deployment/docker.md#secrets](deployment/docker.md#secrets) and
+  `docker/dpkms-auth.example.yaml`.
 
-profiles:
-  founder:
-    default: true           # mark as server default (at most one may be true)
-    registries: [uxpatterns, growth-weights]
-    weights: [growth-weights]
-    pipelines: [text.long, url.generic]
-    tags:
-      include: ["business.*", "growth.*"]
-      exclude: ["technical.*"]
+---
 
-  engineer:
-    registries: [local-taxonomy]
-    pipelines: ["*"]
-    tags:
-      include: ["technical.*", "code.*"]
-      boost: ["architecture.*", "performance.*"]
+## Example `ctxt.yaml`
 
-  research:
-    registries: [local-taxonomy, uxpatterns]
-    pipelines: ["*"]
-    search_strategy:
-      mode: vector          # override default_mode for this profile
-      rrf:
-        fts_weight: 0.2
-        vector_weight: 0.8
+```yaml
+# ~/.config/contexthelp/ctxt.yaml
+server:
+  urls:                        # first entry is the default instance
+    - http://127.0.0.1:8080
+    - name: home               # selectable with --instance home
+      url: https://dpkms.example.net
 
-search:
-  default_mode: hybrid      # "fts" | "vector" | "hybrid" (default: hybrid)
+profile:
+  default: engineer
+  profiles:
+    engineer:
+      description: Engineering focus
+      tags: ["technical", "code"]
+      search_strategy:
+        mode: vector
+        rrf:
+          fts_weight: 0.2
+          vector_weight: 0.8
+
+registries:
+  - name: uxpatterns
+    url: https://api.uxpatterns.io
+    auth:
+      type: bearer             # bearer | api_key | oauth2
+    sync_mode: full            # full | thin
+    trust_level: untrusted     # trusted | untrusted (entities queued for approval) | sandboxed (blocked)
+
+search:                        # sent with each ctxt find query
+  default_mode: hybrid         # fts | vector | hybrid
   rrf:
-    k: 60                   # RRF rank constant (default: 60)
-    fts_weight: 0.5         # weight for FTS leg (default: 0.5)
-    vector_weight: 0.5      # weight for vector leg (default: 0.5)
-  candidate_pool:
-    fts: 50                 # candidates fetched from FTS leg (default: 50)
-    vector: 50              # candidates fetched from vector leg (default: 50)
-  min_score: 0.0            # discard results below this RRF score (default: 0.0 = off)
-  fallback_to_fts: true     # degrade to FTS-only when embedding provider unavailable
+    k: 60
+    fts_weight: 0.5
+    vector_weight: 0.5
 
-i18n:
-  enabled: true
-  preferred_languages: ["en", "fr"]
-  auto_translate: false
-  translate_summaries: true
-
-#############################################################################
-# Plugin Configuration (Cross-Cutting)
-#############################################################################
-
-plugins:
-  load:
-    - name: alias-plugin
-      config:
-        definitions:
-          urls: "list --type url"
-          oss-inbox: "analyze --type text --hints '#OSS #inbox'"
-
-    - name: rss-feed
-      config:
-        default_interval_seconds: 3600
-        default_item_pipeline: text.long
-
-    - name: notifications
-      config:
-        enabled: true
-        max_history: 5000
-        channels:
-          cli:
-            - levels: ["info","warning","error"]
-          webhook:
-            - url: "https://hooks.example.com/context"
-              levels: ["update","info"]
+watch:                         # ctxt watch start
+  dirs: ["~/notes"]
+  patterns: ["*.md"]
 ```
 
+Registry tokens never go in a config file: `ctxt registry login <name>`
+stores them in the OS keychain. `registries[].auth` holds only the
+mechanism (`type`) and, for `api_key`, the header name (`header_name`,
+default `X-API-Key`).
+
+Every request ctxt makes to a registry with an `auth.type` (manifest,
+entity index, entity pull, entitlements, step download, bookmark search)
+carries its stored token: `bearer` and `oauth2` as `Authorization: Bearer
+<token>`, `api_key` as `<header_name>: <token>`. `login` binds the token
+to the origin (scheme, host, port) of the registry's `url` at that moment;
+it goes only to that origin, over https or to a loopback host. A config
+that later points the name elsewhere (a project-local
+`.contexthelp/ctxt.yaml`, say) gets no token and a one-line warning: run
+`login` again if the move is genuine. `login` prints the origin it binds
+to. When the `registries` list comes from a project `.contexthelp/ctxt.yaml`,
+`login` asks before binding; non-interactively it refuses unless
+`--origin <scheme://host[:port]>` names the registry url's origin. A
+redirect to another host drops the token. With no token stored the request
+goes out unauthenticated, and a 401 or 403 names `ctxt registry login <name>`. A registry without `auth` is
+public: the keychain is never read for it. `ctxt config doctor` rejects an
+unknown `auth.type`.
+
+dpkms has no login keychain: it reads a registry's token from
+`secrets.backend` under the key `registry/<name>` (each character of
+the name other than a letter, digit or `_` becomes `_`: `team-ops` is
+`registry/team_ops`), a JSON value
+`{"origin": "https://registry.example.com", "token": "..."}`, and sends it
+under the same origin and https rules. Store it with `dpkms secret set
+registry/<name>` (value on stdin); see
+[secret management](security/secret-management.md#registry-tokens).
+
 ---
 
-## Configuration Loading Order
+## Top-Level Keys
 
-Both binaries follow the same loading precedence:
+| Key | Purpose |
+|-----|---------|
+| `storage` | Backend (`type`), database location (`path`), blob store (`blob`) |
+| `server` | Serve side: listener ports, `workers`, `dev`, `access`, `auth`, `quotas`, `allowed_hosts`, `ui`. Client side: `url`, `urls`, `token` |
+| `jobs` | Worker pool timing: `poll_interval`, `stale_timeout`, `max_retries`, `max_hops`, `drain_timeout` |
+| `profile` | Focus profiles: `default`, `profiles.<name>` |
+| `registries` | List of registries: `name`, `url`, `auth`, `sync_mode`, `trust_level`, `entitlement_url` |
+| `registries_global` | `require_signatures` |
+| `providers` | Backend per provider: `video`, `document`, `ocr`, `transcription`, `vision`, `diarization`, `llm`, `embedding` |
+| `pipelines` | `overrides.<pipeline>`: `providers`, `skip_steps`, `insert_steps` |
+| `retrieval` | Progressive retrieval: `method`, tier `top_k`s. Not read |
+| `search` | Hybrid search: `default_mode`, `rrf`, `candidate_pool`, `min_score`, `fallback_to_fts`, `reranker` |
+| `duplicates` | Duplicate detection: `policy`, `similarity_threshold`, `check_exact`, `check_similar` |
+| `embeddings` | Embedding-model lifecycle guards: `min_coverage`, `grace_period` |
+| `conventions` | Mention-namespace and tag vocabulary rules. Not read |
+| `secrets` | Secrets backend and its settings |
+| `watch` | Filesystem and clipboard watchers: `dirs`, `patterns`, `debounce`, `clipboard` (`enabled`, `paths` are not read) |
+| `inbox` | Default inbox: `path`, `pipeline`, `tags`. Not read |
+| `capture` | Browser capture: `browser`, `url_filter`, `history` |
+| `fetch` | Which addresses fetches of captured URLs may reach: `allow_private`, `allowed_hosts`, `allowed_cidrs` |
+| `browser` | Built-in IBR browser automation daemon |
+| `fanout` | Post-ingest fan-out enrichment |
+| `resurfacing` | Background resurfacing queue |
+| `federations` | Remote dPKMS peers to sync with |
+| `federation` | Receive-side federation limits (`max_request_bytes`); inbound pushes authenticate with a peer principal's API key |
+| `security` | Security alert thresholds and delivery (`alerts`) |
+| `backup` | `ctxt config backup`: `dir`, `encrypt_by_default` |
+| `privacy` | `telemetry` (`CH_DISABLE_TELEMETRY` forces it off) |
+| `uri` | `ctxt://` link `handler`: `cli` or `tui` |
+| `i18n` | `enabled`, `preferred_languages`, `auto_translate`, `translate_tags`. Shown by `ctxt config show`; nothing else reads it |
+| `steps` | External pipeline steps directory (`path`) |
 
-1. **Defaults** (compiled into binary)
-2. **System config** (`/etc/contexthelp/config.yaml`)
-3. **User config** (`~/.config/contexthelp/config.yaml`)
-4. **Environment variables** (e.g., `CH_STORAGE_TYPE=sqlite`)
-5. **Runtime flags** (e.g., `dpkms serve --workers 8`)
-
-Higher layers override lower layers.
+Defaults for each key are in `setDefaults` in `internal/config/config.go`;
+`ctxt config show --format json` prints the merged values. A template
+with every key the binaries act on, commented out with its default:
+[`config/config.example.yaml`](../config/config.example.yaml).
 
 ---
 
-## Environment Variable Overrides
-
-### dPKMS Variables
+## Validate and Inspect
 
 ```bash
-CH_STORAGE_TYPE=sqlite          # Override storage type
-CH_STORAGE_PATH=/custom/path    # Override storage path
-CH_WORKERS=8                    # Override worker count
-CH_HTTP_PORT=8080               # Override HTTP port
-CH_DISABLE_TELEMETRY=true       # Hard-disable telemetry
-CH_REGISTRY_TOKEN_<NAME>        # Registry auth tokens
+ctxt config path                    # highest-precedence existing file
+ctxt config show                    # merged config (files + env + -c)
+ctxt config show --format json      # full tree, credentials redacted
+ctxt config validate                # every validation error, unknown-key warnings, plaintext-secret scan
+ctxt config validate --check-secrets=false  # validation errors + unknown-key warnings only
+ctxt config doctor                  # schema, secrets, permissions, deprecated keys
+ctxt config doctor --fix            # also tightens the file's permissions
 ```
 
-### ctxt Variables
+`ctxt config` commands read `ctxt.yaml`. To check `dpkms.yaml` with them,
+point `CTXT_CONFIG` at it:
 
 ```bash
-OPENAI_API_KEY=sk-...           # OpenAI key
-ANTHROPIC_API_KEY=sk-...        # Anthropic key
-CH_DEFAULT_PIPELINE=text.short  # Override default pipeline
-CH_LANG=fr,en                   # Override language preference
-CH_PROFILE=founder              # Default profile
+CTXT_CONFIG=~/.config/contexthelp/dpkms.yaml ctxt config doctor
 ```
 
----
-
-## Config Validation
-
-### Validate Configuration
-
-```bash
-# Validate full config
-ctxt config validate
-
-# Show resolved config (after all overrides)
-ctxt config show
-
-# Show dPKMS-specific config
-dpkms config show
-```
-
-### Validation Checks
-
-Both binaries validate:
-- Schema structure (YAML syntax)
-- Registry availability
-- Plugin load success
-- Pipeline discovery
-- Profile consistency
-- Refresh rules
-- Cross-package compatibility
+`dpkms config` offers only `path` and `paths`.
 
 ---
 
-## Package-Specific Config Sections
-
-### dPKMS Reads
-
-- `storage.*`
-- `jobs.*`
-- `queue.*`
-- `registries.*`
-- `server.*`
-- `security.*`
-- `refresh.*`
-- Plugin configs (for dPKMS plugins)
-
-### ctxt Reads
-
-- `ai_providers.*`
-- `pipelines.*`
-- `profiles.*`
-- `i18n.*`
-- Plugin configs (for ctxt plugins)
-
-### Both Read
-
-- `plugins.load` (both packages may load different plugins)
-
----
-
-## Per-Profile Overrides
-
-Profiles (defined in ctxt config) can override:
-- Active registries
-- Pipeline selection
-- Tag filters and boosts
-- Language preferences
-- Reranking weights
-
-**Example:**
-```bash
-# Use founder profile
-ctxt --profile founder analyze "competitive analysis doc"
-
-# Switch profile
-ctxt profile use engineer
-```
-
----
-
-## Config File Organization Best Practices
-
-1. **Separate sections clearly** with comments
-2. **Use environment variables** for secrets
-3. **Keep profiles minimal** - only override what's needed
-4. **Document custom plugins** inline
-5. **Version your config** in git (excluding secrets)
-
----
-
-## Upgrading
+## Commands That Write Config
 
 Config files carry no schema version and are never migrated or rewritten
 on load. Only commands that change configuration on request (`ctxt setup`,
@@ -320,36 +283,24 @@ changes only the keys it is about:
   defines the entry.
 - **Missing file**: created holding only the keys the command sets.
 
-When upgrading ContextHelp:
+---
 
-1. Backup current config:
+## Upgrading
+
+1. Back up config files and keys with the database:
    ```bash
-   dpkms housekeeping backup --include-config
+   dpkms backup --include-configs
    ```
-
-2. Validate after upgrade:
+2. After upgrading, check the result:
    ```bash
-   ctxt config validate
-   dpkms config validate
+   ctxt config doctor
+   CTXT_CONFIG=~/.config/contexthelp/dpkms.yaml ctxt config doctor
    ```
 
 ---
 
-## Summary
+## Related
 
-| Section | Owner | Purpose |
-|---------|-------|---------|
-| `storage` | dPKMS | Where and how data is stored |
-| `jobs` | dPKMS | Job queue behavior |
-| `queue` | dPKMS | Queue backend selection |
-| `registries` | dPKMS | External knowledge sources |
-| `server` | dPKMS | API server configuration |
-| `security` | dPKMS | Privacy and encryption |
-| `refresh` | dPKMS | Refresh job scheduling |
-| `ai_providers` | ctxt | LLM and AI integrations |
-| `pipelines` | ctxt | Pipeline definitions and defaults |
-| `profiles` | ctxt | User/role-based lenses |
-| `i18n` | ctxt | Localization preferences |
-| `plugins` | Both | Plugin loading and configuration |
-
-This structure ensures clean separation while maintaining a single source of configuration truth.
+- [ctxt/cli-flag-binding.md](ctxt/cli-flag-binding.md) — precedence, bound env vars, flags
+- [environment-variables/README.md](environment-variables/README.md) — every env var
+- [manual/reference/config-and-permissions.md](manual/reference/config-and-permissions.md) — serve settings, auth, permissions

@@ -1,0 +1,40 @@
+# Inbound auth for the dpkms container. Every key here must be one
+# internal/config.Config declares; internal/config/docker_config_test.go
+# fails on any other.
+#
+# docker/config.docker.yaml sets server.access: public. A public
+# instance refuses to start without an active owner credential, and
+# needs server.public_url for its sign-in links. Both live here, in a
+# file the operator owns, not in the image:
+#
+#   cp docker/dpkms-auth.example.yaml docker/dpkms-auth.yaml
+#
+# Credentials are API keys, hashed at rest in the instance database.
+# Create the owner's on the host, against the container's data volume:
+#
+#   docker compose --env-file docker/.env.prod run --rm dpkms \
+#     auth key create --principal owner --name "laptop CLI"
+#
+# The key is printed once; keep it in the CLI config (server.token) or
+# the proxy. Nothing else is needed here. To declare keys in config
+# instead (infrastructure as code), list their SHA-256 under
+# server.auth.keys: never the key itself. serve refuses to start while a
+# hash still contains REPLACE_ME or is not sha256:<64 hex>.
+#
+# docker/dpkms-auth.yaml is gitignored. docker-compose.yml mounts it as
+# the dpkms-auth secret at /run/secrets/dpkms-auth.yaml, which serve
+# loads as a second --config on top of /app/config.yaml.
+#
+# Config files do not expand ${VAR}: write values themselves.
+server:
+  # The URL people open the instance at (Caddy's DOMAIN): the base of
+  # every invite and sign-in link.
+  public_url: https://dpkms.example.com
+  auth:
+    # Keys by hash: printf %s "$KEY" | sha256sum. Roles: admin (every
+    # scope), writer (read + write: capture devices), reader (read
+    # only); default: the principal's own roles.
+    keys:
+      - hash: sha256:REPLACE_ME
+        principal: owner
+        roles: [admin]

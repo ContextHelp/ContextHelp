@@ -74,7 +74,7 @@ See detailed documentation: [`docs/ctxt/domains.md`](./ctxt/domains.md)
 14. Interface Mappings Domain
 15. Testing Domain (ctxt)
 16. API Domain
-17. Plugin Integration Domain
+17. Pipeline Extension Domain
 
 ---
 
@@ -109,30 +109,20 @@ These **8 domains** span both packages with shared contracts and coordinated imp
 
 ---
 
-### 2. Plugin Architecture Domain
-**Locations:** `docs/plugins/`, `docs/plugins/plugins.md`, `docs/plugins/plugin-isolation.md`, `docs/plugins/plugins-api.md`
+### 2. Extension Surfaces Domain
+**Locations:** `docs/ctxt/pipelines.md`, `docs/dpkms/registries.md`, `docs/decisions/ADR-058-external-step-execution-protocol.md`, `docs/decisions/ADR-075-external-hook-surface.md`, `docs/decisions/ADR-078-no-plugin-system.md`
 
 **Responsibilities:**
-- Plugin discovery, loading, and lifecycle management
-- Capability-based security model
-- Plugin API contracts and versioning
-- Isolation and sandboxing
-- Event system and hooks
-- Custom step registration
+- Pipeline overrides and custom pipelines
+- Step registries and installed steps (out-of-process execution designed, ADR-058)
+- Knowledge registries (entities, taxonomies)
+- External pre/post hooks (ADR-075, designed)
+- No plugin system (ADR-078)
 
 **Cross-Package Coordination:**
-- dPKMS provides plugin runtime and capability enforcement
-- ctxt provides plugin integration points (UI, CLI commands)
-- Shared plugin manifest schema
-- Coordinated security boundaries
-
-**Plugin Integration Points:**
-- Storage backends
-- Pipeline steps (enrichment)
-- Capture sources
-- UI components
-- Notification handlers
-- Registry connectors
+- dPKMS runs installed steps and serves the pipeline and step APIs
+- ctxt defines pipeline recipes and operator commands
+- Coordinated security boundaries (ADR-023 scopes, ADR-055 sandboxing)
 
 ---
 
@@ -162,7 +152,7 @@ These **8 domains** span both packages with shared contracts and coordinated imp
 - Scoped workspace permissions
 - Self-authenticating bundles
 - Privacy-preserving search
-- Secure plugin execution
+- Sandboxed installed steps
 
 ---
 
@@ -332,7 +322,7 @@ live in:
 **Knowledge Processing:**
 - dPKMS: Pipeline Runtime, Jobs & Ingestion
 - ctxt: Capture & Ingestion, Enrichment Pipeline
-- Cross-Cutting: Plugin Architecture
+- Cross-Cutting: Extension Surfaces
 
 **Search & Retrieval:**
 - dPKMS: Query Engine, Knowledge Graph, Mentions, Ranking & Reranking
@@ -360,8 +350,8 @@ live in:
 - Cross-Cutting: Testing & QA, Observability & Monitoring, Development Infrastructure
 
 **Extensibility:**
-- ctxt: Plugin Integration
-- Cross-Cutting: Plugin Architecture
+- ctxt: Pipeline Extension
+- Cross-Cutting: Extension Surfaces
 
 ---
 

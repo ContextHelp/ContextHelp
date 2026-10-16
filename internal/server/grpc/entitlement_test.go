@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
+	"github.com/ideacrafterslabs/ctxt/internal/auth/authtest"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/registry"
@@ -21,6 +22,7 @@ import (
 	grpcserver "github.com/ideacrafterslabs/ctxt/internal/server/grpc"
 	pb "github.com/ideacrafterslabs/ctxt/internal/server/grpc/pb"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing/sharingtest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
@@ -29,8 +31,8 @@ import (
 // transport: an authenticated EntityService with the inbound gate and a
 // threshold-1 security emitter, seeded with one entity in a granted
 // namespace and one outside it. The gated principal "ops" (token
-// tok-valid, role reader) and the admin principal "owner" (token
-// tok-admin) are both granted "ai.*"; only the admin bypasses the gate.
+// tok-valid-fixture-0123456789abcdef0123456789, role reader) and the admin principal "owner" (token
+// tok-admin-fixture-0123456789abcdef0123456789) are both granted "ai.*"; only the admin bypasses the gate.
 func newGatedGRPCServer(t *testing.T) (pb.EntityServiceClient, *registry.InboundGate, <-chan security.Alert) {
 	t.Helper()
 	h := startGatedGRPC(t)
@@ -57,14 +59,24 @@ func startGatedGRPC(t *testing.T) gatedGRPC {
 		"ai.bert":    "ai.models",
 		"med.claims": "med.records",
 	} {
+		// Registry-served entities: the gate is about namespace
+		// entitlements to a registry, and a registry entity is what a
+		// granted viewer may see without a mention (ADR-080 §6).
 		if err := driver.Entities().Upsert(ctx, &storage.Entity{
-			Slug: slug, Title: slug, Namespace: ns, CreatedAt: now, UpdatedAt: now,
+			Slug: slug, Title: slug, Namespace: ns, RegistryURL: "https://registry.test",
+			CreatedAt: now, UpdatedAt: now,
 		}); err != nil {
 			t.Fatalf("seed entity %s: %v", slug, err)
 		}
 	}
+	// The reader and the writer are non-owner principals: they see
+	// entities only through a share grant.
+	sharingtest.EnsurePrincipal(t, driver, "ops", storage.PrincipalKindPerson, authn.RoleReader)
+	sharingtest.EnsurePrincipal(t, driver, "phone", storage.PrincipalKindDevice, authn.RoleWriter)
+	sharingtest.GrantEverything(t, driver, "ops", "phone")
 	for _, principal := range []string{"ops", "owner"} {
 		if err := driver.Entitlements().Upsert(ctx, &storage.RegistryEntitlement{
+			Kind:         storage.EntitlementInbound,
 			RegistryName: principal,
 			Plan:         "inbound",
 			Namespaces:   []string{"ai.*"},
@@ -88,14 +100,11 @@ func startGatedGRPC(t *testing.T) gatedGRPC {
 		}
 	})
 
-	provider, err := authn.NewStatic([]authn.StaticToken{
-		{Token: "tok-valid", Principal: "ops", Roles: []string{authn.RoleReader}},
-		{Token: "tok-writer", Principal: "phone", Roles: []string{authn.RoleWriter}},
-		{Token: "tok-admin", Principal: "owner", Roles: []string{authn.RoleAdmin}},
-	})
-	if err != nil {
-		t.Fatalf("NewStatic: %v", err)
-	}
+	provider := authtest.TokenChain(
+		authtest.Token{Token: "tok-valid-fixture-0123456789abcdef0123456789", Principal: "ops", Roles: []string{authn.RoleReader}},
+		authtest.Token{Token: "tok-writer-fixture-0123456789abcdef0123456789", Principal: "phone", Roles: []string{authn.RoleWriter}},
+		authtest.Token{Token: "tok-admin-fixture-0123456789abcdef0123456789", Principal: "owner", Roles: []string{authn.RoleAdmin}},
+	)
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -135,7 +144,7 @@ func tokenCtx(token string) context.Context {
 }
 
 // opsCtx returns an outgoing context authenticated as principal "ops".
-func opsCtx() context.Context { return tokenCtx("tok-valid") }
+func opsCtx() context.Context { return tokenCtx("tok-valid-fixture-0123456789abcdef0123456789") }
 
 func waitGRPCAlert(t *testing.T, ch <-chan security.Alert) security.Alert {
 	t.Helper()

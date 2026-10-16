@@ -67,12 +67,12 @@ var (
 		// Execute() directly and friendlier to mid-sprint fan-out
 		// agents who are still closing 12fcc bucket items.
 		ValidationFailureMode: kitcli.ValidationFailureError,
-		// T-0595 enables full strict-gate enforcement at boot. The
+		// Full strict-gate enforcement at boot. The
 		// 12fcc-conformance track verified every depth-1 and depth-2+
 		// leaf carries kit/side-effect, kit/idempotent, kit/examples
 		// (and kit/next-steps + kit/destructive-token where applicable),
 		// so the live Root now enforces what the build-tagged probe
-		// previewed in T-0592. Removing any of these flags is a
+		// previewed. Removing any of these flags is a
 		// regression: ctxt will refuse to start if a newly added
 		// command leaves an annotation off. See
 		// docs/sprints/12fcc-conformance-baseline.md and the
@@ -93,12 +93,12 @@ var (
 				{ID: "organize", Title: "ORGANIZE"},
 				{ID: "interact", Title: "INTERACT"},
 				{ID: "instance", Title: "INSTANCE"},
-				{ID: "deprecated", Title: "DEPRECATED", Hidden: true},
 			},
 		},
 		Globals: []kitcli.Flag{
 			{Name: "profile", Usage: "focus profile to use"},
 			{Name: "instance", Usage: "target dpkms instance by name or port (overrides current-instance state and config)"},
+			{Name: "as", Usage: "run a read command as another viewer: a principal id or a share policy name (owner only)"},
 		},
 		// Hook runs after kit's built-in chain (chdir → identity → peer →
 		// progress); we use it to reject an unknown --format and to init
@@ -152,6 +152,14 @@ func init() {
 	// alias for --format, which collides with kit's path semantics and
 	// panics at init time on every invocation.
 
+	// The root takes one operand, a ctxt:// URI. Anything else is an
+	// unknown command, as cobra's default for a root with children.
+	rootCmd.Args = func(cmd *cobra.Command, args []string) error {
+		if len(args) == 0 || (len(args) == 1 && strings.HasPrefix(args[0], "ctxt://")) {
+			return nil
+		}
+		return fmt.Errorf("unknown command %q for %q%s", args[0], cmd.CommandPath(), suggestionsFor(cmd, args[0]))
+	}
 	rootCmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if v, _ := cmd.Flags().GetBool("version"); v {
 			printVersion(cmd)
@@ -169,7 +177,9 @@ func init() {
 	// codebase (helpers.go, stats.go, etc. read from viper.Get*). Kit owns
 	// its private viper for parsing; we re-bind every persistent flag here.
 	pf := rootCmd.PersistentFlags()
-	for _, name := range []string{"format", "quiet", "no-color", "verbose", "config", "profile", "offline", "instance", "output", "no-hints", "chdir"} {
+	// --offline is kit's own (enforced on http.DefaultTransport), so it
+	// is not mirrored here.
+	for _, name := range []string{"format", "quiet", "no-color", "verbose", "config", "profile", "instance", "output", "no-hints", "chdir", "as"} {
 		if f := pf.Lookup(name); f != nil {
 			_ = viper.BindPFlag(name, f)
 		}
@@ -177,7 +187,6 @@ func init() {
 	// Aliases the rest of the codebase reads.
 	viper.RegisterAlias("output.format", "format")
 	viper.RegisterAlias("profile.default", "profile")
-	viper.RegisterAlias("offline.enabled", "offline")
 	viper.RegisterAlias("cli.verbose", "verbose")
 	_ = viper.BindEnv("instance", "CTXT_INSTANCE")
 	_ = v.BindEnv("instance", "CTXT_INSTANCE")
@@ -197,7 +206,7 @@ var commandGroups = map[string]string{
 	// CAPTURE — get content into ctxt
 	"analyze": "capture", "capture": "capture", "import": "capture",
 	"ingest": "capture", "inbox": "capture", "feed": "capture",
-	"watch": "capture",
+	"watch": "capture", "job": "capture",
 
 	// KNOWLEDGE — read & navigate the graph
 	"find": "knowledge", "list": "knowledge", "show": "knowledge",
@@ -214,7 +223,7 @@ var commandGroups = map[string]string{
 
 	// ORGANIZE — taxonomy + scoping
 	"entity": "organize", "index": "organize", "profile": "organize",
-	"registry": "organize", "doctor": "organize",
+	"registry": "organize", "doctor": "organize", "share": "organize",
 
 	// INTERACT — interactive surfaces
 	"shell": "interact", "tui": "interact", "setup": "interact",
@@ -222,14 +231,11 @@ var commandGroups = map[string]string{
 
 	// INSTANCE — talk to a specific dpkms
 	"instance": "instance", "audit": "instance",
+	"auth": "instance", "principal": "instance",
 
 	// MANAGEMENT — hidden by default; --help-all to show
 	"config": "management", "uri": "management", "version": "management",
 	"upgrade": "management",
-
-	// DEPRECATED — moved to dpkms; hidden by default
-	"detector": "deprecated", "dev": "deprecated", "job": "deprecated",
-	"key": "deprecated", "secret": "deprecated",
 }
 
 // applyCommandGroups assigns GroupID to every top-level subcommand based
@@ -291,7 +297,7 @@ func prepareTree() error {
 	applyCommandGroups()
 	root.ApplyGroupVisibility()
 	for _, c := range rootCmd.Commands() {
-		if c.Name() == "completion" {
+		if c.Name() == completionCmdName {
 			c.GroupID = "management"
 			break
 		}
@@ -303,7 +309,7 @@ func prepareTree() error {
 	// sees the same shape the validator does.
 	applyShapeAnnotations()
 
-	// Boot-time strict validation (T-0593). Kit's Root.Execute() runs
+	// Boot-time strict validation. Kit's Root.Execute() runs
 	// this implicitly; ctxt has to call it explicitly because we use
 	// fang.WithoutVersion(). Per Config.ValidationFailureMode=Error,
 	// failures surface as a returned error rather than os.Exit(2) so
@@ -365,7 +371,7 @@ func applyShapeAnnotations() {
 	for _, c := range rootCmd.Commands() {
 		// Skip built-ins; kit exempts them from shape validation.
 		switch c.Name() {
-		case "completion", helpWord:
+		case completionCmdName, helpWord:
 			continue
 		}
 		// Depth-1 runnable nodes: stamp top-level-verb. Kit's shape
@@ -393,7 +399,7 @@ func markHierarchicalAncestors(cmd *cobra.Command, depth int) {
 		return
 	}
 	switch cmd.Name() {
-	case "completion", helpWord:
+	case completionCmdName, helpWord:
 		return
 	}
 	if cmd.Runnable() && !hasSubcommands(cmd) && depth >= 3 {
@@ -413,7 +419,7 @@ func markHierarchicalAncestors(cmd *cobra.Command, depth int) {
 func hasSubcommands(cmd *cobra.Command) bool {
 	for _, c := range cmd.Commands() {
 		switch c.Name() {
-		case "completion", helpWord:
+		case completionCmdName, helpWord:
 			continue
 		}
 		return true
@@ -424,7 +430,7 @@ func hasSubcommands(cmd *cobra.Command) bool {
 func printVersion(cmd *cobra.Command) {
 	date := strings.SplitN(buildTime, "_", 2)[0]
 
-	if viper.GetString("output.format") == "json" {
+	if viper.GetString("output.format") == formatJSON {
 		payload := map[string]string{
 			"name":       "ctxt",
 			"version":    version,
@@ -474,11 +480,21 @@ func initConfig() {
 	if err := config.EnsureConfigDir(binName); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to ensure config directory: %v\n", err)
 	}
-	if err := config.EnsureDataDir(); err != nil {
+	if err := config.EnsureDataDir(cfg.Storage.DataDir); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to ensure data directory: %v\n", err)
 	}
 
 	tel = telemetry.New(cfg)
+}
+
+// dataDir is the resolved storage.data_dir (-c > CTXT_DATA_DIR > file >
+// XDG default), the base of the run/ dir. Empty before config loads,
+// which config.RunDir rejects.
+func dataDir() string {
+	if cfg == nil {
+		return ""
+	}
+	return cfg.Storage.DataDir
 }
 
 func SetVersionInfo(v, bt, gc string) {
@@ -515,7 +531,7 @@ func dispatchURI(cmd *cobra.Command, raw string) error {
 	case "search":
 		query := strings.TrimPrefix(u.Path, "/")
 		if handler == "tui" {
-			return dispatchURIViaTUI(tui.StartOpts{InitialQuery: query})
+			return dispatchURIViaTUI(cmd, tui.StartOpts{InitialQuery: query})
 		}
 		return runFind(cmd, []string{query})
 	default:
@@ -524,17 +540,17 @@ func dispatchURI(cmd *cobra.Command, raw string) error {
 			return fmt.Errorf("empty object ID in URI %q", raw)
 		}
 		if handler == "tui" {
-			return dispatchURIViaTUI(tui.StartOpts{InitialObjectID: objectID})
+			return dispatchURIViaTUI(cmd, tui.StartOpts{InitialObjectID: objectID})
 		}
 		return runShow(cmd, []string{objectID})
 	}
 }
 
-func dispatchURIViaTUI(opts tui.StartOpts) error {
+func dispatchURIViaTUI(cmd *cobra.Command, opts tui.StartOpts) error {
 	svc, cleanup, err := newService()
 	if err != nil {
 		return err
 	}
 	defer cleanup()
-	return tui.RunWithOpts(tui.NewRealAdapter(svc), cfg, opts)
+	return tui.Run(tui.NewRealAdapter(svc), tuiStartOpts(cmd, opts))
 }

@@ -7,6 +7,8 @@ import (
 	"slices"
 	"time"
 
+	uri "hop.top/cite/scheme"
+
 	"github.com/ideacrafterslabs/ctxt/internal/retrieval"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -96,10 +98,17 @@ func (f *fakeStore) link(from, to, fwd, inv string) {
 	}
 }
 
+// mention stores obj's mentions edges as every writer stores them,
+// naming each entity by its mention URI.
 func (f *fakeStore) mention(obj string, slugs ...string) {
 	for _, s := range slugs {
-		f.addEdge(obj, "entity", s, "mentions")
+		f.addEdge(obj, "entity", mentionTarget(s), "mentions")
 	}
+}
+
+// mentionTarget is the node ID a mention edge names entity slug by.
+func mentionTarget(slug string) string {
+	return storage.MentionTarget(uri.URI{Scheme: "ctxt", Namespace: "entity", ID: slug})
 }
 
 // XSSLabel is a hostile object title that must survive verbatim.
@@ -290,7 +299,7 @@ func sampleFixture() (*service.SearchTrace, *fakeStore) {
 	f.mention("kb-tsrank", "db/postgres", "search/bm25")
 	f.mention("kb-embed", "ml/embeddings", "db/pgvector")
 	f.mention("kb-outside", "search/rrf", "db/postgres")
-	f.addEdge("kb-rrf", "entity", "search/rrf", "references") // not a mention
+	f.addEdge("kb-rrf", "entity", mentionTarget("search/rrf"), "references") // not a mention
 	return tr, f
 }
 

@@ -13,7 +13,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	pgdrv "github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // indexModel registers modelID at dim and builds its per-model index. Until
@@ -199,9 +198,9 @@ func TestPostgresVectorSearchNodeAware(t *testing.T) {
 	indexModel(t, drv, "pg-na", 4)
 
 	withDecision := makePgFTSObject("vec-na1", "note", "decision-bearing vector fixture")
-	withDecision.Graph.Nodes = append(withDecision.Graph.Nodes, pluginapi.GraphNode{
-		ID:       pluginapi.NewNodeID("vec-na1", pluginapi.NodeTypeDecision, 1),
-		NodeType: pluginapi.NodeTypeDecision,
+	withDecision.Graph.Nodes = append(withDecision.Graph.Nodes, storage.GraphNode{
+		ID:       storage.NewNodeID("vec-na1", storage.NodeTypeDecision, 1),
+		NodeType: storage.NodeTypeDecision,
 		Label:    "Decision",
 		Content:  "adopt pgvector",
 		Order:    1,
@@ -210,7 +209,7 @@ func TestPostgresVectorSearchNodeAware(t *testing.T) {
 	vectorObject(t, drv, makePgFTSObject("vec-na2", "note", "summary-only vector fixture"), "pg-na", []float32{0.9, 0.1, 0, 0})
 
 	all, err := drv.Objects().VectorSearchNodeAware(ctx, pgQuery("pg-na", 1, 0, 0, 0),
-		storage.ObjectFilter{}, pluginapi.NodeAwareFilter{})
+		storage.ObjectFilter{}, storage.NodeAwareFilter{})
 	if err != nil {
 		t.Fatalf("VectorSearchNodeAware (no filter): %v", err)
 	}
@@ -220,7 +219,7 @@ func TestPostgresVectorSearchNodeAware(t *testing.T) {
 
 	filtered, err := drv.Objects().VectorSearchNodeAware(ctx, pgQuery("pg-na", 1, 0, 0, 0),
 		storage.ObjectFilter{},
-		pluginapi.NodeAwareFilter{NodeTypes: []string{pluginapi.NodeTypeDecision}, ReturnNodeHits: true})
+		storage.NodeAwareFilter{NodeTypes: []string{storage.NodeTypeDecision}, ReturnNodeHits: true})
 	if err != nil {
 		t.Fatalf("VectorSearchNodeAware (decision filter): %v", err)
 	}

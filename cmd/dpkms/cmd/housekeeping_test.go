@@ -172,8 +172,8 @@ func TestHousekeepingRunDryRunJSON(t *testing.T) {
 
 	actions, ok := got["actions"].([]any)
 	require.True(t, ok, "the plan must carry an actions array, got: %v", got["actions"])
-	assert.Len(t, actions, 6,
-		"the full pass documents six mutating steps; the plan must name each one")
+	assert.Len(t, actions, 7,
+		"the full pass documents seven mutating steps; the plan must name each one")
 
 	for _, action := range actions {
 		entry, ok := action.(map[string]any)
@@ -222,7 +222,7 @@ func TestServeHelp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("serve --help should succeed: %v", err)
 	}
-	for _, flag := range []string{"--port", "--grpc-port", "--workers", "--public", "--profile"} {
+	for _, flag := range []string{"--port", "--grpc-port", "--cookie-bridge-port", "--workers", "--public", "--profile"} {
 		if !strings.Contains(out, flag) {
 			t.Errorf("serve help should list flag %s", flag)
 		}

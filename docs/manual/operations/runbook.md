@@ -37,8 +37,9 @@ dpkms serve --port 8080 --grpc-port 9090 --workers 4
 
 Ports and exit behaviour:
 
-- A port you pass (`--port`, `--grpc-port`) is bound exactly. If it is in use, serve exits non-zero; it never moves to another port.
-- Without the flag, a busy default port (8080, 9090, cookie bridge 9377) falls back to a free port. Serve prints a `note:` line with the port it bound; `dpkms ps` lists it.
+- Set a port with its flag (`--port`, `--grpc-port`, `--cookie-bridge-port`), env var (`CH_SERVER_PORT`, `CH_GRPC_PORT`, `CH_COOKIE_BRIDGE_PORT`) or config key (`server.port`, `server.grpc_port`, `server.cookie_bridge_port`). The flag wins over the env var, the env var over the config file.
+- A port you set any of these ways is bound exactly. If it is in use, serve exits non-zero; it never moves to another port. `0` binds a port the OS picks; `dpkms ps --format json` shows it.
+- With none of them set, a busy default port (8080, 9090, cookie bridge 9377) falls back to a free port. Serve prints a `note:` line with the port it bound; `dpkms ps` lists it.
 - If any component fails (HTTP, gRPC, cookie bridge, workers), serve logs `error: <component>: ...`, stops every component and exits non-zero. launchd `KeepAlive` or systemd `Restart=always` then restarts it.
 - SIGTERM or SIGINT stops serve within `jobs.drain_timeout` (default 30s). A second signal exits at once.
 
@@ -53,22 +54,22 @@ curl http://127.0.0.1:8080/health
 ### 1. Queue health
 
 ```bash
-ctxt job list --state pending --limit 50
-ctxt job list --state running --limit 50
-ctxt job list --state failed --limit 50
+dpkms job list --state pending --limit 50
+dpkms job list --state running --limit 50
+dpkms job list --state failed --limit 50
 ```
 
 If failed jobs exist, drill in:
 
 ```bash
-ctxt job status <job_id>
-ctxt job log <job_id>
+dpkms job status <job_id>
+dpkms job log <job_id>
 ```
 
 Retry if safe:
 
 ```bash
-ctxt job retry <job_id>
+dpkms job retry <job_id>
 ```
 
 ### 2. Read-path smoke checks
@@ -107,6 +108,8 @@ Optional retention prune (policy-controlled):
 dpkms housekeeping prune --before 2025-01-01
 ```
 
+Prune deletes each object the way `DELETE /api/v1/objects/{id}` does: its edges, then the object, then the blob its content is stored in (content above `storage.blob.threshold`), unless another object still refers to that blob or it was written in the last hour (an ingest of the same content may still be writing its object; `dpkms housekeeping run` purges it later). A blob it can't delete is listed as an orphan blob; its object is deleted either way. `--dry-run` lists the objects and the blobs it would delete. `dpkms housekeeping run` purges blobs no object refers to once they are older than `--blob-grace` (default `1h`), orphans included.
+
 ### 2. Pipeline and step governance
 
 ```bash
@@ -124,6 +127,35 @@ dpkms pipeline step registry autoupdate <registry-url> --disable
 ```
 
 ## After upgrading dpkms
+
+### Schema migrations snapshot the database first
+
+The first open by a new binary (`dpkms serve`, or any `ctxt`/`dpkms` command that opens the store) applies pending schema migrations. On SQLite, before applying any, it copies the database to `backups/` beside the database file (`<data dir>/backups/` with the default `storage.path`):
+
+```text
+backups/pre-migrate-v40-v41-20261014T091500Z.sqlite
+```
+
+- **Name**: schema version before (`v40`) and after (`v41`), UTC time. Written with SQLite's online backup (`VACUUM INTO`), fsynced, owner-only permissions.
+- **When**: only when migrations are pending on an existing database. No snapshot when the schema is current or the database is new.
+- **Preview**: `ctxt upgrade plan` run with the new binary reads the schema version read-only and prints `v40 → v41 pending; next open will snapshot to <dir>` (or that the open migrates without a snapshot) without migrating anything. With the schema current it prints `v41 current`.
+- **No snapshot, no migration**: if the copy cannot be written (disk full, `backups/` not writable), the open fails with the reason and the database stays at its old version. Free space or fix permissions and start again.
+- **Retention**: the newest 3 `pre-migrate-*` files per `backups/` directory are kept; older ones are deleted after a new snapshot succeeds. Other files in `backups/` are never touched.
+- **Disk**: each snapshot is about the size of the database, so allow up to 3x the database size in `backups/`.
+- **Blobs are not copied.** They are content-addressed and migrations never change them; the blob store stays as it is.
+- **Turn it off**: `storage.migrate_snapshot: false` (or `-c storage.migrate_snapshot=false`) migrates without a copy.
+- **Postgres** gets no snapshot. `dpkms` logs a warning naming both versions when it migrates an existing Postgres database: take a `pg_dump` before installing a new binary.
+
+Roll back a migration that went wrong:
+
+1. Stop every `dpkms serve` and `ctxt` process using the database.
+2. Move `db.sqlite`, `db.sqlite-wal` and `db.sqlite-shm` aside. Leave `db.sqlite.lock`: every running `dpkms serve` holds it, and a second serve on the database refuses to start while one does.
+3. Copy the snapshot to `db.sqlite`.
+4. Reinstall the previous binary and start it. The snapshot is at the old schema; the new binary would migrate it again.
+
+Objects written after the snapshot are not in it. Their blobs stay in the blob store, unreferenced.
+
+### Index changes re-apply automatically
 
 A release that changes how objects are indexed for full-text search is re-applied automatically: on its first start, `dpkms serve` prints
 
@@ -162,15 +194,15 @@ curl http://127.0.0.1:8080/health
 2. Determine queue impact:
 
 ```bash
-ctxt job list --state failed --limit 100
-ctxt job list --state pending --limit 100
+dpkms job list --state failed --limit 100
+dpkms job list --state pending --limit 100
 ```
 
 3. Sample failed job details:
 
 ```bash
-ctxt job status <job_id>
-ctxt job log <job_id>
+dpkms job status <job_id>
+dpkms job log <job_id>
 ```
 
 4. Verify read path:
@@ -217,7 +249,7 @@ Before major config/pipeline changes:
 
 ## Data safety note
 
-Current CLI surface does not provide built-in full backup/export commands in `dpkms`. Use your storage backend snapshot/backup tooling and validate restore procedures externally.
+`dpkms backup --output-dir <dir>` writes a full SQLite archive (database, optionally blobs and config); `dpkms restore <archive>` reads it back. Schema migrations also snapshot the database on their own (see [Schema migrations snapshot the database first](#schema-migrations-snapshot-the-database-first)). For Postgres use `pg_dump` and validate restores externally.
 
 ## Cross-links
 

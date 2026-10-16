@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
 
 type WatchStore struct{ db *sql.DB }
@@ -56,15 +57,7 @@ func (s *WatchStore) ListWatches(ctx context.Context, status string) ([]*storage
 	}
 	defer rows.Close()
 
-	var watches []*storage.WatchConfig
-	for rows.Next() {
-		w, err := scanWatchRow(rows)
-		if err != nil {
-			return nil, err
-		}
-		watches = append(watches, w)
-	}
-	return watches, rows.Err()
+	return rowscan.All(rows, scanWatchRow)
 }
 
 func (s *WatchStore) UpdateWatch(ctx context.Context, w *storage.WatchConfig) error {
@@ -151,15 +144,13 @@ func (s *WatchStore) ListFileRecords(ctx context.Context, watchID string) ([]*st
 	}
 	defer rows.Close()
 
-	var records []*storage.WatchFileRecord
-	for rows.Next() {
+	return rowscan.All(rows, func(rows *sql.Rows) (*storage.WatchFileRecord, error) {
 		var r storage.WatchFileRecord
 		if err := rows.Scan(&r.WatchID, &r.FilePath, &r.ObjectID, &r.ContentHash, &r.LastSeen); err != nil {
 			return nil, fmt.Errorf("scan file record: %w", err)
 		}
-		records = append(records, &r)
-	}
-	return records, rows.Err()
+		return &r, nil
+	})
 }
 
 func scanWatch(row *sql.Row) (*storage.WatchConfig, error) {

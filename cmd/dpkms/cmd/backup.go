@@ -44,7 +44,7 @@ func init() {
 	rootCmd.AddCommand(backupCmd)
 	backupCmd.Flags().Bool("include-blobs", false, "include local blob files in archive")
 	// --output-dir, not --output: kit/output reserves -o/--output for the
-	// output-path flag globally. T-0465 disambiguates the destination
+	// output-path flag globally. --output-dir disambiguates the destination
 	// directory used by `dpkms backup`.
 	backupCmd.Flags().String("output-dir", "", "override output directory path")
 	backupCmd.Flags().Bool("async", false, "enqueue as background job and exit")
@@ -63,14 +63,14 @@ func runBackup(cmd *cobra.Command, _ []string) error {
 	async, _ := cmd.Flags().GetBool("async")
 	skipBlobErrors, _ := cmd.Flags().GetBool("skip-blob-errors")
 
-	if cfg.Storage.Type != "" && cfg.Storage.Type != "sqlite" {
+	if cfg.Storage.Type != "" && cfg.Storage.Type != storageTypeSQLite {
 		return fmt.Errorf("backup only supports sqlite storage (got %s)", cfg.Storage.Type)
 	}
 
 	// DB path from config.
 	dbPath := cfg.Storage.Path
 	if dbPath == "" {
-		dbPath = "dpkms.db"
+		dbPath = fallbackDBPath
 	}
 
 	// Resolve output dir: flag > config > cwd.

@@ -174,7 +174,7 @@ func TestSearchGraphViewerSecurityHeaders(t *testing.T) {
 func TestSearchGraphViewerPageOpenDataGuarded(t *testing.T) {
 	bundle := newTestServerBundle(t)
 	t.Cleanup(bundle.Close)
-	router := NewRouterWithConfig(bundle.svc, RouterConfig{Auth: testProvider(t)})
+	router := NewRouterWithConfig(bundle.svc, RouterConfig{Auth: testChain(t)})
 
 	rr := serveUI(router, http.MethodGet, "/ui/searchgraph/?q=deploy")
 	assert.Equal(t, http.StatusOK, rr.Code)
@@ -184,7 +184,7 @@ func TestSearchGraphViewerPageOpenDataGuarded(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, rr.Code)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/search/graph?q=deploy", nil)
-	req.Header.Set("Authorization", "Bearer tok-valid")
+	req.Header.Set("Authorization", "Bearer tok-valid-fixture-0123456789abcdef0123456789")
 	rr = httptest.NewRecorder()
 	router.ServeHTTP(rr, req)
 	// Past auth; this bare test service may then refuse the search

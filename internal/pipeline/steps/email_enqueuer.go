@@ -80,7 +80,7 @@ func (s *EmailEnqueuer) Run(_ context.Context, draft *storage.KnowledgeObject) (
 		}
 	}
 
-	var sections []storage.Section
+	sections := make([]storage.Section, 0, len(messages))
 	staged := make([]fanOutItem, 0, len(messages))
 	queued := 0
 	skipped := 0

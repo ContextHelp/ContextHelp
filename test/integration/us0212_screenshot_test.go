@@ -9,7 +9,7 @@ package integration
 // routing through image.ocr pipeline, perceptual-hash dedup, deny-list
 // veto BEFORE OS permission prompt, schedule mode opt-in.
 //
-// **Status: skeleton.** Per-OS Capturer implementations (T-0504 follow-up)
+// **Status: skeleton.** Per-OS Capturer implementations
 // land separately; substrate (Source state machine + bus events) is shipped.
 // E2E harness needs a real OS context to test capture.
 
@@ -62,7 +62,7 @@ func TestScreenshot_PermissionFlow(t *testing.T) {
 
 func TestScreenshot_MediaRetentionEviction(t *testing.T) {
 	skipUnlessE2E(t)
-	t.Skip("pending: meeting/retention policy (T-0519) is implemented, but " +
+	t.Skip("pending: meeting/retention policy is implemented, but " +
 		"screenshot media tier integration not wired; need shared retention " +
 		"runner across meeting + screenshot media files")
 }

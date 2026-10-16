@@ -11,8 +11,9 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	pgdrv "github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // integrationDSN returns the Postgres DSN to use for integration tests.
@@ -73,7 +74,7 @@ func newIntegrationDriver(t *testing.T) *pgdrv.Driver {
 	if dsn == "" {
 		t.Skip("POSTGRES_DSN (or POSTGRES_HOST + POSTGRES_USER) not set; skipping Postgres integration test")
 	}
-	drv, err := pgdrv.New(dsn)
+	drv, err := pgdrv.New(dsn, storageutil.NewTestBlobStore(t))
 	if err != nil {
 		t.Fatalf("postgres.New: %v", err)
 	}
@@ -103,17 +104,17 @@ func TestPostgres_GraphRoundtrip_Create(t *testing.T) {
 
 	id := "pg-rw-1"
 	wipeObjects(t, drv, id)
-	ko := &pluginapi.KnowledgeObject{
+	ko := &storage.KnowledgeObject{
 		ID:        id,
 		Type:      "note",
 		Status:    "active",
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
-		Graph: &pluginapi.ObjectGraph{
-			Nodes: []pluginapi.GraphNode{
+		Graph: &storage.ObjectGraph{
+			Nodes: []storage.GraphNode{
 				{
-					ID:       pluginapi.NewNodeID(id, pluginapi.NodeTypeSection, 0),
-					NodeType: pluginapi.NodeTypeSection,
+					ID:       storage.NewNodeID(id, storage.NodeTypeSection, 0),
+					NodeType: storage.NodeTypeSection,
 					Label:    "Intro",
 					Content:  "hello postgres",
 					Order:    0,
@@ -159,7 +160,7 @@ func TestPostgres_GraphRoundtrip_Update(t *testing.T) {
 
 	id := "pg-rw-2"
 	wipeObjects(t, drv, id)
-	ko := &pluginapi.KnowledgeObject{
+	ko := &storage.KnowledgeObject{
 		ID: id, Type: "note", Status: "active",
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 	}
@@ -167,11 +168,11 @@ func TestPostgres_GraphRoundtrip_Update(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ko.Graph = &pluginapi.ObjectGraph{
-		Nodes: []pluginapi.GraphNode{
+	ko.Graph = &storage.ObjectGraph{
+		Nodes: []storage.GraphNode{
 			{
-				ID:       pluginapi.NewNodeID(id, pluginapi.NodeTypeTag, 0),
-				NodeType: pluginapi.NodeTypeTag,
+				ID:       storage.NewNodeID(id, storage.NodeTypeTag, 0),
+				NodeType: storage.NodeTypeTag,
 				Label:    "go",
 				Content:  "go",
 			},
@@ -199,7 +200,7 @@ func TestPostgres_GraphRoundtrip_NilGraph(t *testing.T) {
 
 	id := "pg-nil-g"
 	wipeObjects(t, drv, id)
-	ko := &pluginapi.KnowledgeObject{
+	ko := &storage.KnowledgeObject{
 		ID: id, Type: "note", Status: "active",
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 		// Graph is nil
@@ -223,15 +224,15 @@ func TestPostgres_ObjectNodes_UpsertOnCreate(t *testing.T) {
 
 	id := "pg-rw-3"
 	wipeObjects(t, drv, id)
-	ko := &pluginapi.KnowledgeObject{
+	ko := &storage.KnowledgeObject{
 		ID: id, Type: "note", Status: "active",
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
-		Graph: &pluginapi.ObjectGraph{
-			Nodes: []pluginapi.GraphNode{
-				{ID: pluginapi.NewNodeID(id, pluginapi.NodeTypeTag, 0),
-					NodeType: pluginapi.NodeTypeTag, Label: "go", Content: "go"},
-				{ID: pluginapi.NewNodeID(id, pluginapi.NodeTypeTag, 1),
-					NodeType: pluginapi.NodeTypeTag, Label: "postgres", Content: "postgres"},
+		Graph: &storage.ObjectGraph{
+			Nodes: []storage.GraphNode{
+				{ID: storage.NewNodeID(id, storage.NodeTypeTag, 0),
+					NodeType: storage.NodeTypeTag, Label: "go", Content: "go"},
+				{ID: storage.NewNodeID(id, storage.NodeTypeTag, 1),
+					NodeType: storage.NodeTypeTag, Label: "postgres", Content: "postgres"},
 			},
 		},
 	}

@@ -1,3 +1,4 @@
+// Package safari imports Safari bookmark HTML exports.
 package safari
 
 import (

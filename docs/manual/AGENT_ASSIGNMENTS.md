@@ -41,7 +41,6 @@ This ledger records the five parallel content tracks requested for manual genera
   - `README.md`
   - `admin-configuration.md`
   - `pipeline-management.md`
-  - `plugin-development.md`
 
 ## Notes
 

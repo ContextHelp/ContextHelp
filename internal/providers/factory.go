@@ -1,3 +1,7 @@
+// Package providers supplies the media and model backends pipeline steps
+// call (LLM, vision, OCR, transcription, diarization, video, document);
+// Factory picks each from config, falling back to a stub when none is
+// available.
 package providers
 
 import (
@@ -22,10 +26,31 @@ import (
 type Factory struct {
 	cfg     config.ProvidersConfig
 	secrets secret.Store
+	// httpClient, when set, carries every hosted-API client's requests.
+	// Nil means each client's default.
+	httpClient *http.Client
 }
 
+// Backend names: the values a providers.<kind>.backend key selects, and
+// what each provider's Name reports.
+const (
+	backendStub      = "stub"
+	backendOllama    = "ollama"
+	backendOpenAI    = "openai"
+	backendAnthropic = "anthropic"
+	backendFFmpeg    = "ffmpeg"
+	backendTesseract = "tesseract"
+	backendWhisper   = "whisper-cli"
+)
+
+// defaultOllamaEndpoint is where a local Ollama listens unless configured.
+const defaultOllamaEndpoint = "http://localhost:11434"
+
+// defaultOCRLanguage is tesseract's language when none is configured.
+const defaultOCRLanguage = "eng"
+
 // NewFactory creates a Factory from the providers configuration.
-// If store is nil, an env-backed store is used (backward-compatible default).
+// If store is nil, an env-backed store is used.
 func NewFactory(cfg config.ProvidersConfig, store secret.Store) *Factory {
 	if store == nil {
 		store = env.New("")
@@ -33,20 +58,52 @@ func NewFactory(cfg config.ProvidersConfig, store secret.Store) *Factory {
 	return &Factory{cfg: cfg, secrets: store}
 }
 
-// apiKey fetches a secret by key via the store, falling back to os.Getenv.
-func (f *Factory) apiKey(key string) string {
-	if got, err := f.secrets.Get(context.Background(), key); err == nil {
+// WithHTTPClient returns a copy of f whose hosted-API clients (OpenAI,
+// Anthropic, Gemini, OpenRouter) send their requests through c.
+func (f *Factory) WithHTTPClient(c *http.Client) *Factory {
+	cp := *f
+	cp.httpClient = c
+	return &cp
+}
+
+// WithConfig returns a Factory for cfg that resolves API keys through the
+// same secrets store as f. A nil f gets the env-backed store.
+func (f *Factory) WithConfig(cfg config.ProvidersConfig) *Factory {
+	if f == nil {
+		return NewFactory(cfg, nil)
+	}
+	c := *f
+	c.cfg = cfg
+	return &c
+}
+
+// Hosted provider API key names: the secrets store key and the
+// environment variable share the name.
+const (
+	keyOpenAI     = "OPENAI_API_KEY"
+	keyAnthropic  = "ANTHROPIC_API_KEY"
+	keyGemini     = "GEMINI_API_KEY"
+	keyOpenRouter = "OPENROUTER_API_KEY"
+)
+
+// apiKey resolves a hosted provider's API key: the secrets store first,
+// then the process environment. It is the only place provider keys are
+// read; the factory passes the result to the client constructor, so the
+// key that selects a provider in auto mode is the key that client sends.
+// An empty value in the store counts as unset. "" means neither has it.
+func (f *Factory) apiKey(name string) string {
+	if got, err := f.secrets.Get(context.Background(), name); err == nil && len(got.Value) > 0 {
 		return string(got.Value)
 	}
-	return os.Getenv(key)
+	return os.Getenv(name)
 }
 
 // Video returns the best available VideoProvider.
 func (f *Factory) Video() VideoProvider {
 	switch f.cfg.Video.Backend {
-	case "ffmpeg":
+	case backendFFmpeg:
 		return f.mustFFmpeg()
-	case "stub":
+	case backendStub:
 		return NewStubVideoProvider()
 	default: // "auto" or empty
 		if p := f.tryFFmpeg(); p != nil {
@@ -60,11 +117,11 @@ func (f *Factory) Video() VideoProvider {
 // Document returns the best available DocumentProvider.
 func (f *Factory) Document() DocumentProvider {
 	switch f.cfg.Document.Backend {
-	case "pdftotext":
+	case pdftotextTool:
 		return f.mustPdftotext()
-	case "golib":
+	case backendGolib:
 		return f.newGolib()
-	case "stub":
+	case backendStub:
 		return NewStubDocumentProvider()
 	default: // "auto"
 		// Prefer golib (pure Go, always available), then pdftotext for PDF
@@ -75,9 +132,9 @@ func (f *Factory) Document() DocumentProvider {
 // OCR returns the best available OCRProvider.
 func (f *Factory) OCR() OCRProvider {
 	switch f.cfg.OCR.Backend {
-	case "tesseract":
+	case backendTesseract:
 		return f.mustTesseract()
-	case "stub":
+	case backendStub:
 		return NewStubOCRProvider()
 	default: // "auto"
 		if p := f.tryTesseract(); p != nil {
@@ -91,11 +148,11 @@ func (f *Factory) OCR() OCRProvider {
 // Transcription returns the best available TranscriptionProvider.
 func (f *Factory) Transcription() TranscriptionProvider {
 	switch f.cfg.Transcription.Backend {
-	case "whisper-cli":
+	case backendWhisper:
 		return f.mustWhisper()
-	case "ollama":
+	case backendOllama:
 		return f.newOllamaTranscription()
-	case "stub":
+	case backendStub:
 		return NewStubTranscriptionProvider()
 	default: // "auto"
 		if p := f.tryWhisper(); p != nil {
@@ -109,33 +166,33 @@ func (f *Factory) Transcription() TranscriptionProvider {
 // Vision returns the best available vision.Provider.
 func (f *Factory) Vision() vision.Provider {
 	switch f.cfg.Vision.Backend {
-	case "ollama":
+	case backendOllama:
 		return f.newOllamaVision()
-	case "openai":
-		return f.newOpenAIVision()
-	case "anthropic":
-		return f.newAnthropicVision()
+	case backendOpenAI:
+		return f.openAIVision(f.apiKey(keyOpenAI))
+	case backendAnthropic:
+		return f.anthropicVision(f.apiKey(keyAnthropic))
 	case "gemini":
-		return f.newGeminiVision()
+		return f.geminiVision(f.apiKey(keyGemini))
 	case "openrouter":
-		return f.newOpenRouterVision()
-	case "stub":
+		return f.openRouterVision(f.apiKey(keyOpenRouter))
+	case backendStub:
 		return vision.NewStubProvider()
 	default: // "auto"
 		if p := f.tryOllamaVision(); p != nil {
 			return p
 		}
-		if f.apiKey("OPENAI_API_KEY") != "" {
-			return f.newOpenAIVision()
+		if key := f.apiKey(keyOpenAI); key != "" {
+			return f.openAIVision(key)
 		}
-		if f.apiKey("ANTHROPIC_API_KEY") != "" {
-			return f.newAnthropicVision()
+		if key := f.apiKey(keyAnthropic); key != "" {
+			return f.anthropicVision(key)
 		}
-		if f.apiKey("GEMINI_API_KEY") != "" {
-			return f.newGeminiVision()
+		if key := f.apiKey(keyGemini); key != "" {
+			return f.geminiVision(key)
 		}
-		if f.apiKey("OPENROUTER_API_KEY") != "" {
-			return f.newOpenRouterVision()
+		if key := f.apiKey(keyOpenRouter); key != "" {
+			return f.openRouterVision(key)
 		}
 		slog.Debug("providers: no vision backend found, using stub")
 		return vision.NewStubProvider()
@@ -145,9 +202,9 @@ func (f *Factory) Vision() vision.Provider {
 // Diarization returns the best available DiarizationProvider.
 func (f *Factory) Diarization() DiarizationProvider {
 	switch f.cfg.Diarization.Backend {
-	case "pyannote":
+	case pyannoteName:
 		return f.mustPyannote()
-	case "stub":
+	case backendStub:
 		return NewStubDiarizationProvider()
 	default: // "auto"
 		if p := f.tryPyannote(); p != nil {
@@ -161,29 +218,47 @@ func (f *Factory) Diarization() DiarizationProvider {
 // LLM returns the best available LLMProvider.
 func (f *Factory) LLM() LLMProvider {
 	switch f.cfg.LLM.Backend {
-	case "openai":
-		return NewOpenAILLMProvider(f.cfg.LLM.Model)
-	case "anthropic":
-		return NewAnthropicLLMProvider(f.cfg.LLM.Model)
-	case "ollama":
+	case backendOpenAI:
+		return f.openAILLM(f.apiKey(keyOpenAI))
+	case backendAnthropic:
+		return f.anthropicLLM(f.apiKey(keyAnthropic))
+	case backendOllama:
 		return NewOllamaLLMProvider(f.cfg.LLM.Endpoint, f.cfg.LLM.Model)
-	case "stub":
+	case backendStub:
 		return NewStubLLMProvider()
 	default: // "auto" or empty
-		// Try env vars in priority order.
-		if f.apiKey("ANTHROPIC_API_KEY") != "" {
-			return NewAnthropicLLMProvider(f.cfg.LLM.Model)
+		// A resolved key selects the hosted provider, in priority order.
+		if key := f.apiKey(keyAnthropic); key != "" {
+			return f.anthropicLLM(key)
 		}
-		if f.apiKey("OPENAI_API_KEY") != "" {
-			return NewOpenAILLMProvider(f.cfg.LLM.Model)
+		if key := f.apiKey(keyOpenAI); key != "" {
+			return f.openAILLM(key)
 		}
 		// Fall back to Ollama (local).
 		endpoint := f.cfg.LLM.Endpoint
 		if endpoint == "" {
-			endpoint = "http://localhost:11434"
+			endpoint = defaultOllamaEndpoint
 		}
 		return NewOllamaLLMProvider(endpoint, f.cfg.LLM.Model)
 	}
+}
+
+// --- Hosted LLMs ---
+
+func (f *Factory) openAILLM(key string) LLMProvider {
+	p := NewOpenAILLMProvider(key, f.cfg.LLM.Model)
+	if f.httpClient != nil {
+		p = p.WithHTTPClient(f.httpClient)
+	}
+	return p
+}
+
+func (f *Factory) anthropicLLM(key string) LLMProvider {
+	p := NewAnthropicLLMProvider(key, f.cfg.LLM.Model)
+	if f.httpClient != nil {
+		p = p.WithHTTPClient(f.httpClient)
+	}
+	return p
 }
 
 // --- FFmpeg ---
@@ -192,7 +267,7 @@ func (f *Factory) tryFFmpeg() VideoProvider {
 	if _, err := LookupTool("ffprobe"); err != nil {
 		return nil
 	}
-	if _, err := LookupTool("ffmpeg"); err != nil {
+	if _, err := LookupTool(toolFFmpeg); err != nil {
 		return nil
 	}
 	return NewFFmpegVideoProvider()
@@ -215,7 +290,7 @@ func (f *Factory) newGolib() DocumentProvider {
 // --- Pdftotext ---
 
 func (f *Factory) tryPdftotext() DocumentProvider {
-	if _, err := LookupTool("pdftotext"); err != nil {
+	if _, err := LookupTool(pdftotextTool); err != nil {
 		return nil
 	}
 	return NewPdftotextDocumentProvider()
@@ -232,12 +307,12 @@ func (f *Factory) mustPdftotext() DocumentProvider {
 // --- Tesseract ---
 
 func (f *Factory) tryTesseract() OCRProvider {
-	if _, err := LookupTool("tesseract"); err != nil {
+	if _, err := LookupTool(toolTesseract); err != nil {
 		return nil
 	}
 	lang := f.cfg.OCR.Language
 	if lang == "" {
-		lang = "eng"
+		lang = defaultOCRLanguage
 	}
 	return NewTesseractOCRProvider(lang)
 }
@@ -285,18 +360,26 @@ func (f *Factory) ollamaVisionEndpoint() string {
 	if f.cfg.Vision.Endpoint != "" {
 		return f.cfg.Vision.Endpoint
 	}
-	return "http://localhost:11434"
+	return defaultOllamaEndpoint
 }
 
 // tryOllamaVision probes the Ollama endpoint. Returns nil if unreachable.
 func (f *Factory) tryOllamaVision() vision.Provider {
 	endpoint := f.ollamaVisionEndpoint()
 	client := &http.Client{Timeout: 2 * time.Second}
-	resp, err := client.Get(strings.TrimRight(endpoint, "/") + "/api/tags")
-	if err != nil || resp.StatusCode != http.StatusOK {
+	// Vision() takes no context; the client timeout bounds the probe.
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, strings.TrimRight(endpoint, "/")+"/api/tags", http.NoBody)
+	if err != nil {
+		return nil
+	}
+	resp, err := client.Do(req)
+	if err != nil {
 		return nil
 	}
 	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
 	model := f.cfg.Vision.Model
 	if model == "" {
 		model = "llava"
@@ -312,27 +395,43 @@ func (f *Factory) newOllamaVision() vision.Provider {
 	return vision.NewOllamaProvider(f.ollamaVisionEndpoint(), model)
 }
 
-func (f *Factory) newOpenAIVision() vision.Provider {
-	return vision.NewOpenAIProvider(f.cfg.Vision.Model)
+func (f *Factory) openAIVision(key string) vision.Provider {
+	p := vision.NewOpenAIProvider(key, f.cfg.Vision.Model)
+	if f.httpClient != nil {
+		p = p.WithHTTPClient(f.httpClient)
+	}
+	return p
 }
 
-func (f *Factory) newAnthropicVision() vision.Provider {
-	return vision.NewAnthropicProvider(f.cfg.Vision.Model)
+func (f *Factory) anthropicVision(key string) vision.Provider {
+	p := vision.NewAnthropicProvider(key, f.cfg.Vision.Model)
+	if f.httpClient != nil {
+		p = p.WithHTTPClient(f.httpClient)
+	}
+	return p
 }
 
-func (f *Factory) newGeminiVision() vision.Provider {
-	return vision.NewGeminiProvider(f.cfg.Vision.Model)
+func (f *Factory) geminiVision(key string) vision.Provider {
+	p := vision.NewGeminiProvider(key, f.cfg.Vision.Model)
+	if f.httpClient != nil {
+		p = p.WithHTTPClient(f.httpClient)
+	}
+	return p
 }
 
-func (f *Factory) newOpenRouterVision() vision.Provider {
-	return vision.NewOpenRouterProvider(f.cfg.Vision.Model)
+func (f *Factory) openRouterVision(key string) vision.Provider {
+	p := vision.NewOpenRouterProvider(key, f.cfg.Vision.Model)
+	if f.httpClient != nil {
+		p = p.WithHTTPClient(f.httpClient)
+	}
+	return p
 }
 
 // --- Pyannote ---
 
 func (f *Factory) tryPyannote() DiarizationProvider {
 	// Try standard binary names.
-	for _, name := range []string{"pyannote-audio", "pyannote"} {
+	for _, name := range []string{"pyannote-audio", pyannoteName} {
 		if path, err := LookupTool(name); err == nil {
 			return NewPyannoteDiarizationProvider(path)
 		}

@@ -2,7 +2,6 @@ package http
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -20,9 +19,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
+	"github.com/ideacrafterslabs/ctxt/internal/auth/authtest"
 	"github.com/ideacrafterslabs/ctxt/internal/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/searchgraph"
 	"github.com/ideacrafterslabs/ctxt/internal/service/servicetest"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing/sharingtest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
@@ -39,22 +40,25 @@ func graphFixture(t *testing.T, withModel bool) *servicetest.HybridFixture {
 }
 
 // gatedGraphServer serves f behind bearer auth and the inbound gate; the
-// reader "ops" (token tok-valid) and the admin "owner" (token tok-admin)
+// reader "ops" (token tok-valid-fixture-0123456789abcdef0123456789) and the admin "owner" (token tok-admin-fixture-0123456789abcdef0123456789)
 // are both entitled to the open namespace only; the admin bypasses the
 // gate.
 func gatedGraphServer(t *testing.T, f *servicetest.HybridFixture) *httptest.Server {
 	t.Helper()
 	for _, principal := range []string{"ops", "owner"} {
-		require.NoError(t, f.Drv.Entitlements().Upsert(context.Background(), &storage.RegistryEntitlement{
-			RegistryName: principal, Plan: "inbound", Namespaces: []string{servicetest.GraphOpenNamespace},
+		require.NoError(t, f.Drv.Entitlements().Upsert(ownerCtx(), &storage.RegistryEntitlement{
+			Kind: storage.EntitlementInbound, RegistryName: principal, Plan: "inbound", Namespaces: []string{servicetest.GraphOpenNamespace},
 			FetchedAt: time.Now().Truncate(time.Second),
 		}))
 	}
-	provider, err := authn.NewStatic([]authn.StaticToken{
-		{Token: "tok-valid", Principal: "ops", Roles: []string{authn.RoleReader}},
-		{Token: "tok-admin", Principal: "owner", Roles: []string{authn.RoleAdmin}},
-	})
-	require.NoError(t, err)
+	// The reader is a non-owner principal: it sees the corpus only
+	// through a share grant; the namespace entitlement narrows further.
+	sharingtest.EnsurePrincipal(t, f.Drv, "ops", storage.PrincipalKindPerson, authn.RoleReader)
+	sharingtest.GrantEverything(t, f.Drv, "ops")
+	provider := authtest.TokenChain(
+		authtest.Token{Token: "tok-valid-fixture-0123456789abcdef0123456789", Principal: "ops", Roles: []string{authn.RoleReader}},
+		authtest.Token{Token: "tok-admin-fixture-0123456789abcdef0123456789", Principal: "owner", Roles: []string{authn.RoleAdmin}},
+	)
 	ts := httptest.NewServer(NewRouterWithConfig(f.Svc, RouterConfig{
 		Semantic:     f.Sem,
 		Auth:         provider,
@@ -263,7 +267,7 @@ func TestSearchGraph_EntitlementHidesEntities(t *testing.T) {
 	require.Equal(t, 1, relationCount(open, searchgraph.RelCoMention))
 
 	ts := gatedGraphServer(t, f)
-	resp, body := getGraph(t, ts, "tok-valid", alphaParams())
+	resp, body := getGraph(t, ts, "tok-valid-fixture-0123456789abcdef0123456789", alphaParams())
 	doc := graphOK(t, resp, body)
 	assert.ElementsMatch(t, []string{"ent:" + servicetest.GraphOpenEntity}, nodesOfKind(doc, searchgraph.KindEntity))
 	assert.Zero(t, relationCount(doc, searchgraph.RelCoMention), "the only shared entity is hidden")
@@ -278,7 +282,7 @@ func TestSearchGraph_EntitlementHidesEntities(t *testing.T) {
 
 	// The admin owner ignores its restrictive grant, as on every entity
 	// route.
-	admin := fetchGraph(t, ts, "tok-admin", alphaParams())
+	admin := fetchGraph(t, ts, "tok-admin-fixture-0123456789abcdef0123456789", alphaParams())
 	assert.Contains(t, admin.Graph.Nodes, "ent:"+servicetest.GraphSecretEntity)
 
 	// The route sits behind the /api/v1 auth middleware.

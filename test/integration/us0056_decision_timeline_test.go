@@ -48,7 +48,7 @@ func TestUS0056_DecisionObjectsRetainTimestamp(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	dates := []time.Time{
 		time.Date(2025, 1, 5, 9, 0, 0, 0, time.UTC),
@@ -82,13 +82,7 @@ func TestUS0056_DecisionObjectsRetainTimestamp(t *testing.T) {
 		job := waitForJob(t, env.URL, jobID, storage.JobCompleted)
 		require.NotEmpty(t, job.ResultID)
 
-		resp, err := gohttp.Get(fmt.Sprintf("%s/api/v1/objects/%s", env.URL, job.ResultID))
-		require.NoError(t, err)
-		defer resp.Body.Close()
-		require.Equal(t, gohttp.StatusOK, resp.StatusCode)
-
-		var obj storage.KnowledgeObject
-		require.NoError(t, json.NewDecoder(resp.Body).Decode(&obj))
+		obj := getObject(t, env.URL, job.ResultID)
 		objects = append(objects, &obj)
 	}
 
@@ -112,7 +106,7 @@ func TestUS0056_TimelineCompositionPreservesChronologicalOrder(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	type entry struct {
 		title string
@@ -150,12 +144,7 @@ func TestUS0056_TimelineCompositionPreservesChronologicalOrder(t *testing.T) {
 		job := waitForJob(t, env.URL, jobID, storage.JobCompleted)
 		require.NotEmpty(t, job.ResultID)
 
-		resp, err := gohttp.Get(fmt.Sprintf("%s/api/v1/objects/%s", env.URL, job.ResultID))
-		require.NoError(t, err)
-		defer resp.Body.Close()
-
-		var obj storage.KnowledgeObject
-		require.NoError(t, json.NewDecoder(resp.Body).Decode(&obj))
+		obj := getObject(t, env.URL, job.ResultID)
 		resultObjects = append(resultObjects, &obj)
 	}
 
@@ -194,7 +183,7 @@ func TestUS0056_EmptyDecisionSetProducesEmptyTimeline(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	timeline, err := env.svc.Compose(context.Background(), []*storage.KnowledgeObject{}, "timeline")
+	timeline, err := env.svc.Compose(ownerCtx(), []*storage.KnowledgeObject{}, "timeline")
 	require.NoError(t, err)
 	assert.Contains(t, timeline, "0 knowledge objects",
 		"empty timeline should note zero objects")
@@ -206,7 +195,7 @@ func TestUS0056_DecisionStatusPreservedInTimeline(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	ctx := context.Background()
+	ctx := ownerCtx()
 
 	env.svc.Pipes.Upsert("timeline.status", &pipeline.Pipeline{
 		PipelineName: "timeline.status",

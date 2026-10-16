@@ -18,7 +18,7 @@ import (
 // adapter. The reference exists to:
 //
 //  1. Give the package a self-contained APIClient for cassette tests
-//     (T-0266) without dragging in a vendor SDK.
+//     without dragging in a vendor SDK.
 //  2. Document the canonical mapping from GitHub's REST endpoints to
 //     the APIClient interface.
 //
@@ -71,7 +71,7 @@ func (c *HTTPAPIClient) fetchJSON(ctx context.Context, path string, out any) err
 
 // rateAwareGet wraps fetchJSON and records the rate-limit snapshot
 // implied by the last fetch's headers when the underlying Fetcher
-// surfaces them. Plain FetchResult doesn't carry headers; T-0266 keeps
+// surfaces them. Plain FetchResult doesn't carry headers; the client keeps
 // rate-limit observation behind a Fetcher capability flag — callers
 // that need rate-limit visibility wrap their Fetcher to also implement
 // HeaderFetcher (defined below) and HTTPAPIClient detects it.
@@ -383,12 +383,7 @@ type labelJSON struct {
 }
 
 func (l labelJSON) toSummary() LabelSummary {
-	return LabelSummary{
-		Name:        l.Name,
-		URL:         l.URL,
-		Description: l.Description,
-		Color:       l.Color,
-	}
+	return LabelSummary(l)
 }
 
 // ListIssueLabels: GET /repos/{owner}/{repo}/issues/{n}/labels.

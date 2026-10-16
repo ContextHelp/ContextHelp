@@ -1,13 +1,20 @@
+// Package pipeline defines the step and pipeline contracts dpkms runs
+// ingests through: PipelineStep, step contracts and their validation,
+// the pipeline registry, overrides and content detectors.
 package pipeline
 
 import (
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
+	"context"
+
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
-// PipelineStep is a single transformation that enriches a draft.
-// The canonical definition lives in pkg/pluginapi; this alias keeps all
-// internal packages working without change.
-type PipelineStep = pluginapi.PipelineStep
+// PipelineStep is a single transformation that enriches a KnowledgeObject.
+type PipelineStep interface {
+	Name() string
+	Contract() StepContract
+	Run(ctx context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error)
+}
 
 // Pipeline is an ordered sequence of steps.
 type Pipeline struct {

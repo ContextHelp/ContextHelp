@@ -21,9 +21,13 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmstest"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
 	"github.com/ideacrafterslabs/ctxt/internal/pidfile"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing/sharingtest"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/ideacrafterslabs/ctxt/internal/testguard"
 )
 
@@ -162,11 +166,13 @@ func withReadyTimeout(d time.Duration) DpkmsOption {
 //
 //   - HOME and every XDG dir under a fresh root, CTXT_/CH_/DPKMS_ and
 //     BUS_TOKEN cleared from the inherited env;
-//   - a protected config (mode 0600) with one static token per role
-//     (admin, writer, reader), every provider backend the stub and the
-//     embedding provider a stub on a closed port;
+//   - a protected config (mode 0600) whose registry holds one API key
+//     per role (admin: the owner; writer and reader: principals seeded
+//     in the store before serve starts), every provider backend the stub
+//     and the embedding provider a stub on a closed port;
 //   - HTTP and gRPC on free ephemeral ports (never the 8080/9090
-//     defaults), actual ports read back from the instance's pidfile;
+//     defaults), the cookie bridge on an OS-assigned one (never 9377),
+//     actual ports read back from the instance's pidfile;
 //   - its own process group, killed on cleanup and whenever start-up
 //     fails.
 //
@@ -234,12 +240,14 @@ func startDpkms(t testing.TB, opts ...DpkmsOption) (*Dpkms, error) {
 		return nil, err
 	}
 
-	cfg, err := d.config(o, dirs["XDG_DATA_HOME"])
-	if err != nil {
-		return nil, err
-	}
+	cfg := d.config(o, dirs["XDG_DATA_HOME"])
 	d.ConfigPath = filepath.Join(dirs["XDG_CONFIG_HOME"], "contexthelp", "dpkms.yaml")
 	writeYAML(t, d.ConfigPath, cfg)
+	if !o.private {
+		if err := d.mintKeys(t, cfg); err != nil {
+			return nil, err
+		}
+	}
 
 	ports, err := freePorts(2)
 	if err != nil {
@@ -252,7 +260,8 @@ func startDpkms(t testing.TB, opts ...DpkmsOption) (*Dpkms, error) {
 	defer logFile.Close()
 
 	d.cmd = exec.Command(bin, "serve", // #nosec G204 -- test helper runs the dpkms built from this checkout
-		"--port", strconv.Itoa(ports[0]), "--grpc-port", strconv.Itoa(ports[1]), "--workers", "1")
+		"--port", strconv.Itoa(ports[0]), "--grpc-port", strconv.Itoa(ports[1]),
+		"--cookie-bridge-port", "0", "--workers", "1")
 	d.cmd.Dir = root
 	d.cmd.Env = d.Env
 	d.cmd.Stdout = logFile
@@ -279,27 +288,18 @@ func startDpkms(t testing.TB, opts ...DpkmsOption) (*Dpkms, error) {
 }
 
 // config builds the instance's dpkms config.
-func (d *Dpkms) config(o dpkmsOptions, dataHome string) (map[string]any, error) {
+func (d *Dpkms) config(o dpkmsOptions, dataHome string) map[string]any {
 	providers := map[string]any{}
 	for _, k := range []string{"video", "document", "ocr", "transcription", "vision", "diarization", "llm"} {
 		providers[k] = map[string]any{"backend": "stub"}
 	}
 	server := map[string]any{"access": "private"}
 	if !o.private {
-		entries := make([]map[string]any, 0, len(dpkmstest.Roles))
-		for _, role := range dpkmstest.Roles {
-			tok, err := randomHex()
-			if err != nil {
-				return nil, err
-			}
-			d.tokens[role] = "e2e-" + role + "-" + tok
-			entries = append(entries, map[string]any{
-				"token": d.tokens[role], "principal": "e2e-" + role, "roles": []string{role},
-			})
-		}
+		// Credentials live in the registry (mintKeys). The instance mints
+		// no sign-in links, so it needs no public_url.
 		server = map[string]any{
 			"access": "protected",
-			"auth":   map[string]any{"provider": "static", "static": map[string]any{"tokens": entries}},
+			"auth":   map[string]any{"sign_in": []string{}},
 		}
 	}
 	cfg := map[string]any{
@@ -312,7 +312,52 @@ func (d *Dpkms) config(o dpkmsOptions, dataHome string) (map[string]any, error) 
 	for k, v := range o.config {
 		cfg[k] = v
 	}
-	return cfg, nil
+	return cfg
+}
+
+// mintKeys seeds the registry of the store cfg names, before serve opens
+// it: the writer and reader principals (the owner is seeded by the
+// schema) and one API key per role, kept in d.tokens. The owner's key is
+// what lets a protected instance start (ADR-079 §4).
+func (d *Dpkms) mintKeys(t testing.TB, cfg map[string]any) error {
+	t.Helper()
+	ctx := context.Background()
+	storageCfg, _ := cfg["storage"].(map[string]any)
+	path, _ := storageCfg["path"].(string)
+	if path == "" {
+		return errors.New("mint keys: config names no storage.path")
+	}
+	drv, err := storageutil.NewDriver("sqlite", path, storageutil.NewTestBlobStore(t))
+	if err != nil {
+		return fmt.Errorf("mint keys: open store: %w", err)
+	}
+	if err := drv.Init(ctx); err != nil {
+		return fmt.Errorf("mint keys: init store: %w", err)
+	}
+	defer func() { _ = drv.Close(ctx) }()
+	for role, p := range map[string]*storage.Principal{
+		dpkmstest.RoleWriter: {ID: dpkmstest.PrincipalWriter, Kind: storage.PrincipalKindDevice, DisplayName: "e2e writer", Roles: []string{dpkmstest.RoleWriter}},
+		dpkmstest.RoleReader: {ID: dpkmstest.PrincipalReader, Kind: storage.PrincipalKindPerson, DisplayName: "e2e reader", Roles: []string{dpkmstest.RoleReader}},
+	} {
+		if err := drv.Auth().Principals().Create(ctx, p); err != nil {
+			return fmt.Errorf("mint keys: create %s principal: %w", role, err)
+		}
+	}
+	// A non-owner principal sees nothing without a share grant (ADR-080
+	// §2); the e2e tests exercise the API's shape as a writer and a
+	// reader, so both get everything, as dpkmstest's principals do.
+	sharingtest.GrantEverything(t, drv, dpkmstest.PrincipalWriter, dpkmstest.PrincipalReader)
+	keys := authn.NewKeysOver(drv.Auth(), nil)
+	for role, principal := range map[string]string{
+		dpkmstest.RoleAdmin: dpkmstest.PrincipalAdmin, dpkmstest.RoleWriter: dpkmstest.PrincipalWriter, dpkmstest.RoleReader: dpkmstest.PrincipalReader,
+	} {
+		secret, _, err := keys.Mint(ctx, authn.MintKey{PrincipalID: principal, Name: "e2e " + role})
+		if err != nil {
+			return fmt.Errorf("mint keys: %s: %w", role, err)
+		}
+		d.tokens[role] = secret
+	}
+	return nil
 }
 
 // awaitReady waits for the process's pidfile (written once its HTTP

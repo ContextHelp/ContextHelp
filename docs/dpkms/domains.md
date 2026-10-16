@@ -65,7 +65,6 @@ Together with **`ctxt`** (the brain layer), they provide **context-as-a-service*
 - `pipeline.run` — Execute enrichment pipeline
 - `github.metadata.fetch` — External metadata retrieval
 - `registry.sync` — Registry synchronization
-- Custom plugin-defined job types
 
 **Queue Backends:**
 - In-memory (volatile, dev/testing)
@@ -196,7 +195,6 @@ Retryable() bool
 - **Reciprocal Rank Fusion (RRF)** — Position-based merging
 - **Weighted Sum Ranking** — Score-based combination
 - **SoftMax Normalization** — Probability distribution
-- **Plugin-provided methods** — Custom ranking logic
 
 **Deduplication:**
 - Exact ID match
@@ -261,27 +259,18 @@ Retryable() bool
 
 **Embedding Providers:**
 - OpenAI (text-embedding-3-large)
-- Custom provider plugins
 - Local embedding models
 
 ---
 
 ## 10. Caching Domain
-**Location:** `docs/dpkms/caching.md`
+**Location:** none; there is no caching layer
 
-**Responsibilities:**
-- Query result caching
-- Pipeline step caching
-- Embedding caching
-- Cache invalidation policies
-- Cache storage backends
-- TTL and eviction strategies
+There is no `cache:` config key, no cache command, and no cache for query results, pipeline step outputs, LLM, embedding or OCR results, so no TTL, eviction or invalidation policy. What exists is a few purpose-specific mechanisms owned by other domains:
 
-**Cache Types:**
-- Query cache — Search results
-- Step cache — Pipeline outputs
-- Embedding cache — Vector representations
-- Metadata cache — Registry data
+- **Ingest dedup** (Jobs & Ingestion): workers hash incoming content (`ContentHash`); a repeat capture reinforces the existing object instead of reprocessing it (`internal/jobs/worker.go`).
+- **Registry manifest cache** (Registry & Federation): fetched manifests are stored in the database (`RegistryCache`, `internal/storage/sqlite/registry_cache.go`) and step-registry indexes are refetched with `If-None-Match` on their ETag (`internal/steps/discovery.go`).
+- **Browser-extension cookies**: the cookie bridge keeps cookies per domain in memory for 1 hour (`internal/server/ws/cookie_bridge.go`).
 
 ---
 
@@ -303,7 +292,7 @@ Retryable() bool
 - Self-authenticating bundles
 - Scoped permissions for workspaces
 - Token-based access control
-- Capability-scoped plugin execution
+- Capability-scoped execution of installed steps
 
 ---
 

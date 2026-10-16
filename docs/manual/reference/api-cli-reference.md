@@ -14,11 +14,12 @@ ctxt import pinboard [--token <token>] [--file <pinboard.json>] [--since <RFC333
 ctxt import raindrop --collection-id <id>|--all [--token <token>] [--since <RFC3339|YYYY-MM-DD>] [--tag <tag>] [--query <text>] [--max-items N] [--dry-run]
 # Story-target importer surface (US-0300 to US-0317):
 # ctxt import <source> [source-specific flags]
-ctxt job list [--state pending|running|completed|failed|cancelled] [--limit N]
+ctxt job list [--state pending|running|completed|failed|cancelled] [--limit N] [--offset N]
 ctxt job status <job_id>
-ctxt job log <job_id>
 ctxt job retry <job_id>
-ctxt job cancel <job_id>
+ctxt job cancel <job_id> --confirm-token=<token>
+# On the dpkms host, against its local store:
+dpkms job list|status|log|retry|cancel
 ```
 
 ### Retrieval and inspection
@@ -29,14 +30,15 @@ ctxt find "<query>" --explain                     # per-signal score breakdown
 ctxt find "<query>" --graph [--no-browser]        # interactive search graph (see workflows/search-graph.md)
 ctxt find "<query>" --graph --format json|yaml    # search graph as JGF
 ctxt find "<query>" --graph -o <file>.html|.json|.yaml|.graphml|.gexf
-ctxt list [--type <type>] [--tag a,b] [--after <ISO>] [--q "<query>"]
-ctxt open <object_id> [--raw] [--output json|yaml|text]
+ctxt list [--type <type>] [--tagged <tag>] [--after <date>] [--q "<query>"]
+ctxt show <object_id> [--raw] [--format json|yaml]
+ctxt export <object_id> [--format yaml]
 ```
 
 ### Composition
 
 ```bash
-ctxt make brief|plan|summary|draft [--tag a,b] [--mention @entity.slug] [--since <ISO>] [--output-file <file>]
+ctxt compose brief|plan|summary|draft [--tagged <tag>] [--mention @entity.slug] [--since <date>] [--until <date>] [--output-file <file>]
 ```
 
 ### Profiles and config
@@ -47,7 +49,7 @@ ctxt profile view <name>
 ctxt profile create <name> --config <file>
 ctxt profile set <name>
 ctxt profile unset <name>
-ctxt profile rm <name> --confirm=yes
+ctxt profile rm <name> --confirm-token=<sha>
 ctxt config show|path|validate|edit
 ```
 
@@ -58,13 +60,16 @@ ctxt registry list
 ctxt registry info <name>
 ctxt registry add <name> <url>
 ctxt registry sync <name>
-ctxt registry remove <name>
+ctxt registry pending [--registry <name>]
+ctxt registry approve <id>... | --all --registry <name>   # --confirm-token=<sha>
+ctxt registry reject <id>...
+ctxt registry delete <name> --confirm-token=<sha>
 ```
 
 ### Pipeline and infrastructure (`dpkms`)
 
 ```bash
-dpkms serve [--port 8080] [--grpc-port 9090] [--workers N] [--public]
+dpkms serve [--port 8080] [--grpc-port 9090] [--cookie-bridge-port 9377] [--workers N] [--public]
 dpkms pipeline list|show|create|archive|unarchive|remove
 dpkms pipeline enqueue [--pipeline <name>] [--type <type>] [--wait] <content>
 dpkms pipeline step list|install|uninstall
@@ -79,6 +84,32 @@ dpkms session list [--all] [--principal <p>] | revoke <id> | revoke --principal 
 ctxt ui open [--server <url> | --instance <name>] [--no-browser]
 ```
 
+### Identity, principals and sharing
+
+```bash
+ctxt auth whoami
+ctxt auth key create [--name <label>] [--expires 30d|2026-12-31] [--scope <scope>]... [--principal <id>]
+ctxt auth key list [--principal <id>]
+ctxt auth key revoke <key-id> [--principal <id>]
+ctxt auth identity list | remove <identity-id>
+ctxt auth session list [--all] | end <session-id>
+# admin:principals (the owner's key):
+ctxt principal list [--kind person|device|peer] [--status active|suspended|revoked]
+ctxt principal show|suspend|link <id>
+ctxt principal create --kind person|device|peer --name <name> [--role admin|writer|reader]...
+ctxt principal revoke <id> --confirm-token=<sha>
+ctxt principal identity add <id> --method proxy|oidc --subject <subject> [--issuer <issuer>] [--name <label>]
+ctxt principal identity list <id> | remove <id> <identity-id>
+# admin:shares (the owner's key):
+ctxt share invite --name <display name> [--expires 7d] [--audience <audience>]
+ctxt share audience create <name> | add <audience> <principal-id> [--expires 90d] | remove <audience> <principal-id> | list
+ctxt share policy create [file] | edit <policy> [file] | show <policy> | list     # YAML from a file or stdin
+ctxt share template list | install colleagues-network|partners-network
+ctxt share grant <audience> <policy> [--expires 30d]
+ctxt share revoke <grant-id>
+ctxt share ceiling <principal-id> --deny-classes personal,financial
+```
+
 ## REST endpoint map (from current spec)
 
 Core routes:
@@ -89,6 +120,7 @@ Core routes:
 - `GET /jobs`
 - `GET /jobs/{id}`
 - `POST /jobs/{id}/retry`
+- `POST /jobs/{id}/cancel`
 - `GET /objects`
 - `GET /objects/{id}`
 - `PATCH /objects/{id}`
@@ -109,13 +141,23 @@ Web UI sign-in routes (see [Sign in to the web UI](../workflows/web-ui-sign-in.m
 - `GET /api/v1/whoami`: who the caller is (`via`: `token`, `session` or `none`), its scopes and, for a session, the session
 - `DELETE /api/v1/ui/session` (`signout:ui`, browser sessions only): sign the browser out
 
+Invite and sign-in link routes (same guide):
+
+- `POST /api/v1/share/invites` (`admin:shares`): `{display_name, expires_in}` → `{url, expires_at, expires_in}`, the link under `/ui/invite`, single use, 7 days by default
+- `POST /api/v1/principals/{id}/links` (`admin:principals`): a 10-minute sign-in link under `/ui/signin` for an active principal
+- `POST /ui/invite/session`, `POST /ui/signin/session`: ticket for the session cookie (same-origin, `X-Ctxt-CSRF: 1`; rate limited per client address; refused with a live session)
+
+Principal registry routes (`admin:principals`): `GET`, `POST /api/v1/principals`; `GET /api/v1/principals/{id}`; `POST .../suspend`, `.../revoke`; `GET`, `POST .../identities`, `DELETE .../identities/{identity}`; `GET`, `POST .../keys`, `DELETE .../keys/{key}`. Own credentials (`write:self`): `GET`, `POST /api/v1/self/keys`, `DELETE /api/v1/self/keys/{key}`, `PUT /api/v1/self/keys/{key}/policy`; `GET /api/v1/self/identities`, `DELETE /api/v1/self/identities/{identity}`; `GET /api/v1/self/sessions`, `DELETE /api/v1/self/sessions/{session}`.
+
+Sharing routes (`admin:shares`; see [Share your network](../workflows/sharing.md)): `GET`, `POST /api/v1/share/audiences`, `GET /api/v1/share/audiences/{audience}`, `PUT`, `DELETE .../members/{principal}`; `GET`, `POST /api/v1/share/policies`, `GET`, `PUT /api/v1/share/policies/{policy}`; `GET /api/v1/share/templates`, `POST /api/v1/share/templates/{name}`; `GET`, `POST /api/v1/share/grants`, `DELETE /api/v1/share/grants/{grant}`; `GET`, `PUT /api/v1/principals/{id}/ceiling`; `PUT /api/v1/share/keys/{key}/policy`. Audiences and policies may be named by id or name. A policy document travels as the `document` field of a JSON body (YAML or JSON text), validated on write. An edit bumps the version and never renames. A template installs once. `GET /share/grants?principal=` lists the grants in force for one principal. A non-owner principal with a grant in force sees `shared: {owner, policies}` in `GET /whoami`.
+
 Importer routes (story-target contract):
 
 - `GET /api/v1/importers`
 - `POST /api/v1/importers/{source}/run`
 - `GET /api/v1/importers/runs/{run_id}`
 
-Reference: [`../../api/api-rest.md`](../../api/api-rest.md)
+Reference: [`docs/api/api-rest.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/api/api-rest.md)
 
 ## gRPC service map (from current spec)
 
@@ -128,7 +170,7 @@ Reference: [`../../api/api-rest.md`](../../api/api-rest.md)
 - `EntityService`
 - `SuggestionService` (optional)
 
-Reference: [`../../api/api-grpc.md`](../../api/api-grpc.md)
+Reference: [`docs/api/api-grpc.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/api/api-grpc.md)
 
 ## Runtime-vs-story note
 

@@ -8,6 +8,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/ideacrafterslabs/ctxt/internal/safefetch"
 )
 
 const (
@@ -33,8 +35,15 @@ type ClientBridgeOption func(*ClientBridge)
 // ClientBridge is a shared, configurable HTTP client wrapper reusable across fetch steps.
 // It supports timeout, custom user-agent, extra headers, per-domain credential injection,
 // and an optional cookie jar.
+//
+// Its default client fetches through a safefetch.Guard: the URLs it
+// fetches come from captures, so private-network addresses are refused
+// (see WithBridgeFetchGuard). Only an injected client bypasses that.
 type ClientBridge struct {
 	client       *http.Client
+	guard        *safefetch.Guard
+	timeout      time.Duration
+	jar          http.CookieJar
 	userAgent    string
 	extraHeaders map[string]string
 	domainCreds  []DomainCredential
@@ -45,33 +54,42 @@ func NewClientBridge(opts ...ClientBridgeOption) *ClientBridge {
 	cb := &ClientBridge{
 		userAgent:    DefaultUserAgent,
 		extraHeaders: make(map[string]string),
+		timeout:      DefaultTimeout,
 	}
-	// Apply options before building the client so WithHTTPClient can override.
 	for _, opt := range opts {
 		opt(cb)
 	}
-	// Build a default client if none was injected.
 	if cb.client == nil {
-		cb.client = &http.Client{Timeout: DefaultTimeout}
+		guard := cb.guard
+		if guard == nil {
+			guard = safefetch.Default()
+		}
+		cb.client = guard.Client(cb.timeout)
+	}
+	if cb.jar != nil {
+		cb.client.Jar = cb.jar
 	}
 	return cb
 }
 
 // WithBridgeHTTPClient replaces the underlying *http.Client (e.g. for tests).
+// The injected client is used as is: it bypasses the fetch guard.
 func WithBridgeHTTPClient(c *http.Client) ClientBridgeOption {
 	return func(cb *ClientBridge) { cb.client = c }
 }
 
-// WithBridgeTimeout sets the request timeout on the underlying client.
+// WithBridgeFetchGuard sets the guard the default client dials through,
+// built from the fetch.* config (config.FetchGuard). Without it the
+// default policy applies: every private-network address refused.
+// Ignored when WithBridgeHTTPClient is also used.
+func WithBridgeFetchGuard(g *safefetch.Guard) ClientBridgeOption {
+	return func(cb *ClientBridge) { cb.guard = g }
+}
+
+// WithBridgeTimeout sets the request timeout on the default client.
 // Ignored when WithBridgeHTTPClient is also used.
 func WithBridgeTimeout(d time.Duration) ClientBridgeOption {
-	return func(cb *ClientBridge) {
-		if cb.client == nil {
-			cb.client = &http.Client{Timeout: d}
-		} else {
-			cb.client.Timeout = d
-		}
-	}
+	return func(cb *ClientBridge) { cb.timeout = d }
 }
 
 // WithBridgeUserAgent overrides the default User-Agent header.
@@ -91,11 +109,7 @@ func WithBridgeCookieJar(jar http.CookieJar) ClientBridgeOption {
 		if jar == nil {
 			jar, _ = cookiejar.New(nil)
 		}
-		if cb.client == nil {
-			cb.client = &http.Client{Timeout: DefaultTimeout, Jar: jar}
-		} else {
-			cb.client.Jar = jar
-		}
+		cb.jar = jar
 	}
 }
 
@@ -120,7 +134,7 @@ func (cb *ClientBridge) Do(req *http.Request) (*http.Response, error) {
 	// Per-domain credential injection.
 	cb.injectDomainCreds(req)
 
-	return cb.client.Do(req) // #nosec G704 -- request URL is controlled by pipeline configuration
+	return cb.client.Do(req) // #nosec G704 -- default client dials through safefetch, which refuses private-network addresses
 }
 
 // HTTPClient returns the underlying *http.Client for callers that need it directly

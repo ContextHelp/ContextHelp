@@ -43,15 +43,15 @@ func TestUS0109_CacheThenList(t *testing.T) {
 			Description: "An example step registry",
 			Version:     "1.0",
 			Steps: []storage.ManifestStep{
-				{Name: "step-a", Path: "/steps/a", License: "MIT", Version: "1.0"},
-				{Name: "step-b", Path: "/steps/b", License: "Apache-2.0", Version: "2.0"},
+				{Name: "step-a", Archive: "/steps/a", License: "MIT", Version: "1.0"},
+				{Name: "step-b", Archive: "/steps/b", License: "Apache-2.0", Version: "2.0"},
 			},
 		},
 		LastFetched: time.Now(),
 		ETag:        "etag-123",
 		AutoUpdate:  false,
 	}
-	err := env.svc.Store.Registries().CacheManifest(t.Context(), cache)
+	err := env.driver.Registries().CacheManifest(t.Context(), cache)
 	require.NoError(t, err)
 
 	resp, err := gohttp.Get(env.URL + "/api/v1/steps/registries")
@@ -92,15 +92,15 @@ func TestUS0109_CacheManifestFieldsPreserved(t *testing.T) {
 			Description: "Registry for field preservation test",
 			Version:     "2.5",
 			Steps: []storage.ManifestStep{
-				{Name: "step-x", Path: "/steps/x", License: "MIT", Version: "1.0"},
-				{Name: "step-y", Path: "/steps/y", License: "BSD-3-Clause", Version: "3.1"},
+				{Name: "step-x", Archive: "/steps/x", License: "MIT", Version: "1.0"},
+				{Name: "step-y", Archive: "/steps/y", License: "BSD-3-Clause", Version: "3.1"},
 			},
 		},
 		LastFetched: time.Now(),
 		ETag:        "etag-fields",
 		AutoUpdate:  true,
 	}
-	err := env.svc.Store.Registries().CacheManifest(t.Context(), cache)
+	err := env.driver.Registries().CacheManifest(t.Context(), cache)
 	require.NoError(t, err)
 
 	resp, err := gohttp.Get(env.URL + "/api/v1/steps/registries")
@@ -130,12 +130,12 @@ func TestUS0109_CacheManifestFieldsPreserved(t *testing.T) {
 	require.Len(t, found.Manifest.Steps, 2)
 
 	assert.Equal(t, "step-x", found.Manifest.Steps[0].Name)
-	assert.Equal(t, "/steps/x", found.Manifest.Steps[0].Path)
+	assert.Equal(t, "/steps/x", found.Manifest.Steps[0].Archive)
 	assert.Equal(t, "MIT", found.Manifest.Steps[0].License)
 	assert.Equal(t, "1.0", found.Manifest.Steps[0].Version)
 
 	assert.Equal(t, "step-y", found.Manifest.Steps[1].Name)
-	assert.Equal(t, "/steps/y", found.Manifest.Steps[1].Path)
+	assert.Equal(t, "/steps/y", found.Manifest.Steps[1].Archive)
 	assert.Equal(t, "BSD-3-Clause", found.Manifest.Steps[1].License)
 	assert.Equal(t, "3.1", found.Manifest.Steps[1].Version)
 }
@@ -149,7 +149,7 @@ func TestUS0109_MultipleCaches(t *testing.T) {
 		Manifest: &storage.RegistryManifest{
 			Name:    "multi-registry-a",
 			Version: "1.0",
-			Steps:   []storage.ManifestStep{{Name: "step-a1", Path: "/a1", License: "MIT", Version: "1.0"}},
+			Steps:   []storage.ManifestStep{{Name: "step-a1", Archive: "/a1", License: "MIT", Version: "1.0"}},
 		},
 		LastFetched: time.Now(),
 		ETag:        "etag-a",
@@ -159,15 +159,15 @@ func TestUS0109_MultipleCaches(t *testing.T) {
 		Manifest: &storage.RegistryManifest{
 			Name:    "multi-registry-b",
 			Version: "2.0",
-			Steps:   []storage.ManifestStep{{Name: "step-b1", Path: "/b1", License: "Apache-2.0", Version: "2.0"}},
+			Steps:   []storage.ManifestStep{{Name: "step-b1", Archive: "/b1", License: "Apache-2.0", Version: "2.0"}},
 		},
 		LastFetched: time.Now(),
 		ETag:        "etag-b",
 	}
 
 	ctx := t.Context()
-	require.NoError(t, env.svc.Store.Registries().CacheManifest(ctx, cache1))
-	require.NoError(t, env.svc.Store.Registries().CacheManifest(ctx, cache2))
+	require.NoError(t, env.driver.Registries().CacheManifest(ctx, cache1))
+	require.NoError(t, env.driver.Registries().CacheManifest(ctx, cache2))
 
 	resp, err := gohttp.Get(env.URL + "/api/v1/steps/registries")
 	require.NoError(t, err)

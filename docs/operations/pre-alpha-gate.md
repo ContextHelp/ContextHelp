@@ -59,11 +59,12 @@ run the same commands via `mise exec -- task ...`.
 9. If you are publishing the container path, verify the production Docker flow.
 
    ```bash
-   docker compose build dpkms
-   docker compose --profile prod up -d
-   docker compose ps
+   # docker/.env.prod, docker/dpkms-auth.yaml, docker/dpkms-local.yaml: docs/deployment/docker.md
+   docker compose --env-file docker/.env.prod build dpkms
+   docker compose --env-file docker/.env.prod --profile prod up -d
+   docker compose --env-file docker/.env.prod ps
    curl http://127.0.0.1:8080/health
-   docker compose --profile prod down
+   docker compose --env-file docker/.env.prod --profile prod down
    ```
 
 10. Run a manual product sanity pass before tagging or announcing the build.

@@ -9,7 +9,6 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // makePgFTSObject builds an object whose projected FTS body contains the
@@ -22,11 +21,11 @@ func makePgFTSObject(id, typ, searchableText string) *storage.KnowledgeObject {
 		Type:      typ,
 		CreatedAt: now,
 		UpdatedAt: now,
-		Graph: &pluginapi.ObjectGraph{
-			Nodes: []pluginapi.GraphNode{
+		Graph: &storage.ObjectGraph{
+			Nodes: []storage.GraphNode{
 				{
-					ID:       pluginapi.NewNodeID(id, pluginapi.NodeTypeSummary, 0),
-					NodeType: pluginapi.NodeTypeSummary,
+					ID:       storage.NewNodeID(id, storage.NodeTypeSummary, 0),
+					NodeType: storage.NodeTypeSummary,
 					Label:    "Summary",
 					Content:  searchableText,
 					Order:    0,
@@ -202,9 +201,9 @@ func TestPostgresFTSSearchNodeAware(t *testing.T) {
 	ctx := context.Background()
 
 	withDecision := makePgFTSObject("fts-pg-na1", "note", "incident retrospective timeline")
-	withDecision.Graph.Nodes = append(withDecision.Graph.Nodes, pluginapi.GraphNode{
-		ID:       pluginapi.NewNodeID("fts-pg-na1", pluginapi.NodeTypeDecision, 1),
-		NodeType: pluginapi.NodeTypeDecision,
+	withDecision.Graph.Nodes = append(withDecision.Graph.Nodes, storage.GraphNode{
+		ID:       storage.NewNodeID("fts-pg-na1", storage.NodeTypeDecision, 1),
+		NodeType: storage.NodeTypeDecision,
 		Label:    "Decision",
 		Content:  "rotate credentials",
 		Order:    1,
@@ -218,7 +217,7 @@ func TestPostgresFTSSearchNodeAware(t *testing.T) {
 	}
 
 	// No node filter: both match.
-	all, err := drv.Objects().FTSSearchNodeAware(ctx, "incident", storage.ObjectFilter{}, pluginapi.NodeAwareFilter{})
+	all, err := drv.Objects().FTSSearchNodeAware(ctx, "incident", storage.ObjectFilter{}, storage.NodeAwareFilter{})
 	if err != nil {
 		t.Fatalf("FTSSearchNodeAware (no filter): %v", err)
 	}
@@ -228,7 +227,7 @@ func TestPostgresFTSSearchNodeAware(t *testing.T) {
 
 	// Node-type filter: only the object carrying a decision node survives.
 	filtered, err := drv.Objects().FTSSearchNodeAware(ctx, "incident", storage.ObjectFilter{},
-		pluginapi.NodeAwareFilter{NodeTypes: []string{pluginapi.NodeTypeDecision}, ReturnNodeHits: true})
+		storage.NodeAwareFilter{NodeTypes: []string{storage.NodeTypeDecision}, ReturnNodeHits: true})
 	if err != nil {
 		t.Fatalf("FTSSearchNodeAware (decision filter): %v", err)
 	}
@@ -308,8 +307,15 @@ func TestPostgresSimilarQueryEndToEnd(t *testing.T) {
 	if err := drv.Objects().Create(ctx, makePgFTSObject("fts-pg-dsl2", "note", "unrelated body")); err != nil {
 		t.Fatalf("create non-match: %v", err)
 	}
+	// An inbox match is not a hit: the engine's status predicate follows
+	// the compiled $N placeholders.
+	inbox := makePgFTSObject("fts-pg-dsl3", "note", "canary predicate body in the inbox")
+	inbox.Status = "inbox"
+	if err := drv.Objects().Create(ctx, inbox); err != nil {
+		t.Fatalf("create inbox match: %v", err)
+	}
 
-	results, total, err := search.NewEngine(drv).Search(ctx, "similar==canary", 10, 0)
+	results, total, err := search.NewEngine(drv).Search(ctx, drv.Objects(), "similar==canary", 10, 0)
 	if err != nil {
 		t.Fatalf("engine search similar==: %v", err)
 	}

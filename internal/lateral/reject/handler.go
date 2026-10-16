@@ -1,3 +1,5 @@
+// Package reject expires a lateral candidate and records it as a hard
+// negative, subject to CEL policy gates.
 package reject
 
 import (

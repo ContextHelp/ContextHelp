@@ -29,7 +29,7 @@ const defaultKeychainService = "ctxt"
 // CanonicalBackendName returns the kit-canonical backend name for the
 // dpkms-/ctxt-facing alias, or the input unchanged when no alias matches.
 //
-// The aliases are kept for backwards compatibility — pre-T-0469 configs
+// The aliases are kept for backwards compatibility — older configs
 // referenced backends by these names. New code should always use the
 // canonical kit names directly.
 //
@@ -59,20 +59,28 @@ func IsDeprecatedBackendAlias(name string) bool {
 	return ok
 }
 
-// deprecationOnce ensures we warn at most once per process per alias,
-// to avoid noisy logs when New is called repeatedly with the same config.
-var deprecationOnce sync.Map // map[string]*sync.Once
+// deprecationWarned records the aliases already warned about: at most
+// one warning per process per alias, to avoid noisy logs when New is
+// called repeatedly with the same config.
+var (
+	deprecationMu     sync.Mutex
+	deprecationWarned = map[string]bool{}
+)
 
 func warnDeprecatedAlias(alias, canonical string) {
-	v, _ := deprecationOnce.LoadOrStore(alias, &sync.Once{})
-	v.(*sync.Once).Do(func() {
-		fmt.Fprintf(os.Stderr,
-			"warning: secrets backend %q is deprecated; use canonical name %q (will be removed in a future release)\n",
-			alias, canonical)
-		slog.Warn("secrets: deprecated backend alias",
-			"alias", alias,
-			"canonical", canonical)
-	})
+	deprecationMu.Lock()
+	warned := deprecationWarned[alias]
+	deprecationWarned[alias] = true
+	deprecationMu.Unlock()
+	if warned {
+		return
+	}
+	fmt.Fprintf(os.Stderr,
+		"warning: secrets backend %q is deprecated; use canonical name %q (will be removed in a future release)\n",
+		alias, canonical)
+	slog.Warn("secrets: deprecated backend alias",
+		"alias", alias,
+		"canonical", canonical)
 }
 
 // New returns a kit secret store configured from cfg. Backend names

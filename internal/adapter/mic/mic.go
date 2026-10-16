@@ -42,8 +42,7 @@ const Backend = "mic"
 // CapabilityPlatformDarwin signals the OS-platform constraint.
 const CapabilityPlatformDarwin adapter.Capability = "platform:darwin"
 
-// DefaultSampleRate is sufficient for downstream transcription
-// (per docs/ctxt/ambient.md §mic).
+// DefaultSampleRate is sufficient for downstream transcription.
 const DefaultSampleRate = 16000
 
 // DefaultMaxWindow is the hard ceiling on a single capture window

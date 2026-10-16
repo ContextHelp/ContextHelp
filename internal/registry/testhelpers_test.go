@@ -4,13 +4,12 @@ import (
 	"testing"
 
 	"hop.top/kit/go/storage/secret"
-	"hop.top/kit/go/storage/secret/keyring"
+	"hop.top/kit/go/storage/secret/memory"
 )
 
-// newTestResolver returns a kit keyring store scoped to a test-unique service
-// name. All entries written during the test are cleaned up automatically.
+// newTestResolver returns an in-memory store, one per test. TokenStore's
+// tests exercise its own logic; they never reach the OS keychain.
 func newTestResolver(t *testing.T) secret.MutableStore {
 	t.Helper()
-	svc := "ctxt-registry-test-" + t.Name()
-	return keyring.New(svc)
+	return memory.New()
 }

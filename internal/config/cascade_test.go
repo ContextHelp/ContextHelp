@@ -1,13 +1,13 @@
 package config
 
-// T-0482: Load should consult the kit-canonical 4-layer cascade —
+// Load should consult the kit-canonical 4-layer cascade —
 // project (walk-up from cwd) → user (~/.config/ctxt/) → system
 // (/etc/ctxt/) → defaults — when no explicit cfgFile or
 // CTXT_CONFIG env is set.
 //
-// Before T-0482, only the user XDG layer was consulted, which
+// Previously only the user XDG layer was consulted, which
 // meant tools that drop a .ctxt.yaml at a project root never had
-// it picked up. After T-0482, kit's OptionsForToolWithMarkers
+// it picked up. Now kit's OptionsForToolWithMarkers
 // supplies the cascade and Load merges all available layers.
 
 import (
@@ -83,19 +83,15 @@ func TestLoad_NoProjectMarker_FallsBackToDefaults(t *testing.T) {
 		"absent project marker, Load should still return defaults")
 }
 
-// TestLoad_PicksUpUserConfigPerBinary is the T-0576 regression. The
+// TestLoad_PicksUpUserConfigPerBinary is a regression guard. The
 // on-disk layout puts user config under
 // $XDG_CONFIG_HOME/contexthelp/<bin>.yaml — the binary name selects
-// the file, the project-namespace dir stays shared. T-0482 broke this
+// the file, the project-namespace dir stays shared. The cascade switch broke this
 // by switching the cascade to look at $XDG_CONFIG_HOME/ctxt/config.yaml
 // regardless of binary; existing dpkms users silently fell back to
 // hardcoded defaults.
 func TestLoad_PicksUpUserConfigPerBinary(t *testing.T) {
 	home := hermeticHome(t)
-	// CTXT_DATA_DIR is bound to viper's storage.path key, so unset it
-	// here — otherwise the env var would shadow the file value the
-	// test asserts against.
-	t.Setenv(EnvDataDir, "")
 	confDir := filepath.Join(home, ".config", "contexthelp")
 	require.NoError(t, os.MkdirAll(confDir, 0o755))
 

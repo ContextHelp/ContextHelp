@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // testStore is a minimal in-memory ObjectStore for e2e tests.
@@ -33,7 +32,7 @@ func (m *testStore) Get(_ context.Context, id string) (*storage.KnowledgeObject,
 	return m.objects[id], nil
 }
 
-func (m *testStore) GetByContentHash(_ context.Context, _ string) (*storage.KnowledgeObject, error) {
+func (m *testStore) GetByContentHash(_ context.Context, _, _ string) (*storage.KnowledgeObject, error) {
 	return nil, nil
 }
 
@@ -48,7 +47,9 @@ func (m *testStore) List(_ context.Context, _ storage.ObjectFilter) ([]*storage.
 func (m *testStore) Update(_ context.Context, _ *storage.KnowledgeObject) error { return nil }
 func (m *testStore) Delete(_ context.Context, _ string) error                   { return nil }
 
-func (m *testStore) ListBySQL(_ context.Context, _ string, _ []any, _, _ int) ([]*storage.KnowledgeObject, int, error) {
+func (m *testStore) CountBlobRefs(_ context.Context, _ string) (int, error) { return 0, nil }
+
+func (m *testStore) ListBySQL(_ context.Context, _ string, _ []any, _ storage.ObjectFilter) ([]*storage.KnowledgeObject, int, error) {
 	return nil, 0, nil
 }
 
@@ -81,10 +82,14 @@ func (m *testStore) FTSSearch(_ context.Context, _ string, _ storage.ObjectFilte
 	return nil, nil
 }
 
-func (m *testStore) FTSSearchNodeAware(_ context.Context, _ string, _ storage.ObjectFilter, _ pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error) {
+func (m *testStore) FTSSearchNodeAware(_ context.Context, _ string, _ storage.ObjectFilter, _ storage.NodeAwareFilter) ([]*storage.NodeAwareResult, error) {
 	return nil, nil
 }
 
-func (m *testStore) VectorSearchNodeAware(_ context.Context, _ storage.VectorQuery, _ storage.ObjectFilter, _ pluginapi.NodeAwareFilter) ([]*pluginapi.NodeAwareResult, error) {
+func (m *testStore) VectorSearchNodeAware(_ context.Context, _ storage.VectorQuery, _ storage.ObjectFilter, _ storage.NodeAwareFilter) ([]*storage.NodeAwareResult, error) {
 	return nil, nil
+}
+
+func (m *testStore) CountByType(_ context.Context) (map[string]int, error) {
+	return map[string]int{}, nil
 }

@@ -16,9 +16,9 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
+	"github.com/ideacrafterslabs/ctxt/internal/safefetch"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // fanOutJob is a container job as its entry point enqueues it, and the
@@ -198,6 +198,9 @@ func runContainer(t *testing.T, driver storage.StorageDriver, name string, tc fa
 		Models:     reg,
 		Resolver:   wiringResolver(t),
 		Embeddings: driver.Embeddings(),
+		// The feed is served from loopback, which the default fetch
+		// guard refuses.
+		FetchGuard: safefetch.New(safefetch.Options{Policy: safefetch.Policy{AllowPrivate: true}}),
 	})
 	q := jobs.NewQueue(driver.Jobs())
 	now := time.Now().Truncate(time.Second)
@@ -294,13 +297,13 @@ func requireContainsItems(t *testing.T, parent *storage.KnowledgeObject, items [
 	}
 	contained := map[string]bool{}
 	for _, e := range parent.Graph.Edges {
-		if e.EdgeType == pluginapi.EdgeTypeContains && e.FromID == parent.ID {
+		if e.EdgeType == storage.EdgeTypeContains && e.FromID == parent.ID {
 			contained[e.ToID] = true
 		}
 	}
 	var got []string
 	for _, n := range parent.Graph.Nodes {
-		if n.NodeType == pluginapi.NodeTypeArtifact && contained[n.ID] {
+		if n.NodeType == storage.NodeTypeArtifact && contained[n.ID] {
 			src, _ := n.Metadata["source"].(string)
 			got = append(got, src)
 		}

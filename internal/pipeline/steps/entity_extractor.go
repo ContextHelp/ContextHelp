@@ -10,7 +10,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
 )
 
 // mentionRe matches @namespace.slug references in text.
@@ -48,11 +47,13 @@ func (e *EntityExtractor) Run(ctx context.Context, draft *storage.KnowledgeObjec
 	seen := make(map[string]bool)
 	var slugs []string
 
-	// 0. T-0190: caller-asserted mentions (e.g. `ctxt analyze --mentions
+	// 0. Caller-asserted mentions (e.g. `ctxt analyze --mentions
 	//    "@client.acme"`) are pre-populated on draft.Mentions by the worker
 	//    before the pipeline runs. Seed `seen` with their slugs so steps 1+2
 	//    don't double-insert when the same slug is also detected from text.
-	//    Caller-supplied wins on conflict.
+	//    Caller-supplied wins on conflict. They stay first on draft.Mentions;
+	//    the boundary tells each node below which field its mention came from.
+	userMentions := len(draft.Mentions)
 	for _, u := range draft.Mentions {
 		s := u.String()
 		const prefix = "ctxt://entity/"
@@ -104,29 +105,36 @@ func (e *EntityExtractor) Run(ctx context.Context, draft *storage.KnowledgeObjec
 	draft.Mentions = append(draft.Mentions, mentions.ParseSlice(slugs)...)
 
 	// Intra-object graph: one NodeTypeEntityMention node per mention with an
-	// EdgeTypeReferences edge pointing to the entity URI.
+	// EdgeTypeReferences edge pointing to the entity URI. The node records
+	// the field the mention came from: the mention edges written later
+	// (entity_resolver, the worker, fan-out) carry it as their provenance.
 	// Inter-object edges (object → entity in the edges table) are written by
 	// entity_resolver, NOT here — that is the layer boundary (ADR-063).
 	if draft.ID != "" && len(draft.Mentions) > 0 {
 		if draft.Graph == nil {
-			draft.Graph = &pluginapi.ObjectGraph{}
+			draft.Graph = &storage.ObjectGraph{}
 		}
 		for i, u := range draft.Mentions {
-			nodeID := pluginapi.NewNodeID(draft.ID, pluginapi.NodeTypeEntityMention, i)
+			nodeID := storage.NewNodeID(draft.ID, storage.NodeTypeEntityMention, i)
 			if draft.Graph.FindNode(nodeID) != nil {
 				continue
 			}
-			draft.Graph.Nodes = append(draft.Graph.Nodes, pluginapi.GraphNode{
+			field := storage.MentionSourceRawContent
+			if i < userMentions {
+				field = storage.MentionSourceMentions
+			}
+			draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
 				ID:       nodeID,
-				NodeType: pluginapi.NodeTypeEntityMention,
+				NodeType: storage.NodeTypeEntityMention,
 				Label:    u.String(),
 				Order:    i,
+				Metadata: map[string]any{storage.ProvenanceSourceField: field},
 			})
-			draft.Graph.Edges = append(draft.Graph.Edges, pluginapi.GraphEdge{
+			draft.Graph.Edges = append(draft.Graph.Edges, storage.GraphEdge{
 				ID:       fmt.Sprintf("%s->%s", nodeID, u.String()),
 				FromID:   nodeID,
 				ToID:     u.String(),
-				EdgeType: pluginapi.EdgeTypeReferences,
+				EdgeType: storage.EdgeTypeReferences,
 			})
 		}
 	}

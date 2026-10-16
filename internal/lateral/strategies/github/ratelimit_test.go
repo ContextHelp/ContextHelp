@@ -105,7 +105,7 @@ func TestFloorTracker_BoundsOutOfRange_FullyClamped(t *testing.T) {
 	now := time.Date(2026, 5, 9, 12, 0, 0, 0, time.UTC)
 	cases := []struct {
 		name string
-		// Before T-0270 the contract clamped only MinPct < 0 and MaxPct
+		// Previously the contract clamped only MinPct < 0 and MaxPct
 		// > 1; values like MinPct=2.0 / MaxPct=-0.5 produced nonsense
 		// floors. clampBounds normalises both directions for both.
 		bounds FloorBounds

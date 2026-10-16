@@ -1,7 +1,8 @@
-// Package federation. worker.go implements WorkerSet — one async push
-// goroutine per configured federation target. Wakes on `interval`, lists
-// source objects + their edges, hands the batch to the target's Pusher,
-// logs errors and continues. Honors context cancel for graceful shutdown
+// Package federation pushes knowledge objects, their edges and mention
+// entities from one instance to others. This file implements WorkerSet —
+// one async push goroutine per configured federation target. Wakes on `interval`, pushes
+// the source objects changed since the target's watermark (Sync), logs
+// errors and continues. Honors context cancel for graceful shutdown
 // (US-0319 AC #9). Cycle detection runs at construction time per US-0318.
 package federation
 
@@ -35,6 +36,12 @@ type Worker struct {
 	target FederationTarget
 	src    storage.StorageDriver
 	pusher Pusher
+	// batchSize caps the objects per Push; <= 0 means DefaultBatchSize.
+	batchSize int
+	// syncer carries failures and skipped objects from tick to tick;
+	// the first tick creates it.
+	syncer   *Syncer
+	syncOnce sync.Once
 
 	done chan struct{} // closed when run() returns
 }
@@ -178,57 +185,46 @@ func (w *Worker) run(ctx context.Context) {
 	}
 }
 
-// tick performs one push cycle: list source objects + their edges + the
-// entities those edges reference, then hand off to the Pusher. Watermark
-// filtering is delegated to LocalPusher (which dedups by content_hash and
-// advances the watermark on success).
-//
-// T-0175: entities accompany mention edges (ADR-049) so the receiver can
-// resolve to_id slugs without a dangling reference.
+// tick pushes the objects changed since the target's watermark, in
+// batches; see Syncer.Sync.
 func (w *Worker) tick(ctx context.Context) error {
-	objs, _, err := w.src.Objects().List(ctx, storage.ObjectFilter{Status: "all"})
-	if err != nil {
-		return fmt.Errorf("list source objects: %w", err)
+	n, err := w.sync().Sync(ctx)
+	if n > 0 {
+		slog.Debug("federation: pushed changes", "name", w.target.Name, "objects", n)
 	}
-	if len(objs) == 0 {
-		return nil
-	}
+	return err
+}
 
-	materialized := make([]storage.KnowledgeObject, 0, len(objs))
-	for _, o := range objs {
-		materialized = append(materialized, *o)
-	}
+func (w *Worker) sync() *Syncer {
+	w.syncOnce.Do(func() { w.syncer = NewSyncer(w.src, w.pusher, w.batchSize) })
+	return w.syncer
+}
 
-	edges := make([]storage.Edge, 0)
-	for _, o := range objs {
-		from, err := w.src.Edges().ListFrom(ctx, "object", o.ID)
-		if err != nil {
-			return fmt.Errorf("list source edges from %q: %w", o.ID, err)
-		}
-		for _, e := range from {
-			edges = append(edges, *e)
+// Skipped returns, per target name, the objects its worker gave up
+// pushing (see Syncer.Skipped); targets with none are left out.
+func (ws *WorkerSet) Skipped() map[string][]SkippedObject {
+	out := map[string][]SkippedObject{}
+	for _, w := range ws.workers {
+		if s := w.sync().Skipped(); len(s) > 0 {
+			out[w.target.Name] = s
 		}
 	}
-
-	entities, err := collectEntitiesForEdges(ctx, w.src, edges)
-	if err != nil {
-		return fmt.Errorf("collect mention entities: %w", err)
-	}
-
-	return w.pusher.Push(ctx, materialized, edges, entities)
+	return out
 }
 
 // collectEntitiesForEdges returns the entity rows referenced by any edge
 // with to_type='entity' (the canonical mention-target shape per ADR-049).
 // Slugs are deduped within the batch. Missing entities are skipped: a
-// dangling mention edge at the source is not a federation concern.
+// dangling mention edge at the source is not a federation concern. Any
+// other store error is returned, failing the batch so the next push
+// retries it rather than shipping mention edges without their targets.
 func collectEntitiesForEdges(
 	ctx context.Context,
 	src storage.StorageDriver,
 	edges []storage.Edge,
 ) ([]storage.Entity, error) {
 	seen := make(map[string]bool, len(edges))
-	var entities []storage.Entity
+	var entities []storage.Entity //nolint:prealloc // nil when no edge names an entity; preallocating turns the push payload's "entities": null into []
 	store := src.Entities()
 	for i := range edges {
 		e := &edges[i]
@@ -237,8 +233,11 @@ func collectEntitiesForEdges(
 		}
 		seen[e.ToID] = true
 		ent, err := store.Get(ctx, e.ToID)
-		if err != nil || ent == nil {
+		if errors.Is(err, storage.ErrNotFound) || (err == nil && ent == nil) {
 			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("get source entity %q: %w", e.ToID, err)
 		}
 		entities = append(entities, *ent)
 	}
@@ -246,16 +245,15 @@ func collectEntitiesForEdges(
 }
 
 // pusherFor returns the appropriate Pusher implementation for a federation
-// entry. Local SQLite paths use LocalPusher; HTTP(S) URLs use RemotePusher
-// wired with the source-side WatermarkStore so successful pushes advance the
-// per-federation watermark (T-0188). LocalPusher writes the watermark into
-// the target DB (US-0319 AC #3) and does not need src wiring.
+// entry. Local SQLite paths use LocalPusher, which keeps the watermark in
+// the target DB (US-0319 AC #3); HTTP(S) URLs use RemotePusher, which keeps
+// it in the source's WatermarkStore under the entry name.
 func pusherFor(entry config.FederationEntry, src storage.StorageDriver) Pusher {
 	if isHTTP(entry.URL) {
 		return NewRemotePusherWithWatermarks(entry.Name, entry.URL, entry.Token,
-			src.Watermarks())
+			src.Watermarks(), src.Blobs())
 	}
-	return NewLocalPusher(entry.Name, entry.URL)
+	return NewLocalPusher(entry.Name, entry.URL, entry.Blob, src.Blobs())
 }
 
 func isHTTP(target string) bool {

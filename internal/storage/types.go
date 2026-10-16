@@ -3,34 +3,157 @@ package storage
 import (
 	"time"
 
-	"github.com/ideacrafterslabs/ctxt/pkg/pluginapi"
+	uri "hop.top/cite/scheme"
 )
 
-// KnowledgeObject is the central data structure representing an ingested piece of knowledge.
-// The canonical definition lives in pkg/pluginapi; this alias keeps all internal packages working.
-type KnowledgeObject = pluginapi.KnowledgeObject
+// KnowledgeObject is the central data structure representing an ingested piece
+// of knowledge. It is the type passed through pipeline steps.
+type KnowledgeObject struct {
+	ID                 string         `json:"id"`
+	Type               string         `json:"type"`
+	Subtype            string         `json:"subtype,omitempty"`
+	RawContent         string         `json:"raw_content"`
+	TextContent        string         `json:"text_content,omitempty"`
+	ContentType        string         `json:"content_type,omitempty"`
+	Metadata           map[string]any `json:"metadata,omitempty"`
+	Summaries          []string       `json:"summaries,omitempty"`
+	Sections           []Section      `json:"sections,omitempty"`
+	Tags               []Tag          `json:"tags,omitempty"`
+	Mentions           []uri.URI      `json:"mentions,omitempty"`
+	Decisions          []Decision     `json:"decisions,omitempty"`
+	Tasks              []Task         `json:"tasks,omitempty"`
+	Vectors            []ObjectVector `json:"-"` // embedding-step output per model; persisted by EmbeddingStore.Put, never serialized
+	Pipeline           string         `json:"pipeline,omitempty"`
+	Source             string         `json:"source,omitempty"`
+	RegistryInfluences []string       `json:"registry_influences,omitempty"`
+	ContentHash        string         `json:"content_hash,omitempty"`
+	SourceKey          string         `json:"source_key,omitempty"` // external dedup key (Slack ts, tweet ID, etc.)
+	Status             string         `json:"status,omitempty"`
+	InboxNote          string         `json:"inbox_note,omitempty"`
+	ReinforcementCount int            `json:"reinforcement_count,omitempty"`
+	LastReinforcedAt   *time.Time     `json:"last_reinforced_at,omitempty"`
+	RemindAt           *time.Time     `json:"remind_at,omitempty"`
+	RemindedAt         *time.Time     `json:"reminded_at,omitempty"`
+	CreatedAt          time.Time      `json:"created_at"`
+	UpdatedAt          time.Time      `json:"updated_at"`
+	FTSIndexed         bool           `json:"fts_indexed"`
+	ProfileID          string         `json:"profile_id,omitempty"` // owning profile; empty = global
+	// Classes are the object's content classes (ADR-080 §3), sorted and
+	// unique: set by the class rules at ingest or by hand, read by share
+	// policies (exclude_classes) and principal ceilings (deny_classes).
+	Classes       []string     `json:"classes,omitempty"`
+	AttachmentIDs []string     `json:"attachment_ids,omitempty"`
+	Graph         *ObjectGraph `json:"graph,omitempty"`
+	// ChangeSeq is the object's position in its store's change order:
+	// the store stamps it from a counter on every insert and update, so
+	// a later change always has a greater value whatever the object's
+	// timestamps say. Read-only — stores ignore it on write — and local
+	// to one store, so it never travels on the wire.
+	ChangeSeq int64 `json:"-"`
+	// BlobContent is the content the externalize step put in the blob
+	// store, by blob key, kept on the draft until its row is written:
+	// ingest then puts a blob back from it if a concurrent delete of the
+	// same key removed it (blob.Ensure). Never persisted or serialized.
+	BlobContent map[string]string `json:"-"`
+}
 
 // Draft is a KnowledgeObject being progressively enriched (ADR-053).
-type Draft = pluginapi.KnowledgeObject
+type Draft = KnowledgeObject
 
 // Section represents a structural section of a knowledge object.
-type Section = pluginapi.Section
+type Section struct {
+	Title    string         `json:"title"`
+	Content  string         `json:"content"`
+	Order    int            `json:"order"`
+	Metadata map[string]any `json:"metadata,omitempty"`
+}
 
 // Tag represents a label attached to a knowledge object.
-type Tag = pluginapi.Tag
+type Tag struct {
+	Label  string  `json:"label"`
+	Weight float64 `json:"weight,omitempty"`
+	Source string  `json:"source,omitempty"`
+}
 
 // Decision represents an extracted decision from content.
-type Decision = pluginapi.Decision
+type Decision struct {
+	Title  string `json:"title"`
+	Status string `json:"status"`
+	Impact string `json:"impact"`
+}
 
 // Task represents an extracted task from content.
-type Task = pluginapi.Task
+type Task struct {
+	Title  string `json:"title"`
+	Status string `json:"status"`
+}
 
 // Graph-canonical types (ADR-063).
-type ObjectGraph = pluginapi.ObjectGraph
-type GraphNode = pluginapi.GraphNode
-type GraphEdge = pluginapi.GraphEdge
-type DocumentProjection = pluginapi.DocumentProjection
-type IndexProjection = pluginapi.IndexProjection
+
+// GraphNode is a typed node within an object's intra-object graph.
+type GraphNode struct {
+	ID       string         `json:"id"`              // NewNodeID(objectID, nodeType, ordinal)
+	NodeType GraphNodeType  `json:"node_type"`       // NodeType* constant
+	Label    string         `json:"label,omitempty"` // human-readable label
+	Content  string         `json:"content,omitempty"`
+	Order    int            `json:"order"` // ordinal position; zero is valid
+	Metadata map[string]any `json:"metadata,omitempty"`
+}
+
+// GraphEdge is a directed edge between two nodes within the same object graph.
+// Inter-object edges MUST go to the edges table (ADR-049); this is intra-object only.
+type GraphEdge struct {
+	ID       string        `json:"id"`
+	FromID   string        `json:"from_id"`
+	ToID     string        `json:"to_id"`
+	EdgeType GraphEdgeType `json:"edge_type"` // EdgeType* constant
+	Weight   float64       `json:"weight,omitempty"`
+}
+
+// ObjectGraph holds typed nodes and edges for a single KnowledgeObject.
+// Write source of truth for graph-canonical KOs.
+type ObjectGraph struct {
+	Nodes []GraphNode `json:"nodes,omitempty"`
+	Edges []GraphEdge `json:"edges,omitempty"`
+}
+
+// FindNode returns the node with the given ID, or nil.
+func (g *ObjectGraph) FindNode(id string) *GraphNode {
+	if g == nil {
+		return nil
+	}
+	for i := range g.Nodes {
+		if g.Nodes[i].ID == id {
+			return &g.Nodes[i]
+		}
+	}
+	return nil
+}
+
+// DocumentProjection is a derived human-facing view of a KnowledgeObject.
+// Derived by projection.ProjectDocument; not stored directly.
+type DocumentProjection struct {
+	Title    string    `json:"title,omitempty"`
+	Body     string    `json:"body,omitempty"`
+	Sections []Section `json:"sections,omitempty"`
+}
+
+// IndexProjection is a derived search-index view of a KnowledgeObject.
+// Derived by projection.ProjectIndex; not stored directly.
+type IndexProjection struct {
+	FTSBody string `json:"fts_body,omitempty"`
+	// Tags includes weight and source metadata — richer than ADR pseudocode []string.
+	Tags          []Tag    `json:"tags,omitempty"`
+	Mentions      []string `json:"mentions,omitempty"`
+	EmbeddingText string   `json:"embedding_text,omitempty"`
+	// MaskedFTSBody and MaskedEmbeddingText are the shadow projection
+	// restricted viewers search (ADR-080 §7): a structured type's
+	// searchable minimum, otherwise the body with every classed part
+	// removed. Equal to FTSBody and EmbeddingText when nothing is
+	// withheld.
+	MaskedFTSBody       string `json:"masked_fts_body,omitempty"`
+	MaskedEmbeddingText string `json:"masked_embedding_text,omitempty"`
+}
 
 // BlobMeta describes metadata for a stored blob.
 type BlobMeta struct {
@@ -75,6 +198,25 @@ type Entity struct {
 	UpdatedAt     time.Time      `json:"updated_at"`
 }
 
+// EdgeEndpointEntity is the Edge.FromType / Edge.ToType value for an
+// endpoint that is an entity rather than an object.
+const EdgeEndpointEntity = "entity"
+
+// EdgeEndpointObject is the Edge.FromType / Edge.ToType value for an
+// endpoint that is a knowledge object.
+const EdgeEndpointObject = "object"
+
+// ObjectStatusActive is the status a KnowledgeObject is created with when it
+// carries none, and the status an ObjectFilter with no Status matches.
+const ObjectStatusActive = "active"
+
+// ObjectStatusAll is the ObjectFilter.Status value that lifts the status
+// filter: every status matches.
+const ObjectStatusAll = "all"
+
+// FeedStatusActive is the status a Feed is created with when it carries none.
+const FeedStatusActive = "active"
+
 // Edge represents a relationship between two nodes in the knowledge graph (ADR-049).
 type Edge struct {
 	ID        string         `json:"id"`
@@ -102,7 +244,9 @@ type ObjectFilter struct {
 	Offset    int
 	Sort      string // "created_at", "updated_at"
 	Dir       string // "asc", "desc"
-	Status    string // "" → default to "active"; "inbox"; "discarded"; "all"
+	// Status selects one object status: "" means ObjectStatusActive,
+	// ObjectStatusAll lifts the filter. See StatusScope.
+	Status string // "" → default to "active"; "inbox"; "discarded"; "raw"; "all"
 
 	// Metadata facet filters (US-0407): applied via JSON extraction on the metadata column.
 	MetadataType   string     // metadata.type (e.g. "observation", "task")
@@ -111,6 +255,50 @@ type ObjectFilter struct {
 	MetadataSince  *time.Time // objects with dates_mentioned >= this
 	MetadataUntil  *time.Time // dates_mentioned upper bound
 	SourceType     string     // metadata.source_type
+
+	// ChangedAfter, when non-nil, keeps objects whose ChangeSeq is
+	// greater than it and returns them in ChangeSeq order, ascending, in
+	// place of Sort and Dir. With Limit it pages through changes: the
+	// next page starts after the last object's ChangeSeq.
+	ChangedAfter *int64
+}
+
+// StatusScope is the object status f selects, and false when it selects
+// every status. An empty Status selects ObjectStatusActive, so a read with
+// no status asked for never returns an object that is not active;
+// ObjectStatusAll lifts the filter. List, ListBySQL, FTSSearch and
+// VectorSearch all apply it, so the status rule is the same on every read
+// path and every driver.
+func (f ObjectFilter) StatusScope() (string, bool) {
+	switch f.Status {
+	case "":
+		return ObjectStatusActive, true
+	case ObjectStatusAll:
+		return "", false
+	default:
+		return f.Status, true
+	}
+}
+
+// ListOrder is the ORDER BY expression (without the keywords) a List over f
+// sorts by. ORDER BY cannot take a bind parameter, so the result is only ever
+// one of the literals below: Sort and Dir are compared, never interpolated,
+// and caller input cannot reach the query text. A ChangedAfter page follows
+// change order; otherwise created_at (or updated_at), newest first unless
+// Dir is "asc".
+func (f ObjectFilter) ListOrder() string {
+	if f.ChangedAfter != nil {
+		return "change_seq ASC"
+	}
+	sortCol := "created_at"
+	if f.Sort == "updated_at" {
+		sortCol = "updated_at"
+	}
+	dir := "DESC"
+	if f.Dir == "asc" {
+		dir = "ASC"
+	}
+	return sortCol + " " + dir
 }
 
 // EntityFilter specifies criteria for listing entities.
@@ -120,9 +308,14 @@ type EntityFilter struct {
 	// Query, when non-empty, keeps entities whose slug, title or any
 	// alias contains it, ignoring ASCII case. LIKE metacharacters in it
 	// match literally. Applied before Limit and Offset.
-	Query  string
-	Limit  int
-	Offset int
+	Query string
+	// Namespaces, when non-empty, keeps only entities whose namespace is
+	// one of these. Applied before Limit and Offset, so a page is filled
+	// from the restricted set. Empty means no restriction: a caller that
+	// would restrict to no namespace at all must not call List.
+	Namespaces []string
+	Limit      int
+	Offset     int
 }
 
 // JobStatus represents the state of a job.
@@ -133,6 +326,7 @@ const (
 	JobRunning   JobStatus = "running"
 	JobCompleted JobStatus = "completed"
 	JobFailed    JobStatus = "failed"
+	JobCancelled JobStatus = "cancelled"
 )
 
 // Job represents an ingestion job.
@@ -154,27 +348,27 @@ type Job struct {
 	// UserMentions are caller-asserted @namespace.slug mentions passed
 	// alongside the analyze request (e.g. `ctxt analyze --mentions
 	// "@client.acme"`). The pipeline merges these with auto-extracted
-	// mentions before writing edges (T-0190). Stored on disk as a
+	// mentions before writing edges. Stored on disk as a
 	// JSON-encoded string array via the user_mentions column.
 	UserMentions []string `json:"user_mentions,omitempty"`
 	// UserHints are caller-asserted hint strings passed alongside the
 	// capture/analyze request (e.g. `ctxt capture --hint research`). The
 	// worker pre-populates draft.Tags with Tag{Source:"user"} entries
 	// before pipeline execution; the auto-tagger merges with these
-	// rather than overwriting (T-0573). Stored as JSON-encoded string
+	// rather than overwriting. Stored as JSON-encoded string
 	// array in the user_hints column.
 	UserHints []string `json:"user_hints,omitempty"`
 	// UserProfile is the focus-profile slug the operator pinned at
 	// capture time (`ctxt capture --profile founder`). The worker
 	// pre-populates draft.ProfileID before pipeline execution so the
-	// persisted KnowledgeObject is correctly partitioned by profile
-	// (T-0588). Empty string = global / no profile.
+	// persisted KnowledgeObject is correctly partitioned by profile.
+	// Empty string = global / no profile.
 	UserProfile string `json:"user_profile,omitempty"`
 	// UserNote is a free-form audit string the operator attached to
 	// the capture (`ctxt capture --note "client kickoff 2026-Q2"`).
 	// The worker pre-populates draft.InboxNote so the note survives
-	// pipeline execution and is queryable from the persisted object
-	// (T-0588). InboxNote is the canonical "operator-attached" field
+	// pipeline execution and is queryable from the persisted object.
+	// InboxNote is the canonical "operator-attached" field
 	// on KnowledgeObject; reusing it here keeps a single field name
 	// across inbox and pipeline paths.
 	UserNote string `json:"user_note,omitempty"`
@@ -265,8 +459,51 @@ type StepMetadata struct {
 	License        string         `json:"license"`
 	Version        string         `json:"version"`
 	Author         string         `json:"author"`
-	ConfigSchema   map[string]any `json:"config_schema,omitempty"`
 	SupportedLangs []string       `json:"supported_languages,omitempty"`
+	Execution      *StepExecution `json:"execution,omitempty"`
+}
+
+// Isolation levels an installed step runs under (ADR-058).
+const (
+	StepIsolationProcess   = "process"
+	StepIsolationContainer = "container"
+)
+
+// StepExecution is how an installed step runs: SKILL.md's execution
+// block, plus what install recorded about the files it accepted.
+type StepExecution struct {
+	// Type is "external": a program run per object over stdin/stdout.
+	Type string `json:"type"`
+	// Executable is the program, relative to the step's directory.
+	Executable string `json:"executable"`
+	// ConfigSchema is the JSON Schema the per-pipeline step config is
+	// checked against when dpkms serve starts.
+	ConfigSchema map[string]any `json:"config_schema,omitempty"`
+	// MinimumIsolation is "process" (default) or "container".
+	MinimumIsolation string `json:"minimum_isolation,omitempty"`
+	// Network declares the step needs outbound network access. Only
+	// container isolation enforces its absence.
+	Network bool `json:"network,omitempty"`
+	// ContainerImage is the image container isolation runs the
+	// executable in; required for container isolation.
+	ContainerImage string `json:"container_image,omitempty"`
+	// Resources are the step's default limits.
+	Resources StepResources `json:"resource_requirements,omitempty"`
+
+	// ExecutableSHA256 is the hex SHA-256 of the executable install
+	// accepted; every run refuses an executable that no longer matches.
+	ExecutableSHA256 string `json:"executable_sha256"`
+	// TrustLevel is the trust_level of the registry the step came from;
+	// empty for a step installed from a local directory.
+	TrustLevel string `json:"trust_level,omitempty"`
+}
+
+// StepResources are an installed step's resource limits.
+type StepResources struct {
+	MaxMemory string `json:"max_memory,omitempty"` // e.g. "256MB"
+	MaxCPU    string `json:"max_cpu,omitempty"`    // e.g. "50%" or "0.5" (container only)
+	Timeout   string `json:"timeout,omitempty"`    // e.g. "30s"
+	MaxOutput string `json:"max_output,omitempty"` // stdout cap, e.g. "64MB"
 }
 
 // RegistryCapabilities declares optional features supported by a registry.
@@ -319,9 +556,14 @@ type RegistryTaxonomyEntry struct {
 }
 
 // ManifestStep describes a step available in a registry.
+//
+// Archive is a gzipped tar of the step's directory (SKILL.md at its
+// root), relative to the registry URL; SHA256 is the archive's hex
+// SHA-256 digest, which install verifies before unpacking anything.
 type ManifestStep struct {
 	Name    string `json:"name"`
-	Path    string `json:"path"`
+	Archive string `json:"archive"`
+	SHA256  string `json:"sha256"`
 	License string `json:"license"`
 	Version string `json:"version"`
 }
@@ -339,14 +581,36 @@ type RegistryCache struct {
 	KeyFingerprint string `json:"key_fingerprint,omitempty"`
 }
 
-// RegistryEntitlement stores the entitlement record returned by a registry's
-// /entitlements endpoint. Namespaces contains glob patterns (e.g. "ai.*").
+// EntitlementKind says which direction an entitlement row governs.
+type EntitlementKind string
+
+const (
+	// EntitlementOutbound is this instance's entitlement on a remote
+	// registry, fetched from the registry's /entitlements endpoint and
+	// keyed by registry name.
+	EntitlementOutbound EntitlementKind = "outbound"
+	// EntitlementInbound is a grant an operator gives an authenticated
+	// caller of this instance, keyed by principal ID.
+	EntitlementInbound EntitlementKind = "inbound"
+)
+
+// Valid reports whether k is one of the defined kinds.
+func (k EntitlementKind) Valid() bool {
+	return k == EntitlementOutbound || k == EntitlementInbound
+}
+
+// RegistryEntitlement stores one entitlement row: a remote registry's
+// /entitlements answer (Kind outbound, RegistryName = registry name) or
+// an inbound grant (Kind inbound, RegistryName = principal ID).
+// Namespaces contains glob patterns (e.g. "ai.*"). Rows are keyed by
+// (Kind, RegistryName): the two kinds never overwrite each other.
 type RegistryEntitlement struct {
-	RegistryName string    `json:"registry_name"`
-	Plan         string    `json:"plan"`
-	Namespaces   []string  `json:"namespaces"`
-	ExpiresAt    time.Time `json:"expires_at,omitempty"`
-	FetchedAt    time.Time `json:"fetched_at"`
+	Kind         EntitlementKind `json:"kind"`
+	RegistryName string          `json:"registry_name"`
+	Plan         string          `json:"plan"`
+	Namespaces   []string        `json:"namespaces"`
+	ExpiresAt    time.Time       `json:"expires_at,omitempty"`
+	FetchedAt    time.Time       `json:"fetched_at"`
 }
 
 // SystemReminder represents a notification for the user.
@@ -569,38 +833,63 @@ type QuotaConfig struct {
 	ResetsAt time.Time `json:"resets_at" yaml:"resets_at"`
 }
 
+// OwnerPrincipal is the principal id of the instance owner (ADR-079).
+// Per-principal rows (search history, saved searches, the resurfacing
+// queue) written without a principal belong to it: stores substitute it
+// for an empty OwnerPrincipal, and the columns default to it.
+const OwnerPrincipal = "owner"
+
+// PrincipalOrOwner returns p, or OwnerPrincipal when p is empty: the
+// value a store writes to an owner_principal column.
+func PrincipalOrOwner(p string) string {
+	if p == "" {
+		return OwnerPrincipal
+	}
+	return p
+}
+
 // SavedSearch is a persisted named search query with optional alert config (US-0054).
 type SavedSearch struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`       // unique human-readable identifier
-	Query     string    `json:"query"`      // RSQL or NLQ query text
-	ProfileID string    `json:"profile_id"` // optional focus profile
-	AlertOn   string    `json:"alert_on"`   // "" | "new-results"
-	Notify    string    `json:"notify"`     // notification channel: "" | "email" | ...
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`       // unique human-readable identifier
+	Query     string `json:"query"`      // RSQL or NLQ query text
+	ProfileID string `json:"profile_id"` // optional focus profile
+	AlertOn   string `json:"alert_on"`   // "" | "new-results"
+	Notify    string `json:"notify"`     // notification channel: "" | "email" | ...
+	// OwnerPrincipal is the principal the search belongs to; empty on
+	// write means OwnerPrincipal (the instance owner).
+	OwnerPrincipal string    `json:"owner_principal"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 // SavedSearchFilter restricts saved search listing.
 type SavedSearchFilter struct {
 	ProfileID string
-	Limit     int
-	Offset    int
+	// OwnerPrincipal, when set, keeps that principal's searches only.
+	OwnerPrincipal string
+	Limit          int
+	Offset         int
 }
 
 // SearchHistoryEntry is one record in the search history log (US-0055).
 type SearchHistoryEntry struct {
-	ID             string    `json:"id"`
-	Query          string    `json:"query"`
-	ProfileID      string    `json:"profile_id"`
-	StrategiesUsed string    `json:"strategies_used"` // comma-separated strategy names
-	ResultCount    int       `json:"result_count"`
+	ID             string `json:"id"`
+	Query          string `json:"query"`
+	ProfileID      string `json:"profile_id"`
+	StrategiesUsed string `json:"strategies_used"` // comma-separated strategy names
+	ResultCount    int    `json:"result_count"`
+	// OwnerPrincipal is the principal that ran the search; empty on
+	// write means OwnerPrincipal (the instance owner).
+	OwnerPrincipal string    `json:"owner_principal"`
 	SearchedAt     time.Time `json:"searched_at"`
 }
 
 // SearchHistoryFilter restricts search history queries.
 type SearchHistoryFilter struct {
 	ProfileID string
-	Limit     int
-	Offset    int
+	// OwnerPrincipal, when set, keeps that principal's entries only.
+	OwnerPrincipal string
+	Limit          int
+	Offset         int
 }
