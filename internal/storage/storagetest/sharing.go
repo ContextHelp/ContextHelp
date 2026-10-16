@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -58,6 +59,7 @@ func SharingConformance(t *testing.T, drv storage.StorageDriver) {
 		{"ceiling refusals", sharingConfCeilingRefusals},
 		{"identity policy binding", sharingConfIdentityPolicy},
 		{"identity policy refusals", sharingConfIdentityPolicyRefusals},
+		{"policy key bindings", sharingConfPolicyKeyBindings},
 		{"transaction binds every registry read and write", sharingConfInTx},
 		{"access log append and query by principal", sharingConfAccessLogPrincipal},
 		{"access log query by object and window", sharingConfAccessLogObject},
@@ -626,6 +628,45 @@ func sharingConfIdentityPolicy(t *testing.T, drv storage.StorageDriver) {
 	}
 	if got, _ = st.IdentityPolicy(ctx, id.ID); got != "" {
 		t.Fatalf("IdentityPolicy after clear = %q, want empty", got)
+	}
+}
+
+func sharingConfPolicyKeyBindings(t *testing.T, drv storage.StorageDriver) {
+	ctx := context.Background()
+	f := newSharingFixture(t, drv, "policy-bindings")
+	a := newIdentity(t, drv.Auth(), f.principal.ID, "key-bound-a", sharingT0)
+	b := newIdentity(t, drv.Auth(), f.principal.ID, "key-bound-b", sharingT0)
+	st := drv.Sharing()
+	if got, err := st.PolicyKeyBindings(ctx, f.policy.ID); err != nil || len(got) != 0 {
+		t.Fatalf("PolicyKeyBindings(none) = %v, %v; want empty", got, err)
+	}
+	for _, id := range []string{b.ID, a.ID} {
+		if err := st.BindIdentityPolicy(ctx, id, f.policy.ID); err != nil {
+			t.Fatalf("BindIdentityPolicy: %v", err)
+		}
+	}
+	want := []storage.KeyBinding{{IdentityID: a.ID, PrincipalID: f.principal.ID}, {IdentityID: b.ID, PrincipalID: f.principal.ID}}
+	if want[0].IdentityID > want[1].IdentityID {
+		want[0], want[1] = want[1], want[0]
+	}
+	got, err := st.PolicyKeyBindings(ctx, f.policy.ID)
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("PolicyKeyBindings = %v, %v; want %v ordered by identity", got, err, want)
+	}
+	if err := st.BindIdentityPolicy(ctx, a.ID, ""); err != nil {
+		t.Fatalf("BindIdentityPolicy(clear): %v", err)
+	}
+	if got, _ = st.PolicyKeyBindings(ctx, f.policy.ID); len(got) != 1 || got[0].IdentityID != b.ID {
+		t.Fatalf("PolicyKeyBindings after unbind = %v, want only %s", got, b.ID)
+	}
+	if err := drv.Auth().Identities().Revoke(ctx, b.ID, sharingT0); err != nil {
+		t.Fatalf("Revoke identity: %v", err)
+	}
+	if got, _ = st.PolicyKeyBindings(ctx, f.policy.ID); len(got) != 0 {
+		t.Fatalf("PolicyKeyBindings after revoke = %v, want none: a revoked key sees nothing", got)
+	}
+	if got, err := st.PolicyKeyBindings(ctx, "pol_missing"); err != nil || len(got) != 0 {
+		t.Fatalf("PolicyKeyBindings(unknown) = %v, %v; want empty", got, err)
 	}
 }
 

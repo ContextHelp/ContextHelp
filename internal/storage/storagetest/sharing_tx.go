@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,6 +20,7 @@ func sharingConfInTx(t *testing.T, drv storage.StorageDriver) {
 	t.Run("commit", func(t *testing.T) { sharingTxCommit(t, drv) })
 	t.Run("rollback", func(t *testing.T) { sharingTxRollback(t, drv) })
 	t.Run("nested joins", func(t *testing.T) { sharingTxNested(t, drv) })
+	t.Run("registry lock", func(t *testing.T) { sharingTxLock(t, drv) })
 }
 
 // sharingTxWrites performs every registry write in ctx's transaction
@@ -198,5 +200,72 @@ func sharingTxNested(t *testing.T, drv storage.StorageDriver) {
 	}
 	if got, _ := st.DenyClasses(ctx, f.principal.ID); len(got) != 0 {
 		t.Errorf("a write in a joined transaction survived the outer rollback: %v", got)
+	}
+}
+
+// LockRegistry needs the transaction of its context, is free to take
+// twice, and keeps every other transaction that takes it out until the
+// holder ends (ADR-083 §10 B: a change is classified and written, or an
+// approval checked and applied, with no concurrent change in between).
+func sharingTxLock(t *testing.T, drv storage.StorageDriver) {
+	ctx := context.Background()
+	st := drv.Sharing()
+	if err := st.LockRegistry(ctx); !errors.Is(err, storage.ErrNotInTransaction) {
+		t.Fatalf("LockRegistry outside a transaction = %v, want ErrNotInTransaction", err)
+	}
+
+	held := make(chan struct{})
+	release := make(chan struct{})
+	holder := make(chan error, 1)
+	go func() {
+		holder <- st.InTx(ctx, func(ctx context.Context) error {
+			if err := st.LockRegistry(ctx); err != nil {
+				return err
+			}
+			if err := st.LockRegistry(ctx); err != nil {
+				return err
+			}
+			close(held)
+			<-release
+			return nil
+		})
+	}()
+	select {
+	case <-held:
+	case err := <-holder:
+		t.Fatalf("the holder ended before it held the lock: %v", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("the holder never took the lock")
+	}
+
+	var entered atomic.Bool
+	waiter := make(chan error, 1)
+	go func() {
+		waiter <- st.InTx(ctx, func(ctx context.Context) error {
+			if err := st.LockRegistry(ctx); err != nil {
+				return err
+			}
+			entered.Store(true)
+			return nil
+		})
+	}()
+	time.Sleep(300 * time.Millisecond)
+	if entered.Load() {
+		t.Error("a second transaction took the registry lock while the first held it")
+	}
+	close(release)
+	if err := <-holder; err != nil {
+		t.Fatalf("holder: %v", err)
+	}
+	select {
+	case err := <-waiter:
+		if err != nil {
+			t.Fatalf("waiter: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the second transaction never took the lock after the first ended")
+	}
+	if !entered.Load() {
+		t.Error("the second transaction did not run once the lock was free")
 	}
 }

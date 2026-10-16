@@ -55,3 +55,9 @@ func inTx(ctx context.Context, db *sql.DB, fn func(ctx context.Context) error) e
 	}
 	return nil
 }
+
+// inTransaction reports whether ctx carries a transaction on db.
+func inTransaction(ctx context.Context, db *sql.DB) bool {
+	b, ok := ctx.Value(txKey{}).(*boundTx)
+	return ok && b.db == db
+}
