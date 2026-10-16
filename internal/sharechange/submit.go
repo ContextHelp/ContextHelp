@@ -51,29 +51,57 @@ func (s *Service) Submit(ctx context.Context, caller *auth.Principal, c sharing.
 	if caller == nil || caller.ID == "" {
 		return nil, errors.New("share change: an authenticated caller is required")
 	}
-	owner := caller.Kind == storage.PrincipalKindOwner
+	if caller.Kind == storage.PrincipalKindOwner {
+		return s.Direct(ctx, caller, c)
+	}
 	var out Outcome
 	err := s.Sharing.InTx(ctx, func(ctx context.Context) error {
 		if err := s.Sharing.LockRegistry(ctx); err != nil {
 			return err
 		}
 		now := s.now()
-		if !owner {
-			out.Class, _ = sharing.ClassifyRead(ctx, s.Sharing, c, now)
-			if out.Class.Class == sharing.Widening {
-				return s.file(ctx, caller, c, &out)
-			}
+		out.Class, _ = sharing.ClassifyRead(ctx, s.Sharing, c, now)
+		if out.Class.Class == sharing.Widening {
+			return s.file(ctx, caller, c, &out)
 		}
-		var err error
-		if out.Applied, err = Apply(ctx, s.Sharing, c, caller.ID, now); err != nil {
-			return err
-		}
-		return s.record(ctx, caller.ID, out.Applied, now)
+		return s.applyRecorded(ctx, caller.ID, c, &out, now)
 	})
 	if err != nil {
 		return nil, err
 	}
 	return &out, nil
+}
+
+// Direct writes change c as caller at once, whatever its class: the
+// owner's changes, which are never pending, and the changes that are
+// not administration of another principal's view (a principal binding
+// its own key, ADR-083 §10 B). It runs under the registry lock like
+// Submit, so the write is ordered with every classified change.
+func (s *Service) Direct(ctx context.Context, caller *auth.Principal, c sharing.Change) (*Outcome, error) {
+	if caller == nil || caller.ID == "" {
+		return nil, errors.New("share change: an authenticated caller is required")
+	}
+	var out Outcome
+	err := s.Sharing.InTx(ctx, func(ctx context.Context) error {
+		if err := s.Sharing.LockRegistry(ctx); err != nil {
+			return err
+		}
+		return s.applyRecorded(ctx, caller.ID, c, &out, s.now())
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// applyRecorded writes c as actor and appends its audit entry, in the
+// caller's transaction.
+func (s *Service) applyRecorded(ctx context.Context, actor string, c sharing.Change, out *Outcome, now time.Time) error {
+	var err error
+	if out.Applied, err = Apply(ctx, s.Sharing, c, actor, now); err != nil {
+		return err
+	}
+	return s.record(ctx, actor, out.Applied, now)
 }
 
 // file files c as caller's pending request.

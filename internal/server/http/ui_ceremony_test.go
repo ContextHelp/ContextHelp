@@ -39,6 +39,7 @@ func (f *uiFixture) startCeremonies(signIn ...string) {
 	if f.ts != nil {
 		f.ts.Close()
 	}
+	f.approvals = newShareApprovals(f.t, store, f.clock.now)
 	f.ts = httptest.NewServer(NewRouterWithConfig(f.bundle.svc, RouterConfig{
 		Auth:            authn.NewChain(authn.NewAPIKeyMethod(f.keys, nil), f.sessions.Method()),
 		Sessions:        f.sessions,
@@ -48,6 +49,7 @@ func (f *uiFixture) startCeremonies(signIn ...string) {
 		Sharing:         store.Sharing(),
 		AuditLog:        store.AuditLog(),
 		Tickets:         tickets,
+		Approvals:       f.approvals,
 		SignIn:          signIn,
 		PublicURL:       publicURL,
 		CeremonyLimiter: NewAddrLimiter(ceremonyAttempts, time.Minute, f.clock.now),

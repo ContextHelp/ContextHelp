@@ -10,6 +10,8 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
+	"github.com/ideacrafterslabs/ctxt/internal/sharechange"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -24,6 +26,12 @@ import (
 // Audiences, policies and grants are plain JSON records with their ids.
 // A path or body may name an audience or a policy by id or by name.
 // Validation errors are 400 INVALID_REQUEST naming the field.
+//
+// Every write goes through sharechange.Service (share_changes.go): the
+// owner's change applies at once, a non-owner administrator's applies
+// at once when it narrows or changes no view, and a change that widens
+// anyone's view is answered 202 with a pending approval request and
+// writes nothing (ADR-083 §10 B).
 
 // maxPolicyBody bounds a policy document.
 const maxPolicyBody = 64 << 10
@@ -35,12 +43,22 @@ type shareRoutes struct {
 	sharing storage.SharingStore
 	reg     storage.AuthStore
 	keys    *authn.Keys
-	// changes records each change in the audit log.
+	// svc runs every change; nil with sharing or reg.
+	svc *sharechange.Service
+	// changes records the invite mint in the audit log (a change of the
+	// registry is recorded by svc, in its transaction).
 	changes changeLog
 }
 
 func newShareRoutes(rc RouterConfig) *shareRoutes {
-	return &shareRoutes{sharing: rc.Sharing, reg: rc.Registry, keys: rc.Keys, changes: changeLog{rc.AuditLog}}
+	s := &shareRoutes{sharing: rc.Sharing, reg: rc.Registry, keys: rc.Keys, changes: changeLog{rc.AuditLog}}
+	if rc.Sharing != nil && rc.Registry != nil {
+		s.svc = &sharechange.Service{
+			Deps:      sharechange.Deps{Sharing: rc.Sharing, Auth: rc.Registry, Audit: rc.AuditLog},
+			Approvals: rc.Approvals,
+		}
+	}
+	return s
 }
 
 // ready reports whether the sharing registry is wired, writing the
@@ -139,13 +157,11 @@ func (s *shareRoutes) CreateAudience(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "name: "+err.Error())
 		return
 	}
-	a := &storage.Audience{Name: strings.TrimSpace(req.Name)}
-	if err := s.sharing.Audiences().Create(r.Context(), a); err != nil {
-		writeRegistryError(w, err, "audience")
+	applied, ok := s.submit(w, r, routeCreateAudience, sharing.AudienceCreate{Name: strings.TrimSpace(req.Name)})
+	if !ok {
 		return
 	}
-	s.changes.record(r, EventAudienceCreated, map[string]any{"audience_id": a.ID, "audience": a.Name})
-	WriteJSON(w, http.StatusCreated, audienceRecord{Audience: *a, Members: []*storage.AudienceMember{}})
+	WriteJSON(w, http.StatusCreated, audienceRecord{Audience: *applied.Audience, Members: []*storage.AudienceMember{}})
 }
 
 // GetAudience handles GET /api/v1/share/audiences/{audience}.
@@ -172,6 +188,16 @@ func (s *shareRoutes) GetAudience(w http.ResponseWriter, r *http.Request) {
 type expiryRequest struct {
 	ExpiresIn int       `json:"expires_in"`
 	ExpiresAt time.Time `json:"expires_at"`
+}
+
+// storeTime returns at as the registry stores a time: UTC, whole
+// milliseconds. nil for none.
+func storeTime(at *time.Time) *time.Time {
+	if at == nil {
+		return nil
+	}
+	t := at.UTC().Truncate(time.Millisecond)
+	return &t
 }
 
 // expiry resolves the request's expiry fields; nil for none.
@@ -236,15 +262,11 @@ func (s *shareRoutes) AddMember(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusConflict, CodePrincipalInactive, "the principal is suspended or revoked")
 		return
 	}
-	m := &storage.AudienceMember{AudienceID: a.ID, PrincipalID: p.ID, ExpiresAt: expiresAt, AddedBy: caller(r).ID, AddedAt: now}
-	if err := s.sharing.Audiences().AddMember(r.Context(), m); err != nil {
-		writeRegistryError(w, err, "add audience member")
+	applied, ok := s.submit(w, r, routePutMember, sharing.MemberPut{AudienceID: a.ID, PrincipalID: p.ID, ExpiresAt: storeTime(expiresAt)})
+	if !ok {
 		return
 	}
-	s.changes.record(r, EventMemberAdded, map[string]any{
-		"audience_id": a.ID, "audience": a.Name, "principal_id": p.ID, "expires_at": m.ExpiresAt,
-	})
-	WriteJSON(w, http.StatusOK, m)
+	WriteJSON(w, http.StatusOK, applied.Member)
 }
 
 // RemoveMember handles DELETE /api/v1/share/audiences/{audience}/members/{principal}.
@@ -257,12 +279,8 @@ func (s *shareRoutes) RemoveMember(w http.ResponseWriter, r *http.Request) {
 		writeRegistryError(w, err, "audience")
 		return
 	}
-	if err := s.sharing.Audiences().RemoveMember(r.Context(), a.ID, strings.TrimSpace(chi.URLParam(r, "principal"))); err != nil {
-		writeRegistryError(w, err, "audience member")
+	if _, ok := s.submit(w, r, routeDeleteMember, sharing.MemberRemove{AudienceID: a.ID, PrincipalID: strings.TrimSpace(chi.URLParam(r, "principal"))}); !ok {
 		return
 	}
-	s.changes.record(r, EventMemberRemoved, map[string]any{
-		"audience_id": a.ID, "audience": a.Name, "principal_id": strings.TrimSpace(chi.URLParam(r, "principal")),
-	})
 	w.WriteHeader(http.StatusNoContent)
 }
