@@ -70,11 +70,11 @@ func TestBuildAgainstSQLite(t *testing.T) {
 	edge("object", "sg-c", "object", "sg-a", "related-to")
 	edge("object", "sg-a", "object", "sg-d", "supports")
 	edge("object", "sg-d", "object", "sg-a", "supported-by")
-	edge("object", "sg-a", "entity", "topic/x", "mentions")
-	edge("entity", "topic/x", "object", "sg-a", "mentioned_in")
-	edge("object", "sg-b", "entity", "topic/x", "mentions")
-	edge("object", "sg-c", "entity", "topic/y", "mentions")
-	edge("object", "sg-d", "entity", "topic/x", "mentions")
+	edge("object", "sg-a", "entity", "ctxt://entity/topic/x", "mentions")
+	edge("entity", "ctxt://entity/topic/x", "object", "sg-a", "mentioned_in")
+	edge("object", "sg-b", "entity", "ctxt://entity/topic/x", "mentions")
+	edge("object", "sg-c", "entity", "ctxt://entity/topic/y", "mentions")
+	edge("object", "sg-d", "entity", "ctxt://entity/topic/x", "mentions")
 	if err := drv.Entities().Upsert(ctx, &storage.Entity{
 		Slug: "topic/x", Title: "Topic X", Namespace: "topic", CreatedAt: now, UpdatedAt: now,
 	}); err != nil {

@@ -256,8 +256,13 @@ func (b *builder) loadEdges(ctx context.Context) error {
 		var slugs []string
 		for _, e := range stored {
 			switch {
-			case e.ToType == "entity" && e.EdgeType == RelMentions && e.ToID != "":
-				slugs = append(slugs, e.ToID)
+			case e.ToType == storage.EdgeEndpointEntity && e.EdgeType == RelMentions:
+				// The edge names the entity by its mention URI; the
+				// graph, its visibility check and the entity rows key
+				// it by slug.
+				if slug := storage.MentionTargetSlug(e.ToID); slug != "" {
+					slugs = append(slugs, slug)
+				}
 			case e.ToType == "object" && b.kept[e.ToID]:
 				if l, ok := collapseLink(c.ID, e.ToID, e.EdgeType); ok {
 					links[linkKey{l.Source, l.Target, l.Relation}] = l

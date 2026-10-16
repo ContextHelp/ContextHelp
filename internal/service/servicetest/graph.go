@@ -55,7 +55,8 @@ func (f *HybridFixture) SeedGraphGateCorpus(t testing.TB) {
 	} {
 		if err := f.Drv.Edges().Create(ctx, &storage.Edge{
 			ID: "gate-mention-" + string(rune('a'+i)), FromType: "object", FromID: m[0],
-			ToType: "entity", ToID: m[1], EdgeType: searchgraph.RelMentions, Weight: 1, CreatedAt: now,
+			// Named by its mention URI, as every mention writer stores it.
+			ToType: "entity", ToID: "ctxt://entity/" + m[1], EdgeType: searchgraph.RelMentions, Weight: 1, CreatedAt: now,
 		}); err != nil {
 			t.Fatalf("mention %s -> %s: %v", m[0], m[1], err)
 		}

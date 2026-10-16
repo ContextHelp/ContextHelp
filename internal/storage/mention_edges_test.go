@@ -32,6 +32,23 @@ func TestMentionSlug(t *testing.T) {
 	}
 }
 
+// MentionTargetSlug reads back the slug MentionTarget wrote, and only
+// from the canonical URI form: a bare slug or another URI is no mention
+// target.
+func TestMentionTargetSlug(t *testing.T) {
+	for _, slug := range []string{"project/alpha", "person/alice-chen", "stripe/api/checkout", "topic/a b"} {
+		u := uri.URI{Scheme: "ctxt", Namespace: "entity", ID: slug}
+		if got := MentionTargetSlug(MentionTarget(u)); got != slug {
+			t.Errorf("MentionTargetSlug(MentionTarget(%q)) = %q, want the slug", slug, got)
+		}
+	}
+	for _, id := range []string{"", "project/alpha", "ctxt://object/foo", "other://entity/bar", "ctxt://entity"} {
+		if got := MentionTargetSlug(id); got != "" {
+			t.Errorf("MentionTargetSlug(%q) = %q, want \"\"", id, got)
+		}
+	}
+}
+
 func TestMentionEdges(t *testing.T) {
 	alice := uri.URI{Scheme: "ctxt", Namespace: "entity", ID: "person/alice"}
 	acme := uri.URI{Scheme: "ctxt", Namespace: "entity", ID: "org/acme"}

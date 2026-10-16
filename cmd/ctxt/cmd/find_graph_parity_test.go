@@ -84,11 +84,14 @@ func seedParityCorpus(t *testing.T, db *testDB) {
 			t.Fatal(err)
 		}
 	}
-	edge("par-a", "entity", "svc/payments", "mentions")
-	edge("par-a", "entity", "ops/rollback", "mentions")
-	edge("par-b", "entity", "ops/rollback", "mentions")
-	edge("par-c", "entity", "svc/payments", "mentions")
-	edge("par-c", "entity", "team/sre", "mentions") // no stored record
+	// A mentions edge names the entity by its mention URI, as every
+	// mention writer stores it.
+	mention := func(from, slug string) { edge(from, "entity", "ctxt://entity/"+slug, "mentions") }
+	mention("par-a", "svc/payments")
+	mention("par-a", "ops/rollback")
+	mention("par-b", "ops/rollback")
+	mention("par-c", "svc/payments")
+	mention("par-c", "team/sre") // no stored record
 	edge("par-b", "object", "par-a", "extends")
 	rebuildFTSForTest(t, db)
 }
