@@ -54,13 +54,53 @@ func writeExec(t *testing.T, path, body string) {
 	}
 }
 
-// runIn runs argv in dir with PATH=<path>:/usr/bin:/bin (no mise, so tools
-// resolve from PATH as on a CI runner) and a throwaway HOME.
+// systemBinDirs hold the system utilities the scripts under test use.
+var systemBinDirs = []string{"/usr/bin", "/bin"}
+
+// hostTools are the programs scripts/ci/tools.sh resolves (go, gofmt,
+// golangci-lint, gitleaks, node, pnpm and what ships beside them) and
+// mise, which it prefers when on PATH. A host may have any of them in a
+// system directory: ubuntu runners ship /usr/bin/go.
+var hostTools = map[string]bool{
+	"go": true, "gofmt": true, "golangci-lint": true, "gitleaks": true,
+	"node": true, "npm": true, "npx": true, "corepack": true, "pnpm": true, "mise": true,
+}
+
+// systemBin returns a directory linking every program in systemBinDirs
+// except hostTools, the first directory winning as on PATH, so a script
+// under test sees the system utilities and only the tools a case stubs.
+func systemBin(t *testing.T) string {
+	t.Helper()
+	bin := t.TempDir()
+	for _, dir := range systemBinDirs {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			link := filepath.Join(bin, e.Name())
+			if hostTools[e.Name()] {
+				continue
+			}
+			if _, err := os.Lstat(link); err == nil {
+				continue
+			}
+			if err := os.Symlink(filepath.Join(dir, e.Name()), link); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	return bin
+}
+
+// runIn runs argv in dir with PATH=<path>:<systemBin> (no mise and no host
+// go or linter, so tools resolve from the stubs in path, as from the pins
+// CI installs) and a throwaway HOME.
 func runIn(t *testing.T, dir, path string, extraEnv []string, argv ...string) (string, error) {
 	t.Helper()
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = dir
-	cmd.Env = append([]string{"PATH=" + path + ":/usr/bin:/bin", "HOME=" + t.TempDir()}, extraEnv...)
+	cmd.Env = append([]string{"PATH=" + path + ":" + systemBin(t), "HOME=" + t.TempDir()}, extraEnv...)
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
 	err := cmd.Run()
@@ -133,6 +173,40 @@ func TestCIToolsPinnedOrFail(t *testing.T) {
 			t.Fatalf("env not normalized: %v\n%s", err, out)
 		}
 	})
+}
+
+// A go, golangci-lint or mise the host has in a system directory never
+// reaches a script under test: with stale ones there, "go missing" still
+// finds no go and the pinned linter still runs with the stubbed go.
+func TestRunInHidesHostTools(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not on PATH")
+	}
+	host := t.TempDir()
+	stubGo(t, host, "1.24.13")
+	stubLint(t, host, "2.11.4")
+	writeExec(t, filepath.Join(host, "mise"), "#!/bin/sh\necho \"host mise ran: $*\"\nexit 1\n")
+	orig := systemBinDirs
+	systemBinDirs = append([]string{host}, orig...)
+	t.Cleanup(func() { systemBinDirs = orig })
+
+	repo, goPin, lintPin := toolsRepo(t)
+	tools := filepath.Join(repo, "scripts", "ci", "tools.sh")
+	lintOnly := t.TempDir()
+	stubLint(t, lintOnly, lintPin)
+	out, err := runIn(t, repo, lintOnly, nil, "bash", tools, "golangci-lint,go")
+	if err == nil || !strings.Contains(out, "go not found; this repo pins "+goPin) {
+		t.Errorf("host go reached tools.sh: %v\n%s", err, out)
+	}
+	goOnly := t.TempDir()
+	stubGo(t, goOnly, goPin)
+	out, err = runIn(t, repo, goOnly, nil, "bash", tools, "golangci-lint,go")
+	if err == nil || !strings.Contains(out, "golangci-lint not found; this repo pins "+lintPin) {
+		t.Errorf("host golangci-lint reached tools.sh: %v\n%s", err, out)
+	}
+	if strings.Contains(out, "host mise ran") {
+		t.Errorf("host mise reached tools.sh:\n%s", out)
+	}
 }
 
 // The pre-commit lint hook fails, loudly, when golangci-lint is missing or
