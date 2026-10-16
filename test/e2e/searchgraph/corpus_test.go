@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
@@ -147,8 +148,9 @@ func corpusBlobs(c *corpus) storage.BlobStore {
 
 // storeObjects stores each fixture object through the service's raw
 // analyze path as `ctxt analyze --raw` stored it (source "argument"),
-// with its --mention value split as the CLI splits it, then each fixture
-// link through the service's link path.
+// with its --mention value split as the CLI splits it, activates it (see
+// activate), then stores each fixture link through the service's link
+// path.
 func storeObjects(c *corpus) error {
 	ctx := sharing.WithViewer(context.Background(), sharing.Unrestricted)
 	if err := os.MkdirAll(filepath.Dir(c.db), 0o700); err != nil {
@@ -171,6 +173,9 @@ func storeObjects(c *corpus) error {
 		if err != nil {
 			return fmt.Errorf("store %s: %w", o.alias, err)
 		}
+		if err := activate(ctx, d, id); err != nil {
+			return fmt.Errorf("store %s: %w", o.alias, err)
+		}
 		c.ids[o.alias] = id
 	}
 	for _, l := range fixtureLinks {
@@ -179,6 +184,15 @@ func storeObjects(c *corpus) error {
 		}
 	}
 	return nil
+}
+
+// activate moves an object the raw analyze path stored from raw to
+// active. Search returns active objects only, and a raw object is one
+// still waiting for enrichment (`ctxt inbox --raw`), so a raw fixture
+// would never match. The fixture stands for enriched knowledge; the raw
+// path is only how it gets in without a pipeline run.
+func activate(ctx context.Context, d storage.StorageDriver, id string) error {
+	return d.Objects().TransitionStatus(ctx, id, "raw", storage.ObjectStatusActive, time.Now().Truncate(time.Second))
 }
 
 // storeEmbeddings registers fixtureModel as the default, builds its index

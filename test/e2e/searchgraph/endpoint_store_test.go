@@ -27,15 +27,17 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/sharing"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing/sharingtest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // The endpoint corpus: what GET /api/v1/search/graph is asserted over,
 // on every storage driver. It is stored through the service's raw
-// analyze path (what `ctxt analyze --raw --mention` runs), so objects
-// carry an owning profile, which the CLI does not set, and the same
-// seeding works on SQLite and Postgres. Typed links mirror `ctxt link
+// analyze path (what `ctxt analyze --raw --mention` runs), then
+// activated as the search corpus is, so objects carry an owning profile,
+// which the CLI does not set, and the same seeding works on SQLite and
+// Postgres. Typed links mirror `ctxt link
 // create`; the default model, vectors and the inbound grant go in
 // through the driver, as no command writes them without a live
 // provider or a registry.
@@ -101,9 +103,10 @@ var endpointLinks = []fixtureLink{
 }
 
 // Principals of the protected instances, created in each seeded
-// store's registry with one API key each. The gated one holds an
-// inbound grant for every namespace but vault; the open one holds none,
-// which leaves it unrestricted. Both are readers.
+// store's registry with one API key each. Both are readers, shared
+// every object (a principal without a share grant sees nothing). The
+// gated one holds an inbound entitlement for every namespace but vault;
+// the open one holds none, which leaves its entities ungated.
 const (
 	gatedPrincipal  = "e2e-graph-gated"
 	openPrincipal   = "e2e-graph-open"
@@ -125,8 +128,8 @@ type graphStore struct {
 }
 
 // seedGraphPrincipals creates the gated and open principals in drv's
-// registry and mints one key each, kept on st, plus the owner's key a
-// protected instance needs to start.
+// registry, shares them every object and mints one key each, kept on
+// st, plus the owner's key a protected instance needs to start.
 func seedGraphPrincipals(ctx context.Context, t *testing.T, drv storage.StorageDriver, st *graphStore) {
 	t.Helper()
 	for _, id := range []string{gatedPrincipal, openPrincipal} {
@@ -136,6 +139,7 @@ func seedGraphPrincipals(ctx context.Context, t *testing.T, drv storage.StorageD
 			t.Fatalf("create principal %s: %v", id, err)
 		}
 	}
+	sharingtest.GrantEverything(t, drv, gatedPrincipal, openPrincipal)
 	keys := authn.NewKeysOver(drv.Auth(), nil)
 	for _, k := range []struct {
 		principal string
@@ -180,6 +184,9 @@ func seedGraphStore(t *testing.T, typ, path string, withModel bool) *graphStore 
 			Mentions: o.mentions, Profile: o.profile,
 		})
 		if err != nil {
+			t.Fatalf("store %s: %v", o.alias, err)
+		}
+		if err := activate(ctx, drv, id); err != nil {
 			t.Fatalf("store %s: %v", o.alias, err)
 		}
 		st.ids[o.alias] = id

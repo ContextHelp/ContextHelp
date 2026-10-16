@@ -36,6 +36,7 @@ const probeJS = `(function () {
     if (!v || document.body.dataset.probe) return;
     try {
       var n = v.data.nodes.find(function (n) { return n.kind === "object"; });
+      if (!n) throw new Error("no object node in the graph");
       v.graph.onNodeClick()(n, new MouseEvent("click"));
       document.body.dataset.probe = "clicked";
     } catch (err) {

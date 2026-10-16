@@ -39,6 +39,19 @@ func MentionSlug(u uri.URI) string {
 // looks an entity's edges up (EntityBacklinks) expects it.
 func MentionTarget(u uri.URI) string { return u.String() }
 
+// MentionTargetSlug is the inverse of MentionTarget: the slug of the
+// entity a mention edge names by node ID (its mentions ToID or its
+// mentioned_in FromID), or "" when id is not a ctxt://entity/ URI
+// string. Readers that key entities by slug, as the entity rows are,
+// map an edge's node ID through it.
+func MentionTargetSlug(id string) string {
+	u, err := uri.Parse(id)
+	if err != nil {
+		return ""
+	}
+	return MentionSlug(*u)
+}
+
 // MentionEdges returns the edges recording that obj mentions each entity
 // in targets: an object → entity mentions edge and, with reverse, the
 // entity → object mentioned_in edge, each naming the entity by
