@@ -30,7 +30,7 @@ execution:
       email_mask: {type: string}
       phone_mask: {type: string}
   resource_requirements:
-    max_memory: 256MB
+    max_memory: 1GB
     timeout: 10s
     max_output: 64MB
 ---
@@ -169,7 +169,9 @@ A few things a step cannot reach:
 
 ## Isolation
 
-The default is process isolation. What it enforces: the minimal environment described above, a private working directory, the process group killed on timeout, a CPU-time limit derived from the timeout, open-file and file-size limits, a memory limit (Linux only; macOS cannot set it), and the stdout cap.
+The default is process isolation. What it enforces: the minimal environment described above, a private working directory, the process group killed on timeout, a CPU-time limit derived from the timeout, open-file and file-size limits, a memory limit, and the stdout cap.
+
+Process isolation also sets a memory limit, on Linux only; macOS cannot set it. The limit caps the address space the step may reserve, not the memory it actually uses, so set it well above what the step needs. A Go executable fails to start at 512 MB or less, with "failed to reserve page summary memory" and exit status 2.
 
 What process isolation does not enforce: filesystem access (the step can read and write whatever the dpkms user can), network access (`SANDBOX_NETWORK=false` is advisory), and descriptor inheritance (Go opens its own files close-on-exec so the step gets only stdin, stdout, and stderr, but a descriptor a C library opened without close-on-exec would be inherited).
 

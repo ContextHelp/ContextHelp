@@ -20,7 +20,7 @@ execution:
         type: string
         description: Text that replaces each phone number
   resource_requirements:
-    max_memory: 256MB
+    max_memory: 1GB
     timeout: 10s
     max_output: 64MB
 ---
