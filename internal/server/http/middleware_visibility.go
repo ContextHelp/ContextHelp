@@ -141,46 +141,63 @@ func Visibility(method, pattern string, scope authn.Scope, cfg VisibilityConfig)
 			if reached {
 				rcpt.SettlePolicy()
 			}
-
-			res, err := sharing.Backstop(rec.body.Bytes(), sharing.HTTPPaths(shape), ledger)
-			if err != nil {
-				slog.Error("visibility: backstop cannot check the response", "route", route, "err", err)
-				if reached {
-					rcpt.Defer(sharing.CheckBackstop, sharing.ReasonResponseUnreadable)
-				}
-				w.Header().Del("Content-Length")
-				WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "response cannot be checked for visibility")
-				return
-			}
-			if len(res.Hits) > 0 {
-				recordBackstop(r, cfg.Security, route, v, res.Hits)
-				if cfg.Strict {
-					if reached {
-						rcpt.Refuse(sharing.CheckBackstop, sharing.ReasonHitRefused)
-					}
-					w.Header().Del("Content-Length")
-					WriteError(w, http.StatusInternalServerError, CodeVisibilityBackstop, "the response carried data outside the viewer's visibility and was refused")
-					return
-				}
-			}
-			switch {
-			case !reached:
-			case len(res.Hits) > 0 || res.Absent:
-				rcpt.Fail(sharing.CheckBackstop, sharing.ReasonHitStripped)
-			default:
-				rcpt.Pass(sharing.CheckBackstop, sharing.ReasonClean)
-			}
-			status, body := rec.status, res.Body
-			if res.Absent {
-				w.Header().Del("Content-Length")
-				WriteError(w, http.StatusNotFound, CodeNotFound, "resource not found")
-				return
-			}
-			w.Header().Set("Content-Length", strconv.Itoa(len(body)))
-			w.WriteHeader(status)
-			_, _ = w.Write(body)
+			answer(w, r, rec, backstopRun{shape: shape, route: route, viewer: v, ledger: ledger, reached: reached}, cfg, rcpt)
 		})
 	}
+}
+
+// backstopRun is what answer needs to check one buffered response.
+type backstopRun struct {
+	shape   sharing.Shape
+	route   string
+	viewer  sharing.Viewer
+	ledger  *sharing.Ledger
+	reached bool
+}
+
+// answer runs the backstop over the buffered response and writes what
+// passes (ADR-080 §8), recording the backstop check on the receipt:
+// refused on a strict instance, stripped otherwise, unreadable when the
+// body cannot be checked. A request a check refused before the handler
+// ran (reached false) is still checked, but the check is not recorded,
+// since the trail ended at the refusal.
+func answer(w http.ResponseWriter, r *http.Request, rec *recorder, run backstopRun, cfg VisibilityConfig, rcpt *sharing.Receipt) {
+	res, err := sharing.Backstop(rec.body.Bytes(), sharing.HTTPPaths(run.shape), run.ledger)
+	if err != nil {
+		slog.Error("visibility: backstop cannot check the response", "route", run.route, "err", err)
+		if run.reached {
+			rcpt.Defer(sharing.CheckBackstop, sharing.ReasonResponseUnreadable)
+		}
+		w.Header().Del("Content-Length")
+		WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "response cannot be checked for visibility")
+		return
+	}
+	if len(res.Hits) > 0 {
+		recordBackstop(r, cfg.Security, run.route, run.viewer, res.Hits)
+		if cfg.Strict {
+			if run.reached {
+				rcpt.Refuse(sharing.CheckBackstop, sharing.ReasonHitRefused)
+			}
+			w.Header().Del("Content-Length")
+			WriteError(w, http.StatusInternalServerError, CodeVisibilityBackstop, "the response carried data outside the viewer's visibility and was refused")
+			return
+		}
+	}
+	switch {
+	case !run.reached:
+	case len(res.Hits) > 0 || res.Absent:
+		rcpt.Fail(sharing.CheckBackstop, sharing.ReasonHitStripped)
+	default:
+		rcpt.Pass(sharing.CheckBackstop, sharing.ReasonClean)
+	}
+	if res.Absent {
+		w.Header().Del("Content-Length")
+		WriteError(w, http.StatusNotFound, CodeNotFound, "resource not found")
+		return
+	}
+	w.Header().Set("Content-Length", strconv.Itoa(len(res.Body)))
+	w.WriteHeader(rec.status)
+	_, _ = w.Write(res.Body)
 }
 
 // operationFor describes the request for its receipt: the route
