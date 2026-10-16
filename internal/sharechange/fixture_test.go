@@ -265,6 +265,19 @@ func (f *fx) eventsOf(kind string) []*storage.AuditEntry {
 	return out
 }
 
+// eventsBy lists the audit entries of event type kind recorded under
+// actor. Tests count them instead of taking the last entry: entries
+// written in the same second have no defined order.
+func (f *fx) eventsBy(kind, actor string) []*storage.AuditEntry {
+	var out []*storage.AuditEntry
+	for _, e := range f.eventsOf(kind) {
+		if e.Actor == actor {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
 // snapshot renders every row of the sharing registry the cast can
 // change, so a test compares what a change left untouched.
 func (f *fx) snapshot() string {
