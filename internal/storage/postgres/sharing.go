@@ -446,7 +446,7 @@ func (s *shareGrantStore) ListActiveForPrincipal(ctx context.Context, principalI
 
 type accessLogStore struct{ db *sql.DB }
 
-const accessColumns = `id, at, principal_id, identity_id, route, policy_versions, object_count, entity_count`
+const accessColumns = `id, at, principal_id, identity_id, route, decision, checks, operation_digest, policy_versions, object_count, entity_count`
 
 func (s *accessLogStore) Append(ctx context.Context, entries []*storage.AccessEntry) error {
 	if len(entries) == 0 {
@@ -468,8 +468,13 @@ func (s *accessLogStore) Append(ctx context.Context, entries []*storage.AccessEn
 		if e.IdentityID != "" {
 			identity = e.IdentityID
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO access_log (`+accessColumns+`) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-			e.ID, e.At, e.PrincipalID, identity, e.Route, e.PolicyVersions, e.ObjectCount, e.EntityCount); err != nil {
+		checks, err := json.Marshal(e.Checks)
+		if err != nil {
+			return fmt.Errorf("access log append %q checks: %w", e.ID, err)
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO access_log (`+accessColumns+`) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+			e.ID, e.At, e.PrincipalID, identity, e.Route, string(e.Decision), string(checks), e.OperationDigest,
+			e.PolicyVersions, e.ObjectCount, e.EntityCount); err != nil {
 			return fmt.Errorf("access log append %q: %w", e.ID, err)
 		}
 		for _, id := range e.ObjectIDs {
@@ -498,6 +503,9 @@ func (s *accessLogStore) Query(ctx context.Context, f storage.AccessFilter) ([]*
 	if f.ObjectID != "" {
 		conds = append(conds, "id IN (SELECT access_id FROM access_log_objects WHERE object_id = "+bind(f.ObjectID)+")")
 	}
+	if f.Decision != "" {
+		conds = append(conds, "decision = "+bind(string(f.Decision)))
+	}
 	if !f.Since.IsZero() {
 		conds = append(conds, "at >= "+bind(f.Since.UTC()))
 	}
@@ -521,8 +529,14 @@ func (s *accessLogStore) Query(ctx context.Context, f storage.AccessFilter) ([]*
 	for rows.Next() {
 		e := &storage.AccessEntry{}
 		var identity sql.NullString
-		if err := rows.Scan(&e.ID, &e.At, &e.PrincipalID, &identity, &e.Route, &e.PolicyVersions, &e.ObjectCount, &e.EntityCount); err != nil {
+		var decision, checks string
+		if err := rows.Scan(&e.ID, &e.At, &e.PrincipalID, &identity, &e.Route, &decision, &checks, &e.OperationDigest,
+			&e.PolicyVersions, &e.ObjectCount, &e.EntityCount); err != nil {
 			return nil, fmt.Errorf("access log query: %w", err)
+		}
+		e.Decision = storage.AccessDecision(decision)
+		if err := json.Unmarshal([]byte(checks), &e.Checks); err != nil {
+			return nil, fmt.Errorf("access log query %q checks: %w", e.ID, err)
 		}
 		e.At = e.At.UTC()
 		e.IdentityID = identity.String

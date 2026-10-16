@@ -44,3 +44,19 @@ func (d *Driver) AppendOutboxHeldForTest(ctx context.Context, ev *storage.Outbox
 	held()
 	return tx.Commit()
 }
+
+// ReplayAccessReceiptForTest re-runs the statements of migration 38 on a
+// database that already has it, pinning that a replay is a no-op.
+func (d *Driver) ReplayAccessReceiptForTest(ctx context.Context) error {
+	for _, m := range pgMigrations {
+		if m.Version != 38 {
+			continue
+		}
+		for _, stmt := range m.Statements {
+			if _, err := d.db.ExecContext(ctx, stmt); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}

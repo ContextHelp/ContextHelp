@@ -314,6 +314,12 @@ var migrations = []migration{
 	// Migration 056: event_outbox and instance_meta (ADR-075 §4). New
 	// tables only; IF NOT EXISTS makes it re-runnable.
 	{Version: 56, SQL: migration056},
+	// Migration 057: access_log becomes receipt-shaped (ADR-080 §9):
+	// decision (allowed | denied | deferred), the ordered check trail
+	// and the operation digest. Earlier rows are admitted reads and
+	// backfill as allowed. Columns and an index only; a replay is a
+	// no-op.
+	{Version: 57, fn: migrate057AccessReceipt},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
