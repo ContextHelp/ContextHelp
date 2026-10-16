@@ -3,6 +3,7 @@ package stack
 import (
 	"github.com/ideacrafterslabs/ctxt/internal/approval"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/sharechange"
 	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/steward"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -17,7 +18,9 @@ func stewardSettings(cfg *config.Config) func() sharing.StewardSettings {
 // ApprovalKinds returns the kinds of approval request the instance
 // accepts, each with its approver count from the config
 // (approvals.<kind>.required): steward.grant (ADR-083 §2), off by
-// default (steward.enabled), which then refuses every filing.
+// default (steward.enabled), which then refuses every filing; and
+// share.change (ADR-083 §10 B), the widening sharing change of a
+// non-owner administrator.
 func ApprovalKinds(drv storage.StorageDriver, cfg *config.Config) (*approval.Registry, error) {
 	reg := approval.NewRegistry()
 	k, err := steward.Kind(steward.KindOptions{
@@ -33,6 +36,12 @@ func ApprovalKinds(drv storage.StorageDriver, cfg *config.Config) (*approval.Reg
 		return nil, err
 	}
 	if err := reg.Register(k); err != nil {
+		return nil, err
+	}
+	if err := sharechange.Register(reg, sharechange.Deps{
+		Sharing: drv.Sharing(), Auth: drv.Auth(), Audit: drv.AuditLog(),
+		Required: cfg.Approvals.Share.EffectiveRequired,
+	}); err != nil {
 		return nil, err
 	}
 	return reg, nil
