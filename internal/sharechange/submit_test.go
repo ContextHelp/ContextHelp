@@ -27,15 +27,13 @@ func ownerNeverPending(t *testing.T, newDriver driverFunc) {
 				c.setup(f)
 			}
 			before := f.snapshot()
+			prior := len(f.eventsBy(c.event, storage.OwnerPrincipal))
 			out := f.submit(f.owner, c.change(f))
 			require.NotNil(t, out.Applied, "the owner's widening change applies at once")
 			assert.Nil(t, out.Request)
 			assert.NotEqual(t, before, f.snapshot())
 			c.applied(t, f, storage.OwnerPrincipal)
-			events := f.shareEvents()
-			require.NotEmpty(t, events)
-			assert.Equal(t, c.event, events[len(events)-1].EventType)
-			assert.Equal(t, storage.OwnerPrincipal, events[len(events)-1].Actor)
+			assert.Len(t, f.eventsBy(c.event, storage.OwnerPrincipal), prior+1, "the change is on the record under the owner")
 			assert.Empty(t, f.eventsOf("approval.request.filed"), "the owner files nothing")
 		})
 	}
@@ -149,16 +147,13 @@ func narrowing(t *testing.T, newDriver driverFunc) {
 				c.setup(f)
 			}
 			before := f.snapshot()
+			prior := len(f.eventsBy(c.event, f.admin.ID))
 			out := f.submit(f.admin, c.change(f))
 			require.NotNil(t, out.Applied, "%s: %+v", c.name, out.Class)
 			assert.Nil(t, out.Request)
 			assert.Equal(t, c.class, out.Class.Class, out.Class.Reason)
 			assert.NotEqual(t, before, f.snapshot())
-			events := f.shareEvents()
-			require.NotEmpty(t, events)
-			last := events[len(events)-1]
-			assert.Equal(t, c.event, last.EventType)
-			assert.Equal(t, f.admin.ID, last.Actor, "the change is on the record under the administrator that made it")
+			assert.Len(t, f.eventsBy(c.event, f.admin.ID), prior+1, "the change is on the record under the administrator that made it")
 			assert.Empty(t, f.eventsOf("approval.request.filed"))
 		})
 	}

@@ -233,11 +233,17 @@ func TestShareRoutes_ApprovalAppliesAPendingChange(t *testing.T) {
 			assert.NotEmpty(t, done.ResultRef)
 			assert.NotEqual(t, before, f.dump(), "the approval applied the change")
 
-			events := f.shareEvents()
-			last := events[len(events)-1]
-			assert.Equal(t, f.admin.principal, last.Actor, "the change is the administrator's")
-			assert.Equal(t, rec.ID, last.Payload["request_id"])
-			assert.Equal(t, []any{f.alice.id}, last.Payload["approvers"])
+			// Found by request, not by position: entries written in the
+			// same second have no defined order.
+			var applied []*storage.AuditEntry
+			for _, e := range f.shareEvents() {
+				if e.Payload["request_id"] == rec.ID {
+					applied = append(applied, e)
+				}
+			}
+			require.Len(t, applied, 1, "the approved change is one entry on the record")
+			assert.Equal(t, f.admin.principal, applied[0].Actor, "the change is the administrator's")
+			assert.Equal(t, []any{f.alice.id}, applied[0].Payload["approvers"])
 		})
 	}
 }
