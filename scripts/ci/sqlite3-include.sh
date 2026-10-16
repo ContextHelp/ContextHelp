@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
-# Write the sqlite3.h a cross toolchain lacks into an include directory.
+# Write the sqlite3.h of the SQLite the binaries link into an include dir.
 #
 #   scripts/ci/sqlite3-include.sh <dir>
 #
 # github.com/asg017/sqlite-vec-go-bindings/cgo compiles with -DSQLITE_CORE
-# and #includes "sqlite3.h". macOS and Linux supply one from the system;
-# mingw-w64 (the windows/amd64 cross build) has none. The SQLite the binary
-# links is the amalgamation github.com/mattn/go-sqlite3 compiles, whose
-# header that module ships as sqlite3-binding.h. This copies it, at the
-# version go.mod resolves, to <dir>/sqlite3.h; pass -I<dir> in CGO_CFLAGS
-# and sqlite-vec compiles against the very SQLite it links with.
+# and #includes "sqlite3.h". Left alone, it finds the system header: the
+# macOS SDK's or the distro's libsqlite3-dev, each a different SQLite
+# release, and mingw-w64 (the windows/amd64 cross build) has none at all.
+# The SQLite the binary links is the amalgamation github.com/mattn/go-sqlite3
+# compiles, whose header that module ships as sqlite3-binding.h. This copies
+# it, at the version go.mod resolves, to <dir>/sqlite3.h; pass -I<dir> in
+# CGO_CFLAGS and sqlite-vec compiles against the very SQLite it links with.
 #
-# Used by the Makefile's windows targets and .goreleaser.yaml's windows
-# builds. Runs the go on PATH.
+# Used by every Makefile target that compiles Go (CGO_INCLUDE) and by
+# .goreleaser.yaml's before hook, for all builds. Runs the go on PATH.
 set -euo pipefail
 
 [ $# -eq 1 ] || {

@@ -10,6 +10,22 @@ GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 export CGO_ENABLED := 1
 BUILD_TAGS := -tags fts5
 
+# Every cgo compile sees the sqlite3.h of the SQLite the binaries link.
+# sqlite-vec's cgo package compiles with -DSQLITE_CORE and #includes
+# "sqlite3.h"; without -I it takes the system header (macOS SDK, distro
+# libsqlite3-dev, none at all in mingw-w64), a different SQLite release
+# from the amalgamation github.com/mattn/go-sqlite3 compiles and links.
+# scripts/ci/sqlite3-include.sh copies that module's header, at the go.mod
+# version, into CGO_INCLUDE. The header is the same for every GOOS, so one
+# directory serves the native and the windows builds. Exported, so go
+# build/test/vet, golangci-lint's type-check and gosec all see it, here and
+# in CI alike; every target that compiles Go lists $(CGO_SQLITE3_H) as a
+# prerequisite (CGO_TARGETS), which regenerates it when go.mod changes.
+# .goreleaser.yaml passes the same flag to its builds.
+CGO_INCLUDE := $(CURDIR)/build/cgo-include
+CGO_SQLITE3_H := $(CGO_INCLUDE)/sqlite3.h
+export CGO_CFLAGS := -O2 -g -I$(CGO_INCLUDE)
+
 # Pinned tools. scripts/ci/tools.sh runs each command with the version
 # mise.toml (or packageManager, for pnpm) pins, and fails loudly when it is
 # missing or another version is first on PATH. CI targets and every lint
@@ -153,6 +169,7 @@ test-docker:
 		-v ctxt_test_gomod:/go/pkg/mod \
 		-w /app \
 		-e CGO_ENABLED=1 \
+		-e CGO_CFLAGS='-O2 -g -I/app/build/cgo-include' \
 		-e GOWORK=off \
 		ctxt/test:latest \
 		go test -failfast $(BUILD_TAGS) -race -count=1 ./...
@@ -191,6 +208,9 @@ vuln-scan: govulncheck
 ## govulncheck: Report known vulnerabilities in reachable code (CI security job)
 govulncheck:
 	$(GO) run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) -tags fts5 ./...
+
+$(CGO_SQLITE3_H): go.mod go.sum scripts/ci/sqlite3-include.sh
+	@$(CI_TOOLS) go -- scripts/ci/sqlite3-include.sh $(CGO_INCLUDE)
 
 ## toolchain-check: Assert mise.toml, Dockerfiles and go.mod agree on versions
 toolchain-check:
@@ -651,16 +671,10 @@ ci-vet:
 
 # GoReleaser ships windows/amd64 binaries, cross-compiled with CGO and
 # mingw-w64. Type-check every package, tests included, for that target,
-# then build the two binaries as GoReleaser does.
-#
-# mingw-w64 ships no sqlite3.h, which sqlite-vec's cgo package includes;
-# scripts/ci/sqlite3-include.sh puts the header of the amalgamation
-# mattn/go-sqlite3 compiles there, and CGO_CFLAGS adds it (on top of Go's
-# default -O2 -g). .goreleaser.yaml's windows builds do the same.
-CI_WINDOWS_INCLUDE := $(CURDIR)/build/cgo-include/windows
-CI_WINDOWS_ENV := GOOS=windows GOARCH=amd64 CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc \
-	CGO_CFLAGS='-O2 -g -I$(CI_WINDOWS_INCLUDE)'
-CI_WINDOWS_PREP := $(CI_PREREQ) mingw && $(CI_TOOLS) go -- scripts/ci/sqlite3-include.sh $(CI_WINDOWS_INCLUDE)
+# then build the two binaries as GoReleaser does. mingw-w64 ships no
+# sqlite3.h at all; the exported CGO_CFLAGS (CGO_INCLUDE above) supply it.
+CI_WINDOWS_ENV := GOOS=windows GOARCH=amd64 CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc
+CI_WINDOWS_PREP := $(CI_PREREQ) mingw
 
 ci-windows:
 	$(CI_STEP) ci-drop-replaces
@@ -778,6 +792,15 @@ ci-build-ctxt:
 ci-build-verify:
 	./bin/dpkms version || echo "dpkms built successfully"
 	./bin/ctxt version || echo "ctxt built successfully"
+
+# Every target that compiles Go (build, test, vet, lint, gosec, govulncheck).
+# scripts/cgo_include_test.go fails when a target whose recipe runs go or
+# golangci-lint is missing here.
+CGO_TARGETS := build-ctxt build-dpkms install test-unit test-integration test-smoke \
+	test-e2e test-cover test-gate test-docker vuln-scan govulncheck lint gosec lint-new \
+	ci-lint-full ci-vet ci-windows-vet ci-windows-build ci-test-unit ci-test-e2e \
+	$(CI_INTEGRATION_STEPS) ci-build-dpkms ci-build-ctxt $(BEN_BINARY) $(BEN_ADAPTER)
+$(CGO_TARGETS): $(CGO_SQLITE3_H)
 
 .PHONY: ci ci-parity-check check-operator-impact ci-drop-replaces govulncheck \
 	$(addprefix ci-,$(CI_JOBS)) $(CI_INTEGRATION_STEPS) \

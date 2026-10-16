@@ -92,6 +92,18 @@ Every Go build and test uses `-tags fts5` with `CGO_ENABLED=1`: the storage
 layer needs SQLite's FTS5 module, and gosec in particular analyses nothing
 in 34 packages without the tag.
 
+Every cgo compile also takes `sqlite3.h` from `build/cgo-include`, not the
+system. sqlite-vec includes it, and the macOS SDK's, a distro's
+`libsqlite3-dev` and mingw-w64 (which has none) each differ from the
+SQLite amalgamation `mattn/go-sqlite3` compiles and the binaries link.
+`scripts/ci/sqlite3-include.sh` copies that module's header, at the
+`go.mod` version, into the directory. The Makefile exports
+`CGO_CFLAGS=-O2 -g -I<repo>/build/cgo-include`, and every target that
+compiles Go (build, test, vet, golangci-lint, gosec, govulncheck) has the
+header as a prerequisite (`CGO_TARGETS`), so it is regenerated when
+`go.mod` changes. `.goreleaser.yaml` sets the same flag on every build.
+Plain `go build` outside make does not get it.
+
 ---
 
 ## Local parity
