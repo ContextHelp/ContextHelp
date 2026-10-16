@@ -289,6 +289,11 @@ type SharingStore interface {
 	// (principal_identities.share_policy_id), "" when unbound. An
 	// unknown identity is ErrNotFound.
 	IdentityPolicy(ctx context.Context, identityID string) (string, error)
+	// PolicyKeyBindings returns the live (unrevoked) key identities bound
+	// to policy id policyID, by identity id. A bound key sees its
+	// principal's view intersected with the policy, so an edit of the
+	// policy changes what the key sees. An unknown policy has none.
+	PolicyKeyBindings(ctx context.Context, policyID string) ([]KeyBinding, error)
 	// BindIdentityPolicy binds the identity to policy id policyID, or
 	// unbinds it when policyID is "". An unknown identity or policy is
 	// ErrNotFound.
@@ -303,7 +308,28 @@ type SharingStore interface {
 	// in one transaction (ADR-083 §10 B), so a concurrent change cannot
 	// slip between the two. The access log is not part of it.
 	InTx(ctx context.Context, fn func(ctx context.Context) error) error
+	// LockRegistry makes the transaction of ctx the only one changing
+	// the sharing registry until it ends: every other transaction that
+	// locks it waits. A change is classified against the registry and
+	// then written, or an approved request's preconditions are checked
+	// and then applied, under this lock, so no concurrent change slips
+	// in between (ADR-083 §10 B). SQLite's write lock, taken when the
+	// transaction opens, already is that; Postgres takes an advisory
+	// transaction lock. Taking it again in the same transaction is
+	// free. A ctx outside a transaction is ErrNotInTransaction.
+	LockRegistry(ctx context.Context) error
 }
+
+// KeyBinding is a key identity bound to a share policy and the
+// principal that holds it.
+type KeyBinding struct {
+	IdentityID  string
+	PrincipalID string
+}
+
+// ErrNotInTransaction is an operation that needs the transaction of its
+// context, called with one that carries none.
+var ErrNotInTransaction = errors.New("storage: operation needs a transaction")
 
 // NewAudienceID returns a fresh aud_<ULID>.
 func NewAudienceID() string { return "aud_" + NewULID() }

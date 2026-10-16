@@ -73,10 +73,41 @@ func (s *sharingStore) IdentityPolicy(ctx context.Context, identityID string) (s
 	return policy.String, nil
 }
 
+func (s *sharingStore) PolicyKeyBindings(ctx context.Context, policyID string) ([]storage.KeyBinding, error) {
+	rows, err := conn(ctx, s.db).QueryContext(ctx,
+		`SELECT id, principal_id FROM principal_identities WHERE share_policy_id = ? AND revoked_at IS NULL ORDER BY id`, policyID)
+	if err != nil {
+		return nil, fmt.Errorf("policy key bindings %q: %w", policyID, err)
+	}
+	defer rows.Close()
+	var out []storage.KeyBinding
+	for rows.Next() {
+		var b storage.KeyBinding
+		if err := rows.Scan(&b.IdentityID, &b.PrincipalID); err != nil {
+			return nil, fmt.Errorf("policy key bindings %q: %w", policyID, err)
+		}
+		out = append(out, b)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("policy key bindings %q: %w", policyID, err)
+	}
+	return out, nil
+}
+
 // InTx runs fn in one transaction on the registry's database; see
 // storage.SharingStore.InTx.
 func (s *sharingStore) InTx(ctx context.Context, fn func(ctx context.Context) error) error {
 	return inTx(ctx, s.db, fn)
+}
+
+// LockRegistry is a check that ctx carries the transaction: InTx took
+// SQLite's write lock when it began (_txlock=immediate), which already
+// keeps every other writer out until it ends.
+func (s *sharingStore) LockRegistry(ctx context.Context) error {
+	if !inTransaction(ctx, s.db) {
+		return storage.ErrNotInTransaction
+	}
+	return nil
 }
 
 func (s *sharingStore) BindIdentityPolicy(ctx context.Context, identityID, policyID string) error {

@@ -72,10 +72,54 @@ func (s *sharingStore) IdentityPolicy(ctx context.Context, identityID string) (s
 	return policy.String, nil
 }
 
+func (s *sharingStore) PolicyKeyBindings(ctx context.Context, policyID string) ([]storage.KeyBinding, error) {
+	rows, err := conn(ctx, s.db).QueryContext(ctx,
+		`SELECT id, principal_id FROM principal_identities WHERE share_policy_id = $1 AND revoked_at IS NULL ORDER BY id`, policyID)
+	if err != nil {
+		return nil, fmt.Errorf("policy key bindings %q: %w", policyID, err)
+	}
+	defer rows.Close()
+	var out []storage.KeyBinding
+	for rows.Next() {
+		var b storage.KeyBinding
+		if err := rows.Scan(&b.IdentityID, &b.PrincipalID); err != nil {
+			return nil, fmt.Errorf("policy key bindings %q: %w", policyID, err)
+		}
+		out = append(out, b)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("policy key bindings %q: %w", policyID, err)
+	}
+	return out, nil
+}
+
 // InTx runs fn in one transaction on the registry's database; see
 // storage.SharingStore.InTx.
 func (s *sharingStore) InTx(ctx context.Context, fn func(ctx context.Context) error) error {
 	return inTx(ctx, s.db, fn)
+}
+
+// registryLockClass is the first key of the two-key transaction
+// advisory lock LockRegistry takes; the second is registryLockKey.
+// Arbitrary but stable: "shar" in ASCII. The two-key space does not
+// overlap the single-key space the migration lock uses.
+const (
+	registryLockClass int32 = 0x73686172
+	registryLockKey   int32 = 1
+)
+
+// LockRegistry takes the registry's advisory lock for the transaction
+// of ctx; READ COMMITTED alone lets a concurrent commit land between a
+// change's classification and its write.
+func (s *sharingStore) LockRegistry(ctx context.Context) error {
+	if !inTransaction(ctx, s.db) {
+		return storage.ErrNotInTransaction
+	}
+	if _, err := conn(ctx, s.db).ExecContext(ctx, `SELECT pg_advisory_xact_lock($1::integer, $2::integer)`,
+		registryLockClass, registryLockKey); err != nil {
+		return fmt.Errorf("lock sharing registry: %w", err)
+	}
+	return nil
 }
 
 func (s *sharingStore) BindIdentityPolicy(ctx context.Context, identityID, policyID string) error {
