@@ -4,8 +4,9 @@
 #   scripts/ci/tools.sh <tool>[,<tool>...] -- <command> [args...]
 #   scripts/ci/tools.sh <tool>[,<tool>...]          # check only
 #
-# Tools: go (gofmt ships with it), golangci-lint, gitleaks and node, pinned
-# in mise.toml; pnpm, pinned by packageManager in the nearest package.json.
+# Tools: go (gofmt ships with it), golangci-lint, gitleaks, node and
+# goreleaser, pinned in mise.toml; pnpm, pinned by packageManager in the
+# nearest package.json.
 #
 # Each tool resolves to mise's install of the pin when mise is on PATH, and
 # to the one on PATH otherwise (CI installs the pins itself and has no mise).
@@ -41,7 +42,7 @@ mise_key() {
 	case $1 in
 	go | gofmt) echo go ;;
 	golangci-lint) sed -n 's/^"\(go:.*golangci-lint\)" = ".*"$/\1/p' "$mise_toml" ;;
-	node | gitleaks) echo "$1" ;;
+	node | gitleaks | goreleaser) echo "$1" ;;
 	esac
 }
 
@@ -51,7 +52,7 @@ pin() {
 	case $1 in
 	go | gofmt) sed -n 's/^go = "\(.*\)"$/\1/p' "$mise_toml" ;;
 	golangci-lint) sed -n 's/^"go:.*golangci-lint" = "\(.*\)"$/\1/p' "$mise_toml" ;;
-	node | gitleaks) sed -n "s/^$1 = \"\\(.*\\)\"\$/\\1/p" "$mise_toml" ;;
+	node | gitleaks | goreleaser) sed -n "s/^$1 = \"\\(.*\\)\"\$/\\1/p" "$mise_toml" ;;
 	pnpm)
 		# pnpm/action-setup reads packageManager; so does pnpm itself.
 		d=$PWD
@@ -63,7 +64,7 @@ pin() {
 			d=$(dirname "$d")
 		done
 		;;
-	*) die "unknown tool '$1' (go, gofmt, golangci-lint, gitleaks, node, pnpm)" ;;
+	*) die "unknown tool '$1' (go, gofmt, golangci-lint, gitleaks, node, goreleaser, pnpm)" ;;
 	esac
 }
 
@@ -75,6 +76,7 @@ version() {
 	golangci-lint) "$2" version 2>&1 | sed -n 's/.*has version v\{0,1\}\([0-9][0-9.]*\).*/\1/p' | head -1 ;;
 	gitleaks) "$2" version | sed 's/^v//' ;;
 	node) "$2" --version | sed 's/^v//' ;;
+	goreleaser) "$2" --version 2>&1 | sed -n 's/^GitVersion:[[:space:]]*//p' ;;
 	pnpm) "$2" --version ;;
 	esac
 }

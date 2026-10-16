@@ -93,23 +93,23 @@ builds:
 
 archives:
   - id: ctxt-archive
-    builds: [ctxt]
+    ids: [ctxt]
     name_template: "ctxt_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    format: tar.gz
+    formats: [tar.gz]
     format_overrides:
       - goos: windows
-        format: zip
+        formats: [zip]
     files:
       - LICENSE
       - README.md
 
   - id: dpkms-archive
-    builds: [dpkms]
+    ids: [dpkms]
     name_template: "dpkms_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    format: tar.gz
+    formats: [tar.gz]
     format_overrides:
       - goos: windows
-        format: zip
+        formats: [zip]
     files:
       - LICENSE
       - README.md
@@ -128,8 +128,11 @@ signs:
       - "${signature}"
       - "--detach-sign"
       - "${artifact}"
-    # Only sign when GPG_FINGERPRINT is set (skip in dry-run / snapshot).
-    if: '{{ if .Env.GPG_FINGERPRINT }}true{{ end }}'
+    # Signing needs GPG_FINGERPRINT. OSS GoReleaser has no per-sign
+    # condition (signs[].if is Pro-only) and `artifacts` takes no
+    # template, so the release workflow passes --skip=sign when no GPG
+    # key is configured. `goreleaser build` never signs; a local
+    # `goreleaser release --snapshot` needs --skip=sign too.
 
 snapshot:
   version_template: "{{ .Tag }}-next"

@@ -1,4 +1,4 @@
-.PHONY: all build build-ctxt build-dpkms clean install deps test test-unit test-integration test-integration-services test-smoke test-e2e test-all test-cover test-gate test-docker toolchain-check lint gosec fmt help docs docs-dev docker-build docker-dev docker-prod docker-down docker-logs docker-ps docker-shell security-scan install-hooks install-gitleaks secret-scan-local vuln-scan trivy-scan eva check ben ben-text-short ben-vector ben-install ben-adapter
+.PHONY: all build build-ctxt build-dpkms clean install deps test test-unit test-integration test-integration-services test-smoke test-e2e test-all test-cover test-gate test-docker toolchain-check goreleaser-check lint gosec fmt help docs docs-dev docker-build docker-dev docker-prod docker-down docker-logs docker-ps docker-shell security-scan install-hooks install-gitleaks secret-scan-local vuln-scan trivy-scan eva check ben ben-text-short ben-vector ben-install ben-adapter
 
 # Version information
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -19,6 +19,7 @@ GO := $(CI_TOOLS) go -- go
 GOLANGCI := $(CI_TOOLS) golangci-lint,go -- golangci-lint
 GITLEAKS := $(CI_TOOLS) gitleaks -- gitleaks
 PNPM := $(CI_TOOLS) node,pnpm -- pnpm
+GORELEASER := $(CI_TOOLS) goreleaser -- goreleaser
 # Tools mise.toml does not pin; `go run pkg@version` builds exactly this
 # release with the pinned Go, here and in CI.
 GOSEC_VERSION := v2.29.0
@@ -194,6 +195,21 @@ govulncheck:
 ## toolchain-check: Assert mise.toml, Dockerfiles and go.mod agree on versions
 toolchain-check:
 	@scripts/check-toolchain-pins.sh
+
+## goreleaser-check: Validate .goreleaser.yaml with the GoReleaser release.yml runs
+##
+## A field the pinned GoReleaser does not know (a Pro-only one, say) only
+## fails at tag time otherwise. `goreleaser check` exits 1 for an invalid
+## config and 2 for a valid one that uses deprecated properties; the
+## deprecations are printed and pass, an invalid config fails. CI's
+## toolchain job runs this target.
+goreleaser-check:
+	@$(GORELEASER) check; s=$$?; \
+	if [ $$s -eq 2 ]; then \
+		echo "goreleaser-check: config is valid; migrate the DEPRECATED properties above before the next GoReleaser major"; \
+	elif [ $$s -ne 0 ]; then \
+		exit $$s; \
+	fi
 
 ## lint: Run linters (golangci-lint full scan + gosec), pinned versions
 ##
@@ -591,6 +607,7 @@ ci-drop-replaces:
 ci-toolchain:
 	$(CI_STEP) toolchain-check
 	$(CI_STEP) ci-parity-check
+	$(CI_STEP) goreleaser-check
 
 ci-secret-scan:
 	$(CI_STEP) security-scan

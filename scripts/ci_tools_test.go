@@ -58,11 +58,11 @@ func writeExec(t *testing.T, path, body string) {
 var systemBinDirs = []string{"/usr/bin", "/bin"}
 
 // hostTools are the programs scripts/ci/tools.sh resolves (go, gofmt,
-// golangci-lint, gitleaks, node, pnpm and what ships beside them) and
+// golangci-lint, gitleaks, node, goreleaser, pnpm and what ships beside them) and
 // mise, which it prefers when on PATH. A host may have any of them in a
 // system directory: ubuntu runners ship /usr/bin/go.
 var hostTools = map[string]bool{
-	"go": true, "gofmt": true, "golangci-lint": true, "gitleaks": true,
+	"go": true, "gofmt": true, "golangci-lint": true, "gitleaks": true, "goreleaser": true,
 	"node": true, "npm": true, "npx": true, "corepack": true, "pnpm": true, "mise": true,
 }
 
@@ -173,6 +173,54 @@ func TestCIToolsPinnedOrFail(t *testing.T) {
 			t.Fatalf("env not normalized: %v\n%s", err, out)
 		}
 	})
+}
+
+// goreleaser reports its version as a GitVersion line under an ASCII-art
+// banner. tools.sh reads that line, so `make goreleaser-check` runs only the
+// mise.toml pin, the GoReleaser release.yml publishes with.
+func TestCIToolsGoreleaserPin(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not on PATH")
+	}
+	repo, _, _ := toolsRepo(t)
+	m := regexp.MustCompile(`(?m)^goreleaser = "(.+)"$`).FindStringSubmatch(readRepoFile(t, "mise.toml"))
+	if m == nil {
+		t.Fatal("mise.toml has no goreleaser pin")
+	}
+	pin := m[1]
+	tools := filepath.Join(repo, "scripts", "ci", "tools.sh")
+	stub := func(v string) string {
+		d := t.TempDir()
+		writeExec(t, filepath.Join(d, "goreleaser"), `#!/bin/sh
+if [ "$1" = --version ]; then
+	printf '  ____       ____      _\n / ___| ___ |  _ \\ ___| | ___  __ _ ___  ___ _ __\n\n'
+	printf 'GitVersion:    `+v+`\nGitCommit:     abc\nPlatform:      linux/amd64\n'
+	exit 0
+fi
+echo "goreleaser `+v+` ran: $*"
+`)
+		return d
+	}
+
+	cases := []struct {
+		name, path, want string
+		ok               bool
+	}{
+		{"pin runs", stub(pin), "goreleaser " + pin + " ran: check", true},
+		{"other version", stub("2.13.3"), "is 2.13.3; this repo pins " + pin, false},
+		{"missing", t.TempDir(), "goreleaser not found; this repo pins " + pin, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := runIn(t, repo, tc.path, nil, "bash", tools, "goreleaser", "--", "goreleaser", "check")
+			if tc.ok != (err == nil) {
+				t.Fatalf("err = %v, want ok=%v\n%s", err, tc.ok, out)
+			}
+			if !strings.Contains(out, tc.want) {
+				t.Errorf("output does not say %q:\n%s", tc.want, out)
+			}
+		})
+	}
 }
 
 // A go, golangci-lint or mise the host has in a system directory never
