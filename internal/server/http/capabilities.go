@@ -272,6 +272,24 @@ func RouteShape(method, pattern string) (sharing.Shape, bool) {
 	return a.shape, ok
 }
 
+// routeRefusal is the reason code the capability table refuses a
+// restricted viewer's request with, in the order the table is read:
+// no viewer, an unclassified route, an owner-only route, a capability
+// the viewer lacks. "" means the viewer may reach the route.
+func routeRefusal(v sharing.Viewer, haveViewer bool, access routeAccess, known bool) string {
+	switch {
+	case !haveViewer:
+		return sharing.ReasonNoViewer
+	case !known:
+		return sharing.ReasonRouteUnclassified
+	case access.ownerOnly:
+		return sharing.ReasonOwnerOnly
+	case access.capability != "" && !v.Allows(access.capability):
+		return sharing.ReasonCapabilityMissing
+	}
+	return ""
+}
+
 // RequireCapability returns middleware that lets a request through
 // only when the viewer RequireAuth attached may reach the route: an
 // unrestricted viewer always; a restricted one when the route is open,
@@ -287,9 +305,16 @@ func RequireCapability(method, pattern string) func(http.Handler) http.Handler {
 				next.ServeHTTP(w, r)
 				return
 			}
-			if !ok || !known || access.ownerOnly || (access.capability != "" && !v.Allows(access.capability)) {
+			rcpt := sharing.ReceiptFrom(r.Context())
+			if reason := routeRefusal(v, ok, access, known); reason != "" {
+				rcpt.Refuse(sharing.CheckRouteAccess, reason)
 				WriteError(w, http.StatusForbidden, CodeNotShared, notSharedMessage)
 				return
+			}
+			if access.capability != "" {
+				rcpt.Pass(sharing.CheckRouteAccess, sharing.ReasonCapabilityHeld)
+			} else {
+				rcpt.Pass(sharing.CheckRouteAccess, sharing.ReasonRouteOpen)
 			}
 			next.ServeHTTP(w, r)
 		})

@@ -21,6 +21,9 @@ type Ledger struct {
 	edges    map[string]struct{}
 	// canaries maps a withheld value to its category.
 	canaries map[string]string
+	// scoped is set once a restricted viewer's scoped driver was
+	// handed to the request (Scoped).
+	scoped bool
 }
 
 // NewLedger returns an empty ledger.
@@ -29,6 +32,28 @@ func NewLedger() *Ledger {
 		objects: map[string]struct{}{}, entities: map[string]struct{}{},
 		edges: map[string]struct{}{}, canaries: map[string]string{},
 	}
+}
+
+// MarkScoped records that the request read through a restricted
+// viewer's scoped driver, so the read audit can tell a handler that
+// applied the viewer's grants from one that never read.
+func (l *Ledger) MarkScoped() {
+	if l == nil {
+		return
+	}
+	l.mu.Lock()
+	l.scoped = true
+	l.mu.Unlock()
+}
+
+// Scoped reports whether MarkScoped was called.
+func (l *Ledger) Scoped() bool {
+	if l == nil {
+		return false
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.scoped
 }
 
 // AddObject records a released object.

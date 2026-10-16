@@ -91,8 +91,8 @@ func New(addr string, svc *service.Service, opts ...Option) *Server {
 	unary := []grpc.UnaryServerInterceptor{recoveryInterceptor}
 	var stream []grpc.StreamServerInterceptor
 	if o.auth != nil {
-		unary = append(unary, authUnaryInterceptor(o.auth, o.security, svc.Viewers()))
-		stream = append(stream, authStreamInterceptor(o.auth, o.security, svc.Viewers()))
+		unary = append(unary, authUnaryInterceptor(o.auth, o.security, svc.Viewers(), o.audit))
+		stream = append(stream, authStreamInterceptor(o.auth, o.security, svc.Viewers(), o.audit))
 	} else {
 		// Private instance: no principal, but every caller is the
 		// owner and reads unscoped. Attached where the auth

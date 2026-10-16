@@ -52,8 +52,8 @@ func bearer(token string) context.Context {
 func TestInterceptorsCloseCapabilityGatedMethods(t *testing.T) {
 	// The capability check runs in the visibility interceptor, behind
 	// auth, so the two are chained as the server chains them.
-	unary := chainUnary(authUnaryInterceptor(capChain(), nil, nil), visibilityUnaryInterceptor(visibilityConfig{}))
-	stream := chainStream(authStreamInterceptor(capChain(), nil, nil), visibilityStreamInterceptor(visibilityConfig{}))
+	unary := chainUnary(authUnaryInterceptor(capChain(), nil, nil, nil), visibilityUnaryInterceptor(visibilityConfig{}))
+	stream := chainStream(authStreamInterceptor(capChain(), nil, nil, nil), visibilityStreamInterceptor(visibilityConfig{}))
 	call := func(token, method string) (bool, error) {
 		ran := false
 		_, err := unary(bearer(token), nil, unaryInfo(method), func(context.Context, any) (any, error) { ran = true; return "ok", nil })

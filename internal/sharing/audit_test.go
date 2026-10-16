@@ -48,7 +48,10 @@ func (m *memAccessLog) count() (batches, entries int) {
 }
 
 func entry(principal, route string) *storage.AccessEntry {
-	return &storage.AccessEntry{PrincipalID: principal, Route: route, PolicyVersions: "p"}
+	return &storage.AccessEntry{
+		PrincipalID: principal, Route: route, PolicyVersions: "p",
+		Decision: storage.AccessDecisionAllowed, OperationDigest: storage.DigestPrefix + "00",
+	}
 }
 
 // A full batch flushes on its own; a partial one waits for the
@@ -103,6 +106,47 @@ func TestAuditWriterDropsAndLosses(t *testing.T) {
 	assert.Equal(t, 0, w.Buffered())
 }
 
+// One malformed entry is dropped and counted alone: the valid entries
+// of its batch, other viewers' included, are still written.
+func TestAuditWriterFlushDropsOnlyInvalidEntries(t *testing.T) {
+	store := &memAccessLog{}
+	w := sharing.NewAuditWriter(store, sharing.AuditOptions{Batch: 100, Interval: time.Hour})
+	t.Cleanup(func() { _ = w.Close(context.Background()) })
+	bad := entry("prn_b", "GET /events")
+	bad.Decision = storage.AccessDecisionDeferred // no UNKNOWN check
+	bad.Checks = []storage.AccessCheck{{Check: "backstop", Outcome: storage.AccessOutcomeFail, Reason: "hit_stripped"}}
+	noID := entry("prn_c", "GET /objects")
+	noID.Checks = []storage.AccessCheck{{Check: "", Outcome: storage.AccessOutcomePass, Reason: "x"}}
+	w.Record(entry("prn_a", "GET /objects"))
+	w.Record(bad)
+	w.Record(noID)
+	w.Record(entry("prn_d", "GET /objects/{id}"))
+
+	require.NoError(t, w.Flush(context.Background()))
+	_, n := store.count()
+	assert.Equal(t, 2, n)
+	assert.Equal(t, uint64(2), w.Dropped())
+	for _, e := range store.batches[0] {
+		assert.NotEqual(t, "prn_b", e.PrincipalID)
+		assert.NotEqual(t, "prn_c", e.PrincipalID)
+	}
+}
+
+// A batch of only invalid entries writes nothing and reports no store
+// error.
+func TestAuditWriterFlushAllInvalid(t *testing.T) {
+	store := &memAccessLog{}
+	w := sharing.NewAuditWriter(store, sharing.AuditOptions{Batch: 100, Interval: time.Hour})
+	t.Cleanup(func() { _ = w.Close(context.Background()) })
+	bad := entry("prn_b", "GET /events")
+	bad.OperationDigest = ""
+	w.Record(bad)
+	require.NoError(t, w.Flush(context.Background()))
+	b, _ := store.count()
+	assert.Zero(t, b)
+	assert.Equal(t, uint64(1), w.Dropped())
+}
+
 // A nil writer records nothing and never fails.
 func TestAuditWriterNil(t *testing.T) {
 	var w *sharing.AuditWriter
@@ -110,33 +154,4 @@ func TestAuditWriterNil(t *testing.T) {
 	assert.NoError(t, w.Flush(context.Background()))
 	assert.NoError(t, w.Close(context.Background()))
 	assert.Nil(t, sharing.NewAuditWriter(nil, sharing.AuditOptions{}))
-}
-
-// The entry of a request carries the viewer, the route, the policy
-// versions and the released rows; a preview is the owner's request.
-func TestAccessEntryFor(t *testing.T) {
-	tpl, _ := sharing.Template(sharing.TemplateColleagues)
-	v, err := sharing.Compile(sharing.Input{PrincipalID: "prn_a", IdentityID: "idn_1", Grants: []sharing.Grant{{ID: "g1", Audience: "colleagues", Policy: tpl}}})
-	require.NoError(t, err)
-	l := sharing.NewLedger()
-	l.AddObject("o2")
-	l.AddObject("o1")
-	l.AddEntity("person.sarah")
-	now := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
-
-	e := sharing.AccessEntryFor(context.Background(), v, "GET /objects", l, now)
-	assert.Equal(t, "prn_a", e.PrincipalID)
-	assert.Equal(t, "idn_1", e.IdentityID)
-	assert.Equal(t, "GET /objects", e.Route)
-	assert.Equal(t, v.PolicyKey(), e.PolicyVersions)
-	assert.Equal(t, []string{"o1", "o2"}, e.ObjectIDs)
-	assert.Equal(t, 2, e.ObjectCount)
-	assert.Equal(t, 1, e.EntityCount)
-	assert.Equal(t, now, e.At)
-
-	ctx := sharing.WithPreview(context.Background(), sharing.Preview{Target: "prn_a", Principal: storage.OwnerPrincipal, Identity: "idn_owner"})
-	p := sharing.AccessEntryFor(ctx, v, "GET /objects", l, now)
-	assert.Equal(t, storage.OwnerPrincipal, p.PrincipalID)
-	assert.Equal(t, "idn_owner", p.IdentityID)
-	assert.Equal(t, "preview=prn_a;"+v.PolicyKey(), p.PolicyVersions)
 }

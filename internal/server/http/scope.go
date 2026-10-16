@@ -9,6 +9,7 @@ import (
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/security"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -31,13 +32,16 @@ func RequireScope(scope authn.Scope, sec *security.Emitter) func(http.Handler) h
 				WriteError(w, http.StatusUnauthorized, "UNAUTHORIZED", "authentication required")
 				return
 			}
+			rcpt := sharing.ReceiptFrom(r.Context())
 			if !p.HasScope(scope) {
+				rcpt.Refuse(sharing.CheckScope, sharing.ReasonScopeMissing)
 				if sec != nil {
 					sec.RecordACLDenial(r.Context(), p.ID)
 				}
 				writeInsufficientScope(w, scope, p.IsSession())
 				return
 			}
+			rcpt.Pass(sharing.CheckScope, sharing.ReasonScopeHeld)
 			next.ServeHTTP(w, r)
 		})
 	}

@@ -34,6 +34,7 @@ func Scoped(ctx context.Context, d storage.StorageDriver, prov Provenance) stora
 	if l == nil {
 		l = NewLedger()
 	}
+	l.MarkScoped()
 	return renderDriver{StorageDriver: storage.ScopedDriver(v, d), v: v, ledger: l, prov: prov}
 }
 
