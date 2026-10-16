@@ -1,0 +1,5 @@
+# Corrected Operator-Impact buckets for published commits whose trailer is wrong.
+# A trailer cannot change without rewriting history, so the release-notes check
+# (scripts/ci/check-operator-impact.sh) reads the bucket from here instead.
+# Columns, tab-separated: full SHA, bucket (none|reindex_auto|reingest_selective|reingest_all), reason.
+705c1333d51a9e0c44458c26bd94c8bb89a28001	none	trailer was free text; automatic schema migration, no reindex, row in 2026-09-27.md already says none

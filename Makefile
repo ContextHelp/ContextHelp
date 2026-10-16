@@ -556,6 +556,14 @@ ci:
 
 ## ci-<job>: Run one CI job locally (ci-toolchain, ci-lint, ci-test, ...; see CI_JOBS)
 
+## check-operator-impact: The release-notes check CI runs on a PR, over this branch
+##
+## Every commit since the merge base with LINT_BASE_REF needs a valid
+## Operator-Impact trailer, and a non-none bucket a release-notes row naming
+## its short SHA (ADR-070). Same script as the Release Notes Check workflow.
+check-operator-impact:
+	@scripts/ci/check-operator-impact.sh "$$(git merge-base HEAD $(LINT_BASE_REF))" HEAD
+
 ## ci-parity-check: Fail when ci.yml and the ci-<job> targets disagree
 ci-parity-check:
 	@scripts/check-ci-parity.sh
@@ -746,7 +754,7 @@ ci-build-verify:
 	./bin/dpkms version || echo "dpkms built successfully"
 	./bin/ctxt version || echo "ctxt built successfully"
 
-.PHONY: ci ci-parity-check ci-drop-replaces govulncheck \
+.PHONY: ci ci-parity-check check-operator-impact ci-drop-replaces govulncheck \
 	$(addprefix ci-,$(CI_JOBS)) $(CI_INTEGRATION_STEPS) \
 	lint-new ci-lint-full ci-gofmt ci-vet ci-windows-vet ci-windows-build \
 	ci-test-unit ci-test-e2e ci-build-dpkms ci-build-ctxt ci-build-verify
