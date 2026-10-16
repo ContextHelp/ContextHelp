@@ -42,7 +42,7 @@ export function isAuthRequired(err: unknown): err is AuthRequiredError {
 
 type ErrorEnvelope = { error?: { code?: string; message?: string } };
 
-async function req<T>(path: string, init?: RequestInit): Promise<T> {
+async function send(path: string, init?: RequestInit): Promise<Response> {
   const res = await fetch(`${BASE}${path}`, {
     ...init,
     credentials: 'same-origin',
@@ -54,7 +54,39 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
     const msg = body.error?.message ?? res.statusText;
     throw new ApiError(res.status, body.error?.code, `${res.status}: ${msg}`);
   }
+  return res;
+}
+
+async function req<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await send(path, init);
   // 204 No Content
+  if (res.status === 204) return undefined as unknown as T;
+  return res.json() as Promise<T>;
+}
+
+/**
+ * The approval request a route answered with `202 Accepted` instead of
+ * applying the change (ADR-083 §10 B): the change waits for an approver
+ * and nothing was written.
+ */
+export interface PendingApproval {
+  pending: true;
+  request: { id: string; kind: string; action: string; state: string; expires_at: string };
+}
+
+export function isPending<T>(r: T | PendingApproval | undefined): r is PendingApproval {
+  return typeof r === 'object' && r !== null && (r as { pending?: unknown }).pending === true;
+}
+
+/** The text that tells the admin a change waits, with the request id. */
+export function pendingText(p: PendingApproval): string {
+  return `Waiting for approval: ${p.request.id} (${p.request.action}). Nothing changed yet. An approver decides it; see it with \`ctxt approval show ${p.request.id}\`.`;
+}
+
+/** Like req, for a sharing write: a 202 answers PendingApproval, never the applied row. */
+async function reqChange<T>(path: string, init?: RequestInit): Promise<T | PendingApproval> {
+  const res = await send(path, init);
+  if (res.status === 202) return { pending: true, request: await res.json() };
   if (res.status === 204) return undefined as unknown as T;
   return res.json() as Promise<T>;
 }
@@ -184,29 +216,29 @@ const withExpiry = (expiresAt?: string) => JSON.stringify(expiresAt ? { expires_
 export const sharing = {
   audiences: () => req<PagedResponse<Audience>>('/share/audiences'),
   createAudience: (name: string) =>
-    req<Audience>('/share/audiences', { method: 'POST', body: JSON.stringify({ name }) }),
+    reqChange<Audience>('/share/audiences', { method: 'POST', body: JSON.stringify({ name }) }),
   addMember: (audience: string, principal: string, expiresAt?: string) =>
-    req<AudienceMember>(`/share/audiences/${enc(audience)}/members/${enc(principal)}`, {
+    reqChange<AudienceMember>(`/share/audiences/${enc(audience)}/members/${enc(principal)}`, {
       method: 'PUT',
       body: withExpiry(expiresAt),
     }),
   removeMember: (audience: string, principal: string) =>
-    req<void>(`/share/audiences/${enc(audience)}/members/${enc(principal)}`, { method: 'DELETE' }),
+    reqChange<void>(`/share/audiences/${enc(audience)}/members/${enc(principal)}`, { method: 'DELETE' }),
   policies: () => req<PagedResponse<SharePolicy>>('/share/policies'),
   /** `document` is the policy as YAML or JSON text. */
   createPolicy: (document: string) =>
-    req<SharePolicy>('/share/policies', { method: 'POST', body: JSON.stringify({ document }) }),
+    reqChange<SharePolicy>('/share/policies', { method: 'POST', body: JSON.stringify({ document }) }),
   updatePolicy: (policy: string, document: string) =>
-    req<SharePolicy>(`/share/policies/${enc(policy)}`, { method: 'PUT', body: JSON.stringify({ document }) }),
+    reqChange<SharePolicy>(`/share/policies/${enc(policy)}`, { method: 'PUT', body: JSON.stringify({ document }) }),
   templates: () => req<PagedResponse<PolicyTemplate>>('/share/templates'),
-  installTemplate: (name: string) => req<SharePolicy>(`/share/templates/${enc(name)}`, { method: 'POST' }),
+  installTemplate: (name: string) => reqChange<SharePolicy>(`/share/templates/${enc(name)}`, { method: 'POST' }),
   grants: () => req<PagedResponse<ShareGrant>>('/share/grants'),
   createGrant: (audience: string, policy: string, expiresAt?: string) =>
-    req<ShareGrant>('/share/grants', {
+    reqChange<ShareGrant>('/share/grants', {
       method: 'POST',
       body: JSON.stringify({ audience, policy, ...(expiresAt ? { expires_at: expiresAt } : {}) }),
     }),
-  revokeGrant: (id: string) => req<void>(`/share/grants/${enc(id)}`, { method: 'DELETE' }),
+  revokeGrant: (id: string) => reqChange<void>(`/share/grants/${enc(id)}`, { method: 'DELETE' }),
 };
 
 // ── Browser session ───────────────────────────────────────────────────────────

@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/ideacrafterslabs/ctxt/internal/approval"
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
@@ -62,6 +63,9 @@ type uiFixture struct {
 	// requirePeer makes the federation push route take peer keys only
 	// (startCeremonies).
 	requirePeer bool
+	// approvals is the approval mechanism the ceremony router serves,
+	// with the share.change kind registered (startCeremonies).
+	approvals *approval.Service
 }
 
 func newUIFixture(t *testing.T, principals ...uiPrincipal) *uiFixture {

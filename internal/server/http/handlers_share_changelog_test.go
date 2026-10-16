@@ -55,11 +55,17 @@ func TestShareChanges_EachWriteIsOneAuditEntry(t *testing.T) {
 	require.Equal(t, http.StatusCreated, resp.StatusCode, errBody(t, resp))
 	secret := secretOf(t, decodeBody[linkResponse](t, resp).URL)
 
-	// The administrator edits the policy, joins the audience and binds
-	// its own key to the policy.
-	resp = f.callAs(admin, http.MethodPut, "/api/v1/share/policies/"+pol.Name, map[string]any{"document": "name: " + pol.Name + "\nversion: 1\ndata: \"type==contact\"\nfields:\n  contact: [title]\ncapabilities:\n  search: [fts]\n"})
+	// The administrator narrows the policy and binds its own key to it:
+	// both apply at once. Joining the audience would widen what it sees:
+	// that is a pending request, on the record as a request and as
+	// nothing else; the owner adds it.
+	resp = f.callAs(admin, http.MethodPut, "/api/v1/share/policies/"+pol.Name, map[string]any{"document": "name: " + pol.Name + "\nversion: 1\ndata: \"type==contact\"\nexclude_classes: [personal]\nfields:\n  contact: [title]\ncapabilities:\n  search: [fts]\n"})
 	require.Equal(t, http.StatusOK, resp.StatusCode, errBody(t, resp))
+	atRequest := len(f.shareEvents())
 	resp = f.callAs(admin, http.MethodPut, "/api/v1/share/audiences/partners/members/"+admin.principal, map[string]any{})
+	require.Equal(t, http.StatusAccepted, resp.StatusCode, errBody(t, resp))
+	require.Len(t, f.shareEvents(), atRequest, "a pending change is not a change on the record")
+	resp = f.do(http.MethodPut, "/api/v1/share/audiences/partners/members/"+admin.principal, map[string]any{}, withBearer(f.ops))
 	require.Equal(t, http.StatusOK, resp.StatusCode, errBody(t, resp))
 	resp = f.callAs(admin, http.MethodPut, "/api/v1/share/keys/"+f.keyOf(admin.principal)+"/policy", map[string]any{"policy": pol.Name})
 	require.Equal(t, http.StatusOK, resp.StatusCode, errBody(t, resp))
@@ -92,7 +98,7 @@ func TestShareChanges_EachWriteIsOneAuditEntry(t *testing.T) {
 		EventCeilingSet, EventGrantRevoked, EventMemberRemoved,
 	}, eventTypes(events))
 	actors := []string{storage.OwnerPrincipal, storage.OwnerPrincipal, storage.OwnerPrincipal, storage.OwnerPrincipal,
-		admin.principal, admin.principal, admin.principal, admin.principal, admin.principal, admin.principal}
+		admin.principal, storage.OwnerPrincipal, admin.principal, admin.principal, admin.principal, admin.principal}
 	for i, e := range events {
 		assert.Equal(t, actors[i], e.Actor, "%s", e.EventType)
 		assert.NotEmpty(t, e.ID)

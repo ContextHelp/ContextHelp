@@ -2,7 +2,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { Loader2, Share2, Users, FileText, KeyRound, Trash2 } from 'lucide-react';
-import { session, sharing, SCOPE_ADMIN_SHARES, type Audience, type SharePolicy, type ShareGrant } from '@/api';
+import { session, sharing, isPending, pendingText, SCOPE_ADMIN_SHARES, type PendingApproval, type Audience, type SharePolicy, type ShareGrant } from '@/api';
 
 export const Route = createFileRoute('/sharing')({ component: SharingView });
 
@@ -53,6 +53,17 @@ function SharingView() {
   );
 }
 
+/** Tells the admin a change waits for an approver; shown in place of the refresh an applied change does. */
+function PendingNote({ result }: { result: unknown }) {
+  if (!isPending(result)) return null;
+  return <p className="muted" role="status" data-pending={result.request.id}>{pendingText(result)}</p>;
+}
+
+/** What a sharing mutation did: only an applied change clears the form and refreshes. */
+function applied<R>(done: () => void) {
+  return (r: R | PendingApproval) => { if (!isPending(r)) done(); };
+}
+
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
@@ -74,10 +85,10 @@ function AudiencesPanel() {
   const [name, setName] = useState('');
   const invalidate = () => qc.invalidateQueries({ queryKey: ['share'] });
 
-  const create = useMutation({ mutationFn: (n: string) => sharing.createAudience(n), onSuccess: () => { setName(''); void invalidate(); } });
+  const create = useMutation({ mutationFn: (n: string) => sharing.createAudience(n), onSuccess: applied(() => { setName(''); void invalidate(); }) });
   const remove = useMutation({
     mutationFn: (v: { audience: string; principal: string }) => sharing.removeMember(v.audience, v.principal),
-    onSuccess: invalidate,
+    onSuccess: applied(() => { void invalidate(); }),
   });
 
   const onCreate = (e: FormEvent) => {
@@ -103,6 +114,7 @@ function AudiencesPanel() {
         </button>
       </form>
       {create.error && <p className="error-msg">{errorText(create.error)}</p>}
+      <PendingNote result={create.data} />
       {audiences.error && <p className="error-msg">{errorText(audiences.error)}</p>}
       {audiences.data?.data.length === 0 && <p className="empty">No audiences yet.</p>}
       <ul className="share-list">
@@ -111,6 +123,7 @@ function AudiencesPanel() {
         ))}
       </ul>
       {remove.error && <p className="error-msg">{errorText(remove.error)}</p>}
+      <PendingNote result={remove.data} />
     </section>
   );
 }
@@ -121,7 +134,7 @@ function AudienceRow({ audience, onRemove }: { audience: Audience; onRemove: (pr
   const [days, setDays] = useState('');
   const add = useMutation({
     mutationFn: () => sharing.addMember(audience.id, principal.trim(), expiryFromDays(days)),
-    onSuccess: () => { setPrincipal(''); setDays(''); void qc.invalidateQueries({ queryKey: ['share'] }); },
+    onSuccess: applied(() => { setPrincipal(''); setDays(''); void qc.invalidateQueries({ queryKey: ['share'] }); }),
   });
   const now = Date.now();
 
@@ -175,6 +188,7 @@ function AudienceRow({ audience, onRemove }: { audience: Audience; onRemove: (pr
         </button>
       </form>
       {add.error && <p className="error-msg">{errorText(add.error)}</p>}
+      <PendingNote result={add.data} />
     </li>
   );
 }
@@ -188,10 +202,10 @@ function PoliciesPanel() {
   const [editing, setEditing] = useState<SharePolicy | null>(null);
   const invalidate = () => qc.invalidateQueries({ queryKey: ['share'] });
 
-  const install = useMutation({ mutationFn: (n: string) => sharing.installTemplate(n), onSuccess: invalidate });
+  const install = useMutation({ mutationFn: (n: string) => sharing.installTemplate(n), onSuccess: applied(() => { void invalidate(); }) });
   const save = useMutation({
     mutationFn: () => (editing ? sharing.updatePolicy(editing.id, document) : sharing.createPolicy(document)),
-    onSuccess: () => { setDocument(''); setEditing(null); void invalidate(); },
+    onSuccess: applied(() => { setDocument(''); setEditing(null); void invalidate(); }),
   });
 
   const startEdit = (p: SharePolicy) => {
@@ -216,6 +230,7 @@ function PoliciesPanel() {
         </button>
       </div>
       {install.error && <p className="error-msg">{errorText(install.error)}</p>}
+      <PendingNote result={install.data} />
       {policies.error && <p className="error-msg">{errorText(policies.error)}</p>}
       {policies.data?.data.length === 0 && <p className="empty">No policies yet: install a template or write one below.</p>}
       <ul className="share-list">
@@ -257,6 +272,7 @@ function PoliciesPanel() {
         </div>
       </form>
       {save.error && <p className="error-msg">{errorText(save.error)}</p>}
+      <PendingNote result={save.data} />
     </section>
   );
 }
@@ -273,9 +289,9 @@ function GrantsPanel() {
 
   const grant = useMutation({
     mutationFn: () => sharing.createGrant(audience, policy, expiryFromDays(days)),
-    onSuccess: () => { setDays(''); void invalidate(); },
+    onSuccess: applied(() => { setDays(''); void invalidate(); }),
   });
-  const revoke = useMutation({ mutationFn: (id: string) => sharing.revokeGrant(id), onSuccess: invalidate });
+  const revoke = useMutation({ mutationFn: (id: string) => sharing.revokeGrant(id), onSuccess: applied(() => { void invalidate(); }) });
 
   return (
     <section className="panel" data-panel="grants">
@@ -310,6 +326,7 @@ function GrantsPanel() {
         </button>
       </form>
       {grant.error && <p className="error-msg">{errorText(grant.error)}</p>}
+      <PendingNote result={grant.data} />
       {grants.error && <p className="error-msg">{errorText(grants.error)}</p>}
       {grants.data?.data.length === 0 && <p className="empty">No grants: nobody sees anything yet.</p>}
       <ul className="share-list">
@@ -328,6 +345,7 @@ function GrantsPanel() {
         ))}
       </ul>
       {revoke.error && <p className="error-msg">{errorText(revoke.error)}</p>}
+      <PendingNote result={revoke.data} />
     </section>
   );
 }

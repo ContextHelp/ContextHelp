@@ -8,23 +8,26 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/ideacrafterslabs/ctxt/internal/sharechange"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 // Events the sharing routes append to the audit log (ADR-080 §9): who
 // changed what a viewer may see, in the order it happened. Each entry
 // names the caller as its actor and carries the ids and names of what
-// changed, never a secret: an invite's link is not in its entry.
+// changed, never a secret: an invite's link is not in its entry. A
+// change to the registry is recorded by sharechange, in its
+// transaction, under these names; the invite mint is recorded here.
 const (
-	EventAudienceCreated = "share.audience.created"
-	EventMemberAdded     = "share.member.added"
-	EventMemberRemoved   = "share.member.removed"
-	EventPolicyCreated   = "share.policy.created"
-	EventPolicyUpdated   = "share.policy.updated"
-	EventGrantCreated    = "share.grant.created"
-	EventGrantRevoked    = "share.grant.revoked"
-	EventCeilingSet      = "share.ceiling.set"
-	EventKeyPolicyBound  = "share.key_policy.bound"
+	EventAudienceCreated = sharechange.EventAudienceCreated
+	EventMemberAdded     = sharechange.EventMemberAdded
+	EventMemberRemoved   = sharechange.EventMemberRemoved
+	EventPolicyCreated   = sharechange.EventPolicyCreated
+	EventPolicyUpdated   = sharechange.EventPolicyUpdated
+	EventGrantCreated    = sharechange.EventGrantCreated
+	EventGrantRevoked    = sharechange.EventGrantRevoked
+	EventCeilingSet      = sharechange.EventCeilingSet
+	EventKeyPolicyBound  = sharechange.EventKeyPolicyBound
 	EventInviteMinted    = "share.invite.minted"
 )
 

@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
@@ -72,23 +73,21 @@ func (s *shareRoutes) CreatePolicy(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.storePolicy(w, r, p)
+	s.storePolicy(w, r, routeCreatePolicy, sharing.PolicyCreate{Policy: p}, p)
 }
 
-// storePolicy creates p as a new policy row and answers it.
-func (s *shareRoutes) storePolicy(w http.ResponseWriter, r *http.Request, p sharing.Policy) {
-	spec, err := p.Spec()
-	if err != nil {
+// storePolicy creates p as a new policy and answers it. route is the
+// route that submits it (a policy document, or a template installed).
+func (s *shareRoutes) storePolicy(w http.ResponseWriter, r *http.Request, route string, c sharing.Change, p sharing.Policy) {
+	if _, err := p.Spec(); err != nil {
 		WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
 		return
 	}
-	row := &storage.SharePolicy{Name: p.Name, Spec: spec}
-	if err := s.sharing.Policies().Create(r.Context(), row); err != nil {
-		writeRegistryError(w, err, "policy")
+	applied, ok := s.submit(w, r, route, c)
+	if !ok {
 		return
 	}
-	s.changes.record(r, EventPolicyCreated, map[string]any{"policy_id": row.ID, "policy": row.Name, "version": row.Version})
-	WriteJSON(w, http.StatusCreated, row)
+	WriteJSON(w, http.StatusCreated, applied.Policy)
 }
 
 // GetPolicy handles GET /api/v1/share/policies/{policy}.
@@ -125,18 +124,15 @@ func (s *shareRoutes) UpdatePolicy(w http.ResponseWriter, r *http.Request) {
 			"name: the document names "+p.Name+" but this is policy "+row.Name+"; a policy is not renamed through an edit")
 		return
 	}
-	spec, err := p.Spec()
-	if err != nil {
+	if _, err := p.Spec(); err != nil {
 		WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
 		return
 	}
-	updated, err := s.sharing.Policies().Update(r.Context(), row.ID, spec, time.Now().UTC())
-	if err != nil {
-		writeRegistryError(w, err, "policy")
+	applied, ok := s.submit(w, r, routeUpdatePolicy, sharing.PolicyUpdate{PolicyID: row.ID, Policy: p})
+	if !ok {
 		return
 	}
-	s.changes.record(r, EventPolicyUpdated, map[string]any{"policy_id": updated.ID, "policy": updated.Name, "version": updated.Version})
-	WriteJSON(w, http.StatusOK, updated)
+	WriteJSON(w, http.StatusOK, applied.Policy)
 }
 
 // templateRecord is a built-in policy template: its name and the spec
@@ -172,7 +168,7 @@ func (s *shareRoutes) InstallTemplate(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusNotFound, CodeNotFound, "no such template: want "+strings.Join(templateNames(), " or "))
 		return
 	}
-	s.storePolicy(w, r, p)
+	s.storePolicy(w, r, routeInstallTpl, sharing.TemplateInstall{Name: p.Name}, p)
 }
 
 func templateNames() []string {
@@ -234,16 +230,13 @@ func (s *shareRoutes) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		writeRegistryError(w, err, "policy")
 		return
 	}
-	g := &storage.ShareGrant{AudienceID: a.ID, PolicyID: p.ID, ExpiresAt: expiresAt, CreatedBy: caller(r).ID, CreatedAt: now}
-	if err := s.sharing.Grants().Create(r.Context(), g); err != nil {
-		writeRegistryError(w, err, "grant")
+	applied, ok := s.submit(w, r, routeCreateGrant, sharing.GrantCreate{AudienceID: a.ID, PolicyID: p.ID, ExpiresAt: storeTime(expiresAt)})
+	if !ok {
 		return
 	}
-	s.changes.record(r, EventGrantCreated, map[string]any{
-		"grant_id": g.ID, "audience_id": a.ID, "audience": a.Name,
-		"policy_id": p.ID, "policy": p.Name, "policy_version": p.Version, "expires_at": g.ExpiresAt,
+	WriteJSON(w, http.StatusCreated, grantRecord{
+		ShareGrant: *applied.Grant, Audience: applied.Audience.Name, Policy: applied.Policy.Name, PolicyVersion: applied.Policy.Version,
 	})
-	WriteJSON(w, http.StatusCreated, grantRecord{ShareGrant: *g, Audience: a.Name, Policy: p.Name, PolicyVersion: p.Version})
 }
 
 // ListGrants handles GET /api/v1/share/grants?audience=&policy=&principal=&include_revoked=:
@@ -332,11 +325,9 @@ func (s *shareRoutes) RevokeGrant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	grantID := strings.TrimSpace(chi.URLParam(r, "grant"))
-	if err := s.sharing.Grants().Revoke(r.Context(), grantID, time.Now().UTC()); err != nil {
-		writeRegistryError(w, err, "grant")
+	if _, ok := s.submit(w, r, routeRevokeGrant, sharing.GrantRevoke{GrantID: grantID}); !ok {
 		return
 	}
-	s.changes.record(r, EventGrantRevoked, map[string]any{"grant_id": grantID})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -386,16 +377,16 @@ func (s *shareRoutes) SetCeiling(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	id := strings.TrimSpace(chi.URLParam(r, "id"))
-	classes := storage.NormalizeClasses(req.DenyClasses)
-	if err := s.sharing.SetDenyClasses(r.Context(), id, classes); err != nil {
+	// An unknown principal is a 404 before anything is classified.
+	if _, err := s.sharing.DenyClasses(r.Context(), id); err != nil {
 		writeRegistryError(w, err, "principal")
 		return
 	}
-	if classes == nil {
-		classes = []string{}
+	applied, ok := s.submit(w, r, routeSetCeiling, sharing.CeilingSet{PrincipalID: id, DenyClasses: storage.NormalizeClasses(req.DenyClasses)})
+	if !ok {
+		return
 	}
-	s.changes.record(r, EventCeilingSet, map[string]any{"principal_id": id, "deny_classes": classes})
-	WriteJSON(w, http.StatusOK, ceilingRecord{PrincipalID: id, DenyClasses: classes})
+	WriteJSON(w, http.StatusOK, ceilingRecord{PrincipalID: id, DenyClasses: applied.DenyClasses})
 }
 
 // keyPolicyRequest is the body of PUT .../keys/{key}/policy: the
@@ -428,7 +419,7 @@ func (s *shareRoutes) BindOwnKeyPolicy(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusForbidden, CodeNotSelf, "this key belongs to another principal; admin:shares binds others' keys through /share/keys/{key}/policy")
 		return
 	}
-	s.bindKeyPolicy(w, r, info.ID, info.IdentityID)
+	s.bindKeyPolicy(w, r, routeBindOwnKey, info)
 }
 
 // BindKeyPolicy handles PUT /api/v1/share/keys/{key}/policy, the
@@ -446,31 +437,34 @@ func (s *shareRoutes) BindKeyPolicy(w http.ResponseWriter, r *http.Request) {
 	if !ownerGuard(w, r, info.PrincipalID) {
 		return
 	}
-	s.bindKeyPolicy(w, r, info.ID, info.IdentityID)
+	s.bindKeyPolicy(w, r, routeBindKey, info)
 }
 
-// bindKeyPolicy reads the body and binds identityID to the policy it
-// names, or unbinds it.
-func (s *shareRoutes) bindKeyPolicy(w http.ResponseWriter, r *http.Request, keyID, identityID string) {
+// bindKeyPolicy reads the body and binds the key to the policy it
+// names, or unbinds it. route is the route that submits the change: a
+// principal binding its own key applies at once; an administrator
+// binding another's key is classified like any other sharing change.
+func (s *shareRoutes) bindKeyPolicy(w http.ResponseWriter, r *http.Request, route string, key *authn.KeyInfo) {
 	var req keyPolicyRequest
 	if !decodeRegistryBody(w, r, &req) {
 		return
 	}
-	rec := keyPolicyRecord{KeyID: keyID, IdentityID: identityID}
+	c := sharing.KeyPolicyBind{KeyID: key.ID, IdentityID: key.IdentityID, PrincipalID: key.PrincipalID}
 	if ref := strings.TrimSpace(req.Policy); ref != "" {
 		p, err := s.resolvePolicy(r, ref)
 		if err != nil {
 			writeRegistryError(w, err, "policy")
 			return
 		}
-		rec.PolicyID, rec.Policy = p.ID, p.Name
+		c.PolicyID = p.ID
 	}
-	if err := s.sharing.BindIdentityPolicy(r.Context(), identityID, rec.PolicyID); err != nil {
-		writeRegistryError(w, err, "bind key policy")
+	applied, ok := s.submit(w, r, route, c)
+	if !ok {
 		return
 	}
-	s.changes.record(r, EventKeyPolicyBound, map[string]any{
-		"key_id": keyID, "identity_id": identityID, "policy_id": rec.PolicyID, "policy": rec.Policy,
-	})
+	rec := keyPolicyRecord{KeyID: key.ID, IdentityID: key.IdentityID}
+	if applied.Policy != nil {
+		rec.PolicyID, rec.Policy = applied.Policy.ID, applied.Policy.Name
+	}
 	WriteJSON(w, http.StatusOK, rec)
 }
