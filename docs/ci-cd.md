@@ -27,7 +27,7 @@ see [Local parity](#local-parity).
 
 ## Toolchain versions
 
-`mise.toml` pins Go, golangci-lint, Node and gitleaks. No workflow names
+`mise.toml` pins Go, golangci-lint, Node, gitleaks and GoReleaser. No workflow names
 those versions: each workflow's `toolchain` job reads them from `mise.toml`
 and the other jobs consume its outputs. Bump a version in `mise.toml` only.
 
@@ -37,7 +37,9 @@ step of CI) fails when anything disagrees:
 - Dockerfile, compose and workflow images run the pinned Go and Node, and
   every image names an exact release, never a floating tag;
 - `go.mod`'s `go` directive is satisfied by the pin;
-- no workflow hardcodes a Go, Node or golangci-lint version;
+- no workflow hardcodes a Go, Node, golangci-lint or GoReleaser version
+  (`release.yml` takes GoReleaser's from `ci.yml`'s `goreleaser-version`
+  output);
 - no workflow uses `@master`, `@main`, `@latest`, a `~>` range or
   `version: latest`;
 - the Makefile, Taskfile and `scripts/` install no Go tool at `@latest`
@@ -51,7 +53,7 @@ gosec and govulncheck have no `mise.toml` entry. The Makefile pins them
 `go run <pkg>@<version>`, in CI and locally alike.
 `scripts/check-ci-parity.sh` fails when a workflow, the Taskfile or a script
 names another version. Pinned in place: nancy `v1.2.0`, Trivy action
-`v0.36.0`, GoReleaser `v2.18.2`.
+`v0.36.0`.
 
 ### Local-path replaces
 
@@ -75,7 +77,7 @@ targets.
 
 | Job | Steps | Local equivalent |
 |---|---|---|
-| `toolchain` | read pins from `mise.toml`; `scripts/check-toolchain-pins.sh`; `scripts/check-ci-parity.sh` | `make ci-toolchain` |
+| `toolchain` | read pins from `mise.toml`; `scripts/check-toolchain-pins.sh`; `scripts/check-ci-parity.sh`; `goreleaser check` of `.goreleaser.yaml` at the pin (deprecations are reported, an invalid config fails) | `make ci-toolchain` |
 | `secret-scan` | gitleaks release tarball (checksum-verified) over full history, minus `.gitleaksignore` | `make ci-secret-scan` |
 | `lint` | golangci-lint on findings new since the PR base (`HEAD~1` on a push); full scan, advisory; `gofmt -l .`; `go vet -tags fts5 ./...` | `make ci-lint` |
 | `windows` | `go vet -tags fts5 ./...`, then `go build` of `ctxt` and `dpkms`, for windows/amd64 with CGO and mingw-w64, as GoReleaser builds them | `make ci-windows` (needs mingw-w64) |
@@ -89,6 +91,18 @@ targets.
 Every Go build and test uses `-tags fts5` with `CGO_ENABLED=1`: the storage
 layer needs SQLite's FTS5 module, and gosec in particular analyses nothing
 in 34 packages without the tag.
+
+Every cgo compile also takes `sqlite3.h` from `build/cgo-include`, not the
+system. sqlite-vec includes it, and the macOS SDK's, a distro's
+`libsqlite3-dev` and mingw-w64 (which has none) each differ from the
+SQLite amalgamation `mattn/go-sqlite3` compiles and the binaries link.
+`scripts/ci/sqlite3-include.sh` copies that module's header, at the
+`go.mod` version, into the directory. The Makefile exports
+`CGO_CFLAGS=-O2 -g -I<repo>/build/cgo-include`, and every target that
+compiles Go (build, test, vet, golangci-lint, gosec, govulncheck) has the
+header as a prerequisite (`CGO_TARGETS`), so it is regenerated when
+`go.mod` changes. `.goreleaser.yaml` sets the same flag on every build.
+Plain `go build` outside make does not get it.
 
 ---
 
@@ -164,11 +178,14 @@ Pushing a `v*.*.*` tag runs `release.yml`:
 2. **`trivy-release-gate`**: Trivy config scan of the `Dockerfile` and
    filesystem scan, failing on any CRITICAL finding (unfixed CVEs
    ignored). Stricter than CI's Trivy step, which only reports.
-3. **`goreleaser`**: GoReleaser `v2.18.2` with `.goreleaser.yaml`:
+3. **`goreleaser`**: GoReleaser at the `mise.toml` pin with `.goreleaser.yaml`:
    CGO builds of `ctxt` and `dpkms` with `-tags fts5` for darwin
    amd64/arm64, linux amd64 and windows amd64 (mingw-w64 cross-compiler),
    checksums, GitHub release and the `ctxt` Homebrew tap formula. Signs
-   the checksum file with GPG when the key secret is set.
+   the checksum file with GPG when the key secret is set; without it the
+   job passes `--skip=sign` (OSS GoReleaser has no per-sign condition, so
+   `.goreleaser.yaml` cannot express it). A local
+   `goreleaser release --snapshot` needs `--skip=sign` too.
 
 `goreleaser` needs both gates. `scripts/check-toolchain-pins.sh` fails if
 `release.yml` stops running `ci.yml` or if any of its jobs can start before

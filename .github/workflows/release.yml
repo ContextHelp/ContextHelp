@@ -96,11 +96,14 @@ jobs:
           gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
           passphrase: ${{ secrets.GPG_PASSPHRASE }}
 
+      # Version from mise.toml, via ci.yml's toolchain job. OSS GoReleaser
+      # has no per-sign condition (signs[].if is Pro-only), so without a GPG
+      # key the sign pipe is skipped here rather than in .goreleaser.yaml.
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7
         with:
-          version: 'v2.18.2'
-          args: release --clean
+          version: v${{ needs.ci.outputs.goreleaser-version }}
+          args: release --clean${{ env.HAS_GPG != 'true' && ' --skip=sign' || '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}

@@ -30,7 +30,7 @@ func TestCheckToolchainPins_WorkflowFloatingRef(t *testing.T) {
 		{"action commit sha", "ci.yml", "      - uses: aquasecurity/trivy-action@" + strings.Repeat("a", 40) + "\n", true},
 		{"go install exact", "ci.yml", "      - run: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0\n", true},
 		{"go install derived", "ci.yml", "      - run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v${{ needs.toolchain.outputs.golangci-version }}\n", true},
-		{"tool version exact", "release.yml", "      - uses: goreleaser/goreleaser-action@v7\n        with:\n          version: 'v2.18.2'\n", true},
+		{"tool version derived", "release.yml", "      - uses: goreleaser/goreleaser-action@v7\n        with:\n          version: v${{ needs.ci.outputs.goreleaser-version }}\n", true},
 		{"image ref latest is a scan target", "trivy.yml", "      - uses: aquasecurity/trivy-action@v0.36.0\n        with:\n          image-ref: ghcr.io/o/i:latest\n", true},
 		{"main branch filter", "ci.yml", "      - run: echo main\n", true},
 		{"commented out", "ci.yml", "      # - uses: aquasecurity/trivy-action@master\n      - run: true\n", true},
@@ -70,6 +70,58 @@ func TestCheckToolchainPins_WorkflowFloatingRef(t *testing.T) {
 	}
 }
 
+// release.yml publishes with goreleaser-action and ci.yml checks
+// .goreleaser.yaml with it. Both must take the version from the mise.toml
+// pin (the toolchain job's output); a literal, even today's pin, lets the
+// release run a GoReleaser the config was never checked against.
+func TestCheckToolchainPins_WorkflowGoreleaserVersion(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not on PATH")
+	}
+	mise := readMise(t)
+	pin := regexp.MustCompile(`(?m)^goreleaser = "(.+)"$`).FindSubmatch(mise)
+	if pin == nil {
+		t.Fatal("mise.toml has no goreleaser pin")
+	}
+	action := "      - uses: goreleaser/goreleaser-action@v7\n        with:\n"
+
+	cases := []struct {
+		name, steps string
+		ok          bool
+	}{
+		{"needs output", action + "          version: v${{ needs.ci.outputs.goreleaser-version }}\n", true},
+		{"step output quoted", action + "          version: 'v${{ steps.pins.outputs.goreleaser-version }}'\n", true},
+		{"install only derived", action + "          install-only: true\n          version: v${{ steps.pins.outputs.goreleaser-version }}\n", true},
+		{"another action's version", "      - uses: some/action@v1\n        with:\n          version: 1.2.3\n" + action + "          version: v${{ needs.ci.outputs.goreleaser-version }}\n", true},
+		{"commented literal", action + "          # version: 'v1.0.0'\n          version: v${{ needs.ci.outputs.goreleaser-version }}\n", true},
+		{"literal pin quoted", action + "          version: 'v" + string(pin[1]) + "'\n", false},
+		{"literal unquoted", action + "          version: v2.0.0\n", false},
+		{"literal without v", action + "          args: release --clean\n          version: \"" + string(pin[1]) + "\"\n", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := pinsRepo(t, mise)
+			wf := filepath.Join(".github", "workflows", "release.yml")
+			body := "name: t\non: push\njobs:\n  j:\n    runs-on: ubuntu-latest\n    steps:\n" + tc.steps
+			writePinsFile(t, filepath.Join(repo, wf), body)
+
+			out, err := exec.Command("bash", filepath.Join(repo, "scripts", "check-toolchain-pins.sh")).CombinedOutput()
+			if tc.ok {
+				if err != nil {
+					t.Fatalf("derived version refused: %v\n%s\n%s", err, body, out)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("hardcoded version passed the gate:\n%s\n%s", body, out)
+			}
+			if !strings.Contains(string(out), "hardcodes a GoReleaser version") || !strings.Contains(string(out), wf+":") {
+				t.Errorf("failure does not name %s as hardcoding GoReleaser:\n%s", wf, out)
+			}
+		})
+	}
+}
+
 // release.yml publishes a tag, so it must gate on at least what ci.yml
 // gates a merge on. Hand-kept copies of ci.yml's jobs drifted (Linux-only
 // unit tests, no e2e run, no drop-replaces step), so release.yml runs
@@ -94,7 +146,7 @@ func TestCheckToolchainPins_ReleaseRunsCI(t *testing.T) {
 	}
 	publish := func(needs string) string {
 		return "  goreleaser:\n    runs-on: ubuntu-latest\n" + needs +
-			"    steps:\n      - uses: goreleaser/goreleaser-action@v7\n        with:\n          version: 'v2.18.2'\n"
+			"    steps:\n      - uses: goreleaser/goreleaser-action@v7\n        with:\n          version: v${{ needs.ci.outputs.goreleaser-version }}\n"
 	}
 	rel := func(jobs ...string) string {
 		return "name: Release\non:\n  push:\n    tags: ['v*']\njobs:\n" + strings.Join(jobs, "\n")

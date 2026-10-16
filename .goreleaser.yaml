@@ -10,11 +10,12 @@ before:
   hooks:
     - go mod tidy
     - go mod verify
-    # mingw-w64 ships no sqlite3.h, which sqlite-vec's cgo package includes:
-    # put mattn/go-sqlite3's amalgamation header (the SQLite every binary
-    # links) where the windows builds' CGO_CFLAGS point. Same as the
-    # Makefile's ci-windows-* targets.
-    - scripts/ci/sqlite3-include.sh build/cgo-include/windows
+    # sqlite-vec's cgo package #includes "sqlite3.h". Without -I it takes
+    # the system one (macOS SDK, distro libsqlite3-dev; mingw-w64 has none),
+    # another SQLite release than the amalgamation mattn/go-sqlite3 compiles
+    # and every binary links. Put that module's header where every build's
+    # CGO_CFLAGS point, as the Makefile does (CGO_INCLUDE).
+    - scripts/ci/sqlite3-include.sh build/cgo-include
 
 builds:
   - id: ctxt
@@ -22,6 +23,7 @@ builds:
     main: ./cmd/ctxt
     env:
       - CGO_ENABLED=1
+      - CGO_CFLAGS=-O2 -g -I{{ abs "build/cgo-include" }}
     # FTS5 must be compiled into the embedded SQLite amalgamation; without
     # this tag every shipped binary fails at first migration.
     flags:
@@ -44,13 +46,14 @@ builds:
     overrides:
       # Windows cross-compilation requires mingw-w64 on the CI runner.
       # Install via: sudo apt-get install -y gcc-mingw-w64-x86-64
+      # An override's env is appended to the build's, so CGO_CFLAGS above
+      # applies here too.
       - goos: windows
         goarch: amd64
         env:
           - CGO_ENABLED=1
           - CC=x86_64-w64-mingw32-gcc
           - CXX=x86_64-w64-mingw32-g++
-          - CGO_CFLAGS=-O2 -g -I{{ abs "build/cgo-include/windows" }}
     ldflags:
       - -s -w
       - -X main.Version={{.Version}}
@@ -62,6 +65,7 @@ builds:
     main: ./cmd/dpkms
     env:
       - CGO_ENABLED=1
+      - CGO_CFLAGS=-O2 -g -I{{ abs "build/cgo-include" }}
     flags:
       - -tags
       - fts5
@@ -84,7 +88,6 @@ builds:
           - CGO_ENABLED=1
           - CC=x86_64-w64-mingw32-gcc
           - CXX=x86_64-w64-mingw32-g++
-          - CGO_CFLAGS=-O2 -g -I{{ abs "build/cgo-include/windows" }}
     ldflags:
       - -s -w
       - -X main.Version={{.Version}}
@@ -93,23 +96,23 @@ builds:
 
 archives:
   - id: ctxt-archive
-    builds: [ctxt]
+    ids: [ctxt]
     name_template: "ctxt_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    format: tar.gz
+    formats: [tar.gz]
     format_overrides:
       - goos: windows
-        format: zip
+        formats: [zip]
     files:
       - LICENSE
       - README.md
 
   - id: dpkms-archive
-    builds: [dpkms]
+    ids: [dpkms]
     name_template: "dpkms_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    format: tar.gz
+    formats: [tar.gz]
     format_overrides:
       - goos: windows
-        format: zip
+        formats: [zip]
     files:
       - LICENSE
       - README.md
@@ -128,8 +131,11 @@ signs:
       - "${signature}"
       - "--detach-sign"
       - "${artifact}"
-    # Only sign when GPG_FINGERPRINT is set (skip in dry-run / snapshot).
-    if: '{{ if .Env.GPG_FINGERPRINT }}true{{ end }}'
+    # Signing needs GPG_FINGERPRINT. OSS GoReleaser has no per-sign
+    # condition (signs[].if is Pro-only) and `artifacts` takes no
+    # template, so the release workflow passes --skip=sign when no GPG
+    # key is configured. `goreleaser build` never signs; a local
+    # `goreleaser release --snapshot` needs --skip=sign too.
 
 snapshot:
   version_template: "{{ .Tag }}-next"

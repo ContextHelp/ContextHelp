@@ -14,7 +14,8 @@
 #      Dockerfile base image names an exact release (X.Y.Z tag, dated tag or
 #      digest), never a floating tag
 #   2. go.mod `go` directive is satisfied by the mise go pin (pin >= directive)
-#   3. no workflow hardcodes a go-version literal instead of deriving it
+#   3. no workflow hardcodes a go-version literal instead of deriving it,
+#      nor a golangci-lint or goreleaser-action version
 #   4. node: mise pins an exact version; no workflow hardcodes node-version;
 #      every node image (compose, workflows, Dockerfile FROM) runs the pin;
 #      .nvmrc / .node-version equal it; package.json engines.node is the pin
@@ -42,6 +43,7 @@ mise_go=$(sed -n 's/^go = "\(.*\)"$/\1/p' mise.toml)
 #   "go:github.com/golangci/golangci-lint/v2/cmd/golangci-lint" = "2.1.6"
 mise_lint=$(sed -n 's/^"go:.*golangci-lint" = "\(.*\)"$/\1/p' mise.toml)
 mise_node=$(sed -n 's/^node = "\(.*\)"$/\1/p' mise.toml)
+mise_goreleaser=$(sed -n 's/^goreleaser = "\(.*\)"$/\1/p' mise.toml)
 
 [ -n "$mise_go" ] || err "mise.toml has no exact 'go' pin"
 [ -n "$mise_lint" ] || err "mise.toml has no exact 'golangci-lint' pin"
@@ -52,7 +54,9 @@ esac
 # line (22) installs whatever is newest today.
 [[ "$mise_node" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
 	err "mise.toml node pin must be an exact X.Y.Z version, got '$mise_node'"
-echo "mise.toml: go=$mise_go golangci-lint=$mise_lint node=$mise_node"
+[[ "$mise_goreleaser" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
+	err "mise.toml goreleaser pin must be an exact X.Y.Z version, got '$mise_goreleaser'"
+echo "mise.toml: go=$mise_go golangci-lint=$mise_lint node=$mise_node goreleaser=$mise_goreleaser"
 
 # ── 1. Dockerfiles ───────────────────────────────────────────────────────────
 # Both build stages must use the same Go as mise/CI, or a container build can
@@ -289,6 +293,24 @@ while read -r hit; do
 	[ -n "$hit" ] || continue
 	err "workflow hardcodes a golangci-lint version, derive it from mise.toml instead: $hit"
 done < <(grep -rnE "golangci-lint.*@v?[0-9]+\.[0-9]+|golangci-lint/(master|v[0-9])" .github/workflows/ | grep -vE 'golangci-lint/v2/cmd/golangci-lint@v\$\{\{' || true)
+
+# goreleaser-action's `version:`: release.yml publishes with it and ci.yml
+# checks .goreleaser.yaml with it, so both derive it from the mise.toml pin
+# (ci.yml's toolchain job output). A literal lets the release run a
+# GoReleaser the config was never checked against.
+while read -r hit; do
+	[ -n "$hit" ] || continue
+	err "workflow hardcodes a GoReleaser version, derive it from mise.toml instead: $hit"
+done < <(awk '
+	FNR == 1 { gr = 0 }
+	{ line = $0; sub(/(^|[ \t])#.*$/, "", line) }
+	line ~ /^[ \t]*-[ \t]/ { gr = 0 }
+	line ~ /uses:[ \t]*["\047]?goreleaser\/goreleaser-action@/ { gr = 1; next }
+	gr && line ~ /^[ \t]+version:/ && line !~ /version:[ \t]*["\047]?v?\$\{\{/ {
+		sub(/^[ \t]+/, "", line)
+		printf "%s:%d: %s\n", FILENAME, FNR, line
+	}
+' /dev/null $(find .github/workflows -type f \( -name '*.yml' -o -name '*.yaml' \) 2>/dev/null | sort))
 
 # ── 4. node ──────────────────────────────────────────────────────────────────
 # setup-node cannot read mise.toml, so CI derives node-version from it in the

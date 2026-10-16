@@ -61,9 +61,9 @@ Tool versions are managed by [mise](https://mise.jdx.dev). From the repo root:
 mise install
 ```
 
-This installs every tool `mise.toml` pins: Go, golangci-lint, gitleaks, and
-the Node version that builds the embedded web bundles (`web/ui`,
-`web/searchgraph`). Verify:
+This installs every tool `mise.toml` pins: Go, golangci-lint, gitleaks,
+GoReleaser (`make goreleaser-check`), and the Node version that builds the
+embedded web bundles (`web/ui`, `web/searchgraph`). Verify:
 
 ```bash
 go version   # must match the `go` pin in mise.toml
@@ -75,7 +75,7 @@ the tool is missing or another version is first on `PATH`. It never falls
 back to whatever is installed. In a fresh worktree, run `mise trust` once.
 
 `mise.toml` is the single source of truth for tool versions. CI reads its
-`go`, `golangci-lint` and `node` pins at run time, and `make toolchain-check`
+`go`, `golangci-lint`, `node` and `goreleaser` pins at run time, and `make toolchain-check`
 fails when anything else disagrees: a Dockerfile, compose file or workflow
 image, a hardcoded `go-version`/`node-version`, `.nvmrc`/`.node-version`,
 `package.json` `engines.node`, or a workflow action or tool on a floating ref
