@@ -5,6 +5,8 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -75,8 +77,58 @@ func setupFindAPI(t *testing.T, opts ...dpkmstest.Option) *testDB {
 	return db
 }
 
+// goldenFloatDigits is how many significant digits of each JSON float
+// assertGolden compares. Scores come out of float math (FTS5 bm25, RRF)
+// whose last bits differ between platforms: macOS and Linux disagree in
+// the 16th digit of the same fts_score. Nine digits keep any real score
+// change visible.
+const goldenFloatDigits = 9
+
+// jsonNumberToken matches a JSON number token at the start of its input.
+var jsonNumberToken = regexp.MustCompile(`^-?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?`)
+
+// roundJSONFloats rounds every float token outside a string in JSON text
+// s to goldenFloatDigits significant digits, leaving every other byte as
+// it is. Integers stay exact.
+func roundJSONFloats(s string) string {
+	var b strings.Builder
+	inString, escaped := false, false
+	for i := 0; i < len(s); {
+		c := s[i]
+		switch {
+		case inString:
+			switch {
+			case escaped:
+				escaped = false
+			case c == '\\':
+				escaped = true
+			case c == '"':
+				inString = false
+			}
+		case c == '"':
+			inString = true
+		case c == '-' || (c >= '0' && c <= '9'):
+			if tok := jsonNumberToken.FindString(s[i:]); tok != "" {
+				out := tok
+				if strings.ContainsAny(tok, ".eE") {
+					if f, err := strconv.ParseFloat(tok, 64); err == nil {
+						out = strconv.FormatFloat(f, 'g', goldenFloatDigits, 64)
+					}
+				}
+				b.WriteString(out)
+				i += len(tok)
+				continue
+			}
+		}
+		b.WriteByte(c)
+		i++
+	}
+	return b.String()
+}
+
 // assertGolden compares got with testdata/find/<name>.golden. Trailing
-// blank lines are not compared: the end-of-file hook trims them.
+// blank lines are not compared: the end-of-file hook trims them. In a
+// .json golden, floats compare at goldenFloatDigits significant digits.
 func assertGolden(t *testing.T, name, got string) {
 	t.Helper()
 	got = strings.TrimRight(got, "\n") + "\n"
@@ -94,7 +146,11 @@ func assertGolden(t *testing.T, name, got string) {
 	if err != nil {
 		t.Fatalf("read golden %s: %v (run with -update-find-golden)", path, err)
 	}
-	if string(want) != got {
+	cmpGot, cmpWant := got, string(want)
+	if strings.HasSuffix(name, ".json") {
+		cmpGot, cmpWant = roundJSONFloats(cmpGot), roundJSONFloats(cmpWant)
+	}
+	if cmpWant != cmpGot {
 		t.Errorf("%s differs from %s\n--- got\n%s\n--- want\n%s", name, path, got, want)
 	}
 }
@@ -138,4 +194,33 @@ func TestFindOutputGolden(t *testing.T) {
 		}
 		assertGolden(t, "empty.json", stdout)
 	})
+}
+
+// The golden comparison absorbs the last-digit float drift between
+// platforms and nothing more: a score off in its third decimal, integers
+// and numbers inside strings still compare exactly.
+func TestRoundJSONFloats(t *testing.T) {
+	const linux, darwin = `{"fts_score": -0.8827586549672106}`, `{"fts_score": -0.8827586549672107}`
+	if roundJSONFloats(linux) != roundJSONFloats(darwin) {
+		t.Errorf("platform drift not absorbed: %s vs %s", roundJSONFloats(linux), roundJSONFloats(darwin))
+	}
+	for _, other := range []string{
+		`{"fts_score": -0.8837586549672107}`,
+		`{"fts_score": -0.8827587549672107}`,
+		`{"fts_score": 0.8827586549672107}`,
+	} {
+		if roundJSONFloats(other) == roundJSONFloats(darwin) {
+			t.Errorf("%s compares equal to %s", other, darwin)
+		}
+	}
+	for in, want := range map[string]string{
+		`{"n": 42, "f": 0.00819672131147541}`:     `{"n": 42, "f": 0.00819672131}`,
+		`{"s": "v1.23456789012", "f": 1e-20}`:     `{"s": "v1.23456789012", "f": 1e-20}`,
+		`{"s": "a\"b 1.23456789012", "f": 2.5E3}`: `{"s": "a\"b 1.23456789012", "f": 2500}`,
+		`[-1, -0.1234567891234, "\\", 3.0]`:       `[-1, -0.123456789, "\\", 3]`,
+	} {
+		if got := roundJSONFloats(in); got != want {
+			t.Errorf("roundJSONFloats(%s) = %s, want %s", in, got, want)
+		}
+	}
 }
