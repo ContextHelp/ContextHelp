@@ -10,6 +10,11 @@ before:
   hooks:
     - go mod tidy
     - go mod verify
+    # mingw-w64 ships no sqlite3.h, which sqlite-vec's cgo package includes:
+    # put mattn/go-sqlite3's amalgamation header (the SQLite every binary
+    # links) where the windows builds' CGO_CFLAGS point. Same as the
+    # Makefile's ci-windows-* targets.
+    - scripts/ci/sqlite3-include.sh build/cgo-include/windows
 
 builds:
   - id: ctxt
@@ -45,6 +50,7 @@ builds:
           - CGO_ENABLED=1
           - CC=x86_64-w64-mingw32-gcc
           - CXX=x86_64-w64-mingw32-g++
+          - CGO_CFLAGS=-O2 -g -I{{ abs "build/cgo-include/windows" }}
     ldflags:
       - -s -w
       - -X main.Version={{.Version}}
@@ -78,6 +84,7 @@ builds:
           - CGO_ENABLED=1
           - CC=x86_64-w64-mingw32-gcc
           - CXX=x86_64-w64-mingw32-g++
+          - CGO_CFLAGS=-O2 -g -I{{ abs "build/cgo-include/windows" }}
     ldflags:
       - -s -w
       - -X main.Version={{.Version}}

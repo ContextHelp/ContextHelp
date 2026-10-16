@@ -627,7 +627,15 @@ ci-vet:
 # GoReleaser ships windows/amd64 binaries, cross-compiled with CGO and
 # mingw-w64. Type-check every package, tests included, for that target,
 # then build the two binaries as GoReleaser does.
-CI_WINDOWS_ENV := GOOS=windows GOARCH=amd64 CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc
+#
+# mingw-w64 ships no sqlite3.h, which sqlite-vec's cgo package includes;
+# scripts/ci/sqlite3-include.sh puts the header of the amalgamation
+# mattn/go-sqlite3 compiles there, and CGO_CFLAGS adds it (on top of Go's
+# default -O2 -g). .goreleaser.yaml's windows builds do the same.
+CI_WINDOWS_INCLUDE := $(CURDIR)/build/cgo-include/windows
+CI_WINDOWS_ENV := GOOS=windows GOARCH=amd64 CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc \
+	CGO_CFLAGS='-O2 -g -I$(CI_WINDOWS_INCLUDE)'
+CI_WINDOWS_PREP := $(CI_PREREQ) mingw && $(CI_TOOLS) go -- scripts/ci/sqlite3-include.sh $(CI_WINDOWS_INCLUDE)
 
 ci-windows:
 	$(CI_STEP) ci-drop-replaces
@@ -635,11 +643,11 @@ ci-windows:
 	$(CI_STEP) ci-windows-build
 
 ci-windows-vet:
-	@$(CI_PREREQ) mingw
+	@$(CI_WINDOWS_PREP)
 	$(CI_WINDOWS_ENV) $(GO) vet -tags fts5 ./...
 
 ci-windows-build:
-	@$(CI_PREREQ) mingw
+	@$(CI_WINDOWS_PREP)
 	$(CI_WINDOWS_ENV) $(GO) build -tags fts5 ./cmd/ctxt ./cmd/dpkms
 
 ci-security:
