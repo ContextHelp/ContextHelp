@@ -483,44 +483,14 @@ func reindexByHashTx(ctx context.Context, tx *sql.Tx, hash, profileID string) er
 }
 
 func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, int, error) {
-	// List's predicates (status scope first) are numbered after the
-	// caller's $N placeholders, so where runs exactly as compiled.
-	conditions, condArgs, idx := objectListConditionsPG(filter, len(args)+1, s.scope)
-	if where != "" {
-		conditions = append([]string{"(" + where + ")"}, conditions...)
-	}
-	args = append(append([]any(nil), args...), condArgs...)
-	clause := ""
-	if len(conditions) > 0 {
-		clause = " WHERE " + strings.Join(conditions, " AND ")
-	}
+	q := listBySQLQueries(where, args, filter, s.scope)
 
 	var total int
-	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM objects"+clause, args...).Scan(&total); err != nil {
+	if err := s.db.QueryRowContext(ctx, q.count, q.args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count by sql: %w", err)
 	}
 
-	// where is a compiled RSQL predicate (internal/search): literals are
-	// already bound as $N placeholders in args, only operators and column
-	// names reach the SQL text. clause adds objectListConditionsPG's fixed
-	// fragments (values in args), order is a ListOrder literal, and
-	// LIMIT/OFFSET are bound below rather than formatted in.
-	// #nosec G202 -- see above; caller values travel in args, not the string.
-	query := objectSelectCols + ` FROM objects` + clause + " ORDER BY " + filter.ListOrder()
-	pageArgs := args
-	if filter.Limit > 0 {
-		// #nosec G202 -- appends a generated "$N" placeholder; value in args.
-		query += fmt.Sprintf(" LIMIT $%d", idx)
-		pageArgs = append(pageArgs, filter.Limit)
-		idx++
-	}
-	if filter.Offset > 0 {
-		// #nosec G202 -- appends a generated "$N" placeholder; value in args.
-		query += fmt.Sprintf(" OFFSET $%d", idx)
-		pageArgs = append(pageArgs, filter.Offset)
-	}
-
-	rows, err := s.db.QueryContext(ctx, query, pageArgs...)
+	rows, err := s.db.QueryContext(ctx, q.page, q.pageArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list by sql: %w", err)
 	}
@@ -531,6 +501,53 @@ func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, f
 		return nil, 0, err
 	}
 	return objects, total, nil
+}
+
+// listBySQL is the SQL ListBySQL runs: the count over every matching
+// row and the page of them, each with its arguments.
+type listBySQL struct {
+	count    string
+	args     []any
+	page     string
+	pageArgs []any
+}
+
+// listBySQLQueries builds ListBySQL's queries for where (a Postgres
+// predicate whose $N placeholders bind args, numbered from 1), filter
+// and scope. List's predicates (status scope first, the viewer's scope
+// last) are numbered after the caller's placeholders, so where runs
+// exactly as compiled; LIMIT and OFFSET bind after them on the page.
+func listBySQLQueries(where string, args []any, filter storage.ObjectFilter, scope *storage.Scope) listBySQL {
+	conditions, condArgs, idx := objectListConditionsPG(filter, len(args)+1, scope)
+	if where != "" {
+		conditions = append([]string{"(" + where + ")"}, conditions...)
+	}
+	args = append(append([]any(nil), args...), condArgs...)
+	clause := ""
+	if len(conditions) > 0 {
+		clause = " WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	// where is a compiled RSQL predicate (internal/search): literals are
+	// already bound as $N placeholders in args, only operators and column
+	// names reach the SQL text. clause adds objectListConditionsPG's fixed
+	// fragments (values in args), order is a ListOrder literal, and
+	// LIMIT/OFFSET are bound below rather than formatted in.
+	// #nosec G202 -- see above; caller values travel in args, not the string.
+	page := objectSelectCols + ` FROM objects` + clause + " ORDER BY " + filter.ListOrder()
+	pageArgs := args
+	if filter.Limit > 0 {
+		// #nosec G202 -- appends a generated "$N" placeholder; value in args.
+		page += fmt.Sprintf(" LIMIT $%d", idx)
+		pageArgs = append(pageArgs, filter.Limit)
+		idx++
+	}
+	if filter.Offset > 0 {
+		// #nosec G202 -- appends a generated "$N" placeholder; value in args.
+		page += fmt.Sprintf(" OFFSET $%d", idx)
+		pageArgs = append(pageArgs, filter.Offset)
+	}
+	return listBySQL{count: "SELECT COUNT(*) FROM objects" + clause, args: args, page: page, pageArgs: pageArgs}
 }
 
 // VectorSearch ranks objects through q.ModelID's per-model partial HNSW
