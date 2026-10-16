@@ -2,6 +2,7 @@ package leaktest
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"testing"
 
@@ -148,4 +149,31 @@ func TestReadAuditIgnoresUnattributedAndOwner(t *testing.T) {
 	all, err := f.Server.Driver.Sharing().AccessLog().Query(ctx, storage.AccessFilter{})
 	require.NoError(t, err)
 	assert.Empty(t, all, "no entry for unauthenticated requests or for the owner")
+}
+
+// The owner lists refusals over the API: ?decision= narrows, a value
+// that is not a decision is a 400, and every entry carries its receipt.
+func TestReadAuditDecisionFilterOverAPI(t *testing.T) {
+	f := Start(t, storageutil.NewTestDriver(t))
+	colleague, owner := f.Colleague(), f.Owner()
+	require.Equal(t, http.StatusOK, fetch(t, f, colleague, "/objects").Status)
+	require.Equal(t, http.StatusForbidden, fetch(t, f, colleague, "/jobs/"+f.JobID).Status)
+	require.NoError(t, f.Server.Stack.Audit.Flush(context.Background()))
+
+	r := fetch(t, f, owner, "/share/audit?decision=denied&principal="+ColleagueID)
+	require.Equal(t, http.StatusOK, r.Status, "%s", r.Body)
+	var out struct {
+		Data  []storage.AccessEntry `json:"data"`
+		Total int                   `json:"total"`
+	}
+	require.NoError(t, json.Unmarshal(r.Body, &out))
+	require.Equal(t, 1, out.Total)
+	e := out.Data[0]
+	assert.Equal(t, storage.AccessDecisionDenied, e.Decision)
+	assert.Equal(t, "GET /jobs/{id}", e.Route)
+	assert.Equal(t, "route_access", e.Checks[len(e.Checks)-1].Check)
+	assert.Equal(t, "owner_only", e.Checks[len(e.Checks)-1].Reason)
+	assert.NotEmpty(t, e.OperationDigest)
+
+	assert.Equal(t, http.StatusBadRequest, fetch(t, f, owner, "/share/audit?decision=maybe").Status)
 }

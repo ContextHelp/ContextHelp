@@ -43,19 +43,21 @@ Examples:
 var shareAuditCmd = &cobra.Command{
 	Use:   "audit",
 	Short: "List who read what through sharing",
-	Long: `List the read audit: one entry per request a shared viewer made, newest
-first, with who made it, the route, the policy versions in force and
-the objects the answer carried. --principal asks what one viewer read,
---object asks who read one object; at least one is required. --since
-narrows the window (a date, an RFC 3339 time, or a duration such as 24h
-or 7d). Your own requests are not logged, except previews, which are
-logged as yours with the viewer named. Object ids are kept for
-sharing.audit.retention (90 days by default); the entries and their
-counts stay.
+	Long: `List the read audit: one entry per request a shared viewer made, answered or refused, newest first. Each entry is a receipt: who made the request, the route, the decision (allowed, denied, or deferred), the checks behind it in the order they ran, the policy versions in force, and the objects the answer carried.
+
+--principal asks what one viewer read.
+--object asks who read one object.
+--decision denied asks who was refused.
+At least one is required.
+
+--checks prints every check of each entry with its outcome and reason code. --since narrows the window: a date, an RFC 3339 time, or a duration like 24h or 7d.
+
+Your own requests are not logged, except previews, which are logged as yours with the viewer named. Object IDs are kept for sharing.audit.retention (90 days by default); the entries and their counts stay.
 
 Examples:
   ctxt share audit --object <object-id>
-  ctxt share audit --principal prn_01J... --since 7d`,
+  ctxt share audit --principal prn_01J... --since 7d
+  ctxt share audit --decision denied --checks`,
 	Args: cobra.NoArgs,
 	RunE: runShareAudit,
 }
@@ -79,6 +81,8 @@ func init() {
 
 	shareAuditCmd.Flags().String("principal", "", "what this principal (by id) read")
 	shareAuditCmd.Flags().String("object", "", "who read this object (by id)")
+	shareAuditCmd.Flags().String("decision", "", "only entries with this decision: allowed, denied or deferred")
+	shareAuditCmd.Flags().Bool("checks", false, "print every check of each entry, in the order it ran")
 	shareAuditCmd.Flags().String("since", "", "entries since a date (YYYY-MM-DD), an RFC 3339 time or a duration ago (24h, 7d)")
 	shareAuditCmd.Flags().Int("limit", 100, "at most this many entries, newest first")
 	cliconv.WithSideEffect(shareAuditCmd, cliconv.SideEffectRead)
@@ -86,6 +90,7 @@ func init() {
 	cliconv.WithExamples(shareAuditCmd, []cliconv.Example{
 		{Title: "Who saw one contact", Command: "ctxt share audit --object <object-id>"},
 		{Title: "What a partner read this week", Command: "ctxt share audit --principal prn_01J... --since 7d"},
+		{Title: "Who was refused, and by which check", Command: "ctxt share audit --decision denied --checks"},
 	})
 	cliconv.WithNextSteps(shareAuditCmd, []cliconv.NextStep{
 		{When: "a viewer read more than it should", Suggest: "ctxt share revoke <grant-id>", Reason: "the grant stops on the next request"},
@@ -146,13 +151,19 @@ type auditReply struct {
 func runShareAudit(cmd *cobra.Command, _ []string) error {
 	principal, _ := cmd.Flags().GetString("principal")
 	object, _ := cmd.Flags().GetString("object")
+	decision, _ := cmd.Flags().GetString("decision")
 	since, _ := cmd.Flags().GetString("since")
 	limit, _ := cmd.Flags().GetInt("limit")
+	checks, _ := cmd.Flags().GetBool("checks")
 	principal, object, since = strings.TrimSpace(principal), strings.TrimSpace(object), strings.TrimSpace(since)
-	if principal == "" && object == "" {
-		e := output.UsageError("say whose reads or which object: --principal <id> or --object <id>")
-		e.SuggestedFix = "ctxt share audit --object <object-id>, or --principal <principal-id>"
+	decision = strings.TrimSpace(decision)
+	if principal == "" && object == "" && decision == "" {
+		e := output.UsageError("say whose requests, which object or which decision: --principal <id>, --object <id> or --decision denied")
+		e.SuggestedFix = "ctxt share audit --decision denied, or --object <object-id>, or --principal <principal-id>"
 		return e
+	}
+	if decision != "" && !storage.AccessDecision(decision).Valid() {
+		return output.UsageError("--decision must be allowed, denied or deferred")
 	}
 	if limit <= 0 {
 		return output.UsageError("--limit must be positive")
@@ -168,6 +179,9 @@ func runShareAudit(cmd *cobra.Command, _ []string) error {
 	if object != "" {
 		q.Set("object", object)
 	}
+	if decision != "" {
+		q.Set("decision", decision)
+	}
 	if since != "" {
 		q.Set("since", since)
 	}
@@ -182,10 +196,15 @@ func runShareAudit(cmd *cobra.Command, _ []string) error {
 	if isJSONOutput() {
 		return outputJSON(cmd.OutOrStdout(), map[string]any{"entries": reply.Data, "total": reply.Total})
 	}
+	if checks {
+		return renderAuditChecks(cmd.OutOrStdout(), reply.Data)
+	}
 	return renderAudit(cmd.OutOrStdout(), reply.Data)
 }
 
-// renderAudit prints the entries as a table, newest first.
+// renderAudit prints the entries as a table, newest first. WHY names the
+// first check that did not pass and its reason code, for an entry that
+// was refused, deferred or had the backstop strip something.
 func renderAudit(w io.Writer, entries []storage.AccessEntry) error {
 	if len(entries) == 0 {
 		_, err := fmt.Fprintln(w, "No reads recorded.")
@@ -197,13 +216,51 @@ func renderAudit(w io.Writer, entries []storage.AccessEntry) error {
 			e.At.UTC().Format(time.RFC3339),
 			e.PrincipalID,
 			e.Route,
+			string(e.Decision),
+			auditWhy(e),
 			strconv.Itoa(e.ObjectCount),
 			strconv.Itoa(e.EntityCount),
 			auditIDs(e.ObjectIDs),
 			e.PolicyVersions,
 		})
 	}
-	printTable(w, []string{"TIME", "PRINCIPAL", "ROUTE", "OBJECTS", "ENTITIES", "IDS", "POLICIES"}, rows)
+	printTable(w, []string{"TIME", "PRINCIPAL", "ROUTE", "DECISION", "WHY", "OBJECTS", "ENTITIES", "IDS", "POLICIES"}, rows)
+	_, err := fmt.Fprintf(w, "Total: %d\n", len(entries))
+	return err
+}
+
+// auditWhy is "check: reason" of the first check of e that failed or
+// could not decide; "-" when every check passed or had nothing to
+// decide.
+func auditWhy(e storage.AccessEntry) string {
+	for _, c := range e.Checks {
+		if c.Outcome == storage.AccessOutcomeFail || c.Outcome == storage.AccessOutcomeUnknown {
+			return c.Check + ": " + c.Reason
+		}
+	}
+	return "-"
+}
+
+// renderAuditChecks prints each entry with its checks in the order they
+// ran: the receipt behind the decision.
+func renderAuditChecks(w io.Writer, entries []storage.AccessEntry) error {
+	if len(entries) == 0 {
+		_, err := fmt.Fprintln(w, "No reads recorded.")
+		return err
+	}
+	for _, e := range entries {
+		if _, err := fmt.Fprintf(w, "%s  %s  %s  %s\n", e.At.UTC().Format(time.RFC3339), e.PrincipalID, e.Route, e.Decision); err != nil {
+			return err
+		}
+		for _, c := range e.Checks {
+			if _, err := fmt.Fprintf(w, "  %-22s %-15s %s\n", c.Check, c.Outcome, c.Reason); err != nil {
+				return err
+			}
+		}
+		if _, err := fmt.Fprintf(w, "  digest %s\n", e.OperationDigest); err != nil {
+			return err
+		}
+	}
 	_, err := fmt.Fprintf(w, "Total: %d\n", len(entries))
 	return err
 }
