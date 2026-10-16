@@ -64,6 +64,24 @@ func MethodShape(fullMethod string) (sharing.Shape, bool) {
 	return a.shape, ok
 }
 
+// methodRefusal is the reason code the capability table refuses a
+// restricted viewer's call with, read in the order the REST table is:
+// no viewer, an unclassified method, an owner-only method, a capability
+// the viewer lacks. "" means the viewer may call the method.
+func methodRefusal(v sharing.Viewer, haveViewer bool, access methodAccess, known bool) string {
+	switch {
+	case !haveViewer:
+		return sharing.ReasonNoViewer
+	case !known:
+		return sharing.ReasonRouteUnclassified
+	case access.ownerOnly:
+		return sharing.ReasonOwnerOnly
+	case access.capability != "" && !v.Allows(access.capability):
+		return sharing.ReasonCapabilityMissing
+	}
+	return ""
+}
+
 // authorizeCapability checks the viewer on ctx may call fullMethod: an
 // unrestricted viewer always; a restricted one when the method is open
 // or needs a capability it holds. Anything else, a missing viewer and
@@ -74,9 +92,16 @@ func authorizeCapability(ctx context.Context, fullMethod string) error {
 	if ok && v.IsUnrestricted() {
 		return nil
 	}
+	rcpt := sharing.ReceiptFrom(ctx)
 	access, known := methodAccessTable[fullMethod]
-	if !ok || !known || access.ownerOnly || (access.capability != "" && !v.Allows(access.capability)) {
+	if reason := methodRefusal(v, ok, access, known); reason != "" {
+		rcpt.Refuse(sharing.CheckRouteAccess, reason)
 		return status.Error(codes.PermissionDenied, "NOT_SHARED: not shared with this principal")
+	}
+	if access.capability != "" {
+		rcpt.Pass(sharing.CheckRouteAccess, sharing.ReasonCapabilityHeld)
+	} else {
+		rcpt.Pass(sharing.CheckRouteAccess, sharing.ReasonRouteOpen)
 	}
 	return nil
 }

@@ -37,7 +37,7 @@ const healthMethodPrefix = "/grpc.health.v1.Health/"
 // match. Authentication failures are recorded on the security emitter
 // (nil-safe), keyed by peer address since no principal exists; scope
 // denials are recorded against the principal.
-func authUnaryInterceptor(chain *authn.Chain, sec *security.Emitter, viewers *sharing.Resolver) grpc.UnaryServerInterceptor {
+func authUnaryInterceptor(chain *authn.Chain, sec *security.Emitter, viewers *sharing.Resolver, audit *sharing.AuditWriter) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		if strings.HasPrefix(info.FullMethod, healthMethodPrefix) {
 			return handler(ctx, req)
@@ -51,7 +51,18 @@ func authUnaryInterceptor(chain *authn.Chain, sec *security.Emitter, viewers *sh
 		if err != nil {
 			return nil, err
 		}
+		// A restricted caller's receipt starts here, ahead of the scope
+		// check, so a scope refusal is an entry too (ADR-080 §9). The
+		// visibility interceptor behind finishes it on every other way
+		// out.
+		restricted := audited(ctx)
+		if restricted {
+			ctx, _ = ensureReceipt(ctx, info.FullMethod, req)
+		}
 		if err := authorizeMethod(ctx, info.FullMethod, sec); err != nil {
+			if restricted {
+				finishReceipt(ctx, audit, callerRestricted(ctx))
+			}
 			return nil, err
 		}
 		return handler(ctx, req)
@@ -92,7 +103,7 @@ func viewerStreamInterceptor(v sharing.Viewer) grpc.StreamServerInterceptor {
 
 // authStreamInterceptor mirrors authUnaryInterceptor for streaming RPCs
 // (e.g. JobService.WatchJob).
-func authStreamInterceptor(chain *authn.Chain, sec *security.Emitter, viewers *sharing.Resolver) grpc.StreamServerInterceptor {
+func authStreamInterceptor(chain *authn.Chain, sec *security.Emitter, viewers *sharing.Resolver, audit *sharing.AuditWriter) grpc.StreamServerInterceptor {
 	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		if strings.HasPrefix(info.FullMethod, healthMethodPrefix) {
 			return handler(srv, ss)
@@ -106,7 +117,14 @@ func authStreamInterceptor(chain *authn.Chain, sec *security.Emitter, viewers *s
 		if err != nil {
 			return err
 		}
+		restricted := audited(ctx)
+		if restricted {
+			ctx, _ = ensureReceipt(ctx, info.FullMethod, nil)
+		}
 		if err := authorizeMethod(ctx, info.FullMethod, sec); err != nil {
+			if restricted {
+				finishReceipt(ctx, audit, callerRestricted(ctx))
+			}
 			return err
 		}
 		return handler(srv, &authenticatedStream{ServerStream: ss, ctx: ctx})

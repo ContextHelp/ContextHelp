@@ -231,10 +231,10 @@ func mountAccessRoutes(r chi.Router, rc RouterConfig, svc *service.Service) {
 		} else {
 			r.Use(WithViewer(sharing.Unrestricted))
 		}
-		r.Get("/profile", a.guard(a.profile))
-		r.Put("/access/{business}", a.guard(a.apply))
-		r.Patch("/access/{business}", a.guard(a.apply))
-		r.Get("/access/{business}/state", a.guard(a.state))
+		r.Get("/profile", a.route(http.MethodGet, "/profile", a.profile))
+		r.Put("/access/{business}", a.route(http.MethodPut, "/access/{business}", a.apply))
+		r.Patch("/access/{business}", a.route(http.MethodPatch, "/access/{business}", a.apply))
+		r.Get("/access/{business}/state", a.route(http.MethodGet, "/access/{business}/state", a.state))
 	})
 }
 

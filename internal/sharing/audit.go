@@ -31,7 +31,8 @@ type AuditOptions struct {
 	Capacity int
 }
 
-// AuditWriter appends read audit entries (storage.AccessEntry) off the
+// AuditWriter appends read audit entries (storage.AccessEntry; a Receipt
+// builds one per request) off the
 // request path: Record puts an entry in a buffer and returns; one
 // goroutine flushes the buffer in batches, when it reaches Batch
 // entries or every Interval. A request never waits on the store's
@@ -106,6 +107,7 @@ func (w *AuditWriter) Flush(ctx context.Context) error {
 	batch := w.buf
 	w.buf = nil
 	w.mu.Unlock()
+	batch = w.valid(batch)
 	if len(batch) == 0 {
 		return nil
 	}
@@ -115,6 +117,32 @@ func (w *AuditWriter) Flush(ctx context.Context) error {
 		return err
 	}
 	return nil
+}
+
+// valid returns the entries of batch the store accepts. The store
+// refuses a whole batch for one malformed entry, so each entry is
+// validated here instead: an invalid one is dropped and counted, and the
+// log names the route and the check ids, outcomes and reasons, never
+// anything from the request or the data.
+func (w *AuditWriter) valid(batch []*storage.AccessEntry) []*storage.AccessEntry {
+	kept := batch[:0:0]
+	for _, e := range batch {
+		err := storage.ValidateAccessEntry(e)
+		if err == nil {
+			kept = append(kept, e)
+			continue
+		}
+		w.dropped.Add(1)
+		route, checks := "", []string(nil)
+		if e != nil {
+			route = e.Route
+			for _, c := range e.Checks {
+				checks = append(checks, c.Check+"="+string(c.Outcome)+":"+c.Reason)
+			}
+		}
+		slog.Error("read audit: invalid entry dropped", "route", route, "checks", checks, "err", err)
+	}
+	return kept
 }
 
 // Close stops the writer and flushes what is buffered within ctx.
@@ -136,7 +164,7 @@ func (w *AuditWriter) Close(ctx context.Context) error {
 }
 
 // Dropped reports how many entries were lost: buffer full, writer
-// closed, or a flush that failed.
+// closed, an invalid entry, or a flush that failed.
 func (w *AuditWriter) Dropped() uint64 {
 	if w == nil {
 		return 0
@@ -170,33 +198,6 @@ func (w *AuditWriter) run() {
 		_ = w.Flush(ctx)
 		cancel()
 	}
-}
-
-// AccessEntryFor builds the read audit entry of one request by a
-// restricted viewer (ADR-080 §9): the viewer's principal and
-// credential, the route, the policy versions, and the objects and
-// entities the request released, from its ledger. A preview by the
-// owner (PreviewTarget) is logged as the owner's request, with the
-// previewed viewer's policy versions after a preview= marker.
-func AccessEntryFor(ctx context.Context, v Viewer, route string, l *Ledger, now time.Time) *storage.AccessEntry {
-	e := &storage.AccessEntry{
-		At:             now.UTC(),
-		PrincipalID:    v.PrincipalID(),
-		IdentityID:     v.IdentityID(),
-		Route:          route,
-		PolicyVersions: v.PolicyKey(),
-		ObjectIDs:      l.Objects(),
-	}
-	e.ObjectCount = len(e.ObjectIDs)
-	e.EntityCount = len(l.Entities())
-	if p, ok := PreviewFrom(ctx); ok {
-		e.PrincipalID, e.IdentityID = p.Principal, p.Identity
-		e.PolicyVersions = "preview=" + p.Target + ";" + e.PolicyVersions
-	}
-	if e.PrincipalID == "" {
-		e.PrincipalID = storage.OwnerPrincipal
-	}
-	return e
 }
 
 // Preview marks a request the owner runs through another viewer

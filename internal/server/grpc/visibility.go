@@ -5,12 +5,9 @@ import (
 	"errors"
 	"log/slog"
 	"strconv"
-	"strings"
-	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -37,10 +34,21 @@ type visibilityConfig struct {
 // the answer against it after (§8), through the method's declared
 // shape, stripping (or, strictly, refusing) anything the ledger does
 // not hold. An unrestricted viewer passes untouched. A method with no
-// declared shape fails closed.
+// declared shape fails closed. A restricted caller's call (or the
+// owner's preview) carries a sharing.Receipt that every check appends
+// to and that is finished once on every way out, early refusals
+// included (§9).
 func visibilityUnaryInterceptor(cfg visibilityConfig) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
-		ctx, v, ok, err := cfg.viewAs(ctx, info.FullMethod)
+		// One receipt per audited call, finished once on every way out,
+		// early refusals included (ADR-080 §9).
+		restricted := callerRestricted(ctx)
+		if audited(ctx) {
+			var rcpt *sharing.Receipt
+			ctx, rcpt = ensureReceipt(ctx, info.FullMethod, req)
+			defer func() { rcpt.Finish(cfg.audit) }()
+		}
+		ctx, v, ok, err := cfg.viewAs(ctx, info.FullMethod, restricted)
 		if err != nil {
 			return nil, err
 		}
@@ -48,12 +56,15 @@ func visibilityUnaryInterceptor(cfg visibilityConfig) grpc.UnaryServerIntercepto
 			return nil, err
 		}
 		if ok && v.IsUnrestricted() {
+			// The owner previewing the owner is the owner: not logged.
+			sharing.ReceiptFrom(ctx).Discard()
 			return handler(ctx, req)
 		}
 		ledger := sharing.NewLedger()
+		sharing.ReceiptFrom(ctx).SetLedger(ledger)
 		ctx = sharing.WithLedger(ctx, ledger)
 		resp, err := handler(ctx, req)
-		cfg.audit.Record(sharing.AccessEntryFor(ctx, v, info.FullMethod, ledger, time.Now()))
+		sharing.ReceiptFrom(ctx).SettlePolicy()
 		if err != nil {
 			return resp, err
 		}
@@ -65,7 +76,14 @@ func visibilityUnaryInterceptor(cfg visibilityConfig) grpc.UnaryServerIntercepto
 // streams: every message sent is checked against the stream's ledger.
 func visibilityStreamInterceptor(cfg visibilityConfig) grpc.StreamServerInterceptor {
 	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		ctx, v, ok, err := cfg.viewAs(ss.Context(), info.FullMethod)
+		ctx := ss.Context()
+		restricted := callerRestricted(ctx)
+		if audited(ctx) {
+			var rcpt *sharing.Receipt
+			ctx, rcpt = ensureReceipt(ctx, info.FullMethod, nil)
+			defer func() { rcpt.Finish(cfg.audit) }()
+		}
+		ctx, v, ok, err := cfg.viewAs(ctx, info.FullMethod, restricted)
 		if err != nil {
 			return err
 		}
@@ -73,15 +91,19 @@ func visibilityStreamInterceptor(cfg visibilityConfig) grpc.StreamServerIntercep
 			return err
 		}
 		if ok && v.IsUnrestricted() {
+			sharing.ReceiptFrom(ctx).Discard()
 			return handler(srv, &checkedStream{ServerStream: ss, ctx: ctx})
 		}
 		ledger := sharing.NewLedger()
+		sharing.ReceiptFrom(ctx).SetLedger(ledger)
 		ctx = sharing.WithLedger(ctx, ledger)
 		err = handler(srv, &checkedStream{
 			ServerStream: ss, ctx: ctx,
 			cfg: cfg, method: info.FullMethod, viewer: v, ledger: ledger,
 		})
-		cfg.audit.Record(sharing.AccessEntryFor(ctx, v, info.FullMethod, ledger, time.Now()))
+		// The stream's receipt is written when it ends, stamped with when
+		// it began; a process that dies mid-stream writes none.
+		sharing.ReceiptFrom(ctx).SettleStream()
 		return err
 	}
 }
@@ -115,35 +137,42 @@ func (s *checkedStream) SendMsg(m any) error {
 // returns the viewer on ctx, whether one is attached, and the refusal
 // of a non-owner sender (PermissionDenied), a method that writes
 // (InvalidArgument) or an unknown target (NotFound).
-func (cfg visibilityConfig) viewAs(ctx context.Context, fullMethod string) (context.Context, sharing.Viewer, bool, error) {
+func (cfg visibilityConfig) viewAs(ctx context.Context, fullMethod string, restricted bool) (context.Context, sharing.Viewer, bool, error) {
 	v, ok := sharing.FromContext(ctx)
-	target := ""
-	if md, found := metadata.FromIncomingContext(ctx); found {
-		if vals := md.Get(sharing.MetadataViewAs); len(vals) > 0 {
-			target = strings.TrimSpace(vals[0])
-		}
-	}
+	target := viewAsTarget(ctx)
 	if target == "" {
 		return ctx, v, ok, nil
 	}
+	rcpt := sharing.ReceiptFrom(ctx)
+	// refuse ends the call: a restricted sender's attempt is an entry
+	// that failed view_as; the owner's own refused preview is not logged.
+	refuse := func(reason string, err error) (context.Context, sharing.Viewer, bool, error) {
+		if restricted {
+			rcpt.Refuse(sharing.CheckViewAs, reason)
+		} else {
+			rcpt.Discard()
+		}
+		return ctx, v, ok, err
+	}
 	if !ok || !v.IsUnrestricted() {
-		return ctx, v, ok, status.Error(codes.PermissionDenied, "VIEW_AS_OWNER_ONLY: "+sharing.MetadataViewAs+" is for the owner")
+		return refuse(sharing.ReasonOwnerOnly, status.Error(codes.PermissionDenied, "VIEW_AS_OWNER_ONLY: "+sharing.MetadataViewAs+" is for the owner"))
 	}
 	if scope, known := methodScopes[fullMethod]; !known || scope.Verb() != "read" {
-		return ctx, v, ok, status.Error(codes.InvalidArgument, "VIEW_AS_READ_ONLY: "+sharing.MetadataViewAs+" previews read methods only")
+		return refuse(sharing.ReasonViewAsReadOnly, status.Error(codes.InvalidArgument, "VIEW_AS_READ_ONLY: "+sharing.MetadataViewAs+" previews read methods only"))
 	}
 	pv, err := cfg.viewers.ViewAs(ctx, target)
 	switch {
 	case errors.Is(err, sharing.ErrViewAsUnknown):
-		return ctx, v, ok, status.Errorf(codes.NotFound, "no principal or share policy named %q", target)
+		return refuse(sharing.ReasonViewAsUnknownTarget, status.Errorf(codes.NotFound, "no principal or share policy named %q", target))
 	case err != nil:
 		slog.Error("view-as: resolve failed", "target", target, "err", err)
-		return ctx, v, ok, status.Error(codes.Internal, "view-as resolution failed")
+		return refuse(sharing.ReasonViewAsResolutionFailed, status.Error(codes.Internal, "view-as resolution failed"))
 	}
 	p := sharing.Preview{Target: target, Principal: storage.OwnerPrincipal}
 	if owner, found := authn.FromContext(ctx); found {
 		p.Principal, p.Identity = owner.ID, owner.Meta[authn.MetaIdentityID]
 	}
+	rcpt.SetPreview(p, pv)
 	return sharing.WithPreview(sharing.WithViewer(ctx, pv), p), pv, true, nil
 }
 
@@ -151,9 +180,11 @@ func (cfg visibilityConfig) viewAs(ctx context.Context, fullMethod string) (cont
 // taken through protojson with proto names, walked and searched, and
 // rebuilt from what passed.
 func (cfg visibilityConfig) check(ctx context.Context, fullMethod string, v sharing.Viewer, ledger *sharing.Ledger, resp any) (any, error) {
+	rcpt := sharing.ReceiptFrom(ctx)
 	shape, known := MethodShape(fullMethod)
 	if !known {
 		slog.Error("visibility: method declares no response shape", "method", fullMethod)
+		rcpt.Refuse(sharing.CheckRouteAccess, sharing.ReasonRouteUnclassified)
 		return nil, status.Error(codes.Internal, "method declares no response shape")
 	}
 	msg, ok := resp.(proto.Message)
@@ -162,33 +193,45 @@ func (cfg visibilityConfig) check(ctx context.Context, fullMethod string, v shar
 		// reads released nothing; a released row with no way to check
 		// the answer fails closed.
 		if ledger.Empty() {
+			rcpt.NotApplicable(sharing.CheckBackstop, sharing.ReasonNothingReleased)
 			return resp, nil
 		}
+		rcpt.Defer(sharing.CheckBackstop, sharing.ReasonResponseUnreadable)
 		return nil, status.Error(codes.Internal, "response cannot be checked for visibility")
 	}
 	if shape == sharing.ShapeNone && ledger.Empty() {
+		rcpt.NotApplicable(sharing.CheckBackstop, sharing.ReasonNothingReleased)
 		return resp, nil
 	}
 	raw, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(msg)
 	if err != nil {
+		rcpt.Defer(sharing.CheckBackstop, sharing.ReasonResponseUnreadable)
 		return nil, status.Error(codes.Internal, "response cannot be checked for visibility")
 	}
 	res, err := sharing.Backstop(raw, sharing.GRPCPaths(shape), ledger)
 	if err != nil {
 		slog.Error("visibility: backstop cannot check the response", "method", fullMethod, "err", err)
+		rcpt.Defer(sharing.CheckBackstop, sharing.ReasonResponseUnreadable)
 		return nil, status.Error(codes.Internal, "response cannot be checked for visibility")
 	}
 	if len(res.Hits) > 0 {
 		cfg.record(ctx, fullMethod, v, res.Hits)
 		if cfg.strict {
+			rcpt.Refuse(sharing.CheckBackstop, sharing.ReasonHitRefused)
 			return nil, status.Error(codes.Internal, "VISIBILITY_BACKSTOP: the response carried data outside the viewer's visibility and was refused")
 		}
+	}
+	if len(res.Hits) > 0 || res.Absent {
+		rcpt.Fail(sharing.CheckBackstop, sharing.ReasonHitStripped)
+	} else {
+		rcpt.Pass(sharing.CheckBackstop, sharing.ReasonClean)
 	}
 	if res.Absent {
 		return nil, status.Error(codes.NotFound, "resource not found")
 	}
 	out := msg.ProtoReflect().New().Interface()
 	if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(res.Body, out); err != nil {
+		rcpt.Defer(sharing.CheckBackstop, sharing.ReasonResponseUnreadable)
 		return nil, status.Error(codes.Internal, "response cannot be rebuilt after the visibility check")
 	}
 	return out, nil

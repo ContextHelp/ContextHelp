@@ -11,6 +11,7 @@ import (
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/bosaccess"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -69,23 +70,49 @@ type accessRoutes struct {
 	rcv AccessReceiver
 }
 
+// route mounts a provisioning route: guard behind a receipt. A caller
+// that is not the owner (the guard then refuses it unless it is the
+// configured authority) leaves one read audit entry (ADR-080 §9) with
+// authn and the guard's decision as route_access: these routes answer
+// about the caller's own provisioning, not a viewer's rows, so no
+// response filtering applies and no share-policy or backstop check is
+// recorded. The access semantics are the guard's, unchanged.
+func (a accessRoutes) route(method, pattern string, next http.HandlerFunc) http.HandlerFunc {
+	guarded := a.guard(next)
+	route := routeKey(method, "/bos/v1"+pattern)
+	return func(w http.ResponseWriter, r *http.Request) {
+		v, ok := sharing.FromContext(r.Context())
+		if ok && v.IsUnrestricted() {
+			guarded(w, r)
+			return
+		}
+		rcpt := sharing.NewReceipt(operationFor(r, route, v))
+		defer rcpt.Finish(a.rc.Audit)
+		guarded(w, r.WithContext(sharing.WithReceipt(r.Context(), rcpt)))
+	}
+}
+
 // guard admits only the one authority configured: provisioning is bound to
 // the principal named by sharing.authority.principal (a peer principal) and
 // to the scope named by sharing.authority.scope. Unconfigured, it refuses
 // everything: no caller claims a scope by being first.
 func (a accessRoutes) guard(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		rcpt := sharing.ReceiptFrom(r.Context())
 		if a.rc.AccessPrincipal == "" || a.rc.AccessScope == "" {
+			rcpt.Refuse(sharing.CheckRouteAccess, sharing.ReasonAuthorityUnconfigured)
 			writeAccessError(w, &bosaccess.Error{Code: "forbidden", Message: "access provisioning is not configured"})
 			return
 		}
 		if a.rc.Auth != nil {
 			p, ok := authn.FromContext(r.Context())
 			if !ok || p.Kind != storage.PrincipalKindPeer || p.ID != a.rc.AccessPrincipal {
+				rcpt.Refuse(sharing.CheckRouteAccess, sharing.ReasonNotAuthority)
 				writeAccessError(w, &bosaccess.Error{Code: "forbidden", Message: "access provisioning is for the configured authority only"})
 				return
 			}
 		}
+		rcpt.Pass(sharing.CheckRouteAccess, sharing.ReasonAuthorityMatched)
 		next(w, r)
 	}
 }
