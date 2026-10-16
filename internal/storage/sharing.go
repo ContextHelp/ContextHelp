@@ -293,6 +293,16 @@ type SharingStore interface {
 	// unbinds it when policyID is "". An unknown identity or policy is
 	// ErrNotFound.
 	BindIdentityPolicy(ctx context.Context, identityID, policyID string) error
+	// InTx runs fn in one database transaction and commits when fn
+	// returns nil; an error or a panic rolls back every write fn made.
+	// The context fn receives carries the transaction: the audience,
+	// policy and grant stores, the ceiling and the key-policy binding
+	// of this store, and the driver's AuditLog and Approvals, called
+	// with it, read and write inside it, and an InTx called with it
+	// joins it. This is how a sharing change is classified and written
+	// in one transaction (ADR-083 §10 B), so a concurrent change cannot
+	// slip between the two. The access log is not part of it.
+	InTx(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
 // NewAudienceID returns a fresh aud_<ULID>.

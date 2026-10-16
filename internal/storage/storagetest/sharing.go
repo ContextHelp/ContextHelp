@@ -58,6 +58,7 @@ func SharingConformance(t *testing.T, drv storage.StorageDriver) {
 		{"ceiling refusals", sharingConfCeilingRefusals},
 		{"identity policy binding", sharingConfIdentityPolicy},
 		{"identity policy refusals", sharingConfIdentityPolicyRefusals},
+		{"transaction binds every registry read and write", sharingConfInTx},
 		{"access log append and query by principal", sharingConfAccessLogPrincipal},
 		{"access log query by object and window", sharingConfAccessLogObject},
 		{"access log prune keeps entries and counts", sharingConfAccessLogPrune},
