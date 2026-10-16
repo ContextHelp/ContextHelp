@@ -73,17 +73,17 @@ type SpecComparison struct {
 //     comparison, is wider.
 //   - exclude_classes (storage.NormalizeClasses): narrower when the
 //     new list strictly includes the old one.
-//   - fields: for every type named by either spec, and "*" for every
-//     other type, the fields the new spec renders (Policy.FieldsFor,
+//   - fields: for every type either spec names ("*" included, which is
+//     every other type), the fields the new spec renders (Policy.FieldsFor,
 //     so after the "*" type fallback; aliases resolved; FieldAll as
 //     every field) are a subset of those the old spec renders. A list
-//     that is not FieldAll is never proved to cover FieldAll. On top of
-//     the ADR rule, both specs must name the same types: Compile merges
-//     several grants' fields per named type without applying each
-//     grant's "*" fallback (unionPlan), so adding or dropping a type
-//     entry changes which types fall back to "*" in the merged plan and
-//     can show a field no grant showed before, even when this spec alone
-//     renders less.
+//     that is not FieldAll is never proved to cover FieldAll. Nothing
+//     more is asked: an object renders the union, over the grants that
+//     cover it, of what each grant renders for the object's type
+//     (mergeFields resolves each grant's own entry, else its "*"
+//     entry, before the union), so a spec that renders no more of any
+//     type renders no more in any merge, and a type entry added or
+//     dropped is judged by what the type renders after it.
 //   - capabilities: search modes a subset; each of entities, export,
 //     mcp and events on only if it was on.
 //   - redact (inert today): mask a superset, reveal a subset, style
@@ -249,12 +249,13 @@ func canonicalComparison(n search.ComparisonNode) string {
 }
 
 func compareFields(old, next Policy) SpecOrder {
-	oldTypes, nextTypes := slices.Sorted(maps.Keys(old.Fields)), slices.Sorted(maps.Keys(next.Fields))
-	if !slices.Equal(oldTypes, nextTypes) {
-		return SpecWider
-	}
+	// The "*" entry is a key when either spec names it, and a type
+	// neither names renders what "*" renders: comparing the named
+	// entries, "*" among them, compares every type.
+	types := slices.Concat(slices.Collect(maps.Keys(old.Fields)), slices.Collect(maps.Keys(next.Fields)))
+	slices.Sort(types)
 	order := SpecEqual
-	for _, typ := range append(oldTypes, "*") {
+	for _, typ := range slices.Compact(types) {
 		order = combine(order, compareFieldSets(newFieldSet(old.FieldsFor(typ)), newFieldSet(next.FieldsFor(typ))))
 	}
 	return order

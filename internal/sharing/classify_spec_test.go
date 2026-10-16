@@ -80,14 +80,18 @@ func TestCompareSpecs_Components(t *testing.T) {
 		{"fields: type entry dropped falls back to a wider *", func(p *sharing.Policy) {
 			p.Fields = map[string][]string{"*": {"title", "summary", "org"}}
 		}, sharing.SpecWider, "fields"},
-		// A narrower per-type entry that is new, or an entry dropped,
-		// changes which types fall back to "*" in a merged plan, so it
-		// is not proved narrowing (see CompareSpecs).
-		{"fields: new type entry narrower than *", func(p *sharing.Policy) { p.Fields["note"] = []string{"title"} }, sharing.SpecWider, "fields"},
+		// A type entry added or dropped is judged by what the type renders
+		// after it: each grant's fallback is resolved before grants merge.
+		{"fields: new type entry narrower than *", func(p *sharing.Policy) { p.Fields["note"] = []string{"title"} }, sharing.SpecNarrower, ""},
+		{"fields: new type entry as wide as *", func(p *sharing.Policy) { p.Fields["note"] = []string{"title", "summary"} }, sharing.SpecEqual, ""},
+		{"fields: new type entry wider than *", func(p *sharing.Policy) { p.Fields["note"] = []string{"title", "summary", "content"} }, sharing.SpecWider, "fields"},
 		{"fields: type entry dropped onto a narrower *", func(p *sharing.Policy) {
 			p.Fields = map[string][]string{"*": {"title"}}
+		}, sharing.SpecNarrower, ""},
+		{"fields: type entry dropped onto an equal *", func(p *sharing.Policy) {
+			p.Fields = map[string][]string{"*": {"title", "summary"}}
 		}, sharing.SpecWider, "fields"},
-		{"fields: every entry dropped", func(p *sharing.Policy) { p.Fields = nil }, sharing.SpecWider, "fields"},
+		{"fields: every entry dropped", func(p *sharing.Policy) { p.Fields = nil }, sharing.SpecNarrower, ""},
 		// capabilities
 		{"capabilities: search mode removed", func(p *sharing.Policy) { p.Capabilities.Search = []string{sharing.SearchFTS} }, sharing.SpecNarrower, ""},
 		{"capabilities: search order", func(p *sharing.Policy) {
@@ -262,7 +266,9 @@ func TestCompareSpecs_ConjunctPermutationIsEqual(t *testing.T) {
 // TestCompareSpecs_FieldsSoundAgainstCompile checks the field rule
 // against what Compile renders: whenever CompareSpecs does not call a
 // field change wider, every type renders no field after it that it did
-// not render before, with another grant merged into the plan.
+// not render before, with another grant merged into the plan, and
+// through the edited grant alone, which is how an object only it
+// covers renders.
 func TestCompareSpecs_FieldsSoundAgainstCompile(t *testing.T) {
 	r := rand.New(rand.NewSource(7)) //nolint:gosec // deterministic test data
 	types := []string{"*", "contact", "note", "task"}
@@ -299,12 +305,14 @@ func TestCompareSpecs_FieldsSoundAgainstCompile(t *testing.T) {
 		}
 		checked++
 		other := clsWith(func(p *sharing.Policy) { p.Name = "other"; p.Fields = randomFields() })
-		before := clsPlanFields(t, other, oldP)
-		after := clsPlanFields(t, other, newP)
-		for _, typ := range append(types, "event") {
-			if !clsSubset(after(typ), before(typ)) {
-				t.Fatalf("fields %v -> %v with other grant %v: type %s renders %v after, %v before",
-					oldP.Fields, newP.Fields, other.Fields, typ, after(typ), before(typ))
+		for _, covering := range [][]bool{{true, true}, {false, true}} {
+			before := clsPlanFields(t, other, oldP, covering)
+			after := clsPlanFields(t, other, newP, covering)
+			for _, typ := range append(types, "event") {
+				if !clsSubset(after(typ), before(typ)) {
+					t.Fatalf("fields %v -> %v with other grant %v covering %v: type %s renders %v after, %v before",
+						oldP.Fields, newP.Fields, other.Fields, covering, typ, after(typ), before(typ))
+				}
 			}
 		}
 	}
@@ -314,8 +322,9 @@ func TestCompareSpecs_FieldsSoundAgainstCompile(t *testing.T) {
 }
 
 // clsPlanFields compiles a viewer from grants of other and p and
-// returns the fields its plan renders per type.
-func clsPlanFields(t *testing.T, other, p sharing.Policy) func(string) []string {
+// returns the fields an object covered by the grants covering marks
+// renders per type.
+func clsPlanFields(t *testing.T, other, p sharing.Policy, covering []bool) func(string) []string {
 	t.Helper()
 	v, err := sharing.Compile(sharing.Input{PrincipalID: "prn_x", Grants: []sharing.Grant{
 		{ID: "grt_a", Audience: "a", Policy: other},
@@ -324,7 +333,7 @@ func clsPlanFields(t *testing.T, other, p sharing.Policy) func(string) []string 
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan := v.Plan()
+	plan := v.ObjectPlan(covering)
 	return plan.FieldsFor
 }
 
