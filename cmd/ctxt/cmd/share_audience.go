@@ -58,6 +58,8 @@ at the end of a date (2026-12-31) or at an RFC 3339 time; without it the
 membership lasts until removed. The audience may be named by name or id;
 the principal must be active, and the owner joins no audience.
 
+` + pendingHelp + `
+
 Examples:
   ctxt share audience add partners prn_01J...
   ctxt share audience add partners prn_01J... --expires 90d`,
@@ -209,7 +211,7 @@ func runShareAudienceAdd(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	var m storage.AudienceMember
-	if err := client.Do(cmdContext(cmd), dpkmsclient.Request{Method: "PUT", Path: path, Body: body}, &m); err != nil {
+	if pending, err := sendChange(cmd, client, dpkmsclient.Request{Method: "PUT", Path: path, Body: body}, &m); err != nil || pending {
 		return err
 	}
 	if isJSONOutput() {

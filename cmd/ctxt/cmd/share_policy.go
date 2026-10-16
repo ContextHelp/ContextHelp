@@ -60,6 +60,8 @@ stdin when file is - or absent, and bump its version. The document's
 name must be the policy's: an edit never renames. Every viewer of the
 policy sees the new version on its next request.
 
+` + pendingHelp + `
+
 Examples:
   ctxt share policy edit colleagues-network colleagues.yaml
   ctxt share policy show colleagues-network | sed 's/city/country/' | ctxt share policy edit colleagues-network`,
@@ -200,7 +202,7 @@ func runSharePolicyEdit(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	var p storage.SharePolicy
-	if err := client.Do(cmdContext(cmd), dpkmsclient.Request{Method: "PUT", Path: sharePath("policies", policy), Body: map[string]any{"document": doc}}, &p); err != nil {
+	if pending, err := sendChange(cmd, client, dpkmsclient.Request{Method: "PUT", Path: sharePath("policies", policy), Body: map[string]any{"document": doc}}, &p); err != nil || pending {
 		return err
 	}
 	if isJSONOutput() {

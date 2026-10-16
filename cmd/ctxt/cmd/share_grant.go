@@ -32,6 +32,8 @@ an RFC 3339 time. An audience with several grants gives its members the
 union of what they allow. The audience and the policy may be named by
 name or id.
 
+` + pendingHelp + `
+
 Examples:
   ctxt share grant partners partners-network
   ctxt share grant colleagues colleagues-network --expires 90d`,
@@ -59,6 +61,8 @@ var shareCeilingCmd = &cobra.Command{
 its grants say. A partner who is also a colleague keeps both views and
 still never sees a class listed here. --deny-classes replaces the list;
 an empty value clears it.
+
+` + pendingHelp + `
 
 Examples:
   ctxt share ceiling prn_01J... --deny-classes personal
@@ -197,7 +201,7 @@ func runShareGrant(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	var g grantReply
-	if err := client.Post(cmdContext(cmd), sharePath("grants"), body, &g); err != nil {
+	if pending, err := sendChange(cmd, client, dpkmsclient.Request{Method: "POST", Path: sharePath("grants"), Body: body}, &g); err != nil || pending {
 		return err
 	}
 	if isJSONOutput() {
@@ -257,7 +261,7 @@ func runShareCeiling(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	var c ceilingReply
-	if err := client.Do(cmdContext(cmd), dpkmsclient.Request{Method: "PUT", Path: path, Body: map[string]any{"deny_classes": classes}}, &c); err != nil {
+	if pending, err := sendChange(cmd, client, dpkmsclient.Request{Method: "PUT", Path: path, Body: map[string]any{"deny_classes": classes}}, &c); err != nil || pending {
 		return err
 	}
 	if isJSONOutput() {
