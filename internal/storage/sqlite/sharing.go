@@ -27,7 +27,7 @@ func (s *sharingStore) StewardGrants() storage.StewardGrantStore {
 
 func (s *sharingStore) DenyClasses(ctx context.Context, principalID string) ([]string, error) {
 	var raw string
-	err := s.db.QueryRowContext(ctx, `SELECT deny_classes FROM principals WHERE id = ?`, principalID).Scan(&raw)
+	err := conn(ctx, s.db).QueryRowContext(ctx, `SELECT deny_classes FROM principals WHERE id = ?`, principalID).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("principal %q: %w", principalID, storage.ErrNotFound)
 	}
@@ -51,7 +51,7 @@ func (s *sharingStore) SetDenyClasses(ctx context.Context, principalID string, c
 	if err != nil {
 		return err
 	}
-	res, err := s.db.ExecContext(ctx, `UPDATE principals SET deny_classes = ? WHERE id = ?`, raw, principalID)
+	res, err := conn(ctx, s.db).ExecContext(ctx, `UPDATE principals SET deny_classes = ? WHERE id = ?`, raw, principalID)
 	if err != nil {
 		return fmt.Errorf("set deny classes %q: %w", principalID, err)
 	}
@@ -63,7 +63,7 @@ func (s *sharingStore) SetDenyClasses(ctx context.Context, principalID string, c
 
 func (s *sharingStore) IdentityPolicy(ctx context.Context, identityID string) (string, error) {
 	var policy sql.NullString
-	err := s.db.QueryRowContext(ctx, `SELECT share_policy_id FROM principal_identities WHERE id = ?`, identityID).Scan(&policy)
+	err := conn(ctx, s.db).QueryRowContext(ctx, `SELECT share_policy_id FROM principal_identities WHERE id = ?`, identityID).Scan(&policy)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", fmt.Errorf("identity %q: %w", identityID, storage.ErrNotFound)
 	}
@@ -73,12 +73,18 @@ func (s *sharingStore) IdentityPolicy(ctx context.Context, identityID string) (s
 	return policy.String, nil
 }
 
+// InTx runs fn in one transaction on the registry's database; see
+// storage.SharingStore.InTx.
+func (s *sharingStore) InTx(ctx context.Context, fn func(ctx context.Context) error) error {
+	return inTx(ctx, s.db, fn)
+}
+
 func (s *sharingStore) BindIdentityPolicy(ctx context.Context, identityID, policyID string) error {
 	var policy any
 	if policyID != "" {
 		policy = policyID
 	}
-	res, err := s.db.ExecContext(ctx, `UPDATE principal_identities SET share_policy_id = ? WHERE id = ?`, policy, identityID)
+	res, err := conn(ctx, s.db).ExecContext(ctx, `UPDATE principal_identities SET share_policy_id = ? WHERE id = ?`, policy, identityID)
 	if sentinel := constraintErr(err); sentinel != nil {
 		return fmt.Errorf("share policy %q: %w", policyID, sentinel)
 	}
@@ -111,7 +117,7 @@ func (s *audienceStore) Create(ctx context.Context, a *storage.Audience) error {
 	if err := storage.PrepareNewAudience(a, time.Now()); err != nil {
 		return err
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO audiences (`+audienceColumns+`) VALUES (?, ?, ?)`,
+	_, err := conn(ctx, s.db).ExecContext(ctx, `INSERT INTO audiences (`+audienceColumns+`) VALUES (?, ?, ?)`,
 		a.ID, a.Name, toMillis(a.CreatedAt))
 	if sentinel := constraintErr(err); sentinel != nil {
 		return fmt.Errorf("audience %q: %w", a.Name, sentinel)
@@ -123,7 +129,7 @@ func (s *audienceStore) Create(ctx context.Context, a *storage.Audience) error {
 }
 
 func (s *audienceStore) get(ctx context.Context, column, value string) (*storage.Audience, error) {
-	a, err := scanAudience(s.db.QueryRowContext(ctx,
+	a, err := scanAudience(conn(ctx, s.db).QueryRowContext(ctx,
 		`SELECT `+audienceColumns+` FROM audiences WHERE `+column+` = ?`, value))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("audience %q: %w", value, storage.ErrNotFound)
@@ -143,7 +149,7 @@ func (s *audienceStore) GetByName(ctx context.Context, name string) (*storage.Au
 }
 
 func (s *audienceStore) List(ctx context.Context) ([]*storage.Audience, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+audienceColumns+` FROM audiences ORDER BY name`)
+	rows, err := conn(ctx, s.db).QueryContext(ctx, `SELECT `+audienceColumns+` FROM audiences ORDER BY name`)
 	if err != nil {
 		return nil, fmt.Errorf("audience list: %w", err)
 	}
@@ -177,7 +183,7 @@ func (s *audienceStore) AddMember(ctx context.Context, m *storage.AudienceMember
 	if err := storage.PrepareNewMember(m, time.Now()); err != nil {
 		return err
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO audience_members (`+memberColumns+`) VALUES (?, ?, ?, ?, ?)
+	_, err := conn(ctx, s.db).ExecContext(ctx, `INSERT INTO audience_members (`+memberColumns+`) VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT(audience_id, principal_id) DO UPDATE SET
 			expires_at = excluded.expires_at, added_by = excluded.added_by, added_at = excluded.added_at`,
 		m.AudienceID, m.PrincipalID, nullMillis(m.ExpiresAt), m.AddedBy, toMillis(m.AddedAt))
@@ -191,7 +197,7 @@ func (s *audienceStore) AddMember(ctx context.Context, m *storage.AudienceMember
 }
 
 func (s *audienceStore) RemoveMember(ctx context.Context, audienceID, principalID string) error {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM audience_members WHERE audience_id = ? AND principal_id = ?`,
+	res, err := conn(ctx, s.db).ExecContext(ctx, `DELETE FROM audience_members WHERE audience_id = ? AND principal_id = ?`,
 		audienceID, principalID)
 	if err != nil {
 		return fmt.Errorf("audience remove member: %w", err)
@@ -203,7 +209,7 @@ func (s *audienceStore) RemoveMember(ctx context.Context, audienceID, principalI
 }
 
 func (s *audienceStore) listMembers(ctx context.Context, query string, args ...any) ([]*storage.AudienceMember, error) {
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	rows, err := conn(ctx, s.db).QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -260,7 +266,7 @@ func (s *sharePolicyStore) Create(ctx context.Context, p *storage.SharePolicy) e
 	if err := storage.PrepareNewSharePolicy(p, time.Now()); err != nil {
 		return err
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO share_policies (`+policyColumns+`) VALUES (?, ?, ?, ?, ?)`,
+	_, err := conn(ctx, s.db).ExecContext(ctx, `INSERT INTO share_policies (`+policyColumns+`) VALUES (?, ?, ?, ?, ?)`,
 		p.ID, p.Name, p.Version, string(p.Spec), toMillis(p.UpdatedAt))
 	if sentinel := constraintErr(err); sentinel != nil {
 		return fmt.Errorf("share policy %q: %w", p.Name, sentinel)
@@ -272,7 +278,7 @@ func (s *sharePolicyStore) Create(ctx context.Context, p *storage.SharePolicy) e
 }
 
 func (s *sharePolicyStore) get(ctx context.Context, column, value string) (*storage.SharePolicy, error) {
-	p, err := scanPolicy(s.db.QueryRowContext(ctx,
+	p, err := scanPolicy(conn(ctx, s.db).QueryRowContext(ctx,
 		`SELECT `+policyColumns+` FROM share_policies WHERE `+column+` = ?`, value))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("share policy %q: %w", value, storage.ErrNotFound)
@@ -292,7 +298,7 @@ func (s *sharePolicyStore) GetByName(ctx context.Context, name string) (*storage
 }
 
 func (s *sharePolicyStore) List(ctx context.Context) ([]*storage.SharePolicy, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+policyColumns+` FROM share_policies ORDER BY name`)
+	rows, err := conn(ctx, s.db).QueryContext(ctx, `SELECT `+policyColumns+` FROM share_policies ORDER BY name`)
 	if err != nil {
 		return nil, fmt.Errorf("share policy list: %w", err)
 	}
@@ -312,7 +318,7 @@ func (s *sharePolicyStore) Update(ctx context.Context, id string, spec json.RawM
 	if err := storage.ValidatePolicySpec(spec); err != nil {
 		return nil, err
 	}
-	res, err := s.db.ExecContext(ctx, `UPDATE share_policies SET spec = ?, version = version + 1, updated_at = ?
+	res, err := conn(ctx, s.db).ExecContext(ctx, `UPDATE share_policies SET spec = ?, version = version + 1, updated_at = ?
 		WHERE id = ?`, string(spec), toMillis(now.UTC()), id)
 	if err != nil {
 		return nil, fmt.Errorf("share policy update %q: %w", id, err)
@@ -346,7 +352,7 @@ func (s *shareGrantStore) Create(ctx context.Context, g *storage.ShareGrant) err
 	if err := storage.PrepareNewShareGrant(g, time.Now()); err != nil {
 		return err
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO share_grants (`+grantColumns+`) VALUES (?, ?, ?, ?, ?, ?, NULL)`,
+	_, err := conn(ctx, s.db).ExecContext(ctx, `INSERT INTO share_grants (`+grantColumns+`) VALUES (?, ?, ?, ?, ?, ?, NULL)`,
 		g.ID, g.AudienceID, g.PolicyID, nullMillis(g.ExpiresAt), g.CreatedBy, toMillis(g.CreatedAt))
 	if sentinel := constraintErr(err); sentinel != nil {
 		return fmt.Errorf("share grant %q: %w", g.ID, sentinel)
@@ -358,7 +364,7 @@ func (s *shareGrantStore) Create(ctx context.Context, g *storage.ShareGrant) err
 }
 
 func (s *shareGrantStore) Get(ctx context.Context, id string) (*storage.ShareGrant, error) {
-	g, err := scanGrant(s.db.QueryRowContext(ctx, `SELECT `+grantColumns+` FROM share_grants WHERE id = ?`, id))
+	g, err := scanGrant(conn(ctx, s.db).QueryRowContext(ctx, `SELECT `+grantColumns+` FROM share_grants WHERE id = ?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("share grant %q: %w", id, storage.ErrNotFound)
 	}
@@ -369,7 +375,7 @@ func (s *shareGrantStore) Get(ctx context.Context, id string) (*storage.ShareGra
 }
 
 func (s *shareGrantStore) List(ctx context.Context, f storage.GrantFilter) ([]*storage.ShareGrant, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+grantColumns+` FROM share_grants
+	rows, err := conn(ctx, s.db).QueryContext(ctx, `SELECT `+grantColumns+` FROM share_grants
 		WHERE (? = '' OR audience_id = ?) AND (? = '' OR policy_id = ?) AND (? OR revoked_at IS NULL)
 		ORDER BY created_at, id`, f.AudienceID, f.AudienceID, f.PolicyID, f.PolicyID, f.IncludeRevoked)
 	if err != nil {
@@ -389,7 +395,7 @@ func (s *shareGrantStore) List(ctx context.Context, f storage.GrantFilter) ([]*s
 
 func (s *shareGrantStore) Revoke(ctx context.Context, id string, at time.Time) error {
 	var revoked sql.NullInt64
-	err := s.db.QueryRowContext(ctx, `SELECT revoked_at FROM share_grants WHERE id = ?`, id).Scan(&revoked)
+	err := conn(ctx, s.db).QueryRowContext(ctx, `SELECT revoked_at FROM share_grants WHERE id = ?`, id).Scan(&revoked)
 	if errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("share grant %q: %w", id, storage.ErrNotFound)
 	}
@@ -399,7 +405,7 @@ func (s *shareGrantStore) Revoke(ctx context.Context, id string, at time.Time) e
 	if revoked.Valid {
 		return nil
 	}
-	if _, err := s.db.ExecContext(ctx, `UPDATE share_grants SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL`,
+	if _, err := conn(ctx, s.db).ExecContext(ctx, `UPDATE share_grants SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL`,
 		toMillis(at), id); err != nil {
 		return fmt.Errorf("share grant revoke %q: %w", id, err)
 	}
@@ -408,7 +414,7 @@ func (s *shareGrantStore) Revoke(ctx context.Context, id string, at time.Time) e
 
 func (s *shareGrantStore) ListActiveForPrincipal(ctx context.Context, principalID string, now time.Time) ([]*storage.ActiveGrant, error) {
 	ms := toMillis(now)
-	rows, err := s.db.QueryContext(ctx, `SELECT
+	rows, err := conn(ctx, s.db).QueryContext(ctx, `SELECT
 			g.id, g.audience_id, g.policy_id, g.expires_at, g.created_by, g.created_at, g.revoked_at,
 			a.id, a.name, a.created_at,
 			p.id, p.name, p.version, p.spec, p.updated_at
