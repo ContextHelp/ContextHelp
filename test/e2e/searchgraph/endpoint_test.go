@@ -627,18 +627,24 @@ func exchangeCode(t *testing.T, base, code string) *http.Cookie {
 const signInProbePath = "/__e2e/signin-probe.js"
 
 // signInProbeJS runs on the sign-in page ahead of the web UI. The web UI
-// opens its event stream once it holds the session cookie; the probe
-// then closes the stream (headless Chrome's virtual time cannot run out
-// while it is open) and loads the viewer on the same origin, so the
-// viewer's graph fetch carries nothing but the browser's cookie.
+// opens its event stream once it holds the session cookie. The stream is
+// the owner's alone, so a reader's is refused and closes, and an owner's
+// opens; either way the probe then closes it (headless Chrome's virtual
+// time cannot run out while it is open) and loads the viewer on the same
+// origin, so the viewer's graph fetch carries nothing but the browser's
+// cookie.
 const signInProbeJS = `(() => {
   const Native = window.EventSource;
   window.EventSource = class extends Native {
     constructor(url, init) {
       super(url, init);
-      this.addEventListener('open', () => {
+      const viewer = () => {
         this.close();
         location.replace(%q);
+      };
+      this.addEventListener('open', viewer);
+      this.addEventListener('error', () => {
+        if (this.readyState === Native.CLOSED) viewer();
       });
     }
   };
