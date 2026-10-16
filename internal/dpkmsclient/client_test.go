@@ -375,3 +375,56 @@ func TestURLHidesToken(t *testing.T) {
 		t.Fatalf("URL() = %q", got)
 	}
 }
+
+// DoAccepted decodes a 202 into the accepted value and reports it, and
+// any other 2xx into out; a refusal is the same envelope as Do's.
+func TestDoAccepted_SeparatesAcceptedFromDone(t *testing.T) {
+	srv, _ := countingServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/pending":
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte(`{"id":"apr_1","state":"requested"}`))
+		case "/done":
+			_, _ = w.Write([]byte(`{"name":"partners"}`))
+		case "/empty":
+			w.WriteHeader(http.StatusNoContent)
+		case "/refused":
+			dpkmsError(w, http.StatusForbidden, "NOT_ELIGIBLE", "no")
+		case "/garbled":
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte(`not json`))
+		}
+	})
+	c := newClient(t, dpkmsclient.Endpoint{URL: srv.URL})
+	type pendingBody struct{ ID, State string }
+	type doneBody struct{ Name string }
+	for _, tc := range []struct {
+		path        string
+		accepted    bool
+		pending     pendingBody
+		done        doneBody
+		errContains string
+	}{
+		{path: "/pending", accepted: true, pending: pendingBody{"apr_1", "requested"}},
+		{path: "/done", done: doneBody{"partners"}},
+		{path: "/empty"},
+		{path: "/refused", errContains: "NOT_ELIGIBLE"},
+		{path: "/garbled", accepted: true, errContains: "decode"},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			var done doneBody
+			var pending pendingBody
+			accepted, err := c.DoAccepted(context.Background(), dpkmsclient.Request{Method: http.MethodPut, Path: tc.path}, &done, &pending)
+			if (err == nil) != (tc.errContains == "") || (err != nil && !strings.Contains(err.Error(), tc.errContains)) {
+				t.Fatalf("err = %v, want one containing %q", err, tc.errContains)
+			}
+			if accepted != tc.accepted && tc.errContains != "NOT_ELIGIBLE" {
+				t.Errorf("accepted = %v, want %v", accepted, tc.accepted)
+			}
+			if pending != tc.pending || done != tc.done {
+				t.Errorf("pending = %+v, done = %+v; want %+v, %+v", pending, done, tc.pending, tc.done)
+			}
+		})
+	}
+}

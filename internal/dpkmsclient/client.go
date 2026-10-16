@@ -160,9 +160,33 @@ func (c *Client) Post(ctx context.Context, path string, body, out any) error {
 // *RemoteError for errors.As. A canceled ctx returns the transport error
 // unclassified, so errors.Is(err, context.Canceled) holds.
 func (c *Client) Do(ctx context.Context, r Request, out any) error {
-	req, err := c.newRequest(ctx, r)
+	_, body, err := c.send(ctx, r)
 	if err != nil {
 		return err
+	}
+	return c.decode(r, body, out)
+}
+
+// DoAccepted is Do for a call the server may answer 202 Accepted: the
+// change was not made, a request for it was filed and waits for
+// someone. A 202 body is decoded into accepted and reported true; any
+// other 2xx body goes into out, as Do decodes it.
+func (c *Client) DoAccepted(ctx context.Context, r Request, out, accepted any) (bool, error) {
+	status, body, err := c.send(ctx, r)
+	if err != nil {
+		return false, err
+	}
+	if status == http.StatusAccepted {
+		return true, c.decode(r, body, accepted)
+	}
+	return false, c.decode(r, body, out)
+}
+
+// send sends r once and returns the status and body of a 2xx answer.
+func (c *Client) send(ctx context.Context, r Request) (int, []byte, error) {
+	req, err := c.newRequest(ctx, r)
+	if err != nil {
+		return 0, nil, err
 	}
 	var connected atomic.Bool
 	req = req.WithContext(httptrace.WithClientTrace(req.Context(), &httptrace.ClientTrace{
@@ -171,18 +195,23 @@ func (c *Client) Do(ctx context.Context, r Request, out any) error {
 
 	resp, err := c.hc.Do(req) // #nosec G107,G704 -- operator-configured dpkms endpoint
 	if err != nil {
-		return c.transportError(ctx, err, connected.Load())
+		return 0, nil, c.transportError(ctx, err, connected.Load())
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
-		return c.statusError(resp.StatusCode, body)
+		return 0, nil, c.statusError(resp.StatusCode, body)
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return c.transportError(ctx, err, true)
+		return 0, nil, c.transportError(ctx, err, true)
 	}
+	return resp.StatusCode, body, nil
+}
+
+// decode reads body into out, when out is non-nil and body is not empty.
+func (c *Client) decode(r Request, body []byte, out any) error {
 	if out == nil || len(bytes.TrimSpace(body)) == 0 {
 		return nil
 	}
