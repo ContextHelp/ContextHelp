@@ -15,7 +15,10 @@ import (
 // under two profiles is two objects, GetByContentHash looks a hash up
 // in one profile, and Reinforce merges into the row of the merge's
 // profile only, reporting sql.ErrNoRows when that profile holds none,
-// so a capture never writes its tags onto another profile's object.
+// so a capture never writes its tags onto another profile's object. A
+// second object with the hash in the same profile is refused with
+// storage.ErrAlreadyExists, the error the dedup callers reinforce on;
+// objects with no hash never collide.
 func ProfileDedupConformance(t *testing.T, drv storage.StorageDriver) {
 	t.Helper()
 	ctx := context.Background()
@@ -34,6 +37,15 @@ func ProfileDedupConformance(t *testing.T, drv storage.StorageDriver) {
 	dup.ContentHash, dup.ProfileID = hash, "p1"
 	if err := drv.Objects().Create(ctx, dup); err == nil {
 		t.Errorf("a second object with the same hash in the same profile was created")
+	} else if !errors.Is(err, storage.ErrAlreadyExists) {
+		t.Errorf("Create(same hash, same profile) = %v, want storage.ErrAlreadyExists", err)
+	}
+	for _, id := range []string{"dedup-nohash-1", "dedup-nohash-2"} {
+		o := searchFixtureObject(id, "note", "no hash")
+		o.ContentHash, o.ProfileID = "", "p1"
+		if err := drv.Objects().Create(ctx, o); err != nil {
+			t.Fatalf("create %s without a hash: %v (only non-empty hashes are unique)", id, err)
+		}
 	}
 
 	t.Run("lookup by hash and profile", func(t *testing.T) { dedupConfLookups(t, drv, hash, a, b) })

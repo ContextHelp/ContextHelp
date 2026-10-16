@@ -380,6 +380,15 @@ var pgMigrations = []pgMigration{
 	// registry's synced entitlement and an operator's grant to a
 	// principal of the same name are separate rows.
 	{Version: 33, Name: "registry_entitlements.kind", fn: migrateEntitlementKind},
+	// Content-hash dedup stays inside a profile (ADR-080 §4), mirroring
+	// SQLite migration 052: a unique index on (content_hash, profile_id)
+	// over non-empty hashes, so a second object with the hash in the
+	// same profile is refused (storage.ErrAlreadyExists) and the dedup
+	// callers reinforce. Postgres never had a unique hash index, so a
+	// database may already hold such duplicates: the migration then
+	// refuses, naming them, and changes nothing (see
+	// migrateContentHashPerProfile). Index only, no re-projection.
+	{Version: 34, Name: "objects (content_hash, profile_id) unique", fn: migrateContentHashPerProfile},
 }
 
 // sharingRegistryStatements create the sharing registry and add the
@@ -576,6 +585,79 @@ func migrateEntitlementKind(ctx context.Context, d *Driver) error {
 		}
 	}
 	return tx.Commit()
+}
+
+// contentHashDuplicatesShown is how many duplicate groups the error of
+// migrateContentHashPerProfile names.
+const contentHashDuplicatesShown = 5
+
+// migrateContentHashPerProfile creates idx_objects_content_hash_profile
+// (see the migrations entry). Objects that already share a non-empty
+// hash in one profile would fail the index: rather than pick which of
+// them to merge or drop, it returns an error naming them (the first
+// groups and how many there are) and leaves the schema at 33, so the
+// operator keeps one object per (content_hash, profile_id) and the next
+// start applies it. The objects table is share-locked from the check to
+// the index, so no write lands a duplicate in between. IF NOT EXISTS
+// makes a replay a no-op.
+func migrateContentHashPerProfile(ctx context.Context, d *Driver) error {
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, `LOCK TABLE objects IN SHARE MODE`); err != nil {
+		return fmt.Errorf("lock objects: %w", err)
+	}
+	groups, total, err := contentHashDuplicates(ctx, tx)
+	if err != nil {
+		return fmt.Errorf("find duplicate content hashes: %w", err)
+	}
+	if total > 0 {
+		shown := ""
+		if total > len(groups) {
+			shown = fmt.Sprintf("first %d: ", len(groups))
+		}
+		return fmt.Errorf("%d content hashes are each stored by more than one object of a profile (%s%s); "+
+			"keep one object per (content_hash, profile_id): delete or merge the others, "+
+			"or set their content_hash to '' to take them out of dedup, then start again",
+			total, shown, strings.Join(groups, "; "))
+	}
+
+	if _, err := tx.ExecContext(ctx, `CREATE UNIQUE INDEX IF NOT EXISTS idx_objects_content_hash_profile
+		ON objects (content_hash, profile_id) WHERE content_hash <> ''`); err != nil {
+		return fmt.Errorf("create content hash index: %w", err)
+	}
+	return tx.Commit()
+}
+
+// contentHashDuplicates describes the first contentHashDuplicatesShown
+// groups of objects sharing a non-empty hash in one profile, oldest
+// object first, and counts every such group.
+func contentHashDuplicates(ctx context.Context, tx *sql.Tx) ([]string, int, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT profile_id, content_hash, string_agg(id, ', ' ORDER BY created_at, id), COUNT(*) OVER ()
+		  FROM objects
+		 WHERE content_hash <> ''
+		 GROUP BY profile_id, content_hash
+		HAVING COUNT(*) > 1
+		 ORDER BY profile_id, content_hash
+		 LIMIT $1`, contentHashDuplicatesShown)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var groups []string
+	total := 0
+	for rows.Next() {
+		var profile, hash, ids string
+		if err := rows.Scan(&profile, &hash, &ids, &total); err != nil {
+			return nil, 0, err
+		}
+		groups = append(groups, fmt.Sprintf("profile %q hash %q: %s", profile, hash, ids))
+	}
+	return groups, total, rows.Err()
 }
 
 // migrateAliasesObjectFK deletes aliases whose object is gone, then adds

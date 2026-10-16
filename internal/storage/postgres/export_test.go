@@ -18,3 +18,9 @@ func LatestSchemaVersionForTest() int {
 func (d *Driver) ReplayEntitlementKindForTest(ctx context.Context) error {
 	return migrateEntitlementKind(ctx, d)
 }
+
+// ReplayContentHashPerProfileForTest re-runs migration 34 on a database
+// that already has it, pinning that a replay is a no-op.
+func (d *Driver) ReplayContentHashPerProfileForTest(ctx context.Context) error {
+	return migrateContentHashPerProfile(ctx, d)
+}

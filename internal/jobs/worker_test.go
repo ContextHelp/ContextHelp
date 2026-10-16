@@ -537,8 +537,9 @@ func (d *raceObjectDriver) Objects() storage.ObjectStore {
 	return d.store
 }
 
-// raceObjectStore intercepts Create to return UNIQUE constraint error and
-// Reinforce to fail with "no rows" for the first N calls.
+// raceObjectStore intercepts Create to return the unique violation a
+// driver reports (wrapping storage.ErrAlreadyExists) and Reinforce to
+// fail with "no rows" for the first N calls.
 type raceObjectStore struct {
 	storage.ObjectStore
 	mu           sync.Mutex
@@ -559,8 +560,9 @@ func (s *raceObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObje
 			return err
 		}
 	}
-	// Always return UNIQUE constraint to trigger the retry path.
-	return errors.New("UNIQUE constraint failed: objects.content_hash")
+	// Always return the unique violation to trigger the retry path:
+	// worded as Postgres words it, the worker matches the sentinel.
+	return fmt.Errorf("create object: %w: pq: duplicate key value violates unique constraint \"idx_objects_content_hash_profile\"", storage.ErrAlreadyExists)
 }
 
 func (s *raceObjectStore) Reinforce(ctx context.Context, hash string, mergeData *storage.KnowledgeObject) (string, error) {

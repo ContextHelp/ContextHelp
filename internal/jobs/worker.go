@@ -293,8 +293,9 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 	draft.ReinforcementCount = 1
 
 	if err := p.store.Objects().Create(ctx, draft); err != nil {
-		// Unique constraint race: another worker inserted the same hash concurrently.
-		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+		// Unique constraint race: another worker inserted the same hash
+		// (in the same profile) concurrently.
+		if errors.Is(err, storage.ErrAlreadyExists) {
 			existingID, rerr := p.reinforceAfterRace(ctx, draft)
 			if rerr != nil {
 				p.markFailed(ctx, job.ID, fmt.Sprintf("reinforce after race: %s", rerr), draft.ID)

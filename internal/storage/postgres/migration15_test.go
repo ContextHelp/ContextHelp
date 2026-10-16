@@ -71,10 +71,11 @@ func TestPgMigration15_UpgradedDatabase(t *testing.T) {
 		}
 	}
 	spec := pgEnsure(t, drv, "real@1", 4)
-	if err := drv.Embeddings().Put(ctx, "legacy", []storage.ObjectVector{
-		{ModelID: spec.ModelID, Vector: []float32{1, 0, 0, 0}, Text: "body"},
-	}); err != nil {
-		t.Fatalf("Put: %v", err)
+	// By hand: the store writes embeddings.variant, which 31 adds.
+	if _, err := db.Exec(`
+		INSERT INTO embeddings (object_id, model_id, chunk_idx, vector, text, created_at)
+		VALUES ('legacy', $1, 0, '[1,0,0,0]'::vector, 'body', NOW())`, spec.ModelID); err != nil {
+		t.Fatalf("seed embedding at 14: %v", err)
 	}
 	sigID := indexsig.EmbeddingSignatureID(spec.ModelID)
 	sigBefore, err := indexsig.Load(ctx, db, indexsig.DialectPostgres, sigID)

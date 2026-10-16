@@ -87,8 +87,9 @@ var TicketKinds = []string{TicketKindInvite, TicketKindMagicLink}
 
 // Sentinels the registry stores return beside ErrNotFound.
 var (
-	// ErrAlreadyExists is a create whose id, or whose unique
-	// (method, issuer, subject) triple, is already taken.
+	// ErrAlreadyExists is a create whose id, or another key the store
+	// keeps unique (an identity's (method, issuer, subject) triple, an
+	// object's (content hash, profile)), is already taken.
 	ErrAlreadyExists = errors.New("already exists")
 	// ErrPrincipalInactive is an operation on, or a credential of, a
 	// principal that is suspended or revoked: a ticket redeemed for it,

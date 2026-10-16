@@ -55,8 +55,9 @@ func RestrictedViewerConformance(t *testing.T, drv storage.StorageDriver) {
 	f := seedRestricted(t, drv)
 	viewer := viewerOfType(restrictedVisibleType, restrictedPrincipal)
 	scoped := storage.ScopedDriver(viewer, drv)
+	dialect := sqlDialect(drv)
 
-	t.Run("objects", func(t *testing.T) { restrictedConfObjects(t, scoped, f) })
+	t.Run("objects", func(t *testing.T) { restrictedConfObjects(t, scoped, dialect, f) })
 	t.Run("full-text search on the masked index", func(t *testing.T) { restrictedConfFTS(t, scoped, f) })
 	t.Run("edges keep both ends visible", func(t *testing.T) { restrictedConfEdges(t, scoped, f) })
 	t.Run("edges hide entity ends without the capability", func(t *testing.T) {
@@ -75,8 +76,17 @@ func RestrictedViewerConformance(t *testing.T, drv storage.StorageDriver) {
 	t.Run("blobs of visible objects", func(t *testing.T) { restrictedConfBlobs(t, scoped, drv) })
 	t.Run("per-principal rows", func(t *testing.T) { restrictedConfPrincipalRows(t, scoped, drv) })
 	if edrv, ok := drv.(EmbeddingConformanceDriver); ok {
-		t.Run("vectors over visible objects", func(t *testing.T) { restrictedConfVectors(t, scoped, edrv, f) })
+		t.Run("vectors over visible objects", func(t *testing.T) { restrictedConfVectors(t, scoped, edrv, dialect, f) })
 	}
+}
+
+// sqlDialect is the SQL dialect drv reports (storage.SQLDialectSQLite
+// when it reports none): ListBySQL predicates are written in it.
+func sqlDialect(drv storage.StorageDriver) string {
+	if d, ok := drv.(interface{ SQLDialect() string }); ok && d.SQLDialect() == storage.SQLDialectPostgres {
+		return storage.SQLDialectPostgres
+	}
+	return storage.SQLDialectSQLite
 }
 
 // seedRestricted writes the fixture through drv.
@@ -195,7 +205,7 @@ func rvEdgeIDs(edges []*storage.Edge) []string {
 	return out
 }
 
-func restrictedConfObjects(t *testing.T, scoped storage.StorageDriver, f *restrictedFixture) {
+func restrictedConfObjects(t *testing.T, scoped storage.StorageDriver, dialect string, f *restrictedFixture) {
 	ctx := context.Background()
 	objects := scoped.Objects()
 
@@ -212,13 +222,14 @@ func restrictedConfObjects(t *testing.T, scoped storage.StorageDriver, f *restri
 		t.Errorf("Get(missing) = %v, want ErrNotFound", err)
 	}
 
-	restrictedConfObjectLists(t, objects, f)
+	restrictedConfObjectLists(t, objects, dialect, f)
 	restrictedConfObjectLookups(t, objects, f)
 }
 
 // restrictedConfObjectLists checks List, ListBySQL and CountByType
-// answer visible objects with exact totals.
-func restrictedConfObjectLists(t *testing.T, objects storage.ObjectStore, f *restrictedFixture) {
+// answer visible objects with exact totals. ListBySQL's predicate is
+// in the driver's dialect, its placeholders numbered from 1.
+func restrictedConfObjectLists(t *testing.T, objects storage.ObjectStore, dialect string, f *restrictedFixture) {
 	ctx := context.Background()
 	want := []string{f.visible.ID, f.visible2.ID}
 	for _, filter := range []storage.ObjectFilter{{}, {Status: storage.ObjectStatusAll}, {Tag: "restricted"}} {
@@ -234,7 +245,11 @@ func restrictedConfObjectLists(t *testing.T, objects storage.ObjectStore, f *res
 	if objs, total, err := objects.List(ctx, storage.ObjectFilter{Status: "inbox"}); err != nil || len(objs) != 0 || total != 0 {
 		t.Errorf("List(inbox) = %v total %d err %v, want nothing", rvObjectIDs(objs), total, err)
 	}
-	objs, total, err := objects.ListBySQL(ctx, "id LIKE ?", []any{"rv-%"}, storage.ObjectFilter{})
+	like := "id LIKE ?"
+	if dialect == storage.SQLDialectPostgres {
+		like = "id LIKE $1"
+	}
+	objs, total, err := objects.ListBySQL(ctx, like, []any{"rv-%"}, storage.ObjectFilter{})
 	if err != nil {
 		t.Fatalf("ListBySQL: %v", err)
 	}
@@ -561,12 +576,8 @@ func restrictedConfPrincipalQueues(t *testing.T, scoped, drv storage.StorageDriv
 // it, and more hidden objects closer than both than a round fetches,
 // then checks the scoped searches rank only visible objects, through
 // the masked variant, and widen past the hidden ones.
-func restrictedConfVectors(t *testing.T, scoped storage.StorageDriver, drv EmbeddingConformanceDriver, f *restrictedFixture) {
+func restrictedConfVectors(t *testing.T, scoped storage.StorageDriver, drv EmbeddingConformanceDriver, dialect string, f *restrictedFixture) {
 	ctx := context.Background()
-	dialect := storage.SQLDialectSQLite
-	if d, ok := drv.(interface{ SQLDialect() string }); ok && d.SQLDialect() == storage.SQLDialectPostgres {
-		dialect = storage.SQLDialectPostgres
-	}
 	reg := registry.NewFor(drv.DB(), dialect)
 	if err := reg.Register(ctx, registry.Model{ModelID: restrictedModel, Provider: "conformance", Dimension: 3}, false); err != nil {
 		t.Fatalf("register model: %v", err)

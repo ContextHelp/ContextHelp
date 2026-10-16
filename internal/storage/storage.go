@@ -187,6 +187,9 @@ type BlobStore interface {
 
 // ObjectStore persists and retrieves knowledge objects.
 type ObjectStore interface {
+	// Create stores obj. A taken id, or a non-empty content hash
+	// already stored under obj's profile (content-hash dedup, ADR-080
+	// §4), wraps ErrAlreadyExists: the dedup callers then Reinforce.
 	Create(ctx context.Context, obj *KnowledgeObject) error
 	Get(ctx context.Context, id string) (*KnowledgeObject, error)
 	// GetByContentHash returns the object of profileID whose content
