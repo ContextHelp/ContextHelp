@@ -76,20 +76,25 @@ clean:
 	rm -rf $(BUILD_DIR)
 	@echo "✓ Cleaned"
 
-## test: Run tests
+## test: Run every test CI runs, stopping at the first failure
+##
+## Runs the CI jobs in CI_TEST_JOBS (unit and e2e, viewer JS, Postgres
+## integration) through their ci-<job> targets, so the commands, flags and
+## order are CI's. Integration needs the Postgres service CI provides; without
+## one it fails and prints the docker command. scripts/check-ci-parity.sh
+## fails when a ci.yml job that runs tests is missing from CI_TEST_JOBS.
 test:
-	@echo "Running tests..."
-	go test $(BUILD_TAGS) -race -count=1 -cover ./...
+	@for job in $(CI_TEST_JOBS); do $(CI_STEP) ci-$$job || exit 1; done
 
 ## test-unit: Run unit tests only
 test-unit:
 	@echo "Running unit tests..."
-	go test $(BUILD_TAGS) -race -count=1 ./cmd/... ./internal/...
+	go test -failfast $(BUILD_TAGS) -race -count=1 ./cmd/... ./internal/...
 
 ## test-integration: Run integration tests
 test-integration:
 	@echo "Running integration tests..."
-	go test $(BUILD_TAGS) -race -count=1 ./test/integration/...
+	go test -failfast $(BUILD_TAGS) -race -count=1 ./test/integration/...
 
 ## test-integration-services: Run the CI integration job's tests (needs Postgres)
 ##
@@ -100,7 +105,7 @@ test-integration-services: ci-integration
 ## test-smoke: Run binary smoke tests
 test-smoke:
 	@echo "Running smoke tests..."
-	CGO_ENABLED=1 go test -count=1 -tags 'fts5 smoke' ./test/smoke/...
+	CGO_ENABLED=1 go test -failfast -count=1 -tags 'fts5 smoke' ./test/smoke/...
 
 ## test-e2e: Run black-box e2e tests against a freshly built ctxt binary
 ##
@@ -110,7 +115,7 @@ test-smoke:
 ## skips them). The CI test job's e2e step is `make ci-test-e2e` (verbose).
 test-e2e:
 	@echo "Running e2e tests..."
-	CGO_ENABLED=1 go test -count=1 -tags 'fts5 e2e' ./test/e2e/...
+	CGO_ENABLED=1 go test -failfast -count=1 -tags 'fts5 e2e' ./test/e2e/...
 
 ## test-all: Run all test tiers (Go tiers + search-graph viewer JS unit tests)
 test-all: test-unit test-searchgraph-viewer-js test-integration test-smoke test-e2e
@@ -118,13 +123,13 @@ test-all: test-unit test-searchgraph-viewer-js test-integration test-smoke test-
 ## test-cover: Generate coverage report
 test-cover:
 	@echo "Running tests with coverage..."
-	go test $(BUILD_TAGS) -race -coverprofile=coverage.out ./...
+	go test -failfast $(BUILD_TAGS) -race -coverprofile=coverage.out ./...
 
 ## test-gate: Run all tests and print coverage summary
 test-gate: test-all
 	@echo ""
 	@echo "Coverage summary:"
-	@go test $(BUILD_TAGS) -race -coverprofile=coverage.out ./internal/... ./cmd/... 2>&1 | grep -E 'coverage:|FAIL'
+	@go test -failfast $(BUILD_TAGS) -race -coverprofile=coverage.out ./internal/... ./cmd/... 2>&1 | grep -E 'coverage:|FAIL'
 	@echo ""
 	@go tool cover -func=coverage.out | grep total:
 	@echo ""
@@ -149,7 +154,7 @@ test-docker:
 		-e CGO_ENABLED=1 \
 		-e GOWORK=off \
 		ctxt/test:latest \
-		go test $(BUILD_TAGS) -race -count=1 ./...
+		go test -failfast $(BUILD_TAGS) -race -count=1 ./...
 
 ## eva: Run hop.top/eva contract tests against the recorded fixture set
 ##
@@ -534,6 +539,8 @@ ben-vector: ben-install ben-adapter
 
 # CI's jobs, in workflow order.
 CI_JOBS := toolchain secret-scan lint windows security test viewer webui integration build
+# The CI_JOBS that run tests, in workflow order; `make test` runs exactly these.
+CI_TEST_JOBS := test viewer integration
 CI_STEP := $(MAKE) --no-print-directory
 CI_PREREQ := $(CURDIR)/scripts/ci/prereq.sh
 CI_WORKFLOW := .github/workflows/ci.yml
@@ -649,7 +656,7 @@ ci-test:
 # runners are slower; the default 10 min per package is too close.
 
 ci-test-unit:
-	$(GO) test -v -short -race -timeout 30m -tags fts5 -coverprofile=coverage.out -covermode=atomic ./...
+	$(GO) test -failfast -v -short -race -timeout 30m -tags fts5 -coverprofile=coverage.out -covermode=atomic ./...
 
 # Black-box suites under test/e2e/ tagged e2e: each builds ctxt, seeds a
 # throwaway store through the binary and asserts exit codes, output and
@@ -657,7 +664,7 @@ ci-test-unit:
 # otherwise. Other test/e2e suites carry their own tags.
 ci-test-e2e:
 	@$(CI_PREREQ) chrome
-	$(GO) test -v -count=1 -tags 'fts5 e2e' ./test/e2e/...
+	$(GO) test -failfast -v -count=1 -tags 'fts5 e2e' ./test/e2e/...
 
 ci-viewer:
 	$(CI_STEP) test-searchgraph-viewer-js
@@ -690,7 +697,7 @@ ci-integration:
 # Postgres coverage never runs.
 ci-integration-suites:
 	@$(CI_PREREQ) postgres
-	$(GO) test -v -tags=integration,fts5 \
+	$(GO) test -failfast -v -tags=integration,fts5 \
 		./test/integration/... \
 		./internal/storage/postgres/... \
 		./internal/storageutil/... \
@@ -700,27 +707,27 @@ ci-integration-suites:
 # the test job).
 ci-integration-jobs:
 	@$(CI_PREREQ) postgres
-	$(GO) test -v -tags=integration,fts5 -count=1 \
+	$(GO) test -failfast -v -tags=integration,fts5 -count=1 \
 		-run 'Test(Claim|Reproject)_.*_Postgres' ./internal/jobs/
 
 # HTTP handlers against a Postgres store; the package's other tests run in
 # the test job.
 ci-integration-http:
 	@$(CI_PREREQ) postgres
-	$(GO) test -v -tags=integration,fts5 -count=1 \
+	$(GO) test -failfast -v -tags=integration,fts5 -count=1 \
 		-run '_Postgres$$' ./internal/server/http/
 
 # The embeddings journey drives the built ctxt and dpkms binaries.
 ci-integration-journey:
 	@$(CI_PREREQ) postgres
-	$(GO) test -v -tags=integration,fts5 -count=1 \
+	$(GO) test -failfast -v -tags=integration,fts5 -count=1 \
 		-run TestEmbeddingsJourney_Postgres ./cmd/ctxt/cmd/
 
 # The search-graph endpoint's Postgres run needs the e2e and integration
 # tags (its SQLite run is part of ci-test-e2e).
 ci-integration-searchgraph:
 	@$(CI_PREREQ) postgres
-	$(GO) test -v -count=1 -tags 'fts5 e2e integration' \
+	$(GO) test -failfast -v -count=1 -tags 'fts5 e2e integration' \
 		-run TestDpkmsGraph_Postgres ./test/e2e/searchgraph/
 
 ci-build:

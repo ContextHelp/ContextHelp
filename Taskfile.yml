@@ -106,32 +106,32 @@ tasks:
   test:
     desc: Run all tests
     cmds:
-      - go test {{.BUILD_TAGS}} -v -race -cover ./...
+      - go test -failfast {{.BUILD_TAGS}} -v -race -cover ./...
 
   test:unit:
     desc: Run unit tests only
     cmds:
-      - go test {{.BUILD_TAGS}} -v -short -race -cover ./...
+      - go test -failfast {{.BUILD_TAGS}} -v -short -race -cover ./...
 
   test:integration:
     desc: Run integration tests
     cmds:
-      - go test -tags "fts5,integration" -buildvcs=false -v -race ./test/integration/...
+      - go test -failfast -tags "fts5,integration" -buildvcs=false -v -race ./test/integration/...
 
   test:e2e:
     desc: Run focused end-to-end integration scenarios
     cmds:
-      - go test {{.BUILD_TAGS}} -v -race ./test/integration -run '^Test(FullWritePath|FullReadPath|JobRetry|EdgesCreated|IngestThenSearch|ConcurrentIngestion|ObjectDeleteCascade)$'
+      - go test -failfast {{.BUILD_TAGS}} -v -race ./test/integration -run '^Test(FullWritePath|FullReadPath|JobRetry|EdgesCreated|IngestThenSearch|ConcurrentIngestion|ObjectDeleteCascade)$'
 
   test:smoke:
     desc: Run binary smoke tests
     cmds:
-      - go test -tags "fts5,smoke" -buildvcs=false -v ./test/smoke/...
+      - go test -failfast -tags "fts5,smoke" -buildvcs=false -v ./test/smoke/...
 
   test:coverage:
     desc: Generate test coverage report
     cmds:
-      - go test {{.BUILD_TAGS}} -v -race -coverprofile=coverage.out -covermode=atomic ./...
+      - go test -failfast {{.BUILD_TAGS}} -v -race -coverprofile=coverage.out -covermode=atomic ./...
       - go tool cover -html=coverage.out -o coverage.html
       - 'echo "Coverage report generated: coverage.html"'
       - go tool cover -func=coverage.out
@@ -146,12 +146,12 @@ tasks:
   test:race:
     desc: Run tests with race detector
     cmds:
-      - go test {{.BUILD_TAGS}} -v -race ./...
+      - go test -failfast {{.BUILD_TAGS}} -v -race ./...
 
   test:bench:
     desc: Run benchmarks
     cmds:
-      - go test {{.BUILD_TAGS}} -v -bench=. -benchmem ./...
+      - go test -failfast {{.BUILD_TAGS}} -v -bench=. -benchmem ./...
 
   # Code quality tasks
   lint:

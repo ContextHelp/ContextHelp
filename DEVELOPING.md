@@ -132,7 +132,7 @@ Docker.
 | `make test-integration-services` | CI's integration job (alias of `make ci-integration`) | Postgres |
 | `make test-smoke` | `./test/smoke/...` | nothing |
 | `make test-e2e` | `./test/e2e/...` against a built binary | Chrome/Chromium for the headless checks (optional) |
-| `make test` | everything, with coverage | as above |
+| `make test` | every test CI runs (CI_TEST_JOBS: unit and e2e, viewer JS, Postgres integration) with CI's flags; stops at the first failure | Postgres (fails and prints the `docker run` without it); Chrome/Chromium optional |
 | `make test-all` | unit + integration + smoke | as above |
 
 ### Unit tests

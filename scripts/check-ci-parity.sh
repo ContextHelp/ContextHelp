@@ -162,6 +162,7 @@ var_re="^([[:space:]]+($(echo "$ci_vars" | tr ' ' '|'))=(\"[^\"]*\"|'[^']*'|[^[:
 check_re='(^|[^A-Za-z0-9_-])(go (test|vet|build|run)|golangci-lint run|gofmt|gosec|govulncheck|gitleaks (git|dir|detect|protect)|pnpm|make)([[:space:]]|$)'
 
 jobs=()
+test_jobs=() # ci.yml jobs that run a test target, in workflow order (check 4b)
 while IFS=$'\037' read -r kind job rest; do
 	case $kind in
 	J) jobs+=("$job") ;;
@@ -194,6 +195,13 @@ for job in "${jobs[@]}"; do
 		grep -qE "^$target:" "$mk" || err "$label runs make $target, which $mk does not define"
 		if [ "$coe" = true ]; then want+=("-$target"); else want+=("$target"); fi
 	done <<<"$records"
+
+	for t in "${want[@]:-}"; do
+		if [[ "${t#-}" =~ ^(ci-test|ci-integration|test-) ]]; then
+			test_jobs+=("$job")
+			break
+		fi
+	done
 
 	tgt="ci-$job"
 	recipe=$(awk -v t="$tgt" '
@@ -235,6 +243,14 @@ if [ "$mk_jobs" != "${jobs[*]}" ]; then
 	err "$mk CI_JOBS is '$mk_jobs' but $ci has jobs '${jobs[*]}'; make ci would not run what CI runs"
 else
 	echo "ok: CI_JOBS == $ci jobs"
+fi
+
+# ── 4b. CI_TEST_JOBS: make test runs every CI job that runs tests ──────────────
+mk_test_jobs=$(sed -n 's/^CI_TEST_JOBS[[:space:]]*:*=[[:space:]]*//p' "$mk" | head -1 | tr -s ' \t' ' ' | sed 's/ $//')
+if [ "$mk_test_jobs" != "${test_jobs[*]:-}" ]; then
+	err "$mk CI_TEST_JOBS is '$mk_test_jobs' but the $ci jobs that run a test target (ci-test*, ci-integration*, test-*) are '${test_jobs[*]:-}'; make test would not run what CI tests"
+else
+	echo "ok: CI_TEST_JOBS == $ci test jobs: ${test_jobs[*]:-<none>}"
 fi
 
 # ── 5 and 6. pinned tools on every local path ────────────────────────────────

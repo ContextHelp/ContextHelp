@@ -100,6 +100,11 @@ func TestCheckCIParity_Drift(t *testing.T) {
 			want:  "job lint runs [ci-drop-replaces -ci-lint-full ci-gofmt ci-vet]",
 		},
 		{
+			name:  "test job left out of make test",
+			edits: []edit{{"mk", "CI_TEST_JOBS := test viewer integration\n", "CI_TEST_JOBS := test viewer\n"}},
+			want:  "Makefile CI_TEST_JOBS is 'test viewer' but the .github/workflows/ci.yml jobs that run a test target (ci-test*, ci-integration*, test-*) are 'test viewer integration'",
+		},
+		{
 			name:  "blocking step made advisory locally",
 			edits: []edit{{"mk", "\t$(CI_STEP) ci-lint-full\n", "\t-$(CI_STEP) ci-lint-full\n"}},
 			want:  "Makefile ci-lint runs [ci-drop-replaces -ci-lint-full ci-gofmt ci-vet]",
