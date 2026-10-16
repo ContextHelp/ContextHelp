@@ -55,6 +55,8 @@ func TestIdentityKeyKind_String(t *testing.T) {
 		{IdentityKeyKindUser, "user"},
 		{IdentityKeyKindOrg, "org"},
 		{IdentityKeyKindUnknown, "unknown"},
+		{IdentityKeyKind(-1), "unknown"},
+		{IdentityKeyKind(99), "unknown"},
 	}
 	for _, tc := range cases {
 		if got := tc.k.String(); got != tc.want {

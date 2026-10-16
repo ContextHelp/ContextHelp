@@ -521,7 +521,7 @@ func selectByContent(selectors []selector, content string) string {
 			return sel.PipelineName
 		}
 	}
-	return "text.short"
+	return pipeline.TextShort
 }
 
 // Registry builds a pipeline.Registry from all registered defs (no providers).

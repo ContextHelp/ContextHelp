@@ -1,7 +1,9 @@
 package builtins
 
+import "github.com/ideacrafterslabs/ctxt/internal/pipeline"
+
 func init() {
-	MustRegister("text.short", Def{
+	MustRegister(pipeline.TextShort, Def{
 		Description: "Short text pipeline (< 500 chars)",
 		ContentTest: func(content string) bool { return len(content) < 500 },
 		// Priority 1 (lower priority than text.long) ensures text.long wins
