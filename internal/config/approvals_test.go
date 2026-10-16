@@ -32,3 +32,16 @@ func TestApprovalsConfig_PendingTTL(t *testing.T) {
 	}
 	assert.True(t, found, "Config.Validate runs the approvals section: %v", all)
 }
+
+// approvals.share.required defaults to 1, reads from the config file,
+// and refuses a negative count.
+func TestApprovalsConfig_ShareRequired(t *testing.T) {
+	assert.Equal(t, 1, ApprovalsConfig{}.Share.EffectiveRequired())
+	cfg, err := loadFromYAML(t, "approvals:\n  share:\n    required: 2\n")
+	require.NoError(t, err)
+	assert.Equal(t, 2, cfg.Approvals.Share.EffectiveRequired())
+	assert.Empty(t, cfg.Approvals.Validate())
+	errs := ApprovalsConfig{Share: ApprovalKindConfig{Required: -1}}.Validate()
+	require.Len(t, errs, 1)
+	assert.Equal(t, "approvals.share.required", errs[0].Field)
+}

@@ -20,6 +20,10 @@ type ApprovalsConfig struct {
 	// Steward is the approver count of steward.grant requests
 	// (approvals.steward.required).
 	Steward ApprovalKindConfig `mapstructure:"steward" yaml:"steward"`
+	// Share is the approver count of share.change requests: the
+	// widening sharing changes of a non-owner administrator
+	// (approvals.share.required, ADR-083 §10 B).
+	Share ApprovalKindConfig `mapstructure:"share" yaml:"share"`
 }
 
 // ApprovalKindConfig is one kind's approval setting: how many distinct
@@ -55,6 +59,9 @@ func (a ApprovalsConfig) Validate() []ValidationError {
 	}
 	if a.Steward.Required < 0 {
 		errs = append(errs, ValidationError{Field: "approvals.steward.required", Message: fmt.Sprintf("must be at least 1 or 0 for the default (1); got %d", a.Steward.Required)})
+	}
+	if a.Share.Required < 0 {
+		errs = append(errs, ValidationError{Field: "approvals.share.required", Message: fmt.Sprintf("must be at least 1 or 0 for the default (1); got %d", a.Share.Required)})
 	}
 	return errs
 }

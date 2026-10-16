@@ -11,6 +11,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/approval"
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/sharechange"
 	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/sharing/sharingtest"
 	"github.com/ideacrafterslabs/ctxt/internal/steward"
@@ -33,7 +34,7 @@ func TestBuildWiresStewardGrants(t *testing.T) {
 	if st.Approvals == nil || st.Stewards == nil {
 		t.Fatalf("Approvals = %v, Stewards = %v; want both wired", st.Approvals, st.Stewards)
 	}
-	if got, want := st.Approvals.Kinds().Names(), []string{steward.KindName}; !slices.Equal(got, want) {
+	if got, want := st.Approvals.Kinds().Names(), []string{sharechange.KindName, steward.KindName}; !slices.Equal(got, want) {
 		t.Fatalf("registered kinds = %v, want %v", got, want)
 	}
 
@@ -113,8 +114,8 @@ func TestApprovalKindsStewardApprovers(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ApprovalKinds: %v", err)
 			}
-			if got := reg.Names(); !slices.Equal(got, []string{steward.KindName}) {
-				t.Fatalf("kinds = %v, want [%s]", got, steward.KindName)
+			if got := reg.Names(); !slices.Equal(got, []string{sharechange.KindName, steward.KindName}) {
+				t.Fatalf("kinds = %v, want [%s %s]", got, sharechange.KindName, steward.KindName)
 			}
 			k, _ := reg.Lookup(steward.KindName)
 			if n := k.Required(); n != tc.want {

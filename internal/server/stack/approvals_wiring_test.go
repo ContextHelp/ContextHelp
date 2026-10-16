@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/sharechange"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
@@ -29,5 +30,31 @@ func TestBuildServesTheApprovalQueue(t *testing.T) {
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || body.Total != 0 || len(body.Data) != 0 {
 		t.Errorf("queue = %s (%v), want empty", rec.Body.String(), err)
+	}
+}
+
+// The share.change kind is registered, and approvals.share.required is
+// the approver count a new request is filed with (1 when unset).
+func TestApprovalKinds_ShareChangeTakesItsApproverCountFromTheConfig(t *testing.T) {
+	drv := storageutil.NewTestDriver(t)
+	for _, tc := range []struct {
+		name     string
+		required int
+		want     int
+	}{{"default", 0, 1}, {"two", 2, 2}} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &config.Config{Approvals: config.ApprovalsConfig{Share: config.ApprovalKindConfig{Required: tc.required}}}
+			reg, err := ApprovalKinds(drv, cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			kind, ok := reg.Lookup(sharechange.KindName)
+			if !ok {
+				t.Fatalf("kinds = %v, want %s registered", reg.Names(), sharechange.KindName)
+			}
+			if got := kind.Required(); got != tc.want {
+				t.Errorf("required = %d, want %d", got, tc.want)
+			}
+		})
 	}
 }
