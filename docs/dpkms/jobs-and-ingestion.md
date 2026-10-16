@@ -172,7 +172,7 @@ After pipeline execution, the worker computes a **content hash** (SHA-256 of nor
 - Sets `content_hash`, `reinforcement_count = 1`
 - Writes bookmark and mention edges (ADR-049)
 
-**Concurrent race** — if two workers process the same content simultaneously, the unique index on `content_hash` prevents duplicate creation. The second worker catches the constraint violation and falls back to reinforcement.
+**Concurrent race** — if two workers process the same content in the same profile simultaneously, the unique index on `(content_hash, profile_id)` (SQLite and Postgres alike) prevents duplicate creation. The second worker's `Create` fails with `storage.ErrAlreadyExists` and it falls back to reinforcement.
 
 This ensures idempotent ingestion: re-ingesting the same content strengthens the signal rather than creating duplicates.
 

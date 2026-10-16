@@ -83,6 +83,9 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		indexsig.ProjectionVersion, obj.ProfileID, f.classes, index.MaskedFTSBody,
 	)
 	if err != nil {
+		if errors.Is(constraintErr(err), storage.ErrAlreadyExists) {
+			return fmt.Errorf("create object: %w: %w", storage.ErrAlreadyExists, err)
+		}
 		return fmt.Errorf("create object: %w", err)
 	}
 	if err := upsertObjectNodesTx(ctx, tx, obj.ID, obj.Graph); err != nil {
