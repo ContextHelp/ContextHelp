@@ -12,8 +12,11 @@ import (
 const defaultAuditLimit = 100
 
 // ListShareAudit handles GET /api/v1/share/audit (ADR-080 §9): the
-// read audit of non-owner requests, newest first, narrowed by
-// ?principal= (who read), ?object= (what was read) and ?since= (a date
+// read audit of non-owner requests, newest first. Each entry is a
+// receipt: its decision (allowed, denied or deferred), the ordered
+// checks behind it with an outcome and a reason code each, and the
+// operation digest. Narrowed by ?principal= (who read), ?object= (what
+// was read), ?decision= (allowed, denied or deferred) and ?since= (a date
 // YYYY-MM-DD, an RFC 3339 time, or a duration such as 24h or 7d back
 // from now), capped by ?limit= (100 by default). Under admin:audit.
 // The owner's own requests are not logged, except its previews of
@@ -24,7 +27,7 @@ func (s *shareRoutes) ListShareAudit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
-	if err := checkParams(q, []string{"principal", "object", "since", "limit"}); err != nil {
+	if err := checkParams(q, []string{"principal", "object", "decision", "since", "limit"}); err != nil {
 		writeParamError(w, err)
 		return
 	}
@@ -32,6 +35,13 @@ func (s *shareRoutes) ListShareAudit(w http.ResponseWriter, r *http.Request) {
 		PrincipalID: strings.TrimSpace(q.Get("principal")),
 		ObjectID:    strings.TrimSpace(q.Get("object")),
 		Limit:       defaultAuditLimit,
+	}
+	if d := strings.TrimSpace(q.Get("decision")); d != "" {
+		f.Decision = storage.AccessDecision(d)
+		if !f.Decision.Valid() {
+			writeParamError(w, badParam("decision", "decision must be allowed, denied or deferred"))
+			return
+		}
 	}
 	if q.Has("limit") {
 		n, perr := intParam(q, "limit", defaultAuditLimit, 1, 10000)
