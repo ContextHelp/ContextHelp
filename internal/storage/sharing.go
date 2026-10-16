@@ -97,8 +97,10 @@ type GrantFilter struct {
 	IncludeRevoked bool
 }
 
-// AccessEntry is one non-owner request in the read audit (ADR-080 §9):
-// who read what through which route, under which policy versions.
+// AccessEntry is one non-owner request in the read audit (ADR-080 §9),
+// shaped as a receipt: who asked for what through which route, the
+// decision, the ordered checks behind it, and how much the answer
+// carried, under which policy versions.
 type AccessEntry struct {
 	// ID is acc_<ULID>.
 	ID          string    `json:"id"`
@@ -108,6 +110,16 @@ type AccessEntry struct {
 	// empty when the method carries none.
 	IdentityID string `json:"identity_id,omitempty"`
 	Route      string `json:"route"`
+	// Decision is the verdict on the request.
+	Decision AccessDecision `json:"decision"`
+	// Checks are the checks the request met, in evaluation order. A
+	// check it never reached is absent; none is recorded as PASS
+	// without having run.
+	Checks []AccessCheck `json:"checks"`
+	// OperationDigest identifies the operation asked for: a versioned
+	// hash over the method, the route template and the sorted params
+	// (sharing.OperationDigest). It holds no raw value.
+	OperationDigest string `json:"operation_digest"`
 	// PolicyVersions is the compiled viewer's policy key.
 	PolicyVersions string `json:"policy_versions"`
 	ObjectCount    int    `json:"object_count"`
@@ -123,6 +135,8 @@ type AccessFilter struct {
 	// entries whose ID list names that object. Both may be set.
 	PrincipalID string
 	ObjectID    string
+	// Decision keeps entries with that decision; empty keeps all.
+	Decision AccessDecision
 	// Since and Until bound At: Since inclusive, Until exclusive; zero
 	// means unbounded.
 	Since time.Time
@@ -203,7 +217,11 @@ type ShareGrantStore interface {
 type AccessLogStore interface {
 	// Append stores entries in one transaction. An empty ID is assigned
 	// (NewAccessID) and a zero At becomes now; an empty principal or
-	// route is an error.
+	// route, a decision other than allowed, denied or deferred, an empty
+	// operation digest, a check without id or reason or with an unknown
+	// outcome, a denied entry with no FAIL check and a deferred entry
+	// with no UNKNOWN check are errors. Nothing is written for a batch
+	// with an invalid entry.
 	Append(ctx context.Context, entries []*AccessEntry) error
 	// Query returns entries matching f, newest first, their ObjectIDs
 	// filled from what retention has kept.
@@ -369,11 +387,11 @@ func PrepareNewShareGrant(g *ShareGrant, now time.Time) error {
 // PrepareAccessEntry fills the defaults of an entry about to be
 // appended and validates it, as AccessLogStore.Append documents.
 func PrepareAccessEntry(e *AccessEntry, now time.Time) error {
-	if e == nil {
-		return errors.New("access entry: nil")
+	if err := ValidateAccessEntry(e); err != nil {
+		return err
 	}
-	if e.PrincipalID == "" || e.Route == "" {
-		return errors.New("access entry: principal id and route are required")
+	if e.Checks == nil {
+		e.Checks = []AccessCheck{}
 	}
 	if e.ID == "" {
 		e.ID = NewAccessID()
