@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/steps"
@@ -89,4 +90,20 @@ func (f *fixture) step(t *testing.T, ins config.StepInsert) *steps.ExternalStep 
 		t.Fatalf("build step: %v", err)
 	}
 	return s.(*steps.ExternalStep)
+}
+
+func draft() *storage.KnowledgeObject {
+	return &storage.KnowledgeObject{
+		ID:         "ko-1",
+		RawContent: "mail jane@example.com",
+		Source:     "cli",
+		Pipeline:   "text.short",
+		CreatedAt:  time.Date(2026, 10, 14, 9, 30, 0, 123, time.UTC),
+		Vectors:    []storage.ObjectVector{{ModelID: "m"}},
+	}
+}
+
+// emit is a step script that drains stdin and prints out.
+func emit(out string) string {
+	return "cat >/dev/null\nprintf '%s' '" + out + "'"
 }

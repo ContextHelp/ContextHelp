@@ -18,24 +18,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/steps"
-	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
-
-func draft() *storage.KnowledgeObject {
-	return &storage.KnowledgeObject{
-		ID:         "ko-1",
-		RawContent: "mail jane@example.com",
-		Source:     "cli",
-		Pipeline:   "text.short",
-		CreatedAt:  time.Date(2026, 10, 14, 9, 30, 0, 123, time.UTC),
-		Vectors:    []storage.ObjectVector{{ModelID: "m"}},
-	}
-}
-
-// emit is a step script that drains stdin and prints out.
-func emit(out string) string {
-	return "cat >/dev/null\nprintf '%s' '" + out + "'"
-}
 
 func TestExternalStepRewritesWritableFields(t *testing.T) {
 	f := newFixture(t)
