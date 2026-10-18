@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -181,5 +182,31 @@ func TestScanKeepsAnotherUsersInstance(t *testing.T) {
 	}
 	if _, err := os.Stat(pidPath(dir, testPort)); err != nil {
 		t.Errorf("pidfile of a running process removed: %v", err)
+	}
+}
+
+// In a shared run dir the lock file may be another user's, readable but
+// not writable here (a `sudo dpkms serve` created it). A lock is taken
+// on a read-only open, so this user's scans still prune.
+func TestScanPrunesUnderAReadOnlyLockFile(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs a lock file this user cannot open for writing: a non-root Unix user")
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, lockName), nil, 0o400); err != nil {
+		t.Fatal(err)
+	}
+	child := exec.Command("true")
+	if err := child.Run(); err != nil {
+		t.Fatalf("run child: %v", err)
+	}
+	if err := Write(dir, Info{PID: child.Process.Pid, Name: "gone", Port: testPort}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Scan(dir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(pidPath(dir, testPort)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("stale pidfile not pruned under a read-only lock file: %v", err)
 	}
 }
