@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -71,6 +73,7 @@ func TestWriteReplacesAtomically(t *testing.T) {
 		t.Errorf("pidfile name = %q, want new", got.Name)
 	}
 	entries, _ := os.ReadDir(dir)
+	entries = slices.DeleteFunc(entries, func(e os.DirEntry) bool { return e.Name() == lockName })
 	if len(entries) != 1 {
 		var names []string
 		for _, e := range entries {
@@ -118,8 +121,10 @@ func TestConcurrentWriteScanKeepsLivePidfile(t *testing.T) {
 	}
 }
 
-// Scan judges an entry stale from the file it read. If a new instance
-// replaced that file meanwhile, the replacement is live: Scan leaves it.
+// Scan judges an entry stale from the file it read. A new instance
+// registering on the same port meanwhile waits for the scan (the run
+// dir's lock): Scan removes the stale file it judged, never the one
+// that replaces it.
 func TestScanKeepsPidfileReplacedWhileJudgedStale(t *testing.T) {
 	dir := t.TempDir()
 	written := time.Now().Add(-time.Hour)
@@ -128,11 +133,16 @@ func TestScanKeepsPidfileReplacedWhileJudgedStale(t *testing.T) {
 	}
 	orig := processStartTime
 	t.Cleanup(func() { processStartTime = orig })
+	wrote := make(chan error, 1)
 	processStartTime = func(int) (time.Time, error) {
 		// A new instance on the same port registers while Scan is
-		// deciding about the old entry, whose pid looks reused.
-		if err := Write(dir, Info{PID: os.Getpid(), Name: "new", Port: testPort}); err != nil {
-			t.Error(err)
+		// deciding about the old entry, whose pid looks reused. Give
+		// its write the time to land, if nothing holds it back.
+		go func() { wrote <- Write(dir, Info{PID: os.Getpid(), Name: "new", Port: testPort}) }()
+		select {
+		case err := <-wrote:
+			wrote <- err
+		case <-time.After(300 * time.Millisecond):
 		}
 		return time.Now(), nil
 	}
@@ -140,10 +150,36 @@ func TestScanKeepsPidfileReplacedWhileJudgedStale(t *testing.T) {
 	if _, err := Scan(dir); err != nil {
 		t.Fatal(err)
 	}
+	if err := <-wrote; err != nil {
+		t.Fatal(err)
+	}
 	if _, err := os.Stat(pidPath(dir, testPort)); err != nil {
 		t.Fatalf("Scan removed the pidfile that replaced a stale one: %v", err)
 	}
 	if got := readInfo(t, dir, testPort); got.Name != "new" {
 		t.Errorf("pidfile name = %q, want new", got.Name)
+	}
+}
+
+// A pid this user may not signal (EPERM: pid 1, owned by root) is a
+// running process: an instance another user runs from a shared run dir
+// (sudo, a shared --data-dir) stays listed and its pidfile stays.
+func TestScanKeepsAnotherUsersInstance(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs a pid this user may not signal: pid 1 as a non-root user")
+	}
+	dir := t.TempDir()
+	if err := Write(dir, Info{PID: 1, Name: "shared", Port: testPort}); err != nil {
+		t.Fatal(err)
+	}
+	infos, err := Scan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(infos) != 1 || infos[0].PID != 1 {
+		t.Errorf("Scan = %+v, want pid 1 live", infos)
+	}
+	if _, err := os.Stat(pidPath(dir, testPort)); err != nil {
+		t.Errorf("pidfile of a running process removed: %v", err)
 	}
 }

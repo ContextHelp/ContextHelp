@@ -22,7 +22,7 @@ var errNotRunning = process.ErrorProcessNotRunning
 // processStartTime returns the OS-reported start time of pid. It is a
 // variable so tests can simulate a start time the OS will not report.
 var processStartTime = func(pid int) (time.Time, error) {
-	p, err := process.NewProcess(int32(pid)) //nolint:gosec // pids fit in int32 on every supported OS
+	p, err := process.NewProcess(int32(pid)) // #nosec G115 -- pids fit in int32 on every supported OS
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -47,4 +47,17 @@ func sameProcess(info Info) bool {
 		return !errors.Is(err, errNotRunning)
 	}
 	return !started.After(info.StartedAt.Add(startTimeTolerance))
+}
+
+// alive reports whether a process with the given pid is running. A pid
+// this user may not signal (EPERM) is running too: the run dir may be
+// shared with another user's instance (see the package doc). On Windows,
+// where signal 0 is not supported, the process is opened and asked
+// whether it has exited.
+func alive(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	ok, err := process.PidExists(int32(pid)) // #nosec G115 -- pids fit in int32 on every supported OS
+	return err == nil && ok
 }
