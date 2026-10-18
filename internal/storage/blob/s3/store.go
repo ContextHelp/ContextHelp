@@ -74,6 +74,9 @@ func New(cfg cfgpkg.BlobS3Config) (*Store, error) {
 	}, nil
 }
 
+// keyPath is the object key key is stored under. Callers check key
+// with storage.CheckBlobKey first: path.Join cleans "..", so an
+// unchecked key could name an object outside the store prefix.
 func (s *Store) keyPath(key string) string {
 	var sharded string
 	if len(key) >= 4 {
@@ -92,6 +95,9 @@ func (s *Store) metaKey(key string) string {
 }
 
 func (s *Store) Put(ctx context.Context, key string, data io.Reader, meta storage.BlobMeta) error {
+	if err := storage.CheckBlobKey(key); err != nil {
+		return fmt.Errorf("blob s3 put: %w", err)
+	}
 	objKey := s.keyPath(key)
 	contentType := meta.ContentType
 	_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
@@ -125,6 +131,9 @@ func (s *Store) Put(ctx context.Context, key string, data io.Reader, meta storag
 }
 
 func (s *Store) Get(ctx context.Context, key string) (io.ReadCloser, storage.BlobMeta, error) {
+	if err := storage.CheckBlobKey(key); err != nil {
+		return nil, storage.BlobMeta{}, fmt.Errorf("blob s3 get: %w", err)
+	}
 	objKey := s.keyPath(key)
 	result, err := s.client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: &s.bucket,
@@ -152,6 +161,9 @@ func (s *Store) Get(ctx context.Context, key string) (io.ReadCloser, storage.Blo
 }
 
 func (s *Store) Delete(ctx context.Context, key string) error {
+	if err := storage.CheckBlobKey(key); err != nil {
+		return fmt.Errorf("blob s3 delete: %w", err)
+	}
 	metaKey := s.metaKey(key)
 	_, _ = s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
 		Bucket: &s.bucket,
@@ -170,6 +182,9 @@ func (s *Store) Delete(ctx context.Context, key string) error {
 }
 
 func (s *Store) Exists(ctx context.Context, key string) (bool, error) {
+	if err := storage.CheckBlobKey(key); err != nil {
+		return false, fmt.Errorf("blob s3 exists: %w", err)
+	}
 	objKey := s.keyPath(key)
 	_, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
 		Bucket: &s.bucket,
@@ -195,6 +210,11 @@ func (s *Store) Exists(ctx context.Context, key string) (bool, error) {
 // whole store and filters on the key. Like the local store, it matches
 // the key itself, never the shard directories it sits under.
 func (s *Store) List(ctx context.Context, prefix string) ([]storage.BlobInfo, error) {
+	if prefix != "" {
+		if err := storage.CheckBlobKey(prefix); err != nil {
+			return nil, fmt.Errorf("blob s3 list: prefix: %w", err)
+		}
+	}
 	root := ""
 	if s.prefix != "" {
 		root = strings.TrimSuffix(s.prefix, "/") + "/"
@@ -240,6 +260,9 @@ func (s *Store) List(ctx context.Context, prefix string) ([]storage.BlobInfo, er
 }
 
 func (s *Store) URL(ctx context.Context, key string) (string, error) {
+	if err := storage.CheckBlobKey(key); err != nil {
+		return "", fmt.Errorf("blob s3 url: %w", err)
+	}
 	objKey := s.keyPath(key)
 	presigner := s3.NewPresignClient(s.client)
 	result, err := presigner.PresignGetObject(ctx, &s3.GetObjectInput{

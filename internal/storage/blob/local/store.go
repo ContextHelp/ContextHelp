@@ -36,6 +36,8 @@ func New(root string) (*Store, error) {
 	return &Store{root: root}, nil
 }
 
+// blobPath is where key is stored. Callers check key with
+// storage.CheckBlobKey first: it is joined unchecked.
 func (s *Store) blobPath(key string) string {
 	if len(key) < 4 {
 		return filepath.Join(s.root, key)
@@ -48,6 +50,9 @@ func (s *Store) metaPath(key string) string {
 }
 
 func (s *Store) Put(_ context.Context, key string, data io.Reader, meta storage.BlobMeta) error {
+	if err := storage.CheckBlobKey(key); err != nil {
+		return fmt.Errorf("blob local put: %w", err)
+	}
 	path := s.blobPath(key)
 	if err := os.MkdirAll(filepath.Dir(path), dirPerm); err != nil {
 		return fmt.Errorf("blob local put: mkdir: %w", err)
@@ -75,6 +80,9 @@ func (s *Store) Put(_ context.Context, key string, data io.Reader, meta storage.
 }
 
 func (s *Store) Get(_ context.Context, key string) (io.ReadCloser, storage.BlobMeta, error) {
+	if err := storage.CheckBlobKey(key); err != nil {
+		return nil, storage.BlobMeta{}, fmt.Errorf("blob local get: %w", err)
+	}
 	path := s.blobPath(key)
 	f, err := os.Open(path)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -94,6 +102,9 @@ func (s *Store) Get(_ context.Context, key string) (io.ReadCloser, storage.BlobM
 }
 
 func (s *Store) Delete(_ context.Context, key string) error {
+	if err := storage.CheckBlobKey(key); err != nil {
+		return fmt.Errorf("blob local delete: %w", err)
+	}
 	os.Remove(s.metaPath(key)) //nolint:errcheck
 	if err := os.Remove(s.blobPath(key)); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("blob local delete: %w", err)
@@ -102,6 +113,9 @@ func (s *Store) Delete(_ context.Context, key string) error {
 }
 
 func (s *Store) Exists(_ context.Context, key string) (bool, error) {
+	if err := storage.CheckBlobKey(key); err != nil {
+		return false, fmt.Errorf("blob local exists: %w", err)
+	}
 	_, err := os.Stat(s.blobPath(key))
 	if err == nil {
 		return true, nil
@@ -116,6 +130,11 @@ func (s *Store) Exists(_ context.Context, key string) (bool, error) {
 // an empty one. A prefix of four or more characters names one shard
 // directory (blobPath), so only that directory is walked.
 func (s *Store) List(_ context.Context, prefix string) ([]storage.BlobInfo, error) {
+	if prefix != "" {
+		if err := storage.CheckBlobKey(prefix); err != nil {
+			return nil, fmt.Errorf("blob local list: prefix: %w", err)
+		}
+	}
 	dir := s.root
 	if len(prefix) >= 4 {
 		dir = filepath.Dir(s.blobPath(prefix))
@@ -146,6 +165,9 @@ func (s *Store) List(_ context.Context, prefix string) ([]storage.BlobInfo, erro
 }
 
 func (s *Store) URL(_ context.Context, key string) (string, error) {
+	if err := storage.CheckBlobKey(key); err != nil {
+		return "", fmt.Errorf("blob local url: %w", err)
+	}
 	path := s.blobPath(key)
 	if _, err := os.Stat(path); err != nil {
 		return "", fmt.Errorf("blob %q not found: %w", key, err)
