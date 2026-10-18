@@ -2,6 +2,7 @@ package pidfile
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"time"
@@ -26,7 +27,7 @@ const lockWait = 2 * time.Second
 // it holds it. release is never nil; the OS releases the lock when the
 // process exits, so a crashed holder blocks no one.
 func lockDir(dir string) (release func(), locked bool) {
-	f, err := os.OpenFile(filepath.Join(dir, lockName), os.O_CREATE|os.O_RDWR, 0o600) // #nosec G304 -- the run dir's lock file
+	f, err := openLock(filepath.Join(dir, lockName))
 	if err != nil {
 		return func() {}, false
 	}
@@ -45,4 +46,17 @@ func lockDir(dir string) (release func(), locked bool) {
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
+}
+
+// openLock opens the lock file at path, creating it group-writable (the
+// umask has the last word). In a shared run dir it may be another
+// user's and not writable here (sudo created it): a read-only open
+// takes the same lock (flock and LockFileEx need no write access), so
+// every user of the dir keeps locking.
+func openLock(path string) (*os.File, error) {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o660) // #nosec G302 G304 -- the run dir's lock file, empty, shared on purpose
+	if errors.Is(err, fs.ErrPermission) {
+		f, err = os.Open(path) // #nosec G304 -- the run dir's lock file
+	}
+	return f, err
 }
