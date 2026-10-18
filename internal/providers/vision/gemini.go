@@ -66,11 +66,14 @@ func (p *GeminiProvider) Analyze(ctx context.Context, imageData []byte, contentT
 		return nil, fmt.Errorf("gemini vision: marshal request: %w", err)
 	}
 
-	url := "https://generativelanguage.googleapis.com/v1beta/models/" + p.model + ":generateContent?key=" + p.apiKey
+	// The key goes in the x-goog-api-key header, as Google documents it,
+	// never in the URL: net/http quotes the request URL in client errors.
+	url := "https://generativelanguage.googleapis.com/v1beta/models/" + p.model + ":generateContent"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("gemini vision: create request: %w", err)
 	}
+	req.Header.Set("x-goog-api-key", p.apiKey)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := clientOr(p.client).Do(req)
