@@ -237,8 +237,9 @@ func (s *Store) List(ctx context.Context, prefix string) ([]storage.BlobInfo, er
 			return nil, fmt.Errorf("blob s3 list: %w", err)
 		}
 		for _, obj := range result.Contents {
+			// Only blobs: a sidecar or a stray object is no key.
 			key := path.Base(*obj.Key)
-			if strings.HasSuffix(key, ".meta.json") || !strings.HasPrefix(key, prefix) {
+			if storage.CheckBlobKey(key) != nil || !strings.HasPrefix(key, prefix) {
 				continue
 			}
 			size := int64(0)

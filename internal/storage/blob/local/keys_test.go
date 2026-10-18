@@ -72,3 +72,36 @@ func TestKeyOutsideRootRefused(t *testing.T) {
 		t.Errorf("Put(..xx) wrote outside the root: stat err = %v", err)
 	}
 }
+
+// Files under the root that are not blobs (a .DS_Store, a stray note,
+// a crashed write's temp file) are not listed: a sweep would otherwise
+// try to delete them, and fail on their keys, every run.
+func TestListSkipsNonBlobFiles(t *testing.T) {
+	ctx := context.Background()
+	s, _ := nestedStore(t)
+	key := blobtest.HexKey("abcd")
+	if err := s.Put(ctx, key, bytes.NewReader([]byte("x")), storage.BlobMeta{}); err != nil {
+		t.Fatal(err)
+	}
+	shard := filepath.Dir(s.blobPath(key))
+	for _, p := range []string{
+		filepath.Join(s.root, ".DS_Store"),
+		filepath.Join(shard, ".DS_Store"),
+		filepath.Join(shard, "notes.txt"),
+		filepath.Join(shard, "."+key+".tmp"),
+		filepath.Join(shard, "."+key+".tmp-123456"),
+	} {
+		if err := os.WriteFile(p, []byte("not a blob"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, prefix := range []string{"", "abcd", key} {
+		items, err := s.List(ctx, prefix)
+		if err != nil {
+			t.Fatalf("List(%q): %v", prefix, err)
+		}
+		if len(items) != 1 || items[0].Key != key {
+			t.Errorf("List(%q) = %+v, want only %s", prefix, items, key)
+		}
+	}
+}

@@ -59,3 +59,27 @@ func TestKeyOutsidePrefixRefused(t *testing.T) {
 		}
 	}
 }
+
+// Objects under the store prefix that are not blobs (a .DS_Store a sync
+// tool uploaded, a stray note) are not listed: a sweep would otherwise
+// try to delete them, and fail on their keys, every run.
+func TestListSkipsNonBlobObjects(t *testing.T) {
+	ctx := context.Background()
+	f, s := newFakeS3(t, "test-bucket", "data")
+	key := blobtest.HexKey("abcd")
+	if err := s.Put(ctx, key, bytes.NewReader([]byte("x")), storage.BlobMeta{}); err != nil {
+		t.Fatal(err)
+	}
+	f.put("data/.DS_Store", []byte("not a blob"))
+	f.put("data/ab/cd/.DS_Store", []byte("not a blob"))
+	f.put("data/ab/cd/abcdnotes.txt", []byte("not a blob"))
+	for _, prefix := range []string{"", "abcd", key} {
+		items, err := s.List(ctx, prefix)
+		if err != nil {
+			t.Fatalf("List(%q): %v", prefix, err)
+		}
+		if len(items) != 1 || items[0].Key != key {
+			t.Errorf("List(%q) = %+v, want only %s", prefix, items, key)
+		}
+	}
+}
