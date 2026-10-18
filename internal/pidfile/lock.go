@@ -15,6 +15,14 @@ import (
 // a pidfile a new instance renamed in after the scan judged the old one
 // stale, and a rename never meets a pidfile a scan holds open (Windows
 // refuses to rename over an open file). The name is not a .pid entry.
+//
+// The lock is advisory and best effort. Anyone who can open the file,
+// read-only included, can hold it: a holder stalls pruning and makes a
+// write or remove go ahead unlocked after writeWait, but changes no
+// pidfile. Where flock is emulated or missing the lock can fail (NFS
+// maps it to fcntl locks, which a read-only open cannot take and which
+// fail without a lock daemon); a failed lock means the run dir is used
+// unlocked, as if a holder were stuck.
 const lockName = ".pidfile.lock"
 
 // The waits for the lock. A holder takes it for a rename or a scan of
