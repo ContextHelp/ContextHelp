@@ -580,31 +580,20 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 	mergedMentionStrs := mergeStrings(mentionsToStrings(obj.Mentions), mentionsToStrings(mergeData.Mentions))
 	mergedMentionsJSON, _ := json.Marshal(mergedMentionStrs)
 
-	// Optionally update content if we now have more data (e.g. from text to url fetch)
-	contentUpdate := ""
-	contentArgs := []any{string(mergedTagsJSON), string(mergedMentionsJSON), now}
-	if mergeData.RawContent != "" && mergeData.RawContent != hash {
-		// text_content takes the default Create applies
-		// (projection.BodyText), so a blob:// ref never becomes text.
-		contentUpdate = ", raw_content = ?, text_content = ?"
-		contentArgs = append(contentArgs, mergeData.RawContent, projection.BodyText(mergeData))
-	}
-	contentArgs = append(contentArgs, hash, mergeData.ProfileID)
-
+	// The content is never replaced: a duplicate is found by the folded
+	// content hash, so its bytes may differ from the row's, and the row
+	// keeps its first bytes. Content changes go through an update.
+	//
 	// fts_indexed is not cleared here: the row is re-indexed below, which
 	// sets it when the new body is non-empty. Clearing it misreported
 	// reinforced (deduplicated) objects as unindexed.
-	// #nosec G201 -- contentUpdate is empty or a fixed SET fragment; its values are bound in contentArgs.
-	query := fmt.Sprintf(`
+	_, err = tx.ExecContext(ctx, `
 		UPDATE objects SET
 			tags = ?,
 			mentions = ?,
 			updated_at = ?
-			%s
 		WHERE content_hash = ? AND profile_id = ?
-	`, contentUpdate)
-
-	_, err = tx.ExecContext(ctx, query, contentArgs...)
+	`, string(mergedTagsJSON), string(mergedMentionsJSON), now, hash, mergeData.ProfileID)
 	if err != nil {
 		return "", fmt.Errorf("reinforce: update: %w", err)
 	}

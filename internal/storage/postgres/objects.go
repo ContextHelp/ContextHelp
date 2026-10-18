@@ -417,36 +417,22 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 	mergedMentionStrs := mergeStrings(mentionsToStrings(obj.Mentions), mentionsToStrings(mergeData.Mentions))
 	mergedMentionsJSON, _ := json.Marshal(mergedMentionStrs)
 
+	// The content is never replaced: a duplicate is found by the folded
+	// content hash, so its bytes may differ from the row's, and the row
+	// keeps its first bytes. Content changes go through an update.
+	//
 	// fts_indexed is not cleared here: the rows are re-indexed below,
 	// which sets it when the new body is non-empty. Clearing it
 	// misreported reinforced (deduplicated) objects as unindexed.
-	//
-	// New content rewrites text_content with the same default Create
-	// applies (projection.BodyText), keeping it in step with raw_content.
-	if mergeData.RawContent != "" && mergeData.RawContent != hash {
-		_, err = tx.ExecContext(ctx, `UPDATE objects SET
-			reinforcement_count = reinforcement_count + 1,
-			last_reinforced_at = $1,
-			tags = $2,
-			mentions = $3,
-			updated_at = $4,
-			raw_content = $5,
-			text_content = $6
-		WHERE content_hash = $7 AND profile_id = $8`,
-			now, mergedTagsJSON, mergedMentionsJSON, now,
-			mergeData.RawContent, projection.BodyText(mergeData), hash, mergeData.ProfileID,
-		)
-	} else {
-		_, err = tx.ExecContext(ctx, `UPDATE objects SET
+	_, err = tx.ExecContext(ctx, `UPDATE objects SET
 			reinforcement_count = reinforcement_count + 1,
 			last_reinforced_at = $1,
 			tags = $2,
 			mentions = $3,
 			updated_at = $4
 		WHERE content_hash = $5 AND profile_id = $6`,
-			now, mergedTagsJSON, mergedMentionsJSON, now, hash, mergeData.ProfileID,
-		)
-	}
+		now, mergedTagsJSON, mergedMentionsJSON, now, hash, mergeData.ProfileID,
+	)
 	if err != nil {
 		return "", fmt.Errorf("reinforce: update: %w", err)
 	}
