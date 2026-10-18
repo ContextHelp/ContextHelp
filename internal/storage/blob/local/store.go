@@ -199,10 +199,16 @@ func (s *Store) List(_ context.Context, prefix string) ([]storage.BlobInfo, erro
 		if err != nil {
 			return err
 		}
-		if info.IsDir() || strings.HasSuffix(path, ".meta.json") || strings.HasPrefix(info.Name(), ".") {
+		// Dot-prefixed names are staging files of an in-flight write.
+		if info.IsDir() || strings.HasPrefix(info.Name(), ".") {
 			return nil
 		}
+		// Only blobs: a sidecar, a temp file or a stray (.DS_Store) is
+		// no key, and a sweep would fail on it every run.
 		key := info.Name()
+		if storage.CheckBlobKey(key) != nil {
+			return nil //nolint:nilerr // a stray file is skipped, not an error
+		}
 		if prefix != "" && !strings.HasPrefix(key, prefix) {
 			return nil
 		}
