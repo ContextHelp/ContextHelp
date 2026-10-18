@@ -13,6 +13,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/mentions"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob/blobtest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blobref"
 	"github.com/ideacrafterslabs/ctxt/internal/tagfilter"
 )
@@ -23,9 +24,16 @@ const (
 	restrictedVisibleType = "note"
 	restrictedHiddenType  = "contact"
 	restrictedPrincipal   = "prn_restricted"
-	restrictedBlobVisible = "sha256-restricted-visible-blob"
-	restrictedBlobHidden  = "sha256-restricted-hidden-blob"
 	restrictedModel       = "restricted-conf-3"
+)
+
+// The restricted fixture's blobs share restrictedBlobPrefix, so one List
+// names both.
+const restrictedBlobPrefix = "ee0"
+
+var (
+	restrictedBlobVisible = blobtest.HexKey(restrictedBlobPrefix + "1")
+	restrictedBlobHidden  = blobtest.HexKey(restrictedBlobPrefix + "2")
 )
 
 // restrictedFixture is what RestrictedViewerConformance seeds.
@@ -497,11 +505,11 @@ func restrictedConfBlobs(t *testing.T, scoped, drv storage.StorageDriver) {
 	if _, err := scoped.Blobs().URL(ctx, restrictedBlobHidden); !errors.Is(err, storage.ErrNotFound) {
 		t.Errorf("URL(hidden blob) = %v, want ErrNotFound", err)
 	}
-	all, err := drv.Blobs().List(ctx, "sha256-restricted-")
+	all, err := drv.Blobs().List(ctx, restrictedBlobPrefix)
 	if err != nil {
 		t.Fatalf("driver List: %v", err)
 	}
-	visible, err := scoped.Blobs().List(ctx, "sha256-restricted-")
+	visible, err := scoped.Blobs().List(ctx, restrictedBlobPrefix)
 	if err != nil {
 		t.Fatalf("scoped List: %v", err)
 	}

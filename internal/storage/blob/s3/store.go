@@ -211,7 +211,7 @@ func (s *Store) Exists(ctx context.Context, key string) (bool, error) {
 // the key itself, never the shard directories it sits under.
 func (s *Store) List(ctx context.Context, prefix string) ([]storage.BlobInfo, error) {
 	if prefix != "" {
-		if err := storage.CheckBlobKey(prefix); err != nil {
+		if err := storage.CheckBlobKeyPrefix(prefix); err != nil {
 			return nil, fmt.Errorf("blob s3 list: prefix: %w", err)
 		}
 	}

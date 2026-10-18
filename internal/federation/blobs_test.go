@@ -16,7 +16,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
-const pushBlobKey = "feedbeef0123456789"
+const pushBlobKey = "feedbeef01234567890000000000000000000000000000000000000000000000"
 
 // blobBackedObject is an object stored the way externalize_content
 // leaves it: content in the source blob store, refs in the row.

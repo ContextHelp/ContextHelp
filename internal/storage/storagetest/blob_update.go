@@ -67,76 +67,76 @@ func BlobUpdateConformance(t *testing.T, drv storage.StorageDriver) {
 	aged := NewAgedBlobs(drv, time.Now().Add(-48*time.Hour))
 
 	t.Run("replaced", func(t *testing.T) {
-		put(t, "updold")
-		put(t, "updnew")
-		create(t, externalized("bupd-replace", "updold"))
-		if orphans := update(t, aged, externalized("bupd-replace", "updnew")); len(orphans) != 0 {
+		put(t, bk("updold"))
+		put(t, bk("updnew"))
+		create(t, externalized("bupd-replace", bk("updold")))
+		if orphans := update(t, aged, externalized("bupd-replace", bk("updnew"))); len(orphans) != 0 {
 			t.Fatalf("orphans = %v", orphans)
 		}
-		if exists(t, "updold") {
+		if exists(t, bk("updold")) {
 			t.Error("replacing externalized content left the old blob behind")
 		}
-		if !exists(t, "updnew") {
+		if !exists(t, bk("updnew")) {
 			t.Error("update deleted the blob its new content refers to")
 		}
 	})
 
 	t.Run("inlined", func(t *testing.T) {
-		put(t, "updinline")
-		create(t, externalized("bupd-inline", "updinline"))
+		put(t, bk("updinline"))
+		create(t, externalized("bupd-inline", bk("updinline")))
 		if orphans := update(t, aged, &storage.KnowledgeObject{
 			ID: "bupd-inline", Type: "note", RawContent: "small now",
 			CreatedAt: fixtureTime(), UpdatedAt: fixtureTime(),
 		}); len(orphans) != 0 {
 			t.Fatalf("orphans = %v", orphans)
 		}
-		if exists(t, "updinline") {
+		if exists(t, bk("updinline")) {
 			t.Error("inlining the content left the old blob behind")
 		}
 	})
 
 	t.Run("unchanged", func(t *testing.T) {
-		put(t, "updsame")
-		obj := externalized("bupd-same", "updsame")
+		put(t, bk("updsame"))
+		obj := externalized("bupd-same", bk("updsame"))
 		create(t, obj)
 		obj.Summaries = []string{"edited"}
 		update(t, aged, obj)
-		if !exists(t, "updsame") {
+		if !exists(t, bk("updsame")) {
 			t.Error("an update that kept the content deleted its blob")
 		}
 	})
 
 	t.Run("shared", func(t *testing.T) {
-		put(t, "updshared")
-		create(t, externalized("bupd-shared-a", "updshared"))
-		create(t, externalized("bupd-shared-b", "updshared"))
+		put(t, bk("updshared"))
+		create(t, externalized("bupd-shared-a", bk("updshared")))
+		create(t, externalized("bupd-shared-b", bk("updshared")))
 		update(t, aged, &storage.KnowledgeObject{
 			ID: "bupd-shared-a", Type: "note", RawContent: "small now",
 			CreatedAt: fixtureTime(), UpdatedAt: fixtureTime(),
 		})
-		if !exists(t, "updshared") {
+		if !exists(t, bk("updshared")) {
 			t.Error("update deleted a blob another object refers to")
 		}
 	})
 
 	t.Run("orphan", func(t *testing.T) {
-		put(t, "updstuck")
-		create(t, externalized("bupd-stuck", "updstuck"))
+		put(t, bk("updstuck"))
+		create(t, externalized("bupd-stuck", bk("updstuck")))
 		failing := failingDeleteDriver{StorageDriver: aged}
 		orphans := update(t, failing, &storage.KnowledgeObject{
 			ID: "bupd-stuck", Type: "note", RawContent: "small now",
 			CreatedAt: fixtureTime(), UpdatedAt: fixtureTime(),
 		})
-		if len(orphans) != 1 || orphans[0].Key != "updstuck" || !errors.Is(orphans[0].Err, errDeleteRefused) {
+		if len(orphans) != 1 || orphans[0].Key != bk("updstuck") || !errors.Is(orphans[0].Err, errDeleteRefused) {
 			t.Errorf("orphans = %v, want [updstuck: %v]", orphans, errDeleteRefused)
 		}
-		if !exists(t, "updstuck") {
+		if !exists(t, bk("updstuck")) {
 			t.Error("the blob a failed delete reported is gone")
 		}
 	})
 
 	t.Run("missing object", func(t *testing.T) {
-		if _, err := blob.UpdateObject(ctx, drv, externalized("bupd-none", "updnone")); !errors.Is(err, storage.ErrNotFound) {
+		if _, err := blob.UpdateObject(ctx, drv, externalized("bupd-none", bk("updnone"))); !errors.Is(err, storage.ErrNotFound) {
 			t.Errorf("UpdateObject of a missing object: %v, want ErrNotFound", err)
 		}
 	})

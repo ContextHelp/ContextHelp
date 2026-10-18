@@ -22,11 +22,11 @@ func BlobSweepConformance(t *testing.T, drv storage.StorageDriver) {
 	now := time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)
 	const grace = time.Hour
 	ages := map[string]time.Time{
-		"swpreferenced": now.Add(-48 * time.Hour),
-		"swpmetaref":    now.Add(-48 * time.Hour),
-		"swporphan":     now.Add(-2 * time.Hour),
-		"swpyoung":      now.Add(-time.Minute),
-		"swpunknown":    {},
+		bk("swpreferenced"): now.Add(-48 * time.Hour),
+		bk("swpmetaref"):    now.Add(-48 * time.Hour),
+		bk("swporphan"):     now.Add(-2 * time.Hour),
+		bk("swpyoung"):      now.Add(-time.Minute),
+		bk("swpunknown"):    {},
 	}
 	seedSweep(t, drv, ages)
 	aged := agedDriver{StorageDriver: drv, ages: ages}
@@ -58,20 +58,20 @@ func BlobSweepConformance(t *testing.T, drv storage.StorageDriver) {
 		}
 		check(t, res)
 		for key := range ages {
-			if want := key != "swporphan"; exists(t, key) != want {
+			if want := key != bk("swporphan"); exists(t, key) != want {
 				t.Errorf("after sweep, %s exists = %v, want %v", key, !want, want)
 			}
 		}
 	})
 	t.Run("delete failure", func(t *testing.T) {
-		if err := drv.Blobs().Put(ctx, "swporphan", strings.NewReader("again"), storage.BlobMeta{}); err != nil {
+		if err := drv.Blobs().Put(ctx, bk("swporphan"), strings.NewReader("again"), storage.BlobMeta{}); err != nil {
 			t.Fatalf("put: %v", err)
 		}
 		res, err := blob.Sweep(ctx, failingDeleteDriver{StorageDriver: aged}, blob.SweepOptions{Grace: grace, Now: now})
 		if err != nil {
 			t.Fatalf("Sweep: %v", err)
 		}
-		if len(res.Deleted) != 0 || len(res.Failed) != 1 || res.Failed[0].Key != "swporphan" {
+		if len(res.Deleted) != 0 || len(res.Failed) != 1 || res.Failed[0].Key != bk("swporphan") {
 			t.Errorf("Deleted = %v, Failed = %v, want swporphan failed", res.Deleted, res.Failed)
 		}
 	})
@@ -84,8 +84,8 @@ func BlobSweepConformance(t *testing.T, drv storage.StorageDriver) {
 		name, key string
 		rowFirst  bool // the ingest's row and check land before the delete
 	}{
-		{name: "ingest row lands before the blob delete", key: "swpracerow", rowFirst: true},
-		{name: "ingest row lands after the blob delete", key: "swpracelate"},
+		{name: "ingest row lands before the blob delete", key: bk("swpracerow"), rowFirst: true},
+		{name: "ingest row lands after the blob delete", key: bk("swpracelate")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			sweepIngestRace(t, drv, now, grace, tc.key, tc.rowFirst)
@@ -173,8 +173,8 @@ func seedSweep(t *testing.T, drv storage.StorageDriver, ages map[string]time.Tim
 		}
 	}
 	for _, obj := range []*storage.KnowledgeObject{
-		{ID: "swp-raw", RawContent: "blob://swpreferenced", TextContent: "prefix"},
-		{ID: "swp-meta", RawContent: "inline", Metadata: map[string]any{"blob_key": "swpmetaref"}},
+		{ID: "swp-raw", RawContent: "blob://" + bk("swpreferenced"), TextContent: "prefix"},
+		{ID: "swp-meta", RawContent: "inline", Metadata: map[string]any{"blob_key": bk("swpmetaref")}},
 	} {
 		obj.Type = "note"
 		obj.CreatedAt, obj.UpdatedAt = fixtureTime(), fixtureTime()
@@ -191,7 +191,7 @@ func checkSweep(t *testing.T, res blob.SweepResult, scanned int) {
 	if res.Scanned != scanned {
 		t.Errorf("Scanned = %d, want %d", res.Scanned, scanned)
 	}
-	if !slices.Equal(res.Deleted, []string{"swporphan"}) {
+	if !slices.Equal(res.Deleted, []string{bk("swporphan")}) {
 		t.Errorf("Deleted = %v, want [swporphan]", res.Deleted)
 	}
 	if res.Young != 2 {

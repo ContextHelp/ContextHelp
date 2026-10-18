@@ -3,6 +3,7 @@ package service_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/service"
@@ -12,7 +13,7 @@ import (
 // through its shard directory: "..xx" is stored at <root>/../xx/..xx.
 // Restore refuses such an entry before anything is written.
 func TestRestoreRefusesBlobKeyOutsideStore(t *testing.T) {
-	for _, key := range []string{"..xx", "....", "ab.meta.json"} {
+	for _, key := range []string{"..xx", "....", "ab.meta.json", "nul", strings.Repeat("AB", 32)} {
 		t.Run(key, func(t *testing.T) {
 			l := newRestoreLayout(t)
 			archive := filepath.Join(l.base, "evil.tar.gz")

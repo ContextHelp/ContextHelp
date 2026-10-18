@@ -12,23 +12,33 @@ import (
 
 // InvalidKeys are keys outside storage.CheckBlobKey's grammar: paths up
 // and out (directly, or through the <k[:2]> shard), absolute and
-// separated paths, dotted names and bytes no key holds.
-var InvalidKeys = []string{
+// separated paths, dotted names, bytes no key holds, reserved device
+// names, hex of the wrong length or case, and the free-form shapes
+// fixtures once used.
+var InvalidKeys = append([]string{
 	"", ".", "..", "../x", "../../etc/passwd", "..xx", "....", "ab..cd",
 	"ab/cd/abcd", "/abs", `\abs`, `ab\..\cd`, "C:x", "x.meta.json",
-	"a b", "a\x00b", "a\nb", "é",
+	"a b", "a\x00b", "a\nb", "é", "nul", "con", "abc123", "sha256-visible-blob", "k_1",
+	HexKey("ab")[:storage.BlobKeyLen-1], HexKey("ab") + "0", strings.ToUpper(HexKey("ab")),
+	"../" + HexKey("ab")[3:],
+}, invalidPrefixes...)
+
+// invalidPrefixes are List prefixes outside storage.CheckBlobKeyPrefix:
+// nothing that is not lowercase hex, and nothing longer than a key.
+var invalidPrefixes = []string{
+	"..", "../x", "ab/cd", "/abs", `\abs`, "x.meta.json", "nul", "AB", "g",
+	"a b", "é", HexKey("ab") + "0",
 }
 
-// validKeys are keys a backend stores: a content hash and the shapes
-// tests and fixtures use.
+// validKeys are keys a backend stores: content hashes.
 var validKeys = []string{
 	"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-	"sha256-visible-blob", "k_1", "x",
+	KeyOf("valid"), HexKey("ab"), HexKey(""),
 }
 
 // KeyConformance pins the key grammar every backend enforces: each
 // method refuses an invalid key with storage.ErrInvalidBlobKey, List
-// an invalid non-empty prefix, and the keys ctxt writes round-trip.
+// an invalid prefix, and valid keys round-trip.
 func KeyConformance(t *testing.T, store storage.BlobStore) {
 	t.Helper()
 	ctx := context.Background()
@@ -51,9 +61,12 @@ func KeyConformance(t *testing.T, store storage.BlobStore) {
 			refused("Exists", err)
 			_, err = store.URL(ctx, key)
 			refused("URL", err)
-			if key != "" {
-				_, err = store.List(ctx, key)
-				refused("List", err)
+		})
+	}
+	for _, prefix := range invalidPrefixes {
+		t.Run("invalid prefix="+prefix, func(t *testing.T) {
+			if _, err := store.List(ctx, prefix); !errors.Is(err, storage.ErrInvalidBlobKey) {
+				t.Errorf("List(%q): err = %v, want ErrInvalidBlobKey", prefix, err)
 			}
 		})
 	}

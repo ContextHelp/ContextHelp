@@ -131,7 +131,7 @@ func (s *Store) Exists(_ context.Context, key string) (bool, error) {
 // directory (blobPath), so only that directory is walked.
 func (s *Store) List(_ context.Context, prefix string) ([]storage.BlobInfo, error) {
 	if prefix != "" {
-		if err := storage.CheckBlobKey(prefix); err != nil {
+		if err := storage.CheckBlobKeyPrefix(prefix); err != nil {
 			return nil, fmt.Errorf("blob local list: prefix: %w", err)
 		}
 	}

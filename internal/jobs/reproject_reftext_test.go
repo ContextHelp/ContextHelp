@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob/blobtest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blobref"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/indexsig"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/storagetest"
@@ -43,9 +44,9 @@ func seedRefText(t *testing.T, drv storage.StorageDriver, pdb storagetest.Projec
 // counted, and does not fail the run.
 func runReprojectRepairsRefText(t *testing.T, drv storage.StorageDriver, pdb storagetest.ProjectionDB) {
 	ctx := context.Background()
-	seedRefText(t, drv, pdb, "reftext-big", "refbigkey", "numbat wombat "+strings.Repeat("filler ", 50))
-	seedRefText(t, drv, pdb, "reftext-small", "refsmallkey", "bilby burrow")
-	seedRefText(t, drv, pdb, "reftext-lost", "reflostkey", "")
+	seedRefText(t, drv, pdb, "reftext-big", blobtest.KeyOf("refbigkey"), "numbat wombat "+strings.Repeat("filler ", 50))
+	seedRefText(t, drv, pdb, "reftext-small", blobtest.KeyOf("refsmallkey"), "bilby burrow")
+	seedRefText(t, drv, pdb, "reftext-lost", blobtest.KeyOf("reflostkey"), "")
 	require.NoError(t, indexsig.Upsert(ctx, pdb.DB, pdb.Dialect, indexsig.FTSSignatureID, "stamped-by-v2", "projection=v2"))
 
 	r, err := NewReprojector(drv, upgrade.NewManager(""), &recordingBus{})
@@ -66,11 +67,11 @@ func runReprojectRepairsRefText(t *testing.T, drv storage.StorageDriver, pdb sto
 	require.Equal(t, "bilby burrow", small.TextContent)
 	lost, err := drv.Objects().Get(ctx, "reftext-lost")
 	require.NoError(t, err)
-	require.Equal(t, "blob://reflostkey", lost.TextContent)
+	require.Equal(t, "blob://"+blobtest.KeyOf("reflostkey"), lost.TextContent)
 
 	storagetest.AssertFTS(t, drv, "numbat", "[reftext-big]")
 	storagetest.AssertFTS(t, drv, "bilby", "[reftext-small]")
-	storagetest.AssertFTS(t, drv, "reflostkey", "[]")
+	storagetest.AssertFTS(t, drv, blobtest.KeyOf("reflostkey"), "[]")
 	require.True(t, signatureMatches(t, pdb), "a lost blob kept the signature unstamped")
 	n, err := drv.Objects().(storage.ProjectionStore).CountStaleProjections(ctx)
 	require.NoError(t, err)

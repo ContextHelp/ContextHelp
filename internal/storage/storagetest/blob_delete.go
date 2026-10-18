@@ -47,8 +47,8 @@ func BlobDeleteConformance(t *testing.T, drv storage.StorageDriver) {
 		// row and check follow the delete.
 		rowFirst bool
 	}{
-		{name: "ingest row lands before the blob delete", key: "raceagerow", rowFirst: true},
-		{name: "ingest row lands after the blob delete", key: "raceagelate"},
+		{name: "ingest row lands before the blob delete", key: bk("raceagerow"), rowFirst: true},
+		{name: "ingest row lands after the blob delete", key: bk("raceagelate")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			blobDeleteIngestRace(t, fx, tc.key, tc.rowFirst)
@@ -115,18 +115,18 @@ func (fx *blobDeleteFx) count(t *testing.T, key string) int {
 func blobDeleteCount(t *testing.T, fx *blobDeleteFx) {
 	ctx := fx.ctx
 	drv := fx.drv
-	fx.create(t, &storage.KnowledgeObject{ID: "bref-raw", RawContent: "blob://cntkey", TextContent: "text"})
+	fx.create(t, &storage.KnowledgeObject{ID: "bref-raw", RawContent: "blob://" + bk("cntkey"), TextContent: "text"})
 	// Create never stores a ref as text; a row written before it
 	// did can still carry one, so Update stores it as given.
 	textRef := &storage.KnowledgeObject{ID: "bref-text", RawContent: "inline"}
 	fx.create(t, textRef)
-	textRef.TextContent = "blob://cntkey"
+	textRef.TextContent = "blob://" + bk("cntkey")
 	if err := drv.Objects().Update(ctx, textRef); err != nil {
 		t.Fatalf("Update bref-text: %v", err)
 	}
-	fx.create(t, &storage.KnowledgeObject{ID: "bref-meta", RawContent: "inline", Metadata: map[string]any{"blob_key": "cntkey"}})
-	fx.create(t, &storage.KnowledgeObject{ID: "bref-other", RawContent: "blob://cntkeyx", Metadata: map[string]any{"blob_key": "cntkeyx"}})
-	if n := fx.count(t, "cntkey"); n != 3 {
+	fx.create(t, &storage.KnowledgeObject{ID: "bref-meta", RawContent: "inline", Metadata: map[string]any{"blob_key": bk("cntkey")}})
+	fx.create(t, &storage.KnowledgeObject{ID: "bref-other", RawContent: "blob://" + bk("cntkeyx"), Metadata: map[string]any{"blob_key": bk("cntkeyx")}})
+	if n := fx.count(t, bk("cntkey")); n != 3 {
 		t.Errorf("CountBlobRefs(cntkey) = %d, want 3 (raw, text and metadata refs)", n)
 	}
 	if n := fx.count(t, "absent"); n != 0 {
@@ -138,11 +138,11 @@ func blobDeleteLastRef(t *testing.T, fx *blobDeleteFx) {
 	ctx := fx.ctx
 	drv := fx.drv
 	aged := fx.aged
-	fx.put(t, "ownkey")
-	fx.put(t, "sharedkey")
-	fx.create(t, &storage.KnowledgeObject{ID: "bdel-own", RawContent: "blob://ownkey", Metadata: map[string]any{"blob_key": "ownkey"}})
-	fx.create(t, &storage.KnowledgeObject{ID: "bdel-a", RawContent: "blob://sharedkey", Metadata: map[string]any{"blob_key": "sharedkey"}})
-	fx.create(t, &storage.KnowledgeObject{ID: "bdel-b", RawContent: "blob://sharedkey", Metadata: map[string]any{"blob_key": "sharedkey"}})
+	fx.put(t, bk("ownkey"))
+	fx.put(t, bk("sharedkey"))
+	fx.create(t, &storage.KnowledgeObject{ID: "bdel-own", RawContent: "blob://" + bk("ownkey"), Metadata: map[string]any{"blob_key": bk("ownkey")}})
+	fx.create(t, &storage.KnowledgeObject{ID: "bdel-a", RawContent: "blob://" + bk("sharedkey"), Metadata: map[string]any{"blob_key": bk("sharedkey")}})
+	fx.create(t, &storage.KnowledgeObject{ID: "bdel-b", RawContent: "blob://" + bk("sharedkey"), Metadata: map[string]any{"blob_key": bk("sharedkey")}})
 
 	for _, id := range []string{"bdel-own", "bdel-a"} {
 		orphans, err := blob.DeleteObject(ctx, aged, id)
@@ -153,16 +153,16 @@ func blobDeleteLastRef(t *testing.T, fx *blobDeleteFx) {
 			t.Errorf("Get %s after delete: %v, want ErrNotFound", id, err)
 		}
 	}
-	if fx.exists(t, "ownkey") {
+	if fx.exists(t, bk("ownkey")) {
 		t.Error("deleting the only object referring to a blob left the blob behind")
 	}
-	if !fx.exists(t, "sharedkey") {
+	if !fx.exists(t, bk("sharedkey")) {
 		t.Fatal("deleting one of two objects sharing a blob deleted the blob")
 	}
 	if _, err := blob.DeleteObject(ctx, aged, "bdel-b"); err != nil {
 		t.Fatalf("DeleteObject bdel-b: %v", err)
 	}
-	if fx.exists(t, "sharedkey") {
+	if fx.exists(t, bk("sharedkey")) {
 		t.Error("deleting the last object referring to a blob left the blob behind")
 	}
 }
@@ -170,17 +170,17 @@ func blobDeleteLastRef(t *testing.T, fx *blobDeleteFx) {
 func blobDeleteIngestDuring(t *testing.T, fx *blobDeleteFx) {
 	ctx := fx.ctx
 	aged := fx.aged
-	fx.put(t, "racekey")
-	fx.create(t, &storage.KnowledgeObject{ID: "bdel-race-old", RawContent: "blob://racekey", Metadata: map[string]any{"blob_key": "racekey"}})
+	fx.put(t, bk("racekey"))
+	fx.create(t, &storage.KnowledgeObject{ID: "bdel-race-old", RawContent: "blob://" + bk("racekey"), Metadata: map[string]any{"blob_key": bk("racekey")}})
 	ingested := false
 	hooked := countHookDriver{StorageDriver: aged, after: func(key string) {
-		if key != "racekey" || ingested {
+		if key != bk("racekey") || ingested {
 			return
 		}
 		ingested = true
-		fx.put(t, "racekey")
-		aged.Touch("racekey", time.Now())
-		fx.create(t, &storage.KnowledgeObject{ID: "bdel-race-new", RawContent: "blob://racekey", Metadata: map[string]any{"blob_key": "racekey"}})
+		fx.put(t, bk("racekey"))
+		aged.Touch(bk("racekey"), time.Now())
+		fx.create(t, &storage.KnowledgeObject{ID: "bdel-race-new", RawContent: "blob://" + bk("racekey"), Metadata: map[string]any{"blob_key": bk("racekey")}})
 	}}
 	orphans, err := blob.DeleteObject(ctx, hooked, "bdel-race-old")
 	if err != nil || len(orphans) != 0 {
@@ -189,13 +189,13 @@ func blobDeleteIngestDuring(t *testing.T, fx *blobDeleteFx) {
 	if !ingested {
 		t.Fatal("the delete never counted racekey's references")
 	}
-	if !fx.exists(t, "racekey") {
+	if !fx.exists(t, bk("racekey")) {
 		t.Fatal("an ingest landing between the reference count and the blob delete lost its blob: bdel-race-new names a deleted key")
 	}
 	if _, err := blob.Sweep(ctx, aged, blob.SweepOptions{Now: time.Now().Add(2 * blob.DefaultSweepGrace)}); err != nil {
 		t.Fatalf("Sweep: %v", err)
 	}
-	if !fx.exists(t, "racekey") {
+	if !fx.exists(t, bk("racekey")) {
 		t.Error("the sweep deleted a blob an object refers to")
 	}
 }
@@ -243,9 +243,9 @@ func blobDeleteYoung(t *testing.T, fx *blobDeleteFx) {
 	ctx := fx.ctx
 	drv := fx.drv
 	aged := fx.aged
-	fx.put(t, "youngkey")
-	aged.Touch("youngkey", time.Now())
-	fx.create(t, &storage.KnowledgeObject{ID: "bdel-young", RawContent: "blob://youngkey", Metadata: map[string]any{"blob_key": "youngkey"}})
+	fx.put(t, bk("youngkey"))
+	aged.Touch(bk("youngkey"), time.Now())
+	fx.create(t, &storage.KnowledgeObject{ID: "bdel-young", RawContent: "blob://" + bk("youngkey"), Metadata: map[string]any{"blob_key": bk("youngkey")}})
 	orphans, err := blob.DeleteObject(ctx, aged, "bdel-young")
 	if err != nil || len(orphans) != 0 {
 		t.Fatalf("DeleteObject = %v, %v", orphans, err)
@@ -253,13 +253,13 @@ func blobDeleteYoung(t *testing.T, fx *blobDeleteFx) {
 	if _, err := drv.Objects().Get(ctx, "bdel-young"); !errors.Is(err, storage.ErrNotFound) {
 		t.Errorf("Get after delete: %v, want ErrNotFound", err)
 	}
-	if !fx.exists(t, "youngkey") {
+	if !fx.exists(t, bk("youngkey")) {
 		t.Fatal("the delete removed a blob written inside the grace period")
 	}
 	if _, err := blob.Sweep(ctx, aged, blob.SweepOptions{Now: time.Now().Add(2 * blob.DefaultSweepGrace)}); err != nil {
 		t.Fatalf("Sweep: %v", err)
 	}
-	if fx.exists(t, "youngkey") {
+	if fx.exists(t, bk("youngkey")) {
 		t.Error("the sweep left the blob once it was past the grace period")
 	}
 }

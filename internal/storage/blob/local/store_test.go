@@ -36,12 +36,12 @@ func TestPutAndGet(t *testing.T) {
 		Filename:    "test.txt",
 	}
 
-	err := s.Put(ctx, "abc123def456", bytes.NewReader(data), meta)
+	err := s.Put(ctx, blobtest.KeyOf("abc123def456"), bytes.NewReader(data), meta)
 	if err != nil {
 		t.Fatalf("put: %v", err)
 	}
 
-	rc, gotMeta, err := s.Get(ctx, "abc123def456")
+	rc, gotMeta, err := s.Get(ctx, blobtest.KeyOf("abc123def456"))
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestExists(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 
-	ok, err := s.Exists(ctx, "missing")
+	ok, err := s.Exists(ctx, blobtest.KeyOf("missing"))
 	if err != nil {
 		t.Fatalf("exists: %v", err)
 	}
@@ -75,9 +75,9 @@ func TestExists(t *testing.T) {
 	}
 
 	data := []byte("test")
-	_ = s.Put(ctx, "present", bytes.NewReader(data), storage.BlobMeta{Size: int64(len(data))})
+	_ = s.Put(ctx, blobtest.KeyOf("present"), bytes.NewReader(data), storage.BlobMeta{Size: int64(len(data))})
 
-	ok, err = s.Exists(ctx, "present")
+	ok, err = s.Exists(ctx, blobtest.KeyOf("present"))
 	if err != nil {
 		t.Fatalf("exists: %v", err)
 	}
@@ -91,14 +91,14 @@ func TestDelete(t *testing.T) {
 	ctx := context.Background()
 
 	data := []byte("delete me")
-	_ = s.Put(ctx, "todelete", bytes.NewReader(data), storage.BlobMeta{Size: int64(len(data))})
+	_ = s.Put(ctx, blobtest.KeyOf("todelete"), bytes.NewReader(data), storage.BlobMeta{Size: int64(len(data))})
 
-	err := s.Delete(ctx, "todelete")
+	err := s.Delete(ctx, blobtest.KeyOf("todelete"))
 	if err != nil {
 		t.Fatalf("delete: %v", err)
 	}
 
-	ok, _ := s.Exists(ctx, "todelete")
+	ok, _ := s.Exists(ctx, blobtest.KeyOf("todelete"))
 	if ok {
 		t.Error("expected false after delete")
 	}
@@ -108,7 +108,7 @@ func TestList(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 
-	keys := []string{"aabb11", "aabb22", "ccdd33"}
+	keys := []string{blobtest.HexKey("aabb11"), blobtest.HexKey("aabb22"), blobtest.HexKey("ccdd33")}
 	for _, k := range keys {
 		_ = s.Put(ctx, k, bytes.NewReader([]byte("x")), storage.BlobMeta{Size: 1})
 	}
@@ -127,9 +127,9 @@ func TestURL(t *testing.T) {
 	ctx := context.Background()
 
 	data := []byte("url test")
-	_ = s.Put(ctx, "urlkey1", bytes.NewReader(data), storage.BlobMeta{Size: int64(len(data))})
+	_ = s.Put(ctx, blobtest.KeyOf("urlkey1"), bytes.NewReader(data), storage.BlobMeta{Size: int64(len(data))})
 
-	u, err := s.URL(ctx, "urlkey1")
+	u, err := s.URL(ctx, blobtest.KeyOf("urlkey1"))
 	if err != nil {
 		t.Fatalf("url: %v", err)
 	}
@@ -149,8 +149,8 @@ func TestPutIdempotent(t *testing.T) {
 	data := []byte("idempotent")
 	meta := storage.BlobMeta{Size: int64(len(data)), ContentType: "text/plain"}
 
-	_ = s.Put(ctx, "idem", bytes.NewReader(data), meta)
-	err := s.Put(ctx, "idem", bytes.NewReader(data), meta)
+	_ = s.Put(ctx, blobtest.KeyOf("idem"), bytes.NewReader(data), meta)
+	err := s.Put(ctx, blobtest.KeyOf("idem"), bytes.NewReader(data), meta)
 	if err != nil {
 		t.Fatalf("second put: %v", err)
 	}
@@ -159,11 +159,11 @@ func TestPutIdempotent(t *testing.T) {
 func TestKeySharding(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
-	key := "abcdef1234567890" // gitleaks:allow blob key, not a secret
+	key := blobtest.HexKey("abcdef1234567890")
 
 	_ = s.Put(ctx, key, bytes.NewReader([]byte("x")), storage.BlobMeta{Size: 1})
 
-	// Verify 2-level sharding: root/ab/cd/abcdef1234567890
+	// Verify 2-level sharding: root/ab/cd/<key>
 	expected := s.blobPath(key)
 	if _, err := os.Stat(expected); err != nil {
 		t.Errorf("expected sharded path %q to exist: %v", expected, err)
@@ -177,14 +177,14 @@ var _ storage.BlobStore = (*Store)(nil)
 func TestGetNotFound(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
-	if _, _, err := s.Get(ctx, "abcd0000missing"); !errors.Is(err, storage.ErrBlobNotFound) {
+	if _, _, err := s.Get(ctx, blobtest.KeyOf("abcd0000missing")); !errors.Is(err, storage.ErrBlobNotFound) {
 		t.Errorf("Get missing key: err = %v, want ErrBlobNotFound", err)
 	}
 
-	if err := s.Put(ctx, "abcd0000locked", bytes.NewReader([]byte("x")), storage.BlobMeta{}); err != nil {
+	if err := s.Put(ctx, blobtest.KeyOf("abcd0000locked"), bytes.NewReader([]byte("x")), storage.BlobMeta{}); err != nil {
 		t.Fatal(err)
 	}
-	path := s.blobPath("abcd0000locked")
+	path := s.blobPath(blobtest.KeyOf("abcd0000locked"))
 	if err := os.Chmod(path, 0); err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestGetNotFound(t *testing.T) {
 		f.Close()
 		t.Skip("running with permission to open a mode-000 file")
 	}
-	_, _, err := s.Get(ctx, "abcd0000locked")
+	_, _, err := s.Get(ctx, blobtest.KeyOf("abcd0000locked"))
 	if err == nil || errors.Is(err, storage.ErrBlobNotFound) {
 		t.Errorf("Get unreadable blob: err = %v, want an error that is not ErrBlobNotFound", err)
 	}
@@ -216,7 +216,7 @@ func TestStore_ClosedToOtherUsers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Put(context.Background(), "abcdef", bytes.NewReader([]byte("x")), storage.BlobMeta{}); err != nil {
+	if err := s.Put(context.Background(), blobtest.KeyOf("abcdef"), bytes.NewReader([]byte("x")), storage.BlobMeta{}); err != nil {
 		t.Fatal(err)
 	}
 	err = filepath.Walk(root, func(p string, fi os.FileInfo, err error) error {
