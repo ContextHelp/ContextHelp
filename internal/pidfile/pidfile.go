@@ -6,31 +6,36 @@
 //
 // On clean shutdown the file is removed. Readers (dpkms ps, shutdown,
 // reboot, ctxt) validate each pidfile by checking whether the recorded
-// pid is alive (kill -0) and, when the OS reports it, that the process
-// started no later than the entry's started_at: a later start means the
-// pid was reused by an unrelated process. Stale files (from crashes or
-// reboots) are silently removed. At startup, serve also treats an entry recording its
-// own pid as stale: it has not registered yet, so the entry is a leftover
-// from an earlier process that had the same pid (a container's PID 1).
+// pid is running (kill -0 on Unix, the process handle on Windows) and,
+// when the OS reports it, that the process started no later than the
+// entry's started_at: a later start means the pid was reused by an
+// unrelated process. Stale files (from crashes or reboots) are silently
+// removed. At startup, serve also treats an entry recording its own pid
+// as stale: it has not registered yet, so the entry is a leftover from
+// an earlier process that had the same pid (a container's PID 1).
 //
 // Write replaces a pidfile atomically, so a reader sees the old file or
 // the new one, never a partial write. A file a reader cannot parse is
-// skipped, never removed, and a stale entry is removed only while the
-// file is still the one that was read: a pidfile a new instance wrote
-// meanwhile is kept.
+// skipped, never removed. Write and Scan take the run dir's lock
+// (lock.go), so a scan removes only the stale file it judged, never one
+// a new instance writes meanwhile.
+//
+// The run dir (<data dir>/run, mode 0750) is not always one user's: an
+// instance started with sudo, or from a --data-dir several users share,
+// runs as another user. A pid this user may not signal is therefore a
+// running process (alive); a pid the OS reused is told apart by its
+// start time (sameProcess).
 package pidfile
 
 import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/safefs"
@@ -68,6 +73,11 @@ func Write(dir string, info Info) error {
 	if err != nil {
 		return err
 	}
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return err
+	}
+	release, _ := lockDir(dir)
+	defer release()
 	return safefs.ReplaceFile(dir, fmt.Sprintf("%d.pid", info.Port), bytes.NewReader(data), 0o600)
 }
 
@@ -82,6 +92,8 @@ func Scan(dir string) ([]Info, error) { return scan(dir, 0) }
 // scan is Scan, also treating entries that record pid self as stale
 // (self 0 disables this).
 func scan(dir string, self int) ([]Info, error) {
+	release, locked := lockDir(dir)
+	defer release()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -96,14 +108,18 @@ func scan(dir string, self int) ([]Info, error) {
 			continue
 		}
 		path := filepath.Join(dir, e.Name())
-		info, read, err := readEntry(path)
+		info, err := readEntry(path)
 		if err != nil {
 			// Unreadable or unparseable: not a file to judge, so not
 			// one to remove. The next Write for its port replaces it.
 			continue
 		}
 		if (self > 0 && info.PID == self) || !alive(info.PID) || !sameProcess(info) {
-			removeIfUnchanged(path, read)
+			// Pruned only under the lock: unlocked, a writer may be
+			// renaming a live entry over this very path.
+			if locked {
+				_ = os.Remove(path)
+			}
 			continue
 		}
 		live = append(live, info)
@@ -111,36 +127,17 @@ func scan(dir string, self int) ([]Info, error) {
 	return live, nil
 }
 
-// readEntry decodes the pidfile at path, and returns the file it read
-// for removeIfUnchanged.
-func readEntry(path string) (Info, os.FileInfo, error) {
-	f, err := os.Open(path) // #nosec G304 -- a pidfile in the run dir
+// readEntry decodes the pidfile at path.
+func readEntry(path string) (Info, error) {
+	data, err := os.ReadFile(path) // #nosec G304 -- a pidfile in the run dir
 	if err != nil {
-		return Info{}, nil, err
-	}
-	defer f.Close()
-	read, err := f.Stat()
-	if err != nil {
-		return Info{}, nil, err
-	}
-	data, err := io.ReadAll(f)
-	if err != nil {
-		return Info{}, nil, err
+		return Info{}, err
 	}
 	var info Info
 	if err := json.Unmarshal(data, &info); err != nil {
-		return Info{}, nil, err
+		return Info{}, err
 	}
-	return info, read, nil
-}
-
-// removeIfUnchanged removes path while it is still the file read: Write
-// renames a new file into place, so a pidfile written since the entry
-// was judged stale is another file, and is kept.
-func removeIfUnchanged(path string, read os.FileInfo) {
-	if cur, err := os.Stat(path); err == nil && os.SameFile(read, cur) {
-		_ = os.Remove(path)
-	}
+	return info, nil
 }
 
 // FindByName scans dir and returns the live Info whose Name matches, or
@@ -173,22 +170,6 @@ func CheckNameConflict(dir, name string) error {
 		}
 	}
 	return nil
-}
-
-// alive reports whether the process with the given pid is running and
-// this user may signal it. A pid kill -0 answers EPERM belongs to another
-// user, so it cannot be an instance in this user's run dir: it is not
-// alive here (kit's ps.IsAlive counts it alive).
-func alive(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	// kill -0: no signal sent, just checks existence.
-	return proc.Signal(syscall.Signal(0)) == nil
 }
 
 // PortFromFilename extracts the port number from a pidfile name like "8080.pid".
