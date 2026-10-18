@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob/blobtest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob/local"
 )
 
@@ -19,9 +20,9 @@ func putBlob(t *testing.T, s storage.BlobStore, key, data string) {
 func TestContent(t *testing.T) {
 	ctx := context.Background()
 	s, _ := local.New(t.TempDir())
-	putBlob(t, s, "abcd1234", "the whole blob")
+	putBlob(t, s, blobtest.KeyOf("abcd1234"), "the whole blob")
 
-	if got, err := Content(ctx, s, "blob://abcd1234"); err != nil || got != "the whole blob" {
+	if got, err := Content(ctx, s, "blob://"+blobtest.KeyOf("abcd1234")); err != nil || got != "the whole blob" {
 		t.Errorf("ref: got %q, %v", got, err)
 	}
 	if got, err := Content(ctx, s, "inline text"); err != nil || got != "inline text" {
@@ -30,10 +31,10 @@ func TestContent(t *testing.T) {
 	if got, err := Content(ctx, nil, "inline text"); err != nil || got != "inline text" {
 		t.Errorf("inline without store: got %q, %v", got, err)
 	}
-	if _, err := Content(ctx, s, "blob://missing"); err == nil {
+	if _, err := Content(ctx, s, "blob://"+blobtest.KeyOf("missing")); err == nil {
 		t.Error("missing blob: want error")
 	}
-	if _, err := Content(ctx, nil, "blob://abcd1234"); err == nil {
+	if _, err := Content(ctx, nil, "blob://"+blobtest.KeyOf("abcd1234")); err == nil {
 		t.Error("ref without store: want error")
 	}
 }
@@ -41,9 +42,9 @@ func TestContent(t *testing.T) {
 func TestPreview(t *testing.T) {
 	ctx := context.Background()
 	s, _ := local.New(t.TempDir())
-	putBlob(t, s, "exact000", "12345")
-	putBlob(t, s, "longer00", "1234567890")
-	putBlob(t, s, "runes000", "abéé") // a b é(2) é(2) = 6 bytes
+	putBlob(t, s, blobtest.KeyOf("exact000"), "12345")
+	putBlob(t, s, blobtest.KeyOf("longer00"), "1234567890")
+	putBlob(t, s, blobtest.KeyOf("runes000"), "abéé") // a b é(2) é(2) = 6 bytes
 
 	cases := []struct {
 		content string
@@ -51,11 +52,11 @@ func TestPreview(t *testing.T) {
 		want    string
 		cut     bool
 	}{
-		{"blob://exact000", 5, "12345", false},
-		{"blob://longer00", 5, "12345", true},
-		{"blob://longer00", 0, "1234567890", false},
-		{"blob://runes000", 3, "ab", true}, // never split é
-		{"blob://runes000", 4, "abé", true},
+		{"blob://" + blobtest.KeyOf("exact000"), 5, "12345", false},
+		{"blob://" + blobtest.KeyOf("longer00"), 5, "12345", true},
+		{"blob://" + blobtest.KeyOf("longer00"), 0, "1234567890", false},
+		{"blob://" + blobtest.KeyOf("runes000"), 3, "ab", true}, // never split é
+		{"blob://" + blobtest.KeyOf("runes000"), 4, "abé", true},
 		{"inline content longer than max", 4, "inline content longer than max", false},
 	}
 	for _, c := range cases {

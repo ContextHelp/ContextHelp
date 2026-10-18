@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob/blobtest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob/local"
 )
 
@@ -31,12 +32,12 @@ func TestResolveBlobReference(t *testing.T) {
 	ctx := context.Background()
 
 	original := []byte("blob content here")
-	_ = s.Put(ctx, "abc123", bytes.NewReader(original), storage.BlobMeta{
+	_ = s.Put(ctx, blobtest.KeyOf("abc123"), bytes.NewReader(original), storage.BlobMeta{
 		ContentType: "text/plain",
 		Size:        int64(len(original)),
 	})
 
-	obj := &storage.KnowledgeObject{RawContent: "blob://abc123"}
+	obj := &storage.KnowledgeObject{RawContent: "blob://" + blobtest.KeyOf("abc123")}
 
 	rc, err := Resolve(ctx, s, obj)
 	if err != nil {

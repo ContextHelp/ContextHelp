@@ -11,6 +11,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob/blobtest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob/local"
 )
 
@@ -25,7 +26,7 @@ func TestBackupRestoreKeepsBlobMeta(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const key = "a1b2c3d4meta"
+	key := blobtest.KeyOf("a1b2c3d4meta")
 	body := "%PDF-1.7 not really"
 	want := storage.BlobMeta{
 		ContentType: "application/pdf",

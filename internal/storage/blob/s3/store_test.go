@@ -71,7 +71,7 @@ func TestExistsNotFound(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ok, err := newTestStore(t, srv).Exists(context.Background(), "abcdef1234")
+	ok, err := newTestStore(t, srv).Exists(context.Background(), blobtest.HexKey("abcdef1234"))
 	if err != nil {
 		t.Fatalf("404 must not surface as an error: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestExistsPresent(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ok, err := newTestStore(t, srv).Exists(context.Background(), "abcdef1234")
+	ok, err := newTestStore(t, srv).Exists(context.Background(), blobtest.HexKey("abcdef1234"))
 	if err != nil {
 		t.Fatalf("Exists: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestExistsAccessDeniedIsError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ok, err := newTestStore(t, srv).Exists(context.Background(), "abcdef1234")
+	ok, err := newTestStore(t, srv).Exists(context.Background(), blobtest.HexKey("abcdef1234"))
 	if err == nil {
 		t.Fatal("access-denied must surface as an error, got (false, nil) — " +
 			"callers cannot distinguish it from a genuinely missing object")
@@ -127,15 +127,16 @@ func TestListFollowsContinuation(t *testing.T) {
 <Contents><Key>%s</Key><Size>3</Size><LastModified>2026-01-02T03:04:05.000Z</LastModified></Contents>
 <Contents><Key>%s.meta.json</Key><Size>2</Size><LastModified>2026-01-02T03:04:05.000Z</LastModified></Contents>
 </ListBucketResult>`
+	first, second := blobtest.HexKey("abcd1"), blobtest.HexKey("ef012")
 	var calls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
 		w.Header().Set("Content-Type", "application/xml")
 		if r.URL.Query().Get("continuation-token") == "" {
-			fmt.Fprintf(w, page, "true", "<NextContinuationToken>next</NextContinuationToken>", "ab/cd/abcdfirst", "ab/cd/abcdfirst")
+			fmt.Fprintf(w, page, "true", "<NextContinuationToken>next</NextContinuationToken>", "ab/cd/"+first, "ab/cd/"+first)
 			return
 		}
-		fmt.Fprintf(w, page, "false", "", "ef/01/ef01second", "ef/01/ef01second")
+		fmt.Fprintf(w, page, "false", "", "ef/01/"+second, "ef/01/"+second)
 	}))
 	defer srv.Close()
 
@@ -147,8 +148,8 @@ func TestListFollowsContinuation(t *testing.T) {
 	for _, it := range items {
 		keys = append(keys, it.Key)
 	}
-	if len(keys) != 2 || keys[0] != "abcdfirst" || keys[1] != "ef01second" {
-		t.Errorf("List keys = %v, want [abcdfirst ef01second] (calls: %d)", keys, calls)
+	if len(keys) != 2 || keys[0] != first || keys[1] != second {
+		t.Errorf("List keys = %v, want [%s %s] (calls: %d)", keys, first, second, calls)
 	}
 }
 
@@ -182,7 +183,7 @@ func TestGetNotFound(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			_, _, err := newTestStore(t, srv).Get(context.Background(), "abcdef1234")
+			_, _, err := newTestStore(t, srv).Get(context.Background(), blobtest.HexKey("abcdef1234"))
 			if err == nil {
 				t.Fatal("Get: no error")
 			}
@@ -215,13 +216,13 @@ func TestListConformance(t *testing.T) {
 func TestFakeRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	f, s := newFakeS3(t, "test-bucket", "")
-	if err := s.Put(ctx, "abcdef01", strings.NewReader("payload"), storage.BlobMeta{ContentType: "text/plain"}); err != nil {
+	if err := s.Put(ctx, blobtest.HexKey("abcdef01"), strings.NewReader("payload"), storage.BlobMeta{ContentType: "text/plain"}); err != nil {
 		t.Fatalf("Put: %v", err)
 	}
-	if _, ok := f.objects["ab/cd/abcdef01"]; !ok {
-		t.Fatalf("Put stored %v, want ab/cd/abcdef01 and its meta", f.objects)
+	if _, ok := f.objects["ab/cd/"+blobtest.HexKey("abcdef01")]; !ok {
+		t.Fatalf("Put stored %v, want ab/cd/<key> and its meta", f.objects)
 	}
-	rc, meta, err := s.Get(ctx, "abcdef01")
+	rc, meta, err := s.Get(ctx, blobtest.HexKey("abcdef01"))
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -230,13 +231,13 @@ func TestFakeRoundTrip(t *testing.T) {
 	if string(got) != "payload" || meta.ContentType != "text/plain" {
 		t.Errorf("Get = %q, %+v", got, meta)
 	}
-	if ok, err := s.Exists(ctx, "abcdef01"); err != nil || !ok {
+	if ok, err := s.Exists(ctx, blobtest.HexKey("abcdef01")); err != nil || !ok {
 		t.Errorf("Exists = %v, %v", ok, err)
 	}
-	if err := s.Delete(ctx, "abcdef01"); err != nil {
+	if err := s.Delete(ctx, blobtest.HexKey("abcdef01")); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
-	if ok, err := s.Exists(ctx, "abcdef01"); err != nil || ok {
+	if ok, err := s.Exists(ctx, blobtest.HexKey("abcdef01")); err != nil || ok {
 		t.Errorf("Exists after Delete = %v, %v", ok, err)
 	}
 }
