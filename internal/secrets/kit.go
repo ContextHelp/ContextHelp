@@ -106,7 +106,11 @@ func New(cfg config.SecretsConfig) (secret.MutableStore, error) {
 
 	switch canonical {
 	case "", "env":
-		return secret.Open(secret.Config{Backend: "env", Prefix: ""})
+		s, err := secret.Open(secret.Config{Backend: "env", Prefix: ""})
+		if err != nil {
+			return nil, err
+		}
+		return unlistedEnv{s}, nil
 	case "keyring":
 		svc := cfg.KeychainService
 		if svc == "" {
@@ -157,4 +161,14 @@ func Getter(store secret.Store) func(ctx context.Context, name string) (string, 
 		}
 		return string(s.Value), nil
 	}
+}
+
+// unlistedEnv is the env backend with List refused. Secrets are read as
+// unprefixed variables (OPENAI_API_KEY), so there is no prefix to scope
+// a listing to: kit's env List would return the name of every variable
+// in the process environment.
+type unlistedEnv struct{ secret.MutableStore }
+
+func (unlistedEnv) List(context.Context, string) ([]string, error) {
+	return nil, fmt.Errorf("secrets: env backend: keys are unprefixed environment variables; listing them would list the whole environment: %w", secret.ErrNotSupported)
 }
