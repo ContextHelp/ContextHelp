@@ -25,8 +25,8 @@ const (
 )
 
 // fakeAPI answers every hosted provider's request shape and records the
-// API key each request carried (Authorization bearer, x-api-key, or the
-// Gemini key query parameter).
+// API key each request carried (Authorization bearer, x-api-key or
+// x-goog-api-key).
 type fakeAPI struct {
 	srv  *httptest.Server
 	mu   sync.Mutex
@@ -42,7 +42,7 @@ func newFakeAPI(t *testing.T) *fakeAPI {
 			key = r.Header.Get("x-api-key")
 		}
 		if key == "" {
-			key = r.URL.Query().Get("key")
+			key = r.Header.Get("x-goog-api-key")
 		}
 		a.mu.Lock()
 		a.keys = append(a.keys, key)
