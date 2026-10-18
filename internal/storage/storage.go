@@ -225,9 +225,11 @@ type ObjectStore interface {
 	// profile, paging and order come from filter exactly as for List, so
 	// a query-language search never reaches an object a List would not.
 	ListBySQL(ctx context.Context, where string, args []any, filter ObjectFilter) ([]*KnowledgeObject, int, error)
-	// Reinforce merges mergeData's tags, mentions and content into the
-	// object of mergeData.ProfileID whose content hash is hash, bumps
-	// its reinforcement count and returns its ID. No such object in
+	// Reinforce merges mergeData's tags and mentions into the object of
+	// mergeData.ProfileID whose content hash is hash, bumps its
+	// reinforcement count and returns its ID. It never replaces the
+	// content: the hash folds case and spacing, and the object keeps its
+	// first bytes. No such object in
 	// that profile is an error wrapping sql.ErrNoRows: the same content
 	// under another profile is never merged into (ADR-080 §4).
 	Reinforce(ctx context.Context, hash string, mergeData *KnowledgeObject) (string, error)
