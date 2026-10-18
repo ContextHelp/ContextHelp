@@ -2,6 +2,7 @@ package blob
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"strings"
 
@@ -22,6 +23,9 @@ func Resolve(ctx context.Context, store storage.BlobStore, obj *storage.Knowledg
 	key, ok := BlobKey(obj.RawContent)
 	if !ok {
 		return io.NopCloser(strings.NewReader(obj.RawContent)), nil
+	}
+	if err := storage.CheckBlobKey(key); err != nil {
+		return nil, fmt.Errorf("resolve %s: %w", obj.RawContent, err)
 	}
 	rc, _, err := store.Get(ctx, key)
 	return rc, err

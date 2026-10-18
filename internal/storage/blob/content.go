@@ -35,6 +35,11 @@ func read(ctx context.Context, store storage.BlobStore, content string, max int6
 	if !ok {
 		return content, false, nil
 	}
+	// A ref is stored content: a writer may have set it. Its key is
+	// refused here, before any store sees it.
+	if err := storage.CheckBlobKey(key); err != nil {
+		return "", false, fmt.Errorf("resolve %s: %w", content, err)
+	}
 	if store == nil {
 		return "", false, fmt.Errorf("resolve %s: %w", content, ErrNoStore)
 	}
