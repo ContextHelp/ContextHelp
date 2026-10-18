@@ -20,6 +20,10 @@ Where data crosses a trust boundary in ctxt and dpkms, and what guards each cros
 
 **Not guarded**: the database and blobs are stored in the clear; logs are not sanitized; `dpkms backup` archives are not encrypted. Use OS disk encryption (FileVault, LUKS, BitLocker) and keep the data directory private.
 
+**Run-dir lock**: `run/.pidfile.lock` serializes pidfile writes, removals and stale-pidfile pruning. It is created group-writable, and a user who can only read it still takes the lock, so every user of a shared run dir locks alike. Two consequences:
+- anyone who can open the file, read-only included, can hold the lock. A holder stalls pruning (scans then read without pruning) and makes `serve` start or stop write its pidfile unlocked after a one-second wait. It cannot change a pidfile. Keep the run dir private to the users who run ctxt.
+- where flock is emulated or missing, the lock can fail, and a failed lock means the run dir is used unlocked. NFS maps flock to fcntl locks, which a read-only open cannot take and which fail without a lock daemon. Keep the run dir on a local disk.
+
 ## Boundary 2: External registries
 
 **What crosses**: entity and taxonomy data from `registries`, step manifests from step registries (`dpkms pipeline step install --registry <url>`), registry credentials.
