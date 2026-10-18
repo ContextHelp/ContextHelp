@@ -2,15 +2,19 @@ package storagetest
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
-// ReinforceReindexConformance pins that Reinforce, the path re-ingest of
-// duplicate content takes, re-indexes the object like Update: the text
-// and tags it writes are what full-text search finds, and the text it
-// replaced is no longer found.
+// ReinforceReindexConformance pins Reinforce, the path re-ingest of
+// duplicate content takes: it bumps the reinforcement count and merges
+// tags, and never replaces the stored content. A duplicate is found by
+// the folded content hash, so the newer bytes may differ in case or
+// spacing; the object keeps its first bytes. The row is
+// re-indexed like Update indexes it: the stored text stays found, the
+// duplicate's is never indexed.
 func ReinforceReindexConformance(t *testing.T, drv storage.StorageDriver) {
 	t.Helper()
 	ctx := context.Background()
@@ -28,8 +32,9 @@ func ReinforceReindexConformance(t *testing.T, drv storage.StorageDriver) {
 	}
 	const hash = "reinforce-reindex-hash"
 	obj := &storage.KnowledgeObject{
-		ID: "reinforce-reindex", Type: "note", RawContent: "blob://feedbeef",
+		ID: "reinforce-reindex", Type: "note", RawContent: "aardvark burrow",
 		TextContent: "aardvark burrow", ContentHash: hash, ReinforcementCount: 1,
+		Tags:      []storage.Tag{{Label: "first"}},
 		CreatedAt: fixtureTime(), UpdatedAt: fixtureTime(),
 	}
 	if err := drv.Objects().Create(ctx, obj); err != nil {
@@ -40,7 +45,8 @@ func ReinforceReindexConformance(t *testing.T, drv storage.StorageDriver) {
 	}
 
 	id, err := drv.Objects().Reinforce(ctx, hash, &storage.KnowledgeObject{
-		RawContent: obj.RawContent, TextContent: "pangolin scales",
+		RawContent: "AARDVARK   pangolin", TextContent: "pangolin scales",
+		Tags: []storage.Tag{{Label: "badgerly"}},
 	})
 	if err != nil {
 		t.Fatalf("Reinforce: %v", err)
@@ -48,18 +54,28 @@ func ReinforceReindexConformance(t *testing.T, drv storage.StorageDriver) {
 	if id != obj.ID {
 		t.Fatalf("Reinforce = %q, want %q", id, obj.ID)
 	}
-	if got := search(t, "pangolin"); len(got) != 1 || got[0] != obj.ID {
-		t.Errorf("search for the reinforced text = %v, want [%s]: Reinforce did not re-index", got, obj.ID)
-	}
-	if got := search(t, "aardvark"); len(got) != 0 {
-		t.Errorf("search for the replaced text = %v, want none: the old index entry survived", got)
-	}
 	got, err := drv.Objects().Get(ctx, obj.ID)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	if got.TextContent != "pangolin scales" {
-		t.Errorf("stored TextContent = %q, want the reinforced text", got.TextContent)
+	if got.RawContent != obj.RawContent || got.TextContent != obj.TextContent {
+		t.Errorf("stored content = %q / %q, want the first bytes %q: Reinforce replaced it", got.RawContent, got.TextContent, obj.RawContent)
+	}
+	if got.ReinforcementCount != 2 || got.LastReinforcedAt == nil {
+		t.Errorf("reinforcement = %d, %v; want 2 and a time", got.ReinforcementCount, got.LastReinforcedAt)
+	}
+	labels := make([]string, 0, len(got.Tags))
+	for _, tag := range got.Tags {
+		labels = append(labels, tag.Label)
+	}
+	if !slices.Contains(labels, "first") || !slices.Contains(labels, "badgerly") {
+		t.Errorf("tags = %v, want first and badgerly merged", labels)
+	}
+	if got := search(t, "aardvark"); len(got) != 1 || got[0] != obj.ID {
+		t.Errorf("search for the stored text = %v, want [%s]", got, obj.ID)
+	}
+	if got := search(t, "pangolin"); len(got) != 0 {
+		t.Errorf("search for the duplicate's text = %v, want none: it was never stored", got)
 	}
 	if !got.FTSIndexed {
 		t.Error("fts_indexed cleared on a reinforced, indexed object")
