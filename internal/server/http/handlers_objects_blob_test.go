@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob/blobtest"
 )
 
 // seedBlobRefObject stores an object whose content lives in the blob
@@ -15,7 +16,7 @@ import (
 func seedBlobRefObject(t *testing.T, ts *testServerBundle, id, content string) {
 	t.Helper()
 	ctx := ownerCtx()
-	key := "k" + id
+	key := blobtest.KeyOf(id)
 	if err := ts.svc.Store(ownerCtx()).Blobs().Put(ctx, key, strings.NewReader(content), storage.BlobMeta{Size: int64(len(content))}); err != nil {
 		t.Fatalf("put blob: %v", err)
 	}
@@ -72,7 +73,7 @@ func TestGetObjectLostBlobIs500(t *testing.T) {
 	ts := newTestServerBundle(t)
 	defer ts.Close()
 	seedBlobRefObject(t, ts, "obj-lost", "gone soon")
-	if err := ts.svc.Store(ownerCtx()).Blobs().Delete(ownerCtx(), "kobj-lost"); err != nil {
+	if err := ts.svc.Store(ownerCtx()).Blobs().Delete(ownerCtx(), blobtest.KeyOf("obj-lost")); err != nil {
 		t.Fatalf("delete blob: %v", err)
 	}
 

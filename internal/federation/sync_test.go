@@ -243,7 +243,7 @@ func seedBlobSource(t *testing.T, size int, ids ...string) storage.StorageDriver
 	ctx := context.Background()
 	src, _ := newTestDB(t)
 	for i, id := range ids {
-		key := fmt.Sprintf("%040x", i+1)
+		key := fmt.Sprintf("%064x", i+1)
 		content := strings.Repeat(id[len(id)-1:], size)
 		if err := src.Blobs().Put(ctx, key, strings.NewReader(content), storage.BlobMeta{Size: int64(size)}); err != nil {
 			t.Fatal(err)

@@ -9,6 +9,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob/blobtest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob/local"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
@@ -24,7 +25,7 @@ func TestRestoreWritesBlobsToConfiguredStore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := bs.Put(ctx, "abcdef0123", strings.NewReader("blob body"), storage.BlobMeta{}); err != nil {
+	if err := bs.Put(ctx, blobtest.HexKey("abcdef0123"), strings.NewReader("blob body"), storage.BlobMeta{}); err != nil {
 		t.Fatal(err)
 	}
 	drv, err := storageutil.Open("sqlite", srcDB, config.BlobConfig{Backend: "local", Local: config.BlobLocalConfig{Path: srcBlobs}})
@@ -67,7 +68,7 @@ func TestRestoreWritesBlobsToConfiguredStore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ok, err := restored.Exists(ctx, "abcdef0123"); err != nil || !ok {
+	if ok, err := restored.Exists(ctx, blobtest.HexKey("abcdef0123")); err != nil || !ok {
 		t.Fatalf("blob not in the configured store %s (exists=%v, err=%v)", dstBlobs, ok, err)
 	}
 }

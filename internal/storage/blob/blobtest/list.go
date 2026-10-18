@@ -11,10 +11,16 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
-// listKeys are the blobs ListConformance puts: long keys share their
-// first two and four characters (the backends shard keys into
-// <k[:2]>/<k[2:4]>/<k> paths), and short keys are stored unsharded.
-var listKeys = []string{"abcdef01", "abcdff02", "abzz03", "ef0123", "ab9", "x"}
+// listKeys are the blobs ListConformance puts: keys sharing their first
+// two and four characters (the backends shard keys into
+// <k[:2]>/<k[2:4]>/<k> paths), and one in another shard.
+var (
+	listK1   = HexKey("abcdef01")
+	listK2   = HexKey("abcdff02")
+	listK3   = HexKey("abee03")
+	listK4   = HexKey("ef0123")
+	listKeys = []string{listK1, listK2, listK3, listK4}
+)
 
 // ListConformance pins List(prefix) on a store holding nothing but the
 // blobs it puts: every key with that prefix, matched against the key
@@ -33,20 +39,20 @@ func ListConformance(t *testing.T, store storage.BlobStore) {
 		prefix string
 		want   []string
 	}{
-		{"", []string{"ab9", "abcdef01", "abcdff02", "abzz03", "ef0123", "x"}},
-		{"abcdef01", []string{"abcdef01"}},
-		{"abcdef", []string{"abcdef01"}},
-		{"abcd", []string{"abcdef01", "abcdff02"}},
-		{"abc", []string{"abcdef01", "abcdff02"}},
-		{"ab", []string{"ab9", "abcdef01", "abcdff02", "abzz03"}},
-		{"a", []string{"ab9", "abcdef01", "abcdff02", "abzz03"}},
-		{"ef0123", []string{"ef0123"}},
-		{"x", []string{"x"}},
+		{"", []string{listK1, listK2, listK3, listK4}},
+		{listK1, []string{listK1}},
+		{"abcdef01", []string{listK1}},
+		{"abcdef", []string{listK1}},
+		{"abcd", []string{listK1, listK2}},
+		{"abc", []string{listK1, listK2}},
+		{"ab", []string{listK1, listK2, listK3}},
+		{"a", []string{listK1, listK2, listK3}},
+		{"ef0123", []string{listK4}},
 		// cd and 01 name shard directories and key suffixes, not keys.
 		{"cd", nil},
 		{"01", nil},
 		{"abcdef012", nil},
-		{"zz", nil},
+		{"ff", nil},
 	} {
 		t.Run("prefix="+tc.prefix, func(t *testing.T) {
 			items, err := store.List(ctx, tc.prefix)

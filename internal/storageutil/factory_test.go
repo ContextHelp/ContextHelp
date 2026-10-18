@@ -10,6 +10,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob/blobtest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob/local"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
@@ -68,10 +69,11 @@ func TestOpenWiresConfiguredBlobStore(t *testing.T) {
 	if _, ok := driver.Blobs().(*local.Store); !ok {
 		t.Fatalf("Blobs() = %T, want *local.Store", driver.Blobs())
 	}
-	if err := driver.Blobs().Put(ctx, "abcdef", strings.NewReader("kept"), storage.BlobMeta{}); err != nil {
+	key := blobtest.HexKey("abcdef")
+	if err := driver.Blobs().Put(ctx, key, strings.NewReader("kept"), storage.BlobMeta{}); err != nil {
 		t.Fatalf("put: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(blobDir, "ab", "cd", "abcdef")); err != nil {
+	if _, err := os.Stat(filepath.Join(blobDir, "ab", "cd", key)); err != nil {
 		t.Fatalf("blob not under storage.blob.local.path: %v", err)
 	}
 }

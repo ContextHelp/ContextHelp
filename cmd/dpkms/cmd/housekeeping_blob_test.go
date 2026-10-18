@@ -11,6 +11,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliformat"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob/blobtest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob/local"
 	"github.com/stretchr/testify/require"
 )
@@ -80,10 +81,10 @@ func TestHousekeepingPruneDeletesBlobs(t *testing.T) {
 	f := setupPruneBlobDB(t)
 	old := time.Date(2023, 6, 1, 0, 0, 0, 0, time.UTC)
 	recent := time.Now().UTC().Truncate(time.Second)
-	f.seed(t, "obj_old_own", "keyown", old)
-	f.seed(t, "obj_old_shared", "keyshared", old)
-	f.seed(t, "obj_new_shared", "keyshared", recent)
-	f.seedAged(t, "obj_old_fresh", "keyfresh", old, 10*time.Minute)
+	f.seed(t, "obj_old_own", blobtest.KeyOf("keyown"), old)
+	f.seed(t, "obj_old_shared", blobtest.KeyOf("keyshared"), old)
+	f.seed(t, "obj_new_shared", blobtest.KeyOf("keyshared"), recent)
+	f.seedAged(t, "obj_old_fresh", blobtest.KeyOf("keyfresh"), old, 10*time.Minute)
 
 	out := f.prune(t)
 	require.Contains(t, out, "Pruned 3 objects")
@@ -91,9 +92,9 @@ func TestHousekeepingPruneDeletesBlobs(t *testing.T) {
 
 	_, err := f.Driver.Objects().Get(context.Background(), "obj_old_own")
 	require.ErrorIs(t, err, storage.ErrNotFound)
-	require.False(t, f.blobExists(t, "keyown"), "prune left the pruned object's blob behind")
-	require.True(t, f.blobExists(t, "keyshared"), "prune deleted a blob another object refers to")
-	require.True(t, f.blobExists(t, "keyfresh"), "prune deleted a blob inside the grace period")
+	require.False(t, f.blobExists(t, blobtest.KeyOf("keyown")), "prune left the pruned object's blob behind")
+	require.True(t, f.blobExists(t, blobtest.KeyOf("keyshared")), "prune deleted a blob another object refers to")
+	require.True(t, f.blobExists(t, blobtest.KeyOf("keyfresh")), "prune deleted a blob inside the grace period")
 }
 
 // Prune deletes a pruned object's edges like DELETE /objects/{id}: no
@@ -103,8 +104,8 @@ func TestHousekeepingPruneDeletesEdges(t *testing.T) {
 	ctx := context.Background()
 	old := time.Date(2023, 6, 1, 0, 0, 0, 0, time.UTC)
 	recent := time.Now().UTC().Truncate(time.Second)
-	f.seed(t, "obj_old_linked", "keylinked", old)
-	f.seed(t, "obj_new_linked", "keynew", recent)
+	f.seed(t, "obj_old_linked", blobtest.KeyOf("keylinked"), old)
+	f.seed(t, "obj_new_linked", blobtest.KeyOf("keynew"), recent)
 	for _, e := range []*storage.Edge{
 		{ID: "edge_out", FromType: "object", FromID: "obj_old_linked", ToType: "object", ToID: "obj_new_linked", EdgeType: "links"},
 		{ID: "edge_in", FromType: "object", FromID: "obj_new_linked", ToType: "object", ToID: "obj_old_linked", EdgeType: "links"},
@@ -128,21 +129,22 @@ func TestHousekeepingPruneDeletesEdges(t *testing.T) {
 func TestHousekeepingPruneReportsOrphanBlobs(t *testing.T) {
 	f := setupPruneBlobDB(t)
 	old := time.Date(2023, 6, 1, 0, 0, 0, 0, time.UTC)
-	f.seed(t, "obj_old_stuck", "keystuck", old)
+	f.seed(t, "obj_old_stuck", blobtest.KeyOf("keystuck"), old)
 	// local layout: <key[0:2]>/<key[2:4]>/<key>; a read-only shard dir
 	// makes the delete fail.
-	shard := filepath.Join(f.dataDir, "blobs", "ke", "ys")
+	stuck := blobtest.KeyOf("keystuck")
+	shard := filepath.Join(f.dataDir, "blobs", stuck[:2], stuck[2:4])
 	require.NoError(t, os.Chmod(shard, 0o500))
 	t.Cleanup(func() { _ = os.Chmod(shard, 0o700) })
 
 	out := f.prune(t)
 	require.Contains(t, out, "Pruned 1 objects")
 	require.Contains(t, out, "1 orphan blob")
-	require.Contains(t, out, "keystuck")
+	require.Contains(t, out, blobtest.KeyOf("keystuck"))
 
 	_, err := f.Driver.Objects().Get(context.Background(), "obj_old_stuck")
 	require.ErrorIs(t, err, storage.ErrNotFound, "the row outlived its failed blob delete")
-	require.True(t, f.blobExists(t, "keystuck"))
+	require.True(t, f.blobExists(t, blobtest.KeyOf("keystuck")))
 }
 
 // prune --dry-run lists the blobs a real prune would delete: those no
@@ -151,22 +153,22 @@ func TestHousekeepingPruneDryRunListsBlobs(t *testing.T) {
 	f := setupPruneBlobDB(t)
 	old := time.Date(2023, 6, 1, 0, 0, 0, 0, time.UTC)
 	recent := time.Now().UTC().Truncate(time.Second)
-	f.seed(t, "obj_old_own", "keyown", old)
-	f.seed(t, "obj_old_both_a", "keyboth", old)
-	f.seed(t, "obj_old_both_b", "keyboth", old)
-	f.seed(t, "obj_old_shared", "keyshared", old)
-	f.seed(t, "obj_new_shared", "keyshared", recent)
+	f.seed(t, "obj_old_own", blobtest.KeyOf("keyown"), old)
+	f.seed(t, "obj_old_both_a", blobtest.KeyOf("keyboth"), old)
+	f.seed(t, "obj_old_both_b", blobtest.KeyOf("keyboth"), old)
+	f.seed(t, "obj_old_shared", blobtest.KeyOf("keyshared"), old)
+	f.seed(t, "obj_new_shared", blobtest.KeyOf("keyshared"), recent)
 	// Written inside the grace period: a real prune leaves it to the
 	// housekeeping sweep.
-	f.seedAged(t, "obj_old_fresh", "keyfresh", old, 10*time.Minute)
+	f.seedAged(t, "obj_old_fresh", blobtest.KeyOf("keyfresh"), old, 10*time.Minute)
 
 	args := []string{"--data-dir", f.dataDir, "housekeeping", "prune", "--before", "2024-01-01", "--dry-run"}
 	out, err := f.run(args...)
 	require.NoError(t, err)
-	require.Contains(t, out, "delete blob keyown")
-	require.Contains(t, out, "delete blob keyboth")
-	require.NotContains(t, out, "keyshared", "a blob an unpruned object refers to is not deleted")
-	require.NotContains(t, out, "delete blob keyfresh", "a blob inside the grace period is not deleted")
+	require.Contains(t, out, "delete blob "+blobtest.KeyOf("keyown"))
+	require.Contains(t, out, "delete blob "+blobtest.KeyOf("keyboth"))
+	require.NotContains(t, out, blobtest.KeyOf("keyshared"), "a blob an unpruned object refers to is not deleted")
+	require.NotContains(t, out, "delete blob "+blobtest.KeyOf("keyfresh"), "a blob inside the grace period is not deleted")
 	require.Contains(t, out, "Would delete 2 blob(s)")
 
 	out, err = f.run(append(args, "--format", "json")...)
@@ -179,9 +181,9 @@ func TestHousekeepingPruneDryRunListsBlobs(t *testing.T) {
 			blobs = append(blobs, a.Target)
 		}
 	}
-	require.ElementsMatch(t, []string{"blob:keyown", "blob:keyboth"}, blobs)
+	require.ElementsMatch(t, []string{"blob:" + blobtest.KeyOf("keyown"), "blob:" + blobtest.KeyOf("keyboth")}, blobs)
 
-	for _, key := range []string{"keyown", "keyboth", "keyshared", "keyfresh"} {
+	for _, key := range []string{blobtest.KeyOf("keyown"), blobtest.KeyOf("keyboth"), blobtest.KeyOf("keyshared"), blobtest.KeyOf("keyfresh")} {
 		require.True(t, f.blobExists(t, key), "dry-run deleted blob %s", key)
 	}
 }
@@ -200,10 +202,10 @@ func (f *pruneBlobFixture) putAgedBlob(t *testing.T, key string, age time.Durati
 // keeps referenced and young ones. --dry-run deletes nothing.
 func TestHousekeepingRunSweepsOrphanBlobs(t *testing.T) {
 	f := setupPruneBlobDB(t)
-	f.seed(t, "obj_live", "keylive", time.Now().UTC())
-	f.putAgedBlob(t, "keyorphan", 3*time.Hour)
-	f.putAgedBlob(t, "keyyoung", 10*time.Minute)
-	f.putAgedBlob(t, "keylive", 3*time.Hour)
+	f.seed(t, "obj_live", blobtest.KeyOf("keylive"), time.Now().UTC())
+	f.putAgedBlob(t, blobtest.KeyOf("keyorphan"), 3*time.Hour)
+	f.putAgedBlob(t, blobtest.KeyOf("keyyoung"), 10*time.Minute)
+	f.putAgedBlob(t, blobtest.KeyOf("keylive"), 3*time.Hour)
 
 	out, err := f.run("--data-dir", f.dataDir, "housekeeping", "run", "--dry-run", "--format", "json")
 	require.NoError(t, err)
@@ -217,7 +219,7 @@ func TestHousekeepingRunSweepsOrphanBlobs(t *testing.T) {
 	}
 	require.NotNil(t, sweep, "plan has no blob-store sweep action: %v", plan.Effects)
 	require.EqualValues(t, 1, sweep.Count)
-	require.True(t, f.blobExists(t, "keyorphan"), "dry run deleted an orphan blob")
+	require.True(t, f.blobExists(t, blobtest.KeyOf("keyorphan")), "dry run deleted an orphan blob")
 
 	out, err = f.run("--data-dir", f.dataDir, "housekeeping", "run", "--format", "json")
 	require.NoError(t, err)
@@ -225,7 +227,7 @@ func TestHousekeepingRunSweepsOrphanBlobs(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(out), &summary), out)
 	require.EqualValues(t, 1, summary["orphan_blobs"])
 	require.EqualValues(t, 1, summary["orphan_blobs_young"])
-	require.False(t, f.blobExists(t, "keyorphan"), "run left an old orphan blob behind")
-	require.True(t, f.blobExists(t, "keyyoung"), "run deleted an orphan blob inside the grace period")
-	require.True(t, f.blobExists(t, "keylive"), "run deleted a blob an object refers to")
+	require.False(t, f.blobExists(t, blobtest.KeyOf("keyorphan")), "run left an old orphan blob behind")
+	require.True(t, f.blobExists(t, blobtest.KeyOf("keyyoung")), "run deleted an orphan blob inside the grace period")
+	require.True(t, f.blobExists(t, blobtest.KeyOf("keylive")), "run deleted a blob an object refers to")
 }

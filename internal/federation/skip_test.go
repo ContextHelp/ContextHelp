@@ -35,7 +35,7 @@ func seedWithLostBlob(t *testing.T, lost string, ids ...string) storage.StorageD
 	return src
 }
 
-const lostKey = "0badc0de0badc0de0badc0de0badc0de0badc0de"
+const lostKey = "0badc0de0badc0de0badc0de0badc0de0badc0de0badc0de0badc0de0badc0de"
 
 // syncTimes runs s n times, returning each run's pushed count and error.
 func syncTimes(s *Syncer, n int) ([]int, []error) {
