@@ -150,14 +150,16 @@ func classifyEntry(name string, regular bool) (backupEntry, error) {
 		}
 		e = backupEntry{kind: entryConfig, rel: rel}
 	case strings.HasPrefix(name, "blobs/"):
+		// Backup names each blob by its bare key; a key outside the
+		// grammar would let the archive write outside the store.
 		key := strings.TrimPrefix(name, "blobs/")
-		if !isBlobKey(key) {
-			return e, fmt.Errorf("restore: blob %q: not a blob key", key)
+		if err := storage.CheckBlobKey(key); err != nil {
+			return e, fmt.Errorf("restore: blob entry %q: %w", name, err)
 		}
 		e = backupEntry{kind: entryBlob, rel: key}
 	case strings.HasPrefix(name, blobMetaDir):
 		key, ok := strings.CutSuffix(strings.TrimPrefix(name, blobMetaDir), ".json")
-		if !ok || !isBlobKey(key) {
+		if !ok || storage.CheckBlobKey(key) != nil {
 			return e, fmt.Errorf("restore: blob metadata %q: not <blob key>.json", name)
 		}
 		e = backupEntry{kind: entryBlobMeta, rel: key}
@@ -168,13 +170,6 @@ func classifyEntry(name string, regular bool) (backupEntry, error) {
 		return e, fmt.Errorf("restore: entry %q: not a regular file", name)
 	}
 	return e, nil
-}
-
-// isBlobKey reports whether key is a bare blob key. Backup names each
-// blob by its bare key; anything with a path in it would let the
-// archive write outside the store.
-func isBlobKey(key string) bool {
-	return key != "" && key != "." && key != ".." && !strings.ContainsAny(key, "/\\\x00")
 }
 
 // parseBlobMeta decodes one blob's metadata sidecar.
