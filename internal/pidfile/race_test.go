@@ -13,6 +13,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/shirou/gopsutil/v4/process"
 )
 
 func pidPath(dir string, port int) string {
@@ -162,23 +164,23 @@ func TestScanKeepsPidfileReplacedWhileJudgedStale(t *testing.T) {
 	}
 }
 
-// A pid this user may not signal (EPERM: pid 1, owned by root) is a
-// running process: an instance another user runs from a shared run dir
-// (sudo, a shared --data-dir) stays listed and its pidfile stays.
+// A pid this user may not signal (EPERM) is a running process: an
+// instance another user runs from a shared run dir (sudo, a shared
+// --data-dir) stays listed and its pidfile stays. A test cannot start a
+// process as another user, so it uses one the host already runs as
+// another user, when there is one: pid 1 (init, launchd), owned by root.
 func TestScanKeepsAnotherUsersInstance(t *testing.T) {
-	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
-		t.Skip("needs a pid this user may not signal: pid 1 as a non-root user")
-	}
+	pid := otherUsersPID(t)
 	dir := t.TempDir()
-	if err := Write(dir, Info{PID: 1, Name: "shared", Port: testPort}); err != nil {
+	if err := Write(dir, Info{PID: pid, Name: "shared", Port: testPort}); err != nil {
 		t.Fatal(err)
 	}
 	infos, err := Scan(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(infos) != 1 || infos[0].PID != 1 {
-		t.Errorf("Scan = %+v, want pid 1 live", infos)
+	if len(infos) != 1 || infos[0].PID != pid {
+		t.Errorf("Scan = %+v, want pid %d live", infos, pid)
 	}
 	if _, err := os.Stat(pidPath(dir, testPort)); err != nil {
 		t.Errorf("pidfile of a running process removed: %v", err)
@@ -209,4 +211,25 @@ func TestScanPrunesUnderAReadOnlyLockFile(t *testing.T) {
 	if _, err := os.Stat(pidPath(dir, testPort)); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("stale pidfile not pruned under a read-only lock file: %v", err)
 	}
+}
+
+// otherUsersPID returns pid 1 when it runs as a user other than this
+// test's, which this user may not signal; it skips the test otherwise.
+func otherUsersPID(t *testing.T) int {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("no signal permission to probe on Windows")
+	}
+	p, err := process.NewProcess(1)
+	if err != nil {
+		t.Skipf("pid 1 is not visible here (%v): no process of another user to probe", err)
+	}
+	uids, err := p.Uids()
+	if err != nil || len(uids) == 0 {
+		t.Skipf("the owner of pid 1 is not readable here (%v): no process of another user to probe", err)
+	}
+	if int(uids[0]) == os.Getuid() || os.Geteuid() == 0 {
+		t.Skip("pid 1 runs as this user, or the test runs as root: no process this user may not signal")
+	}
+	return 1
 }

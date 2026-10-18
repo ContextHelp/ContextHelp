@@ -76,13 +76,16 @@ func Write(dir string, info Info) error {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return err
 	}
-	release, _ := lockDir(dir)
+	release, _ := lockDir(dir, writeWait)
 	defer release()
 	return safefs.ReplaceFile(dir, fmt.Sprintf("%d.pid", info.Port), bytes.NewReader(data), 0o600)
 }
 
-// Remove deletes the pidfile for the given port in dir.
+// Remove deletes the pidfile for the given port in dir, under the run
+// dir's lock like Write.
 func Remove(dir string, port int) error {
+	release, _ := lockDir(dir, writeWait)
+	defer release()
 	return os.Remove(filepath.Join(dir, fmt.Sprintf("%d.pid", port)))
 }
 
@@ -92,7 +95,7 @@ func Scan(dir string) ([]Info, error) { return scan(dir, 0) }
 // scan is Scan, also treating entries that record pid self as stale
 // (self 0 disables this).
 func scan(dir string, self int) ([]Info, error) {
-	release, locked := lockDir(dir)
+	release, locked := lockDir(dir, scanWait)
 	defer release()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
