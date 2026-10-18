@@ -59,7 +59,8 @@ func TestPgMigration16_BackfillsTextContent(t *testing.T) {
 }
 
 // TestPgObjects_TextContentReadPaths pins that every object read path
-// hydrates the stored text_content, and that Update and Reinforce write it.
+// hydrates the stored text_content, that Update writes it, and that
+// Reinforce leaves it as stored.
 func TestPgObjects_TextContentReadPaths(t *testing.T) {
 	drv, _ := freshIntegrationDriver(t)
 	ctx := context.Background()
@@ -82,8 +83,8 @@ func TestPgObjects_TextContentReadPaths(t *testing.T) {
 	}
 	assertPgTextContentEverywhere(t, objs, "wombat", "rewritten wombat")
 
-	// Reinforce with new raw content and no extracted text stores the
-	// raw body as text_content (projection.BodyText), matching SQLite.
+	// Reinforce never replaces the content: a duplicate's bytes may
+	// differ, and the row keeps what it stored.
 	if _, err := objs.Reinforce(ctx, "tc-hash", &storage.KnowledgeObject{RawContent: "reinforced body"}); err != nil {
 		t.Fatalf("Reinforce: %v", err)
 	}
@@ -91,8 +92,8 @@ func TestPgObjects_TextContentReadPaths(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get after Reinforce: %v", err)
 	}
-	if got.TextContent != "reinforced body" {
-		t.Errorf("text_content after Reinforce = %q, want %q", got.TextContent, "reinforced body")
+	if got.RawContent != "raw quokka" || got.TextContent != "rewritten wombat" {
+		t.Errorf("content after Reinforce = %q / %q, want the stored %q / %q", got.RawContent, got.TextContent, "raw quokka", "rewritten wombat")
 	}
 }
 
