@@ -557,9 +557,13 @@ func webhookHandler(target string, client *http.Client) AlertHandler {
 		if err == nil {
 			return
 		}
+		// The sink wraps the client's *url.Error with fmt.Errorf, whose
+		// message already holds the full URL. Log the *url.Error alone,
+		// re-rendered with the origin in place of the URL.
 		var ue *url.Error
 		if errors.As(err, &ue) {
 			ue.URL = shown
+			err = ue
 		}
 		slog.Warn("security: webhook delivery error", "endpoint", shown, "err", err)
 	}
