@@ -270,7 +270,7 @@ func runSecretList(cmd *cobra.Command, _ []string) error {
 	switch backend {
 	case "env":
 		fmt.Fprintln(cmd.OutOrStdout(),
-			"  Key enumeration not supported — set env vars manually.")
+			"  Key enumeration not supported: keys are environment variables, read by name (e.g. OPENAI_API_KEY).")
 	case "keyring", "keychain":
 		svc := cfg.Secrets.KeychainService
 		if svc == "" {
