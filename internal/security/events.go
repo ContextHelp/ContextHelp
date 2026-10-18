@@ -557,16 +557,35 @@ func webhookHandler(target string, client *http.Client) AlertHandler {
 		if err == nil {
 			return
 		}
-		// The sink wraps the client's *url.Error with fmt.Errorf, whose
-		// message already holds the full URL. Log the *url.Error alone,
-		// re-rendered with the origin in place of the URL.
-		var ue *url.Error
-		if errors.As(err, &ue) {
-			ue.URL = shown
-			err = ue
-		}
-		slog.Warn("security: webhook delivery error", "endpoint", shown, "err", err)
+		slog.Warn("security: webhook delivery error", "endpoint", shown, "err", deliveryCause(err))
 	}
+}
+
+// deliveryCause is what a failed webhook delivery logs in place of err,
+// whose text holds the URL: the sink wraps the client's *url.Error with
+// fmt.Errorf (formatted with the URL), and errors inside it can name the
+// destination too (kit's offline guard renders scheme, host and path).
+// An offline refusal is ErrOffline alone; a *url.Error is its operation
+// and its innermost cause (connection refused, a deadline, a parse
+// error), never a wrapper's text; any other error (an HTTP status, a
+// render failure) carries no URL and is err itself.
+func deliveryCause(err error) error {
+	if errors.Is(err, netpolicy.ErrOffline) {
+		return netpolicy.ErrOffline
+	}
+	var ue *url.Error
+	if !errors.As(err, &ue) {
+		return err
+	}
+	root := ue.Err
+	for {
+		next := errors.Unwrap(root)
+		if next == nil {
+			break
+		}
+		root = next
+	}
+	return fmt.Errorf("%s: %w", ue.Op, root)
 }
 
 // smtpHandler returns an AlertHandler that sends an email via SMTP.
