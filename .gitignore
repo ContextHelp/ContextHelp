@@ -355,3 +355,6 @@ extensions/browser/node_modules/
 
 # Built example step executables
 /examples/steps/pii-mask/pii-mask
+
+# xray codebase-scan output (generated; after the !*.md re-include so it wins)
+.xray*
