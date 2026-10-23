@@ -75,6 +75,19 @@ func New(path string, blobs storage.BlobStore, opts ...Option) (*Driver, error) 
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
 
+	// sql.Open is lazy: the file is first opened by whatever statement runs
+	// next. Open it here, so a path SQLite cannot open (a parent that is a
+	// file, a missing directory, no permission) is reported against that
+	// path instead of surfacing from the capability probe as a missing
+	// engine feature.
+	if err := db.PingContext(context.Background()); err != nil {
+		openErr := fmt.Errorf("open sqlite database %s: %w", path, err)
+		if cerr := db.Close(); cerr != nil {
+			return nil, fmt.Errorf("%w; close: %w", openErr, cerr)
+		}
+		return nil, openErr
+	}
+
 	// Probe engine capabilities before any migration runs, so a degraded build
 	// is diagnosed here rather than failing mid-schema on a virtual table.
 	if err := probeCapabilities(context.Background(), db); err != nil {

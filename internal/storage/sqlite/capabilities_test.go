@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -121,4 +122,36 @@ func TestNew_ProbesBeforeMigrations(t *testing.T) {
 			t.Errorf("close: %v", err)
 		}
 	})
+}
+
+// TestNew_OpenFailureIsNotACapabilityError asserts that a database file
+// SQLite cannot open is reported as an open failure naming the path, not as
+// a missing engine capability. The capability probe is the first statement
+// on the pool, so before the open was checked on its own, an unopenable path
+// surfaced as "sqlite fts5 unavailable (rebuild with -tags fts5)".
+func TestNew_OpenFailureIsNotACapabilityError(t *testing.T) {
+	notADir := filepath.Join(t.TempDir(), "regular-file")
+	if err := os.WriteFile(notADir, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(notADir, "store.db")
+
+	d, err := New(path, testBlobStore(t))
+	if err == nil {
+		_ = d.Close(context.Background())
+		t.Fatalf("New(%q) succeeded, want an open error", path)
+	}
+	if errors.Is(err, storage.ErrCapabilityMissing) {
+		t.Errorf("open failure reported as a missing capability: %v", err)
+	}
+	for _, want := range []string{path, "not a directory"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not name %q", err.Error(), want)
+		}
+	}
+	for _, unwanted := range []string{"fts5", "rebuild"} {
+		if strings.Contains(err.Error(), unwanted) {
+			t.Errorf("error %q mentions %q for an open failure", err.Error(), unwanted)
+		}
+	}
 }
