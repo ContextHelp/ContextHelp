@@ -31,15 +31,15 @@ func hintKey(c *cobra.Command) string {
 // notDryRun is a hint condition: the command did real work.
 func notDryRun(c *cobra.Command) func() bool {
 	return func() bool {
-		f := c.Flags().Lookup("dry-run")
-		return f == nil || f.Value.String() != "true"
+		dry, _ := c.Flags().GetBool("dry-run")
+		return !dry
 	}
 }
 
 // registerHints fills root.Hints for the commands that have next steps.
 // It runs once the tree is built, since the import subcommands are
 // enumerated from it.
-func registerHints(rootCmd *cobra.Command) {
+func registerHints() {
 	h := root.Hints
 	h.Register("analyze", output.Hint{Message: "Run `ctxt job status <job-id>` to follow the job."})
 	h.Register("feed add", output.Hint{Message: "Run `ctxt feed list` to see the feed and its last sync."})
@@ -69,7 +69,7 @@ func registerHints(rootCmd *cobra.Command) {
 // left out: it runs until stopped, so it prints its hint itself once
 // the watcher is up.
 func installHints(rootCmd *cobra.Command) {
-	registerHintsOnce.Do(func() { registerHints(rootCmd) })
+	registerHintsOnce.Do(registerHints)
 	wrapHinted(rootCmd)
 }
 

@@ -150,7 +150,7 @@ func TestFeedSyncTakesOneOperand(t *testing.T) {
 		{"feed", "sync", "--url", "https://example.com/feed.xml"},
 	} {
 		_, err := executeCommand(append(args, "--server", srv.URL)...)
-		if err == nil || !(strings.Contains(err.Error(), "accepts 1 arg") || strings.Contains(err.Error(), "unknown flag")) {
+		if err == nil || (!strings.Contains(err.Error(), "accepts 1 arg") && !strings.Contains(err.Error(), "unknown flag")) {
 			t.Errorf("%v: err = %v, want an arity or unknown-flag error", args, err)
 		}
 	}
