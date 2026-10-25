@@ -183,7 +183,7 @@ GET /objects/{id}
 
 ```bash
 ctxt entity show <namespace.slug>
-ctxt entity backlink <namespace.slug>
+ctxt entity backlinks <namespace.slug>
 GET /entities/{slug}
 GET /entities/{slug}/related
 ```

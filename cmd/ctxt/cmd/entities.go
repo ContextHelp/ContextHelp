@@ -30,7 +30,7 @@ Examples:
   ctxt entity search "checkout"
 
   # Show entity backlinks
-  ctxt entity backlink ui.best-practice`,
+  ctxt entity backlinks ui.best-practice`,
 }
 
 var entitiesListCmd = &cobra.Command{
@@ -70,7 +70,7 @@ each hit as a full entity record.`,
 }
 
 var entitiesBacklinksCmd = &cobra.Command{
-	Use:   "backlink <slug>",
+	Use:   "backlinks <slug>",
 	Short: "Show entity backlinks",
 	Long: `List every knowledge object that references the named entity.
 
@@ -90,14 +90,14 @@ func init() {
 	entitiesCmd.AddCommand(entitiesBacklinksCmd)
 
 	// 12fcc conformance: side-effect annotations. All four entity
-	// leaves are pure read operations (list, show, search, backlink:
+	// leaves are pure read operations (list, show, search, backlinks:
 	// the latter is an inbound-edge query, not a write).
 	cliconv.WithSideEffect(entitiesListCmd, cliconv.SideEffectRead)
 	cliconv.WithSideEffect(entitiesShowCmd, cliconv.SideEffectRead)
 	cliconv.WithSideEffect(entitiesSearchCmd, cliconv.SideEffectRead)
 	cliconv.WithSideEffect(entitiesBacklinksCmd, cliconv.SideEffectRead)
 
-	// Kit verb defaults cover list/show/search (Yes). "backlink" is
+	// Kit verb defaults cover list/show/search (Yes). "backlinks" is
 	// not in the default table; tag explicitly.
 	cliconv.WithIdempotency(entitiesBacklinksCmd, cliconv.IdempotencyYes)
 
@@ -116,8 +116,8 @@ func init() {
 		{Title: "JSON for scripting", Command: "ctxt entity search \"checkout\" --format json"},
 	})
 	cliconv.WithExamples(entitiesBacklinksCmd, []cliconv.Example{
-		{Title: "List objects referencing the entity", Command: "ctxt entity backlink ui.best-practice"},
-		{Title: "JSON for scripting", Command: "ctxt entity backlink ui.best-practice --format json"},
+		{Title: "List objects referencing the entity", Command: "ctxt entity backlinks ui.best-practice"},
+		{Title: "JSON for scripting", Command: "ctxt entity backlinks ui.best-practice --format json"},
 	})
 
 	// List flags

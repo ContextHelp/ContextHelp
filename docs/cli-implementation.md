@@ -216,7 +216,7 @@ ctxt registry delete uxpatterns --confirm-token=<sha>
 # Entities
 ctxt entity list
 ctxt entity show ui.best-practice
-ctxt entity backlink ui.best-practice
+ctxt entity backlinks ui.best-practice
 ```
 
 ### dpkms Commands

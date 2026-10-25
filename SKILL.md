@@ -152,7 +152,7 @@ ctxt list --json | jq '.[] | .id'
 ctxt entity list
 ctxt entity show stripe.api
 ctxt entity search "payment"
-ctxt entity backlink stripe.api    # what references this entity?
+ctxt entity backlinks stripe.api    # what references this entity?
 ```
 
 ### Workflow: registry management
@@ -185,7 +185,7 @@ ctxt registry info core
 | `ctxt profile list/view/create/rm/set/unset` | Focus profiles |
 | `ctxt config show/path/validate/edit` | Config ops |
 | `ctxt registry list/add/remove/info/sync` | Registry ops |
-| `ctxt entity list/show/search/backlink` | Entity ops |
+| `ctxt entity list/show/search/backlinks` | Entity ops |
 | `dpkms secret get/set/list` | Secrets backend |
 | `ctxt uri register` | Register ctxt:// OS handler |
 | `dpkms serve` | Start worker + REST/gRPC |

@@ -293,7 +293,7 @@ Query and inspect canonical entities:
 ./bin/ctxt entity search "checkout"
 
 # Show backlinks
-./bin/ctxt entity backlink ui.best-practice
+./bin/ctxt entity backlinks ui.best-practice
 ```
 
 ### 9. Background Watchers and Browser Capture
