@@ -6,6 +6,8 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -200,4 +202,33 @@ func TestGetNotFound(t *testing.T) {
 // TestListConformance runs the backend-shared List(prefix) contract.
 func TestListConformance(t *testing.T) {
 	blobtest.ListConformance(t, newTestStore(t))
+}
+
+// Blobs are instance data: the store root, its fan-out directories and
+// each blob are closed to other users (0700 / 0600), so a protected
+// instance passes `dpkms doctor --strict` as created.
+func TestStore_ClosedToOtherUsers(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("file modes do not express access on Windows")
+	}
+	root := filepath.Join(t.TempDir(), "blobs")
+	s, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Put(context.Background(), "abcdef", bytes.NewReader([]byte("x")), storage.BlobMeta{}); err != nil {
+		t.Fatal(err)
+	}
+	err = filepath.Walk(root, func(p string, fi os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if fi.Mode().Perm()&0o077 != 0 {
+			t.Errorf("%s is mode %04o; want no group/other bits", p, fi.Mode().Perm())
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 }
