@@ -5,6 +5,7 @@ package storageutil
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
@@ -53,6 +54,47 @@ func NewDriver(typ, path string, blobs storage.BlobStore, opts ...OpenOption) (s
 		return sqlite.New(path, blobs, sqlite.WithMigrateSnapshot(!o.skipMigrateSnapshot))
 	case "postgres":
 		return postgres.New(path, blobs)
+	default:
+		return nil, fmt.Errorf("unknown storage type: %s", typ)
+	}
+}
+
+// ErrNoSchema is returned by OpenReadOnly for a store with no data to
+// read: no database yet, or one with no tables of its own. A read never
+// creates one.
+var ErrNoSchema = errors.New("database has no schema yet")
+
+// ErrSchemaMismatch is returned by OpenReadOnly when the store's schema
+// version is not the one this binary migrates to: a read-only handle
+// cannot migrate it, and reading another version's tables is a guess.
+var ErrSchemaMismatch = errors.New("database schema version does not match this binary")
+
+// OpenReadOnly opens the existing store of type typ at path read-only,
+// with the blob store blobCfg configures. Nothing is migrated or
+// snapshotted, and no statement on the handle can write: SQLite opens
+// mode=ro with query_only, Postgres with default_transaction_read_only.
+// Calling Init on the result fails. A missing or empty store fails with
+// ErrNoSchema, and one at another schema version with ErrSchemaMismatch.
+func OpenReadOnly(ctx context.Context, typ, path string, blobCfg config.BlobConfig) (storage.StorageDriver, error) {
+	st, err := CheckSchema(ctx, typ, path)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case st.New:
+		return nil, fmt.Errorf("%w: %s", ErrNoSchema, path)
+	case st.Current != st.Latest:
+		return nil, fmt.Errorf("%w: %s is at version %d, this binary expects %d", ErrSchemaMismatch, path, st.Current, st.Latest)
+	}
+	blobs, err := blob.New(blobCfg)
+	if err != nil {
+		return nil, fmt.Errorf("open blob store: %w", err)
+	}
+	switch typ {
+	case "sqlite":
+		return sqlite.NewReadOnly(path, blobs)
+	case "postgres":
+		return postgres.NewReadOnly(path, blobs)
 	default:
 		return nil, fmt.Errorf("unknown storage type: %s", typ)
 	}
