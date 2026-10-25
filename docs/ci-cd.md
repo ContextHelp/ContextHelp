@@ -16,7 +16,7 @@ see [Local parity](#local-parity).
 | `ci.yml` (CI) | push to `main`/`next`, PR into `main`/`next`, manual, and called by `release.yml` | every merge and every release |
 | `release.yml` (Release) | push of a `v*.*.*` tag | publishing a release |
 | `vuln-scan.yml` | PR into `main`/`next`, nightly 03:00 UTC, manual | govulncheck + nancy |
-| `trivy.yml` | PR touching Docker/`go.mod` files, nightly 02:00 UTC, manual | Trivy config, filesystem and published-image scans |
+| `trivy.yml` | PR touching Docker/`go.mod` files, nightly 02:00 UTC, manual | Trivy config and filesystem scans on PRs; nightly scan of the runtime image, built in-job from the `Dockerfile` (no image is published to scan) |
 | `docker.yml` | push to `main` touching Docker or Go sources; PRs touching Docker files | multi-arch image build; pushes to GHCR on `main` only |
 | `release-notes-check.yml` | PR into `main`/`next`, manual | `Operator-Impact:` trailers have a release-notes row |
 | `eva-contracts.yml` | push to `main`/`next`; PRs touching contracts or the code behind the JSON shapes they lock; manual | operator-facing JSON shapes |
@@ -53,7 +53,7 @@ gosec and govulncheck have no `mise.toml` entry. The Makefile pins them
 `go run <pkg>@<version>`, in CI and locally alike.
 `scripts/check-ci-parity.sh` fails when a workflow, the Taskfile or a script
 names another version. Pinned in place: nancy `v1.2.0`, Trivy action
-`v0.36.0`.
+`v0.36.0` (by commit SHA, tag in a trailing comment).
 
 ### Local-path replaces
 
