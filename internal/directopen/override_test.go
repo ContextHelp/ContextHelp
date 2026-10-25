@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"os/user"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -124,5 +125,25 @@ func TestOverride_AuditedBeforeMigration(t *testing.T) {
 	}
 	if !strings.Contains(actor, u.Username) || !strings.Contains(actor, u.Uid) {
 		t.Errorf("actor %q does not name %s (%s)", actor, u.Username, u.Uid)
+	}
+}
+
+// The bootstrap of a fresh protected instance (no database yet, class
+// from server.access) goes through the override: the database is
+// created under the lock, then the override is audited in it.
+func TestOverride_FreshDatabase(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "db.sqlite")
+	tg := target(t, db)
+	tg.Access = config.AccessProtected
+	if _, err := Write(context.Background(), tg); !errors.Is(err, accessmarker.ErrRefused) {
+		t.Fatalf("plain write of a fresh protected instance = %v; want refused", err)
+	}
+	h, err := Override(context.Background(), tg, "auth key create")
+	if err != nil {
+		t.Fatalf("override on a fresh protected instance: %v", err)
+	}
+	t.Cleanup(func() { _ = h.Close(context.Background()) })
+	if n := len(overrideEntries(t, h)); n != 1 {
+		t.Errorf("override audit entries = %d; want 1", n)
 	}
 }
