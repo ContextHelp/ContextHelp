@@ -7,11 +7,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"net/url"
 	"strconv"
 	"strings"
 
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
@@ -62,42 +61,41 @@ func New(connStr string, blobs storage.BlobStore) (*Driver, error) {
 // read-only handle never migrates.
 var ErrReadOnly = errors.New("postgres: database opened read-only")
 
-// readOnlyOption makes every transaction on a session read-only by
-// default, so no statement the handle runs can write.
-const readOnlyOption = "-c default_transaction_read_only=on"
+// readOnlyParam is the session parameter that makes every transaction
+// read-only by default, so no statement the handle runs can write.
+const readOnlyParam = "default_transaction_read_only"
 
 // NewReadOnly opens connStr read-only: every session it opens starts
 // with default_transaction_read_only on, so DML and DDL fail, and Init
-// refuses (ErrReadOnly) instead of migrating. connStr may be a URL or a
-// key/value string; one that already sets options is refused, since
-// merging two option strings would be a guess.
+// refuses (ErrReadOnly) instead of migrating. connStr is parsed by
+// lib/pq itself (URL or key/value), and everything it sets is kept.
 func NewReadOnly(connStr string, blobs storage.BlobStore) (*Driver, error) {
-	ro, err := readOnlyConnStr(connStr)
+	if blobs == nil {
+		return nil, ErrNoBlobStore
+	}
+	cfg, err := readOnlyConfig(connStr)
 	if err != nil {
 		return nil, err
 	}
-	return open(ro, blobs, true)
+	connector, err := pq.NewConnectorConfig(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: read-only connector: %w", err)
+	}
+	return build(sql.OpenDB(connector), connStr, blobs, true), nil
 }
 
-// readOnlyConnStr returns connStr with readOnlyOption as its options.
-func readOnlyConnStr(connStr string) (string, error) {
-	if strings.HasPrefix(connStr, "postgres://") || strings.HasPrefix(connStr, "postgresql://") {
-		u, err := url.Parse(connStr)
-		if err != nil {
-			return "", fmt.Errorf("postgres: parse connection string: %w", err)
-		}
-		q := u.Query()
-		if q.Has("options") {
-			return "", errors.New("postgres: read-only open of a connection string that sets options")
-		}
-		q.Set("options", readOnlyOption)
-		u.RawQuery = q.Encode()
-		return u.String(), nil
+// readOnlyConfig parses connStr and adds readOnlyParam as a startup
+// run-time parameter.
+func readOnlyConfig(connStr string) (pq.Config, error) {
+	cfg, err := pq.NewConfig(connStr)
+	if err != nil {
+		return pq.Config{}, fmt.Errorf("postgres: parse connection string: %w", err)
 	}
-	if strings.Contains(connStr, "options=") {
-		return "", errors.New("postgres: read-only open of a connection string that sets options")
+	if cfg.Runtime == nil {
+		cfg.Runtime = map[string]string{}
 	}
-	return strings.TrimSpace(connStr) + " options='" + readOnlyOption + "'", nil
+	cfg.Runtime[readOnlyParam] = "on"
+	return cfg, nil
 }
 
 // open opens connStr and builds the driver over it.
@@ -109,6 +107,11 @@ func open(connStr string, blobs storage.BlobStore, readOnly bool) (*Driver, erro
 	if err != nil {
 		return nil, fmt.Errorf("open postgres: %w", err)
 	}
+	return build(db, connStr, blobs, readOnly), nil
+}
+
+// build wires the driver's stores over db.
+func build(db *sql.DB, connStr string, blobs storage.BlobStore, readOnly bool) *Driver {
 
 	db.SetMaxOpenConns(25)
 	db.SetMaxIdleConns(5)
@@ -138,7 +141,7 @@ func open(connStr string, blobs storage.BlobStore, readOnly bool) (*Driver, erro
 	d.metering = &MeteringStore{db: db}
 	d.savedSearches = &SavedSearchStore{}
 	d.searchHistory = &SearchHistoryStore{}
-	return d, nil
+	return d
 }
 
 func (d *Driver) Init(ctx context.Context) error {
