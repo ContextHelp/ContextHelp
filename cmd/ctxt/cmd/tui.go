@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/tui"
 	"github.com/spf13/cobra"
 )
@@ -24,14 +25,17 @@ Keyboard shortcuts:
 		// Unicode box-drawing characters). Not yet implemented: the variable is
 		// deliberately not read here so it has no silent partial effect.
 
-		svc, cleanup, err := newService(cmd)
-		if err != nil {
-			return err
-		}
-		defer cleanup()
-
-		return tui.Run(tui.NewRealAdapter(svc), tuiStartOpts(cmd, tui.StartOpts{}))
+		return tui.Run(tuiAdapter(cmd), tuiStartOpts(cmd, tui.StartOpts{}))
 	},
+}
+
+// tuiAdapter opens the store per TUI operation, for that operation's
+// class: reads take the read-only path beside a running daemon, writes
+// the locked one (refused while the daemon holds it).
+func tuiAdapter(cmd *cobra.Command) *tui.RealAdapter {
+	return tui.NewRealAdapter(func(write bool) (*service.Service, func(), error) {
+		return openService(cmd, !write)
+	})
 }
 
 // tuiStartOpts returns opts with Profile set to cmd's active profile, so

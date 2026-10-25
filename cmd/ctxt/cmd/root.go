@@ -139,6 +139,9 @@ func init() {
 	rootCmd.SilenceUsage = true
 	rootCmd.SilenceErrors = true
 	rootCmd.SuggestionsMinimumDistance = 2
+	// Bare `ctxt <content>` captures; a ctxt:// URI may open the TUI,
+	// which opens the store per operation by that operation's class.
+	cliconv.WithSideEffect(rootCmd, cliconv.SideEffectWrite)
 
 	// Take ownership of --version from cobra/fang. We render the legacy
 	// "ctxt version <semver> (<date>)" format. rootCmd.Version stays empty
@@ -551,10 +554,5 @@ func dispatchURI(cmd *cobra.Command, raw string) error {
 }
 
 func dispatchURIViaTUI(cmd *cobra.Command, opts tui.StartOpts) error {
-	svc, cleanup, err := newService(cmd)
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-	return tui.Run(tui.NewRealAdapter(svc), tuiStartOpts(cmd, opts))
+	return tui.Run(tuiAdapter(cmd), tuiStartOpts(cmd, opts))
 }

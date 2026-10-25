@@ -20,6 +20,7 @@ type daemonHeldError struct {
 	err     *directopen.ContentionError
 	command string
 	port    int
+	pid     int
 }
 
 func (e *daemonHeldError) Error() string { return e.err.Error() }
@@ -27,9 +28,14 @@ func (e *daemonHeldError) Unwrap() error { return e.err }
 
 // Fix states the stop, rerun, restart sequence.
 func (e *daemonHeldError) Fix() string {
-	stop := "`dpkms shutdown`"
-	if e.port > 0 {
+	var stop string
+	switch {
+	case e.port > 0:
 		stop = fmt.Sprintf("`dpkms shutdown --port %d`", e.port)
+	case e.pid > 0:
+		stop = fmt.Sprintf("`dpkms shutdown --port <port>` (the daemon is pid %d; `dpkms ps` lists its port)", e.pid)
+	default:
+		stop = "`dpkms shutdown --port <port>` (`dpkms ps` lists the daemon's port)"
 	}
 	return fmt.Sprintf("`%s` writes the database directly and cannot run while dpkms serve holds it: "+
 		"stop the daemon with %s, rerun the command, then start the daemon again with `dpkms serve`",
@@ -47,12 +53,14 @@ func explainDaemonHeld(err error, cmd *cobra.Command, dbPath string) error {
 	if cmd != nil {
 		command = cmd.CommandPath()
 	}
-	return &daemonHeldError{err: ce, command: command, port: daemonPort(dbPath)}
+	pid := ce.Held.Holder.PID
+	return &daemonHeldError{err: ce, command: command, port: daemonPort(dbPath, pid), pid: pid}
 }
 
 // daemonPort returns the port of the running local instance serving
-// dbPath, from its pidfile; 0 when none is found.
-func daemonPort(dbPath string) int {
+// dbPath, from its pidfile, else from the pidfile of the lock holder's
+// pid; 0 when neither is found.
+func daemonPort(dbPath string, holderPID int) int {
 	runDir, err := config.RunDirPath(dataDir())
 	if err != nil {
 		return 0
@@ -64,6 +72,11 @@ func daemonPort(dbPath string) int {
 	want := dblock.Canonical(dbPath)
 	for _, info := range infos {
 		if info.DBPath != "" && dblock.Canonical(info.DBPath) == want {
+			return info.Port
+		}
+	}
+	for _, info := range infos {
+		if holderPID > 0 && info.PID == holderPID {
 			return info.Port
 		}
 	}

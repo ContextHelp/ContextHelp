@@ -62,6 +62,7 @@ func init() {
 
 	// batch status flags
 
+	cliconv.WithSideEffect(importBatchCmd, cliconv.SideEffectWrite)
 	cliconv.WithSideEffect(importBatchStatusCmd, cliconv.SideEffectRead)
 	cliconv.WithIdempotency(importBatchStatusCmd, cliconv.IdempotencyYes)
 

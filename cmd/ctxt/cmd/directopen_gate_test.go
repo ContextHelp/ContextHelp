@@ -224,3 +224,46 @@ func withInstance(t *testing.T, db *testDB, name string) func() {
 		cfg = prev
 	}
 }
+
+// A --dry-run of an embeddings write takes the read path: beside the
+// daemon it is not refused for the lock, and it never creates or
+// migrates a database.
+func TestInstanceGate_DryRunReads(t *testing.T) {
+	db := setupTestDB(t)
+	path := instanceDB(t)
+	holdAsDaemon(t, path)
+	for _, args := range [][]string{
+		{"embeddings", "purge", "m@1", "--dry-run"},
+		{"embeddings", "set-default", "m@1", "--dry-run"},
+		{"embeddings", "deprecate", "m@1", "--dry-run"},
+		{"embeddings", "migrate", "--to", "m@1", "--dry-run"},
+	} {
+		if _, err := execInstance(db, gateInstance, args...); errors.Is(err, dblock.ErrHeld) {
+			t.Errorf("%v beside the daemon took the lock: %v", args, err)
+		}
+	}
+
+	absent := filepath.Join(t.TempDir(), "absent.db")
+	registerAt(t, "fresh", absent)
+	_, err := execInstance(db, "fresh", "embeddings", "purge", "m@1", "--dry-run")
+	if !errors.As(err, new(*directopen.NotReadyError)) {
+		t.Errorf("dry run on a missing database: %v, want the not-ready refusal", err)
+	}
+	if _, statErr := os.Stat(absent); !errors.Is(statErr, os.ErrNotExist) {
+		t.Errorf("dry run created %s", absent)
+	}
+}
+
+// registerAt writes a pidfile naming a running instance name at path.
+func registerAt(t *testing.T, name, path string) {
+	t.Helper()
+	runDir, err := config.RunDir(testDataDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := pidfile.Write(runDir, pidfile.Info{
+		PID: os.Getpid(), Name: name, Port: 59178, DBPath: path, StartedAt: time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
