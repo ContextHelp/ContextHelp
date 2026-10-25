@@ -26,13 +26,14 @@ jobs:
     permissions:
       contents: read
       security-events: write
+      actions: read
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
       - name: Run Trivy config scan (Dockerfile)
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: config
           scan-ref: Dockerfile
@@ -57,13 +58,14 @@ jobs:
     permissions:
       contents: read
       security-events: write
+      actions: read
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
       - name: Run Trivy filesystem scan
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
           scan-ref: .
@@ -89,6 +91,7 @@ jobs:
     permissions:
       contents: read
       security-events: write
+      actions: read
       packages: read
 
     steps:
@@ -100,7 +103,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run Trivy image scan (latest) — upload results
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
           image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
@@ -120,7 +123,7 @@ jobs:
 
       - name: Fail on CRITICAL CVEs in published image
         # re-run with exit-code 1 after uploading so nightly turns red on CRITICALs
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
           image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
