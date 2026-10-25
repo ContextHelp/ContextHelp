@@ -406,7 +406,7 @@ func TestRequireOwnerCredential(t *testing.T) {
 	ctx := context.Background()
 	now := f.clock.t
 	err := RequireOwnerCredential(ctx, f.keys, nil, now)
-	if err == nil || !strings.Contains(err.Error(), "dpkms auth key create --principal owner") {
+	if err == nil || !strings.Contains(err.Error(), "dpkms auth key create --principal owner --maintenance-override") {
 		t.Fatalf("fresh registry: %v; want a refusal naming the command", err)
 	}
 	if _, _, err := f.keys.Mint(ctx, MintKey{PrincipalID: f.person.ID}); err != nil {

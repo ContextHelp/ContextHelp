@@ -26,8 +26,8 @@ the host as the root of trust. A running dpkms sees a new key on its
 next request.
 
 Examples:
-  # First owner API key on a fresh protected instance
-  dpkms auth key create --principal owner --name "laptop CLI"`,
+  # First owner API key on a fresh protected instance (dpkms stopped)
+  dpkms auth key create --principal owner --name "laptop CLI" --maintenance-override`,
 }
 
 var authKeyCmd = &cobra.Command{
@@ -68,6 +68,8 @@ func init() {
 	authKeyCreateCmd.Flags().String("name", "", "label for the key (\"laptop CLI\")")
 	authKeyCreateCmd.Flags().String("expires", "", "expiry as a duration (720h) or a date (2026-12-31); never by default")
 	markFlagsRequired(authKeyCreateCmd, "principal")
+	// The bootstrap path must reach a protected instance too: audited.
+	addMaintenanceOverrideFlag(authKeyCreateCmd, false)
 
 	// Creating a key adds a credential; every run mints a different
 	// one. Write, not idempotent.
