@@ -809,12 +809,16 @@ func runEmbeddingsJourney(t *testing.T, e *journeyEnv) {
 	// 3. Semantic hits under A.
 	e.expectFind(journeyA)
 
-	// An embeddings write beside the running daemon is refused (exit 6)
-	// and says how to stop dpkms serve and start it again.
-	r := e.refused(6, "embeddings", "register", journeyB, "--embedding-model", journeyBModel, "--format", "json")
-	for _, want := range []string{"ctxt embeddings register", "`dpkms shutdown --port ", "`dpkms serve`"} {
-		if !strings.Contains(r.stderr, want) {
-			t.Errorf("daemon-held refusal does not mention %q:\n%s", want, r.stderr)
+	// On SQLite an embeddings write beside the running daemon is refused
+	// (exit 6) and says how to stop dpkms serve and start it again.
+	// Postgres has no database file to lock.
+	var r journeyResult
+	if e.store.kind == "sqlite" {
+		r = e.refused(6, "embeddings", "register", journeyB, "--embedding-model", journeyBModel, "--format", "json")
+		for _, want := range []string{"ctxt embeddings register", "`dpkms shutdown --port ", "`dpkms serve`"} {
+			if !strings.Contains(r.stderr, want) {
+				t.Errorf("daemon-held refusal does not mention %q:\n%s", want, r.stderr)
+			}
 		}
 	}
 
