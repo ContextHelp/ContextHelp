@@ -112,6 +112,9 @@ func TestOfflineBlocksNetworkPaths(t *testing.T) {
 			if !errors.Is(err, netpolicy.ErrOffline) {
 				t.Fatalf("--offline %v: err = %v, want netpolicy.ErrOffline", tc.args, err)
 			}
+			if got := ExitCodeFor(err); got != 70 {
+				t.Errorf("--offline %v: exit %d, want 70 (PREREQUISITE)", tc.args, got)
+			}
 			if n := fake.count(); n != 0 {
 				t.Fatalf("--offline %v sent %d request(s): %v", tc.args, n, fake.hits)
 			}

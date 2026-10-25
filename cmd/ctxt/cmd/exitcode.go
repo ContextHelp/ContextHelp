@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"hop.top/kit/go/console/output"
+	"hop.top/kit/go/core/netpolicy"
 
 	"github.com/ideacrafterslabs/ctxt/internal/registry"
 )
@@ -142,7 +143,14 @@ func classifyErr(err error) (string, bool) {
 // namespace the caller holds no entitlement for
 // (registry.ErrEntitlementRequired) are both refusals the caller fixes
 // with new credentials or a plan, not a retry: UNAUTHORIZED.
+//
+// A request --offline refused (netpolicy.ErrOffline) is PREREQUISITE:
+// the network the command depends on is unavailable by the caller's
+// own choice, and the same command without --offline can succeed.
 func classifyTyped(err error) (string, bool) {
+	if errors.Is(err, netpolicy.ErrOffline) {
+		return output.CodePrerequisite, true
+	}
 	var authErr registry.ErrRegistryAuth
 	if errors.As(err, &authErr) {
 		return output.CodeUnauthorized, true

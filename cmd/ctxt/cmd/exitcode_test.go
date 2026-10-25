@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"hop.top/kit/go/console/output"
+	"hop.top/kit/go/core/netpolicy"
 
 	"github.com/ideacrafterslabs/ctxt/internal/registry"
 )
@@ -46,6 +47,7 @@ func TestExitCodeFor_Classes(t *testing.T) {
 		// service layer returns them.
 		{name: "registry 401", err: fmt.Errorf("sync registry: %w", registry.ErrRegistryAuth{RegistryName: "r", StatusCode: 401}), want: 5},
 		{name: "registry 403 with token", err: fmt.Errorf("sync registry: %w", registry.ErrRegistryAuth{RegistryName: "r", StatusCode: 403, Configured: true, TokenSent: true}), want: 5},
+		{name: "offline refusal", err: fmt.Errorf("sync registry: %w", netpolicy.ErrOffline), want: 70},
 		{name: "entitlement required", err: fmt.Errorf("sync registry: %w", registry.ErrEntitlementRequired{RegistryName: "r", Namespace: "n"}), want: 5},
 	}
 
