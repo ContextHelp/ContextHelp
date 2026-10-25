@@ -24,7 +24,7 @@ Keyboard shortcuts:
 		// Unicode box-drawing characters). Not yet implemented: the variable is
 		// deliberately not read here so it has no silent partial effect.
 
-		svc, cleanup, err := newService()
+		svc, cleanup, err := newService(cmd)
 		if err != nil {
 			return err
 		}

@@ -214,7 +214,7 @@ func runEmbeddingsSetDefault(cmd *cobra.Command, args []string) error {
 	}
 	dryRun := kitcli.IsDryRun(cmd)
 
-	reg, cleanup, err := newEmbeddingsRegistry()
+	reg, cleanup, err := newEmbeddingsRegistry(cmd)
 	if err != nil {
 		return err
 	}
@@ -301,7 +301,7 @@ func runEmbeddingsDeprecate(cmd *cobra.Command, args []string) error {
 	}
 	dryRun := kitcli.IsDryRun(cmd)
 
-	reg, cleanup, err := newEmbeddingsRegistry()
+	reg, cleanup, err := newEmbeddingsRegistry(cmd)
 	if err != nil {
 		return err
 	}
@@ -409,7 +409,7 @@ func runEmbeddingsPurge(cmd *cobra.Command, args []string) error {
 	now := embeddingsNow()
 	dryRun := kitcli.IsDryRun(cmd)
 
-	reg, driver, cleanup, err := openEmbeddingsBackend()
+	reg, driver, cleanup, err := openEmbeddingsBackend(cmd)
 	if err != nil {
 		return err
 	}

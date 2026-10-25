@@ -51,7 +51,7 @@ func init() {
 }
 
 func runShell(cmd *cobra.Command, args []string) error {
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return fmt.Errorf("shell: init service: %w", err)
 	}

@@ -337,7 +337,7 @@ func runUpgradePlan(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return fmt.Errorf("upgrade plan: %w", err)
 	}
@@ -579,7 +579,7 @@ func runUpgradeRun(cmd *cobra.Command, _ []string) error {
 		selectorStr = "where:" + whereExpr
 	}
 
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return fmt.Errorf("upgrade run: %w", err)
 	}

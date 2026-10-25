@@ -125,7 +125,7 @@ func runAuditList(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return err
 	}
@@ -197,7 +197,7 @@ func runAuditExport(cmd *cobra.Command, _ []string) error {
 		filter.Limit = 0
 	}
 
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return err
 	}

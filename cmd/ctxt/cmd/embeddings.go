@@ -215,7 +215,7 @@ type embeddingsListItem struct {
 }
 
 func runEmbeddingsList(cmd *cobra.Command, _ []string) error {
-	r, cleanup, err := newEmbeddingsRegistry()
+	r, cleanup, err := newEmbeddingsRegistry(cmd)
 	if err != nil {
 		return err
 	}
@@ -300,7 +300,7 @@ func runEmbeddingsProvider(cmd *cobra.Command, args []string) error {
 	req := embeddings.Request{Overrides: embeddingsProviderFlags}
 	if len(args) == 1 {
 		req.ModelID = args[0]
-		reg, cleanup, err := newEmbeddingsRegistry()
+		reg, cleanup, err := newEmbeddingsRegistry(cmd)
 		if err != nil {
 			return err
 		}
@@ -394,7 +394,7 @@ func runEmbeddingsRegister(cmd *cobra.Command, args []string) error {
 	}
 	dryRun := kitcli.IsDryRun(cmd)
 
-	reg, driver, cleanup, err := openEmbeddingsBackend()
+	reg, driver, cleanup, err := openEmbeddingsBackend(cmd)
 	if err != nil {
 		return err
 	}
@@ -588,15 +588,15 @@ func probeFixHint(mc embeddings.ModelConfig) string {
 // defer; it tears down the underlying driver. The registry is
 // dialect-aware, so `ctxt embeddings` works on both the sqlite and postgres
 // backends (hosted instances included).
-func newEmbeddingsRegistry() (*registry.Store, func(), error) {
-	reg, _, cleanup, err := openEmbeddingsBackend()
+func newEmbeddingsRegistry(cmd *cobra.Command) (*registry.Store, func(), error) {
+	reg, _, cleanup, err := openEmbeddingsBackend(cmd)
 	return reg, cleanup, err
 }
 
 // openEmbeddingsBackend is newEmbeddingsRegistry plus the storage driver the
 // registry lives in, for commands that also build per-model indexes.
-func openEmbeddingsBackend() (*registry.Store, storage.StorageDriver, func(), error) {
-	svc, cleanup, err := newService()
+func openEmbeddingsBackend(cmd *cobra.Command) (*registry.Store, storage.StorageDriver, func(), error) {
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return nil, nil, nil, err
 	}

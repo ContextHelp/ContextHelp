@@ -378,7 +378,7 @@ func init() {
 }
 
 func runRegistryList(cmd *cobra.Command, args []string) error {
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return err
 	}
@@ -435,7 +435,7 @@ func runRegistryAdd(cmd *cobra.Command, args []string) error {
 	name := args[0]
 	url := args[1]
 
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return err
 	}
@@ -511,7 +511,7 @@ func runRegistryRemove(cmd *cobra.Command, args []string) error {
 		return errNotInLayer("registry", name, layer.Path())
 	}
 
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return err
 	}
@@ -544,7 +544,7 @@ func runRegistryInfo(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("registry %q not found in config", name)
 	}
 
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return err
 	}
@@ -614,7 +614,7 @@ func runRegistrySync(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("registry %q not found in config", name)
 	}
 
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return err
 	}
@@ -844,7 +844,7 @@ func runRegistrySubmit(cmd *cobra.Command, args []string) error {
 
 // runRegistryUsage prints metering usage totals per registry per event type.
 func runRegistryUsage(cmd *cobra.Command, args []string) error {
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return err
 	}
@@ -1077,7 +1077,7 @@ func runRegistryCapabilities(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return err
 	}
@@ -1271,7 +1271,7 @@ func readToken(cmd *cobra.Command, in *bufio.Reader) (string, error) {
 
 // runRegistryEntitlements lists active entitlement records stored locally.
 func runRegistryEntitlements(cmd *cobra.Command, _ []string) error {
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return err
 	}

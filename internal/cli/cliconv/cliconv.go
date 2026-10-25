@@ -45,6 +45,17 @@ func WithSideEffect(cmd *cobra.Command, s SideEffect) {
 	kitcli.SetSideEffect(cmd, s)
 }
 
+// ReadsOnly reports whether cmd declares the read side effect. A
+// command that opens the store directly opens it read-only only then;
+// anything else, an undeclared command included, takes the write path.
+func ReadsOnly(cmd *cobra.Command) bool {
+	if cmd == nil {
+		return false
+	}
+	se, ok := kitcli.GetSideEffect(cmd)
+	return ok && se == SideEffectRead
+}
+
 // WithIdempotency stamps kit/idempotent on cmd. Kit auto-applies a
 // verb-default for list/show/get/find/create/add/etc. — only call
 // WithIdempotency when the verb is absent from kit's default table or

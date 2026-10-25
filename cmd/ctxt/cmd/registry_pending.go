@@ -107,7 +107,7 @@ func init() {
 
 func runRegistryPending(cmd *cobra.Command, _ []string) error {
 	registry, _ := cmd.Flags().GetString("registry")
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return err
 	}
@@ -150,7 +150,7 @@ func runPendingAction(
 	verb, key string,
 	act func(*service.Service, context.Context, service.PendingSelection) ([]*storage.PendingEntity, error),
 ) error {
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return err
 	}

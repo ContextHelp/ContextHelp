@@ -102,7 +102,7 @@ func runEmbeddingsMigrate(cmd *cobra.Command, _ []string) error {
 	}
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 
-	reg, driver, cleanup, err := openEmbeddingsBackend()
+	reg, driver, cleanup, err := openEmbeddingsBackend(cmd)
 	if err != nil {
 		return err
 	}
