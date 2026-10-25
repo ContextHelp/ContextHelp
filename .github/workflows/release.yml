@@ -26,8 +26,11 @@ jobs:
     uses: ./.github/workflows/ci.yml
     permissions:
       contents: read
-      # ci.yml's security job uploads gosec and Trivy SARIF.
+      # ci.yml's security job uploads gosec and Trivy SARIF; upload-sarif
+      # also reads the workflow run. A called job gets no permission the
+      # caller withholds.
       security-events: write
+      actions: read
 
   # ── Gate 2: Trivy CRITICAL scans (Dockerfile + filesystem) ──────────────────
   # Release-only and stricter than CI's Trivy step, which uploads SARIF
@@ -46,7 +49,7 @@ jobs:
           fetch-depth: 0
 
       - name: Trivy config scan — Dockerfile misconfigs (block on CRITICAL)
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: config
           scan-ref: Dockerfile
@@ -55,7 +58,7 @@ jobs:
           severity: CRITICAL
 
       - name: Trivy filesystem scan — source CVEs (block on CRITICAL)
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
           scan-ref: .
