@@ -760,6 +760,14 @@ and the rest) resolve `--instance` only to a running local instance's
 database; a remote name fails with "no running dpkms instance" until they
 move onto the API.
 
+Those direct opens go through the same gates as dpkms's own
+([Direct database access](../manual/operations/direct-access.md)): a
+protected or public instance refuses them (exit 5); a command declared
+read opens the database read-only, takes no lock and never migrates; any
+other command takes the database lock, so it fails at once (exit 6) while
+`dpkms serve` holds it, and its fix names `dpkms shutdown --port <port>`
+and `dpkms serve`.
+
 ---
 
 ## `ctxt registry`
