@@ -154,7 +154,11 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// 1. Init storage, under the database lock: held until serve
 	// returns (the kernel drops it if the process dies), it refuses a
 	// second serve or a restore on this database.
-	dbLock, err := acquireServeLock(cfg, instanceName)
+	lockCtx := cmd.Context()
+	if lockCtx == nil {
+		lockCtx = context.Background()
+	}
+	dbLock, err := acquireServeLock(lockCtx, cfg, instanceName)
 	if err != nil {
 		return err
 	}

@@ -49,18 +49,24 @@ func openServeStorage(ctx context.Context, c *config.Config) (storage.StorageDri
 	return driver, nil
 }
 
+// serveLockBudget is how long serve keeps retrying a held database lock
+// before it gives up. It covers a restart that overlaps the previous
+// serve's shutdown drain; a second serve on a live database still fails
+// once the budget runs out, naming the holder.
+var serveLockBudget = 10 * time.Second
+
 // acquireServeLock takes the database lock serve holds, for its whole
 // lifetime, on the SQLite database it opens: a second serve on that
-// database, or a restore over it, fails fast instead of both writing to
-// it. The pidfile cannot say this: it names a port, and writing it is
-// best effort. Postgres and in-memory SQLite have no database file to
-// guard; they get a nil lock and no error.
-func acquireServeLock(c *config.Config, instance string) (*dblock.Lock, error) {
+// database, or a restore over it, fails within serveLockBudget instead
+// of both writing to it. The pidfile cannot say this: it names a port,
+// and writing it is best effort. Postgres and in-memory SQLite have no
+// database file to guard; they get a nil lock and no error.
+func acquireServeLock(ctx context.Context, c *config.Config, instance string) (*dblock.Lock, error) {
 	typ, path := serveStorageTarget(c)
 	if typ != storageTypeSQLite || sqlite.IsMemoryPath(path) {
 		return nil, nil
 	}
-	l, err := dblock.Acquire(path, dblock.Info{Role: dblock.RoleDaemon, Instance: instance})
+	l, err := dblock.AcquireRetry(ctx, path, dblock.Info{Role: dblock.RoleDaemon, Instance: instance}, serveLockBudget)
 	if errors.Is(err, dblock.ErrHeld) {
 		return nil, fmt.Errorf("database %s is in use: %w; stop that process first (dpkms ps, dpkms shutdown)", path, err)
 	}
