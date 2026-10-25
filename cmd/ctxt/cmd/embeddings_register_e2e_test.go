@@ -1,13 +1,16 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // newRegisterBinaryEnv is a fixture instance for the built ctxt alone: an
@@ -52,6 +55,9 @@ func newRegisterBinaryEnv(t *testing.T) *journeyEnv {
 // afterwards succeeds.
 func TestEmbeddingsRegister_DryRunBinary(t *testing.T) {
 	e := newRegisterBinaryEnv(t)
+	// A dry run only reads: it never creates or migrates the database, so
+	// the instance's database exists first.
+	migrateJourneyStore(t, e.store)
 	model := []string{"--embedding-model", registerModel}
 
 	for name, args := range map[string][]string{
@@ -91,5 +97,23 @@ func TestEmbeddingsRegister_DryRunBinary(t *testing.T) {
 	}
 	if !e.store.indexExists(t, registerModelID) {
 		t.Fatal("real register after dry runs built no index")
+	}
+}
+
+// migrateJourneyStore creates and migrates store's database, as a first
+// dpkms serve would.
+func migrateJourneyStore(t *testing.T, store *journeyStore) {
+	t.Helper()
+	d, err := storageutil.Open(store.storageType, store.storagePath, config.BlobConfig{
+		Backend: "local", Local: config.BlobLocalConfig{Path: t.TempDir()},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Init(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Close(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 }
