@@ -13,7 +13,10 @@
 # Create the owner's on the host, against the container's data volume:
 #
 #   docker compose --env-file docker/.env.prod run --rm dpkms \
-#     auth key create --principal owner --name "laptop CLI"
+#     auth key create --principal owner --name "laptop CLI" --maintenance-override
+#
+# The image runs public, so the store is access-gated: the audited
+# --maintenance-override is the way in, with the dpkms service stopped.
 #
 # The key is printed once; keep it in the CLI config (server.token) or
 # the proxy. Nothing else is needed here. To declare keys in config

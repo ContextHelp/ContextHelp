@@ -70,7 +70,8 @@
 # private (loopback only) | protected (trusted network) | public. A
 # non-private instance refuses to start without an active owner
 # credential: create one on the host with
-#   dpkms auth key create --principal owner
+#   dpkms auth key create --principal owner --maintenance-override
+# (dpkms stopped; the override is audited).
 #  access: private
 # The URL people open the instance at: the base of every invite and
 # sign-in link. Required on a non-private instance unless sign_in is [].
