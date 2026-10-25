@@ -191,3 +191,25 @@ func TestDoctor_Permissions(t *testing.T) {
 		t.Error("doctor --strict passed a world-readable protected database")
 	}
 }
+
+// config validate reports a path federation entry whose target is
+// protected.
+func TestConfigValidate_NonPrivateLocalFederationTarget(t *testing.T) {
+	db := setupTestDB(t)
+	target := filepath.Join(t.TempDir(), "peer.sqlite")
+	markAccess(t, target, config.AccessProtected)
+	f, err := os.OpenFile(db.ConfigPath, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = f.WriteString("federations:\n  - name: vault\n    url: " + target + "\n    sync_mode: async\n    interval: 1m\n")
+	_ = f.Close()
+
+	out, err := db.run("config", "validate")
+	if err == nil {
+		t.Fatalf("config validate passed a protected path target:\n%s", out)
+	}
+	if !strings.Contains(out, "federations") || !strings.Contains(out, `"vault"`) {
+		t.Errorf("validate output does not name the entry: %q", out)
+	}
+}
