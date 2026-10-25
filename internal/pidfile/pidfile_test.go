@@ -217,3 +217,14 @@ func TestUnreadableStartTimeIsLive(t *testing.T) {
 		t.Fatal("entry with unreadable start time not reported as conflict")
 	}
 }
+
+// The access class rides in the pidfile for discovery (dpkms ps).
+func TestWrite_RecordsAccess(t *testing.T) {
+	dir := t.TempDir()
+	if err := Write(dir, Info{PID: os.Getpid(), Name: "home", Port: testPort, Access: "protected", StartedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	if got := readInfo(t, dir, testPort).Access; got != "protected" {
+		t.Errorf("pidfile access = %q; want protected", got)
+	}
+}

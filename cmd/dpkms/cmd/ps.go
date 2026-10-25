@@ -19,6 +19,7 @@ type psRow struct {
 	PID    int    `table:"PID"`
 	Port   int    `table:"PORT"`
 	GRPC   int    `table:"GRPC"`
+	Access string `table:"ACCESS"`
 	DB     string `table:"DB"`
 	Uptime string `table:"UPTIME"`
 }
@@ -29,6 +30,7 @@ type psBrowserRow struct {
 	Port    int    `table:"PORT"`
 	GRPC    int    `table:"GRPC"`
 	Browser string `table:"BROWSER"`
+	Access  string `table:"ACCESS"`
 	DB      string `table:"DB"`
 	Uptime  string `table:"UPTIME"`
 }
@@ -139,6 +141,7 @@ func psRows(instances []pidfile.Info) []psRow {
 			PID:    info.PID,
 			Port:   info.Port,
 			GRPC:   info.GRPCPort,
+			Access: info.Access,
 			DB:     config.RedactDSN(info.DBPath),
 			Uptime: time.Since(info.StartedAt).Truncate(time.Second).String(),
 		}
@@ -161,6 +164,7 @@ func psBrowserRows(instances []pidfile.Info) []psBrowserRow {
 			Port:    info.Port,
 			GRPC:    info.GRPCPort,
 			Browser: browser,
+			Access:  info.Access,
 			DB:      config.RedactDSN(info.DBPath),
 			Uptime:  time.Since(info.StartedAt).Truncate(time.Second).String(),
 		}
