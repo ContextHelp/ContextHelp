@@ -9,6 +9,7 @@ import (
 	"charm.land/fang/v2"
 	"github.com/ideacrafterslabs/ctxt/internal/accessmarker"
 	"github.com/ideacrafterslabs/ctxt/internal/dblock"
+	"github.com/ideacrafterslabs/ctxt/internal/directopen"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
 	"hop.top/kit/go/console/output"
@@ -129,6 +130,10 @@ func classifyErr(err error) (string, bool) {
 	// is released succeeds (TRANSIENT, exit 6).
 	case errors.Is(err, dblock.ErrHeld):
 		return output.CodeTransient, true
+	// The store is missing or at another schema version: GENERIC, but
+	// classified so the envelope carries the error's own fix.
+	case errors.As(err, new(*directopen.NotReadyError)):
+		return output.CodeGeneric, true
 	case errors.Is(err, ErrPolicyDenied):
 		return output.CodeConflict, true
 	case errors.Is(err, storage.ErrNotFound):

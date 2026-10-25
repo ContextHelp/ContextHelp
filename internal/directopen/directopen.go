@@ -162,7 +162,7 @@ func Read(ctx context.Context, t Target) (*Handle, error) {
 	}
 	driver, err := storageutil.OpenReadOnly(ctx, t.typ(), t.Path, t.Blob)
 	if err != nil {
-		return nil, fmt.Errorf("open storage read-only: %w", err)
+		return nil, notReady(err)
 	}
 	return &Handle{Driver: driver}, nil
 }
@@ -214,4 +214,29 @@ func (e *ContentionError) Fix() string {
 			"or use a read command"
 	}
 	return "another command is writing this database: retry when it finishes"
+}
+
+// NotReadyError is a read refused because the store is not there yet or
+// not at this binary's schema version. It wraps the storageutil cause
+// and says what to do.
+type NotReadyError struct{ Err error }
+
+func (e *NotReadyError) Error() string { return "open storage read-only: " + e.Err.Error() }
+func (e *NotReadyError) Unwrap() error { return e.Err }
+
+// Fix names the step that makes the store readable.
+func (e *NotReadyError) Fix() string {
+	if errors.Is(e.Err, storageutil.ErrNoSchema) {
+		return "no database yet: start `dpkms serve` once (or run any write command) to create it, then retry"
+	}
+	return "start `dpkms serve` with this binary to migrate the database, or upgrade dpkms if the database is newer, then retry"
+}
+
+// notReady wraps a schema refusal as a *NotReadyError, anything else as
+// a plain read-only open failure.
+func notReady(err error) error {
+	if errors.Is(err, storageutil.ErrNoSchema) || errors.Is(err, storageutil.ErrSchemaMismatch) {
+		return &NotReadyError{Err: err}
+	}
+	return fmt.Errorf("open storage read-only: %w", err)
 }
