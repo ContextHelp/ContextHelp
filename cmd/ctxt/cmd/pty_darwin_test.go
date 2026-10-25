@@ -24,7 +24,7 @@ func openPTY() (master, slave *os.File, err error) {
 		return nil, nil, err
 	}
 	buf := make([]byte, 128)
-	if _, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), uintptr(unix.TIOCPTYGNAME), uintptr(unsafe.Pointer(&buf[0]))); errno != 0 {
+	if _, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), uintptr(unix.TIOCPTYGNAME), uintptr(unsafe.Pointer(&buf[0]))); errno != 0 { //nolint:staticcheck // x/sys has no wrapper for TIOCPTYGNAME; test-only pty helper
 		m.Close()
 		return nil, nil, errno
 	}

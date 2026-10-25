@@ -170,7 +170,7 @@ func runFeedList(cmd *cobra.Command, args []string) error {
 
 	fr := make([]feedRow, 0, len(feeds))
 	for _, f := range feeds {
-		fr = append(fr, feedRow{ID: f.ID, URL: f.URL, Status: f.Status, LastSync: f.LastSync})
+		fr = append(fr, feedRow(f))
 	}
 	if cliformat.Rows() {
 		return cliformat.DispatchRows(cmd, cmd.OutOrStdout(), fr)
