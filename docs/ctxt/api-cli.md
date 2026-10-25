@@ -350,7 +350,7 @@ Display a knowledge object's details, read from the dpkms instance (`GET /api/v1
 ctxt show <id> [--raw] [--format json|yaml]
 ```
 
-`--raw` and `--format` print the object itself. An unknown ID exits 3, an unreachable instance 70, a refused token 5.
+The human view prints the object's sections or body in full. On a terminal the text is rendered as markdown; `--no-color` or `NO_COLOR` drops the styling. Piped or redirected, it prints as stored. `--raw` and `--format` print the object itself. An unknown ID exits 3, an unreachable instance 70, a refused token 5.
 
 ---
 
