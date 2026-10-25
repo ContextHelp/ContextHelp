@@ -5,6 +5,7 @@ package postgres_test
 import (
 	"context"
 	"errors"
+	"net/url"
 	"testing"
 
 	pgdrv "github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
@@ -38,5 +39,36 @@ func TestPostgres_NewReadOnly(t *testing.T) {
 	}
 	if err := ro.Init(ctx); !errors.Is(err, pgdrv.ErrReadOnly) {
 		t.Errorf("Init on a read-only handle = %v; want ErrReadOnly", err)
+	}
+}
+
+// A connection string that already sets options keeps them on the
+// read-only handle, and the handle is still read-only.
+func TestPostgres_NewReadOnly_KeepsOptions(t *testing.T) {
+	newIntegrationDriver(t) // skips without Postgres; migrates the schema
+	u, err := url.Parse(integrationDSN())
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := u.Query()
+	q.Set("options", "-c application_name=ro-probe")
+	u.RawQuery = q.Encode()
+
+	ro, err := pgdrv.NewReadOnly(u.String(), storageutil.NewTestBlobStore(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ro.Close(context.Background()) })
+	ctx := context.Background()
+
+	var app, readOnly string
+	if err := ro.DB().QueryRowContext(ctx, `SELECT current_setting('application_name'), current_setting('default_transaction_read_only')`).Scan(&app, &readOnly); err != nil {
+		t.Fatal(err)
+	}
+	if app != "ro-probe" || readOnly != "on" {
+		t.Errorf("session application_name %q, default_transaction_read_only %q; want ro-probe, on", app, readOnly)
+	}
+	if _, err := ro.DB().ExecContext(ctx, `CREATE TABLE ro_probe (a INTEGER)`); err == nil {
+		t.Fatal("DDL succeeded on a read-only handle with options")
 	}
 }
