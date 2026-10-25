@@ -30,7 +30,7 @@ ctxt embeddings register ...
 dpkms serve
 ```
 
-While the daemon runs, a write exits 6 and its fix names these commands, with the daemon's port. The `migrate` job itself runs in dpkms: `ctxt embeddings migrate` only queues it, and the restarted daemon runs it. Ingest, `find` and `ctxt upgrade status` need the daemon running.
+While the daemon runs, a write exits 6 and its fix names these commands, with the daemon's port. A `--dry-run` of any of them only reads: it opens the database read-only and runs beside the daemon. The `migrate` job itself runs in dpkms: `ctxt embeddings migrate` only queues it, and the restarted daemon runs it. Capture (`ctxt analyze`, `ctxt capture`) or daemon-side ingest, `find` and `ctxt upgrade status` need the daemon running. `ctxt ingest` writes the database directly, like the embeddings writes, so it is refused beside the daemon.
 
 ### How much of an object is embedded
 
@@ -41,7 +41,7 @@ The Ollama provider embeds up to the model's context length, read once per proce
 
 ## Switch to another model
 
-This walks an instance from `ollama-nomic-embed-text@2026-09-26` (the current default) to `ollama-snowflake-arctic-embed2@2026-09-26`. Search keeps using the old model until the flip in step 4. Run steps 1, 2, 4, 5 and 6 with `dpkms serve` stopped and start it again after each; step 3 needs it running, since the daemon runs the migration.
+This walks an instance from `ollama-nomic-embed-text@2026-09-26` (the current default) to `ollama-snowflake-arctic-embed2@2026-09-26`. Search keeps using the old model until the flip in step 4. Run steps 1, 2, 4, 5 and 6 with `dpkms serve` stopped and start it again after each (their `--dry-run` previews run beside it); step 3 needs it running, since the daemon runs the migration.
 
 **1. Register the new model.** Name the model with a flag, so the config file's provider stays as it is:
 

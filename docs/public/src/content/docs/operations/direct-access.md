@@ -104,13 +104,15 @@ A plain `dpkms backup` of a private instance takes no lock: its `VACUUM INTO` sn
 
 ## ctxt commands
 
-ctxt commands that still open the database directly (the `embeddings`, `registry`, `remind`, `resurface`, `audit`, `doctor`, `ingest`, `upgrade plan|run` and `find --graph` families, `shell` and `tui`) go through the same two gates, whether the database is `storage.path` or the one `--instance`, `CTXT_INSTANCE` or `ctxt instance use` selects:
+ctxt commands that still open the database directly (the `embeddings`, `registry`, `remind`, `resurface`, `audit`, `doctor`, `ingest`, `upgrade plan|run` and `find --graph` families, and the `tui`) go through the same two gates, whether the database is `storage.path` or the one `--instance`, `CTXT_INSTANCE` or `ctxt instance use` selects:
 
 - the access gate applies the stricter of `server.access` and the marker: a protected or public instance refuses them, exit 5;
-- a command declared `read` (for example `embeddings list`, `remind list`, `registry list`, `audit list`, `doctor`) opens the database read-only, takes no lock and never migrates or creates it;
+- a command declared `read` (for example `embeddings list`, `remind list`, `registry list`, `audit list`, `doctor`) opens the database read-only, takes no lock and never migrates or creates it; so does any `--dry-run`;
 - any other command takes the database lock. A daemon holder fails it at once, exit 6, and the fix names the command, `dpkms shutdown --port <port>` (the port from the instance's pidfile), rerunning it, and `dpkms serve` to start the daemon again.
 
 `ctxt doctor` reads only, so it does not record its `doctor.run` audit entry there and prints a note saying so.
+
+No ctxt command holds the database open between operations. `ctxt shell` opens nothing itself: each line's command opens and closes the store for its own class. `ctxt tui` opens it per operation (reads read-only, captures and job actions locked), and `ctxt ingest --every` once per poll, so `dpkms serve` can start between polls and a poll while it runs is refused.
 
 These commands move onto the dpkms API over time (ADR-077, under `docs/decisions/` in the repository); until then, run their writes with the daemon stopped. The embedding-model lifecycle shows the sequence: [Operate embedding models](embeddings.md).
 
