@@ -235,7 +235,7 @@ func runLateralStart(cmd *cobra.Command, _ []string) error {
 	lc.ApplyGate(cfg)
 	lc.ApplySampler(cfg)
 
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, cancel := signal.NotifyContext(cmdContext(cmd), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
 	// SIGHUP → reload + re-apply gate. Keeps the daemon's

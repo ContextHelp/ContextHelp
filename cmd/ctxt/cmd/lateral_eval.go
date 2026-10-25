@@ -13,7 +13,6 @@
 package cmd
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 
@@ -115,7 +114,7 @@ func runLateralEvalReplay(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("lateral eval replay: %w", err)
 	}
-	report, err := eval.Replay(context.Background(), reg, args[0])
+	report, err := eval.Replay(cmdContext(cmd), reg, args[0])
 	if err != nil {
 		return fmt.Errorf("lateral eval replay: %w", err)
 	}
@@ -132,7 +131,7 @@ func runLateralEvalMetrics(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("lateral eval metrics: %w", err)
 	}
-	report, err := eval.Replay(context.Background(), reg, args[0])
+	report, err := eval.Replay(cmdContext(cmd), reg, args[0])
 	if err != nil {
 		return fmt.Errorf("lateral eval metrics: %w", err)
 	}

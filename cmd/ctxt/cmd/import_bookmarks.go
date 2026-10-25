@@ -99,7 +99,7 @@ func runBookmarkImport(cmd *cobra.Command, b bookmarkBrowser) error {
 	)
 
 	for _, bm := range bookmarks {
-		_, err := enqueueBookmark(dc, bm.URL, pipelineName, "import:"+b.name)
+		_, err := enqueueBookmark(cmdContext(cmd), dc, bm.URL, pipelineName, "import:"+b.name)
 		if err != nil {
 			failed++
 			if firstErr == nil {
@@ -145,13 +145,13 @@ type enqueueResponse struct {
 	JobID string `json:"job_id"`
 }
 
-func enqueueBookmark(dc *dpkmsclient.Client, url, pipelineName, source string) (string, error) {
-	return enqueueContent(dc, url, objectTypeURL, pipelineName, source)
+func enqueueBookmark(ctx context.Context, dc *dpkmsclient.Client, url, pipelineName, source string) (string, error) {
+	return enqueueContent(ctx, dc, url, objectTypeURL, pipelineName, source)
 }
 
 // enqueueContent enqueues one item on the dpkms dc talks to and returns
 // its job ID.
-func enqueueContent(dc *dpkmsclient.Client, content, contentType, pipelineName, source string) (string, error) {
+func enqueueContent(ctx context.Context, dc *dpkmsclient.Client, content, contentType, pipelineName, source string) (string, error) {
 	payload := enqueueRequest{
 		Content:  content,
 		Type:     contentType,
@@ -159,7 +159,7 @@ func enqueueContent(dc *dpkmsclient.Client, content, contentType, pipelineName, 
 		Source:   source,
 	}
 	var out enqueueResponse
-	if err := dc.Post(context.Background(), "/api/v1/pipelines/enqueue", payload, &out); err != nil {
+	if err := dc.Post(ctx, "/api/v1/pipelines/enqueue", payload, &out); err != nil {
 		return "", fmt.Errorf("enqueue: %w", err)
 	}
 	return out.JobID, nil

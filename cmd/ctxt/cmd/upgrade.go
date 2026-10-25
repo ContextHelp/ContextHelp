@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"time"
@@ -126,7 +125,7 @@ func init() {
 
 func runUpgradeCheck(cmd *cobra.Command, _ []string) error {
 	c := newUpgradeChecker(true)
-	r := c.Check(context.Background())
+	r := c.Check(cmdContext(cmd))
 	if r.Err != nil {
 		return fmt.Errorf("upgrade check: %w", r.Err)
 	}
@@ -152,7 +151,7 @@ func runUpgradeCheck(cmd *cobra.Command, _ []string) error {
 
 func runUpgradeInstall(cmd *cobra.Command, _ []string) error {
 	c := newUpgradeChecker(true)
-	return kitupgrade.RunCLI(context.Background(), c, kitupgrade.CLIOptions{
+	return kitupgrade.RunCLI(cmdContext(cmd), c, kitupgrade.CLIOptions{
 		AutoUpgrade: true,
 		Out:         cmd.OutOrStdout(),
 	})
@@ -169,7 +168,7 @@ func runUpgradeSnooze(cmd *cobra.Command, _ []string) error {
 
 func runUpgradeNotes(cmd *cobra.Command, _ []string) error {
 	c := newUpgradeChecker(true)
-	notes := c.WhatsNew(context.Background())
+	notes := c.WhatsNew(cmdContext(cmd))
 	if notes == "" {
 		fmt.Fprintln(os.Stderr, "No release notes available.")
 		return nil

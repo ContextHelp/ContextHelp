@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -161,7 +160,7 @@ func runImportLinkedIn(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 
-	ctx := context.Background()
+	ctx := cmdContext(cmd)
 	_ = ctx // context is threaded through enqueueContent via HTTP
 
 	var (
@@ -191,7 +190,7 @@ func runImportLinkedIn(cmd *cobra.Command, _ []string) error {
 			source = "import:linkedin"
 		}
 
-		_, err := enqueueContent(dc, content, objectTypeText, pipeline, source)
+		_, err := enqueueContent(cmdContext(cmd), dc, content, objectTypeText, pipeline, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {
@@ -216,7 +215,7 @@ func runImportLinkedIn(cmd *cobra.Command, _ []string) error {
 			source = "import:linkedin"
 		}
 
-		_, err := enqueueContent(dc, content, objectTypeText, pipeline, source)
+		_, err := enqueueContent(cmdContext(cmd), dc, content, objectTypeText, pipeline, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {
