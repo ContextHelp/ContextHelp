@@ -223,6 +223,12 @@ dpkms housekeeping run          # WAL checkpoint, vacuum, orphaned blobs,
                                 # zombie job detection, stats
 ```
 
+Housekeeping takes the database lock: stop the daemon first (`dpkms shutdown`),
+or it exits 6 naming the daemon. `--dry-run` only reads and runs beside it. On a
+protected or public instance add `--maintenance-override` (as the database
+owner, daemon stopped; audited). See
+[Direct database access](../manual/operations/direct-access.md).
+
 #### Multi-Instance Lifecycle
 
 Several dpkms instances can run on one machine. Give each its own port and, for

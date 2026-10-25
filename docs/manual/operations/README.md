@@ -7,6 +7,7 @@ This section is for operating dPKMS/`ctxt` reliably in multi-user or production-
 - Primary runbook: [`runbook.md`](./runbook.md)
 - Embedding models (register, migrate, switch, retire; duplicates): [`embeddings.md`](./embeddings.md)
 - Web UI and API in a browser through a reverse proxy (Caddy, nginx): [`reverse-proxy.md`](./reverse-proxy.md)
+- Direct database access (access marker, database lock, maintenance override, file modes): [`direct-access.md`](./direct-access.md)
 - Troubleshooting companion: [`../troubleshooting/faq.md`](../troubleshooting/faq.md)
 
 ## Operational scope
