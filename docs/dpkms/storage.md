@@ -289,6 +289,15 @@ Rules remain:
 - readers never block writers
 - step code must not circumvent single-writer guarantees
 
+The single writer is enforced, not assumed. `dpkms serve` holds an advisory
+lock on `<storage.path>.lock` for its lifetime; any other dpkms command that
+writes takes it non-blocking and fails while the daemon holds it, and read
+commands open the database read-only without it. The migration ladder
+therefore runs in one process at a time: migrations need no idempotency
+shims for concurrent runs. A protected or public instance also refuses
+direct opens through its access marker. See
+[Direct database access](../manual/operations/direct-access.md).
+
 ---
 
 ## Tracking Behavior
