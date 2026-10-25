@@ -12,11 +12,16 @@ intent: |
   backfills the candidate in the background, follows the job, promotes the
   candidate once it covers the corpus, checks that search now uses it, then
   retires the previous default. Deleting the old vectors stays refused until
-  the grace period has passed.
+  the grace period has passed. The embeddings writes (register, migrate,
+  set-default, deprecate, purge) open the database directly, so the
+  operator runs each with dpkms serve stopped (`dpkms shutdown --port
+  <port>`) and starts it again with `dpkms serve` afterwards; the
+  restarted daemon runs the queued migration.
 preconditions:
   - ollama-snowflake-arctic-embed2@2026-09-26 is registered, is the default, and covers the corpus.
   - providers.embedding.endpoint points at an Ollama that serves nomic-embed-text.
-  - dpkms serve is running against the instance database.
+  - dpkms serve is running against the instance database for the reads, the upgrade status follow-up and search.
+  - Each embeddings write step runs with dpkms serve stopped (`dpkms shutdown --port <port>`); `dpkms serve` starts it again after the step.
 steps:
   - id: registry
     intent: Read the registered models, the default marker and each model's coverage.
@@ -27,7 +32,7 @@ steps:
     invoke: ["ctxt", "embeddings", "provider", "--embedding-model", "nomic-embed-text", "--format", "json"]
     capture: [exit_code, stdout, stderr]
   - id: register_candidate
-    intent: Register the candidate; ctxt measures its dimension from the provider and checks the expected 768.
+    intent: With dpkms serve stopped, register the candidate; ctxt measures its dimension from the provider and checks the expected 768. Start dpkms serve again afterwards.
     invoke: ["ctxt", "embeddings", "register", "ollama-nomic-embed-text@2026-09-26", "--embedding-model", "nomic-embed-text", "--dimension", "768", "--format", "json"]
     capture: [exit_code, stdout, stderr]
   - id: confirm_default_unmoved
@@ -35,11 +40,11 @@ steps:
     invoke: ["ctxt", "embeddings", "list", "--format", "json"]
     capture: [exit_code, stdout]
   - id: early_flip_refused
-    intent: Try to promote the candidate before it covers the corpus; the coverage guard refuses.
+    intent: With dpkms serve stopped, try to promote the candidate before it covers the corpus; the coverage guard refuses. Start dpkms serve again afterwards.
     invoke: ["ctxt", "embeddings", "set-default", "ollama-nomic-embed-text@2026-09-26", "--format", "json"]
     capture: [exit_code, stdout, stderr]
   - id: migrate_candidate
-    intent: Queue the background job that embeds every object still missing a vector for the candidate.
+    intent: With dpkms serve stopped, queue the background job that embeds every object still missing a vector for the candidate; the job runs once dpkms serve is started again.
     invoke: ["ctxt", "embeddings", "migrate", "--to", "ollama-nomic-embed-text@2026-09-26", "--format", "json"]
     capture: [exit_code, stdout, stderr]
   - id: follow_progress
@@ -51,7 +56,7 @@ steps:
     invoke: ["ctxt", "embeddings", "list", "--format", "json"]
     capture: [exit_code, stdout]
   - id: promote_candidate
-    intent: Promote the fully covered candidate to the default in one atomic flip.
+    intent: With dpkms serve stopped, promote the fully covered candidate to the default in one atomic flip. Start dpkms serve again afterwards.
     invoke: ["ctxt", "embeddings", "set-default", "ollama-nomic-embed-text@2026-09-26", "--format", "json"]
     capture: [exit_code, stdout, stderr]
   - id: semantic_probe
@@ -59,10 +64,10 @@ steps:
     invoke: ["ctxt", "find", "where do sea cows graze on seagrass", "--semantic", "--format", "json"]
     capture: [exit_code, stdout, stderr]
   - id: retire_previous
-    intent: Deprecate the previous default with the typed confirmation token so ingest stops writing it.
+    intent: With dpkms serve stopped, deprecate the previous default with the typed confirmation token so ingest stops writing it. Start dpkms serve again afterwards.
     invoke: ["ctxt", "embeddings", "deprecate", "ollama-snowflake-arctic-embed2@2026-09-26", "--confirm-token=753cb17b8b3f", "--format", "json"]
     capture: [exit_code, stdout, stderr]
   - id: purge_preview
-    intent: Preview purging the retired model; it is refused and deletes nothing inside the grace period.
+    intent: With dpkms serve stopped, preview purging the retired model; it is refused and deletes nothing inside the grace period. Start dpkms serve again afterwards.
     invoke: ["ctxt", "embeddings", "purge", "ollama-snowflake-arctic-embed2@2026-09-26", "--dry-run", "--format", "json"]
     capture: [exit_code, stdout, stderr]
