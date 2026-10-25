@@ -103,7 +103,7 @@ func (g *registryRoutes) ready(w http.ResponseWriter) bool {
 func ownerGuard(w http.ResponseWriter, r *http.Request, principalID string) bool {
 	if principalID == storage.OwnerPrincipal && !caller(r).IsSelf(storage.OwnerPrincipal) {
 		WriteError(w, http.StatusForbidden, CodeOwnerProtected,
-			"only the owner manages the owner principal's credentials over the API; on the host, dpkms auth key create --principal owner")
+			"only the owner manages the owner principal's credentials over the API; on the host, dpkms auth key create --principal owner --maintenance-override (dpkms stopped)")
 		return false
 	}
 	return true

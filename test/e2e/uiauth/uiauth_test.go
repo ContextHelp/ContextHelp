@@ -149,6 +149,8 @@ type instance struct {
 	proxy                  *probeProxy
 	// token is the owner's API key, minted on the host before serve.
 	token string
+	// stop ends serve and waits for it, once.
+	stop func()
 }
 
 func startInstance(t *testing.T) *instance {
@@ -176,8 +178,9 @@ browser:
   enabled: false
 `, filepath.Join(dir, "dpkms.db"), in.proxy.URL, proxyHost))
 	// Bootstrap as an operator does: the owner's key is created on the
-	// host, against the store, before the daemon starts (ADR-079 §4).
-	mint := exec.Command(bins.dpkms, "--config", in.dpkmsCfg, "auth", "key", "create", "--principal", principal, "--name", "e2e") //nolint:gosec // the binary under test
+	// host, against the store, before the daemon starts (ADR-079 §4),
+	// through the audited override a protected instance requires.
+	mint := exec.Command(bins.dpkms, "--config", in.dpkmsCfg, "auth", "key", "create", "--principal", principal, "--name", "e2e", "--maintenance-override") //nolint:gosec // the binary under test
 	mint.Env = hermeticEnv(dir)
 	mint.Dir = dir
 	var key, mintErr bytes.Buffer
@@ -209,9 +212,10 @@ server:
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
+	var once sync.Once
+	in.stop = func() { once.Do(func() { cancel(); _ = cmd.Wait() }) }
 	t.Cleanup(func() {
-		cancel()
-		_ = cmd.Wait()
+		in.stop()
 		if t.Failed() {
 			t.Logf("dpkms log:\n%s", log.String())
 		}
@@ -418,8 +422,12 @@ func TestSignInWithLinkFromCLI(t *testing.T) {
 	assertSignedInPage(t, dom, codeOf(t, link))
 	assertRequestLog(t, in.proxy.requests())
 
+	// The session commands open the store on the host. A protected
+	// instance's store is access-gated: they take the audited
+	// --maintenance-override, which needs dpkms stopped.
+	in.stop()
 	id := in.onlyChromeSession(t)
-	out, _ := in.run(t, bins.dpkms, "--config", in.dpkmsCfg, "session", "revoke", id)
+	out, _ := in.run(t, bins.dpkms, "--config", in.dpkmsCfg, "session", "revoke", id, "--maintenance-override")
 	if !strings.Contains(out, "Revoked "+id) {
 		t.Errorf("revoke output: %s", out)
 	}
@@ -478,7 +486,7 @@ func assertRequestLog(t *testing.T, reqs []seenRequest) {
 // fails unless it is an active Chrome session of the principal.
 func (in *instance) onlyChromeSession(t *testing.T) string {
 	t.Helper()
-	out, _ := in.run(t, bins.dpkms, "--config", in.dpkmsCfg, "session", "list", "--format", "json")
+	out, _ := in.run(t, bins.dpkms, "--config", in.dpkmsCfg, "session", "list", "--format", "json", "--maintenance-override")
 	var doc struct {
 		Sessions []struct {
 			ID          string `json:"id"`

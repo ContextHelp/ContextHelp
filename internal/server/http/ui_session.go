@@ -197,7 +197,7 @@ func (u *uiSessionRoutes) mintCode(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, authn.ErrNoIdentity):
 			WriteError(w, http.StatusForbidden, "KEY_HAS_NO_IDENTITY",
-				"login codes need an API key created with dpkms auth key create; a key declared in server.auth.keys cannot sign a browser in")
+				"login codes need an API key created with dpkms auth key create (--maintenance-override on this host, dpkms stopped); a key declared in server.auth.keys cannot sign a browser in")
 		case errors.Is(err, authn.ErrInvalidCredential), errors.Is(err, authn.ErrNoCredential):
 			WriteError(w, http.StatusUnauthorized, "UNAUTHORIZED", "login codes need an API key")
 		default:
