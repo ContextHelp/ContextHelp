@@ -8,6 +8,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/federation"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/steps"
 )
@@ -21,7 +22,9 @@ Besides the checks every config gets, pipelines.overrides is checked
 against the pipelines and the steps installed in the configured store:
 each overridden pipeline exists, each skip_steps name and each
 insert_steps before/after anchor is one of that pipeline's steps, and
-each inserted step is built in or installed. dpkms serve refuses to
+each inserted step is built in or installed. Each federation entry
+given a path must point at a private database: a protected or public
+target is reached through its daemon's URL. dpkms serve refuses to
 start on the same errors.`,
 	Args: cobra.NoArgs,
 	RunE: runConfigValidate,
@@ -35,6 +38,9 @@ func init() {
 func runConfigValidate(cmd *cobra.Command, _ []string) error {
 	out := cmd.OutOrStdout()
 	errs := config.Validate(cfg)
+	for _, e := range federation.ValidateLocalTargets(*cfg) {
+		errs = append(errs, config.ValidationError{Field: "federations", Message: e.Error()})
+	}
 
 	svc, cleanup, err := newService(cmd)
 	if err != nil {

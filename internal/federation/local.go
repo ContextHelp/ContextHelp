@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/accessmarker"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
@@ -84,6 +85,25 @@ func writeObject(ctx context.Context, objs storage.ObjectStore, src, dst storage
 	return copyBlobs(ctx, src, dst, obj)
 }
 
+// ErrLocalTargetNotPrivate is wrapped by every refusal to push into a
+// local target whose access class is not private.
+var ErrLocalTargetNotPrivate = errors.New("local federation target is not private")
+
+// CheckLocalTarget refuses a local push into the database at targetPath
+// unless its access marker is private or absent. A protected or public
+// target is reached only through its daemon (a URL entry), whose
+// federation token, policy engine and database lock a direct write would
+// bypass. The refusal wraps both ErrLocalTargetNotPrivate and
+// accessmarker.ErrRefused.
+func CheckLocalTarget(targetPath string) error {
+	err := accessmarker.Gate(targetPath)
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%w: %w; configure the federation entry with the target daemon's URL (federation push over its API) instead of a path",
+		ErrLocalTargetNotPrivate, err)
+}
+
 // Name returns the federation entry name from config.
 func (p *LocalPusher) Name() string { return p.name }
 
@@ -97,6 +117,9 @@ func (p *LocalPusher) openTarget(ctx context.Context) (storage.StorageDriver, st
 	targetPath, err := canonicalPath(p.targetPath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("resolve target %q: %w", p.targetPath, err)
+	}
+	if err := CheckLocalTarget(targetPath); err != nil {
+		return nil, nil, err
 	}
 	drv, err := storageutil.Open("sqlite", targetPath, config.FileTargetBlob(targetPath, p.targetBlob))
 	if err != nil {

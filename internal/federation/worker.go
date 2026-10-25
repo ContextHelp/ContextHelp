@@ -74,6 +74,9 @@ func New(cfg config.Config, src storage.StorageDriver) (*WorkerSet, error) {
 	if err := detectCycles(cfg); err != nil {
 		return nil, err
 	}
+	if errs := ValidateLocalTargets(cfg); len(errs) > 0 {
+		return nil, errors.Join(errs...)
+	}
 
 	ws := &WorkerSet{src: src}
 	for _, entry := range cfg.Federations {
@@ -242,6 +245,28 @@ func collectEntitiesForEdges(
 		entities = append(entities, *ent)
 	}
 	return entities, nil
+}
+
+// ValidateLocalTargets checks the shape of every path (non-HTTP)
+// federation entry: its target database must be private (or unmarked).
+// A protected or public target is configured by its daemon's URL. One
+// error per offending entry, naming it.
+func ValidateLocalTargets(cfg config.Config) []error {
+	var errs []error
+	for _, entry := range cfg.Federations {
+		if isHTTP(entry.URL) {
+			continue
+		}
+		path, err := canonicalPath(entry.URL)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("federations %q: resolve target %q: %w", entry.Name, entry.URL, err))
+			continue
+		}
+		if err := CheckLocalTarget(path); err != nil {
+			errs = append(errs, fmt.Errorf("federations %q: %w", entry.Name, err))
+		}
+	}
+	return errs
 }
 
 // pusherFor returns the appropriate Pusher implementation for a federation
