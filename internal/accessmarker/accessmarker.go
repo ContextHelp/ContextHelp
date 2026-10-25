@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/dblock"
 	"github.com/ideacrafterslabs/ctxt/internal/safefs"
 )
 
@@ -57,8 +58,10 @@ type Marker struct {
 // Private reports whether m allows direct opens.
 func (m Marker) Private() bool { return m.Access == config.AccessPrivate }
 
-// Path returns the marker path for dbPath.
-func Path(dbPath string) string { return dbPath + suffix }
+// Path returns the marker path for dbPath, beside its canonical
+// spelling (dblock.Canonical): every spelling of one database file,
+// symlinks included, reads the same marker.
+func Path(dbPath string) string { return dblock.Canonical(dbPath) + suffix }
 
 // validAccess reports whether a is one of the three access classes.
 func validAccess(a string) bool {

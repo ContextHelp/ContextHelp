@@ -27,6 +27,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/filelock"
@@ -102,8 +103,30 @@ type Lock struct {
 	path string
 }
 
-// Path returns the sidecar lock path guarding dbPath.
-func Path(dbPath string) string { return dbPath + sidecarSuffix }
+// Path returns the sidecar lock path guarding dbPath, beside its
+// canonical spelling (Canonical): every spelling of one database file
+// shares one lock.
+func Path(dbPath string) string { return Canonical(dbPath) + sidecarSuffix }
+
+// Canonical returns dbPath absolute with symlinks resolved, so two
+// spellings of one database (a symlinked file or directory) name the
+// same sidecars. A file that does not exist yet resolves through its
+// parent directory; a parent that does not exist either leaves the
+// absolute path as it is.
+func Canonical(dbPath string) string {
+	abs, err := filepath.Abs(dbPath)
+	if err != nil {
+		return dbPath
+	}
+	if real, err := filepath.EvalSymlinks(abs); err == nil {
+		return real
+	}
+	dir, file := filepath.Split(abs)
+	if real, err := filepath.EvalSymlinks(dir); err == nil {
+		return filepath.Join(real, file)
+	}
+	return abs
+}
 
 // Path returns the sidecar path this lock holds.
 func (l *Lock) Path() string { return l.path }
