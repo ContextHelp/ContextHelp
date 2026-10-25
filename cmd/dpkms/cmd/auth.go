@@ -98,11 +98,11 @@ func runAuthKeyCreate(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	driver, err := openSessionStore(ctx)
+	driver, cleanup, err := openStore(cmd)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = driver.Close(context.Background()) }()
+	defer cleanup()
 
 	secret, issued, err := authn.NewKeysOver(driver.Auth(), nil).Mint(ctx, authn.MintKey{
 		PrincipalID: strings.TrimSpace(principal), Name: name, ExpiresAt: expiresAt,

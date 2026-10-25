@@ -111,7 +111,7 @@ func init() {
 }
 
 func runJobsList(cmd *cobra.Command, _ []string) error {
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return err
 	}
@@ -200,7 +200,7 @@ func statusStyle(status string) string {
 func runJobsStatus(cmd *cobra.Command, args []string) error {
 	jobID := args[0]
 
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return err
 	}
@@ -240,7 +240,7 @@ func runJobsStatus(cmd *cobra.Command, args []string) error {
 func runJobsLogs(cmd *cobra.Command, args []string) error {
 	jobID := args[0]
 
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return err
 	}
@@ -272,7 +272,7 @@ func runJobsLogs(cmd *cobra.Command, args []string) error {
 func runJobsRetry(cmd *cobra.Command, args []string) error {
 	jobID := args[0]
 
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return err
 	}
@@ -290,7 +290,7 @@ func runJobsRetry(cmd *cobra.Command, args []string) error {
 func runJobsCancel(cmd *cobra.Command, args []string) error {
 	jobID := args[0]
 
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return err
 	}

@@ -13,7 +13,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliformat"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 var sessionCmd = &cobra.Command{
@@ -115,28 +114,6 @@ type sessionRow struct {
 	Browser   string `table:"Browser"`
 }
 
-// openSessionStore opens the configured database for the session
-// commands. The caller closes the returned driver.
-func openSessionStore(ctx context.Context) (storage.StorageDriver, error) {
-	storageType := cfg.Storage.Type
-	if storageType == "" {
-		storageType = storageTypeSQLite
-	}
-	if cfg.Storage.Path == "" {
-		return nil, errors.New("storage path not configured")
-	}
-	driver, err := storageutil.Open(storageType, cfg.Storage.Path, cfg.Storage.Blob,
-		storageutil.WithMigrateSnapshot(cfg.Storage.MigrateSnapshot))
-	if err != nil {
-		return nil, fmt.Errorf("init storage: %w", err)
-	}
-	if err := driver.Init(ctx); err != nil {
-		_ = driver.Close(ctx)
-		return nil, fmt.Errorf("init storage: %w", err)
-	}
-	return driver, nil
-}
-
 func runSessionList(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
 	if ctx == nil {
@@ -146,11 +123,11 @@ func runSessionList(cmd *cobra.Command, _ []string) error {
 	principal, _ := cmd.Flags().GetString("principal")
 	limit, _ := cmd.Flags().GetInt("limit")
 
-	driver, err := openSessionStore(ctx)
+	driver, cleanup, err := openStore(cmd)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = driver.Close(context.Background()) }()
+	defer cleanup()
 
 	now := time.Now().UTC()
 	sessions, err := driver.UISessions().List(ctx, storage.UISessionFilter{
@@ -210,11 +187,11 @@ func runSessionRevoke(cmd *cobra.Command, args []string) error {
 		return errors.New("give a session ID, or --principal to revoke every session of a principal")
 	}
 
-	driver, err := openSessionStore(ctx)
+	driver, cleanup, err := openStore(cmd)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = driver.Close(context.Background()) }()
+	defer cleanup()
 	store := driver.UISessions()
 	now := time.Now().UTC()
 

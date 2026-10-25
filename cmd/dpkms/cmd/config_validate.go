@@ -36,7 +36,7 @@ func runConfigValidate(cmd *cobra.Command, _ []string) error {
 	out := cmd.OutOrStdout()
 	errs := config.Validate(cfg)
 
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return fmt.Errorf("open store to list installed steps: %w", err)
 	}

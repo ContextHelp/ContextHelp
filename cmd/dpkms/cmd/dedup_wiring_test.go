@@ -32,7 +32,7 @@ func TestNewServiceWiresDuplicatesConfig(t *testing.T) {
 		t.Errorf("BuildOpts.Duplicates = %+v, want %+v", got, dup)
 	}
 
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
