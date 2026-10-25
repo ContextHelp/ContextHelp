@@ -206,3 +206,44 @@ func TestConfigValidate_NonPrivateLocalFederationTarget(t *testing.T) {
 		t.Errorf("validate output does not name the entry: %q", out)
 	}
 }
+
+// Blobs left open by an older store are reported by doctor with the
+// exact commands that close them.
+func TestDoctor_LooseBlobs(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("file modes do not express access on Windows")
+	}
+	db := setupTestDB(t)
+	path := dbPathOf(db)
+	markAccess(t, path, config.AccessProtected)
+	for _, p := range []string{path, path + "-wal", path + "-shm", dblock.Path(path)} {
+		_ = os.Chmod(p, 0o600)
+	}
+	blobs := filepath.Join(t.TempDir(), "blobs")
+	if err := os.MkdirAll(filepath.Join(blobs, "ab"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	loose := filepath.Join(blobs, "ab", "abcdef")
+	if err := os.WriteFile(loose, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(loose, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.OpenFile(db.ConfigPath, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = f.WriteString("  blob:\n    backend: local\n    local:\n      path: " + blobs + "\n")
+	_ = f.Close()
+
+	out, err := db.run("doctor")
+	if err != nil {
+		t.Fatalf("doctor: %v\n%s", err, out)
+	}
+	for _, want := range []string{loose, "chmod 0600 '" + loose + "'", "find " + blobs} {
+		if !strings.Contains(out, want) {
+			t.Errorf("doctor output does not contain %q:\n%s", want, out)
+		}
+	}
+}

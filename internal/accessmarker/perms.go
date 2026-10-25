@@ -16,8 +16,22 @@ var ErrModesUnsupported = errors.New("file-mode checks are not supported on this
 type Finding struct {
 	// Path is the file or directory.
 	Path string
-	// Mode is its permission bits.
+	// Mode is its mode (type and permission bits).
 	Mode fs.FileMode
+}
+
+// Fix is the command that closes the file to other users.
+func (f Finding) Fix() string {
+	if f.Mode.IsDir() {
+		return "chmod 0700 '" + f.Path + "'"
+	}
+	return "chmod 0600 '" + f.Path + "'"
+}
+
+// BlobTreeFix is the command that closes a whole blob directory: every
+// directory 0700, every file 0600. Run it as the database owner.
+func BlobTreeFix(blobDir string) string {
+	return "find " + blobDir + " -type d -exec chmod 0700 {} + && find " + blobDir + " -type f -exec chmod 0600 {} +"
 }
 
 // String renders the finding for doctor and serve output.
