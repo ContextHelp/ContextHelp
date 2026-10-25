@@ -11,6 +11,7 @@ import (
 
 	httpserver "github.com/ideacrafterslabs/ctxt/internal/server/http"
 	"github.com/ideacrafterslabs/ctxt/internal/upgrade"
+	"hop.top/kit/go/console/output"
 )
 
 // recordedServer is an httptest server that serves h and records the
@@ -116,5 +117,19 @@ func TestUpgradeStatus_ServerFlagOverridesConfig(t *testing.T) {
 	}
 	if n := len(pinned.hits()); n != 1 {
 		t.Fatalf("--server got %d requests, want 1", n)
+	}
+}
+
+// plan and run work on the local store; --server would suggest a remote
+// instance, so it is a usage error rather than silently ignored.
+func TestUpgradePlanRun_RefuseServerFlag(t *testing.T) {
+	for _, sub := range []string{"plan", "run"} {
+		t.Run(sub, func(t *testing.T) {
+			db := setupTestDB(t)
+			_, err := db.exec("upgrade", sub, "--server", "http://127.0.0.1:1")
+			if got := exitOf(err); got != output.ExitUsage {
+				t.Fatalf("upgrade %s --server: exit %d (%v), want %d", sub, got, err, output.ExitUsage)
+			}
+		})
 	}
 }
