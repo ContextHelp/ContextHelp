@@ -221,3 +221,56 @@ func TestDirectOpen_BootstrapCommandsTakeOverride(t *testing.T) {
 		t.Fatalf("override audit entries = %d, %v; want 2", len(entries), err)
 	}
 }
+
+// freshConfig writes a config whose database does not exist yet.
+func freshConfig(t *testing.T) *testDB {
+	t.Helper()
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(cfgPath, []byte("storage:\n  type: sqlite\n  path: "+filepath.Join(dir, "test.db")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return &testDB{ConfigPath: cfgPath}
+}
+
+// config validate never needs an openable store: on a fresh install, a
+// protected instance or another schema version it checks overrides
+// without the installed steps and says so, instead of failing.
+func TestConfigValidate_StoreUnavailable(t *testing.T) {
+	cases := map[string]func(t *testing.T) *testDB{
+		"fresh": freshConfig,
+		"protected": func(t *testing.T) *testDB {
+			db := setupTestDB(t)
+			markAccess(t, dbPathOf(db), config.AccessProtected)
+			return db
+		},
+	}
+	for name, mk := range cases {
+		t.Run(name, func(t *testing.T) {
+			db := mk(t)
+			out, err := db.run("config", "validate")
+			if err != nil {
+				t.Fatalf("config validate: %v\n%s", err, out)
+			}
+			if !strings.Contains(out, "installed steps not checked") {
+				t.Errorf("validate did not warn that installed steps were skipped: %q", out)
+			}
+			if _, err := os.Stat(filepath.Join(filepath.Dir(db.ConfigPath), "test.db")); name == "fresh" && !os.IsNotExist(err) {
+				t.Errorf("validate created the database: %v", err)
+			}
+		})
+	}
+}
+
+// A read command on a database that does not exist yet fails, and says
+// what to do.
+func TestDirectOpen_ReadOnFreshInstallSaysWhatToDo(t *testing.T) {
+	_, err := freshConfig(t).run("job", "list")
+	if err == nil {
+		t.Fatal("job list on a missing database succeeded")
+	}
+	var env *output.Error
+	if !errors.As(classifyReturn(rootCmd, nil, err), &env) || !strings.Contains(env.SuggestedFix, "dpkms serve") {
+		t.Errorf("error %v carries no fix naming dpkms serve", err)
+	}
+}
