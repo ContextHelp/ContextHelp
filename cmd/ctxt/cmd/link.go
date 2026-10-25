@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliformat"
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/ideacrafterslabs/ctxt/internal/graph"
 )
@@ -142,6 +143,15 @@ func runLinkList(cmd *cobra.Command, args []string) error {
 	}
 
 	w := cmd.OutOrStdout()
+	if isJSONOutput() {
+		if hops == nil {
+			hops = []dpkmsclient.LinkHop{}
+		}
+		return outputJSON(w, map[string]any{"links": hops})
+	}
+	if cliformat.Rows() {
+		return cliformat.DispatchRows(cmd, w, linkRows(objectID, hops))
+	}
 	if len(hops) == 0 {
 		fmt.Fprintln(w, "No links found.")
 		return nil
@@ -163,6 +173,34 @@ func runLinkList(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(w, "  %s [%s] %s%s\n", dir, e.EdgeType, other, meta)
 	}
 	return nil
+}
+
+// linkRow is the row shape `link list` projects for table, csv and text.
+type linkRow struct {
+	Depth     int    `table:"Depth"`
+	From      string `table:"From"`
+	Direction string `table:"Direction"`
+	Type      string `table:"Type"`
+	Object    string `table:"Object"`
+	Context   string `table:"Context"`
+}
+
+func linkRows(objectID string, hops []dpkmsclient.LinkHop) []linkRow {
+	out := make([]linkRow, 0, len(hops))
+	for _, h := range hops {
+		r := linkRow{Depth: h.Depth, From: h.From, Direction: h.Direction, Object: h.ObjectID}
+		if r.From == "" {
+			r.From = objectID
+		}
+		if e := h.Edge; e != nil {
+			r.Type = e.EdgeType
+			if c, ok := e.Metadata["context"]; ok {
+				r.Context = fmt.Sprint(c)
+			}
+		}
+		out = append(out, r)
+	}
+	return out
 }
 
 // maxLinkFollow caps --follow; a larger value walks this far.

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliformat"
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/spf13/cobra"
 	"hop.top/kit/go/console/output"
@@ -127,6 +128,18 @@ func runPageList(cmd *cobra.Command, _ []string) error {
 		return outputJSON(out, pages)
 	}
 
+	if cliformat.Rows() {
+		pr := make([]pageRow, 0, len(pages))
+		for _, p := range pages {
+			meta, _ := dpkmsclient.PageMeta(p)
+			pr = append(pr, pageRow{
+				ID: p.ID, Entity: meta.EntitySlug, Sources: len(meta.SourceIDs),
+				Updated: p.UpdatedAt.Format("2006-01-02 15:04"),
+			})
+		}
+		return cliformat.DispatchRows(cmd, out, pr)
+	}
+
 	fmt.Fprintf(out, "Entity Pages (%d)\n\n", len(pages))
 	headers := []string{"ID", "Entity", "Sources", "Updated"}
 	rows := make([][]string, 0, len(pages))
@@ -145,6 +158,15 @@ func runPageList(cmd *cobra.Command, _ []string) error {
 	}
 	printTable(out, headers, rows)
 	return nil
+}
+
+// pageRow is the row shape `page list` projects for table, csv and text.
+// ID is the full id; the human table shortens it.
+type pageRow struct {
+	ID      string `table:"ID"`
+	Entity  string `table:"Entity"`
+	Sources int    `table:"Sources"`
+	Updated string `table:"Updated"`
 }
 
 func runPageShow(cmd *cobra.Command, args []string) error {

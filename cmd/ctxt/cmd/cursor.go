@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliformat"
 	"github.com/ideacrafterslabs/ctxt/internal/cursor"
 	"github.com/spf13/cobra"
 )
@@ -160,22 +161,36 @@ func runCursorList(cmd *cobra.Command, args []string) error {
 	if isJSONOutput() {
 		return outputJSON(os.Stdout, map[string]any{"cursors": cs})
 	}
+	cr := make([]cursorRow, 0, len(cs))
+	for _, c := range cs {
+		cr = append(cr, cursorRow{
+			Name: c.Name, LastSeenAt: fmtTime(c.LastSeenAt),
+			LastObjectID: c.LastObjectID, Updated: fmtTime(c.UpdatedAt),
+		})
+	}
+	if cliformat.Rows() {
+		return cliformat.DispatchRows(cmd, cmd.OutOrStdout(), cr)
+	}
 	if len(cs) == 0 {
 		fmt.Fprintln(cmd.OutOrStdout(), "No cursors. Create one via `ctxt list --cursor <name> --advance`.")
 		return nil
 	}
 	headers := []string{"Name", "LastSeenAt", "LastObjectID", "Updated"}
-	rows := make([][]string, 0, len(cs))
-	for _, c := range cs {
-		rows = append(rows, []string{
-			c.Name,
-			fmtTime(c.LastSeenAt),
-			c.LastObjectID,
-			fmtTime(c.UpdatedAt),
-		})
+	rows := make([][]string, 0, len(cr))
+	for _, c := range cr {
+		rows = append(rows, []string{c.Name, c.LastSeenAt, c.LastObjectID, c.Updated})
 	}
 	printTable(cmd.OutOrStdout(), headers, rows)
 	return nil
+}
+
+// cursorRow is the row shape `cursor list` projects for table, csv and
+// text.
+type cursorRow struct {
+	Name         string `table:"Name"`
+	LastSeenAt   string `table:"LastSeenAt"`
+	LastObjectID string `table:"LastObjectID"`
+	Updated      string `table:"Updated"`
 }
 
 func runCursorShow(cmd *cobra.Command, args []string) error {

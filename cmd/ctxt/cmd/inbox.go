@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliformat"
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/spf13/cobra"
 	"hop.top/kit/go/console/output"
@@ -187,6 +188,17 @@ func runInboxList(cmd *cobra.Command, _ []string) error {
 		if isJSONOutput() {
 			return outputJSON(out, map[string]any{"items": items, "total": total})
 		}
+		if cliformat.Rows() {
+			qr := make([]inboxQueueRow, 0, len(items))
+			for _, item := range items {
+				qr = append(qr, inboxQueueRow{
+					ID: item.ID, Kind: item.Kind, Status: item.Status, Type: item.Type,
+					Source: item.Source, Pipeline: item.Pipeline,
+					Created: item.CreatedAt.Format("2006-01-02 15:04"),
+				})
+			}
+			return cliformat.DispatchRows(cmd, out, qr)
+		}
 		fmt.Fprintf(out, "Inbox queue (%d total)\n\n", total)
 		headers := []string{"ID", "Kind", "Status", "Type", "Source", "Pipeline", "Created"}
 		var rows [][]string
@@ -219,6 +231,16 @@ func runInboxList(cmd *cobra.Command, _ []string) error {
 	if isJSONOutput() {
 		return outputJSON(out, map[string]any{"items": objs, "total": total})
 	}
+	if cliformat.Rows() {
+		ir := make([]inboxRow, 0, len(objs))
+		for _, obj := range objs {
+			ir = append(ir, inboxRow{
+				ID: obj.ID, Type: obj.Type, Source: obj.Source, Note: obj.InboxNote,
+				Created: obj.CreatedAt.Format("2006-01-02 15:04"),
+			})
+		}
+		return cliformat.DispatchRows(cmd, out, ir)
+	}
 
 	fmt.Fprintf(out, "Inbox (%d total)\n\n", total)
 	headers := []string{"ID", "Type", "Source", "Note", "Created"}
@@ -242,6 +264,27 @@ func runInboxList(cmd *cobra.Command, _ []string) error {
 	}
 	printTable(out, headers, rows)
 	return nil
+}
+
+// inboxRow is the row shape `inbox list` projects for table, csv and
+// text. Fields are untruncated: the human table shortens them for width.
+type inboxRow struct {
+	ID      string `table:"ID"`
+	Type    string `table:"Type"`
+	Source  string `table:"Source"`
+	Note    string `table:"Note"`
+	Created string `table:"Created"`
+}
+
+// inboxQueueRow is the row shape of `inbox list --pending/--failed/--raw`.
+type inboxQueueRow struct {
+	ID       string `table:"ID"`
+	Kind     string `table:"Kind"`
+	Status   string `table:"Status"`
+	Type     string `table:"Type"`
+	Source   string `table:"Source"`
+	Pipeline string `table:"Pipeline"`
+	Created  string `table:"Created"`
 }
 
 // inboxTimeFlag parses an RFC 3339 --before/--after value; unset is the

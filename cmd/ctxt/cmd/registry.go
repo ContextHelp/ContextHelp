@@ -13,6 +13,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/apierror"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliformat"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
@@ -397,6 +398,17 @@ func runRegistryList(cmd *cobra.Command, args []string) error {
 		return outputJSON(os.Stdout, map[string]any{"registries": shown, "total": total})
 	}
 
+	rr := make([]registryRow, 0, len(registries))
+	for _, r := range registries {
+		rr = append(rr, registryRow{
+			URL:         config.RedactDSN(r.RegistryURL),
+			LastFetched: r.LastFetched.Format("2006-01-02 15:04"),
+		})
+	}
+	if cliformat.Rows() {
+		return cliformat.DispatchRows(cmd, cmd.OutOrStdout(), rr)
+	}
+
 	fmt.Printf("Registries (%d)\n\n", total)
 	if total == 0 {
 		fmt.Println("  No registry manifests cached.")
@@ -404,15 +416,19 @@ func runRegistryList(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	headers := []string{"URL", "Last Fetched"}
-	rows := make([][]string, 0, len(registries))
-	for _, r := range registries {
-		rows = append(rows, []string{
-			config.RedactDSN(r.RegistryURL),
-			r.LastFetched.Format("2006-01-02 15:04"),
-		})
+	rows := make([][]string, 0, len(rr))
+	for _, r := range rr {
+		rows = append(rows, []string{r.URL, r.LastFetched})
 	}
 	printTable(os.Stdout, headers, rows)
 	return nil
+}
+
+// registryRow is the row shape `registry list` projects for table, csv
+// and text. The URL is redacted, as in every other view.
+type registryRow struct {
+	URL         string `table:"URL"`
+	LastFetched string `table:"Last Fetched"`
 }
 
 func runRegistryAdd(cmd *cobra.Command, args []string) error {

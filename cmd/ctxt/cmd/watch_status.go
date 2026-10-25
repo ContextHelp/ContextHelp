@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliformat"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/watcher/watchstate"
 )
@@ -105,6 +106,9 @@ func runWatchStatus(cmd *cobra.Command, _ []string) error {
 	if isJSONOutput() {
 		return outputJSON(cmd.OutOrStdout(), rep)
 	}
+	if cliformat.Rows() {
+		return cliformat.DispatchRows(cmd, cmd.OutOrStdout(), watchDirTableRows(rep.Dirs))
+	}
 	printWatchStatus(cmd, rep)
 	return nil
 }
@@ -138,26 +142,43 @@ func printWatchStatus(cmd *cobra.Command, rep watchStatusReport) {
 		fmt.Fprintln(w, "No directories configured (watch.dirs).")
 		return
 	}
+	headers := []string{"Path", "Configured", "Watching", "Files", "Last Enqueue", "Last Error"}
+	rows := make([][]string, 0, len(rep.Dirs))
+	for _, d := range watchDirTableRows(rep.Dirs) {
+		rows = append(rows, []string{d.Path, d.Configured, d.Watching, strconv.Itoa(d.Files), d.LastEnqueue, d.LastError})
+	}
+	printTable(w, headers, rows)
+}
+
+// watchDirTableRow is the row shape `watch status` projects for table,
+// csv and text: one row per directory. The watcher and clipboard lines
+// of the human view are in --format json.
+type watchDirTableRow struct {
+	Path        string `table:"Path"`
+	Configured  string `table:"Configured"`
+	Watching    string `table:"Watching"`
+	Files       int    `table:"Files"`
+	LastEnqueue string `table:"Last Enqueue"`
+	LastError   string `table:"Last Error"`
+}
+
+func watchDirTableRows(dirs []watchDirRow) []watchDirTableRow {
 	stamp := func(t *time.Time) string {
 		if t == nil {
 			return "-"
 		}
 		return t.Local().Format(time.DateTime)
 	}
-	yes := func(b bool) string {
-		if b {
-			return "yes"
-		}
-		return "no"
-	}
-	headers := []string{"Path", "Configured", "Watching", "Files", "Last Enqueue", "Last Error"}
-	rows := make([][]string, 0, len(rep.Dirs))
-	for _, d := range rep.Dirs {
+	out := make([]watchDirTableRow, 0, len(dirs))
+	for _, d := range dirs {
 		lastErr := d.LastError
 		if lastErr != "" {
 			lastErr = stamp(d.LastErrorAt) + " " + lastErr
 		}
-		rows = append(rows, []string{d.Path, yes(d.Configured), yes(d.Watching), strconv.Itoa(d.Files), stamp(d.LastEnqueueAt), lastErr})
+		out = append(out, watchDirTableRow{
+			Path: d.Path, Configured: yesNo(d.Configured), Watching: yesNo(d.Watching),
+			Files: d.Files, LastEnqueue: stamp(d.LastEnqueueAt), LastError: lastErr,
+		})
 	}
-	printTable(w, headers, rows)
+	return out
 }
