@@ -67,6 +67,8 @@ type offlineCase struct {
 	cmd   *cobra.Command
 	setup func(t *testing.T, db *testDB)
 	args  []string
+	// argsFn, when set, builds args after setup ran.
+	argsFn func() []string
 }
 
 func offlineCases() []offlineCase {
@@ -93,8 +95,38 @@ func offlineCases() []offlineCase {
 			cmd:  importGitHubCmd,
 			args: []string{"import", "github", "--username", "octocat", "--github-base-url", offlineRemote, "--dry-run"},
 		},
+		// Import sources that call an outside API, and the enqueue
+		// step every import shares (to a non-loopback dpkms).
+		{
+			name: "import pinboard",
+			cmd:  importPinboardCmd,
+			args: []string{"import", "pinboard", "--token", "fake:token", "--pinboard-base-url", offlineRemote, "--dry-run"},
+		},
+		{
+			name: "import raindrop",
+			cmd:  importRaindropCmd,
+			args: []string{"import", "raindrop", "--token", "fake-token", "--all", "--raindrop-base-url", offlineRemote, "--dry-run"},
+		},
+		{
+			name: "import notion",
+			cmd:  importNotionCmd,
+			args: []string{"import", "notion", "--token", "fake-token", "--all-shared", "--notion-base-url", offlineRemote, "--dry-run"},
+		},
+		{
+			name: "import chrome enqueue",
+			cmd:  importChromeCmd,
+			setup: func(t *testing.T, _ *testDB) {
+				offlineBookmarks = writeTempBookmarks(t, chromeBookmarksFixture)
+			},
+			argsFn: func() []string {
+				return []string{"import", "chrome", "--file", offlineBookmarks, "--server", offlineRemote}
+			},
+		},
 	}
 }
+
+// offlineBookmarks is the bookmarks file the chrome case's setup writes.
+var offlineBookmarks string
 
 // TestOfflineBlocksNetworkPaths: under --offline each network command
 // fails with netpolicy.ErrOffline and sends nothing; without it the
@@ -107,6 +139,9 @@ func TestOfflineBlocksNetworkPaths(t *testing.T) {
 				tc.setup(t, db)
 			}
 			fake := useFakeNet(t, tc.cmd)
+			if tc.argsFn != nil {
+				tc.args = tc.argsFn()
+			}
 
 			_, err := db.exec(append([]string{"--offline"}, tc.args...)...)
 			if !errors.Is(err, netpolicy.ErrOffline) {
