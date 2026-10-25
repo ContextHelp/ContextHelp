@@ -88,14 +88,29 @@ func readsOnly(cmd *cobra.Command) bool {
 // instance; read-only and lock-free for a read command; under the
 // database lock, migrated, for anything else. The returned cleanup
 // closes the store and releases the lock.
+//
+// A command that declares --maintenance-override (the host-side
+// bootstrap and recovery commands) opens a protected or public instance
+// through the audited override when given it, and its refusal names the
+// flag when not.
 func openStore(cmd *cobra.Command) (storage.StorageDriver, func(), error) {
 	ctx := context.Background()
 	open := directopen.Write
 	if readsOnly(cmd) {
 		open = directopen.Read
 	}
+	takesOverride := cmd != nil && cmd.Flags().Lookup(maintenanceOverrideFlag) != nil
+	if maintenanceOverride(cmd) {
+		action := cmd.CommandPath()
+		open = func(ctx context.Context, t directopen.Target) (*directopen.Handle, error) {
+			return directopen.Override(ctx, t, action)
+		}
+	}
 	h, err := open(ctx, storeTarget(directLabel))
 	if err != nil {
+		if takesOverride {
+			return nil, nil, maintenanceRefusal(err)
+		}
 		return nil, nil, err
 	}
 	cleanup := func() {

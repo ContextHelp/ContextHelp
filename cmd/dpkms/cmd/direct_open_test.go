@@ -196,3 +196,28 @@ func TestDirectOpen_ConfiguredProtectedWithoutMarker(t *testing.T) {
 	_, err = db.run("job", "list")
 	wantExit(t, err, output.ExitUnauthorized, "set-access private")
 }
+
+// The host-side bootstrap and recovery commands stay reachable on a
+// protected instance through the audited override: refused without it
+// (the fix names it), done with it, with an audit entry each.
+func TestDirectOpen_BootstrapCommandsTakeOverride(t *testing.T) {
+	db := setupTestDB(t)
+	path := dbPathOf(db)
+	markAccess(t, path, config.AccessProtected)
+
+	for _, args := range [][]string{
+		{"auth", "key", "create", "--principal", "owner"},
+		{"session", "revoke", "--principal", "owner"},
+	} {
+		_, err := db.run(args...)
+		wantExit(t, err, output.ExitUnauthorized, "--maintenance-override")
+		if _, err := db.run(append(args, "--maintenance-override")...); err != nil {
+			t.Fatalf("%v --maintenance-override: %v", args, err)
+		}
+	}
+	entries, _, err := db.Driver.AuditLog().List(context.Background(),
+		storage.AuditFilter{EventType: directopen.EventMaintenanceOverride})
+	if err != nil || len(entries) != 2 {
+		t.Fatalf("override audit entries = %d, %v; want 2", len(entries), err)
+	}
+}

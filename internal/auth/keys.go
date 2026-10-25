@@ -530,7 +530,7 @@ func RequireOwnerCredential(ctx context.Context, keys *Keys, cfg []ConfigKey, no
 	}
 	if !ok {
 		return errors.New("auth: no active owner credential (an unexpired, unrevoked API key bound to owner, or a server.auth.keys entry for owner): " +
-			"run `dpkms auth key create --principal owner` on this host, then start again")
+			"run `dpkms auth key create --principal owner --maintenance-override` on this host as the database owner, then start again")
 	}
 	return nil
 }

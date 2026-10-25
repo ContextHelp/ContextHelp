@@ -72,6 +72,8 @@ func init() {
 	sessionListCmd.Flags().String("principal", "", "only this principal's sessions")
 	sessionListCmd.Flags().Int("limit", 100, "maximum number of sessions to list")
 	sessionRevokeCmd.Flags().String("principal", "", "revoke every active session of this principal")
+	// Recovery (a stolen session) on a protected instance: audited.
+	addMaintenanceOverrideFlag(sessionRevokeCmd, false)
 
 	cliconv.WithSideEffect(sessionListCmd, cliconv.SideEffectRead)
 	cliconv.WithIdempotency(sessionListCmd, cliconv.IdempotencyYes)
