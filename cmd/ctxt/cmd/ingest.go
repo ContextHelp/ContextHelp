@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -92,15 +93,13 @@ func runIngest(cmd *cobra.Command, _ []string) error {
 	fromStdin, _ := cmd.Flags().GetBool("stdin")
 	every, _ := cmd.Flags().GetDuration("every")
 
-	svc, cleanup, err := newService(cmd)
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-
-	runner := ingest.NewRunner(svc.Store(asOwner(cmd.Context())).Objects(), ingest.WithClassifier(ingestClassifier()))
-
 	if fromStdin {
+		svc, cleanup, err := newService(cmd)
+		if err != nil {
+			return err
+		}
+		defer cleanup()
+		runner := ingest.NewRunner(svc.Store(asOwner(cmd.Context())).Objects(), ingest.WithClassifier(ingestClassifier()))
 		res, err := runner.RunFromStdin(cmd.Context(), source, os.Stdin)
 		if err != nil {
 			return err
@@ -115,7 +114,7 @@ func runIngest(cmd *cobra.Command, _ []string) error {
 	}
 
 	if every <= 0 {
-		res, err := runner.Run(cmd.Context(), adapter)
+		res, err := ingestPoll(cmd.Context(), cmd, adapter)
 		if err != nil {
 			return err
 		}
@@ -130,7 +129,7 @@ func runIngest(cmd *cobra.Command, _ []string) error {
 	fmt.Fprintf(os.Stderr, "ingesting %s every %s (ctrl-c to stop)\n",
 		source, every)
 	for {
-		res, err := runner.Run(ctx, adapter)
+		res, err := ingestPoll(ctx, cmd, adapter)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		} else {
@@ -143,6 +142,20 @@ func runIngest(cmd *cobra.Command, _ []string) error {
 		case <-time.After(every):
 		}
 	}
+}
+
+// ingestPoll runs one ingestion of adapter on a store opened for this
+// poll alone: continuous mode holds the database lock only while a poll
+// writes, so dpkms serve can start between polls, and a poll while it
+// runs fails with the daemon-held refusal instead of waiting.
+func ingestPoll(ctx context.Context, cmd *cobra.Command, adapter ingest.Adapter) (*ingest.Result, error) {
+	svc, cleanup, err := newService(cmd)
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+	runner := ingest.NewRunner(svc.Store(asOwner(ctx)).Objects(), ingest.WithClassifier(ingestClassifier()))
+	return runner.Run(ctx, adapter)
 }
 
 func buildAdapter(cmd *cobra.Command, source string) (ingest.Adapter, error) {

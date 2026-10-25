@@ -92,7 +92,7 @@ func (s *Store) SetDefault(ctx context.Context, modelID string, minCoverage floa
 }
 
 // PlanSetDefault runs SetDefault's guards and reports what the flip would
-// do, then rolls back.
+// do. It only reads, so it runs on a read-only store.
 func (s *Store) PlanSetDefault(ctx context.Context, modelID string, minCoverage float64) (Promotion, error) {
 	return s.setDefault(ctx, modelID, minCoverage, false)
 }
@@ -107,6 +107,9 @@ func (s *Store) setDefault(ctx context.Context, modelID string, minCoverage floa
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	if !commit {
+		return s.planSetDefault(ctx, tx, modelID, minCoverage)
+	}
 	if s.postgres {
 		// SHARE ROW EXCLUSIVE conflicts with itself and with writers but
 		// not with readers: concurrent flips wait here, and each then reads
@@ -166,12 +169,48 @@ func (s *Store) setDefault(ctx context.Context, modelID string, minCoverage floa
 		return Promotion{}, fmt.Errorf("registry.SetDefault: mark default: %w", err)
 	}
 	p.Changed = true
-	if !commit {
-		return p, nil
-	}
 	if err := tx.Commit(); err != nil {
 		return Promotion{}, fmt.Errorf("registry.SetDefault: commit: %w", err)
 	}
+	return p, nil
+}
+
+// planSetDefault is setDefault's guards with reads only: the current
+// default is selected, not cleared, and nothing is marked.
+func (s *Store) planSetDefault(ctx context.Context, tx *sql.Tx, modelID string, minCoverage float64) (Promotion, error) {
+	var prev sql.NullString
+	err := tx.QueryRowContext(ctx, `SELECT model_id FROM embedding_models WHERE is_default = 1`).Scan(&prev)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return Promotion{}, fmt.Errorf("registry.SetDefault: read default: %w", err)
+	}
+	p := Promotion{ModelID: modelID, Previous: prev.String, MinCoverage: minCoverage}
+	m, err := s.get(ctx, tx, modelID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) || errors.Is(err, ErrModelNotFound) {
+			return Promotion{}, fmt.Errorf("registry.SetDefault %s: %w", modelID, ErrModelNotFound)
+		}
+		return Promotion{}, fmt.Errorf("registry.SetDefault %s: %w", modelID, err)
+	}
+	total, err := objectCount(ctx, tx)
+	if err != nil {
+		return Promotion{}, fmt.Errorf("registry.SetDefault: %w", err)
+	}
+	if p.Coverage, err = s.coverage(ctx, tx, modelID, total); err != nil {
+		return Promotion{}, fmt.Errorf("registry.SetDefault: %w", err)
+	}
+	if p.Previous == modelID {
+		return p, nil
+	}
+	switch {
+	case m.DeprecatedAt != nil:
+		return Promotion{}, fmt.Errorf("registry.SetDefault %s (deprecated at %s): %w",
+			modelID, m.DeprecatedAt.UTC().Format(time.RFC3339), ErrModelDeprecated)
+	case m.Dimension <= 0:
+		return Promotion{}, fmt.Errorf("registry.SetDefault %s: %w", modelID, ErrModelNotMeasured)
+	case p.Coverage+coverageEpsilon < minCoverage:
+		return Promotion{}, &CoverageError{ModelID: modelID, Coverage: p.Coverage, MinCoverage: minCoverage}
+	}
+	p.Changed = true
 	return p, nil
 }
 
@@ -187,7 +226,8 @@ func (s *Store) Deprecate(ctx context.Context, modelID string, when time.Time) e
 	return s.deprecate(ctx, modelID, when, true)
 }
 
-// PlanDeprecate runs Deprecate's guards, then rolls back.
+// PlanDeprecate runs Deprecate's guards. It only reads, so it runs on a
+// read-only store.
 func (s *Store) PlanDeprecate(ctx context.Context, modelID string, when time.Time) error {
 	return s.deprecate(ctx, modelID, when, false)
 }
@@ -202,6 +242,18 @@ func (s *Store) deprecate(ctx context.Context, modelID string, when time.Time, c
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	if !commit {
+		m, err := s.get(ctx, tx, modelID)
+		switch {
+		case errors.Is(err, ErrModelNotFound) || errors.Is(err, sql.ErrNoRows):
+			return fmt.Errorf("registry.Deprecate %s: %w", modelID, ErrModelNotFound)
+		case err != nil:
+			return fmt.Errorf("registry.Deprecate %s: %w", modelID, err)
+		case m.IsDefault:
+			return fmt.Errorf("registry.Deprecate %s: %w", modelID, ErrIsDefault)
+		}
+		return nil
+	}
 	res, err := tx.ExecContext(
 		ctx,
 		s.q(`UPDATE embedding_models SET deprecated_at = ? WHERE model_id = ? AND is_default = 0`),
@@ -222,9 +274,6 @@ func (s *Store) deprecate(ctx context.Context, modelID string, when time.Time, c
 			return fmt.Errorf("registry.Deprecate %s: %w", modelID, err)
 		}
 		return fmt.Errorf("registry.Deprecate %s: %w", modelID, ErrIsDefault)
-	}
-	if !commit {
-		return nil
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("registry.Deprecate: commit: %w", err)

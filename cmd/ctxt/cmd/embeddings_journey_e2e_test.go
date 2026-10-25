@@ -978,9 +978,10 @@ var embeddingsWrites = map[string]bool{
 }
 
 // isEmbeddingsWrite reports whether args (without the binary) invoke an
-// embeddings write.
+// embeddings write. A --dry-run only reads and runs beside the daemon.
 func isEmbeddingsWrite(args []string) bool {
-	return len(args) > 1 && args[0] == "embeddings" && embeddingsWrites[args[1]]
+	return len(args) > 1 && args[0] == "embeddings" && embeddingsWrites[args[1]] &&
+		!slices.Contains(args, "--dry-run")
 }
 
 // The operator story runs, step by step, against a fixture instance where

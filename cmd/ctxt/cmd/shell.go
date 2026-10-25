@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
-	"os"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/repl"
@@ -12,12 +10,11 @@ import (
 
 var shellCmd = &cobra.Command{
 	Use:   "shell",
-	Short: "Start an interactive REPL session (eliminates per-command startup overhead)",
-	Long: `ctxt shell starts an interactive REPL that holds a single open connection
-to your knowledge store for the entire session.
+	Short: "Start an interactive REPL session",
+	Long: `ctxt shell starts an interactive REPL over the ctxt command tree.
 
-This eliminates the ~50ms SQLite initialisation cost incurred by each
-standalone ctxt invocation, making interactive exploration significantly snappier.
+Each line runs one command, which opens the knowledge store (or reaches
+dpkms) for that command alone, so the shell runs beside dpkms serve.
 
 Commands inside the shell are identical to standalone CLI commands:
 
@@ -42,7 +39,7 @@ func init() {
 		{Title: "Open the interactive REPL", Command: "ctxt shell"},
 	})
 	cliconv.WithNextSteps(shellCmd, []cliconv.NextStep{
-		{When: "inside the REPL", Suggest: "find <query>", Reason: "search without per-command startup cost"},
+		{When: "inside the REPL", Suggest: "find <query>", Reason: "search the knowledge store"},
 		{When: "to leave", Suggest: "exit", Reason: "or press Ctrl+D"},
 	})
 	// "shell" is not in kit's defaultIdempotency table; an interactive
@@ -51,22 +48,24 @@ func init() {
 }
 
 func runShell(cmd *cobra.Command, args []string) error {
-	svc, cleanup, err := newService(cmd)
+	session, err := prepareShell(cmd)
 	if err != nil {
-		return fmt.Errorf("shell: init service: %w", err)
+		return err
 	}
-	defer cleanup()
-
-	sessionSvc = svc
-	defer func() { sessionSvc = nil }()
-
-	repl.SetCobraExecHook(func(ctx context.Context, cobraArgs []string) error {
-		oldArgs := os.Args
-		os.Args = append([]string{"ctxt"}, cobraArgs...)
-		defer func() { os.Args = oldArgs }()
-		return rootCmd.ExecuteContext(ctx)
-	})
-
-	session := repl.NewSession(svc, cfg)
 	return session.Run(cmd.Context())
+}
+
+// prepareShell wires the REPL to the command tree. It opens nothing:
+// each line's command opens the store for its own read or write class
+// and closes it when done, so the shell runs beside dpkms serve and
+// never holds the database lock between lines.
+func prepareShell(_ *cobra.Command) (*repl.Session, error) {
+	repl.SetCobraExecHook(shellExec)
+	return repl.NewSession(nil, cfg), nil
+}
+
+// shellExec runs one shell line through the command tree.
+func shellExec(ctx context.Context, cobraArgs []string) error {
+	rootCmd.SetArgs(cobraArgs)
+	return rootCmd.ExecuteContext(ctx)
 }

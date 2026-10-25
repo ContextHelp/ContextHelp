@@ -82,7 +82,7 @@ func TestDoctorReadOnlySkipsAudit(t *testing.T) {
 	}
 }
 
-// On a writable store (a shell session's) the doctor.run entry is
+// On a writable store the doctor.run entry is
 // written, with no note.
 func TestDoctorWritableRecordsAudit(t *testing.T) {
 	db := setupTestDB(t)

@@ -29,6 +29,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	kitcli "hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/output"
 	kitstyles "hop.top/kit/go/console/tui/styles"
 )
@@ -42,11 +43,6 @@ const (
 	formatJSON     = output.JSON
 	formatMarkdown = "markdown"
 )
-
-// sessionSvc holds the service instance for the duration of a `ctxt shell` session.
-// When non-nil, newService() returns it directly, avoiding ~50ms SQLite reinit per command.
-// Set by shell.go; cleared when the shell exits.
-var sessionSvc *service.Service
 
 // asOwner returns ctx carrying the unrestricted viewer: a ctxt command
 // that opens the store directly runs at the owner's terminal and reads
@@ -64,26 +60,31 @@ const directLabel = "ctxt cli"
 // dpkms opens it: refused on a protected or public instance (the
 // stricter of server.access and the access marker); read-only, with no
 // lock and no migration, for a command that declares the read side
-// effect; under the database lock, migrated, for anything else. A lock
-// the daemon holds refuses the write at once. Returns the service and a
+// effect or runs with --dry-run; under the database lock, migrated, for
+// anything else. A lock the daemon holds refuses the write at once. Returns the service and a
 // cleanup function that must be deferred; it closes the store and
 // releases the lock.
-//
-// When called from within a `ctxt shell` session (sessionSvc != nil), returns
-// the session-scoped service with a no-op cleanup to avoid double-close.
 //
 // Instance resolution order:
 //  1. --instance flag (or CTXT_INSTANCE env var, bound via viper)
 //  2. current-instance state file (written by `ctxt instance use`)
 //  3. config storage.path
 func newService(cmd *cobra.Command) (*service.Service, func(), error) {
-	if sessionSvc != nil {
-		return sessionSvc, func() {}, nil
-	}
+	return openService(cmd, readOnlyFor(cmd))
+}
 
+// readOnlyFor reports whether cmd opens the store read-only: it declares
+// the read side effect, or runs with --dry-run.
+func readOnlyFor(cmd *cobra.Command) bool {
+	return cliconv.ReadsOnly(cmd) || (cmd != nil && kitcli.IsDryRun(cmd))
+}
+
+// openStore opens the store for cmd through the direct-open gates, on the
+// read-only path when readOnly; close the handle to release the lock.
+func openStore(cmd *cobra.Command, readOnly bool) (*directopen.Handle, error) {
 	storagePath, err := resolveStoragePath()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	t := directopen.Target{
 		Type:            cfg.Storage.Type,
@@ -93,16 +94,27 @@ func newService(cmd *cobra.Command) (*service.Service, func(), error) {
 		Label:           directLabel,
 		Access:          cfg.Server.EffectiveAccess(),
 	}
-	ctx := context.Background()
-	readOnly := cliconv.ReadsOnly(cmd)
 	open := directopen.Write
 	if readOnly {
 		open = directopen.Read
 	}
-	h, err := open(ctx, t)
+	h, err := open(context.Background(), t)
 	if err != nil {
-		return nil, nil, explainDaemonHeld(err, cmd, storagePath)
+		return nil, explainDaemonHeld(err, cmd, storagePath)
 	}
+	return h, nil
+}
+
+// openService is newService with the read/write class given: readOnly
+// takes the read-only path whatever cmd declares. cmd names the command
+// in refusals. Long-running commands (tui, ingest --every) call it per
+// operation so they never hold the lock between operations.
+func openService(cmd *cobra.Command, readOnly bool) (*service.Service, func(), error) {
+	h, err := openStore(cmd, readOnly)
+	if err != nil {
+		return nil, nil, err
+	}
+	ctx := context.Background()
 	driver := h.Driver
 
 	queue := jobs.NewQueue(driver.Jobs())

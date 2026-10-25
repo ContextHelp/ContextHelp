@@ -50,11 +50,16 @@ func init() {
 }
 
 func runDoctor(cmd *cobra.Command, _ []string) error {
-	svc, cleanup, err := newService(cmd)
+	// The lint and the audit entry work on the opened handle's own driver.
+	h, err := openStore(cmd, readOnlyFor(cmd))
 	if err != nil {
 		return err
 	}
-	defer cleanup()
+	defer func() {
+		if err := h.Close(context.Background()); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close storage: %v\n", err)
+		}
+	}()
 
 	checks, _ := cmd.Flags().GetStringSlice("check")
 	profile := activeProfileName(cmd)
@@ -70,7 +75,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	lcfg.DuplicateThresh = dupThresh
 
 	ctx := asOwner(cmdContext(cmd))
-	linter := lint.New(svc.Store(ctx), lcfg)
+	linter := lint.New(h.Driver, lcfg)
 
 	report, err := linter.Run(ctx)
 	if err != nil {
@@ -84,13 +89,13 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	} else {
 		printLintReport(report)
 	}
-	recordLintReport(ctx, cmd.ErrOrStderr(), svc.Store(ctx), report)
+	recordLintReport(ctx, cmd.ErrOrStderr(), h.Driver, report)
 	return nil
 }
 
 // recordLintReport appends the doctor.run audit entry, or says on w why
-// it did not: doctor is a read command, so outside a shell session its
-// store is open read-only and takes no writes. A failed append is a
+// it did not: doctor is a read command, so its store is open read-only
+// and takes no writes. A failed append is a
 // warning; the report itself stands.
 func recordLintReport(ctx context.Context, w io.Writer, driver storage.StorageDriver, r *lint.Report) {
 	if ro, ok := driver.(interface{ ReadOnly() bool }); ok && ro.ReadOnly() {

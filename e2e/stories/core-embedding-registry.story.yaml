@@ -16,12 +16,13 @@ intent: |
   set-default, deprecate, purge) open the database directly, so the
   operator runs each with dpkms serve stopped (`dpkms shutdown --port
   <port>`) and starts it again with `dpkms serve` afterwards; the
-  restarted daemon runs the queued migration.
+  restarted daemon runs the queued migration. A --dry-run only reads and
+  runs beside the daemon.
 preconditions:
   - ollama-snowflake-arctic-embed2@2026-09-26 is registered, is the default, and covers the corpus.
   - providers.embedding.endpoint points at an Ollama that serves nomic-embed-text.
   - dpkms serve is running against the instance database for the reads, the upgrade status follow-up and search.
-  - Each embeddings write step runs with dpkms serve stopped (`dpkms shutdown --port <port>`); `dpkms serve` starts it again after the step.
+  - Each embeddings write step runs with dpkms serve stopped (`dpkms shutdown --port <port>`); `dpkms serve` starts it again after the step. A --dry-run step runs beside the daemon.
 steps:
   - id: registry
     intent: Read the registered models, the default marker and each model's coverage.
@@ -68,6 +69,6 @@ steps:
     invoke: ["ctxt", "embeddings", "deprecate", "ollama-snowflake-arctic-embed2@2026-09-26", "--confirm-token=753cb17b8b3f", "--format", "json"]
     capture: [exit_code, stdout, stderr]
   - id: purge_preview
-    intent: With dpkms serve stopped, preview purging the retired model; it is refused and deletes nothing inside the grace period. Start dpkms serve again afterwards.
+    intent: Preview purging the retired model beside the running daemon; a dry run only reads. It is refused and deletes nothing inside the grace period.
     invoke: ["ctxt", "embeddings", "purge", "ollama-snowflake-arctic-embed2@2026-09-26", "--dry-run", "--format", "json"]
     capture: [exit_code, stdout, stderr]
