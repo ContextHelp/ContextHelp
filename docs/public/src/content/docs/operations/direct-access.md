@@ -3,7 +3,7 @@ title: Direct database access
 description: The access gate and the database lock that every non-daemon open of a dpkms database goes through.
 ---
 
-dpkms serve is the one process that owns a SQLite database while it runs. Every other dpkms command that opens the database itself (`job`, `detector`, `session`, `entitlement`, `auth key create`, `config validate`, `housekeeping`, `backup`, `instance set-access`) goes through two gates first: the access class, then the database lock. This page describes both, the errors they return and what to do about each.
+dpkms serve is the one process that owns a SQLite database while it runs. Every other dpkms command that opens the database itself (`job`, `detector`, `session`, `entitlement`, `auth key create`, `config validate`, `housekeeping`, `backup`, `instance set-access`) goes through two gates first: the access class, then the database lock. ctxt commands that open the database directly go through the same gates ([ctxt commands](#ctxt-commands)). This page describes both, the errors they return and what to do about each.
 
 Postgres and in-memory SQLite have no database file: neither gate applies. They keep the read/write split described below.
 
@@ -102,6 +102,18 @@ A read refuses a database that does not exist or has no schema yet (it never cre
 
 A plain `dpkms backup` of a private instance takes no lock: its `VACUUM INTO` snapshot is consistent beside a running daemon. With `--maintenance-override` on a protected or public instance it takes the lock.
 
+## ctxt commands
+
+ctxt commands that still open the database directly (the `embeddings`, `registry`, `remind`, `resurface`, `audit`, `doctor`, `ingest`, `upgrade plan|run` and `find --graph` families, `shell` and `tui`) go through the same two gates, whether the database is `storage.path` or the one `--instance`, `CTXT_INSTANCE` or `ctxt instance use` selects:
+
+- the access gate applies the stricter of `server.access` and the marker: a protected or public instance refuses them, exit 5;
+- a command declared `read` (for example `embeddings list`, `remind list`, `registry list`, `audit list`, `doctor`) opens the database read-only, takes no lock and never migrates or creates it;
+- any other command takes the database lock. A daemon holder fails it at once, exit 6, and the fix names the command, `dpkms shutdown --port <port>` (the port from the instance's pidfile), rerunning it, and `dpkms serve` to start the daemon again.
+
+`ctxt doctor` reads only, so it does not record its `doctor.run` audit entry there and prints a note saying so.
+
+These commands move onto the dpkms API over time (ADR-077, under `docs/decisions/` in the repository); until then, run their writes with the daemon stopped. The embedding-model lifecycle shows the sequence: [Operate embedding models](embeddings.md).
+
 ## File permissions
 
 The marker is cooperative: it stops dpkms commands and well-behaved tools, not a process that opens the file itself. For a protected or public instance the operating system has to do the rest:
@@ -117,5 +129,5 @@ Every other user then fails at `open(2)`, and the marker check becomes the clear
 ## For contributors
 
 - The migration ladder runs in one process at a time: the daemon, or the one write command holding the lock. Do not add idempotency shims to migrations for concurrent runs; fix the opener instead.
-- Open the store from a dpkms command through `openStore(cmd)` / `newService(cmd)` (`internal/directopen`), never with `storageutil.Open` directly. Declare the command's side effect: `read` gets the read-only path, anything else the locked one.
+- Open the store from a dpkms command through `openStore(cmd)` / `newService(cmd)`, and from a ctxt command through its `newService(cmd)` (both `internal/directopen`), never with `storageutil.Open` directly. Declare the command's side effect: `read` gets the read-only path, anything else the locked one (`cliconv.ReadsOnly`).
 - Design background: the single-writer and policy-boundary analyses under `docs/analysis/` in the repository.
