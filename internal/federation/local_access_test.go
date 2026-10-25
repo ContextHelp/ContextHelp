@@ -2,6 +2,7 @@ package federation
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"strings"
 	"testing"
@@ -99,5 +100,51 @@ func TestLocalPusher_TargetLockHeld(t *testing.T) {
 	}
 	if wm, err := pusher.Watermark(ctx); err != nil || wm != 0 {
 		t.Errorf("watermark beside the daemon = %d, %v; want 0, nil", wm, err)
+	}
+}
+
+// rollBack makes the target database look one migration behind, as a
+// stopped target does after a binary upgrade (the last migration is
+// idempotent and re-applies).
+func rollBack(t *testing.T, path string) {
+	t.Helper()
+	raw, err := sql.Open("sqlite3", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	if _, err := raw.Exec(`DELETE FROM schema_version WHERE version = (SELECT MAX(version) FROM schema_version)`); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A stopped local target at an older schema version still syncs: the
+// watermark read takes the write path (lock, migrate) instead of
+// refusing, then the push lands. With its daemon running it is refused.
+func TestLocalPusher_TargetAtOlderSchema(t *testing.T) {
+	targetDrv, targetPath := newTestDB(t)
+	rollBack(t, targetPath)
+	ctx := context.Background()
+	pusher := NewLocalPusher("fed", targetPath, nil, storageutil.NewTestBlobStore(t))
+
+	wm, err := pusher.Watermark(ctx)
+	if err != nil || wm != 0 {
+		t.Fatalf("watermark of an older-schema target = %d, %v; want 0, nil", wm, err)
+	}
+	if err := pusher.Push(ctx, []storage.KnowledgeObject{makeObject("obj-1", "hash-1")}, nil, nil); err != nil {
+		t.Fatalf("push after the watermark read: %v", err)
+	}
+	if n := countObjects(t, targetDrv); n != 1 {
+		t.Errorf("target holds %d objects; want 1", n)
+	}
+
+	rollBack(t, targetPath)
+	held, err := dblock.Acquire(targetPath, dblock.Info{Role: dblock.RoleDaemon})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = held.Release() }()
+	if _, err := pusher.Watermark(ctx); !errors.Is(err, dblock.ErrHeld) {
+		t.Errorf("watermark of an older-schema target beside its daemon = %v; want contention", err)
 	}
 }

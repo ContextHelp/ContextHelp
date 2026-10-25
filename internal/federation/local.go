@@ -150,7 +150,9 @@ func (p *LocalPusher) openTarget(ctx context.Context) (*directopen.Handle, error
 
 // Watermark returns the watermark the target database keeps for this
 // federation; 0 when the database does not exist yet or has no schema.
-// It only reads: no lock, so it answers beside the target's daemon.
+// It only reads (no lock, so it answers beside the target's daemon),
+// unless the target is at another schema version: then it opens it as a
+// push does, under the lock, migrating it.
 func (p *LocalPusher) Watermark(ctx context.Context) (int64, error) {
 	t, err := p.targetFor()
 	if err != nil {
@@ -165,6 +167,12 @@ func (p *LocalPusher) Watermark(ctx context.Context) (int64, error) {
 	h, err := directopen.Read(ctx, t)
 	if errors.Is(err, storageutil.ErrNoSchema) {
 		return 0, nil
+	}
+	if errors.Is(err, storageutil.ErrSchemaMismatch) {
+		// A stopped target left at an older version by a binary upgrade:
+		// migrate it as the push would (lock + migrate), so sync goes on.
+		// A running daemon's lock still refuses.
+		h, err = p.openTarget(ctx)
 	}
 	if err != nil {
 		return 0, fmt.Errorf("federation local watermark: %w", err)
