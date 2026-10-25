@@ -70,7 +70,7 @@ const directLabel = "ctxt cli"
 //  2. current-instance state file (written by `ctxt instance use`)
 //  3. config storage.path
 func newService(cmd *cobra.Command) (*service.Service, func(), error) {
-	return openService(cmd, readOnlyFor(cmd))
+	return openService(cmd, readOnlyFor(cmd), os.Stderr)
 }
 
 // readOnlyFor reports whether cmd opens the store read-only: it declares
@@ -107,9 +107,10 @@ func openStore(cmd *cobra.Command, readOnly bool) (*directopen.Handle, error) {
 
 // openService is newService with the read/write class given: readOnly
 // takes the read-only path whatever cmd declares. cmd names the command
-// in refusals. Long-running commands (tui, ingest --every) call it per
-// operation so they never hold the lock between operations.
-func openService(cmd *cobra.Command, readOnly bool) (*service.Service, func(), error) {
+// in refusals; warnings (detectors, embedding registry, close) go to
+// warn. Long-running commands (tui, ingest --every) open the write path
+// per operation so they never hold the lock between operations.
+func openService(cmd *cobra.Command, readOnly bool, warn io.Writer) (*service.Service, func(), error) {
 	h, err := openStore(cmd, readOnly)
 	if err != nil {
 		return nil, nil, err
@@ -118,7 +119,7 @@ func openService(cmd *cobra.Command, readOnly bool) (*service.Service, func(), e
 	driver := h.Driver
 
 	queue := jobs.NewQueue(driver.Jobs())
-	pipes := builtins.ConfiguredRegistryWithOpts(registryBuildOpts(driver))
+	pipes := builtins.ConfiguredRegistryWithOpts(registryBuildOptsTo(driver, warn))
 	engine := search.NewEngine(driver)
 
 	// Wire pipeline preflight validation into the queue.
@@ -129,7 +130,7 @@ func openService(cmd *cobra.Command, readOnly bool) (*service.Service, func(), e
 
 	// Load persisted detectors into the pipeline registry.
 	if err := loadDetectors(ctx, driver, pipes); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to load detectors: %v\n", err)
+		fmt.Fprintf(warn, "Warning: failed to load detectors: %v\n", err)
 	}
 
 	// Registry requests carry the token `ctxt registry login` stored.
@@ -137,14 +138,14 @@ func openService(cmd *cobra.Command, readOnly bool) (*service.Service, func(), e
 		[]service.Option{service.WithRegistryTokens(registry.KeychainTokens())}, *cfg)
 	cleanup := func() {
 		if err := h.Close(context.Background()); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to close storage: %v\n", err)
+			fmt.Fprintf(warn, "Warning: failed to close storage: %v\n", err)
 		}
 	}
 
 	// Caching the bundled default registry writes; a read command leaves it.
 	if !readOnly {
 		if err := svc.EnsureDefaultRegistry(asOwner(ctx)); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to load default registry: %v\n", err)
+			fmt.Fprintf(warn, "Warning: failed to load default registry: %v\n", err)
 		}
 	}
 
@@ -207,7 +208,12 @@ func dbPathForInstance(nameOrPort string) (string, error) {
 // store and storage.blob.threshold, without which externalize_content
 // is pruned.
 func registryBuildOpts(driver storage.StorageDriver) builtins.BuildOpts {
-	opts := embeddingBuildOpts(driver)
+	return registryBuildOptsTo(driver, os.Stderr)
+}
+
+// registryBuildOptsTo is registryBuildOpts with its warning sent to warn.
+func registryBuildOptsTo(driver storage.StorageDriver, warn io.Writer) builtins.BuildOpts {
+	opts := embeddingBuildOptsTo(driver, warn)
 	opts.BlobStore = driver.Blobs()
 	if cfg != nil {
 		opts.BlobThreshold = cfg.Storage.Blob.Threshold
@@ -225,6 +231,11 @@ func registryBuildOpts(driver storage.StorageDriver) builtins.BuildOpts {
 // writes no vectors. The duplicates config rides along for dedup, which
 // runs on those vectors.
 func embeddingBuildOpts(driver storage.StorageDriver) builtins.BuildOpts {
+	return embeddingBuildOptsTo(driver, os.Stderr)
+}
+
+// embeddingBuildOptsTo is embeddingBuildOpts with its warning sent to warn.
+func embeddingBuildOptsTo(driver storage.StorageDriver, warn io.Writer) builtins.BuildOpts {
 	opts := builtins.BuildOpts{
 		Resolver:   embeddings.NewProviderResolver(newEmbeddingResolver()),
 		Embeddings: driver.Embeddings(),
@@ -235,7 +246,7 @@ func embeddingBuildOpts(driver storage.StorageDriver) builtins.BuildOpts {
 	}
 	reg, err := embregistry.ForDriver(driver)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: embedding model registry unavailable; ingest writes no vectors: %v\n", err)
+		fmt.Fprintf(warn, "Warning: embedding model registry unavailable; ingest writes no vectors: %v\n", err)
 		return opts
 	}
 	opts.Models = reg

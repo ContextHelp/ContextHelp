@@ -53,6 +53,6 @@ func TestMockAdapterImplementsInterface(t *testing.T) {
 func TestRealAdapterDelegatesSearch(t *testing.T) {
 	// RealAdapter wraps nil service — this test only exercises interface compliance.
 	// Integration tests with a real service live in internal/tui/integration_test.go.
-	var adapter tui.ServiceAdapter = tui.NewRealAdapter(nil)
+	var adapter tui.ServiceAdapter = tui.NewRealAdapter(nil, nil)
 	require.NotNil(t, adapter)
 }

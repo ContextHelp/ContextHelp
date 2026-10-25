@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"io"
+	"os"
+
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/tui"
@@ -25,17 +28,30 @@ Keyboard shortcuts:
 		// Unicode box-drawing characters). Not yet implemented: the variable is
 		// deliberately not read here so it has no silent partial effect.
 
-		return tui.Run(tuiAdapter(cmd), tuiStartOpts(cmd, tui.StartOpts{}))
+		a, closeRead, err := tuiAdapter(cmd)
+		if err != nil {
+			return err
+		}
+		defer closeRead()
+		return tui.Run(a, tuiStartOpts(cmd, tui.StartOpts{}))
 	},
 }
 
-// tuiAdapter opens the store per TUI operation, for that operation's
-// class: reads take the read-only path beside a running daemon, writes
-// the locked one (refused while the daemon holds it).
-func tuiAdapter(cmd *cobra.Command) *tui.RealAdapter {
-	return tui.NewRealAdapter(func(write bool) (*service.Service, func(), error) {
-		return openService(cmd, !write)
-	})
+// tuiAdapter opens the TUI's backend: one read-only service for the
+// session (no lock, built once, so the 2 s job poll costs no rebuild),
+// with any warning printed before the TUI takes the screen; and a write
+// opener that opens the locked path per capture or job action. A write
+// open's warnings repeat the session open's (same database) and are not
+// printed under the TUI. Every operation runs as the owner.
+func tuiAdapter(cmd *cobra.Command) (*tui.RealAdapter, func(), error) {
+	read, closeRead, err := openService(cmd, true, os.Stderr)
+	if err != nil {
+		return nil, nil, err
+	}
+	a := tui.NewRealAdapter(read, func() (*service.Service, func(), error) {
+		return openService(cmd, false, io.Discard)
+	}).WithContext(asOwner)
+	return a, closeRead, nil
 }
 
 // tuiStartOpts returns opts with Profile set to cmd's active profile, so
