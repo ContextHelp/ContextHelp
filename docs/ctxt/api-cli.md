@@ -85,6 +85,10 @@ go build -o dpkms cmd/dpkms/main.go
 
 List commands (`list`, `feed list`, `entity list`, `registry list`, `audit list`, `cursor list`, `inbox list`, `instance list`, `page list`, `link list`, `remind list`, `watch status`, `job list`, `profile list` and the others) take `--format json|yaml|table|csv|text`. `json` and `yaml` print the full records. `table`, `csv` and `text` print one row per item with the same columns, and `--cols` selects and orders them. These row views carry no title, count or footer line, and an empty CSV result is the header line alone. Without `--format`, a list command prints its human view.
 
+### Next-step hints
+
+After a successful run, `analyze`, `feed add`, `profile create`, `import <source>`, `import batch` and `watch start` print a one-line hint naming the usual next command. Hints print only on a terminal in table format. `--no-hints`, `--quiet` or `HOP_QUIET_HINTS=1` turn them off; `--format json|yaml` and piped output never show them. An import run with `--dry-run` prints none.
+
 ### `dpkms` Commands (Infrastructure)
 
 | Command | Purpose |

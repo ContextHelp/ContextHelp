@@ -327,6 +327,9 @@ func prepareTree() error {
 	// after it would only ever see that.
 	installErrorClassification(rootCmd)
 
+	// Next-step hints after a successful run (see hints.go).
+	installHints(rootCmd)
+
 	// Structured-error envelope (12fcc Factor 4) AND kit's RunE
 	// middleware chain, of which the confirmation gate is the
 	// outermost link — one call installs both. A returned error is
