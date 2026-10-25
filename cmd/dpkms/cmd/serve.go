@@ -104,6 +104,8 @@ func init() {
 	serveCmd.Flags().Duration("reminder-interval", config.DefaultReminderInterval,
 		"how often to check for due reminders (overrides server.reminder_interval)")
 	serveCmd.Flags().Bool("daemon", false, "run as background daemon (detach from terminal)")
+	serveCmd.Flags().Bool("strict-permissions", false,
+		"refuse to start a protected or public instance whose database, WAL, sidecars or blob directory other users can read")
 	serveCmd.Flags().Bool("strict-sharing", false,
 		"answer 500 instead of stripping when the visibility backstop finds data outside a shared viewer's visibility")
 
@@ -163,6 +165,16 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	defer func() { _ = dbLock.Release() }()
+	// A protected/public instance records its class beside the
+	// database before opening it, so direct opens stay refused once
+	// serve stops; then the file-mode preflight.
+	if err := recordServeAccess(os.Stderr, cfg, instanceName, access, ""); err != nil {
+		return err
+	}
+	strictPerms, _ := cmd.Flags().GetBool("strict-permissions")
+	if err := checkServePermissions(os.Stderr, cfg, access, strictPerms); err != nil {
+		return err
+	}
 	_, dbPath := serveStorageTarget(cfg)
 	driver, err := openServeStorage(context.Background(), cfg)
 	if err != nil {
@@ -266,6 +278,9 @@ func runServe(cmd *cobra.Command, args []string) error {
 	port, grpcPort := listenerPort(httpLn), listenerPort(grpcLn)
 	cookieBridgePort := listenerPort(cookieLn)
 	addr := httpLn.Addr().String()
+	if err := recordServeAccess(os.Stderr, cfg, instanceName, access, addr); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not record the daemon address in the access marker: %v\n", err)
+	}
 	grpcBind := grpcLn.Addr().String()
 	cookieBridgeAddr := cookieLn.Addr().String()
 	// The bridge binds loopback whatever the access class, so it gets the
@@ -415,6 +430,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		CookieBridgePort: cookieBridgePort,
 		BrowserPort:      browserPort,
 		DBPath:           dbPath,
+		Access:           access,
 		StartedAt:        time.Now(),
 	}); err != nil {
 		// Non-fatal: ps won't show this instance but serve still works.

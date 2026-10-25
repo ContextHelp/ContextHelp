@@ -34,15 +34,19 @@ func ValidateName(name string) bool { return validName.MatchString(name) }
 
 // Info holds the metadata written to a pidfile.
 type Info struct {
-	PID              int       `json:"pid"`
-	Name             string    `json:"name"`        // unique instance name (URI-safe slug)
-	ConfigPath       string    `json:"config_path"` // config file used at startup
-	Port             int       `json:"port"`
-	GRPCPort         int       `json:"grpc_port"`
-	CookieBridgePort int       `json:"cookie_bridge_port"`
-	BrowserPort      int       `json:"browser_port,omitempty"`
-	DBPath           string    `json:"db_path"`
-	StartedAt        time.Time `json:"started_at"`
+	PID              int    `json:"pid"`
+	Name             string `json:"name"`        // unique instance name (URI-safe slug)
+	ConfigPath       string `json:"config_path"` // config file used at startup
+	Port             int    `json:"port"`
+	GRPCPort         int    `json:"grpc_port"`
+	CookieBridgePort int    `json:"cookie_bridge_port"`
+	BrowserPort      int    `json:"browser_port,omitempty"`
+	DBPath           string `json:"db_path"`
+	// Access is the instance's access class (server.access), for
+	// discovery only (dpkms ps). The access marker beside the database
+	// is what direct opens are gated on, not this field.
+	Access    string    `json:"access,omitempty"`
+	StartedAt time.Time `json:"started_at"`
 }
 
 // Write creates or overwrites the pidfile for the given port in dir.
