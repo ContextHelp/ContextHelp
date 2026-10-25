@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
 
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 	_ "github.com/mattn/go-sqlite3"
@@ -19,27 +20,29 @@ type Driver struct {
 	// skipMigrateSnapshot turns off the snapshot Migrate writes before
 	// applying pending migrations (WithMigrateSnapshot(false)).
 	skipMigrateSnapshot bool
-	objects             *ObjectStore
-	entities            *EntityStore
-	edges               *EdgeStore
-	jobs                *JobStore
-	pipelines           *PipelineStore
-	steps               *StepStore
-	registries          *RegistryStore
-	reminders           *ReminderStore
-	feeds               *FeedStore
-	feedItems           *FeedItemStore
-	batches             *BatchStore
-	detectors           *DetectorStore
-	blobs               storage.BlobStore
-	proximity           *ProximityStore
-	watches             *WatchStore
-	attachments         *AttachmentStore
-	resurfacing         *ResurfacingQueueStore
-	entitlements        *entitlementStore
-	metering            *MeteringStore
-	savedSearches       *SavedSearchStore
-	searchHistory       *SearchHistoryStore
+	// readOnly marks a NewReadOnly driver: Init refuses to migrate it.
+	readOnly      bool
+	objects       *ObjectStore
+	entities      *EntityStore
+	edges         *EdgeStore
+	jobs          *JobStore
+	pipelines     *PipelineStore
+	steps         *StepStore
+	registries    *RegistryStore
+	reminders     *ReminderStore
+	feeds         *FeedStore
+	feedItems     *FeedItemStore
+	batches       *BatchStore
+	detectors     *DetectorStore
+	blobs         storage.BlobStore
+	proximity     *ProximityStore
+	watches       *WatchStore
+	attachments   *AttachmentStore
+	resurfacing   *ResurfacingQueueStore
+	entitlements  *entitlementStore
+	metering      *MeteringStore
+	savedSearches *SavedSearchStore
+	searchHistory *SearchHistoryStore
 }
 
 // ErrNoBlobStore is returned by New when it is given no blob store.
@@ -57,7 +60,6 @@ func New(path string, blobs storage.BlobStore, opts ...Option) (*Driver, error) 
 	if blobs == nil {
 		return nil, ErrNoBlobStore
 	}
-	sqlite_vec.Auto()
 	// Encode pragmas in the DSN so every pooled connection inherits them.
 	// go-sqlite3 requires file: URI prefix for query parameters to be
 	// parsed as connection pragmas (bare path+? is treated as filename).
@@ -70,6 +72,38 @@ func New(path string, blobs storage.BlobStore, opts ...Option) (*Driver, error) 
 	// BEGIN IMMEDIATE takes the write lock up front, so concurrent writers
 	// queue on busy_timeout instead.
 	dsn := "file:" + path + "?_journal_mode=WAL&_synchronous=NORMAL&_foreign_keys=ON&_cache_size=-64000&_busy_timeout=5000&_txlock=immediate"
+	return open(path, dsn, blobs, false, opts...)
+}
+
+// ErrReadOnly is returned by Init on a driver NewReadOnly opened: a
+// read-only handle never migrates.
+var ErrReadOnly = errors.New("sqlite: database opened read-only")
+
+// NewReadOnly opens the existing database at path read-only: mode=ro
+// and query_only in the DSN, so no statement on any pooled connection
+// can write it, and Init refuses (ErrReadOnly) instead of migrating.
+// It sets no journal mode; a WAL-mode database gets its -wal/-shm files
+// if they are missing, as SQLite needs them to read it, but the
+// database file itself is not written. A missing path is an error, not
+// a new database.
+func NewReadOnly(path string, blobs storage.BlobStore) (*Driver, error) {
+	if blobs == nil {
+		return nil, ErrNoBlobStore
+	}
+	if IsMemoryPath(path) {
+		return nil, fmt.Errorf("sqlite: read-only open of in-memory database %q", path)
+	}
+	if _, err := os.Stat(path); err != nil {
+		return nil, fmt.Errorf("open sqlite database %s read-only: %w", path, err)
+	}
+	dsn := "file:" + path + "?mode=ro&_query_only=true&_foreign_keys=ON&_cache_size=-64000&_busy_timeout=5000"
+	return open(path, dsn, blobs, true)
+}
+
+// open opens dsn, checks it is reachable and capable, and builds the
+// driver over it.
+func open(path, dsn string, blobs storage.BlobStore, readOnly bool, opts ...Option) (*Driver, error) {
+	sqlite_vec.Auto()
 	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
@@ -97,7 +131,7 @@ func New(path string, blobs storage.BlobStore, opts ...Option) (*Driver, error) 
 		return nil, err
 	}
 
-	d := &Driver{db: db, path: path}
+	d := &Driver{db: db, path: path, readOnly: readOnly}
 	for _, o := range opts {
 		o(d)
 	}
@@ -127,6 +161,9 @@ func New(path string, blobs storage.BlobStore, opts ...Option) (*Driver, error) 
 }
 
 func (d *Driver) Init(ctx context.Context) error {
+	if d.readOnly {
+		return ErrReadOnly
+	}
 	return d.Migrate(ctx)
 }
 

@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -18,6 +19,7 @@ import (
 type Driver struct {
 	db            *sql.DB
 	connStr       string
+	readOnly      bool // NewReadOnly: Init refuses to migrate
 	caps          *pgCaps
 	objects       *ObjectStore
 	entities      *EntityStore
@@ -53,6 +55,53 @@ var ErrNoBlobStore = errors.New("postgres: blob store is required")
 // content lives: build it with blob.New from storage.blob, or open both
 // through storageutil.Open.
 func New(connStr string, blobs storage.BlobStore) (*Driver, error) {
+	return open(connStr, blobs, false)
+}
+
+// ErrReadOnly is returned by Init on a driver NewReadOnly opened: a
+// read-only handle never migrates.
+var ErrReadOnly = errors.New("postgres: database opened read-only")
+
+// readOnlyOption makes every transaction on a session read-only by
+// default, so no statement the handle runs can write.
+const readOnlyOption = "-c default_transaction_read_only=on"
+
+// NewReadOnly opens connStr read-only: every session it opens starts
+// with default_transaction_read_only on, so DML and DDL fail, and Init
+// refuses (ErrReadOnly) instead of migrating. connStr may be a URL or a
+// key/value string; one that already sets options is refused, since
+// merging two option strings would be a guess.
+func NewReadOnly(connStr string, blobs storage.BlobStore) (*Driver, error) {
+	ro, err := readOnlyConnStr(connStr)
+	if err != nil {
+		return nil, err
+	}
+	return open(ro, blobs, true)
+}
+
+// readOnlyConnStr returns connStr with readOnlyOption as its options.
+func readOnlyConnStr(connStr string) (string, error) {
+	if strings.HasPrefix(connStr, "postgres://") || strings.HasPrefix(connStr, "postgresql://") {
+		u, err := url.Parse(connStr)
+		if err != nil {
+			return "", fmt.Errorf("postgres: parse connection string: %w", err)
+		}
+		q := u.Query()
+		if q.Has("options") {
+			return "", errors.New("postgres: read-only open of a connection string that sets options")
+		}
+		q.Set("options", readOnlyOption)
+		u.RawQuery = q.Encode()
+		return u.String(), nil
+	}
+	if strings.Contains(connStr, "options=") {
+		return "", errors.New("postgres: read-only open of a connection string that sets options")
+	}
+	return strings.TrimSpace(connStr) + " options='" + readOnlyOption + "'", nil
+}
+
+// open opens connStr and builds the driver over it.
+func open(connStr string, blobs storage.BlobStore, readOnly bool) (*Driver, error) {
 	if blobs == nil {
 		return nil, ErrNoBlobStore
 	}
@@ -64,7 +113,7 @@ func New(connStr string, blobs storage.BlobStore) (*Driver, error) {
 	db.SetMaxOpenConns(25)
 	db.SetMaxIdleConns(5)
 
-	d := &Driver{db: db, connStr: connStr}
+	d := &Driver{db: db, connStr: connStr, readOnly: readOnly}
 	d.caps = &pgCaps{}
 	d.objects = &ObjectStore{db: db, caps: d.caps}
 	d.entities = &EntityStore{db: db}
@@ -93,6 +142,9 @@ func New(connStr string, blobs storage.BlobStore) (*Driver, error) {
 }
 
 func (d *Driver) Init(ctx context.Context) error {
+	if d.readOnly {
+		return ErrReadOnly
+	}
 	if err := d.db.PingContext(ctx); err != nil {
 		return fmt.Errorf("ping postgres: %w", err)
 	}
