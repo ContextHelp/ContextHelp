@@ -310,3 +310,34 @@ func TestRegistrySyncFetchesManifest(t *testing.T) {
 		t.Errorf("cached manifest = %+v, want version 1.1.0 with its ETag", cache)
 	}
 }
+
+// TestRegistrySyncRefusalExitsUnauthorized: a registry that answers 401
+// or 403 ends `registry sync` with exit 5 (UNAUTHORIZED), with and
+// without --dry-run, whatever the registry's auth setup.
+func TestRegistrySyncRefusalExitsUnauthorized(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		for _, authType := range []string{"", "bearer"} {
+			for _, extra := range [][]string{nil, {"--dry-run"}} {
+				name := fmt.Sprintf("%d-auth-%s-%s", status, authType, strings.Join(extra, ""))
+				t.Run(name, func(t *testing.T) {
+					srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+						w.WriteHeader(status)
+					}))
+					defer srv.Close()
+
+					db := setupTestDB(t)
+					withRegistry(t, db, "locked", srv.URL, authType)
+
+					args := append([]string{"registry", "sync"}, extra...)
+					_, err := db.exec(append(args, "locked")...)
+					if err == nil {
+						t.Fatal("sync against a refusing registry succeeded")
+					}
+					if got := ExitCodeFor(err); got != 5 {
+						t.Fatalf("exit %d, want 5 (UNAUTHORIZED); err = %v", got, err)
+					}
+				})
+			}
+		}
+	}
+}
