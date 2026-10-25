@@ -15,6 +15,12 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
 )
 
+// Storage types the factory opens.
+const (
+	typeSQLite   = "sqlite"
+	typePostgres = "postgres"
+)
+
 // OpenOption configures the driver Open and NewDriver build.
 type OpenOption func(*openOptions)
 
@@ -50,9 +56,9 @@ func NewDriver(typ, path string, blobs storage.BlobStore, opts ...OpenOption) (s
 		opt(&o)
 	}
 	switch typ {
-	case "sqlite":
+	case typeSQLite:
 		return sqlite.New(path, blobs, sqlite.WithMigrateSnapshot(!o.skipMigrateSnapshot))
-	case "postgres":
+	case typePostgres:
 		return postgres.New(path, blobs)
 	default:
 		return nil, fmt.Errorf("unknown storage type: %s", typ)
@@ -91,9 +97,9 @@ func OpenReadOnly(ctx context.Context, typ, path string, blobCfg config.BlobConf
 		return nil, fmt.Errorf("open blob store: %w", err)
 	}
 	switch typ {
-	case "sqlite":
+	case typeSQLite:
 		return sqlite.NewReadOnly(path, blobs)
-	case "postgres":
+	case typePostgres:
 		return postgres.NewReadOnly(path, blobs)
 	default:
 		return nil, fmt.Errorf("unknown storage type: %s", typ)
@@ -105,9 +111,9 @@ func OpenReadOnly(ctx context.Context, typ, path string, blobCfg config.BlobConf
 // store normally: nothing is migrated or snapshotted.
 func CheckSchema(ctx context.Context, typ, path string) (storage.SchemaStatus, error) {
 	switch typ {
-	case "sqlite":
+	case typeSQLite:
 		return sqlite.CheckSchema(ctx, path)
-	case "postgres":
+	case typePostgres:
 		return postgres.CheckSchema(ctx, path)
 	default:
 		return storage.SchemaStatus{}, fmt.Errorf("unknown storage type: %s", typ)
