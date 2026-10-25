@@ -116,7 +116,7 @@ func TestFeedSyncByID(t *testing.T) {
 	srv := startMockFeedServer(t)
 	defer srv.Close()
 
-	out, err := executeCommand("feed", "sync", "--id", "feed_001", "--server", srv.URL)
+	out, err := executeCommand("feed", "sync", "feed_001", "--server", srv.URL)
 	if err != nil {
 		t.Fatalf("feed sync by ID should succeed: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestFeedSyncByURL(t *testing.T) {
 	srv := startMockFeedServer(t)
 	defer srv.Close()
 
-	out, err := executeCommand("feed", "sync", "--url", "https://example.com/feed.xml", "--server", srv.URL)
+	out, err := executeCommand("feed", "sync", "https://example.com/feed.xml", "--server", srv.URL)
 	if err != nil {
 		t.Fatalf("feed sync by URL should succeed: %v", err)
 	}
@@ -138,10 +138,32 @@ func TestFeedSyncByURL(t *testing.T) {
 	}
 }
 
-func TestFeedSyncRequiresIDOrURL(t *testing.T) {
-	_, err := executeCommand("feed", "sync")
-	if err == nil {
-		t.Error("feed sync without --id or --url should fail")
+// TestFeedSyncTakesOneOperand: feed sync names its feed positionally;
+// none, two, or the removed --id/--url flags are usage errors.
+func TestFeedSyncTakesOneOperand(t *testing.T) {
+	srv := startMockFeedServer(t)
+	defer srv.Close()
+	for _, args := range [][]string{
+		{"feed", "sync"},
+		{"feed", "sync", "feed_001", "feed_002"},
+		{"feed", "sync", "--id", "feed_001"},
+		{"feed", "sync", "--url", "https://example.com/feed.xml"},
+	} {
+		_, err := executeCommand(append(args, "--server", srv.URL)...)
+		if err == nil || !(strings.Contains(err.Error(), "accepts 1 arg") || strings.Contains(err.Error(), "unknown flag")) {
+			t.Errorf("%v: err = %v, want an arity or unknown-flag error", args, err)
+		}
+	}
+}
+
+// TestFeedSyncUnknownURL: a URL no subscription has is an error, not a
+// sync of an ID spelled like a URL.
+func TestFeedSyncUnknownURL(t *testing.T) {
+	srv := startMockFeedServer(t)
+	defer srv.Close()
+	_, err := executeCommand("feed", "sync", "https://nowhere.example/rss", "--server", srv.URL)
+	if err == nil || !strings.Contains(err.Error(), "no feed found") {
+		t.Fatalf("err = %v, want no feed found", err)
 	}
 }
 
@@ -178,5 +200,22 @@ func TestFeedRemoveRequiresArg(t *testing.T) {
 	_, err := executeCommand("feed", "delete")
 	if err == nil {
 		t.Error("feed delete without arg should fail")
+	}
+}
+
+// TestE2EFeedSyncUsage: on the built binary the removed flags and a
+// missing operand are usage errors (exit 2).
+func TestE2EFeedSyncUsage(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e: -short")
+	}
+	for _, args := range [][]string{
+		{"feed", "sync"},
+		{"feed", "sync", "--id", "feed_001"},
+		{"feed", "sync", "--url", "https://example.com/feed.xml"},
+	} {
+		if got, out := runBuiltCtxt(t, args...); got != 2 {
+			t.Errorf("ctxt %v: exit %d, want 2\n%s", args, got, out)
+		}
 	}
 }
