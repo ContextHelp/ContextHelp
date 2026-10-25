@@ -27,10 +27,10 @@ Examples:
   ctxt feed list
 
   # Sync a feed by ID
-  ctxt feed sync --id feed_12345678
+  ctxt feed sync feed_12345678
 
   # Sync a feed by URL
-  ctxt feed sync --url https://example.com/feed.xml
+  ctxt feed sync https://example.com/feed.xml
 
   # Remove a feed
   ctxt feed delete feed_12345678 --confirm-token=<sha>`,
@@ -52,9 +52,10 @@ var feedListCmd = &cobra.Command{
 }
 
 var feedSyncCmd = &cobra.Command{
-	Use:   "sync",
+	Use:   "sync <url-or-id>",
 	Short: "Trigger a feed sync",
-	Long:  `Trigger an immediate sync of a feed subscription.`,
+	Long:  `Trigger an immediate sync of a feed subscription, named by its URL or ID.`,
+	Args:  cobra.ExactArgs(1),
 	RunE:  runFeedSync,
 }
 
@@ -80,7 +81,7 @@ func init() {
 		{Title: "Use a specific dpkms server", Command: "ctxt feed add https://example.com/feed.xml --server https://dpkms.example.net"},
 	})
 	cliconv.WithNextSteps(feedAddCmd, []cliconv.NextStep{
-		{When: "on success", Suggest: "ctxt feed sync --id <feed-id>", Reason: "trigger an immediate first sync"},
+		{When: "on success", Suggest: "ctxt feed sync <feed-id>", Reason: "trigger an immediate first sync"},
 		{When: "after a few minutes", Suggest: "ctxt feed list", Reason: "confirm the new feed reached active status"},
 	})
 	cliconv.WithSideEffect(feedListCmd, cliconv.SideEffectRead)
@@ -90,8 +91,8 @@ func init() {
 	})
 	cliconv.WithSideEffect(feedSyncCmd, cliconv.SideEffectWrite)
 	cliconv.WithExamples(feedSyncCmd, []cliconv.Example{
-		{Title: "Sync by feed ID", Command: "ctxt feed sync --id feed_12345678"},
-		{Title: "Sync by feed URL", Command: "ctxt feed sync --url https://example.com/feed.xml"},
+		{Title: "Sync by feed ID", Command: "ctxt feed sync feed_12345678"},
+		{Title: "Sync by feed URL", Command: "ctxt feed sync https://example.com/feed.xml"},
 	})
 	cliconv.WithNextSteps(feedSyncCmd, []cliconv.NextStep{
 		{When: "on success", Suggest: "ctxt job status <sync-job-id>", Reason: "follow the spawned sync job to completion"},
@@ -115,10 +116,6 @@ func init() {
 	// inherited flag is resolved through cmd.Flags() at read time, so
 	// no local re-registration is required (12fcc local-global rule).
 	feedListCmd.Flags().String("status", "", "filter by status (active|paused|error)")
-
-	// feed sync flags
-	feedSyncCmd.Flags().String("url", "", "feed URL to sync")
-	feedSyncCmd.Flags().String("id", "", "feed ID to sync")
 
 	// feed delete flags
 }
@@ -201,20 +198,9 @@ func runFeedSync(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	feedURL, _ := cmd.Flags().GetString("url")
-	feedID, _ := cmd.Flags().GetString("id")
-
-	if feedID == "" && feedURL == "" {
-		return fmt.Errorf("either --id or --url is required")
-	}
-
-	// If URL is given but not ID, resolve the ID first.
-	if feedID == "" {
-		id, err := resolveFeedID(cmd.Context(), client, feedURL)
-		if err != nil {
-			return err
-		}
-		feedID = id
+	feedID, err := resolveFeedTarget(cmd.Context(), client, args[0])
+	if err != nil {
+		return err
 	}
 
 	var result map[string]any
@@ -237,14 +223,9 @@ func runFeedRemove(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	feedID := target
-	// If the arg looks like a URL, resolve the ID.
-	if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") {
-		id, err := resolveFeedID(cmd.Context(), client, target)
-		if err != nil {
-			return err
-		}
-		feedID = id
+	feedID, err := resolveFeedTarget(cmd.Context(), client, target)
+	if err != nil {
+		return err
 	}
 
 	req := dpkmsclient.Request{Method: gohttp.MethodDelete, Path: feedsPath + "/" + url.PathEscape(feedID)}
@@ -281,6 +262,16 @@ func listFeeds(ctx context.Context, client *dpkmsclient.Client, status string) (
 }
 
 // resolveFeedID looks up a feed ID by URL from the server's feed list.
+// resolveFeedTarget returns the feed ID a <url-or-id> operand names: an
+// http(s) URL is looked up among the subscriptions, anything else is the
+// ID itself.
+func resolveFeedTarget(ctx context.Context, client *dpkmsclient.Client, target string) (string, error) {
+	if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") {
+		return resolveFeedID(ctx, client, target)
+	}
+	return target, nil
+}
+
 func resolveFeedID(ctx context.Context, client *dpkmsclient.Client, feedURL string) (string, error) {
 	feeds, err := listFeeds(ctx, client, "")
 	if err != nil {

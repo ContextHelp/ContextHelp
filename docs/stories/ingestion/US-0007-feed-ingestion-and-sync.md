@@ -79,7 +79,7 @@ ctxt feed sync
 # → Sync complete: 2 new items, 1 error
 
 # Manual sync of a single feed
-ctxt feed sync --url https://blog.example.com/rss
+ctxt feed sync https://blog.example.com/rss
 # → f-abc123: 2 new items enqueued
 
 # Unsubscribe
@@ -301,7 +301,7 @@ feeds:
 - [ ] CLI: `ctxt feed add <json_feed_url>` correctly detects JSON Feed 1.1 format; stored feed record `format` field equals `"json1.1"`
 - [ ] CLI: `ctxt feed list` displays all subscriptions with correct status and last-sync time
 - [ ] CLI: `ctxt feed sync` triggers sync for all active feeds and reports new item counts
-- [ ] CLI: `ctxt feed sync --url <url>` sends the feed URL in the server request payload and syncs only the specified feed
+- [ ] CLI: `ctxt feed sync <url>` sends the feed URL in the server request payload and syncs only the specified feed
 - [ ] CLI: `ctxt feed remove <url>` removes subscription; GET /feeds confirms the feed is gone; existing items remain searchable
 - [ ] Sync: Conditional GET with ETag/Last-Modified avoids re-downloading unchanged feeds; stored feed record `etag` and `last_modified` updated after sync
 - [ ] Dedup: Items already ingested (by GUID) are not re-enqueued on subsequent syncs; `feed_items` table row count unchanged for duplicate sync

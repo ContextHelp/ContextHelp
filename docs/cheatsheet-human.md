@@ -54,7 +54,7 @@ ctxt analyze --file ./meeting.md --type text
 ```bash
 ctxt analyze https://example.com/postmortem --type url
 ctxt feed add https://example.com/feed.xml         # subscribe
-ctxt feed sync --url https://example.com/feed.xml  # fetch new items (nothing polls feeds on a timer)
+ctxt feed sync https://example.com/feed.xml  # fetch new items (nothing polls feeds on a timer)
 ```
 
 ### Image / Audio / Video
@@ -262,5 +262,5 @@ ctxt stats --watch                   # live refresh every 3s (Ctrl-C to exit)
 | Wrong type detected | Set `--type` explicitly |
 | Captured object needs specific pipeline | Add `--pipeline text.long` (or matching name) |
 | Verify what was captured | `ctxt show <id> --format json` |
-| Feed not updating | `ctxt feed sync --url <feed-url>` (or `--id <feed-id>`) |
+| Feed not updating | `ctxt feed sync <feed-url-or-id>` |
 | Server won't stop | `dpkms shutdown --port <port>` or `dpkms ps` to find the right port |

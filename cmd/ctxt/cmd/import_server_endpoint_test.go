@@ -103,7 +103,7 @@ func serverClientCases() []serverClientCase {
 		{"feed add", func(*testing.T) []string { return []string{"feed", "add", "https://example.com/feed.xml"} }},
 		{"feed list", func(*testing.T) []string { return []string{"feed", "list"} }},
 		{"feed sync", func(*testing.T) []string {
-			return []string{"feed", "sync", "--url", "https://example.com/feed.xml"}
+			return []string{"feed", "sync", "https://example.com/feed.xml"}
 		}},
 		{"feed delete", func(*testing.T) []string {
 			return []string{"feed", "delete", "https://example.com/feed.xml", "--confirm=yes"}
