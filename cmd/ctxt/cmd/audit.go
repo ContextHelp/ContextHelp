@@ -9,6 +9,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/audit"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliformat"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -144,20 +145,35 @@ func runAuditList(cmd *cobra.Command, _ []string) error {
 		})
 	}
 
-	headers := []string{"ID", "EVENT", "OBJECT", "ACTOR", "TIME"}
-	rows := make([][]string, 0, len(entries))
+	ar := make([]auditRow, 0, len(entries))
 	for _, e := range entries {
-		rows = append(rows, []string{
-			e.ID,
-			e.EventType,
-			e.ObjectID,
-			e.Actor,
-			e.CreatedAt.UTC().Format(time.RFC3339),
+		ar = append(ar, auditRow{
+			ID: e.ID, Event: e.EventType, Object: e.ObjectID, Actor: e.Actor,
+			Time: e.CreatedAt.UTC().Format(time.RFC3339),
 		})
+	}
+	if cliformat.Rows() {
+		return cliformat.DispatchRows(cmd, cmd.OutOrStdout(), ar)
+	}
+
+	headers := []string{"ID", "EVENT", "OBJECT", "ACTOR", "TIME"}
+	rows := make([][]string, 0, len(ar))
+	for _, r := range ar {
+		rows = append(rows, []string{r.ID, r.Event, r.Object, r.Actor, r.Time})
 	}
 	printTable(os.Stdout, headers, rows)
 	fmt.Fprintf(os.Stdout, "Total: %d\n", total)
 	return nil
+}
+
+// auditRow is the row shape `audit list` projects for table, csv and
+// text.
+type auditRow struct {
+	ID     string `table:"ID"`
+	Event  string `table:"Event"`
+	Object string `table:"Object"`
+	Actor  string `table:"Actor"`
+	Time   string `table:"Time"`
 }
 
 func runAuditExport(cmd *cobra.Command, _ []string) error {

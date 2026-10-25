@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliformat"
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/spf13/cobra"
 )
@@ -174,18 +175,29 @@ func runFeedList(cmd *cobra.Command, args []string) error {
 		return outputJSON(cmd.OutOrStdout(), map[string]any{"feeds": feeds})
 	}
 
-	headers := []string{"ID", "URL", "STATUS", "LAST SYNC"}
-	rows := make([][]string, 0, len(feeds))
+	fr := make([]feedRow, 0, len(feeds))
 	for _, f := range feeds {
-		rows = append(rows, []string{
-			f.ID,
-			f.URL,
-			statusStyle(f.Status),
-			f.LastSync,
-		})
+		fr = append(fr, feedRow{ID: f.ID, URL: f.URL, Status: f.Status, LastSync: f.LastSync})
+	}
+	if cliformat.Rows() {
+		return cliformat.DispatchRows(cmd, cmd.OutOrStdout(), fr)
+	}
+
+	headers := []string{"ID", "URL", "STATUS", "LAST SYNC"}
+	rows := make([][]string, 0, len(fr))
+	for _, f := range fr {
+		rows = append(rows, []string{f.ID, f.URL, statusStyle(f.Status), f.LastSync})
 	}
 	printTable(cmd.OutOrStdout(), headers, rows)
 	return nil
+}
+
+// feedRow is the row shape `feed list` projects for table, csv and text.
+type feedRow struct {
+	ID       string `table:"ID"`
+	URL      string `table:"URL"`
+	Status   string `table:"Status"`
+	LastSync string `table:"Last Sync"`
 }
 
 func runFeedSync(cmd *cobra.Command, args []string) error {

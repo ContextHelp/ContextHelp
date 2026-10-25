@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliformat"
 	"github.com/ideacrafterslabs/ctxt/internal/remind"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
@@ -152,23 +153,41 @@ func runRemindList(cmd *cobra.Command, args []string) error {
 		})
 	}
 
+	now := time.Now()
+	rr := make([]reminderRow, 0, len(objects))
+	for _, obj := range objects {
+		rr = append(rr, reminderRow{
+			ID: obj.ID, Title: objectTitle(obj),
+			RemindAt: obj.RemindAt.Format("2006-01-02 15:04 MST"),
+			Status:   reminderStatus(obj, now),
+		})
+	}
+	if cliformat.Rows() {
+		return cliformat.DispatchRows(cmd, cmd.OutOrStdout(), rr)
+	}
+
 	if len(objects) == 0 {
 		fmt.Println("No reminders scheduled.")
 		return nil
 	}
 
-	now := time.Now()
 	fmt.Printf("Reminders (%d)\n\n", len(objects))
 	headers := []string{"ID", "Title", "Remind At", "Status"}
-	rows := make([][]string, 0, len(objects))
-	for _, obj := range objects {
-		title := objectTitle(obj)
-		remindAt := obj.RemindAt.Format("2006-01-02 15:04 MST")
-		status := reminderStatus(obj, now)
-		rows = append(rows, []string{obj.ID, title, remindAt, status})
+	rows := make([][]string, 0, len(rr))
+	for _, r := range rr {
+		rows = append(rows, []string{r.ID, r.Title, r.RemindAt, r.Status})
 	}
 	printTable(os.Stdout, headers, rows)
 	return nil
+}
+
+// reminderRow is the row shape `remind list` projects for table, csv and
+// text.
+type reminderRow struct {
+	ID       string `table:"ID"`
+	Title    string `table:"Title"`
+	RemindAt string `table:"Remind At"`
+	Status   string `table:"Status"`
 }
 
 // objectTitle returns a short display title for a knowledge object.

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliformat"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/ideacrafterslabs/ctxt/internal/pidfile"
@@ -27,6 +28,19 @@ type instanceEntry struct {
 	PID     int    `json:"pid,omitempty"`
 	DB      string `json:"db,omitempty"`
 	Uptime  string `json:"uptime,omitempty"`
+}
+
+// instanceRow is the row shape `instance list` projects for table, csv
+// and text. Current is a column there; the human table marks it with *.
+type instanceRow struct {
+	Name    string `table:"Name"`
+	Current string `table:"Current"`
+	Kind    string `table:"Kind"`
+	URL     string `table:"URL"`
+	Token   string `table:"Token"`
+	PID     string `table:"PID"`
+	DB      string `table:"DB"`
+	Uptime  string `table:"Uptime"`
 }
 
 var instanceCmd = &cobra.Command{
@@ -184,6 +198,20 @@ func runInstanceList(cmd *cobra.Command, _ []string) error {
 
 	if isJSONOutput() {
 		return outputJSON(cmd.OutOrStdout(), entries)
+	}
+	if cliformat.Rows() {
+		ir := make([]instanceRow, 0, len(entries))
+		for _, e := range entries {
+			pid := ""
+			if e.PID != 0 {
+				pid = strconv.Itoa(e.PID)
+			}
+			ir = append(ir, instanceRow{
+				Name: e.Name, Current: yesNo(e.Current), Kind: e.Kind, URL: e.URL,
+				Token: yesNo(e.Token), PID: pid, DB: e.DB, Uptime: e.Uptime,
+			})
+		}
+		return cliformat.DispatchRows(cmd, cmd.OutOrStdout(), ir)
 	}
 	if len(entries) == 0 {
 		fmt.Fprintln(cmd.OutOrStdout(), "No named endpoints (server.urls) and no running dpkms instances.")

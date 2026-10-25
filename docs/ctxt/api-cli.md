@@ -81,6 +81,10 @@ go build -o dpkms cmd/dpkms/main.go
 | `ctxt entity` | Query and inspect entities |
 | `ctxt uri` | Manage ctxt:// URI scheme OS registration |
 
+### Output formats of list commands
+
+List commands (`list`, `feed list`, `entity list`, `registry list`, `audit list`, `cursor list`, `inbox list`, `instance list`, `page list`, `link list`, `remind list`, `watch status`, `job list`, `profile list` and the others) take `--format json|yaml|table|csv|text`. `json` and `yaml` print the full records. `table`, `csv` and `text` print one row per item with the same columns, and `--cols` selects and orders them. These row views carry no title, count or footer line, and an empty CSV result is the header line alone. Without `--format`, a list command prints its human view.
+
 ### `dpkms` Commands (Infrastructure)
 
 | Command | Purpose |

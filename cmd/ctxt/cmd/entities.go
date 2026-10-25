@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliformat"
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -153,14 +154,30 @@ func runEntitiesList(cmd *cobra.Command, args []string) error {
 		return outputJSON(os.Stdout, entities)
 	}
 
+	er := make([]entityRow, 0, len(entities))
+	for _, e := range entities {
+		er = append(er, entityRow{Slug: e.Slug, Title: e.Title, Namespace: e.Namespace})
+	}
+	if cliformat.Rows() {
+		return cliformat.DispatchRows(cmd, cmd.OutOrStdout(), er)
+	}
+
 	fmt.Printf("Entities (%d)\n\n", len(entities))
 	headers := []string{"Slug", "Title", "Namespace"}
-	rows := make([][]string, 0, len(entities))
-	for _, e := range entities {
+	rows := make([][]string, 0, len(er))
+	for _, e := range er {
 		rows = append(rows, []string{e.Slug, e.Title, e.Namespace})
 	}
 	printTable(os.Stdout, headers, rows)
 	return nil
+}
+
+// entityRow is the row shape `entity list` projects for table, csv and
+// text.
+type entityRow struct {
+	Slug      string `table:"Slug"`
+	Title     string `table:"Title"`
+	Namespace string `table:"Namespace"`
 }
 
 func runEntitiesShow(cmd *cobra.Command, args []string) error {
