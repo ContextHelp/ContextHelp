@@ -76,8 +76,8 @@ func checkServePermissions(warn io.Writer, c *config.Config, access string, stri
 	if err != nil {
 		return err
 	}
-	for _, f := range findings {
-		_, _ = fmt.Fprintf(warn, "warning: %s instance: %s\n", access, f)
+	for _, line := range permissionFixLines(findings, blobDirOf(c)) {
+		_, _ = fmt.Fprintf(warn, "warning: %s instance: %s\n", access, line)
 	}
 	if strict && len(findings) > 0 {
 		return fmt.Errorf("%d instance file(s) readable by other users on a %s instance; chmod them (0600 files, 0700 directories) or run without --strict-permissions",

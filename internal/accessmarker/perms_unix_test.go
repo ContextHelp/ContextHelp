@@ -5,6 +5,7 @@ package accessmarker
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -69,5 +70,47 @@ func TestOwnedByCurrentUser(t *testing.T) {
 	owned, uid, err := OwnedByCurrentUser(p)
 	if err != nil || !owned || uid != os.Getuid() {
 		t.Fatalf("OwnedByCurrentUser(own file) = %v, %d, %v", owned, uid, err)
+	}
+}
+
+// Blobs written before the store created them closed (0750 dirs, 0644
+// files) keep their modes: the check walks the blob tree and reports
+// each, with the command that fixes it.
+func TestCheckPermissions_LooseBlobsInClosedDir(t *testing.T) {
+	dir := t.TempDir()
+	db := filepath.Join(dir, "db.sqlite")
+	blobs := filepath.Join(dir, "blobs")
+	fan := filepath.Join(blobs, "ab", "cd")
+	if err := os.MkdirAll(fan, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Join(blobs, "ab"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	blob := filepath.Join(fan, "abcdef")
+	if err := os.WriteFile(blob, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(blob, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := CheckPermissions(db, blobs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("findings %v; want the 0750 fan-out dir and the 0644 blob", got)
+	}
+	for _, f := range got {
+		want := "chmod 0600"
+		if f.Mode.IsDir() {
+			want = "chmod 0700"
+		}
+		if !strings.Contains(f.Fix(), want) || !strings.Contains(f.Fix(), f.Path) {
+			t.Errorf("fix for %s = %q; want %q naming the path", f.Path, f.Fix(), want)
+		}
+	}
+	if fix := BlobTreeFix(blobs); !strings.Contains(fix, "find "+blobs) {
+		t.Errorf("blob tree fix %q", fix)
 	}
 }

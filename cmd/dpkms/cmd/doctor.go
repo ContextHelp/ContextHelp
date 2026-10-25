@@ -154,15 +154,38 @@ func permissionsCheck(c *config.Config, strict bool) uxp.Check {
 		ck.Status, ck.Message = uxp.StatusOK, class+" instance: files closed to other users"
 		return ck
 	}
-	lines := make([]string, len(findings))
-	for i, f := range findings {
-		lines[i] = f.String()
-	}
 	ck.Status = uxp.StatusWarn
 	if strict {
 		ck.Status = uxp.StatusFail
 	}
 	ck.Message = fmt.Sprintf("%s instance: %d file(s) readable by other users; run the daemon as a dedicated user and chmod them", class, len(findings))
-	ck.Detail = strings.Join(lines, "\n")
+	ck.Detail = strings.Join(permissionFixLines(findings, blobDirOf(c)), "\n")
 	return ck
+}
+
+// maxListedFindings caps the per-file lines doctor and serve print.
+const maxListedFindings = 10
+
+// permissionFixLines renders findings with the command that fixes each,
+// at most maxListedFindings of them, and one command for the whole blob
+// directory when any finding is under it (old blobs keep the modes an
+// earlier store gave them).
+func permissionFixLines(findings []accessmarker.Finding, blobDir string) []string {
+	var lines []string
+	inBlobs := false
+	for i, f := range findings {
+		if blobDir != "" && strings.HasPrefix(f.Path, blobDir) {
+			inBlobs = true
+		}
+		if i < maxListedFindings {
+			lines = append(lines, f.String(), "  fix: "+f.Fix())
+		}
+	}
+	if n := len(findings) - maxListedFindings; n > 0 {
+		lines = append(lines, fmt.Sprintf("... and %d more", n))
+	}
+	if inBlobs {
+		lines = append(lines, "fix the whole blob directory (as the database owner): "+accessmarker.BlobTreeFix(blobDir))
+	}
+	return lines
 }
