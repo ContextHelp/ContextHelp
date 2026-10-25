@@ -144,6 +144,10 @@ func build(db *sql.DB, connStr string, blobs storage.BlobStore, readOnly bool) *
 	return d
 }
 
+// ReadOnly reports whether d was opened with NewReadOnly: every
+// statement on it that writes fails.
+func (d *Driver) ReadOnly() bool { return d.readOnly }
+
 func (d *Driver) Init(ctx context.Context) error {
 	if d.readOnly {
 		return ErrReadOnly
