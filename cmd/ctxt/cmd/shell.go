@@ -16,6 +16,9 @@ var shellCmd = &cobra.Command{
 Each line runs one command, which opens the knowledge store (or reaches
 dpkms) for that command alone, so the shell runs beside dpkms serve.
 
+Jobs run in dpkms: the shell prints no job notifications. Follow a job
+with ctxt job status <job-id>.
+
 Commands inside the shell are identical to standalone CLI commands:
 
   ctxt> find authentication flow
@@ -61,11 +64,13 @@ func runShell(cmd *cobra.Command, args []string) error {
 // never holds the database lock between lines.
 func prepareShell(_ *cobra.Command) (*repl.Session, error) {
 	repl.SetCobraExecHook(shellExec)
-	return repl.NewSession(nil, cfg), nil
+	return repl.NewSession(cfg), nil
 }
 
-// shellExec runs one shell line through the command tree.
+// shellExec runs one shell line through the command tree, with every
+// flag back at its default first.
 func shellExec(ctx context.Context, cobraArgs []string) error {
+	resetAllFlags(rootCmd)
 	rootCmd.SetArgs(cobraArgs)
 	return rootCmd.ExecuteContext(ctx)
 }

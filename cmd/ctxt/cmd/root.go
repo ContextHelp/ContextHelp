@@ -554,5 +554,10 @@ func dispatchURI(cmd *cobra.Command, raw string) error {
 }
 
 func dispatchURIViaTUI(cmd *cobra.Command, opts tui.StartOpts) error {
-	return tui.Run(tuiAdapter(cmd), tuiStartOpts(cmd, opts))
+	a, closeRead, err := tuiAdapter(cmd)
+	if err != nil {
+		return err
+	}
+	defer closeRead()
+	return tui.Run(a, tuiStartOpts(cmd, opts))
 }

@@ -31,9 +31,9 @@ func TestHistoryPath_NoDataDirUsesDefault(t *testing.T) {
 func TestSession_HistoryFollowsConfigDataDir(t *testing.T) {
 	dataDir := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
-	s := NewSession(nil, &config.Config{Storage: config.StorageConfig{DataDir: dataDir}})
+	s := NewSession(&config.Config{Storage: config.StorageConfig{DataDir: dataDir}})
 	assert.Equal(t, filepath.Join(dataDir, "repl_history"), HistoryPath(s.dataDir()))
-	assert.Equal(t, "", NewSession(nil, nil).dataDir())
+	assert.Equal(t, "", NewSession(nil).dataDir())
 }
 
 func TestLoadSaveHistory_RoundTrip(t *testing.T) {

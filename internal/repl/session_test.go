@@ -12,7 +12,7 @@ import (
 
 func TestSession_New(t *testing.T) {
 	cfg := &config.Config{}
-	s := NewSession(nil, cfg)
+	s := NewSession(cfg)
 	assert.NotNil(t, s)
 	assert.NotNil(t, s.state)
 }

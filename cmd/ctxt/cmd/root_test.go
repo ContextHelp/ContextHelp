@@ -7,8 +7,6 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/testguard"
-	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
 
@@ -36,28 +34,6 @@ func TestMain(m *testing.M) {
 }
 
 // resetAllFlags resets all flags on a command and its subcommands to defaults.
-func resetAllFlags(cmd *cobra.Command) {
-	cmd.Flags().VisitAll(func(f *pflag.Flag) {
-		resetFlag(f)
-		f.Changed = false
-	})
-	cmd.PersistentFlags().VisitAll(func(f *pflag.Flag) {
-		resetFlag(f)
-		f.Changed = false
-	})
-	for _, sub := range cmd.Commands() {
-		resetAllFlags(sub)
-	}
-}
-
-func resetFlag(f *pflag.Flag) {
-	if slice, ok := f.Value.(pflag.SliceValue); ok {
-		_ = slice.Replace(nil)
-		return
-	}
-	_ = f.Value.Set(f.DefValue)
-}
-
 // executeCommand runs a cobra command with args and captures all output
 // (both cobra output and fmt.Print* calls to os.Stdout).
 func executeCommand(args ...string) (string, error) {

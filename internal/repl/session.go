@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
-	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/peterh/liner"
 )
 
@@ -20,18 +19,17 @@ const replPrompt = "ctxt> "
 // SessionContextKey is the context key used to inject *SessionState into cobra commands.
 type SessionContextKey struct{}
 
-// Session owns the REPL lifecycle: liner state, history, job watcher, and read loop.
+// Session owns the REPL lifecycle: liner state, history and read loop.
+// It holds no store: each line's command opens what it needs. Jobs run in
+// dpkms, so the session prints no job notifications.
 type Session struct {
-	svc   *service.Service
 	cfg   *config.Config
 	state *SessionState
-	watch *JobWatcher
 }
 
-// NewSession creates a Session. svc may be nil in tests that only exercise dispatch.
-func NewSession(svc *service.Service, cfg *config.Config) *Session {
+// NewSession creates a Session.
+func NewSession(cfg *config.Config) *Session {
 	return &Session{
-		svc:   svc,
 		cfg:   cfg,
 		state: &SessionState{},
 	}
@@ -57,11 +55,6 @@ func (s *Session) Run(ctx context.Context) (err error) {
 	})
 
 	_ = LoadHistory(l, s.dataDir())
-
-	if s.svc != nil {
-		s.watch = NewJobWatcher(s.svc.Bus, replPrompt, os.Stdout)
-		s.watch.Start(ctx)
-	}
 
 	ctx = context.WithValue(ctx, SessionContextKey{}, s.state)
 	execCobra := buildCobraExecutor(ctx)
@@ -94,9 +87,6 @@ func (s *Session) Run(ctx context.Context) (err error) {
 		}
 	}
 
-	if s.watch != nil {
-		s.watch.Stop()
-	}
 	_ = SaveHistory(l, s.dataDir())
 	return nil
 }

@@ -43,7 +43,7 @@ func TestTUIStartOptsActiveProfile(t *testing.T) {
 				t.Errorf("StartOpts.InitialQuery = %q, want %q (caller opts must survive)", opts.InitialQuery, "q")
 			}
 
-			m, _ := tui.New(tui.NewRealAdapter(nil), opts).Update(tea.WindowSizeMsg{Width: 200, Height: 30})
+			m, _ := tui.New(tui.NewRealAdapter(nil, nil), opts).Update(tea.WindowSizeMsg{Width: 200, Height: 30})
 			view := m.(tui.Model).View().Content
 			if !strings.Contains(view, "profile: "+tc.want+" ") {
 				t.Errorf("status bar missing %q:\n%s", "profile: "+tc.want, view)
