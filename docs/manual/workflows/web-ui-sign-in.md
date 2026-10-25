@@ -8,7 +8,7 @@ A private instance (the default, bound to `127.0.0.1`) needs no sign-in; `ctxt u
 
 ## Prerequisites
 
-- ctxt is configured to reach the instance with an API key it accepts: `server.url` (or a `server.urls` entry) and `server.token` (or that entry's own `token`). The key was created on the dpkms host with `dpkms auth key create`; a key declared in the server's config by hash cannot sign a browser in.
+- ctxt is configured to reach the instance with an API key it accepts: `server.url` (or a `server.urls` entry) and `server.token` (or that entry's own `token`). The key was created on the dpkms host, with dpkms stopped, with `dpkms auth key create --maintenance-override`; a key declared in the server's config by hash cannot sign a browser in.
 - You reach the instance over HTTPS, or over HTTP on `localhost` / `127.0.0.1`. Browsers keep the session cookie only there; see [Sign-in does not stick](#sign-in-does-not-stick).
 
 ## Quick start
@@ -149,7 +149,7 @@ The link was opened twice, or more than 60 seconds after `ctxt ui open`. Run `ct
 
 ### dpkms … refused to mint a sign-in link (exit 5)
 
-The instance did not accept ctxt's key. Set `server.token` (or the token of the matching `server.urls` entry) to an API key created on that instance's host with `dpkms auth key create`.
+The instance did not accept ctxt's key. Set `server.token` (or the token of the matching `server.urls` entry) to an API key created on that instance's host with `dpkms auth key create --maintenance-override` (dpkms stopped).
 
 ### Sign-in does not stick
 
@@ -182,11 +182,14 @@ server:
 List and revoke sessions on the server host; both read the database directly, and a running dpkms refuses a revoked cookie on its next request:
 
 ```bash
-dpkms session list                  # active sessions, newest first
-dpkms session list --all            # ended ones too
-dpkms session revoke uis_3f2a…      # one browser
-dpkms session revoke --principal ops  # every browser of a principal
+dpkms shutdown                      # the override needs the database to itself
+dpkms session list --maintenance-override                    # active sessions, newest first
+dpkms session list --all --maintenance-override              # ended ones too
+dpkms session revoke uis_3f2a… --maintenance-override        # one browser
+dpkms session revoke --principal ops --maintenance-override  # every browser of a principal
 ```
+
+Sessions exist only on `protected` and `public` instances, whose store is access-gated: these host-side commands take the audited `--maintenance-override`, run as the database owner with dpkms stopped. See [Direct database access](../operations/direct-access.md).
 
 The status column reads `active`, `expired` or `revoked` with its reason: `logout`, `revoked`, `identity revoked` (the key that signed the browser in was revoked) or `principal revoked`. Sessions are stored in the instance database (`ui_sessions`), with only SHA-256 hashes of the cookie secret and the login code and the id of the key that minted them. Ended sessions are pruned 30 days after they end.
 

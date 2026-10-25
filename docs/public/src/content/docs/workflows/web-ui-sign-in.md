@@ -125,11 +125,14 @@ server:
 List and revoke sessions on the server host; both read the database directly, and a running dpkms refuses a revoked cookie on its next request:
 
 ```bash
-dpkms session list                  # active sessions, newest first
-dpkms session list --all            # ended ones too
-dpkms session revoke uis_3f2a…      # one browser
-dpkms session revoke --principal ops  # every browser of a principal
+dpkms shutdown                      # the override needs the database to itself
+dpkms session list --maintenance-override                    # active sessions, newest first
+dpkms session list --all --maintenance-override              # ended ones too
+dpkms session revoke uis_3f2a… --maintenance-override        # one browser
+dpkms session revoke --principal ops --maintenance-override  # every browser of a principal
 ```
+
+Sessions exist only on `protected` and `public` instances, whose store is access-gated: these host-side commands take the audited `--maintenance-override`, run as the database owner with dpkms stopped. See [Direct database access](../operations/direct-access.md).
 
 The status column reads `active`, `expired`, `revoked (<reason>)` or `token removed`. Sessions are stored in the instance database (`ui_sessions`), with only SHA-256 hashes of the cookie secret, the login code and the minting token; ended sessions are pruned 30 days after they end.
 

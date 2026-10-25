@@ -40,7 +40,7 @@ Add the URL as an HTTP (streamable HTTP) MCP server in your client's own MCP set
 claude mcp add --transport http ctxt-graph http://127.0.0.1:8080/api/v1/mcp/
 ```
 
-On a private instance (`server.access: private`, the default) no key is needed. On a `protected` or `public` instance, send an API key whose principal holds any of `reader`, `writer` or `admin`; create one on the dpkms host with `dpkms auth key create`:
+On a private instance (`server.access: private`, the default) no key is needed. On a `protected` or `public` instance, send an API key whose principal holds any of `reader`, `writer` or `admin`; create one on the dpkms host, with dpkms stopped, with `dpkms auth key create --maintenance-override` (audited; see [Direct database access](../operations/direct-access.md)):
 
 ```bash
 claude mcp add --transport http ctxt-graph https://dpkms.example.com/api/v1/mcp/ \

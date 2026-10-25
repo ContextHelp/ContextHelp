@@ -29,7 +29,7 @@ The image's config sets `server.access: public`. A public instance refuses to st
     openssl rand -hex 32    # bus token: DPKMS_BUS_TOKEN= in the env file
     cp docker/dpkms-auth.example.yaml docker/dpkms-auth.yaml
     $EDITOR docker/dpkms-auth.yaml   # set public_url; drop the keys block or fill in real hashes
-    docker compose --env-file docker/.env.prod run --rm dpkms auth key create --principal owner --name "laptop CLI"
+    docker compose --env-file docker/.env.prod run --rm dpkms auth key create --principal owner --name "laptop CLI" --maintenance-override
 
 serve refuses to start on the copied example as is: its `keys` block still holds the `REPLACE_ME` placeholder.
 
@@ -103,7 +103,7 @@ Without compose, mount them yourself:
 
 serve exits at config load when either file is missing. Compose also refuses to start without them.
 
-To rotate a key, create a new one with `dpkms auth key create` and revoke the old one. A running dpkms accepts the new key on its next request, and a key declared by hash changes on restart (`docker compose --env-file docker/.env.prod --profile prod restart dpkms`).
+To rotate a key, create a new one with `ctxt auth key create` over the API (or, with the service stopped, `dpkms auth key create --maintenance-override`) and revoke the old one. A running dpkms accepts the new key on its next request, and a key declared by hash changes on restart (`docker compose --env-file docker/.env.prod --profile prod restart dpkms`).
 
 ## Blob storage and providers
 

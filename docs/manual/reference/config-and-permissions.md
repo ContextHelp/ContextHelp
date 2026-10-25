@@ -74,15 +74,15 @@ server:
         expires: 2027-12-31
 ```
 
-Keys are created on the dpkms host and stored as hashes:
+Keys are created on the dpkms host and stored as hashes. A `protected` or `public` instance's store is access-gated, so the host-side command takes the audited `--maintenance-override` and runs with dpkms stopped:
 
 ```bash
-dpkms auth key create --principal owner --name "laptop CLI"   # --expires 720h, or a date
+dpkms auth key create --principal owner --name "laptop CLI" --maintenance-override   # --expires 720h, or a date
 ```
 
 The key is printed once. Every principal is a row in the instance database: `owner` is seeded by the schema, and every other principal (a person, a device, a federation peer) gets keys of its own, so one can be revoked without the others. A key holds its principal's role scopes, or fewer when it was narrowed at creation; it never reaches past its principal.
 
-A `protected` or `public` instance refuses to start until the owner holds an active key, or a `server.auth.keys` entry names one. The refusal names `dpkms auth key create --principal owner`. `server.auth.keys` takes hashes only, for infrastructure as code: a key written in the clear fails `ctxt config validate` and stops `dpkms serve`, naming the entry. A key declared in config cannot sign a browser in, since there is no identity row to bind the session to; use a created key for `ctxt ui open`. `server.public_url` is the base of every invite and sign-in link, so it is required whenever `sign_in` lists `invite` or `link`, which the default does. Set `sign_in: []` on an instance that mints no links.
+A `protected` or `public` instance refuses to start until the owner holds an active key, or a `server.auth.keys` entry names one. The refusal names `dpkms auth key create --principal owner --maintenance-override`. `server.auth.keys` takes hashes only, for infrastructure as code: a key written in the clear fails `ctxt config validate` and stops `dpkms serve`, naming the entry. A key declared in config cannot sign a browser in, since there is no identity row to bind the session to; use a created key for `ctxt ui open`. `server.public_url` is the base of every invite and sign-in link, so it is required whenever `sign_in` lists `invite` or `link`, which the default does. Set `sign_in: []` on an instance that mints no links.
 
 Every `/api/v1` route and gRPC method requires one scope. A role is a fixed bundle of scopes:
 
@@ -284,7 +284,8 @@ server:
 
 `dpkms session list [--all] [--principal P]` and
 `dpkms session revoke <id> | --principal P` manage sessions on the server
-host.
+host. Sessions exist only on `protected` and `public` instances, so both
+take the audited `--maintenance-override` and run with dpkms stopped.
 
 ### Profile controls
 
