@@ -208,6 +208,7 @@ func TestDirectOpen_BootstrapCommandsTakeOverride(t *testing.T) {
 	for _, args := range [][]string{
 		{"auth", "key", "create", "--principal", "owner"},
 		{"session", "revoke", "--principal", "owner"},
+		{"session", "list"},
 	} {
 		_, err := db.run(args...)
 		wantExit(t, err, output.ExitUnauthorized, "--maintenance-override")
@@ -217,8 +218,8 @@ func TestDirectOpen_BootstrapCommandsTakeOverride(t *testing.T) {
 	}
 	entries, _, err := db.Driver.AuditLog().List(context.Background(),
 		storage.AuditFilter{EventType: directopen.EventMaintenanceOverride})
-	if err != nil || len(entries) != 2 {
-		t.Fatalf("override audit entries = %d, %v; want 2", len(entries), err)
+	if err != nil || len(entries) != 3 {
+		t.Fatalf("override audit entries = %d, %v; want 3", len(entries), err)
 	}
 }
 
