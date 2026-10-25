@@ -103,7 +103,9 @@ API is the way in. dpkms serve records protected and public itself, and
 never lowers the class. This command is how an operator lowers it:
 set-access private lets direct opens through again.
 
-The daemon must be stopped: the command takes the database lock.
+The daemon must be stopped: the command takes the database lock. Run it
+as the user that owns the database; the change is written to the
+instance's audit log (access.set) before the marker changes.
 
 Examples:
   dpkms instance set-access private`,
@@ -134,22 +136,10 @@ func runInstanceSetAccess(cmd *cobra.Command, args []string) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	lock, err := directopen.AcquireLock(ctx, dbPath, "dpkms instance set-access")
+	t := storeTarget("dpkms instance set-access")
+	t.Path = dbPath
+	prev, err := directopen.SetAccess(ctx, t, access, instanceNameFromDBPath(dbPath))
 	if err != nil {
-		return err
-	}
-	defer func() { _ = lock.Release() }()
-
-	prev, _, err := accessmarker.Read(dbPath)
-	if err != nil {
-		// An unreadable marker is what this command repairs.
-		prev = accessmarker.Marker{}
-	}
-	name := prev.Instance
-	if name == "" {
-		name = instanceNameFromDBPath(dbPath)
-	}
-	if err := accessmarker.Write(dbPath, accessmarker.Marker{Access: access, Instance: name}); err != nil {
 		return err
 	}
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Access for %s set to %s (was %s)\n", dbPath, access, orUnset(prev.Access))
