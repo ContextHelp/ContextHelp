@@ -12,6 +12,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"hop.top/kit/go/console/markdown"
 )
 
 var showCmd = &cobra.Command{
@@ -127,21 +128,13 @@ func runShow(cmd *cobra.Command, args []string) error {
 				fmt.Printf("  [%s]\n", s.Title)
 			}
 			if s.Content != "" {
-				body := s.Content
-				if len(body) > 120 {
-					body = body[:117] + "..."
-				}
-				fmt.Printf("    %s\n", body)
+				fmt.Print(showText(cmd, s.Content, "    "))
 			}
 		}
 		fmt.Println()
 	} else if docProj.Body != "" {
 		fmt.Println("Body:")
-		body := docProj.Body
-		if len(body) > 240 {
-			body = body[:237] + "..."
-		}
-		fmt.Printf("  %s\n", body)
+		fmt.Print(showText(cmd, docProj.Body, "  "))
 		fmt.Println()
 	}
 
@@ -162,4 +155,42 @@ func runShow(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// showTerminal reports whether show's stdout is a terminal; tests
+// replace it.
+var showTerminal = func() bool { return isTerminal(os.Stdout) }
+
+// showText renders object text for show's human view, in full.
+//
+// On a terminal the text is markdown and goes through kit's renderer:
+// styled, or kit's no-color style (no escapes) under --no-color or
+// NO_COLOR. Anywhere else
+// (a pipe, a file) it prints as stored, each line indented, so the
+// bytes a script reads are the object's own. A render failure falls
+// back to the stored text.
+func showText(cmd *cobra.Command, src, indent string) string {
+	src = strings.TrimRight(src, "\n")
+	if showTerminal() {
+		noColor := noColorFlag(cmd) || os.Getenv("NO_COLOR") != ""
+		if out, err := markdown.Render(src, noColor); err == nil {
+			return out
+		}
+	}
+	var b strings.Builder
+	for _, line := range strings.Split(src, "\n") {
+		if line == "" {
+			b.WriteString("\n")
+			continue
+		}
+		b.WriteString(indent + line + "\n")
+	}
+	return b.String()
+}
+
+// noColorFlag reports whether --no-color was given. Read off kit's
+// root persistent flag, the flag as parsed for this run.
+func noColorFlag(cmd *cobra.Command) bool {
+	f := cmd.Root().PersistentFlags().Lookup("no-color")
+	return f != nil && f.Value.String() == "true"
 }
