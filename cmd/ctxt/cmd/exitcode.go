@@ -6,6 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"hop.top/kit/go/console/output"
+
+	"github.com/ideacrafterslabs/ctxt/internal/registry"
 )
 
 // fallbackExitCode is the code ctxt reports for a failure it cannot
@@ -87,10 +89,17 @@ func exitCodeFromEnvelope(err error) (int, bool) {
 // confined to this one function so that introducing real sentinels
 // later is a change here and nowhere else.
 //
+// Typed errors are checked first (see classifyTyped); the message
+// match below is for everything that carries no type.
+//
 // Deliberately narrow. A phrase not listed is left unclassified and
 // reported as GENERIC rather than guessed at: a wrong class is worse
 // than an honest catch-all, because a caller acts on it.
 func classifyErr(err error) (string, bool) {
+	if class, ok := classifyTyped(err); ok {
+		return class, true
+	}
+
 	msg := strings.ToLower(err.Error())
 
 	switch {
@@ -122,6 +131,25 @@ func classifyErr(err error) (string, bool) {
 		return output.CodeUsage, true
 	}
 
+	return "", false
+}
+
+// classifyTyped places an error by its type before any message
+// match. A typed error states its class; its message is free to say
+// anything, so it is never read.
+//
+// A registry that answers 401 or 403 (registry.ErrRegistryAuth) and a
+// namespace the caller holds no entitlement for
+// (registry.ErrEntitlementRequired) are both refusals the caller fixes
+// with new credentials or a plan, not a retry: UNAUTHORIZED.
+func classifyTyped(err error) (string, bool) {
+	var authErr registry.ErrRegistryAuth
+	if errors.As(err, &authErr) {
+		return output.CodeUnauthorized, true
+	}
+	if registry.IsEntitlementRequired(err) {
+		return output.CodeUnauthorized, true
+	}
 	return "", false
 }
 

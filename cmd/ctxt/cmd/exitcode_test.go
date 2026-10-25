@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"hop.top/kit/go/console/output"
+
+	"github.com/ideacrafterslabs/ctxt/internal/registry"
 )
 
 // TestExitCodeFor_Classes pins the numeric code each failure class
@@ -39,6 +41,12 @@ func TestExitCodeFor_Classes(t *testing.T) {
 		{name: "bare conflict", err: errors.New("profile already exists: demo"), want: 4},
 		{name: "bare unsupported format", err: errors.New(`unsupported format "yaml" for resolve`), want: 2},
 		{name: "bare prerequisite", err: errors.New(`no running dpkms instance named "db"`), want: 70},
+
+		// Typed refusals from a registry, wrapped the way the
+		// service layer returns them.
+		{name: "registry 401", err: fmt.Errorf("sync registry: %w", registry.ErrRegistryAuth{RegistryName: "r", StatusCode: 401}), want: 5},
+		{name: "registry 403 with token", err: fmt.Errorf("sync registry: %w", registry.ErrRegistryAuth{RegistryName: "r", StatusCode: 403, Configured: true, TokenSent: true}), want: 5},
+		{name: "entitlement required", err: fmt.Errorf("sync registry: %w", registry.ErrEntitlementRequired{RegistryName: "r", Namespace: "n"}), want: 5},
 	}
 
 	for _, tc := range cases {

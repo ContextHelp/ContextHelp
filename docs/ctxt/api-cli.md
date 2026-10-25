@@ -910,16 +910,23 @@ ctxt uri snippet --platform linux
 
 ## Exit Codes
 
-| Code | Meaning |
-|------|---------|
-| 0 | Success |
-| 1 | General error |
-| 2 | Invalid flags or input |
-| 3 | Storage error |
-| 4 | Registry error |
-| 5 | Pipeline failure |
-| 6 | Agent configuration error |
-| 7 | Job execution error |
+ctxt uses kit's exit classes. With `--format json` the error envelope on
+stderr names the class in `code`.
+
+| Code | Class | Meaning |
+|------|-------|---------|
+| 0 | `OK` | Success |
+| 1 | `GENERIC` | Failure ctxt does not classify |
+| 2 | `USAGE` | Invalid flags, arguments or input |
+| 3 | `NOT_FOUND` | The named object, entity, profile or registry does not exist |
+| 4 | `CONFLICT` | The request conflicts with current state (name taken, policy veto) |
+| 5 | `UNAUTHORIZED` | dpkms or a registry refused the request (401, 403), or no entitlement covers the namespace |
+| 6 | `TRANSIENT` | A server error or dropped connection; a retry may work |
+| 7 | `CONSENT_REFUSED` | A confirmation was declined |
+| 64 | `RATE_LIMITED` | dpkms answered 429 |
+| 70 | `PREREQUISITE` | Nothing answers at the dpkms endpoint |
+
+dpkms status mapping: see ADR-077.
 
 ---
 
