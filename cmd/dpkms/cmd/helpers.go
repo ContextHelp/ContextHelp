@@ -69,6 +69,7 @@ func storeTarget(label string) directopen.Target {
 		Blob:            cfg.Storage.Blob,
 		MigrateSnapshot: cfg.Storage.MigrateSnapshot,
 		Label:           label,
+		Access:          cfg.Server.EffectiveAccess(),
 	}
 }
 
