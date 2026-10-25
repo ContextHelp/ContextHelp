@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -180,4 +181,18 @@ func TestDirectOpen_BackupOverride(t *testing.T) {
 	holdDaemonLock(t, path)
 	_, err = db.run("backup", "--output-dir", t.TempDir(), "--maintenance-override")
 	wantExit(t, err, output.ExitTransient, "dpkms shutdown")
+}
+
+// server.access protected refuses direct opens before serve has ever
+// written the marker.
+func TestDirectOpen_ConfiguredProtectedWithoutMarker(t *testing.T) {
+	db := setupTestDB(t)
+	f, err := os.OpenFile(db.ConfigPath, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = f.WriteString("server:\n  access: protected\n")
+	_ = f.Close()
+	_, err = db.run("job", "list")
+	wantExit(t, err, output.ExitUnauthorized, "set-access private")
 }

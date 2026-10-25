@@ -51,6 +51,9 @@ type Target struct {
 	MigrateSnapshot bool
 	// Label names the opener in the lock body ("cli", "housekeeping").
 	Label string
+	// Access is the configured class (server.access); empty is private.
+	// The gate applies the stricter of it and the access marker.
+	Access string
 }
 
 func (t Target) typ() string {
@@ -84,14 +87,35 @@ func (h *Handle) Close(ctx context.Context) error {
 	return errors.Join(closeErr, h.lock.Release())
 }
 
+// Class returns t's effective access: the marker when it records a
+// class other than private, else the configured class (private when
+// unset). A marker that cannot be read is an *accessmarker.RefusedError.
+func Class(t Target) (accessmarker.Marker, error) {
+	m, _, err := accessmarker.Read(t.Path)
+	if err != nil {
+		return accessmarker.Marker{}, &accessmarker.RefusedError{DBPath: t.Path, Cause: err}
+	}
+	if m.Private() && t.Access != "" && t.Access != config.AccessPrivate {
+		m.Access = t.Access
+	}
+	return m, nil
+}
+
 // CheckAccess applies the access-class gate alone: nil for a private
-// (or unmarked) instance or a store with no file, an
+// instance (by marker and by configuration) or a store with no file, an
 // *accessmarker.RefusedError otherwise.
 func CheckAccess(t Target) error {
 	if !t.guarded() {
 		return nil
 	}
-	return accessmarker.Gate(t.Path)
+	m, err := Class(t)
+	if err != nil {
+		return err
+	}
+	if !m.Private() {
+		return &accessmarker.RefusedError{DBPath: t.Path, Marker: m}
+	}
+	return nil
 }
 
 // Write opens t for a command that writes: access gate, database lock,

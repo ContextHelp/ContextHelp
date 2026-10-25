@@ -232,3 +232,36 @@ func TestCheckAccess_NoFile(t *testing.T) {
 		}
 	}
 }
+
+// The configured class counts as much as the marker: a protected
+// config with no marker yet (serve never ran, or the marker was
+// deleted) refuses; the stricter of the two always wins.
+func TestCheckAccess_ConfiguredClass(t *testing.T) {
+	cases := []struct {
+		configured, marker string // marker "" = none
+		refused            bool
+	}{
+		{config.AccessPrivate, "", false},
+		{"", "", false},
+		{config.AccessProtected, "", true},
+		{config.AccessPublic, config.AccessPrivate, true},
+		{config.AccessPrivate, config.AccessProtected, true},
+	}
+	for _, tc := range cases {
+		db := migrated(t)
+		if tc.marker != "" {
+			if err := accessmarker.Write(db, accessmarker.Marker{Access: tc.marker}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		tg := target(t, db)
+		tg.Access = tc.configured
+		err := CheckAccess(tg)
+		if got := errors.Is(err, accessmarker.ErrRefused); got != tc.refused {
+			t.Errorf("configured %q, marker %q: CheckAccess = %v; want refused %v", tc.configured, tc.marker, err, tc.refused)
+		}
+		if _, err := Read(context.Background(), tg); errors.Is(err, accessmarker.ErrRefused) != tc.refused {
+			t.Errorf("configured %q, marker %q: Read = %v; want refused %v", tc.configured, tc.marker, err, tc.refused)
+		}
+	}
+}

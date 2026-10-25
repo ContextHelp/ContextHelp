@@ -32,7 +32,7 @@ func Override(ctx context.Context, t Target, action string) (*Handle, error) {
 	if !t.guarded() {
 		return Write(ctx, t)
 	}
-	m, _, err := accessmarker.Read(t.Path)
+	m, err := Class(t)
 	if err != nil {
 		return nil, fmt.Errorf("maintenance override: %w", err)
 	}
