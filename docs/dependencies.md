@@ -45,8 +45,7 @@ compile check builds both binaries that way on every push.
 - No blocking issues for local-first workloads
 
 **Pure-Go fallback:** none today. `modernc.org/sqlite` (the pre-FTS5
-choice) was dropped because it lacks the FTS5 + sqlite-vec combination the
-store needs; no ctxt package imports it. It is still in `go.mod` as an
+choice) was dropped because it has no sqlite-vec, which the store needs; no ctxt package imports it. It is still in `go.mod` as an
 indirect dependency of `hop.top/kit/go/storage/sqlstore`. A future pure-Go fallback must arrive as a designed second
 driver behind the `internal/storage` interfaces, with an explicit
 declaration of the capabilities it degrades, never as a silent build
