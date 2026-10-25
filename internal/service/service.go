@@ -5,6 +5,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"encoding/csv"
 	"encoding/json"
 	"encoding/xml"
@@ -2223,10 +2224,15 @@ func vectorPool(cfg config.SearchConfig) int {
 
 // EnsureDefaultRegistry caches the bundled default registry manifest if no cache entry
 // exists for DefaultRegistryURL yet. Safe to call on every startup; idempotent.
+// A read that fails for any other reason is returned: the entry may be
+// there, and nothing is rewritten over it.
 func (s *Service) EnsureDefaultRegistry(ctx context.Context) error {
 	_, err := s.Store(ctx).Registries().GetCachedManifest(ctx, registrysync.DefaultRegistryURL)
-	if err == nil {
+	switch {
+	case err == nil:
 		return nil // already cached
+	case !errors.Is(err, sql.ErrNoRows) && !errors.Is(err, storage.ErrNotFound):
+		return fmt.Errorf("read default registry: %w", err)
 	}
 
 	cache, err := registrysync.DefaultRegistryCache()
