@@ -5,7 +5,6 @@ package service
 
 import (
 	"context"
-	"database/sql"
 	"encoding/csv"
 	"encoding/json"
 	"encoding/xml"
@@ -2231,7 +2230,7 @@ func (s *Service) EnsureDefaultRegistry(ctx context.Context) error {
 	switch {
 	case err == nil:
 		return nil // already cached
-	case !errors.Is(err, sql.ErrNoRows) && !errors.Is(err, storage.ErrNotFound):
+	case !errors.Is(err, storage.ErrNotFound):
 		return fmt.Errorf("read default registry: %w", err)
 	}
 

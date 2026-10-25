@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -104,6 +105,9 @@ func scanRegistryCache(row interface{ Scan(...any) error }) (*storage.RegistryCa
 		&r.ETag, &autoUpdate,
 	)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("registry cache: %w", storage.ErrNotFound)
+		}
 		return nil, fmt.Errorf("scan registry cache: %w", err)
 	}
 
