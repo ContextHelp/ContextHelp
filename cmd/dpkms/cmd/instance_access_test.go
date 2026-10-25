@@ -56,7 +56,7 @@ func TestRecordServeAccess(t *testing.T) {
 // file-mode preflight under --strict-permissions refuses an instance
 // other users can read, before storage is touched.
 func TestRunServe_MarkerBeforeStorageAndStrictPermissions(t *testing.T) {
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == goosWindows {
 		t.Skip("file modes do not express access on Windows")
 	}
 	shortServeLockBudget(t, 100*time.Millisecond)
@@ -149,7 +149,7 @@ func TestInstanceSetAccess_RepairsUnreadableMarker(t *testing.T) {
 // doctor flags a protected instance other users can read; --strict
 // fails on it.
 func TestDoctor_Permissions(t *testing.T) {
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == goosWindows {
 		t.Skip("file modes do not express access on Windows")
 	}
 	db := setupTestDB(t)
@@ -210,7 +210,7 @@ func TestConfigValidate_NonPrivateLocalFederationTarget(t *testing.T) {
 // Blobs left open by an older store are reported by doctor with the
 // exact commands that close them.
 func TestDoctor_LooseBlobs(t *testing.T) {
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == goosWindows {
 		t.Skip("file modes do not express access on Windows")
 	}
 	db := setupTestDB(t)

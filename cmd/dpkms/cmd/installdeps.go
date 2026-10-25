@@ -148,8 +148,9 @@ const pkgMgrBrew = "brew"
 
 // runtime.GOOS values the host-specific commands branch on.
 const (
-	goosDarwin = "darwin"
-	goosLinux  = "linux"
+	goosDarwin  = "darwin"
+	goosLinux   = "linux"
+	goosWindows = "windows"
 )
 
 func detectPackageManager() string {
@@ -159,7 +160,7 @@ func detectPackageManager() string {
 			return pkgMgrBrew
 		}
 		return ""
-	case "windows":
+	case goosWindows:
 		for _, mgr := range []string{"winget", "choco"} {
 			if toolInstalled(mgr) {
 				return mgr
@@ -180,7 +181,7 @@ func detectPackageManager() string {
 // exec.LookPath misses a binary (e.g. tools installed outside PATH at build time).
 func platformExtraDirs(home string) []string {
 	switch runtime.GOOS {
-	case "windows":
+	case goosWindows:
 		return []string{
 			filepath.Join(os.Getenv("ProgramFiles"), "Git", "usr", "bin"),
 			filepath.Join(os.Getenv("LOCALAPPDATA"), "Microsoft", "WinGet", "Packages"),

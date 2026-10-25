@@ -38,14 +38,6 @@ func asSystem(ctx context.Context) context.Context {
 	return sharing.WithViewer(ctx, sharing.Unrestricted)
 }
 
-// closeStorage closes a storage driver at the end of a command, warning
-// on stderr when the close fails: the command's own result stands.
-func closeStorage(d interface{ Close(context.Context) error }) {
-	if err := d.Close(context.Background()); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to close storage: %v\n", err)
-	}
-}
-
 // markFlagsRequired marks each named flag on cmd required. Cobra only
 // fails here when no such flag is defined, which is a wiring bug in the
 // command's init — so it panics at startup instead of silently leaving
