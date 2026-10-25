@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	_ "modernc.org/sqlite"
+	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -81,7 +81,7 @@ func readManifest(t *testing.T, archivePath string) map[string]any {
 // a backup source in tests that bypass the full service stack.
 func createMinimalSQLiteDB(t *testing.T, path string) {
 	t.Helper()
-	db, err := sql.Open("sqlite", path)
+	db, err := sql.Open("sqlite3", path)
 	require.NoError(t, err)
 	defer db.Close()
 	_, err = db.Exec("CREATE TABLE IF NOT EXISTS t (id INTEGER PRIMARY KEY)")

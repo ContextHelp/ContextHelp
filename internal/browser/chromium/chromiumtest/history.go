@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	_ "modernc.org/sqlite" // register the "sqlite" driver
+	_ "github.com/mattn/go-sqlite3" // register the "sqlite3" driver
 )
 
 // HistorySchema is the urls and visits schema of a Chromium History
@@ -57,7 +57,7 @@ func WebKitTime(t time.Time) int64 { return t.UnixMicro() + webKitOffsetMicros }
 func WriteHistory(t testing.TB, profileDir string, visits ...Visit) {
 	t.Helper()
 	path := filepath.Join(profileDir, HistoryFileName)
-	db, err := sql.Open("sqlite", path)
+	db, err := sql.Open("sqlite3", path)
 	if err != nil {
 		t.Fatalf("chromiumtest: open History: %v", err)
 	}

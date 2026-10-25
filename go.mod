@@ -43,7 +43,6 @@ require (
 	google.golang.org/protobuf v1.36.12
 	hop.top/cite v0.1.1
 	hop.top/xrr v0.1.0-alpha.5
-	modernc.org/sqlite v1.59.0
 )
 
 require (
@@ -100,6 +99,7 @@ require (
 	golang.org/x/tools v0.49.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260817212433-ac3dfec99bb1 // indirect
 	hop.top/aim v0.1.0-alpha.5 // indirect
+	modernc.org/sqlite v1.59.0 // indirect
 )
 
 require (
