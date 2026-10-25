@@ -91,7 +91,7 @@ List commands (`list`, `feed list`, `entity list`, `registry list`, `audit list`
 
 ### Offline mode
 
-`--offline` refuses every request ctxt would send to a non-loopback host, including the ones an in-process command makes (`registry sync`, `registry search`, `upgrade check`, the `import` sources that call an outside API). Such a command fails with `network disabled by --offline`. A dpkms instance on loopback stays reachable; a remote one is refused like any other host.
+`--offline` refuses every request ctxt would send to a non-loopback host, including the ones an in-process command makes (`registry sync`, `registry search`, `upgrade check`, the `import` sources that call an outside API). Such a command fails with `network disabled by --offline` and exits 70 (`PREREQUISITE`). A dpkms instance on loopback stays reachable; a remote one is refused like any other host.
 
 ### Next-step hints
 
@@ -940,7 +940,7 @@ stderr names the class in `code`.
 | 6 | `TRANSIENT` | A server error or dropped connection; a retry may work |
 | 7 | `CONSENT_REFUSED` | A confirmation was declined |
 | 64 | `RATE_LIMITED` | dpkms answered 429 |
-| 70 | `PREREQUISITE` | Nothing answers at the dpkms endpoint |
+| 70 | `PREREQUISITE` | Nothing answers at the dpkms endpoint, or `--offline` refused a network request |
 
 dpkms status mapping: see ADR-077.
 
