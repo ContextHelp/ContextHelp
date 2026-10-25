@@ -358,3 +358,47 @@ func TestCheck_ReleasedIsFreeAndLeavesLockAcquirable(t *testing.T) {
 	}
 	_ = l2.Release()
 }
+
+// A database reached through a symlink (its own, or its directory's)
+// shares one lock with the real path: two spellings of one file must
+// not get two locks.
+func TestPath_ResolvesSymlinks(t *testing.T) {
+	dir := t.TempDir()
+	realDir := filepath.Join(dir, "real")
+	if err := os.Mkdir(realDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	dbPath := filepath.Join(realDir, "db.sqlite")
+	if err := os.WriteFile(dbPath, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	linkDir := filepath.Join(dir, "link")
+	linkFile := filepath.Join(dir, "db-link.sqlite")
+	if err := os.Symlink(realDir, linkDir); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if err := os.Symlink(dbPath, linkFile); err != nil {
+		t.Fatal(err)
+	}
+	held, err := dblock.Acquire(dbPath, dblock.Info{Role: dblock.RoleDaemon})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = held.Release() })
+
+	for _, alias := range []string{
+		filepath.Join(linkDir, "db.sqlite"), // symlinked directory
+		linkFile,                            // symlinked file
+		filepath.Join(linkDir, "absent.sqlite"),
+	} {
+		if alias == filepath.Join(linkDir, "absent.sqlite") {
+			if got, want := dblock.Path(alias), dblock.Path(filepath.Join(realDir, "absent.sqlite")); got != want {
+				t.Errorf("Path(%s) = %s; want %s (parent resolved for a missing file)", alias, got, want)
+			}
+			continue
+		}
+		if _, err := dblock.Acquire(alias, dblock.Info{Role: dblock.RoleCLI}); !errors.Is(err, dblock.ErrHeld) {
+			t.Errorf("Acquire via %s = %v; want ErrHeld (same lock as the real path)", alias, err)
+		}
+	}
+}

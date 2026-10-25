@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+
+	"github.com/ideacrafterslabs/ctxt/internal/dblock"
 )
 
 // ErrModesUnsupported is returned where file modes do not express who
@@ -27,5 +29,6 @@ func (f Finding) String() string {
 // state: the database, its WAL and shared-memory files, and the lock and
 // access-marker sidecars.
 func instanceFiles(dbPath string) []string {
-	return []string{dbPath, dbPath + "-wal", dbPath + "-shm", dbPath + ".lock", Path(dbPath)}
+	c := dblock.Canonical(dbPath)
+	return []string{c, c + "-wal", c + "-shm", dblock.Path(dbPath), Path(dbPath)}
 }

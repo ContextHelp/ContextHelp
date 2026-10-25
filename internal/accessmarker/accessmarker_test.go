@@ -160,3 +160,37 @@ func TestGate(t *testing.T) {
 		})
 	}
 }
+
+// A marker written for the real path gates every spelling of the
+// database: a symlinked file or directory, and a missing file under a
+// symlinked directory.
+func TestGate_ResolvesSymlinks(t *testing.T) {
+	dir := t.TempDir()
+	realDir := filepath.Join(dir, "real")
+	if err := os.Mkdir(realDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	db := filepath.Join(realDir, "db.sqlite")
+	if err := os.WriteFile(db, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	linkDir := filepath.Join(dir, "link")
+	linkFile := filepath.Join(dir, "db-link.sqlite")
+	if err := os.Symlink(realDir, linkDir); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if err := os.Symlink(db, linkFile); err != nil {
+		t.Fatal(err)
+	}
+	if err := Write(db, Marker{Access: config.AccessProtected, Instance: "home"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, alias := range []string{linkFile, filepath.Join(linkDir, "db.sqlite")} {
+		if err := Gate(alias); !errors.Is(err, ErrRefused) {
+			t.Errorf("Gate(%s) = %v; want ErrRefused", alias, err)
+		}
+	}
+	if got, want := Path(filepath.Join(linkDir, "new.sqlite")), Path(filepath.Join(realDir, "new.sqlite")); got != want {
+		t.Errorf("Path under a symlinked dir = %s; want %s", got, want)
+	}
+}
