@@ -51,20 +51,16 @@ func init() {
 }
 
 func runShell(cmd *cobra.Command, args []string) error {
-	session, err := prepareShell(cmd)
-	if err != nil {
-		return err
-	}
-	return session.Run(cmd.Context())
+	return prepareShell().Run(cmd.Context())
 }
 
 // prepareShell wires the REPL to the command tree. It opens nothing:
 // each line's command opens the store for its own read or write class
 // and closes it when done, so the shell runs beside dpkms serve and
 // never holds the database lock between lines.
-func prepareShell(_ *cobra.Command) (*repl.Session, error) {
+func prepareShell() *repl.Session {
 	repl.SetCobraExecHook(shellExec)
-	return repl.NewSession(cfg), nil
+	return repl.NewSession(cfg)
 }
 
 // shellExec runs one shell line through the command tree, with every

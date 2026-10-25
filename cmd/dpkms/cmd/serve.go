@@ -317,6 +317,9 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 	defer st.Close()
 	queue, pipes, svc, watchMgr := st.Queue, st.Pipelines, st.Service, st.Watcher
+	if err := seedDefaultRegistry(cmd.Context(), svc); err != nil {
+		return err
+	}
 	fmt.Println("Job queue initialized")
 	fmt.Println("Pipeline runtime initialized (with overrides)")
 	reportEmbeddingProvider(os.Stdout, embResolver)

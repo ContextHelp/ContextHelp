@@ -40,6 +40,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
 	httpserver "github.com/ideacrafterslabs/ctxt/internal/server/http"
 	"github.com/ideacrafterslabs/ctxt/internal/server/stack"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/sharing/sharingtest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/testguard"
@@ -252,6 +253,10 @@ func Start(t testing.TB, driver storage.StorageDriver, opts ...Option) *Server {
 	}
 	t.Cleanup(st.Close)
 	srv.Stack = st
+	// As dpkms serve does: every daemon store carries the default registry.
+	if err := st.Service.EnsureDefaultRegistry(sharing.WithViewer(context.Background(), sharing.Unrestricted)); err != nil {
+		t.Fatalf("dpkmstest: seed default registry: %v", err)
+	}
 
 	hs.Config.Handler = st.Router
 	hs.Start()
