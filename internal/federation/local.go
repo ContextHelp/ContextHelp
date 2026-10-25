@@ -252,8 +252,8 @@ func (p *LocalPusher) Advance(ctx context.Context, seq int64) error {
 }
 
 // isUniqueConstraintErr reports whether the error is a SQLite UNIQUE
-// constraint violation. Both sqlite drivers in this repo (mattn + modernc)
-// surface the violation as text in the error string. We string-match
+// constraint violation. The sqlite driver (mattn/go-sqlite3)
+// surfaces the violation as text in the error string. We string-match
 // instead of typing on the driver-specific error to keep this package
 // driver-agnostic — same approach used by jobs/worker.go.
 func isUniqueConstraintErr(err error) bool {

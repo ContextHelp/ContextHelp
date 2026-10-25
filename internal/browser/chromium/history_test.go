@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	_ "modernc.org/sqlite"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // testRow is one synthetic visit written into a fixture History database.
@@ -39,7 +39,7 @@ func createHistoryDB(t *testing.T, path string, rows []testRow) {
 	if err != nil {
 		t.Fatalf("read schema: %v", err)
 	}
-	db, err := sql.Open("sqlite", path)
+	db, err := sql.Open("sqlite3", path)
 	if err != nil {
 		t.Fatalf("open fixture: %v", err)
 	}
@@ -431,7 +431,7 @@ func newHotJournalProfile(t *testing.T, committed, uncommitted []testRow) string
 	work := filepath.Join(t.TempDir(), "work.db")
 	createHistoryDB(t, work, committed)
 
-	db, err := sql.Open("sqlite", work)
+	db, err := sql.Open("sqlite3", work)
 	if err != nil {
 		t.Fatal(err)
 	}

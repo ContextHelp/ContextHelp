@@ -24,38 +24,39 @@ For each non-Charmbracelet dependency, we evaluate:
 
 #### Database: SQLite Driver
 
-**Selected:** `modernc.org/sqlite` (CGo-free)
+**Selected:** `github.com/mattn/go-sqlite3` (CGo), built with `-tags fts5`.
 
 **Why:**
-- Zero external dependencies (no CGo)
-- Cross-platform without C compiler
-- Full SQLite 3.x feature support
-- 2-3 days integration (schema setup, WAL mode, migrations)
+- FTS5 full-text search: the `fts5` build tag compiles SQLite's FTS5 module
+  into the driver; a build without the tag is a compile error by design.
+- `sqlite-vec` vector search (`github.com/asg017/sqlite-vec-go-bindings`)
+  loads into the same CGo SQLite.
+- One engine for the store, its fixtures and the browser-history reader
+  (`internal/browser/chromium`): driver name `sqlite3` everywhere.
+
+**Portability:** every shipped binary is built with `CGO_ENABLED=1`
+(Makefile, GoReleaser, Dockerfile). Linux and macOS use the native C
+toolchain; windows/amd64 cross-compiles with mingw-w64, and CI's Windows
+compile check builds both binaries that way on every push.
 
 **Concurrency Strategy:**
-- Use WAL mode (Write-Ahead Logging) for concurrent access
-- Multiple connections via `database/sql` connection pool
-- N concurrent readers + 1 writer (SQLite WAL guarantees)
-- Connection pool tuning for optimal concurrency
+- WAL mode for concurrent access
+- `database/sql` connection pool: N concurrent readers + 1 writer
 - No blocking issues for local-first workloads
-- Additional 1 day for connection pool configuration and testing
+
+**Pure-Go fallback:** none today. `modernc.org/sqlite` (the pre-FTS5
+choice) was dropped because it lacks the FTS5 + sqlite-vec combination the
+store needs; no ctxt package imports it. It is still in `go.mod` as an
+indirect dependency of `hop.top/kit/go/storage/sqlstore`. A future pure-Go fallback must arrive as a designed second
+driver behind the `internal/storage` interfaces, with an explicit
+declaration of the capabilities it degrades, never as a silent build
+variant.
 
 **Alternatives:**
 
-1. **Popular:** `github.com/mattn/go-sqlite3` (~8k stars)
-   - Industry standard, battle-tested
-   - Requires CGo (complicates cross-compilation)
-
-2. **Complementary:** `crawshaw.io/sqlite`
-   - Connection pool built-in
-   - Better concurrency primitives (this is the "SQLite non-blocking" solution)
-   - Requires CGo
-
-3. **Why modernc.org/sqlite wins:**
-   - CGo-free = simpler builds
-   - dPKMS must be portable
-   - WAL mode provides adequate concurrency
-   - Can achieve similar performance to crawshaw.io with proper pooling
+1. `modernc.org/sqlite`: CGo-free transpiled SQLite; no sqlite-vec.
+2. `crawshaw.io/sqlite`: connection pool built in; CGo; no
+   `database/sql` driver.
 
 #### Configuration: YAML Loader
 
@@ -767,7 +768,7 @@ results := collection.Query(ctx, queryEmbedding, 10)
    - 5-6 days (index management, persistence layer)
 
 **Why chromem-go wins:**
-- Zero CGo = simpler builds (aligns with modernc.org/sqlite choice)
+- Zero CGo = simpler builds
 - Batteries-included (persistence, collections, metadata)
 - Easy to start, easy to deploy
 - Backend interface allows swapping to sqlite-vec later if needed

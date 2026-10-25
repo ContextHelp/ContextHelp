@@ -13,8 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"modernc.org/sqlite"
-	sqlite3 "modernc.org/sqlite/lib"
+	sqlite3 "github.com/mattn/go-sqlite3"
 )
 
 // HistoryFile is the per-profile SQLite database holding browsing history.
@@ -220,11 +219,11 @@ func openHistoryCopy(ctx context.Context, path string) (*sql.DB, error) {
 	if err == nil {
 		return db, nil
 	}
-	var se *sqlite.Error
-	if !errors.As(err, &se) || se.Code() != sqlite3.SQLITE_READONLY_ROLLBACK {
+	var se sqlite3.Error
+	if !errors.As(err, &se) || se.ExtendedCode != sqlite3.ErrReadonlyRollback {
 		return nil, fmt.Errorf("history: open copy: %w", err)
 	}
-	db, err = openProbe(ctx, sqliteURI(path, "mode=rw&_pragma=query_only(1)"))
+	db, err = openProbe(ctx, sqliteURI(path, "mode=rw&_query_only=true"))
 	if err != nil {
 		return nil, fmt.Errorf("history: open copy for rollback: %w", err)
 	}
@@ -234,7 +233,7 @@ func openHistoryCopy(ctx context.Context, path string) (*sql.DB, error) {
 // openProbe opens dsn on a single connection and reads the schema, which
 // is where a hot journal surfaces.
 func openProbe(ctx context.Context, dsn string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite", dsn)
+	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
 		return nil, err
 	}

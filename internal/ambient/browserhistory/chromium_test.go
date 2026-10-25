@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	_ "modernc.org/sqlite"
+	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/ideacrafterslabs/ctxt/internal/ambient"
 	"github.com/ideacrafterslabs/ctxt/internal/browser/chromium"
@@ -53,7 +53,7 @@ func newUserDataDir(t *testing.T, times ...time.Time) string {
 	if err != nil {
 		t.Fatalf("read schema: %v", err)
 	}
-	db, err := sql.Open("sqlite", filepath.Join(base, "Profile 3", chromium.HistoryFile))
+	db, err := sql.Open("sqlite3", filepath.Join(base, "Profile 3", chromium.HistoryFile))
 	if err != nil {
 		t.Fatal(err)
 	}
