@@ -160,6 +160,10 @@ func open(path, dsn string, blobs storage.BlobStore, readOnly bool, opts ...Opti
 	return d, nil
 }
 
+// ReadOnly reports whether d was opened with NewReadOnly: every
+// statement on it that writes fails.
+func (d *Driver) ReadOnly() bool { return d.readOnly }
+
 func (d *Driver) Init(ctx context.Context) error {
 	if d.readOnly {
 		return ErrReadOnly

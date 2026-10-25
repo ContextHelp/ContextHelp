@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -76,14 +77,29 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("lint: %w", err)
 	}
 
-	// Log report to audit.
-	logLintReport(ctx, svc.Store(ctx), report)
-
 	if isJSONOutput() {
-		return outputJSON(os.Stdout, report)
+		if err := outputJSON(os.Stdout, report); err != nil {
+			return err
+		}
+	} else {
+		printLintReport(report)
 	}
-	printLintReport(report)
+	recordLintReport(ctx, cmd.ErrOrStderr(), svc.Store(ctx), report)
 	return nil
+}
+
+// recordLintReport appends the doctor.run audit entry, or says on w why
+// it did not: doctor is a read command, so outside a shell session its
+// store is open read-only and takes no writes. A failed append is a
+// warning; the report itself stands.
+func recordLintReport(ctx context.Context, w io.Writer, driver storage.StorageDriver, r *lint.Report) {
+	if ro, ok := driver.(interface{ ReadOnly() bool }); ok && ro.ReadOnly() {
+		fmt.Fprintln(w, "Note: doctor.run not recorded in the audit log: the store is open read-only")
+		return
+	}
+	if err := logLintReport(ctx, driver, r); err != nil {
+		fmt.Fprintf(w, "Warning: doctor.run not recorded in the audit log: %v\n", err)
+	}
 }
 
 func printLintReport(r *lint.Report) {
@@ -116,7 +132,7 @@ func printLintReport(r *lint.Report) {
 	)
 }
 
-func logLintReport(ctx context.Context, driver storage.StorageDriver, r *lint.Report) {
+func logLintReport(ctx context.Context, driver storage.StorageDriver, r *lint.Report) error {
 	payload := map[string]any{
 		"checks":   r.Checks,
 		"issues":   len(r.Issues),
@@ -130,6 +146,5 @@ func logLintReport(ctx context.Context, driver storage.StorageDriver, r *lint.Re
 		Payload:   payload,
 		CreatedAt: time.Now(),
 	}
-	// best-effort; don't fail the command on audit write error
-	_ = driver.AuditLog().Append(ctx, entry)
+	return driver.AuditLog().Append(ctx, entry)
 }
