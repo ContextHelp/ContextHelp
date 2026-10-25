@@ -221,7 +221,7 @@ func runEmbeddingsList(cmd *cobra.Command, _ []string) error {
 	}
 	defer cleanup()
 
-	models, err := r.ListWithCoverage(context.Background())
+	models, err := r.ListWithCoverage(cmdContext(cmd))
 	if err != nil {
 		return fmt.Errorf("list embedding models: %w", err)
 	}

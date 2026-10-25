@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -95,7 +94,7 @@ func runImportDropbox(cmd *cobra.Command, args []string) error {
 		MaxItems:  maxItems,
 	}
 
-	result, err := client.ListFiles(context.Background(), opts)
+	result, err := client.ListFiles(cmdContext(cmd), opts)
 	if err != nil {
 		return err
 	}
@@ -156,7 +155,7 @@ func runImportDropbox(cmd *cobra.Command, args []string) error {
 		}
 
 		payload := renderDropboxText(f)
-		_, err = enqueueContent(dc, payload, objectTypeText, pipelineName, "import:dropbox")
+		_, err = enqueueContent(cmdContext(cmd), dc, payload, objectTypeText, pipelineName, "import:dropbox")
 		if err != nil {
 			failed++
 			if firstErr == nil {

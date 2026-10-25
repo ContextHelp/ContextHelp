@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -100,7 +99,7 @@ func runRemindSet(cmd *cobra.Command, args []string) error {
 	}
 	defer cleanup()
 
-	ctx := asOwner(context.Background())
+	ctx := asOwner(cmdContext(cmd))
 	id := args[0]
 	expr := strings.Join(args[1:], " ")
 	at, err := remind.ParseTime(expr, time.Now())
@@ -124,7 +123,7 @@ func runRemindClear(cmd *cobra.Command, args []string) error {
 	}
 	defer cleanup()
 
-	ctx := asOwner(context.Background())
+	ctx := asOwner(cmdContext(cmd))
 	id := args[0]
 	if err := svc.ClearObjectReminder(ctx, id); err != nil {
 		return fmt.Errorf("clear reminder: %w", err)
@@ -140,7 +139,7 @@ func runRemindList(cmd *cobra.Command, args []string) error {
 	}
 	defer cleanup()
 
-	ctx := asOwner(context.Background())
+	ctx := asOwner(cmdContext(cmd))
 	objects, err := svc.ListPendingReminders(ctx)
 	if err != nil {
 		return fmt.Errorf("list reminders: %w", err)

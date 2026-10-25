@@ -147,7 +147,7 @@ func runImportOneDrive(cmd *cobra.Command, args []string) error {
 	graphBaseURL, _ := cmd.Flags().GetString("graph-base-url")
 
 	client := newOneDriveClient(token, graphBaseURL)
-	ctx := context.Background()
+	ctx := cmdContext(cmd)
 
 	itemsByKey := make(map[string]onedriveimporter.Item)
 	orderedKeys := make([]string, 0)
@@ -301,7 +301,7 @@ func runImportOneDrive(cmd *cobra.Command, args []string) error {
 			source = "import:onedrive"
 		}
 
-		_, err := enqueueOneDriveContent(dc, content, objectTypeText, pipelineName, source)
+		_, err := enqueueOneDriveContent(ctx, dc, content, objectTypeText, pipelineName, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {

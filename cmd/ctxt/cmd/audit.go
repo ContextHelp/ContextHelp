@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"os"
@@ -132,7 +131,7 @@ func runAuditList(cmd *cobra.Command, _ []string) error {
 	}
 	defer cleanup()
 
-	ctx := asOwner(context.Background())
+	ctx := asOwner(cmdContext(cmd))
 	entries, total, err := svc.Store(ctx).AuditLog().List(ctx, filter)
 	if err != nil {
 		return fmt.Errorf("audit list: %w", err)
@@ -204,7 +203,7 @@ func runAuditExport(cmd *cobra.Command, _ []string) error {
 	}
 	defer cleanup()
 
-	ctx := asOwner(context.Background())
+	ctx := asOwner(cmdContext(cmd))
 	entries, _, err := svc.Store(ctx).AuditLog().List(ctx, filter)
 	if err != nil {
 		return fmt.Errorf("audit export: %w", err)

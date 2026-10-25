@@ -68,7 +68,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	lcfg.StaleDays = staleDays
 	lcfg.DuplicateThresh = dupThresh
 
-	ctx := asOwner(context.Background())
+	ctx := asOwner(cmdContext(cmd))
 	linter := lint.New(svc.Store(ctx), lcfg)
 
 	report, err := linter.Run(ctx)

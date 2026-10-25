@@ -93,7 +93,7 @@ func runImportGDrive(cmd *cobra.Command, args []string) error {
 		MaxItems:       maxItems,
 	}
 
-	files, err := client.ListFiles(context.Background(), listOpts)
+	files, err := client.ListFiles(cmdContext(cmd), listOpts)
 	if err != nil {
 		return err
 	}
@@ -135,7 +135,7 @@ func runImportGDrive(cmd *cobra.Command, args []string) error {
 	for _, f := range files {
 		scanned++
 
-		payload, contentType, err := gdrivePayloadForFile(context.Background(), client, f)
+		payload, contentType, err := gdrivePayloadForFile(cmdContext(cmd), client, f)
 		if err != nil {
 			failed++
 			if firstErr == nil {
@@ -148,7 +148,7 @@ func runImportGDrive(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		_, err = enqueueContent(dc, payload, contentType, pipelineName, "import:gdrive")
+		_, err = enqueueContent(cmdContext(cmd), dc, payload, contentType, pipelineName, "import:gdrive")
 		if err != nil {
 			failed++
 			if firstErr == nil {

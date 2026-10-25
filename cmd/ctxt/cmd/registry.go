@@ -384,7 +384,7 @@ func runRegistryList(cmd *cobra.Command, args []string) error {
 	}
 	defer cleanup()
 
-	ctx := asOwner(context.Background())
+	ctx := asOwner(cmdContext(cmd))
 	registries, total, err := svc.ListRegistries(ctx)
 	if err != nil {
 		return fmt.Errorf("list registries: %w", err)
@@ -441,7 +441,7 @@ func runRegistryAdd(cmd *cobra.Command, args []string) error {
 	}
 	defer cleanup()
 
-	ctx := asOwner(context.Background())
+	ctx := asOwner(cmdContext(cmd))
 	fmt.Printf("Adding registry %s (%s)...\n", name, config.RedactDSN(url))
 	if err := svc.FetchRegistry(ctx, url); err != nil {
 		return fmt.Errorf("fetch registry: %w", err)
@@ -517,7 +517,7 @@ func runRegistryRemove(cmd *cobra.Command, args []string) error {
 	}
 	defer cleanup()
 
-	ctx := asOwner(context.Background())
+	ctx := asOwner(cmdContext(cmd))
 	if err := svc.RemoveRegistry(ctx, registryURL); err != nil {
 		return fmt.Errorf("remove registry cache: %w", err)
 	}
@@ -550,7 +550,7 @@ func runRegistryInfo(cmd *cobra.Command, args []string) error {
 	}
 	defer cleanup()
 
-	ctx := asOwner(context.Background())
+	ctx := asOwner(cmdContext(cmd))
 	cache, err := svc.Store(ctx).Registries().GetCachedManifest(ctx, registryURL)
 	if err != nil {
 		return fmt.Errorf("get registry cache: %w", err)
@@ -620,7 +620,7 @@ func runRegistrySync(cmd *cobra.Command, args []string) error {
 	}
 	defer cleanup()
 
-	ctx := asOwner(context.Background())
+	ctx := asOwner(cmdContext(cmd))
 
 	if dryRun {
 		return runRegistrySyncDryRun(ctx, svc, name, registryURL)
@@ -860,7 +860,7 @@ func runRegistryUsage(cmd *cobra.Command, args []string) error {
 		periodStart = time.Now().UTC().AddDate(0, 0, -days)
 	}
 
-	ctx := asOwner(context.Background())
+	ctx := asOwner(cmdContext(cmd))
 
 	var registryName string
 	if len(args) > 0 {
@@ -1083,7 +1083,7 @@ func runRegistryCapabilities(cmd *cobra.Command, args []string) error {
 	}
 	defer cleanup()
 
-	ctx := asOwner(context.Background())
+	ctx := asOwner(cmdContext(cmd))
 	warnings, err := svc.CheckRegistryCapabilities(ctx, registryURL, version,
 		"entity_sync", "taxonomy", "translations",
 	)
@@ -1190,7 +1190,7 @@ func runRegistrySearch(cmd *cobra.Command, args []string) error {
 	client := registry.NewCredentials(regs, registry.KeychainTokens()).
 		Client(&http.Client{Timeout: 15 * time.Second})
 
-	ctx := asOwner(context.Background())
+	ctx := asOwner(cmdContext(cmd))
 	idx, err := registry.FetchIndex(ctx, client, indexURL)
 	if err != nil {
 		return fmt.Errorf("fetch registry index: %w", err)
@@ -1277,7 +1277,7 @@ func runRegistryEntitlements(cmd *cobra.Command, _ []string) error {
 	}
 	defer cleanup()
 
-	ctx := asOwner(context.Background())
+	ctx := asOwner(cmdContext(cmd))
 	entitlements, err := svc.Store(ctx).Entitlements().List(ctx, storage.EntitlementOutbound)
 	if err != nil {
 		return fmt.Errorf("list entitlements: %w", err)

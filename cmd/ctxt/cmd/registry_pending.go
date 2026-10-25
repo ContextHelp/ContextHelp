@@ -113,7 +113,7 @@ func runRegistryPending(cmd *cobra.Command, _ []string) error {
 	}
 	defer cleanup()
 
-	pending, err := svc.ListPendingEntities(asOwner(context.Background()), registry)
+	pending, err := svc.ListPendingEntities(asOwner(cmdContext(cmd)), registry)
 	if err != nil {
 		return fmt.Errorf("list pending entities: %w", err)
 	}
@@ -156,7 +156,7 @@ func runPendingAction(
 	}
 	defer cleanup()
 
-	ctx := asOwner(context.Background())
+	ctx := asOwner(cmdContext(cmd))
 	dryRun := kitcli.IsDryRun(cmd)
 	var done []*storage.PendingEntity
 	if dryRun {

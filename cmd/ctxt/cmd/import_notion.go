@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -81,7 +80,7 @@ func runImportNotion(cmd *cobra.Command, args []string) error {
 	notionBaseURL, _ := cmd.Flags().GetString("notion-base-url")
 
 	client := notionimporter.NewClient(nil, notionBaseURL, token)
-	ctx := context.Background()
+	ctx := cmdContext(cmd)
 
 	pagesByID := make(map[string]notionimporter.Page)
 	orderedIDs := make([]string, 0)
@@ -207,7 +206,7 @@ func runImportNotion(cmd *cobra.Command, args []string) error {
 			source = "import:notion"
 		}
 
-		_, err = enqueueContent(dc, content, objectTypeText, pipelineName, source)
+		_, err = enqueueContent(cmdContext(cmd), dc, content, objectTypeText, pipelineName, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {

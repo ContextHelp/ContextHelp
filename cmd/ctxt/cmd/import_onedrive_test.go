@@ -188,7 +188,7 @@ func TestImportOneDriveEnqueue(t *testing.T) {
 	}
 
 	var enqueueCalls int
-	enqueueOneDriveContent = func(_ *dpkmsclient.Client, content, contentType, pipelineName, source string) (string, error) {
+	enqueueOneDriveContent = func(_ context.Context, _ *dpkmsclient.Client, content, contentType, pipelineName, source string) (string, error) {
 		enqueueCalls++
 		if contentType != "text" {
 			return "", fmt.Errorf("unexpected content type: %s", contentType)

@@ -146,7 +146,7 @@ func TestRunImportGitHubEnqueue(t *testing.T) {
 
 	var enqueuedSources []string
 	origEnqueue := enqueueGitHubItem
-	enqueueGitHubItem = func(_ *dpkmsclient.Client, content, contentType, pipelineName, source string) (string, error) {
+	enqueueGitHubItem = func(_ context.Context, _ *dpkmsclient.Client, content, contentType, pipelineName, source string) (string, error) {
 		enqueuedSources = append(enqueuedSources, source)
 		return "job-id", nil
 	}

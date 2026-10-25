@@ -111,7 +111,7 @@ func runImportPinboard(cmd *cobra.Command, args []string) error {
 
 	if token != "" {
 		client := newPinboardClient(token, baseURL)
-		fromAPI, err := client.FetchPosts(context.Background(), pinboardimporter.FetchOptions{
+		fromAPI, err := client.FetchPosts(cmdContext(cmd), pinboardimporter.FetchOptions{
 			Since:    since,
 			Tags:     normalizedTags,
 			MaxItems: 0,
@@ -181,7 +181,7 @@ func runImportPinboard(cmd *cobra.Command, args []string) error {
 			source = "import:pinboard"
 		}
 
-		_, err := enqueuePinboardItem(dc, payload, objectTypeText, pipelineName, source)
+		_, err := enqueuePinboardItem(cmdContext(cmd), dc, payload, objectTypeText, pipelineName, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {

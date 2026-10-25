@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"strconv"
@@ -111,7 +110,7 @@ func runImportRaindrop(cmd *cobra.Command, args []string) error {
 		MaxItems:      maxItems,
 	}
 
-	ctx := context.Background()
+	ctx := cmdContext(cmd)
 	items, err := client.ListItems(ctx, opts)
 	if err != nil {
 		return err
@@ -168,7 +167,7 @@ func runImportRaindrop(cmd *cobra.Command, args []string) error {
 			source = "import:raindrop"
 		}
 
-		_, err := enqueueContent(dc, content, objectTypeText, pipelineName, source)
+		_, err := enqueueContent(cmdContext(cmd), dc, content, objectTypeText, pipelineName, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {

@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"time"
@@ -114,7 +113,7 @@ func runResurfaceShow(cmd *cobra.Command, _ []string) error {
 	}
 	defer cleanup()
 
-	ctx := asOwner(context.Background())
+	ctx := asOwner(cmdContext(cmd))
 	rcfg := resurfacingCfg()
 
 	limit, _ := cmd.Flags().GetInt("limit")
@@ -181,7 +180,7 @@ func runResurfaceRefresh(cmd *cobra.Command, _ []string) error {
 	}
 	defer cleanup()
 
-	ctx := asOwner(context.Background())
+	ctx := asOwner(cmdContext(cmd))
 	rcfg := resurfacingCfg()
 
 	profileName, profile, ok := activeProfile(cmd)
@@ -198,14 +197,14 @@ func runResurfaceRefresh(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-func runResurfaceDismiss(_ *cobra.Command, args []string) error {
+func runResurfaceDismiss(cmd *cobra.Command, args []string) error {
 	svc, cleanup, err := newService()
 	if err != nil {
 		return err
 	}
 	defer cleanup()
 
-	ctx := asOwner(context.Background())
+	ctx := asOwner(cmdContext(cmd))
 	if err := svc.DismissResurfacing(ctx, args[0]); err != nil {
 		return fmt.Errorf("dismiss: %w", err)
 	}

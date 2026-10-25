@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -118,7 +117,7 @@ func runImportTwitter(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 
-	ctx := context.Background()
+	ctx := cmdContext(cmd)
 	_ = ctx // context is threaded through enqueueContent via HTTP
 
 	var (
@@ -146,7 +145,7 @@ func runImportTwitter(cmd *cobra.Command, _ []string) error {
 			pipeline = pipelineTextShort
 		}
 
-		_, err := enqueueContent(dc, content, objectTypeText, pipeline, source)
+		_, err := enqueueContent(cmdContext(cmd), dc, content, objectTypeText, pipeline, source)
 		if err != nil {
 			failed++
 			if firstErr == nil {

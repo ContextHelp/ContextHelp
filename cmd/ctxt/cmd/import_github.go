@@ -103,7 +103,7 @@ func runImportGitHub(cmd *cobra.Command, args []string) error {
 	baseURL, _ := cmd.Flags().GetString("github-base-url")
 
 	client := newGitHubClient(token, baseURL)
-	repos, err := client.Fetch(context.Background(), githubimporter.FetchOptions{
+	repos, err := client.Fetch(cmdContext(cmd), githubimporter.FetchOptions{
 		Username: username,
 		Lists:    lists,
 	})
@@ -116,7 +116,7 @@ func runImportGitHub(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	client.Enrich(context.Background(), repos)
+	client.Enrich(cmdContext(cmd), repos)
 
 	if dryRun {
 		return renderGitHubOutput(os.Stdout, outputFmt, repos)
@@ -127,7 +127,7 @@ func runImportGitHub(cmd *cobra.Command, args []string) error {
 	var firstErr error
 	for _, r := range repos {
 		payload := githubimporter.RenderContent(r)
-		_, err := enqueueGitHubItem(dc, payload, objectTypeText, pipelineName, r.URL)
+		_, err := enqueueGitHubItem(cmdContext(cmd), dc, payload, objectTypeText, pipelineName, r.URL)
 		if err != nil {
 			failed++
 			if firstErr == nil {

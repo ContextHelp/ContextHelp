@@ -89,6 +89,10 @@ List commands (`list`, `feed list`, `entity list`, `registry list`, `audit list`
 
 `--server <url>` is a global flag: it goes before or after the subcommand, and every command accepts it. It picks the dpkms endpoint for this run and wins over `--instance`, `CTXT_INSTANCE`, the current instance, `server.urls` and `server.url`. Commands that never call dpkms ignore it.
 
+### Offline mode
+
+`--offline` refuses every request ctxt would send to a non-loopback host, including the ones an in-process command makes (`registry sync`, `registry search`, `upgrade check`, the `import` sources that call an outside API). Such a command fails with `network disabled by --offline`. A dpkms instance on loopback stays reachable; a remote one is refused like any other host.
+
 ### Next-step hints
 
 After a successful run, `analyze`, `feed add`, `profile create`, `import <source>`, `import batch` and `watch start` print a one-line hint naming the usual next command. Hints print only on a terminal in table format. `--no-hints`, `--quiet` or `HOP_QUIET_HINTS=1` turn them off; `--format json|yaml` and piped output never show them. An import run with `--dry-run` prints none.

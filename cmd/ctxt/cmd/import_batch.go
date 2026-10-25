@@ -114,13 +114,13 @@ func runImportBatch(cmd *cobra.Command, args []string) error {
 	}
 
 	if dirPath != "" {
-		return runImportDir(dc, dirPath, dryRun)
+		return runImportDir(cmdContext(cmd), dc, dirPath, dryRun)
 	}
 
-	return runImportFile(dc, filePath, format, dryRun, mapContent, mapType, mapTags)
+	return runImportFile(cmdContext(cmd), dc, filePath, format, dryRun, mapContent, mapType, mapTags)
 }
 
-func runImportFile(dc *dpkmsclient.Client, filePath, format string, dryRun bool, mapContent, mapType, mapTags string) error {
+func runImportFile(ctx context.Context, dc *dpkmsclient.Client, filePath, format string, dryRun bool, mapContent, mapType, mapTags string) error {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return fmt.Errorf("read file: %w", err)
@@ -150,7 +150,7 @@ func runImportFile(dc *dpkmsclient.Client, filePath, format string, dryRun bool,
 	}
 
 	var result map[string]any
-	if err := dc.Post(context.Background(), "/api/v1/import", payload, &result); err != nil {
+	if err := dc.Post(ctx, "/api/v1/import", payload, &result); err != nil {
 		return fmt.Errorf("import %s: %w", filepath.Base(filePath), err)
 	}
 
@@ -171,7 +171,7 @@ func runImportFile(dc *dpkmsclient.Client, filePath, format string, dryRun bool,
 	return nil
 }
 
-func runImportDir(dc *dpkmsclient.Client, dirPath string, dryRun bool) error {
+func runImportDir(ctx context.Context, dc *dpkmsclient.Client, dirPath string, dryRun bool) error {
 	entries, err := os.ReadDir(dirPath)
 	if err != nil {
 		return fmt.Errorf("read directory: %w", err)
@@ -222,7 +222,7 @@ func runImportDir(dc *dpkmsclient.Client, dirPath string, dryRun bool) error {
 			"filename": filepath.Base(f),
 			"dry_run":  false,
 		}
-		if err := dc.Post(context.Background(), "/api/v1/import", payload, nil); err != nil {
+		if err := dc.Post(ctx, "/api/v1/import", payload, nil); err != nil {
 			failed++
 			if firstErr == nil {
 				firstErr = fmt.Errorf("%s: %w", filepath.Base(f), err)
