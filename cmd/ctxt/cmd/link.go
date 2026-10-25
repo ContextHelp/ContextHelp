@@ -54,7 +54,6 @@ func init() {
 	linkCreateCmd.Flags().StringP("type", "t", "", "link type (required): "+
 		strings.Join(graph.UserLinkTypeStrings(), ", "))
 	linkCreateCmd.Flags().String("context", "", "optional reason for the link")
-	linkCreateCmd.Flags().String("server", "", serverFlagUsage)
 	markFlagsRequired(linkCreateCmd, "type")
 
 	// 12fcc conformance: side-effect annotation for create.
@@ -111,7 +110,6 @@ func init() {
 	linkCmd.AddCommand(linkListCmd)
 	linkListCmd.Flags().StringP("type", "t", "", "filter by link type")
 	linkListCmd.Flags().Int("follow", 0, "depth-limited traversal (max 3)")
-	linkListCmd.Flags().String("server", "", serverFlagUsage)
 
 	// 12fcc conformance: list is a pure read traversal over edges.
 	cliconv.WithSideEffect(linkListCmd, cliconv.SideEffectRead)
@@ -232,7 +230,6 @@ Examples:
 
 func init() {
 	linkCmd.AddCommand(linkDeleteCmd)
-	linkDeleteCmd.Flags().String("server", "", serverFlagUsage)
 
 	// 12fcc conformance: delete removes forward + reverse edges
 	// between two objects. Classified as destructive on the shared

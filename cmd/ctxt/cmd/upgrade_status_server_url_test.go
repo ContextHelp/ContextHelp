@@ -118,17 +118,3 @@ func TestUpgradeStatus_ServerFlagOverridesConfig(t *testing.T) {
 		t.Fatalf("--server got %d requests, want 1", n)
 	}
 }
-
-// plan and run work on the local store; they take no --server that would
-// suggest otherwise.
-func TestUpgradePlanRun_TakeNoServerFlag(t *testing.T) {
-	for _, sub := range []string{"plan", "run"} {
-		t.Run(sub, func(t *testing.T) {
-			db := setupTestDB(t)
-			_, err := db.exec("upgrade", sub, "--server", "http://127.0.0.1:1")
-			if err == nil || !strings.Contains(err.Error(), "unknown flag: --server") {
-				t.Fatalf("upgrade %s --server: err = %v, want unknown flag", sub, err)
-			}
-		})
-	}
-}

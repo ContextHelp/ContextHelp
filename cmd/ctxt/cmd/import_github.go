@@ -63,7 +63,6 @@ func init() {
 	importGitHubCmd.Flags().StringP("token", "t", "", "GitHub token (or GITHUB_TOKEN env)")
 	importGitHubCmd.Flags().StringP("username", "u", "", "GitHub username (required)")
 	importGitHubCmd.Flags().StringP("lists", "l", "starred", "comma-separated lists: starred,watched,contributed")
-	importGitHubCmd.Flags().String("server", "", serverFlagUsage)
 	importGitHubCmd.Flags().String("pipeline", "text.long", "pipeline override for enqueued jobs")
 
 	// hidden for test/dev overrides

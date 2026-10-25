@@ -38,7 +38,6 @@ func init() {
 	// object reads it and changes nothing.
 	cliconv.WithIdempotency(exportCmd, cliconv.IdempotencyYes)
 
-	exportCmd.Flags().String("server", "", serverFlagUsage)
 }
 
 func runExport(cmd *cobra.Command, args []string) error {

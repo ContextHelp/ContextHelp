@@ -120,9 +120,6 @@ func init() {
 	watchCmd.AddCommand(watchStatusCmd)
 	watchCmd.AddCommand(watchEnableCmd)
 	watchCmd.AddCommand(watchDisableCmd)
-	for _, c := range []*cobra.Command{watchStartCmd, watchStopCmd, watchStatusCmd} {
-		c.Flags().String("server", "", serverFlagUsage)
-	}
 
 	// start blocks running watchers; treat as a Write effect (it
 	// enqueues ingestion jobs while running).

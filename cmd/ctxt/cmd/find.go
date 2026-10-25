@@ -129,7 +129,6 @@ func init() {
 	findCmd.Flags().String("until", "", "filter by dates_mentioned <= (ISO date)")
 	findCmd.Flags().String("source-type", "", "filter by source_type")
 	findCmd.Flags().Bool("facets", false, "show metadata type count breakdown")
-	findCmd.Flags().String("server", "", serverFlagUsage)
 
 	// Embedding provider overrides for --graph's local search.
 	embeddings.AddFlags(findCmd.Flags(), &findEmbedding)

@@ -49,7 +49,6 @@ func init() {
 	importLinkedInCmd.Flags().String("articles", "", "path to Articles.csv from your LinkedIn data export")
 	importLinkedInCmd.Flags().String("since", "", "only import content published since RFC3339 or YYYY-MM-DD")
 	importLinkedInCmd.Flags().Int("max-items", 0, "maximum number of items to import (0 = all)")
-	importLinkedInCmd.Flags().String("server", "", serverFlagUsage)
 	importLinkedInCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 
 	markImportCmd(importLinkedInCmd, "ctxt import linkedin --posts ./Posts.csv")

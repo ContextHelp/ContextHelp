@@ -84,7 +84,6 @@ func init() {
 	analyzeCmd.Flags().Bool("no-dedup", false, "skip duplicate detection")
 	analyzeCmd.Flags().String("source-key", "", "external dedup key (Slack ts, tweet ID, etc.)")
 	analyzeCmd.Flags().Bool("wait", false, "block until job completes")
-	analyzeCmd.Flags().String("server", "", serverFlagUsage)
 
 	// Mirror flags on rootCmd (local, not persistent) so `ctxt <content> --type url` works
 	// without leaking these flags into every subcommand's help.
@@ -100,7 +99,6 @@ func init() {
 	rootCmd.Flags().Bool("no-dedup", false, "skip duplicate detection")
 	rootCmd.Flags().String("source-key", "", "external dedup key (Slack ts, tweet ID, etc.)")
 	rootCmd.Flags().Bool("wait", false, "block until job completes")
-	rootCmd.Flags().String("server", "", serverFlagUsage)
 
 	// Bind viper keys: RunAnalyze reads from cmd.Flags() directly, so viper bindings
 	// here are for config-file fallback only (flag values take precedence via cmd.Flags()).

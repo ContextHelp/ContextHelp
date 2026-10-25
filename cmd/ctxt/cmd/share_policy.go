@@ -96,9 +96,6 @@ Examples:
 func init() {
 	shareCmd.AddCommand(sharePolicyCmd)
 	sharePolicyCmd.AddCommand(sharePolicyCreateCmd, sharePolicyEditCmd, sharePolicyShowCmd, sharePolicyListCmd)
-	for _, c := range []*cobra.Command{sharePolicyCreateCmd, sharePolicyEditCmd, sharePolicyShowCmd, sharePolicyListCmd} {
-		c.Flags().String("server", "", serverFlagUsage)
-	}
 
 	cliconv.WithSideEffect(sharePolicyCreateCmd, cliconv.SideEffectWrite)
 	cliconv.WithIdempotency(sharePolicyCreateCmd, cliconv.IdempotencyNo)

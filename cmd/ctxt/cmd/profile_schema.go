@@ -119,7 +119,6 @@ func init() {
 	profileSchemaCmd.AddCommand(schemaRemoveTypeCmd)
 	profileSchemaCmd.AddCommand(schemaRemoveTopicCmd)
 	profileSchemaCmd.AddCommand(schemaEvolveCmd)
-	schemaEvolveCmd.Flags().String("server", "", serverFlagUsage)
 
 	cliconv.WithSideEffect(schemaShowCmd, cliconv.SideEffectRead)
 	cliconv.WithExamples(schemaShowCmd, []cliconv.Example{

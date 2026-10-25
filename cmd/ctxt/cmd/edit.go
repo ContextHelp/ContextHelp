@@ -59,7 +59,6 @@ func init() {
 	editCmd.Flags().String("tags", "", "replace tags (comma-separated)")
 	editCmd.Flags().String("mention", "", "replace mentions (space-separated @namespace.slug)")
 	editCmd.Flags().String("subtype", "", "update subtype")
-	editCmd.Flags().String("server", "", serverFlagUsage)
 }
 
 // editField is one edited field, in the order edit reports them.

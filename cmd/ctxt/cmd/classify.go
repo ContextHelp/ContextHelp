@@ -54,7 +54,6 @@ func init() {
 	cliconv.WithIdempotency(classifyCmd, cliconv.IdempotencyConditional)
 
 	classifyCmd.Flags().String("pipeline", "", "pipeline name (reserved)")
-	classifyCmd.Flags().String("server", "", serverFlagUsage)
 }
 
 // classifyResult mirrors c12n.PipelineResult for display without importing c12n.

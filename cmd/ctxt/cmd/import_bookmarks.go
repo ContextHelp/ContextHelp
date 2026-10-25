@@ -37,7 +37,6 @@ Examples:
 	}
 
 	cmd.Flags().String("file", "", fmt.Sprintf("path to %s bookmarks HTML export", b.label))
-	cmd.Flags().String("server", "", serverFlagUsage)
 	cmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 	cmd.Flags().Int("max-items", 0, "maximum number of bookmarks to import (0 = all)")
 

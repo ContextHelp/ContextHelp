@@ -51,7 +51,6 @@ func init() {
 	importRaindropCmd.Flags().String("tagged", "", "exact tag filter (case-insensitive)")
 	importRaindropCmd.Flags().String("since", "", "only import items updated since RFC3339 or YYYY-MM-DD")
 	importRaindropCmd.Flags().Int("max-items", 0, "maximum number of items to import (0 = all)")
-	importRaindropCmd.Flags().String("server", "", serverFlagUsage)
 	importRaindropCmd.Flags().String("pipeline", "import.raindrop", "pipeline override for enqueued jobs")
 
 	// For testing and self-hosted proxies.

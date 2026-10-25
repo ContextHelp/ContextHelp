@@ -61,7 +61,6 @@ func init() {
 	importPinboardCmd.Flags().String("since", "", "import bookmarks saved on/after this time (RFC3339 or YYYY-MM-DD)")
 	importPinboardCmd.Flags().StringSlice("tagged", nil, "require bookmarks to include all specified tags")
 	importPinboardCmd.Flags().Int("max-items", 0, "maximum bookmarks to import (0 = all)")
-	importPinboardCmd.Flags().String("server", "", serverFlagUsage)
 	importPinboardCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 
 	markImportCmd(importPinboardCmd, "ctxt import pinboard --token $PINBOARD_TOKEN")

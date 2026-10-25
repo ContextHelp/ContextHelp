@@ -96,6 +96,7 @@ var (
 			},
 		},
 		Globals: []kitcli.Flag{
+			{Name: "server", Usage: serverFlagUsage},
 			{Name: "profile", Usage: "focus profile to use"},
 			{Name: "instance", Usage: "target dpkms instance by name or port (overrides current-instance state and config)"},
 			{Name: "as", Usage: "run a read command as another viewer: a principal id or a share policy name (owner only)"},

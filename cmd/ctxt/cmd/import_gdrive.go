@@ -50,7 +50,6 @@ func init() {
 	importGDriveCmd.Flags().StringSlice("mime-type", nil, "only import these MIME types")
 	importGDriveCmd.Flags().Bool("include-trashed", false, "include trashed files (default false)")
 	importGDriveCmd.Flags().Int("max-items", 0, "maximum number of files to import (0 = all)")
-	importGDriveCmd.Flags().String("server", "", serverFlagUsage)
 	importGDriveCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 
 	markImportCmd(importGDriveCmd, "ctxt import gdrive --access-token $GDRIVE_ACCESS_TOKEN")

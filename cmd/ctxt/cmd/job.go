@@ -111,9 +111,6 @@ func init() {
 	jobListCmd.Flags().String("state", "", "keep jobs in one state ("+strings.Join(jobStates, "|")+")")
 	jobListCmd.Flags().Int("limit", 50, "maximum jobs to list")
 	jobListCmd.Flags().Int("offset", 0, "jobs to skip")
-	for _, c := range []*cobra.Command{jobListCmd, jobStatusCmd, jobRetryCmd, jobCancelCmd} {
-		c.Flags().String("server", "", serverFlagUsage)
-	}
 
 	cliconv.WithSideEffect(jobListCmd, cliconv.SideEffectRead)
 	cliconv.WithExamples(jobListCmd, []cliconv.Example{

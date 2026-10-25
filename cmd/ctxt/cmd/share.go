@@ -68,7 +68,6 @@ func init() {
 	rootCmd.AddCommand(shareCmd)
 	shareCmd.AddCommand(shareInviteCmd)
 
-	shareInviteCmd.Flags().String("server", "", serverFlagUsage)
 	shareInviteCmd.Flags().String("name", "", "display name of the person invited")
 	shareInviteCmd.Flags().String("expires", "", "how long the link can be accepted, as a duration (7d, 48h); 7 days by default")
 	shareInviteCmd.Flags().String("audience", "", "audience (name or id) the person joins on accepting")

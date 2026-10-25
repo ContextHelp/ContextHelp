@@ -48,7 +48,6 @@ func init() {
 	// is naturally idempotent — no state changes between calls.
 	cliconv.WithIdempotency(statsCmd, cliconv.IdempotencyYes)
 	statsCmd.Flags().Bool("watch", false, "re-print every 3s (Ctrl-C to exit)")
-	statsCmd.Flags().String("server", "", serverFlagUsage)
 }
 
 // statsData is one snapshot: the instance's counts plus this client's
