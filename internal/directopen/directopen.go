@@ -91,14 +91,22 @@ func (h *Handle) Close(ctx context.Context) error {
 // class other than private, else the configured class (private when
 // unset). A marker that cannot be read is an *accessmarker.RefusedError.
 func Class(t Target) (accessmarker.Marker, error) {
+	m, _, err := class(t)
+	return m, err
+}
+
+// class is Class, also reporting whether the class came from the
+// configuration (the marker recording private or nothing).
+func class(t Target) (accessmarker.Marker, bool, error) {
 	m, _, err := accessmarker.Read(t.Path)
 	if err != nil {
-		return accessmarker.Marker{}, &accessmarker.RefusedError{DBPath: t.Path, Cause: err}
+		return accessmarker.Marker{}, false, &accessmarker.RefusedError{DBPath: t.Path, Cause: err}
 	}
 	if m.Private() && t.Access != "" && t.Access != config.AccessPrivate {
 		m.Access = t.Access
+		return m, true, nil
 	}
-	return m, nil
+	return m, false, nil
 }
 
 // CheckAccess applies the access-class gate alone: nil for a private
@@ -108,12 +116,12 @@ func CheckAccess(t Target) error {
 	if !t.guarded() {
 		return nil
 	}
-	m, err := Class(t)
+	m, fromConfig, err := class(t)
 	if err != nil {
 		return err
 	}
 	if !m.Private() {
-		return &accessmarker.RefusedError{DBPath: t.Path, Marker: m}
+		return &accessmarker.RefusedError{DBPath: t.Path, Marker: m, FromConfig: fromConfig}
 	}
 	return nil
 }

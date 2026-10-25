@@ -149,7 +149,12 @@ func TestGate(t *testing.T) {
 				}
 			}
 			fix := re.Fix()
-			for _, want := range []string{"daemon API", "dpkms serve", "dpkms instance set-access private"} {
+			wants := []string{"daemon API", "dpkms serve", "dpkms instance set-access private"}
+			if re.Cause != nil {
+				// An unreadable marker: repair it, the class is unknown.
+				wants = []string{"unreadable", "dpkms instance set-access"}
+			}
+			for _, want := range wants {
 				if !strings.Contains(fix, want) {
 					t.Errorf("fix %q does not mention %q", fix, want)
 				}

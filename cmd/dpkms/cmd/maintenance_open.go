@@ -82,6 +82,10 @@ func (r refusalWithOverride) Fix() string {
 	fix := ""
 	var re *accessmarker.RefusedError
 	if errors.As(r.err, &re) {
+		// An unreadable marker refuses the override too: repair it.
+		if re.Cause != nil {
+			return re.Fix()
+		}
 		fix = re.Fix() + "; "
 	}
 	return fix + "or rerun with --" + maintenanceOverrideFlag + " as the database owner, with the daemon stopped (audited)"

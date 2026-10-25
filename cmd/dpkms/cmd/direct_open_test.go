@@ -194,7 +194,7 @@ func TestDirectOpen_ConfiguredProtectedWithoutMarker(t *testing.T) {
 	_, _ = f.WriteString("server:\n  access: protected\n")
 	_ = f.Close()
 	_, err = db.run("job", "list")
-	wantExit(t, err, output.ExitUnauthorized, "set-access private")
+	wantExit(t, err, output.ExitUnauthorized, "server.access")
 }
 
 // The host-side bootstrap and recovery commands stay reachable on a
@@ -272,5 +272,20 @@ func TestDirectOpen_ReadOnFreshInstallSaysWhatToDo(t *testing.T) {
 	var env *output.Error
 	if !errors.As(classifyReturn(rootCmd, nil, err), &env) || !strings.Contains(env.SuggestedFix, "dpkms serve") {
 		t.Errorf("error %v carries no fix naming dpkms serve", err)
+	}
+}
+
+// A torn marker under --maintenance-override says how to repair the
+// marker, not to rerun with the flag already given.
+func TestDirectOpen_OverrideWithTornMarker(t *testing.T) {
+	db := setupTestDB(t)
+	if err := os.WriteFile(accessmarker.Path(dbPathOf(db)), []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := db.run("housekeeping", "vacuum", "--maintenance-override")
+	wantExit(t, err, output.ExitUnauthorized, "unreadable", "dpkms instance set-access")
+	var env *output.Error
+	if errors.As(classifyReturn(rootCmd, nil, err), &env) && strings.Contains(env.SuggestedFix, "--maintenance-override") {
+		t.Errorf("fix %q tells the operator to pass the flag they passed", env.SuggestedFix)
 	}
 }

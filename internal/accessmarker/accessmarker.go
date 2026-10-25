@@ -127,6 +127,9 @@ type RefusedError struct {
 	Marker Marker
 	// Cause is the read error of an unreadable marker.
 	Cause error
+	// FromConfig reports that the class comes from server.access, the
+	// marker recording private (or nothing).
+	FromConfig bool
 }
 
 // Error names the instance and its class.
@@ -153,12 +156,19 @@ func (e *RefusedError) Unwrap() []error {
 
 // Fix states what the operator can do instead.
 func (e *RefusedError) Fix() string {
+	if e.Cause != nil {
+		return "the access marker " + Path(e.DBPath) + " is unreadable: rewrite it with " +
+			"`dpkms instance set-access <private|protected|public>` as the database owner, with the daemon stopped"
+	}
 	daemon := "use the daemon API"
 	if e.Marker.DaemonAddr != "" {
 		daemon += " (daemon last listened on " + e.Marker.DaemonAddr + ")"
 	}
-	return daemon + "; daemon not running? start it with `dpkms serve`; " +
-		"maintenance override: `dpkms instance set-access private` with the daemon stopped"
+	daemon += "; daemon not running? start it with `dpkms serve`; "
+	if e.FromConfig {
+		return daemon + "the class comes from server.access in the config: set it to private there to allow direct opens"
+	}
+	return daemon + "maintenance override: `dpkms instance set-access private` with the daemon stopped"
 }
 
 // Gate refuses a direct open of dbPath unless its marker is private or
