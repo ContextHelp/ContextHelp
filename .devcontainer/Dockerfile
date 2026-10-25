@@ -12,7 +12,7 @@
 #     explicit.
 #   - The Postgres client, so `psql` is on PATH for poking at the database
 #     service by hand.
-ARG GO_VERSION=1.26.9
+ARG GO_VERSION=1.26.10
 FROM golang:${GO_VERSION}-bookworm
 
 # golangci-lint version is pinned to the one the CI workflow installs.
