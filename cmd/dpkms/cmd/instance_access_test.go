@@ -161,14 +161,7 @@ func TestDoctor_Permissions(t *testing.T) {
 	for _, p := range []string{path + "-wal", path + "-shm", dblock.Path(path)} {
 		_ = os.Chmod(p, 0o600)
 	}
-	// The command loads the config; close its blob directory too.
-	if _, err := db.run("doctor"); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(blobDirOf(cfg), 0o700); err != nil {
-		t.Fatal(err)
-	}
-
+	// The blob directory is left as the blob store created it: closed.
 	out, err := db.run("doctor")
 	if err != nil {
 		t.Fatalf("doctor on a closed instance: %v\n%s", err, out)
