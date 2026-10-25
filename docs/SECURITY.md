@@ -562,7 +562,7 @@ session acts as the principal of the token that minted it, but only with
 the scopes the web UI needs, and ends after `server.ui.session.idle_ttl`
 (default 12h) without a request, `server.ui.session.max_ttl` (default
 168h) after sign-in, or as soon as its token is removed from the config.
-`dpkms session list` and `dpkms session revoke` manage sessions. See
+`dpkms session list` and `dpkms session revoke` manage sessions, on the host with dpkms stopped and `--maintenance-override` (the store of a protected or public instance is access-gated). See
 [Sign In to the Web UI](manual/workflows/web-ui-sign-in.md).
 
 ### Transport security

@@ -266,7 +266,8 @@ server:
 
 `dpkms session list [--all] [--principal P]` and
 `dpkms session revoke <id> | --principal P` manage sessions on the server
-host.
+host. Sessions exist only on `protected` and `public` instances, so both
+take the audited `--maintenance-override` and run with dpkms stopped.
 
 ### Profile controls
 

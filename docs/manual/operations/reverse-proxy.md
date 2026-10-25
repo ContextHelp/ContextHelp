@@ -57,10 +57,11 @@ server:
 
 Credentials no longer live in the config file. Create the owner's API
 key on the dpkms host, against its database, before you start the new
-instance:
+instance. The instance is protected, so the command takes the audited
+maintenance override:
 
 ```bash
-dpkms auth key create --principal owner --name proxy
+dpkms auth key create --principal owner --name proxy --maintenance-override
 ```
 
 It prints the key once and stores only a hash. Keep the key for the
@@ -318,8 +319,9 @@ client address.
 The proxy's sign-in step stands between the ctxt CLI and dpkms. Point
 the CLI at dpkms directly (over a VPN, a tailnet or an SSH tunnel) with
 its own key in `server.url` and `server.token`, or in a `server.urls`
-entry. Create each machine its own key with `dpkms auth key create` so
-you can revoke one without the others.
+entry. Create each machine its own key with `ctxt auth key create` (over the
+API) or, on the host with dpkms stopped, `dpkms auth key create
+--maintenance-override`, so you can revoke one without the others.
 
 ## Never proxy a private instance
 
@@ -369,8 +371,8 @@ not.
   has its own `proxy_set_header`.
 - `"invalid credentials"`: the proxy's key is not one dpkms accepts: it
   was revoked, it expired, or it was copied wrong. Create a new one with
-  `dpkms auth key create --principal owner` and update the proxy; dpkms
-  picks it up without a restart.
+  `dpkms auth key create --principal owner --maintenance-override` (dpkms
+  stopped for the moment it runs) and update the proxy.
 
 ### `415 UNSUPPORTED_MEDIA_TYPE`
 

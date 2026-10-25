@@ -138,7 +138,7 @@ Someone calling the dpkms REST, gRPC or MCP API without authorization, or with a
 
 1. **Cut access**:
    - Block the source at the reverse proxy or firewall.
-   - Remove the abused token from `server.auth.static.tokens` and restart dpkms; `dpkms session revoke --principal <name>` signs its browsers out.
+   - Remove the abused token from `server.auth.static.tokens` and restart dpkms; `dpkms session revoke --principal <name> --maintenance-override` (dpkms stopped; audited) signs its browsers out.
    - If the instance should not be reachable at all: set `server.access: private` (loopback only) and restart.
 2. **Rotate** every token that shared the same role.
 3. **Raise log verbosity** for the investigation: restart with `dpkms serve -V`.
