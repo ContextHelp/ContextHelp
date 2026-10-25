@@ -258,3 +258,13 @@ func printAdminTable(w io.Writer, headers []string, rows [][]string) {
 
 	fmt.Fprintln(w, t.Render())
 }
+
+// seedDefaultRegistry caches the bundled default registry in the store
+// the daemon serves, so read-only commands, which never write it, find
+// it on every store the daemon created.
+func seedDefaultRegistry(ctx context.Context, svc *service.Service) error {
+	if err := svc.EnsureDefaultRegistry(asSystem(ctx)); err != nil {
+		return fmt.Errorf("seed default registry: %w", err)
+	}
+	return nil
+}

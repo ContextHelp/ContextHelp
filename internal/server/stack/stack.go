@@ -472,11 +472,5 @@ func Build(in Inputs) (*Stack, error) {
 		StrictSharing:        in.StrictSharing,
 		Audit:                s.Audit,
 	})
-	// Every store the daemon serves carries the bundled default registry:
-	// read-only commands never write it themselves.
-	if err := s.Service.EnsureDefaultRegistry(sharing.WithViewer(context.Background(), sharing.Unrestricted)); err != nil {
-		s.Close()
-		return nil, err
-	}
 	return s, nil
 }

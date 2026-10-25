@@ -40,9 +40,7 @@ func TestShell_OpensPerCommandBesideDaemon(t *testing.T) {
 	restore := withInstance(t, db, gateInstance)
 	defer restore()
 
-	if _, err := prepareShell(shellCmd); err != nil {
-		t.Fatalf("shell beside the daemon: %v", err)
-	}
+	prepareShell()
 	if err := shellLine(t, db, "remind", "list"); err != nil {
 		t.Fatalf("read inside the shell: %v", err)
 	}
