@@ -92,7 +92,7 @@ func scanRegistryCache(row interface{ Scan(...any) error }) (*storage.RegistryCa
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("registry cache not found")
+			return nil, fmt.Errorf("registry cache: %w", storage.ErrNotFound)
 		}
 		return nil, fmt.Errorf("scan registry cache: %w", err)
 	}
