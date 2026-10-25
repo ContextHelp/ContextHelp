@@ -15,7 +15,7 @@ Where data crosses a trust boundary in ctxt and dpkms, and what guards each cros
 **What lives here**: the dpkms store (`<data_dir>/db.sqlite` by default, `data_dir` = `$XDG_DATA_HOME/contexthelp`), the blob store (`<data_dir>/blobs` for the `local` backend), `run/` pidfiles, config under `$XDG_CONFIG_HOME/contexthelp/`, policy rules in `policy/ctxt.yaml`, and process logs wherever you send stderr.
 
 **Guards**:
-- `ctxt config doctor` warns on group- or world-readable config files; `--fix` sets `0600`. Nothing checks the database or blob permissions.
+- `ctxt config doctor` warns on group- or world-readable config files; `--fix` sets `0600`. `dpkms doctor` (and `dpkms serve` at startup) checks the database, its sidecars and the blob directory on a protected or public instance; see [Direct database access](../../manual/operations/direct-access.md).
 - Provider keys can live in the OS keychain, an age-encrypted file, 1Password or GitHub secrets instead of config ([secrets backends](../secrets-backends.md)).
 
 **Not guarded**: the database and blobs are stored in the clear; logs are not sanitized; `dpkms backup` archives are not encrypted. Use OS disk encryption (FileVault, LUKS, BitLocker) and keep the data directory private.

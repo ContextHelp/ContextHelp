@@ -17,8 +17,9 @@ An instance's access class is `server.access` (`private`, `protected` or `public
 - serve writes it before it opens the database, and again with the HTTP address once its listener is bound.
 - It is written atomically (temporary file, fsync, rename) with mode `0600`.
 - It is never removed when serve stops. The point of the marker is to keep refusing direct opens while the daemon is down.
-- No marker means private: the instance has never been served protected or public.
+- No marker means the configured `server.access` decides. The gate always applies the stricter of the two: a protected config refuses before serve has ever written the marker, and a protected marker refuses under a private config.
 - A marker that cannot be read or parsed refuses every direct open (fail closed). `dpkms instance set-access` repairs it.
+- The marker and the lock sit beside the database's real path: a database reached through a symlinked file or directory reads the same marker and takes the same lock.
 - A private serve never lowers a recorded class. It prints a note naming the command that does.
 
 `dpkms ps` shows each running instance's class in its ACCESS column. That column is for discovery only: the gate reads the marker.
@@ -40,21 +41,21 @@ dpkms shutdown
 dpkms instance set-access private
 ```
 
-`set-access` takes the database lock, so the daemon must be stopped. It accepts `private`, `protected` or `public`. A later protected or public `dpkms serve` records its own class again.
+`set-access` takes the database lock, so the daemon must be stopped. Run it as the user that owns the database (not checked on Windows). It writes an `access.set` entry (from, to, instance, database, pid, account) to the instance's audit log before the marker changes, and changes nothing if that write fails. It accepts `private`, `protected` or `public`. A later protected or public `dpkms serve` records its own class again.
 
 ### Maintenance on a protected instance
 
-`dpkms housekeeping ...` and `dpkms backup` take `--maintenance-override`. The override runs the maintenance without lowering the class:
+`dpkms housekeeping ...`, `dpkms backup`, `dpkms auth key create` and `dpkms session revoke` take `--maintenance-override`. The last two are the bootstrap and recovery path: the first owner key on a fresh protected instance is `dpkms auth key create --principal owner --maintenance-override`. The override runs the maintenance without lowering the class:
 
 - run it as the user that owns the database file, the daemon's user (not checked on Windows);
 - stop the daemon first: the override takes the database lock;
-- it appends a `maintenance.override` entry to the instance's audit log (action, class, instance, database, pid, uid) before it starts, and fails if it cannot.
+- it appends a `maintenance.override` entry to the instance's audit log (action, class, instance, database, pid, account as `user:<name> (<uid or SID>)`) before anything else, migrations included, and fails if it cannot.
 
 Without the flag, housekeeping and backup on a protected or public instance are refused like any direct open, and the fix names the flag.
 
 ### Local federation targets
 
-A federation entry given a path (or `file://` URL) writes straight into the target database. That write would skip the target's federation token, policy engine and lock, so a target whose marker is protected or public is refused: `dpkms serve` fails at startup naming the entry, `dpkms config validate` reports it, and a push already running fails. Configure such a target by its daemon's URL instead; the push then goes through `POST /api/v1/federation/push`.
+A federation entry given a path (or `file://` URL) writes straight into the target database. That write would skip the target's federation token, policy engine and lock, so a target whose marker is protected or public is refused: `dpkms serve` fails at startup naming the entry, `dpkms config validate` reports it, and a push already running fails. Configure such a target by its daemon's URL instead; the push then goes through `POST /api/v1/federation/push`. A push into a private target is a write command like any other: it takes the target's lock, so it fails while the target's daemon runs (use the URL then too). Reading the target's watermark takes no lock.
 
 ## The database lock
 
@@ -90,7 +91,9 @@ The exit code is 6 (`TRANSIENT`): the database is busy, and the command succeeds
 
 A command that only reads (its declared side effect is `read`: `job list|status|log`, `detector list`, `session list`, `entitlement list`, `config validate`, `doctor`) takes no lock and never waits. It opens the database read-only (`mode=ro` and `query_only` on SQLite, `default_transaction_read_only` on Postgres), so no statement it runs can write, and it runs no migrations. SQLite's WAL lets such a reader run beside the daemon.
 
-A read refuses a database that does not exist or has no schema yet (it never creates one), and one at a schema version other than the binary's. Start `dpkms serve`, or run any write command, to create or migrate it.
+A read refuses a database that does not exist or has no schema yet (it never creates one), and one at a schema version other than the binary's, and the fix says what to do: start `dpkms serve`, or run any write command, to create or migrate it.
+
+`dpkms config validate` never needs an openable store. With no database yet it checks pipeline overrides against the built-in steps; when the store cannot be read (a protected or public instance, another schema version) it skips installed steps and warns.
 
 ### Backups
 
@@ -102,7 +105,7 @@ The marker is cooperative: it stops dpkms commands and well-behaved tools, not a
 
 - run the daemon as a dedicated user;
 - `chmod 0600` the database, its `-wal` and `-shm` files and the `.lock` and `.access` sidecars;
-- `chmod 0700` the blob directory (`storage.blob.local.path`).
+- `chmod 0700` the blob directory (`storage.blob.local.path`). The local blob store creates its directories `0700` and its files `0600`.
 
 Every other user then fails at `open(2)`, and the marker check becomes the clearer error in front of that refusal.
 
