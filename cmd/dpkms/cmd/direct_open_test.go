@@ -289,3 +289,20 @@ func TestDirectOpen_OverrideWithTornMarker(t *testing.T) {
 		t.Errorf("fix %q tells the operator to pass the flag they passed", env.SuggestedFix)
 	}
 }
+
+// An unreachable Postgres store is an unreadable store to validation:
+// warn and check against built-in steps, never fail on it. Port 1 on
+// loopback refuses at once; nothing listens there.
+func TestConfigValidate_PostgresUnreachable(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(cfgPath, []byte("storage:\n  type: postgres\n  path: postgres://127.0.0.1:1/none?sslmode=disable\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, err := (&testDB{ConfigPath: cfgPath}).run("config", "validate")
+	if err != nil {
+		t.Fatalf("config validate with Postgres down: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "installed steps not checked") {
+		t.Errorf("no warning: %q", out)
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 
 	"github.com/spf13/cobra"
 
@@ -33,7 +34,8 @@ start on the same errors.
 Validation does not need an openable store. With no database yet,
 overrides are checked against the built-in steps. When the store
 cannot be read (a protected or public instance, another schema
-version), installed steps are not checked and a warning says so.`,
+version, a Postgres server that does not answer), installed steps are
+not checked and a warning says so.`,
 	Args: cobra.NoArgs,
 	RunE: runConfigValidate,
 }
@@ -75,14 +77,16 @@ func runConfigValidate(cmd *cobra.Command, _ []string) error {
 // against. Validation never needs an openable store: with no database
 // yet nothing is installed; a store refused by its access class or at
 // another schema version cannot be read, so an override naming a step
-// that is not built in is let through and warning says why.
+// that is not built in is let through and warning says why. So is a
+// Postgres server that does not answer.
 func installedSteps(cmd *cobra.Command) (func(string) bool, string, error) {
 	driver, cleanup, err := openStore(cmd)
 	switch {
 	case err == nil:
 	case errors.Is(err, storageutil.ErrNoSchema):
 		return func(string) bool { return false }, "no database yet, so none are installed", nil
-	case errors.Is(err, storageutil.ErrSchemaMismatch), errors.Is(err, accessmarker.ErrRefused):
+	case errors.Is(err, storageutil.ErrSchemaMismatch), errors.Is(err, accessmarker.ErrRefused),
+		errors.As(err, new(*net.OpError)): // a store server (Postgres) that does not answer
 		return func(string) bool { return true }, err.Error(), nil
 	default:
 		return nil, "", fmt.Errorf("open store to list installed steps: %w", err)
