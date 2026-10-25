@@ -9,10 +9,6 @@ permissions:
   contents: write
   packages: write
 
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/ctxt-dpkms
-
 jobs:
   # ── Gate 1: everything CI runs ───────────────────────────────────────────────
   # ci.yml in full, as a reusable workflow, on the tagged commit: toolchain
