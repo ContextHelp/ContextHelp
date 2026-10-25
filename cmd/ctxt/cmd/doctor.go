@@ -49,7 +49,7 @@ func init() {
 }
 
 func runDoctor(cmd *cobra.Command, _ []string) error {
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return err
 	}

@@ -107,7 +107,7 @@ func resurfacingCfg() config.ResurfacingConfig {
 // ─── commands ────────────────────────────────────────────────────────────────
 
 func runResurfaceShow(cmd *cobra.Command, _ []string) error {
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return err
 	}
@@ -174,7 +174,7 @@ func runResurfaceShow(cmd *cobra.Command, _ []string) error {
 }
 
 func runResurfaceRefresh(cmd *cobra.Command, _ []string) error {
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return err
 	}
@@ -198,7 +198,7 @@ func runResurfaceRefresh(cmd *cobra.Command, _ []string) error {
 }
 
 func runResurfaceDismiss(cmd *cobra.Command, args []string) error {
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return err
 	}

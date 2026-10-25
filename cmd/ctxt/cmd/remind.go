@@ -93,7 +93,7 @@ func init() {
 }
 
 func runRemindSet(cmd *cobra.Command, args []string) error {
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return err
 	}
@@ -117,7 +117,7 @@ func runRemindSet(cmd *cobra.Command, args []string) error {
 }
 
 func runRemindClear(cmd *cobra.Command, args []string) error {
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return err
 	}
@@ -133,7 +133,7 @@ func runRemindClear(cmd *cobra.Command, args []string) error {
 }
 
 func runRemindList(cmd *cobra.Command, args []string) error {
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return err
 	}

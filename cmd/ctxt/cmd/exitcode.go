@@ -8,6 +8,9 @@ import (
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/core/netpolicy"
 
+	"github.com/ideacrafterslabs/ctxt/internal/accessmarker"
+	"github.com/ideacrafterslabs/ctxt/internal/dblock"
+	"github.com/ideacrafterslabs/ctxt/internal/directopen"
 	"github.com/ideacrafterslabs/ctxt/internal/registry"
 )
 
@@ -144,10 +147,28 @@ func classifyErr(err error) (string, bool) {
 // (registry.ErrEntitlementRequired) are both refusals the caller fixes
 // with new credentials or a plan, not a retry: UNAUTHORIZED.
 //
+// A direct store open the gates refuse (internal/directopen) is
+// UNAUTHORIZED (exit 5) for the access class, TRANSIENT (exit 6) for
+// lock contention, as on the dpkms side.
+//
 // A request --offline refused (netpolicy.ErrOffline) is PREREQUISITE:
 // the network the command depends on is unavailable by the caller's
 // own choice, and the same command without --offline can succeed.
 func classifyTyped(err error) (string, bool) {
+	switch {
+	// The instance's access class forbids direct opens: permanent, a
+	// retry meets the same refusal.
+	case errors.Is(err, accessmarker.ErrRefused):
+		return output.CodeUnauthorized, true
+	// Another process holds the database lock: busy, a retry once it is
+	// released succeeds.
+	case errors.Is(err, dblock.ErrHeld):
+		return output.CodeTransient, true
+	// The store is missing or at another schema version: GENERIC, but
+	// classified so the envelope carries the error's own fix.
+	case errors.As(err, new(*directopen.NotReadyError)):
+		return output.CodeGeneric, true
+	}
 	if errors.Is(err, netpolicy.ErrOffline) {
 		return output.CodePrerequisite, true
 	}
@@ -227,5 +248,12 @@ func classifyReturn(err error) error {
 	if !known {
 		return err
 	}
-	return output.WrapError(err, class, code)
+	wrapped := output.WrapError(err, class, code)
+	// An error that knows its own way out (the lock holder, the access
+	// class) says it in the envelope.
+	var own interface{ Fix() string }
+	if errors.As(err, &own) {
+		wrapped.SuggestedFix = own.Fix()
+	}
+	return wrapped
 }

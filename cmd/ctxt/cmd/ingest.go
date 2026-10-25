@@ -92,7 +92,7 @@ func runIngest(cmd *cobra.Command, _ []string) error {
 	fromStdin, _ := cmd.Flags().GetBool("stdin")
 	every, _ := cmd.Flags().GetDuration("every")
 
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return err
 	}

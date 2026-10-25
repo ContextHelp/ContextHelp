@@ -26,7 +26,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
-	kitcli "hop.top/kit/go/console/cli"
 	"hop.top/kit/go/storage/secret"
 )
 
@@ -65,16 +64,6 @@ func storeTarget(label string) directopen.Target {
 	}
 }
 
-// readsOnly reports whether cmd declares the read side effect. Anything
-// else, an undeclared command included, opens the write path.
-func readsOnly(cmd *cobra.Command) bool {
-	if cmd == nil {
-		return false
-	}
-	se, ok := kitcli.GetSideEffect(cmd)
-	return ok && se == cliconv.SideEffectRead
-}
-
 // openStore opens the configured store for cmd through the direct-open
 // gates (internal/directopen): refused on a protected or public
 // instance; read-only and lock-free for a read command; under the
@@ -88,7 +77,7 @@ func readsOnly(cmd *cobra.Command) bool {
 func openStore(cmd *cobra.Command) (storage.StorageDriver, func(), error) {
 	ctx := context.Background()
 	open := directopen.Write
-	if readsOnly(cmd) {
+	if cliconv.ReadsOnly(cmd) {
 		open = directopen.Read
 	}
 	takesOverride := cmd != nil && cmd.Flags().Lookup(maintenanceOverrideFlag) != nil
@@ -122,7 +111,7 @@ func newService(cmd *cobra.Command) (*service.Service, func(), error) {
 		return nil, nil, err
 	}
 	ctx := context.Background()
-	readOnly := readsOnly(cmd)
+	readOnly := cliconv.ReadsOnly(cmd)
 
 	queue := jobs.NewQueue(driver.Jobs())
 	pipes := builtins.ConfiguredRegistryWithOpts(registryBuildOpts(driver))

@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,8 +11,10 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"charm.land/lipgloss/v2/table"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliformat"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/directopen"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
 	embregistry "github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
@@ -26,7 +27,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"hop.top/kit/go/console/output"
@@ -56,41 +56,54 @@ func asOwner(ctx context.Context) context.Context {
 	return sharing.WithViewer(ctx, sharing.Unrestricted)
 }
 
-// newService creates a Service wired to the configured storage backend.
-// Returns the service and a cleanup function that must be deferred.
+// directLabel names a ctxt command in the database lock body.
+const directLabel = "ctxt cli"
+
+// newService creates a Service wired to the configured storage backend,
+// opened for cmd through the direct-open gates (internal/directopen), as
+// dpkms opens it: refused on a protected or public instance (the
+// stricter of server.access and the access marker); read-only, with no
+// lock and no migration, for a command that declares the read side
+// effect; under the database lock, migrated, for anything else. A lock
+// the daemon holds refuses the write at once. Returns the service and a
+// cleanup function that must be deferred; it closes the store and
+// releases the lock.
+//
 // When called from within a `ctxt shell` session (sessionSvc != nil), returns
 // the session-scoped service with a no-op cleanup to avoid double-close.
 //
 // Instance resolution order:
 //  1. --instance flag (or CTXT_INSTANCE env var, bound via viper)
 //  2. current-instance state file (written by `ctxt instance use`)
-//  3. config storage.path (original behaviour)
-func newService() (*service.Service, func(), error) {
+//  3. config storage.path
+func newService(cmd *cobra.Command) (*service.Service, func(), error) {
 	if sessionSvc != nil {
 		return sessionSvc, func() {}, nil
 	}
 
-	storageType := cfg.Storage.Type
-	if storageType == "" {
-		storageType = storageTypeSQLite
-	}
 	storagePath, err := resolveStoragePath()
 	if err != nil {
 		return nil, nil, err
 	}
-	if storagePath == "" {
-		return nil, nil, fmt.Errorf("storage path not configured")
-	}
-
-	driver, err := storageutil.Open(storageType, storagePath, cfg.Storage.Blob,
-		storageutil.WithMigrateSnapshot(cfg.Storage.MigrateSnapshot))
-	if err != nil {
-		return nil, nil, fmt.Errorf("init storage: %w", err)
+	t := directopen.Target{
+		Type:            cfg.Storage.Type,
+		Path:            storagePath,
+		Blob:            cfg.Storage.Blob,
+		MigrateSnapshot: cfg.Storage.MigrateSnapshot,
+		Label:           directLabel,
+		Access:          cfg.Server.EffectiveAccess(),
 	}
 	ctx := context.Background()
-	if err := driver.Init(ctx); err != nil {
-		return nil, nil, errors.Join(fmt.Errorf("init storage: %w", err), driver.Close(ctx))
+	readOnly := cliconv.ReadsOnly(cmd)
+	open := directopen.Write
+	if readOnly {
+		open = directopen.Read
 	}
+	h, err := open(ctx, t)
+	if err != nil {
+		return nil, nil, err
+	}
+	driver := h.Driver
 
 	queue := jobs.NewQueue(driver.Jobs())
 	pipes := builtins.ConfiguredRegistryWithOpts(registryBuildOpts(driver))
@@ -111,14 +124,16 @@ func newService() (*service.Service, func(), error) {
 	svc := service.NewWithOptions(driver, queue, pipes, engine, "", nil,
 		[]service.Option{service.WithRegistryTokens(registry.KeychainTokens())}, *cfg)
 	cleanup := func() {
-		if err := driver.Close(context.Background()); err != nil {
+		if err := h.Close(context.Background()); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to close storage: %v\n", err)
 		}
 	}
 
-	// Ensure bundled default registry is always present in the cache.
-	if err := svc.EnsureDefaultRegistry(asOwner(ctx)); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to load default registry: %v\n", err)
+	// Caching the bundled default registry writes; a read command leaves it.
+	if !readOnly {
+		if err := svc.EnsureDefaultRegistry(asOwner(ctx)); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to load default registry: %v\n", err)
+		}
 	}
 
 	return svc, cleanup, nil

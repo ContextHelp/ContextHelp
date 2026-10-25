@@ -482,7 +482,7 @@ func printFindNotice(cmd *cobra.Command, sem *dpkmsclient.FindSemanticReport) {
 // store, with the default embedding model's provider resolved here and
 // find's --embedding-* flags applied.
 func runFindGraphLocal(ctx context.Context, cmd *cobra.Command, q findGraphQuery, opts searchgraph.Options, d graphDelivery) error {
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return err
 	}

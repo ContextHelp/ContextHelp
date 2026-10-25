@@ -551,7 +551,7 @@ func dispatchURI(cmd *cobra.Command, raw string) error {
 }
 
 func dispatchURIViaTUI(cmd *cobra.Command, opts tui.StartOpts) error {
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return err
 	}
