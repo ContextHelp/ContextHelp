@@ -265,3 +265,17 @@ func TestCheckAccess_ConfiguredClass(t *testing.T) {
 		}
 	}
 }
+
+// When the class comes from server.access, the refusal says to change
+// the config, not to lower the marker (which would change nothing).
+func TestCheckAccess_ConfiguredClassHint(t *testing.T) {
+	tg := target(t, migrated(t))
+	tg.Access = config.AccessProtected
+	var re *accessmarker.RefusedError
+	if err := CheckAccess(tg); !errors.As(err, &re) {
+		t.Fatalf("CheckAccess = %v; want *RefusedError", err)
+	}
+	if fix := re.Fix(); !strings.Contains(fix, "server.access") || strings.Contains(fix, "set-access private") {
+		t.Errorf("fix %q; want server.access named, not set-access private", fix)
+	}
+}
