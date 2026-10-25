@@ -8,6 +8,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/accessmarker"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/dblock"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
@@ -73,5 +74,30 @@ func TestNew_RefusesNonPrivateLocalTarget(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), `"vault"`) || !strings.Contains(err.Error(), "URL") {
 		t.Errorf("error %q does not name the entry and the URL fix", err)
+	}
+}
+
+// A local push is a writer like any other: it takes the target's
+// database lock, so it never writes beside the target's daemon, and the
+// refusal names the URL entry. Reading the watermark takes no lock.
+func TestLocalPusher_TargetLockHeld(t *testing.T) {
+	targetDrv, targetPath := newTestDB(t)
+	held, err := dblock.Acquire(targetPath, dblock.Info{Role: dblock.RoleDaemon, Instance: "peer"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = held.Release() })
+	ctx := context.Background()
+	pusher := NewLocalPusher("fed", targetPath, nil, storageutil.NewTestBlobStore(t))
+
+	err = pusher.Push(ctx, []storage.KnowledgeObject{makeObject("obj-1", "hash-1")}, nil, nil)
+	if !errors.Is(err, dblock.ErrHeld) || !strings.Contains(err.Error(), "URL") {
+		t.Fatalf("push beside the target daemon = %v; want lock contention naming the URL entry", err)
+	}
+	if n := countObjects(t, targetDrv); n != 0 {
+		t.Errorf("push beside the daemon wrote %d objects", n)
+	}
+	if wm, err := pusher.Watermark(ctx); err != nil || wm != 0 {
+		t.Errorf("watermark beside the daemon = %d, %v; want 0, nil", wm, err)
 	}
 }

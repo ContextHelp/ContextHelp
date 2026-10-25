@@ -11,12 +11,14 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/accessmarker"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/dblock"
+	"github.com/ideacrafterslabs/ctxt/internal/directopen"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
-// LocalPusher pushes objects to a local SQLite target via storageutil.NewDriver.
+// LocalPusher pushes objects to a local SQLite target through internal/directopen.
 // Dedup: if object with same ContentHash already exists at target, skip.
 // Edges: inserted for each successfully inserted object.
 type LocalPusher struct {
@@ -107,47 +109,68 @@ func CheckLocalTarget(targetPath string) error {
 // Name returns the federation entry name from config.
 func (p *LocalPusher) Name() string { return p.name }
 
-// openTarget opens and migrates the target database and its blob store.
-// The caller closes the driver.
-func (p *LocalPusher) openTarget(ctx context.Context) (storage.StorageDriver, storage.BlobStore, error) {
-	// federation entries may declare targets as file:// URIs.
-	// SQLite driver expects a bare filesystem path; canonicalPath strips
-	// the scheme + resolves the absolute path (same helper used by
-	// detectCycles in worker.go).
+// targetFor resolves the target database as a direct-open target.
+// federation entries may declare targets as file:// URIs; canonicalPath
+// strips the scheme and resolves the absolute path (same helper as
+// detectCycles in worker.go).
+func (p *LocalPusher) targetFor() (directopen.Target, error) {
 	targetPath, err := canonicalPath(p.targetPath)
 	if err != nil {
-		return nil, nil, fmt.Errorf("resolve target %q: %w", p.targetPath, err)
+		return directopen.Target{}, fmt.Errorf("resolve target %q: %w", p.targetPath, err)
 	}
-	if err := CheckLocalTarget(targetPath); err != nil {
-		return nil, nil, err
-	}
-	drv, err := storageutil.Open("sqlite", targetPath, config.FileTargetBlob(targetPath, p.targetBlob))
+	return directopen.Target{
+		Type:  "sqlite",
+		Path:  targetPath,
+		Blob:  config.FileTargetBlob(targetPath, p.targetBlob),
+		Label: "federation push " + p.name,
+	}, nil
+}
+
+// openTarget opens the target database for writing like any direct
+// writer (internal/directopen): access gate, the target's database lock
+// (so never beside its daemon), migration. The caller closes the
+// handle, which releases the lock.
+func (p *LocalPusher) openTarget(ctx context.Context) (*directopen.Handle, error) {
+	t, err := p.targetFor()
 	if err != nil {
-		return nil, nil, fmt.Errorf("open target %q: %w", targetPath, err)
+		return nil, err
 	}
-	if err := drv.Init(ctx); err != nil {
-		_ = drv.Close(ctx)
-		return nil, nil, fmt.Errorf("init target %q: %w", targetPath, err)
+	if err := CheckLocalTarget(t.Path); err != nil {
+		return nil, err
 	}
-	return drv, drv.Blobs(), nil
+	h, err := directopen.Write(ctx, t)
+	if errors.Is(err, dblock.ErrHeld) {
+		return nil, fmt.Errorf("target %q: %w; while its daemon runs, configure the federation entry with the daemon's URL instead of a path", t.Path, err)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("open target %q: %w", t.Path, err)
+	}
+	return h, nil
 }
 
 // Watermark returns the watermark the target database keeps for this
-// federation; 0 when the database does not exist yet.
+// federation; 0 when the database does not exist yet or has no schema.
+// It only reads: no lock, so it answers beside the target's daemon.
 func (p *LocalPusher) Watermark(ctx context.Context) (int64, error) {
-	targetPath, err := canonicalPath(p.targetPath)
-	if err != nil {
-		return 0, fmt.Errorf("federation local watermark: resolve target %q: %w", p.targetPath, err)
-	}
-	if _, err := os.Stat(targetPath); errors.Is(err, fs.ErrNotExist) {
-		return 0, nil
-	}
-	drv, _, err := p.openTarget(ctx)
+	t, err := p.targetFor()
 	if err != nil {
 		return 0, fmt.Errorf("federation local watermark: %w", err)
 	}
-	defer func() { _ = drv.Close(ctx) }()
-	return drv.Watermarks().GetWatermark(ctx, p.name)
+	if _, err := os.Stat(t.Path); errors.Is(err, fs.ErrNotExist) {
+		return 0, nil
+	}
+	if err := CheckLocalTarget(t.Path); err != nil {
+		return 0, fmt.Errorf("federation local watermark: %w", err)
+	}
+	h, err := directopen.Read(ctx, t)
+	if errors.Is(err, storageutil.ErrNoSchema) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("federation local watermark: %w", err)
+	}
+	defer func() { _ = h.Close(ctx) }()
+	return h.Driver.Watermarks().GetWatermark(ctx, p.name)
 }
 
 // Push upserts objects, edges, and entities into the target SQLite database.
@@ -174,11 +197,12 @@ func (p *LocalPusher) Push(
 		return nil
 	}
 
-	drv, targetBlobs, err := p.openTarget(ctx)
+	h, err := p.openTarget(ctx)
 	if err != nil {
 		return fmt.Errorf("federation local push: %w", err)
 	}
-	defer func() { _ = drv.Close(ctx) }()
+	defer func() { _ = h.Close(ctx) }()
+	drv, targetBlobs := h.Driver, h.Driver.Blobs()
 
 	objs := drv.Objects()
 	edgeStore := drv.Edges()
@@ -263,12 +287,12 @@ func (p *LocalPusher) Push(
 
 // Advance moves the watermark the target database keeps to seq.
 func (p *LocalPusher) Advance(ctx context.Context, seq int64) error {
-	drv, _, err := p.openTarget(ctx)
+	h, err := p.openTarget(ctx)
 	if err != nil {
 		return fmt.Errorf("federation local advance: %w", err)
 	}
-	defer func() { _ = drv.Close(ctx) }()
-	if err := drv.Watermarks().SetWatermark(ctx, p.name, seq); err != nil {
+	defer func() { _ = h.Close(ctx) }()
+	if err := h.Driver.Watermarks().SetWatermark(ctx, p.name, seq); err != nil {
 		return fmt.Errorf("federation local advance %q: %w", p.name, err)
 	}
 	return nil
