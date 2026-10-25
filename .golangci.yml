@@ -99,6 +99,8 @@ linters:
       # up to complexity 37) and stops reporting the other 53.
       min-complexity: 20
     gosec:
+      # Same rule set and thresholds as the Makefile gosec target (the CI
+      # Security job). Change both places together.
       excludes:
         - G104
         - G304

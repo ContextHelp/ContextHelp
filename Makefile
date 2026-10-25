@@ -248,11 +248,11 @@ lint: gosec
 ## SSA analysis" and moves on: it reports success for code it never looked
 ## at.
 ##
-## install_launchd.go writes to ~/Library/LaunchAgents and
-## ~/.config/systemd/user. launchd and systemd must traverse those
-## directories and read the unit file, so 0755/0644 is required there
-## rather than an oversight. Scoped to the one file so the rules stay live
-## everywhere else.
+## Rule set and thresholds match the gosec settings in .golangci.yml:
+## excludes G104,G304,G307, medium severity and confidence, #nosec
+## honoured, test files skipped. Intended 0755/0644 modes (launchd and
+## systemd paths in install_launchd.go) carry a justified #nosec at the
+## call site, not a file-wide exclude here. Change both places together.
 ##
 ## Prints findings as text and writes gosec-results.sarif, which the CI
 ## security job uploads to GitHub code scanning.
@@ -261,8 +261,7 @@ gosec:
 	$(GO) run github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION) \
 		-tags fts5 -severity medium -confidence medium \
 		-exclude G104,G304,G307 \
-		-exclude-rules "cmd/dpkms/cmd/install_launchd.go:G301,G306" \
-		-exclude-dir vendor -exclude-dir docs -exclude-dir test/fixtures \
+		-exclude-dir vendor -exclude-dir docs \
 		-fmt sarif -out gosec-results.sarif -stdout -verbose text \
 		./...
 
