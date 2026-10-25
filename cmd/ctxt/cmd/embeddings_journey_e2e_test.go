@@ -303,18 +303,28 @@ func (b *syncBuffer) String() string {
 }
 
 // journeyEnv is one fixture instance: an isolated HOME/XDG tree whose ctxt
-// and dpkms configs point at store, a running dpkms serve, and the recorded
-// Ollama.
+// and dpkms configs point at store, a dpkms serve, and the recorded
+// Ollama. The daemon runs except while an embeddings write runs: those
+// commands write the database directly and refuse to run beside it.
 type journeyEnv struct {
 	t      *testing.T
 	ctxt   string
+	dpkms  string
 	dirs   map[string]string
 	env    []string
 	store  *journeyStore
 	ollama string
 	calls  *providertest.OllamaCalls
 	server string
+	extra  string
 	log    *syncBuffer
+	daemon *journeyDaemon
+}
+
+// journeyDaemon is a running dpkms serve.
+type journeyDaemon struct {
+	cmd    *exec.Cmd
+	exited chan struct{}
 }
 
 type journeyResult struct {
@@ -344,12 +354,17 @@ func newJourneyEnv(t *testing.T, store *journeyStore) *journeyEnv {
 	}
 	ollama, calls := startJourneyOllama(t)
 	e := &journeyEnv{
-		t: t, ctxt: ctxtBin, dirs: dirs, env: journeyEnviron(dirs), store: store,
+		t: t, ctxt: ctxtBin, dpkms: dpkmsBin, dirs: dirs, env: journeyEnviron(dirs), store: store,
 		ollama: ollama, calls: calls, log: &syncBuffer{},
 	}
+	t.Cleanup(func() {
+		e.stopDpkms()
+		if t.Failed() {
+			t.Logf("dpkms serve output:\n%s", e.log.String())
+		}
+	})
 	e.writeConfig("")
-	e.startDpkms(dpkmsBin)
-	e.writeConfig("")
+	e.startDpkms()
 	store.connect(t)
 	return e
 }
@@ -383,10 +398,12 @@ func journeyEnviron(dirs map[string]string) []string {
 	)
 }
 
-// writeConfig writes ctxt.yaml and dpkms.yaml; extra is appended to both.
-// Until dpkms runs, ctxt's server.url is a closed port.
+// writeConfig writes ctxt.yaml and dpkms.yaml; extra is appended to both
+// and kept across daemon restarts. While dpkms is stopped, ctxt's
+// server.url is a closed port.
 func (e *journeyEnv) writeConfig(extra string) {
 	e.t.Helper()
+	e.extra = extra
 	common := fmt.Sprintf(`storage:
   type: %s
   path: %q
@@ -415,11 +432,12 @@ jobs:
 
 var dpkmsListening = regexp.MustCompile(`HTTP server listening on (127\.0\.0\.1:\d+)`)
 
-// startDpkms runs dpkms serve on free ports and waits for /healthz.
-func (e *journeyEnv) startDpkms(bin string) {
+// startDpkms runs dpkms serve on free ports, waits for /healthz and
+// points ctxt's server.url at it.
+func (e *journeyEnv) startDpkms() {
 	t := e.t
 	t.Helper()
-	cmd := exec.Command(bin, "serve", "--port", freePort(t), "--grpc-port", freePort(t), "--cookie-bridge-port", "0", "--workers", "1") // #nosec G204 -- test-built binary
+	cmd := exec.Command(e.dpkms, "serve", "--port", freePort(t), "--grpc-port", freePort(t), "--cookie-bridge-port", "0", "--workers", "1") // #nosec G204 -- test-built binary
 	cmd.Env = e.env
 	cmd.Dir = e.dirs["HOME"]
 	cmd.Stdout, cmd.Stderr = e.log, e.log
@@ -431,18 +449,8 @@ func (e *journeyEnv) startDpkms(bin string) {
 		_ = cmd.Wait()
 		close(exited)
 	}()
-	t.Cleanup(func() {
-		_ = cmd.Process.Signal(os.Interrupt)
-		select {
-		case <-exited:
-		case <-time.After(15 * time.Second):
-			_ = cmd.Process.Kill()
-			<-exited
-		}
-		if t.Failed() {
-			t.Logf("dpkms serve output:\n%s", e.log.String())
-		}
-	})
+	e.daemon = &journeyDaemon{cmd: cmd, exited: exited}
+	start := len(e.log.String())
 
 	deadline := time.Now().Add(60 * time.Second)
 	for time.Now().Before(deadline) {
@@ -451,12 +459,13 @@ func (e *journeyEnv) startDpkms(bin string) {
 			t.Fatalf("dpkms serve exited during startup:\n%s", e.log.String())
 		default:
 		}
-		if m := dpkmsListening.FindStringSubmatch(e.log.String()); m != nil {
+		if m := dpkmsListening.FindStringSubmatch(e.log.String()[start:]); m != nil {
 			url := "http://" + m[1]
 			if resp, err := http.Get(url + "/healthz"); err == nil { // #nosec G107 -- loopback test daemon
 				_ = resp.Body.Close()
 				if resp.StatusCode == http.StatusOK {
 					e.server = url
+					e.writeConfig(e.extra)
 					return
 				}
 			}
@@ -464,6 +473,54 @@ func (e *journeyEnv) startDpkms(bin string) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	t.Fatalf("dpkms serve not healthy within 60s:\n%s", e.log.String())
+}
+
+// stopDpkms stops the running dpkms serve, if any, and waits for it to
+// exit, which releases the database lock; ctxt's server.url becomes a
+// closed port.
+func (e *journeyEnv) stopDpkms() {
+	d := e.daemon
+	if d == nil {
+		return
+	}
+	e.daemon = nil
+	_ = d.cmd.Process.Signal(os.Interrupt)
+	select {
+	case <-d.exited:
+	case <-time.After(15 * time.Second):
+		_ = d.cmd.Process.Kill()
+		<-d.exited
+	}
+	e.server = ""
+	e.writeConfig(e.extra)
+}
+
+// daemonStopped runs fn with dpkms stopped, then starts it again: the
+// operating sequence for an embeddings write, which opens the database
+// directly and is refused while the daemon holds it.
+func (e *journeyEnv) daemonStopped(fn func()) {
+	e.t.Helper()
+	e.stopDpkms()
+	fn()
+	e.startDpkms()
+}
+
+// write runs an embeddings write with dpkms stopped, failing the test
+// unless it exits 0.
+func (e *journeyEnv) write(args ...string) string {
+	e.t.Helper()
+	var out string
+	e.daemonStopped(func() { out = e.ok(args...) })
+	return out
+}
+
+// writeRefused runs an embeddings write with dpkms stopped, failing the
+// test unless it exits with code.
+func (e *journeyEnv) writeRefused(code int, args ...string) journeyResult {
+	e.t.Helper()
+	var r journeyResult
+	e.daemonStopped(func() { r = e.refused(code, args...) })
+	return r
 }
 
 func freePort(t *testing.T) string {
@@ -717,8 +774,12 @@ func runEmbeddingsJourney(t *testing.T, e *journeyEnv) {
 	e.recordFixture("embeddings-list-empty.json", raw)
 	e.expectIdle("on a fresh instance")
 
+	// Every embeddings write below opens the database directly, so it runs
+	// with dpkms stopped (e.write); the daemon is back for ingest, find
+	// and upgrade status.
+
 	// 1. Register A: the dimension is measured through the provider.
-	reg := journeyDecode[registerDoc](t, e.ok("embeddings", "register", journeyA,
+	reg := journeyDecode[registerDoc](t, e.write("embeddings", "register", journeyA,
 		"--embedding-model", journeyAModel, "--dimension", fmt.Sprint(journeyADim), "--format", "json"))
 	if reg.Dimension != journeyADim || reg.Sources["dimension"] != dimensionSourceMeasured || reg.Index != registerIndexReady || reg.IsDefault {
 		t.Fatalf("register %s = %+v", journeyA, reg)
@@ -727,7 +788,7 @@ func runEmbeddingsJourney(t *testing.T, e *journeyEnv) {
 		t.Fatalf("register %s built no index", journeyA)
 	}
 	// An empty corpus is fully covered, so A can become the default at once.
-	sd := journeyDecode[setDefaultDoc](t, e.ok("embeddings", "set-default", journeyA, "--format", "json"))
+	sd := journeyDecode[setDefaultDoc](t, e.write("embeddings", "set-default", journeyA, "--format", "json"))
 	if !sd.Changed || sd.PreviousDefault != nil {
 		t.Fatalf("set-default %s on an empty corpus = %+v", journeyA, sd)
 	}
@@ -748,8 +809,17 @@ func runEmbeddingsJourney(t *testing.T, e *journeyEnv) {
 	// 3. Semantic hits under A.
 	e.expectFind(journeyA)
 
-	// 4. Register B beside it: not the default, no vectors yet.
-	reg = journeyDecode[registerDoc](t, e.ok("embeddings", "register", journeyB,
+	// An embeddings write beside the running daemon is refused (exit 6)
+	// and says how to stop dpkms serve and start it again.
+	r := e.refused(6, "embeddings", "register", journeyB, "--embedding-model", journeyBModel, "--format", "json")
+	for _, want := range []string{"ctxt embeddings register", "`dpkms shutdown --port ", "`dpkms serve`"} {
+		if !strings.Contains(r.stderr, want) {
+			t.Errorf("daemon-held refusal does not mention %q:\n%s", want, r.stderr)
+		}
+	}
+
+	// 4. Register B with dpkms stopped: not the default, no vectors yet.
+	reg = journeyDecode[registerDoc](t, e.write("embeddings", "register", journeyB,
 		"--embedding-model", journeyBModel, "--format", "json"))
 	if reg.Dimension != journeyBDim || reg.Index != registerIndexReady {
 		t.Fatalf("register %s = %+v", journeyB, reg)
@@ -770,7 +840,7 @@ func runEmbeddingsJourney(t *testing.T, e *journeyEnv) {
 
 	// 6a. The flip is refused while B's coverage is below the threshold
 	// (the refusal comes before the migration, where coverage can be low).
-	r := e.refused(exitConflict, "embeddings", "set-default", journeyB, "--format", "json")
+	r = e.writeRefused(exitConflict, "embeddings", "set-default", journeyB, "--format", "json")
 	for _, want := range []string{fmt.Sprintf("%.2f", partial), "0.99", "migrate --to " + journeyB} {
 		if !strings.Contains(r.stderr+r.stdout, want) {
 			t.Errorf("coverage refusal does not mention %q:\n%s%s", want, r.stdout, r.stderr)
@@ -780,8 +850,9 @@ func runEmbeddingsJourney(t *testing.T, e *journeyEnv) {
 	e.expectModel(models, journeyA, journeyADim, true, false, 1)
 	e.expectModel(models, journeyB, journeyBDim, false, false, partial)
 
-	// 5. Migrate to B in the background; `upgrade status` follows it.
-	mig := journeyDecode[migrateDoc](t, e.ok("embeddings", "migrate", "--to", journeyB, "--rate-limit", "2/s", "--format", "json"))
+	// 5. Migrate to B in the background: queued with dpkms stopped, run by
+	// the restarted daemon; `upgrade status` follows it.
+	mig := journeyDecode[migrateDoc](t, e.write("embeddings", "migrate", "--to", journeyB, "--rate-limit", "2/s", "--format", "json"))
 	if mig.Status != migrateQueued || mig.JobID == "" || mig.Missing != corpus-1 {
 		t.Fatalf("migrate = %+v, want queued for %d objects", mig, corpus-1)
 	}
@@ -803,7 +874,7 @@ func runEmbeddingsJourney(t *testing.T, e *journeyEnv) {
 	e.expectModel(models, journeyB, journeyBDim, false, false, 1)
 
 	// 6b. At full coverage the flip goes through.
-	sd = journeyDecode[setDefaultDoc](t, e.ok("embeddings", "set-default", journeyB, "--format", "json"))
+	sd = journeyDecode[setDefaultDoc](t, e.write("embeddings", "set-default", journeyB, "--format", "json"))
 	if !sd.Changed || sd.PreviousDefault == nil || *sd.PreviousDefault != journeyA || sd.Coverage != 1 {
 		t.Fatalf("set-default %s = %+v", journeyB, sd)
 	}
@@ -816,7 +887,7 @@ func runEmbeddingsJourney(t *testing.T, e *journeyEnv) {
 
 	// 8. Deprecate A from today. The typed confirmation comes first.
 	today := time.Now().Format("2006-01-02")
-	r = e.refused(exitUnauthorized, "embeddings", "deprecate", journeyA, "--on", today, "--format", "json")
+	r = e.writeRefused(exitUnauthorized, "embeddings", "deprecate", journeyA, "--on", today, "--format", "json")
 	token := tokenFrom(r.stderr)
 	if token == "" {
 		t.Fatalf("deprecate refusal prints no token:\n%s", r.stderr)
@@ -825,7 +896,7 @@ func runEmbeddingsJourney(t *testing.T, e *journeyEnv) {
 		t.Fatal("a refused deprecation stamped the model")
 	}
 	before := time.Now().Add(-time.Second)
-	dep := journeyDecode[deprecateDoc](t, e.ok("embeddings", "deprecate", journeyA, "--on", today, "--confirm-token="+token, "--format", "json"))
+	dep := journeyDecode[deprecateDoc](t, e.write("embeddings", "deprecate", journeyA, "--on", today, "--confirm-token="+token, "--format", "json"))
 	at, err := time.Parse(time.RFC3339, dep.DeprecatedAt)
 	if err != nil || !dep.Changed || at.Before(before.Truncate(time.Second)) || at.After(time.Now()) {
 		t.Fatalf("deprecate --on %s = %+v, want effective now", today, dep)
@@ -844,12 +915,12 @@ func runEmbeddingsJourney(t *testing.T, e *journeyEnv) {
 	e.recordFixture("embeddings-list-lifecycle.json", raw)
 
 	// 10. Purge A: typed confirmation, then the grace period refuses it.
-	r = e.refused(exitUnauthorized, "embeddings", "purge", journeyA, "--format", "json")
+	r = e.writeRefused(exitUnauthorized, "embeddings", "purge", journeyA, "--format", "json")
 	token = tokenFrom(r.stderr)
 	if token == "" {
 		t.Fatalf("purge refusal prints no token:\n%s", r.stderr)
 	}
-	r = e.refused(exitConflict, "embeddings", "purge", journeyA, "--confirm-token="+token, "--format", "json")
+	r = e.writeRefused(exitConflict, "embeddings", "purge", journeyA, "--confirm-token="+token, "--format", "json")
 	if !strings.Contains(r.stderr+r.stdout, "grace period") {
 		t.Errorf("grace refusal does not say why:\n%s%s", r.stdout, r.stderr)
 	}
@@ -857,7 +928,7 @@ func runEmbeddingsJourney(t *testing.T, e *journeyEnv) {
 
 	// A shortened grace period allows it.
 	e.writeConfig("embeddings:\n  grace_period: 0s\n")
-	pd := journeyDecode[purgeDoc](t, e.ok("embeddings", "purge", journeyA, "--confirm-token="+token, "--format", "json"))
+	pd := journeyDecode[purgeDoc](t, e.write("embeddings", "purge", journeyA, "--confirm-token="+token, "--format", "json"))
 	if pd.Rows != int64(corpus-1) || pd.DryRun {
 		t.Fatalf("purge = %+v, want %d rows deleted", pd, corpus-1)
 	}
@@ -896,6 +967,18 @@ var storyExits = map[string]int{
 	"purge_preview":      4,
 }
 
+// embeddingsWrites are the embeddings verbs that write the database
+// directly: they run only while dpkms serve is stopped.
+var embeddingsWrites = map[string]bool{
+	"register": true, "migrate": true, "set-default": true, "deprecate": true, "purge": true,
+}
+
+// isEmbeddingsWrite reports whether args (without the binary) invoke an
+// embeddings write.
+func isEmbeddingsWrite(args []string) bool {
+	return len(args) > 1 && args[0] == "embeddings" && embeddingsWrites[args[1]]
+}
+
 // The operator story runs, step by step, against a fixture instance where
 // A is the covered default: every invocation is a real command line of the
 // built binary, and each exits as the story intends.
@@ -925,8 +1008,8 @@ func TestEmbeddingsJourney_Story(t *testing.T) {
 	}
 
 	e := newJourneyEnv(t, sqliteJourneyStore(t))
-	e.ok("embeddings", "register", journeyA, "--embedding-model", journeyAModel)
-	e.ok("embeddings", "set-default", journeyA)
+	e.write("embeddings", "register", journeyA, "--embedding-model", journeyAModel)
+	e.write("embeddings", "set-default", journeyA)
 	e.ingestCorpus()
 
 	for _, s := range story.Steps {
@@ -938,7 +1021,14 @@ func TestEmbeddingsJourney_Story(t *testing.T) {
 			// Pinned like journeyEnv.status: never the default local port.
 			args = append(append([]string{}, args...), "--server", e.server)
 		}
-		r := e.run(args...)
+		// The story stops dpkms for every embeddings write and starts it
+		// again afterwards; the restarted daemon runs a queued migration.
+		var r journeyResult
+		if isEmbeddingsWrite(args) {
+			e.daemonStopped(func() { r = e.run(args...) })
+		} else {
+			r = e.run(args...)
+		}
 		if want := storyExits[s.ID]; r.exit != want {
 			t.Fatalf("step %s (%s): exit %d, want %d\nstdout:\n%s\nstderr:\n%s",
 				s.ID, strings.Join(s.Invoke, " "), r.exit, want, r.stdout, r.stderr)

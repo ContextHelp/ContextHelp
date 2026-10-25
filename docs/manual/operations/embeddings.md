@@ -17,7 +17,17 @@ Setting up semantic search for the first time is shorter: [Turn on semantic sear
 
 Every registered model that isn't deprecated is embedded on every capture, so each one costs one provider call per capture. Deprecate models you are done with.
 
-The `ctxt embeddings` commands open the instance's database directly: `storage.path`, or the database of the instance named by `--instance` or `ctxt instance use`. Run them where that database can be opened. Only the `migrate` job itself runs in dpkms.
+The `ctxt embeddings` commands open the instance's database directly: `storage.path`, or the database of the instance named by `--instance` or `ctxt instance use`. Run them where that database can be opened. They go through the same gates as dpkms's own direct opens ([Direct database access](direct-access.md)): a protected or public instance refuses them, and `list` and `provider` open the database read-only.
+
+The writes (`register`, `migrate`, `set-default`, `deprecate`, `purge`) take the database lock, so they cannot run while `dpkms serve` holds it. Stop the daemon, run the write, then start the daemon again:
+
+```bash
+dpkms shutdown --port 8080
+ctxt embeddings register ...
+dpkms serve
+```
+
+While the daemon runs, a write exits 6 and its fix names these commands, with the daemon's port. The `migrate` job itself runs in dpkms: `ctxt embeddings migrate` only queues it, and the restarted daemon runs it. Ingest, `find` and `ctxt upgrade status` need the daemon running.
 
 ### How much of an object is embedded
 
@@ -28,7 +38,7 @@ The Ollama provider embeds up to the model's context length, read once per proce
 
 ## Switch to another model
 
-This walks an instance from `ollama-nomic-embed-text@2026-09-26` (the current default) to `ollama-snowflake-arctic-embed2@2026-09-26`. Search keeps using the old model until the flip in step 4.
+This walks an instance from `ollama-nomic-embed-text@2026-09-26` (the current default) to `ollama-snowflake-arctic-embed2@2026-09-26`. Search keeps using the old model until the flip in step 4. Run steps 1, 2, 4, 5 and 6 with `dpkms serve` stopped and start it again after each; step 3 needs it running, since the daemon runs the migration.
 
 **1. Register the new model.** Name the model with a flag, so the config file's provider stays as it is:
 

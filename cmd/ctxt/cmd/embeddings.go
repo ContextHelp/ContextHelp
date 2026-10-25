@@ -35,6 +35,11 @@ embeddings table. A model's lifecycle: register a candidate, migrate the
 existing corpus to it, set-default once coverage is high enough, then
 deprecate the old default and purge it after the grace period.
 
+register, migrate, set-default, deprecate and purge write the database
+directly and cannot run while dpkms serve holds it: stop the daemon
+(dpkms shutdown --port <port>), run the command, then start it again
+(dpkms serve). The daemon runs a queued migration once restarted.
+
 Examples:
   # List registered models, default flag, deprecation status
   ctxt embeddings list

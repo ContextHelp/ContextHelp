@@ -101,7 +101,7 @@ func newService(cmd *cobra.Command) (*service.Service, func(), error) {
 	}
 	h, err := open(ctx, t)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, explainDaemonHeld(err, cmd, storagePath)
 	}
 	driver := h.Driver
 

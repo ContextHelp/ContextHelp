@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -119,6 +120,17 @@ func TestInstanceGate_DaemonHeldWriteRefusedFast(t *testing.T) {
 	}
 	if got := ExitCodeFor(err); got != output.ExitTransient {
 		t.Errorf("exit %d, want %d", got, output.ExitTransient)
+	}
+	// The fix names the command that cannot run beside the daemon and
+	// the exact commands to stop the daemon and start it again.
+	var env *output.Error
+	if !errors.As(classifyReturn(err), &env) {
+		t.Fatalf("no envelope: %v", err)
+	}
+	for _, want := range []string{"ctxt remind clear", "`dpkms shutdown --port 59177`", "`dpkms serve`"} {
+		if !strings.Contains(env.SuggestedFix, want) {
+			t.Errorf("suggested fix %q does not name %q", env.SuggestedFix, want)
+		}
 	}
 }
 
