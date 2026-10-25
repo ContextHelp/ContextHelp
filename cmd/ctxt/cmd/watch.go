@@ -259,6 +259,7 @@ func runWatchStart(cmd *cobra.Command, _ []string) error {
 	defer mgr.Stop()
 
 	fmt.Fprintf(out, "Clipboard watcher: %s\n", clipStatus)
+	renderHints(cmd)
 	if clipOn {
 		clip := watcher.NewClipboardWatcher(watcher.ClipboardConfig{
 			Enabled:      true,
