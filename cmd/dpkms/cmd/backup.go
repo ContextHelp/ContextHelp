@@ -15,6 +15,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/directopen"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -50,6 +51,7 @@ func init() {
 	backupCmd.Flags().Bool("async", false, "enqueue as background job and exit")
 	backupCmd.Flags().Bool("skip-blob-errors", false, "skip unreadable blobs instead of failing")
 	backupCmd.Flags().Bool("include-configs", false, "include config files and keys in archive")
+	addMaintenanceOverrideFlag(backupCmd, false)
 
 	// Backup only adds a new archive under the output directory; it
 	// never mutates or removes existing data. Write, not Destructive.
@@ -92,7 +94,7 @@ func runBackup(cmd *cobra.Command, _ []string) error {
 
 	// Async: enqueue job and exit immediately.
 	if async {
-		driver, cleanup, err := openDB()
+		driver, cleanup, err := openDB(cmd)
 		if err != nil {
 			return err
 		}
@@ -119,6 +121,21 @@ func runBackup(cmd *cobra.Command, _ []string) error {
 		fmt.Printf("Backup job enqueued: %s\n", job.ID)
 		fmt.Printf("Monitor with: dpkms jobs show %s\n", job.ID)
 		return nil
+	}
+
+	// The snapshot reads the database file directly: the same access
+	// gate as any direct open. The override takes the lock and audits.
+	snapTarget := storeTarget(maintenanceLabel)
+	snapTarget.Path = dbPath
+	if err := directopen.CheckAccess(snapTarget); err != nil {
+		if !maintenanceOverride(cmd) {
+			return maintenanceRefusal(err)
+		}
+		h, err := directopen.Override(context.Background(), snapTarget, cmd.CommandPath())
+		if err != nil {
+			return err
+		}
+		defer func() { _ = h.Close(context.Background()) }()
 	}
 
 	// Resolve config file path for inclusion in archive.

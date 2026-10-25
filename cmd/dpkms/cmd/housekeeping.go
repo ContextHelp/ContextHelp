@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -15,7 +14,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
-	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	kitcli "hop.top/kit/go/console/cli"
@@ -85,7 +83,7 @@ func (l *lineWriter) println(args ...any) {
 	_, l.err = fmt.Fprintln(l.w, args...)
 }
 
-func openDB() (*sqlite.Driver, func(), error) {
+func openDB(cmd *cobra.Command) (*sqlite.Driver, func(), error) {
 	storageType := cfg.Storage.Type
 	if storageType == "" {
 		storageType = storageTypeSQLite
@@ -93,26 +91,15 @@ func openDB() (*sqlite.Driver, func(), error) {
 	if storageType != storageTypeSQLite {
 		return nil, nil, fmt.Errorf("housekeeping only supports sqlite storage (got %s)", storageType)
 	}
-	storagePath := cfg.Storage.Path
-	if storagePath == "" {
-		return nil, nil, fmt.Errorf("storage path not configured")
-	}
-
-	opened, err := storageutil.Open(storageType, storagePath, cfg.Storage.Blob,
-		storageutil.WithMigrateSnapshot(cfg.Storage.MigrateSnapshot))
+	opened, cleanup, err := openMaintenance(cmd)
 	if err != nil {
 		return nil, nil, fmt.Errorf("open database: %w", err)
 	}
-	ctx := context.Background()
 	driver, ok := opened.(*sqlite.Driver)
 	if !ok {
-		_ = opened.Close(ctx)
+		cleanup()
 		return nil, nil, fmt.Errorf("open database: %T is not a sqlite driver", opened)
 	}
-	if err := driver.Init(ctx); err != nil {
-		return nil, nil, errors.Join(fmt.Errorf("init database: %w", err), driver.Close(ctx))
-	}
-	cleanup := func() { closeStorage(driver) }
 	return driver, cleanup, nil
 }
 
@@ -184,6 +171,7 @@ var runAllCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(housekeepingCmd)
+	addMaintenanceOverrideFlag(housekeepingCmd, true)
 
 	// Add subcommands
 	housekeepingCmd.AddCommand(vacuumCmd)
@@ -237,7 +225,7 @@ func init() {
 }
 
 func runVacuum(cmd *cobra.Command, args []string) error {
-	driver, cleanup, err := openDB()
+	driver, cleanup, err := openDB(cmd)
 	if err != nil {
 		return err
 	}
@@ -293,7 +281,7 @@ func dbPageStats(ctx context.Context, db *sql.DB) (free, total, pageSize int64, 
 }
 
 func runReindex(cmd *cobra.Command, args []string) error {
-	driver, cleanup, err := openDB()
+	driver, cleanup, err := openDB(cmd)
 	if err != nil {
 		return err
 	}
@@ -348,7 +336,7 @@ func runReindex(cmd *cobra.Command, args []string) error {
 }
 
 func runCompact(cmd *cobra.Command, args []string) error {
-	driver, cleanup, err := openDB()
+	driver, cleanup, err := openDB(cmd)
 	if err != nil {
 		return err
 	}
@@ -437,7 +425,7 @@ func runPrune(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	driver, cleanup, err := openDB()
+	driver, cleanup, err := openDB(cmd)
 	if err != nil {
 		return err
 	}
@@ -673,7 +661,7 @@ func runAll(cmd *cobra.Command, _ []string) error {
 	grace, _ := cmd.Flags().GetDuration("blob-grace")
 	dryRun := kitcli.IsDryRun(cmd)
 
-	driver, cleanup, err := openDB()
+	driver, cleanup, err := openDB(cmd)
 	if err != nil {
 		return err
 	}

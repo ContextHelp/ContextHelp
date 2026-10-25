@@ -144,12 +144,11 @@ func openGrants(cmd *cobra.Command) (context.Context, *registry.Grants, func(), 
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	driver, err := openSessionStore(ctx)
+	driver, cleanup, err := openStore(cmd)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	closeFn := func() { _ = driver.Close(context.Background()) }
-	return ctx, registry.NewGrants(driver.Entitlements()), closeFn, nil
+	return ctx, registry.NewGrants(driver.Entitlements()), cleanup, nil
 }
 
 func formatNamespaces(ns []string) string {

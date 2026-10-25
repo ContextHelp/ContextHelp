@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"charm.land/fang/v2"
+	"github.com/ideacrafterslabs/ctxt/internal/accessmarker"
+	"github.com/ideacrafterslabs/ctxt/internal/dblock"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
 	"hop.top/kit/go/console/output"
@@ -119,6 +121,14 @@ func classifyErr(err error) (string, bool) {
 	// failure, not inferences from prose, so they outrank any text
 	// match that might also fire.
 	switch {
+	// The instance's access class forbids direct opens: permanent,
+	// a retry meets the same refusal (UNAUTHORIZED, exit 5).
+	case errors.Is(err, accessmarker.ErrRefused):
+		return output.CodeUnauthorized, true
+	// Another process holds the database lock: busy, a retry once it
+	// is released succeeds (TRANSIENT, exit 6).
+	case errors.Is(err, dblock.ErrHeld):
+		return output.CodeTransient, true
 	case errors.Is(err, ErrPolicyDenied):
 		return output.CodeConflict, true
 	case errors.Is(err, storage.ErrNotFound):
@@ -246,6 +256,12 @@ func classifyReturn(cmd *cobra.Command, args []string, err error) error {
 	}
 	if fix := suggestedFix(cmd, args, class); fix != "" {
 		wrapped.SuggestedFix = fix
+	}
+	// An error that knows its own way out says it better than the
+	// class-wide hint: the lock holder, the access class.
+	var own interface{ Fix() string }
+	if errors.As(err, &own) {
+		wrapped.SuggestedFix = own.Fix()
 	}
 	return wrapped
 }

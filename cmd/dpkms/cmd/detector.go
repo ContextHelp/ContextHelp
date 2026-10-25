@@ -117,7 +117,7 @@ func runDetectorAdd(cmd *cobra.Command, _ []string) error {
 	name, _ := cmd.Flags().GetString("name")
 	priority, _ := cmd.Flags().GetInt("priority")
 
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return err
 	}
@@ -146,7 +146,7 @@ func runDetectorList(cmd *cobra.Command, _ []string) error {
 	showEnabled, _ := cmd.Flags().GetBool("enabled")
 	showDisabled, _ := cmd.Flags().GetBool("disabled")
 
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return err
 	}
@@ -252,7 +252,7 @@ func detectorRows(detectors []*storage.DetectorRecord) []detectorRow {
 }
 
 func runDetectorRemove(cmd *cobra.Command, args []string) error {
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return err
 	}
@@ -266,7 +266,7 @@ func runDetectorRemove(cmd *cobra.Command, args []string) error {
 }
 
 func runDetectorEnable(cmd *cobra.Command, args []string) error {
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return err
 	}
@@ -280,7 +280,7 @@ func runDetectorEnable(cmd *cobra.Command, args []string) error {
 }
 
 func runDetectorDisable(cmd *cobra.Command, args []string) error {
-	svc, cleanup, err := newService()
+	svc, cleanup, err := newService(cmd)
 	if err != nil {
 		return err
 	}

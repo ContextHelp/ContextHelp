@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -11,8 +10,10 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"charm.land/lipgloss/v2/table"
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliformat"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/directopen"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
@@ -24,8 +25,8 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/spf13/cobra"
+	kitcli "hop.top/kit/go/console/cli"
 	"hop.top/kit/go/storage/secret"
 )
 
@@ -57,27 +58,63 @@ func markFlagsRequired(cmd *cobra.Command, names ...string) {
 	}
 }
 
-// newService creates a Service wired to the configured storage backend.
-// Returns the service and a cleanup function that must be deferred.
-func newService() (*service.Service, func(), error) {
-	storageType := cfg.Storage.Type
-	if storageType == "" {
-		storageType = storageTypeSQLite
-	}
-	storagePath := cfg.Storage.Path
-	if storagePath == "" {
-		return nil, nil, fmt.Errorf("storage path not configured")
-	}
+// directLabel names a dpkms command in the database lock body.
+const directLabel = "dpkms cli"
 
-	driver, err := storageutil.Open(storageType, storagePath, cfg.Storage.Blob,
-		storageutil.WithMigrateSnapshot(cfg.Storage.MigrateSnapshot))
+// storeTarget is the configured store as a direct-open target.
+func storeTarget(label string) directopen.Target {
+	return directopen.Target{
+		Type:            cfg.Storage.Type,
+		Path:            cfg.Storage.Path,
+		Blob:            cfg.Storage.Blob,
+		MigrateSnapshot: cfg.Storage.MigrateSnapshot,
+		Label:           label,
+	}
+}
+
+// readsOnly reports whether cmd declares the read side effect. Anything
+// else, an undeclared command included, opens the write path.
+func readsOnly(cmd *cobra.Command) bool {
+	if cmd == nil {
+		return false
+	}
+	se, ok := kitcli.GetSideEffect(cmd)
+	return ok && se == cliconv.SideEffectRead
+}
+
+// openStore opens the configured store for cmd through the direct-open
+// gates (internal/directopen): refused on a protected or public
+// instance; read-only and lock-free for a read command; under the
+// database lock, migrated, for anything else. The returned cleanup
+// closes the store and releases the lock.
+func openStore(cmd *cobra.Command) (storage.StorageDriver, func(), error) {
+	ctx := context.Background()
+	open := directopen.Write
+	if readsOnly(cmd) {
+		open = directopen.Read
+	}
+	h, err := open(ctx, storeTarget(directLabel))
 	if err != nil {
-		return nil, nil, fmt.Errorf("init storage: %w", err)
+		return nil, nil, err
+	}
+	cleanup := func() {
+		if err := h.Close(context.Background()); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close storage: %v\n", err)
+		}
+	}
+	return h.Driver, cleanup, nil
+}
+
+// newService creates a Service wired to the configured storage backend,
+// opened for cmd as openStore does. Returns the service and a cleanup
+// function that must be deferred.
+func newService(cmd *cobra.Command) (*service.Service, func(), error) {
+	driver, cleanup, err := openStore(cmd)
+	if err != nil {
+		return nil, nil, err
 	}
 	ctx := context.Background()
-	if err := driver.Init(ctx); err != nil {
-		return nil, nil, errors.Join(fmt.Errorf("init storage: %w", err), driver.Close(ctx))
-	}
+	readOnly := readsOnly(cmd)
 
 	queue := jobs.NewQueue(driver.Jobs())
 	pipes := builtins.ConfiguredRegistryWithOpts(registryBuildOpts(driver))
@@ -99,10 +136,11 @@ func newService() (*service.Service, func(), error) {
 		[]service.Option{service.WithRegistryTokens(registry.SecretTokens(func() (secret.Store, error) {
 			return secrets.New(secretsCfg)
 		}))}, *cfg)
-	cleanup := func() { closeStorage(driver) }
-
-	if err := svc.EnsureDefaultRegistry(asSystem(ctx)); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to load default registry: %v\n", err)
+	// Caching the bundled registry writes; a read command leaves it.
+	if !readOnly {
+		if err := svc.EnsureDefaultRegistry(asSystem(ctx)); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to load default registry: %v\n", err)
+		}
 	}
 
 	return svc, cleanup, nil
