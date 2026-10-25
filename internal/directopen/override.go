@@ -5,12 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/user"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/ideacrafterslabs/ctxt/internal/accessmarker"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // EventMaintenanceOverride is the audit event an override writes.
@@ -50,14 +52,16 @@ func Override(ctx context.Context, t Target, action string) (*Handle, error) {
 	if err != nil {
 		return nil, err
 	}
-	h, err := open(ctx, t, lock)
+	// Audit first, on the store as it is: the entry exists even if the
+	// migration that follows fails.
+	driver, err := storageutil.Open(t.typ(), t.Path, t.Blob, storageutil.WithMigrateSnapshot(t.MigrateSnapshot))
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(fmt.Errorf("init storage: %w", err), lock.Release())
 	}
 	entry := &storage.AuditEntry{
 		ID:        uuid.New().String(),
 		EventType: EventMaintenanceOverride,
-		Actor:     fmt.Sprintf("uid:%d", os.Getuid()),
+		Actor:     operator(),
 		Payload: map[string]any{
 			"action":   action,
 			"access":   m.Access,
@@ -67,8 +71,23 @@ func Override(ctx context.Context, t Target, action string) (*Handle, error) {
 		},
 		CreatedAt: time.Now().UTC(),
 	}
-	if err := h.Driver.AuditLog().Append(ctx, entry); err != nil {
-		return nil, errors.Join(fmt.Errorf("maintenance override: audit log: %w", err), h.Close(ctx))
+	if err := driver.AuditLog().Append(ctx, entry); err != nil {
+		return nil, errors.Join(fmt.Errorf("maintenance override: audit log: %w", err), driver.Close(ctx), lock.Release())
 	}
+	if err := driver.Init(ctx); err != nil {
+		return nil, errors.Join(fmt.Errorf("init storage: %w", err), driver.Close(ctx), lock.Release())
+	}
+	h := &Handle{Driver: driver, lock: lock}
 	return h, nil
+}
+
+// operator names the account running the override for the audit log:
+// "user:<name> (<id>)" from os/user, the id a uid on Unix and a SID on
+// Windows; the bare process uid when the account cannot be looked up.
+func operator() string {
+	u, err := user.Current()
+	if err != nil {
+		return fmt.Sprintf("uid:%d", os.Getuid())
+	}
+	return fmt.Sprintf("user:%s (%s)", u.Username, u.Uid)
 }
