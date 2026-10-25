@@ -109,7 +109,7 @@ ctxt commands that still open the database directly (the `embeddings`, `registry
 
 `ctxt doctor` reads only, so it does not record its `doctor.run` audit entry there and prints a note saying so.
 
-No ctxt command holds the database open between operations. `ctxt shell` opens nothing itself: each line's command opens and closes the store for its own class. `ctxt tui` opens it per operation (reads read-only, captures and job actions locked), and `ctxt ingest --every` once per poll, so `dpkms serve` can start between polls and a poll while it runs is refused.
+No ctxt command holds the database open between operations. `ctxt shell` opens nothing itself: each line's command opens and closes the store for its own class. `ctxt tui` keeps one read-only handle for its reads (it takes no lock) and opens the locked path per capture or job action, one at a time; `ctxt ingest --every` opens once per poll, so `dpkms serve` can start between polls and a poll while it runs is refused. Jobs run in dpkms, so the shell prints no job notifications: follow a job with `ctxt job status <job-id>`.
 
 These commands move onto the dpkms API over time ([ADR-077](../../decisions/ADR-077-ctxt-pure-api-client.md)); until then, run their writes with the daemon stopped. The embedding-model lifecycle shows the sequence: [Operate embedding models](embeddings.md).
 
