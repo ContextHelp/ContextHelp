@@ -70,20 +70,13 @@ ctxt feed list
 # → f-def456   https://research.example.org/atom.xml Research Feed  2026-02-18T09:15:00Z   active
 # → f-ghi789   https://dead.example.com/feed.json   Dead Feed      2026-02-17T12:00:00Z   error
 
-# Manual sync of all feeds
-ctxt feed sync
-# → Syncing 3 feeds...
-# → f-abc123: 2 new items enqueued
-# → f-def456: 0 new items (unchanged)
-# → f-ghi789: error — connection refused
-# → Sync complete: 2 new items, 1 error
-
-# Manual sync of a single feed
+# Manual sync of one feed, by URL or ID (one feed per run)
 ctxt feed sync https://blog.example.com/rss
-# → f-abc123: 2 new items enqueued
+ctxt feed sync f-abc123
+# → Sync job: job_...
 
-# Unsubscribe
-ctxt feed remove https://blog.example.com/rss
+# Unsubscribe, by URL or ID
+ctxt feed delete https://blog.example.com/rss --confirm-token=<sha>
 # → Feed f-abc123 removed. No further syncs will occur.
 # → Existing items from this feed are retained in the knowledge base.
 ```
@@ -300,9 +293,9 @@ feeds:
 - [ ] CLI: `ctxt feed add <atom_url>` correctly detects Atom 1.0 format; stored feed record `format` field equals `"atom1.0"`
 - [ ] CLI: `ctxt feed add <json_feed_url>` correctly detects JSON Feed 1.1 format; stored feed record `format` field equals `"json1.1"`
 - [ ] CLI: `ctxt feed list` displays all subscriptions with correct status and last-sync time
-- [ ] CLI: `ctxt feed sync` triggers sync for all active feeds and reports new item counts
-- [ ] CLI: `ctxt feed sync <url>` sends the feed URL in the server request payload and syncs only the specified feed
-- [ ] CLI: `ctxt feed remove <url>` removes subscription; GET /feeds confirms the feed is gone; existing items remain searchable
+- [ ] CLI: `ctxt feed sync <url-or-id>` takes exactly one feed; the CLI resolves a URL to its feed ID from GET /feeds, then calls POST /feeds/{id}/sync and syncs only that feed
+- [ ] CLI: `ctxt feed sync` without an operand is a usage error (exit 2); there is no sync-all
+- [ ] CLI: `ctxt feed delete <url-or-id>` removes subscription (URL resolved to ID as for sync); GET /feeds confirms the feed is gone; existing items remain searchable
 - [ ] Sync: Conditional GET with ETag/Last-Modified avoids re-downloading unchanged feeds; stored feed record `etag` and `last_modified` updated after sync
 - [ ] Dedup: Items already ingested (by GUID) are not re-enqueued on subsequent syncs; `feed_items` table row count unchanged for duplicate sync
 - [ ] Fanout: Each new feed item creates a separate ingestion job with correct pipeline; server-side job count equals number of new items reported

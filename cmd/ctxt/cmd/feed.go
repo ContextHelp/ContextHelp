@@ -261,7 +261,6 @@ func listFeeds(ctx context.Context, client *dpkmsclient.Client, status string) (
 	return feeds, nil
 }
 
-// resolveFeedID looks up a feed ID by URL from the server's feed list.
 // resolveFeedTarget returns the feed ID a <url-or-id> operand names: an
 // http(s) URL is looked up among the subscriptions, anything else is the
 // ID itself.
@@ -272,6 +271,8 @@ func resolveFeedTarget(ctx context.Context, client *dpkmsclient.Client, target s
 	return target, nil
 }
 
+// resolveFeedID returns the ID of the subscription whose URL is feedURL,
+// from the server's feed list; no match is an error.
 func resolveFeedID(ctx context.Context, client *dpkmsclient.Client, feedURL string) (string, error) {
 	feeds, err := listFeeds(ctx, client, "")
 	if err != nil {
