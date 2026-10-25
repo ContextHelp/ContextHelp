@@ -87,7 +87,7 @@ List commands (`list`, `feed list`, `entity list`, `registry list`, `audit list`
 
 ### Selecting the dpkms server
 
-`--server <url>` is a global flag: it goes before or after the subcommand, and every command accepts it. It picks the dpkms endpoint for this run and wins over `--instance`, `CTXT_INSTANCE`, the current instance, `server.urls` and `server.url`. Commands that never call dpkms ignore it.
+`--server <url>` is a global flag: it goes before or after the subcommand, and every command accepts it. It picks the dpkms endpoint for this run and wins over `--instance`, `CTXT_INSTANCE`, the current instance, `server.urls` and `server.url`. Commands that change the local store refuse it with exit 2: `upgrade plan`, `upgrade run`, `registry add|delete|sync|approve|reject`, `remind set|clear`, `resurface refresh|dismiss`, `embeddings register|set-default|deprecate|purge|migrate` and `ingest`. Other commands that never call dpkms ignore it.
 
 ### Offline mode
 
