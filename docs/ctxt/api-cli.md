@@ -834,7 +834,7 @@ Query and inspect entities (canonical concepts). Every leaf reads the dpkms inst
 ctxt entity list
 ctxt entity show <slug>
 ctxt entity search "<query>"
-ctxt entity backlink <slug>
+ctxt entity backlinks <slug>
 ```
 
 ---

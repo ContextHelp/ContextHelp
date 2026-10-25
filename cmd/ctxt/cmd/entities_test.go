@@ -134,12 +134,12 @@ func TestEntityCommandsOverAPI(t *testing.T) {
 		}
 	}
 
-	out, err = db.exec("entity", "backlink", "ui.cart")
+	out, err = db.exec("entity", "backlinks", "ui.cart")
 	if err != nil {
-		t.Fatalf("entity backlink: %v", err)
+		t.Fatalf("entity backlinks: %v", err)
 	}
 	if !strings.Contains(out, "Backlinks for ui.cart (1 objects)") || !strings.Contains(out, "obj_cartnote") {
-		t.Errorf("entity backlink:\n%s", out)
+		t.Errorf("entity backlinks:\n%s", out)
 	}
 
 	if _, err := os.Stat(local); !errors.Is(err, os.ErrNotExist) {
@@ -158,7 +158,7 @@ func TestEntityCommandsErrors(t *testing.T) {
 
 	db.useRole(t, "none")
 	for _, args := range [][]string{
-		{"entity", "list"}, {"entity", "search", "cart"}, {"entity", "show", "ui.cart"}, {"entity", "backlink", "ui.cart"},
+		{"entity", "list"}, {"entity", "search", "cart"}, {"entity", "show", "ui.cart"}, {"entity", "backlinks", "ui.cart"},
 	} {
 		_, err := db.exec(args...)
 		assertExit(t, strings.Join(args, " ")+" without a token", err, output.ExitUnauthorized)
@@ -207,9 +207,9 @@ func TestEntitiesSearchNoQueryError(t *testing.T) {
 }
 
 func TestEntitiesBacklinksNoSlugError(t *testing.T) {
-	_, err := executeCommand("entity", "backlink")
+	_, err := executeCommand("entity", "backlinks")
 	if err == nil {
-		t.Error("entity backlink without slug should fail")
+		t.Error("entity backlinks without slug should fail")
 	}
 }
 
@@ -218,9 +218,20 @@ func TestEntitiesHelp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("entity --help should succeed: %v", err)
 	}
-	for _, subcmd := range []string{"list", "show", "search", "backlink"} {
+	for _, subcmd := range []string{"list", "show", "search", "backlinks"} {
 		if !strings.Contains(out, subcmd) {
 			t.Errorf("entity help should list subcommand %q", subcmd)
 		}
+	}
+}
+
+// TestEntitiesBacklinkRenamed: the subcommand is `backlinks`; the old
+// `backlink` spelling resolves to nothing.
+func TestEntitiesBacklinkRenamed(t *testing.T) {
+	if c, _, err := rootCmd.Find([]string{"entity", "backlinks", "x"}); err != nil || c != entitiesBacklinksCmd {
+		t.Fatalf("entity backlinks resolves to %v (%v), want the backlinks command", c, err)
+	}
+	if c, _, _ := rootCmd.Find([]string{"entity", "backlink", "x"}); c == entitiesBacklinksCmd {
+		t.Fatal("entity backlink still resolves to the backlinks command")
 	}
 }

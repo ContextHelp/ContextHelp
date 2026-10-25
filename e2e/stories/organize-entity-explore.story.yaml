@@ -23,5 +23,5 @@ steps:
     capture: [exit_code, stdout, stderr]
   - id: backlinks
     intent: Walk the backlinks to reach every object that referenced the entity.
-    invoke: ["ctxt", "entity", "backlink", "ui.best-practice", "--format", "json"]
+    invoke: ["ctxt", "entity", "backlinks", "ui.best-practice", "--format", "json"]
     capture: [exit_code, stdout, stderr]
