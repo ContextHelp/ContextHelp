@@ -39,7 +39,6 @@ func init() {
 	importEvernoteCmd.Flags().String("since", "", "only import notes modified since this time (RFC3339 or YYYY-MM-DD)")
 	importEvernoteCmd.Flags().StringSlice("tagged", nil, "only include notes with at least one of these tags (repeatable)")
 	importEvernoteCmd.Flags().Int("max-items", 0, "maximum notes to import (0 = all)")
-	importEvernoteCmd.Flags().String("server", "", serverFlagUsage)
 	importEvernoteCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 
 	markFlagsRequired(importEvernoteCmd, "file")

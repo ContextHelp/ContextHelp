@@ -79,7 +79,6 @@ func init() {
 	rootCmd.AddCommand(uiCmd)
 	uiCmd.AddCommand(uiOpenCmd)
 
-	uiOpenCmd.Flags().String("server", "", serverFlagUsage)
 	uiOpenCmd.Flags().Bool("no-browser", false, "print the sign-in link instead of opening a browser")
 
 	// Mints a short-lived login code on the server. Each run mints a new

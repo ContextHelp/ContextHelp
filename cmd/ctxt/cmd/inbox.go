@@ -151,9 +151,6 @@ func init() {
 
 	inboxTriageCmd.Flags().String("pipeline", "", "pipeline to use (default: auto-detect)")
 
-	for _, c := range []*cobra.Command{inboxListCmd, inboxTriageCmd, inboxDiscardCmd, inboxClearCmd} {
-		c.Flags().String("server", "", serverFlagUsage)
-	}
 }
 
 func runInboxList(cmd *cobra.Command, _ []string) error {

@@ -75,7 +75,6 @@ func init() {
 	importOneDriveCmd.Flags().StringSlice("include-ext", nil, "file extension filter, e.g. .pdf (repeatable)")
 	importOneDriveCmd.Flags().Int("max-items", 0, "maximum files to import (0 = all)")
 
-	importOneDriveCmd.Flags().String("server", "", serverFlagUsage)
 	importOneDriveCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 
 	// For testing and self-hosted proxies.

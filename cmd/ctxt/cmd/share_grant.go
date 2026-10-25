@@ -110,9 +110,6 @@ Examples:
 func init() {
 	shareCmd.AddCommand(shareGrantCmd, shareRevokeCmd, shareCeilingCmd, shareTemplateCmd)
 	shareTemplateCmd.AddCommand(shareTemplateListCmd, shareTemplateInstallCmd)
-	for _, c := range []*cobra.Command{shareGrantCmd, shareRevokeCmd, shareCeilingCmd, shareTemplateListCmd, shareTemplateInstallCmd} {
-		c.Flags().String("server", "", serverFlagUsage)
-	}
 	shareGrantCmd.Flags().String("expires", "", "when the grant ends: a duration (30d, 720h), a date (2026-12-31) or an RFC 3339 time")
 	shareCeilingCmd.Flags().StringSlice("deny-classes", nil, "classes the principal never sees, comma-separated; empty clears the ceiling")
 	markFlagsRequired(shareCeilingCmd, "deny-classes")

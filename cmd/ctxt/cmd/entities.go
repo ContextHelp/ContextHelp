@@ -123,9 +123,6 @@ func init() {
 	// List flags
 	entitiesListCmd.Flags().Int("limit", 50, "maximum results")
 	entitiesListCmd.Flags().String("namespace", "", "filter by namespace")
-	for _, c := range []*cobra.Command{entitiesListCmd, entitiesShowCmd, entitiesSearchCmd, entitiesBacklinksCmd} {
-		c.Flags().String("server", "", serverFlagUsage)
-	}
 
 	// Bind flags to viper
 	viper.BindPFlag("entities.limit", entitiesListCmd.Flags().Lookup("limit"))

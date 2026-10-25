@@ -51,7 +51,6 @@ func init() {
 	cliconv.WithIdempotency(indexCmd, cliconv.IdempotencyYes)
 	indexCmd.Flags().Bool("refresh", false,
 		"regenerate the index from scratch")
-	indexCmd.Flags().String("server", "", serverFlagUsage)
 }
 
 // topicIndexError gives a dpkms 404 (no index built yet) the recovery a

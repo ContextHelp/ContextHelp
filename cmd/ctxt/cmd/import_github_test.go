@@ -112,7 +112,6 @@ func TestRunImportGitHubDryRun(t *testing.T) {
 	importGitHubCmd.Flags().StringP("lists", "l", "starred", "")
 	importGitHubCmd.Flags().Bool("dry-run", false, "")
 	importGitHubCmd.Flags().String("format", "table", "")
-	importGitHubCmd.Flags().String("server", "", "")
 	importGitHubCmd.Flags().String("pipeline", "url.github.repo", "")
 	importGitHubCmd.Flags().String("github-base-url", "", "")
 
@@ -131,7 +130,6 @@ func TestRunImportGitHubMissingUsername(t *testing.T) {
 	importGitHubCmd.Flags().StringP("lists", "l", "starred", "")
 	importGitHubCmd.Flags().Bool("dry-run", false, "")
 	importGitHubCmd.Flags().String("format", "table", "")
-	importGitHubCmd.Flags().String("server", "", "")
 	importGitHubCmd.Flags().String("pipeline", "url.github.repo", "")
 	importGitHubCmd.Flags().String("github-base-url", "", "")
 
@@ -161,7 +159,6 @@ func TestRunImportGitHubEnqueue(t *testing.T) {
 	importGitHubCmd.Flags().StringP("lists", "l", "starred", "")
 	importGitHubCmd.Flags().Bool("dry-run", false, "")
 	importGitHubCmd.Flags().String("format", "table", "")
-	importGitHubCmd.Flags().String("server", "", "")
 	importGitHubCmd.Flags().String("pipeline", "url.github.repo", "")
 	importGitHubCmd.Flags().String("github-base-url", "", "")
 

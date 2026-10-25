@@ -86,7 +86,6 @@ func init() {
 	// Citation flags
 	composeCmd.Flags().Bool("no-citations", false, "disable inline [ref:ID] citations")
 	composeCmd.Flags().String("export", formatMarkdown, "output format: markdown or json")
-	composeCmd.Flags().String("server", "", serverFlagUsage)
 
 	for _, name := range []string{"mention", "tagged", "since", "until", "output-file", "no-citations", "export"} {
 		_ = viper.BindPFlag("compose."+name, composeCmd.Flags().Lookup(name))

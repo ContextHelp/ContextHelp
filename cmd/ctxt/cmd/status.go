@@ -102,7 +102,6 @@ func init() {
 	// "status" is not in kit's defaultIdempotency table; mark it explicitly
 	// as idempotent — repeated /healthz polls don't mutate state.
 	cliconv.WithIdempotency(statusCmd, cliconv.IdempotencyYes)
-	statusCmd.Flags().String("server", "", serverFlagUsage)
 	statusCmd.Flags().Bool("watch", false, "refresh every --interval seconds until interrupted")
 	statusCmd.Flags().Int("interval", 2, "seconds between refreshes when --watch is set")
 }

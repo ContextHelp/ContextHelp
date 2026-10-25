@@ -95,9 +95,6 @@ func init() {
 	})
 
 	pageListCmd.Flags().Int("limit", 50, "maximum results")
-	for _, c := range []*cobra.Command{pageListCmd, pageShowCmd, pageRefreshCmd} {
-		c.Flags().String("server", "", serverFlagUsage)
-	}
 }
 
 // pageLookupError gives a dpkms 404 for slug the recovery a caller

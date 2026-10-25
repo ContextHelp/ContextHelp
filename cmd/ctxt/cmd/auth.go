@@ -197,13 +197,6 @@ func init() {
 	authIdentityCmd.AddCommand(authIdentityListCmd, authIdentityRemoveCmd)
 	authSessionCmd.AddCommand(authSessionListCmd, authSessionEndCmd)
 
-	leaves := []*cobra.Command{
-		authWhoamiCmd, authKeyCreateCmd, authKeyListCmd, authKeyRevokeCmd,
-		authIdentityListCmd, authIdentityRemoveCmd, authSessionListCmd, authSessionEndCmd,
-	}
-	for _, c := range leaves {
-		c.Flags().String("server", "", serverFlagUsage)
-	}
 	for _, c := range []*cobra.Command{authKeyCreateCmd, authKeyListCmd, authKeyRevokeCmd} {
 		c.Flags().String("principal", "", "manage this principal's keys instead of your own (admin)")
 	}

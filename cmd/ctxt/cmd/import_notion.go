@@ -34,7 +34,6 @@ func init() {
 	importNotionCmd.Flags().String("since", "", "only import pages edited since RFC3339 timestamp")
 	importNotionCmd.Flags().Int("max-items", 0, "maximum pages to import (0 = all)")
 
-	importNotionCmd.Flags().String("server", "", serverFlagUsage)
 	importNotionCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 
 	// For testing and self-hosted proxies.

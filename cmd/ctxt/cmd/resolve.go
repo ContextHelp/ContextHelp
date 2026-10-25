@@ -63,7 +63,6 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(resolveCmd)
-	resolveCmd.Flags().String("server", "", serverFlagUsage)
 
 	cliconv.WithSideEffect(resolveCmd, cliconv.SideEffectRead)
 	// "resolve" is not in the kit default verb table; tag explicitly.

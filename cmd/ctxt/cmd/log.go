@@ -57,7 +57,6 @@ func init() {
 	logCmd.Flags().String("until", "", "entries before date (YYYY-MM-DD)")
 	logCmd.Flags().String("object", "", "filter by object ID")
 	logCmd.Flags().String("actor", "", "filter by actor")
-	logCmd.Flags().String("server", "", serverFlagUsage)
 
 	viper.BindPFlag("log.limit", logCmd.Flags().Lookup("limit"))
 	viper.BindPFlag("log.type", logCmd.Flags().Lookup("type"))

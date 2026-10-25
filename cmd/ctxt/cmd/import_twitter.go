@@ -47,7 +47,6 @@ func init() {
 	importTwitterCmd.Flags().String("username", "", "your Twitter/X username (used for canonical tweet URLs)")
 	importTwitterCmd.Flags().String("since", "", "only import tweets created since RFC3339 or YYYY-MM-DD")
 	importTwitterCmd.Flags().Int("max-items", 0, "maximum number of tweets to import (0 = all)")
-	importTwitterCmd.Flags().String("server", "", serverFlagUsage)
 	importTwitterCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 
 	markImportCmd(importTwitterCmd, "ctxt import twitter --file ./tweets.js")

@@ -52,7 +52,6 @@ func init() {
 	importDropboxCmd.Flags().String("cursor", "", "resume sync from this cursor (incremental mode)")
 	importDropboxCmd.Flags().Bool("recursive", false, "recurse into sub-folders")
 	importDropboxCmd.Flags().Int("max-items", 0, "maximum number of files to import (0 = all)")
-	importDropboxCmd.Flags().String("server", "", serverFlagUsage)
 	importDropboxCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 
 	markImportCmd(importDropboxCmd, "ctxt import dropbox --access-token $DROPBOX_ACCESS_TOKEN")

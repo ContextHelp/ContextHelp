@@ -109,22 +109,18 @@ func init() {
 	})
 
 	// feed add flags
-	feedAddCmd.Flags().String("server", "", serverFlagUsage)
 
 	// feed list flags
 	// NOTE: --output is owned by kit's persistent global flag set; the
 	// inherited flag is resolved through cmd.Flags() at read time, so
 	// no local re-registration is required (12fcc local-global rule).
-	feedListCmd.Flags().String("server", "", serverFlagUsage)
 	feedListCmd.Flags().String("status", "", "filter by status (active|paused|error)")
 
 	// feed sync flags
-	feedSyncCmd.Flags().String("server", "", serverFlagUsage)
 	feedSyncCmd.Flags().String("url", "", "feed URL to sync")
 	feedSyncCmd.Flags().String("id", "", "feed ID to sync")
 
 	// feed delete flags
-	feedRemoveCmd.Flags().String("server", "", serverFlagUsage)
 }
 
 // feedsPath is the dpkms feed subscription collection.

@@ -46,7 +46,6 @@ func init() {
 	importSlackCmd.Flags().String("since", "", "only import messages on or after this time (RFC3339 or YYYY-MM-DD)")
 	importSlackCmd.Flags().StringSlice("channel", nil, "only include messages from these channels (repeatable)")
 	importSlackCmd.Flags().Int("max-items", 0, "maximum messages to import (0 = all)")
-	importSlackCmd.Flags().String("server", "", serverFlagUsage)
 	importSlackCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 
 	markFlagsRequired(importSlackCmd, "dir")

@@ -48,7 +48,6 @@ func init() {
 	importCmd.AddCommand(importEmailCmd)
 
 	f := importEmailCmd.Flags()
-	f.String("server", "", serverFlagUsage)
 	f.String("provider", "file", "provider: imap|file")
 
 	// IMAP flags.

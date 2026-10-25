@@ -117,7 +117,6 @@ func init() {
 		"use named cursor; returns items added after cursor's last_seen_at")
 	listCmd.Flags().Bool("advance", false,
 		"advance the cursor after a successful list (requires --cursor)")
-	listCmd.Flags().String("server", "", serverFlagUsage)
 
 	// Bind flags to viper
 	for _, name := range []string{

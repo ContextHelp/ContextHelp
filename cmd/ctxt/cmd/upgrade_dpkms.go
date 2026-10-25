@@ -149,7 +149,6 @@ func init() {
 	upgradeCmd.AddCommand(upgradeStatusCmd, upgradePlanCmd, upgradeRunCmd)
 
 	// status flags — mirror ctxt status.
-	upgradeStatusCmd.Flags().String("server", "", serverFlagUsage)
 	upgradeStatusCmd.Flags().Bool("watch", false, "refresh every --interval seconds until idle")
 	upgradeStatusCmd.Flags().Int("interval", 2, "seconds between refreshes when --watch is set")
 

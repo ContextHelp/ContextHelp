@@ -45,7 +45,6 @@ func init() {
 	// needed.
 	reprocessCmd.Flags().String("step", "structured_metadata",
 		"enrichment step to run (structured_metadata|entity_extractor|tagger)")
-	reprocessCmd.Flags().String("server", "", serverFlagUsage)
 }
 
 func runReprocess(cmd *cobra.Command, args []string) error {

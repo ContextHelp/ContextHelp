@@ -46,7 +46,6 @@ func init() {
 
 	// Display flags
 	showCmd.Flags().Bool("raw", false, "show raw object data")
-	showCmd.Flags().String("server", "", serverFlagUsage)
 
 	// Bind flags to viper
 	viper.BindPFlag("show.raw", showCmd.Flags().Lookup("raw"))

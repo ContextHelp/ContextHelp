@@ -48,7 +48,6 @@ func init() {
 	importDiscordCmd.Flags().String("file", "", "path to Discord JSON export file")
 	importDiscordCmd.Flags().String("since", "", "only import messages on or after this time (RFC3339 or YYYY-MM-DD)")
 	importDiscordCmd.Flags().Int("max-items", 0, "maximum messages to import (0 = all)")
-	importDiscordCmd.Flags().String("server", "", serverFlagUsage)
 	importDiscordCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 
 	markFlagsRequired(importDiscordCmd, "file")

@@ -188,12 +188,6 @@ func init() {
 		principalRevokeCmd, principalLinkCmd, principalIdentityCmd)
 	principalIdentityCmd.AddCommand(principalIdentityAddCmd, principalIdentityListCmd, principalIdentityRemoveCmd)
 
-	for _, c := range []*cobra.Command{
-		principalListCmd, principalShowCmd, principalCreateCmd, principalSuspendCmd, principalRevokeCmd,
-		principalLinkCmd, principalIdentityAddCmd, principalIdentityListCmd, principalIdentityRemoveCmd,
-	} {
-		c.Flags().String("server", "", serverFlagUsage)
-	}
 	principalListCmd.Flags().String("kind", "", "keep principals of one kind ("+strings.Join(storage.PrincipalKinds, "|")+")")
 	principalListCmd.Flags().String("status", "", "keep principals in one status ("+strings.Join(storage.PrincipalStatuses, "|")+")")
 	principalCreateCmd.Flags().String("kind", "", "kind of principal ("+strings.Join(principalKinds, "|")+")")

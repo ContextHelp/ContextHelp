@@ -42,7 +42,6 @@ func init() {
 	importLogseqCmd.Flags().String("since", "", "only import pages modified since this time (RFC3339 or YYYY-MM-DD)")
 	importLogseqCmd.Flags().String("kind", "", "filter by page kind: journal|page (default: all)")
 	importLogseqCmd.Flags().Int("max-items", 0, "maximum pages to import (0 = all)")
-	importLogseqCmd.Flags().String("server", "", serverFlagUsage)
 	importLogseqCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 
 	markFlagsRequired(importLogseqCmd, "graph")

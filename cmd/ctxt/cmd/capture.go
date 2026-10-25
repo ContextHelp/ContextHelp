@@ -97,7 +97,6 @@ func init() {
 	captureCmd.Flags().Bool("no-dedup", false, "skip duplicate detection")
 	captureCmd.Flags().String("source-key", "", "external dedup key (Slack ts, tweet ID, etc.)")
 	captureCmd.Flags().Bool("wait", false, "block until job completes")
-	captureCmd.Flags().String("server", "", serverFlagUsage)
 
 	// --- Track 2 stubs (defined but error when used) ---
 	captureCmd.Flags().Bool("ambient", false, "(Track 2) sweep every sensor enabled in policy/ambient.yaml")

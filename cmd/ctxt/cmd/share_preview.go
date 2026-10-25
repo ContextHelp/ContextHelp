@@ -66,7 +66,6 @@ func init() {
 
 	// The flags after the previewed command are the command's own.
 	sharePreviewCmd.Flags().SetInterspersed(false)
-	sharePreviewCmd.Flags().String("server", "", serverFlagUsage)
 	cliconv.WithSideEffect(sharePreviewCmd, cliconv.SideEffectRead)
 	cliconv.WithIdempotency(sharePreviewCmd, cliconv.IdempotencyYes)
 	cliconv.WithExamples(sharePreviewCmd, []cliconv.Example{
@@ -78,7 +77,6 @@ func init() {
 		{When: "to see what they saw for real", Suggest: "ctxt share audit --principal <id>", Reason: "the read audit lists their requests"},
 	})
 
-	shareAuditCmd.Flags().String("server", "", serverFlagUsage)
 	shareAuditCmd.Flags().String("principal", "", "what this principal (by id) read")
 	shareAuditCmd.Flags().String("object", "", "who read this object (by id)")
 	shareAuditCmd.Flags().String("since", "", "entries since a date (YYYY-MM-DD), an RFC 3339 time or a duration ago (24h, 7d)")

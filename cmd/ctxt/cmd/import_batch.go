@@ -52,7 +52,6 @@ func init() {
 	importBatchCmd.AddCommand(importBatchStatusCmd)
 
 	// batch flags
-	importBatchCmd.Flags().String("server", "", serverFlagUsage)
 	importBatchCmd.Flags().String("file", "", "path to import file (JSONL, CSV, TSV)")
 	importBatchCmd.Flags().String("dir", "", "directory to scan for markdown files")
 	importBatchCmd.Flags().String("format", "", "file format: jsonl|csv|tsv|markdown (auto-detected from extension)")
@@ -62,7 +61,6 @@ func init() {
 	importBatchCmd.Flags().String("map-tags", "", "column name to use as tags (CSV/TSV imports)")
 
 	// batch status flags
-	importBatchStatusCmd.Flags().String("server", "", serverFlagUsage)
 
 	cliconv.WithSideEffect(importBatchStatusCmd, cliconv.SideEffectRead)
 	cliconv.WithIdempotency(importBatchStatusCmd, cliconv.IdempotencyYes)

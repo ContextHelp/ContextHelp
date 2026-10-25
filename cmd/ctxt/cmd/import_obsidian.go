@@ -40,7 +40,6 @@ func init() {
 	importObsidianCmd.Flags().String("vault", "", "path to Obsidian vault directory")
 	importObsidianCmd.Flags().String("since", "", "only import notes modified since this time (RFC3339 or YYYY-MM-DD)")
 	importObsidianCmd.Flags().Int("max-items", 0, "maximum notes to import (0 = all)")
-	importObsidianCmd.Flags().String("server", "", serverFlagUsage)
 	importObsidianCmd.Flags().String("pipeline", "", "pipeline override for enqueued jobs")
 
 	markFlagsRequired(importObsidianCmd, "vault")

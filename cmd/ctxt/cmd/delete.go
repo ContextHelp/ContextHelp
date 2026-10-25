@@ -71,7 +71,6 @@ func init() {
 	deleteCmd.Flags().String("mention", "", "delete by mention")
 	deleteCmd.Flags().String("type", "", "delete by type")
 	deleteCmd.Flags().Bool("all", false, "delete all active objects (requires confirmation)")
-	deleteCmd.Flags().String("server", "", serverFlagUsage)
 
 	// Confirmation: handled by kit's global --confirm (auto|yes|no|prompt)
 	// + --confirm-token flags, so confirmation has one source of truth

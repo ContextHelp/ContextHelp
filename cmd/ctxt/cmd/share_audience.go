@@ -94,9 +94,6 @@ Examples:
 func init() {
 	shareCmd.AddCommand(shareAudienceCmd)
 	shareAudienceCmd.AddCommand(shareAudienceCreateCmd, shareAudienceAddCmd, shareAudienceRemoveCmd, shareAudienceListCmd)
-	for _, c := range []*cobra.Command{shareAudienceCreateCmd, shareAudienceAddCmd, shareAudienceRemoveCmd, shareAudienceListCmd} {
-		c.Flags().String("server", "", serverFlagUsage)
-	}
 	shareAudienceAddCmd.Flags().String("expires", "", "when the membership ends: a duration (90d, 720h), a date (2026-12-31) or an RFC 3339 time")
 
 	cliconv.WithSideEffect(shareAudienceCreateCmd, cliconv.SideEffectWrite)
