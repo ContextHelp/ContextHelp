@@ -235,11 +235,12 @@ func TestFindWithoutProfileSendsNone(t *testing.T) {
 	}
 }
 
-// The active profile scopes results end to end: dpkms answers only
-// objects the profile owns.
-func TestFindProfileScopesResults(t *testing.T) {
+// The active profile is a lens end to end: dpkms still answers objects
+// the profile does not own.
+func TestFindProfileDoesNotNarrowResults(t *testing.T) {
 	db := setupFindAPI(t)
-	// note-fts and note-task both hold these words; only note-task is ops's.
+	// note-fts and note-task both hold these words; only note-task is ops's,
+	// and both come back.
 	stdout, stderr, err := execFindAs(t, db, "ops", "find", "rotating signing keys", "--fts", "--format", "json")
 	if err != nil {
 		t.Fatalf("find: %v\n%s", err, stderr)
@@ -252,8 +253,12 @@ func TestFindProfileScopesResults(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &out); err != nil {
 		t.Fatalf("decode: %v\n%s", err, stdout)
 	}
-	if len(out.Objects) != 1 || out.Objects[0].ID != "note-task" {
-		t.Errorf("objects = %+v, want only ops's note-task", out.Objects)
+	got := map[string]bool{}
+	for _, o := range out.Objects {
+		got[o.ID] = true
+	}
+	if len(got) != 2 || !got["note-task"] || !got["note-fts"] {
+		t.Errorf("objects = %+v, want note-task and note-fts (profile must not narrow)", out.Objects)
 	}
 }
 

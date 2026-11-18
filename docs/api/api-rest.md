@@ -567,7 +567,7 @@ dpkms embeds the query itself, with the default embedding model's provider as co
 - `query` is required.
 - `mode` is `fts`, `vector` or `hybrid`. It defaults to `hybrid`.
 - `limit` defaults to 10.
-- `profile` restricts both legs and the facet counts to objects owned by that profile. Leave it out for no profile filter, as when listing objects. The caller picks the profile; any token with `read:objects` can name any profile, so it scopes a search and is not access control.
+- `profile` is the caller's focus profile, a lens: it never filters. Both legs and the facet counts cover objects of every profile, and of none, whatever it says; what a caller sees is set by its viewer scope alone (ADR-080). The field is accepted and may be left out.
 - `filter` and each of its fields are optional. `since` and `until` are dates (`YYYY-MM-DD`), compared with an object's `dates_mentioned`.
 - In `search`, any knob you leave out takes the built-in default shown above, which is also ctxt's config default. `rrf_k` and the pools must be positive. The weights, `min_score` and the boosts must not be negative. `min_score` applies to hybrid results.
 - `explain` applies to `hybrid` mode only. Other modes ignore it.
@@ -670,7 +670,7 @@ Keys and relations are defined by the `ctxt.search-graph/v1` vocabulary ([workfl
 | Param | Default | Meaning |
 |---|---|---|
 | `q` (required) | — | free-text query |
-| `profile` | none | only this profile's objects |
+| `profile` | none | the caller's focus profile, a lens: it never narrows the objects |
 | `limit` | `10` | results the search returns; candidates past it stay in the graph as `cut_limit` |
 | `min_score` | `0` | results scoring below it stay in the graph as `cut_threshold` |
 | `meta_type`, `topic`, `person`, `source_type`, `since`, `until` | none | the filters of `POST /find`; `since` and `until` are `YYYY-MM-DD` |
@@ -684,7 +684,7 @@ Defaults are `ctxt find --graph`'s; every other search setting takes `POST /find
 #### Entities and profiles
 
 - **Entities follow the entity entitlements.** On an instance with inbound entitlements, an entity whose namespace the caller is not entitled to is left out entirely: no node, no `mentions` edge, no share of a `co_mention` weight, not in `counts.entities` or any `mention_count`. The document reads as if the entity were never mentioned. An entity without a stored record is left out too. The check is the unmetered one `GET /entities` filters with. On a private instance every entity is shown.
-- **Objects follow `profile`**, like `POST /find`. `profile` is chosen by the caller, not an access control.
+- **Objects follow `profile`.** `profile` is chosen by the caller, not an access control.
 - Like search, the graph is not metered.
 
 #### When semantic search can't run

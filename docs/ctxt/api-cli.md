@@ -333,7 +333,7 @@ ctxt find <query> <options>
 | `--format json\|yaml` | Structured output |
 
 - **How it runs.** `find` sends `POST /api/v1/find` (`read:objects`, every role) to the instance `--server`, `--instance`, `CTXT_INSTANCE` or `ctxt instance use` selects. It never opens a local database.
-- **Settings travel with the query.** ctxt resolves the search strategy (global `search`, then the active profile's `search_strategy`, then the flags) and sends every knob. The active profile (`--profile` or `profile.default`) scopes the search to its objects.
+- **Settings travel with the query.** ctxt resolves the search strategy (global `search`, then the active profile's `search_strategy`, then the flags) and sends every knob. The active profile (`--profile` or `profile.default`) is a lens: it never filters, so results come from every profile the caller may see.
 - **Query embedding** runs on the dpkms host, with its default embedding model and provider settings. The `--embedding-*` flags apply to `--graph` only; without it they exit 2.
 - **Exit codes.** Unreachable 70, 401/403 5, a bad filter date or a semantic leg that cannot run with `search.fallback_to_fts: false` 2, a dpkms error 6.
 - **`ctxt://search/<query>`** runs the same search.

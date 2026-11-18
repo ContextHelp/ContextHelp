@@ -12,9 +12,10 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
-// POST /api/v1/find with a profile answers only that profile's objects in
-// every mode, both legs included; without one it does not scope.
-func TestFind_ProfileScopesEveryMode(t *testing.T) {
+// POST /api/v1/find with a profile is a lens: it answers every profile's
+// objects, and the empty profile's, in every mode, both legs included,
+// exactly as without one. The body still decodes under DisallowUnknownFields.
+func TestFind_ProfileIsALensInEveryMode(t *testing.T) {
 	f := servicetest.NewHybridFixture(t, storageutil.NewTestDriver(t), true)
 	f.SeedProfileCorpus(t)
 	ts := httptest.NewServer(NewRouterWithConfig(f.Svc, RouterConfig{Semantic: f.Sem}))
@@ -53,20 +54,17 @@ func TestFind_ProfileScopesEveryMode(t *testing.T) {
 
 	q := `"query":"` + servicetest.ProfileQuery + `","limit":20`
 	for mode, want := range map[string][]string{
-		"hybrid": {"alpha-text", "alpha-vec"},
-		"vector": {"alpha-text", "alpha-vec"},
-		"fts":    {"alpha-text"},
+		"hybrid": {"alpha-text", "alpha-vec", "beta-text", "beta-vec", "global-text", "global-vec"},
+		"vector": {"alpha-text", "alpha-vec", "beta-text", "beta-vec", "global-text", "global-vec"},
+		"fts":    {"alpha-text", "beta-text", "global-text"},
 	} {
-		t.Run(mode, func(t *testing.T) {
-			got := find(t, `{`+q+`,"mode":"`+mode+`","profile":"alpha"}`)
-			if strings.Join(got, ",") != strings.Join(want, ",") {
-				t.Errorf("profile alpha: got %v want %v", got, want)
-			}
-		})
-	}
-	t.Run("no profile", func(t *testing.T) {
-		if got := find(t, `{`+q+`}`); len(got) != 2*len(servicetest.ProfileCorpusProfiles) {
-			t.Errorf("unscoped: got %v, want every profile's objects", got)
+		for _, profile := range []string{"alpha", "demo"} {
+			t.Run(mode+"/"+profile, func(t *testing.T) {
+				got := find(t, `{`+q+`,"mode":"`+mode+`","profile":"`+profile+`"}`)
+				if strings.Join(got, ",") != strings.Join(want, ",") {
+					t.Errorf("profile %s: got %v want %v", profile, got, want)
+				}
+			})
 		}
-	})
+	}
 }

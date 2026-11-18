@@ -73,7 +73,7 @@ func NamespaceVisibility(hidden ...string) searchgraph.EntityVisibility {
 
 // RunSearchGraphGate asserts, on drv (a fresh database), that the search
 // graph pipeline dpkms serves — Service.Find with Trace, then searchgraph.Build
-// over the driver — scopes objects to the requested profile and drops a
+// over the driver — scopes objects to the viewer (alpha's, by policy) and drops a
 // hidden entity from every part of the document, including the co_mention
 // weight it would have created.
 func RunSearchGraphGate(t *testing.T, drv storage.StorageDriver) {
@@ -81,11 +81,20 @@ func RunSearchGraphGate(t *testing.T, drv storage.StorageDriver) {
 	ctx := sharing.WithViewer(context.Background(), sharing.Unrestricted)
 	f := NewHybridFixture(t, drv, true)
 	f.SeedGraphGateCorpus(t)
+	// The profile is a lens, not a filter; the scope that keeps beta's
+	// objects out of the graph is the viewer's (ADR-080).
+	viewer, err := sharing.Compile(sharing.Input{PrincipalID: "p", Grants: []sharing.Grant{{
+		ID: "g", Policy: sharing.Policy{Name: "alpha-only", Data: "profile==alpha"},
+	}}})
+	if err != nil {
+		t.Fatalf("compile viewer: %v", err)
+	}
+	alphaViewer := sharing.WithViewer(context.Background(), viewer)
 
 	build := func(t *testing.T, opts searchgraph.Options) (*searchgraph.Document, []byte) {
 		t.Helper()
-		res, err := f.Svc.Find(ctx, service.FindRequest{
-			Query: ProfileQuery, Profile: "alpha", Limit: 10, Trace: true,
+		res, err := f.Svc.Find(alphaViewer, service.FindRequest{
+			Query: ProfileQuery, Limit: 10, Trace: true,
 		}, f.Sem)
 		if err != nil {
 			t.Fatalf("Find: %v", err)
@@ -129,7 +138,7 @@ func RunSearchGraphGate(t *testing.T, drv storage.StorageDriver) {
 	t.Run("ungated", func(t *testing.T) {
 		doc, _ := build(t, searchgraph.Options{})
 		if got := nodeIDs(doc, searchgraph.KindObject); !equal(got, wantObjects) {
-			t.Errorf("objects = %v, want %v (profile alpha only)", got, wantObjects)
+			t.Errorf("objects = %v, want %v (viewer scope: alpha only)", got, wantObjects)
 		}
 		wantEnts := []string{searchgraph.EntityNodePrefix + GraphOpenEntity, searchgraph.EntityNodePrefix + GraphSecretEntity}
 		if got := nodeIDs(doc, searchgraph.KindEntity); !equal(got, wantEnts) {
@@ -146,7 +155,7 @@ func RunSearchGraphGate(t *testing.T, drv storage.StorageDriver) {
 			EntityVisible:           NamespaceVisibility(GraphSecretNamespace),
 		})
 		if got := nodeIDs(doc, searchgraph.KindObject); !equal(got, wantObjects) {
-			t.Errorf("objects = %v, want %v (profile alpha only)", got, wantObjects)
+			t.Errorf("objects = %v, want %v (viewer scope: alpha only)", got, wantObjects)
 		}
 		wantEnts := []string{searchgraph.EntityNodePrefix + GraphOpenEntity}
 		if got := nodeIDs(doc, searchgraph.KindEntity); !equal(got, wantEnts) {

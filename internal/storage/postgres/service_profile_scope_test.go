@@ -8,10 +8,10 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/service/servicetest"
 )
 
-// TestPostgres_SearchModes_ScopeToProfile runs the service-level profile
-// scoping scenario (hybrid, semantic and FTS through the service) against a
-// fresh database.
-func TestPostgres_SearchModes_ScopeToProfile(t *testing.T) {
+// TestPostgres_ProfileFilterAndFindLens runs the service-level profile
+// scenario (storage profile filter on hybrid, semantic and FTS; Find
+// treating its profile as a lens) against a fresh database.
+func TestPostgres_ProfileFilterAndFindLens(t *testing.T) {
 	drv, _ := freshIntegrationDriver(t)
-	servicetest.RunHybridProfileScope(t, drv)
+	servicetest.RunProfileFilterAndFindLens(t, drv)
 }

@@ -23,7 +23,7 @@ func traceFixture(t *testing.T, withModel bool) *servicetest.HybridFixture {
 }
 
 // A traced find is the hybrid find plus the trace: same results, same
-// diagnostics, profile scoping and min_score knob; no explain unless
+// diagnostics and min_score knob, whatever profile it names; no explain unless
 // asked for.
 func TestFind_TraceMatchesHybridFind(t *testing.T) {
 	f := traceFixture(t, true)
@@ -57,9 +57,10 @@ func TestFind_TraceMatchesHybridFind(t *testing.T) {
 	for _, c := range tr.Candidates {
 		ids = append(ids, c.ID)
 	}
-	assert.ElementsMatch(t, []string{"alpha-text", "alpha-vec"}, ids, "every candidate, cut ones included, is alpha's")
+	assert.ElementsMatch(t, []string{"alpha-text", "alpha-vec", "beta-text", "beta-vec", "global-text", "global-vec"}, ids,
+		"every candidate, cut ones included, whatever profile the request names")
 	assert.Equal(t, 1, tr.Counts.Returned)
-	assert.Equal(t, 1, tr.Counts.CutLimit)
+	assert.Equal(t, 5, tr.Counts.CutLimit)
 
 	req.Explain = true
 	both, err := f.Svc.Find(ctx, req, f.Sem)

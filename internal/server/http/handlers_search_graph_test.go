@@ -163,7 +163,8 @@ func alphaParams(extra ...string) url.Values {
 	return v
 }
 
-func TestSearchGraph_BareJGFScopedToProfile(t *testing.T) {
+// The profile is a lens: it never narrows the graph's candidates.
+func TestSearchGraph_ProfileIsALens(t *testing.T) {
 	ts := openGraphServer(t, graphFixture(t, true))
 	doc := fetchGraph(t, ts, "", alphaParams())
 
@@ -172,11 +173,11 @@ func TestSearchGraph_BareJGFScopedToProfile(t *testing.T) {
 	assert.Equal(t, "ok", md.SemanticStatus)
 	assert.Equal(t, searchGraphDefaultLimit, md.Limit, "default limit is ctxt find's")
 	assert.Equal(t, searchgraph.Caps{MaxNodes: searchgraph.DefaultMaxNodes, MaxEdges: searchgraph.DefaultMaxEdges}, md.Caps)
-	assert.ElementsMatch(t, []string{"obj:alpha-text", "obj:alpha-vec"}, nodesOfKind(doc, searchgraph.KindObject),
-		"only profile alpha's candidates")
+	assert.Len(t, nodesOfKind(doc, searchgraph.KindObject), 2*len(servicetest.ProfileCorpusProfiles),
+		"every profile's candidates, whatever profile the request names")
 	assert.Zero(t, relationCount(doc, searchgraph.RelSimilar), "similar is opt-in")
 
-	// Unscoped: every profile's candidates.
+	// No profile: the same candidates.
 	doc = fetchGraph(t, ts, "", url.Values{"q": {servicetest.ProfileQuery}})
 	assert.Len(t, nodesOfKind(doc, searchgraph.KindObject), 2*len(servicetest.ProfileCorpusProfiles))
 }
@@ -195,11 +196,11 @@ func TestSearchGraph_ParamsAndSimilar(t *testing.T) {
 	assert.LessOrEqual(t, len(doc.Graph.Edges), 4)
 	assert.True(t, md.Truncated)
 	assert.Equal(t, 1, md.Counts.Returned)
-	assert.Equal(t, 1, md.Counts.CutLimit)
+	assert.Equal(t, 2*len(servicetest.ProfileCorpusProfiles)-1, md.Counts.CutLimit)
 
-	// alpha-text and alpha-vec are indexed at cosine ~0.99.
+	// Each profile's text and vec objects are indexed at cosine ~0.99.
 	doc = fetchGraph(t, ts, "", alphaParams("similar", "true"))
-	assert.Equal(t, 1, relationCount(doc, searchgraph.RelSimilar))
+	assert.GreaterOrEqual(t, relationCount(doc, searchgraph.RelSimilar), 1)
 }
 
 // Caps are enforced server-side: out-of-range values are refused, never
@@ -252,7 +253,7 @@ func TestSearchGraph_NoProvider(t *testing.T) {
 	assert.Equal(t, "fts_only", doc.Graph.Metadata.Mode)
 	assert.Equal(t, "no_default_model", doc.Graph.Metadata.SemanticStatus)
 	assert.Empty(t, doc.Graph.Metadata.VectorModel)
-	assert.ElementsMatch(t, []string{"obj:alpha-text"}, nodesOfKind(doc, searchgraph.KindObject))
+	assert.ElementsMatch(t, []string{"obj:alpha-text", "obj:beta-text", "obj:global-text"}, nodesOfKind(doc, searchgraph.KindObject))
 }
 
 // A principal not entitled to an entity's namespace gets a document in
@@ -261,10 +262,10 @@ func TestSearchGraph_NoProvider(t *testing.T) {
 func TestSearchGraph_EntitlementHidesEntities(t *testing.T) {
 	f := graphFixture(t, true)
 
-	// Guard: ungated, the secret entity is there and links the alpha pair.
+	// Guard: ungated, the secret entity is there and links the objects mentioning it.
 	open := fetchGraph(t, openGraphServer(t, f), "", alphaParams())
 	require.Contains(t, open.Graph.Nodes, "ent:"+servicetest.GraphSecretEntity)
-	require.Equal(t, 1, relationCount(open, searchgraph.RelCoMention))
+	require.GreaterOrEqual(t, relationCount(open, searchgraph.RelCoMention), 1)
 
 	ts := gatedGraphServer(t, f)
 	resp, body := getGraph(t, ts, "tok-valid-fixture-0123456789abcdef0123456789", alphaParams())
@@ -277,8 +278,8 @@ func TestSearchGraph_EntitlementHidesEntities(t *testing.T) {
 	for _, secret := range []string{servicetest.GraphSecretEntity, servicetest.GraphSecretTitle, servicetest.GraphSecretNamespace} {
 		assert.NotContains(t, string(body), secret)
 	}
-	assert.ElementsMatch(t, []string{"obj:alpha-text", "obj:alpha-vec"}, nodesOfKind(doc, searchgraph.KindObject),
-		"objects are profile-scoped, not entity-gated")
+	assert.Len(t, nodesOfKind(doc, searchgraph.KindObject), 2*len(servicetest.ProfileCorpusProfiles),
+		"objects are not entity-gated, and the profile does not narrow them")
 
 	// The admin owner ignores its restrictive grant, as on every entity
 	// route.

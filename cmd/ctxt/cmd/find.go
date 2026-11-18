@@ -37,8 +37,9 @@ Resolution order: CLI flags → active profile search_strategy → global search
 
 find runs on the dpkms instance --server, --instance or the current
 instance names (POST /api/v1/find). ctxt sends the resolved mode, knobs and
-active profile; the active profile scopes the search to the objects it
-owns. dpkms embeds the query with its default embedding model.
+active profile; the profile is a lens and does not filter: results come
+from every profile, limited only by what the caller may see. dpkms embeds
+the query with its default embedding model.
 
 Examples:
   # Hybrid search (default)
@@ -53,7 +54,7 @@ Examples:
   # Override RRF weights
   ctxt find "database indexing" --fts-weight 0.3 --vector-weight 0.7
 
-  # Search one profile's objects with its search strategy
+  # Search with a profile's search strategy (all profiles' objects)
   ctxt find "signup flow" --profile growth
 
   # Limit results
