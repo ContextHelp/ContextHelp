@@ -50,9 +50,10 @@ type FindRequest struct {
 	Mode string `json:"mode,omitempty"`
 	// Limit caps the result list; 0 means DefaultFindLimit.
 	Limit int `json:"limit,omitempty"`
-	// Profile restricts every leg, and the facet counts, to objects
-	// owned by that profile; empty means no profile filter, as for the
-	// object listing. It scopes a search; it is not access control.
+	// Profile is the caller's focus profile: a lens, never a filter. It
+	// does not narrow any leg or the facet counts; what a search can see
+	// is the viewer's scope alone (ADR-080), and objects of every
+	// profile, or none, are candidates whatever Profile says.
 	Profile string `json:"profile,omitempty"`
 	// Filter narrows every leg to objects matching its metadata facets.
 	Filter FindFilter `json:"filter,omitzero"`
@@ -218,7 +219,6 @@ func resolveFind(req FindRequest) (string, storage.ObjectFilter, config.SearchCo
 	}
 	filter := storage.ObjectFilter{
 		Limit:          req.Limit,
-		ProfileID:      req.Profile,
 		MetadataType:   req.Filter.MetaType,
 		MetadataTopic:  req.Filter.Topic,
 		MetadataPerson: req.Filter.Person,

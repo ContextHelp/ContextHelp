@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -82,14 +83,17 @@ func TestMCPSearch_HybridByDefault(t *testing.T) {
 	assert.Equal(t, "hybrid", out.Mode)
 	assert.Equal(t, "hybrid", out.ExecutedMode)
 	assert.Equal(t, "ok", out.Diagnostics.Semantic.Status)
-	require.Len(t, out.Results, 2)
-	ids := []string{out.Results[0].ID, out.Results[1].ID}
-	assert.ElementsMatch(t, []string{"alpha-text", "alpha-vec"}, ids)
+	// The profile is a lens: every profile's objects answer.
+	require.Len(t, out.Results, 2*len(servicetest.ProfileCorpusProfiles))
+	var ids []string
+	for _, r := range out.Results {
+		ids = append(ids, r.ID)
+	}
+	assert.ElementsMatch(t, []string{"alpha-text", "alpha-vec", "beta-text", "beta-vec", "global-text", "global-vec"}, ids)
 	for _, r := range out.Results {
 		require.NotNil(t, r.Score, r.ID)
 		assert.NotEmpty(t, r.ScoreBreakdown, r.ID)
 		assert.NotEmpty(t, r.Snippet, r.ID)
-		assert.Equal(t, "alpha", r.ProfileID)
 	}
 }
 
@@ -100,8 +104,10 @@ func TestMCPSearch_ReportsFallback(t *testing.T) {
 	assert.Equal(t, "fts_only", out.ExecutedMode)
 	assert.Equal(t, "no_default_model", out.Diagnostics.Semantic.Status)
 	assert.NotEmpty(t, out.Diagnostics.Semantic.Notice)
-	require.Len(t, out.Results, 1)
-	assert.Equal(t, "alpha-text", out.Results[0].ID)
+	require.Len(t, out.Results, len(servicetest.ProfileCorpusProfiles))
+	for _, r := range out.Results {
+		assert.True(t, strings.HasSuffix(r.ID, "-text"), r.ID)
+	}
 }
 
 func TestMCPSearch_BadArgumentsAreInvalidParams(t *testing.T) {
@@ -120,14 +126,14 @@ func TestMCPSearch_BadArgumentsAreInvalidParams(t *testing.T) {
 	}
 }
 
-// Vector mode scores each hit by similarity and scopes to the profile;
+// Vector mode scores each hit by similarity, whatever profile it names;
 // fts hits carry no score.
 func TestMCPSearch_VectorAndFTSScores(t *testing.T) {
 	srv := mcpSearchServer(t, true)
 	out, rpcErr := callMCPSearch(t, srv.URL, map[string]any{"query": servicetest.ProfileQuery, "mode": "vector", "profile": "alpha"})
 	require.Nil(t, rpcErr)
 	assert.Equal(t, "vector", out.ExecutedMode)
-	require.Len(t, out.Results, 2)
+	require.Len(t, out.Results, 2*len(servicetest.ProfileCorpusProfiles))
 	for _, r := range out.Results {
 		require.NotNil(t, r.Score, r.ID)
 		assert.Empty(t, r.ScoreBreakdown, r.ID)
@@ -136,6 +142,8 @@ func TestMCPSearch_VectorAndFTSScores(t *testing.T) {
 	out, rpcErr = callMCPSearch(t, srv.URL, map[string]any{"query": servicetest.ProfileQuery, "mode": "fts", "profile": "alpha"})
 	require.Nil(t, rpcErr)
 	assert.Equal(t, "fts", out.ExecutedMode)
-	require.Len(t, out.Results, 1)
-	assert.Nil(t, out.Results[0].Score)
+	require.Len(t, out.Results, len(servicetest.ProfileCorpusProfiles))
+	for _, r := range out.Results {
+		assert.Nil(t, r.Score, r.ID)
+	}
 }

@@ -158,13 +158,14 @@ func ProfileCorpusID(profile, kind string) string {
 	return profile + "-" + kind
 }
 
-// RunHybridProfileScope asserts that every text search mode scopes to
-// ObjectFilter.ProfileID on drv (a fresh database): hybrid (both legs),
-// semantic and FTS return only the named profile's objects, as does Find
-// with FindRequest.Profile in each mode (facets too), and an empty
-// ProfileID does not scope — the same contract List and the query-language
-// engine honor.
-func RunHybridProfileScope(t *testing.T, drv storage.StorageDriver) {
+// RunProfileFilterAndFindLens asserts, on drv (a fresh database), that
+// ObjectFilter.ProfileID still scopes the storage-level search modes
+// (hybrid with both legs, semantic and FTS; an empty ProfileID does not
+// scope, as in List and the query-language engine), and that Find treats
+// FindRequest.Profile as a lens: it returns objects of other profiles and
+// of the empty profile in every mode, and only the viewer's scope limits
+// what it returns.
+func RunProfileFilterAndFindLens(t *testing.T, drv storage.StorageDriver) {
 	t.Helper()
 	ctx := sharing.WithViewer(context.Background(), sharing.Unrestricted)
 	f := NewHybridFixture(t, drv, true)
@@ -215,8 +216,6 @@ func RunHybridProfileScope(t *testing.T, drv storage.StorageDriver) {
 		}
 	})
 
-	t.Run("find", func(t *testing.T) { runFindProfileScope(t, f) })
-
 	t.Run("fts", func(t *testing.T) {
 		objs, err := f.Svc.FindByTextFiltered(ctx, ProfileQuery, storage.ObjectFilter{ProfileID: "alpha", Limit: 20})
 		if err != nil {
@@ -227,42 +226,75 @@ func RunHybridProfileScope(t *testing.T, drv storage.StorageDriver) {
 			t.Errorf("got %v want %v", got, want)
 		}
 	})
+
+	t.Run("find", func(t *testing.T) { runFindProfileLens(t, f) })
 }
 
-// runFindProfileScope asserts Find with FindRequest.Profile answers only
-// that profile's objects in every mode, facet counts included, and an
-// unscoped Find answers every profile's.
-func runFindProfileScope(t *testing.T, f *HybridFixture) {
+// runFindProfileLens asserts Find with FindRequest.Profile set answers
+// every profile's objects, and the empty profile's, in every mode with
+// facet counts to match, and the same set as a Find without one; and that
+// a protected viewer sees only its scope whatever profile Find names.
+func runFindProfileLens(t *testing.T, f *HybridFixture) {
 	t.Helper()
 	ctx := sharing.WithViewer(context.Background(), sharing.Unrestricted)
+	all := func(mode string) []string {
+		var want []string
+		for _, p := range ProfileCorpusProfiles {
+			want = append(want, ProfileCorpusID(p, "text"))
+			if mode != service.FindModeFTS {
+				want = append(want, ProfileCorpusID(p, "vec"))
+			}
+		}
+		return want
+	}
 	for _, mode := range []string{service.FindModeHybrid, service.FindModeVector, service.FindModeFTS} {
-		res, err := f.Svc.Find(ctx, service.FindRequest{
-			Query: ProfileQuery, Mode: mode, Profile: "alpha", Limit: 20, Facets: true,
-		}, f.Sem)
-		if err != nil {
-			t.Fatalf("find %s: %v", mode, err)
-		}
-		want := []string{ProfileCorpusID("alpha", "text"), ProfileCorpusID("alpha", "vec")}
-		if mode == service.FindModeFTS {
-			want = want[:1]
-		}
-		if got := ids(res.Objects); !equal(got, want) {
-			t.Errorf("find %s, profile alpha: got %v want %v", mode, got, want)
-		}
-		counted := 0
-		for _, n := range res.Facets {
-			counted += n
-		}
-		if counted != 2 {
-			t.Errorf("find %s, profile alpha: facets %v count %d objects, want the profile's 2", mode, res.Facets, counted)
+		for _, profile := range []string{"", "alpha", "no-such-profile"} {
+			res, err := f.Svc.Find(ctx, service.FindRequest{
+				Query: ProfileQuery, Mode: mode, Profile: profile, Limit: 20, Facets: true,
+			}, f.Sem)
+			if err != nil {
+				t.Fatalf("find %s, profile %q: %v", mode, profile, err)
+			}
+			want := all(mode)
+			if got := ids(res.Objects); !equal(got, want) {
+				t.Errorf("find %s, profile %q: got %v want %v (profile must not narrow)", mode, profile, got, want)
+			}
+			// Facets count every object the filter matches, in every mode.
+			counted := 0
+			for _, n := range res.Facets {
+				counted += n
+			}
+			if wantFacets := 2 * len(ProfileCorpusProfiles); counted != wantFacets {
+				t.Errorf("find %s, profile %q: facets %v count %d objects, want %d", mode, profile, res.Facets, counted, wantFacets)
+			}
 		}
 	}
-	res, err := f.Svc.Find(ctx, service.FindRequest{Query: ProfileQuery, Limit: 20}, f.Sem)
+
+	// ADR-080: visibility is the viewer's scope. A viewer granted only
+	// beta's objects sees exactly those, whichever profile it names.
+	beta, err := sharing.Compile(sharing.Input{PrincipalID: "p", Grants: []sharing.Grant{{
+		ID: "g", Policy: sharing.Policy{Name: "beta-only", Data: "profile==beta"},
+	}}})
 	if err != nil {
-		t.Fatalf("find unscoped: %v", err)
+		t.Fatalf("compile viewer: %v", err)
 	}
-	if len(res.Objects) != 2*len(ProfileCorpusProfiles) {
-		t.Errorf("find unscoped: got %v want all %d objects", ids(res.Objects), 2*len(ProfileCorpusProfiles))
+	vctx := sharing.WithViewer(context.Background(), beta)
+	for _, mode := range []string{service.FindModeHybrid, service.FindModeVector, service.FindModeFTS} {
+		for _, profile := range []string{"", "alpha", "beta"} {
+			res, err := f.Svc.Find(vctx, service.FindRequest{
+				Query: ProfileQuery, Mode: mode, Profile: profile, Limit: 20, Facets: true,
+			}, f.Sem)
+			if err != nil {
+				t.Fatalf("scoped find %s, profile %q: %v", mode, profile, err)
+			}
+			want := []string{ProfileCorpusID("beta", "text"), ProfileCorpusID("beta", "vec")}
+			if mode == service.FindModeFTS {
+				want = want[:1]
+			}
+			if got := ids(res.Objects); !equal(got, want) {
+				t.Errorf("scoped find %s, profile %q: got %v want %v (viewer scope must hold, profile must not narrow)", mode, profile, got, want)
+			}
+		}
 	}
 }
 
