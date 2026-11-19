@@ -14,11 +14,10 @@ import (
 
 // laptop is the ADR-077 example config: a default token, a named remote
 // with its own token, a named local entry without one, and an unnamed
-// entry. server.url is set too, so a test can see it lose to server.urls.
+// entry.
 func laptop() config.ServerConfig {
 	return config.ServerConfig{
 		Token: "tok-default",
-		URL:   "http://single.example.net:7000",
 		URLs: []config.ServerEndpoint{
 			{Name: "home", URL: "https://dpkms.example.ts.net:7700", Token: "tok-home"},
 			{Name: "laptop", URL: "http://127.0.0.1:8080"},
@@ -126,14 +125,6 @@ func TestResolvePrecedence(t *testing.T) {
 			want: dpkmsclient.Resolved{
 				Endpoint: dpkmsclient.Endpoint{URL: "HTTPS://Other.Example.NET:443/"},
 				Key:      "https://other.example.net", Layer: dpkmsclient.LayerURLs,
-			},
-		},
-		{
-			name: "server.url without server.urls",
-			sc:   config.ServerConfig{URL: "http://single.example.net:7000", Token: "tok-default"},
-			want: dpkmsclient.Resolved{
-				Endpoint: dpkmsclient.Endpoint{URL: "http://single.example.net:7000", Token: "tok-default"},
-				Key:      "http://single.example.net:7000", Layer: dpkmsclient.LayerURL,
 			},
 		},
 		{

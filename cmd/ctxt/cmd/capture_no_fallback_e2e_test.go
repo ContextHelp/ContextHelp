@@ -22,11 +22,11 @@ import (
 // or the command fails. Nothing is written locally, nothing is retried,
 // and the history position is kept per instance.
 
-// pointAt rewrites the env's config so server.url is url (plus extra
+// pointAt rewrites the env's config so server.urls is [url] (plus extra
 // config lines).
 func (e *tabsEnv) pointAt(url, extra string) {
 	e.t.Helper()
-	cfg := fmt.Sprintf("server:\n  url: %s\n  token: %s\n%s", url, tabsTestToken, extra)
+	cfg := fmt.Sprintf("server:\n  urls:\n    - %s\n  token: %s\n%s", url, tabsTestToken, extra)
 	if err := os.WriteFile(e.cfgPath, []byte(cfg), 0o600); err != nil {
 		e.t.Fatal(err)
 	}
@@ -124,8 +124,11 @@ func TestCaptureHistory_PositionIsPerInstance(t *testing.T) {
 	e := newHistoryEnv(t, "", a, b)
 
 	other := newTabsEnv(t, "")
-	e.pointAt(e.srv.URL, fmt.Sprintf("  urls:\n    - name: a\n      url: %s\n    - name: b\n      url: %s\n",
-		e.srv.URL, other.srv.URL))
+	named := fmt.Sprintf("server:\n  urls:\n    - name: a\n      url: %s\n    - name: b\n      url: %s\n  token: %s\n",
+		e.srv.URL, other.srv.URL, tabsTestToken)
+	if err := os.WriteFile(e.cfgPath, []byte(named), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	e.mustRun(0, historyArgs("--instance", "a")...)
 	assertSent(t, e, a.URL, b.URL)
@@ -214,8 +217,8 @@ func TestE2EEnqueueExitCodes(t *testing.T) {
 		{"bare content, unreachable", "some bare text", []string{"--server", testguard.ClosedServerURL}, 70},
 		{"analyze, rejected token", "", []string{"analyze", "some text", "--server", rejecting.URL}, 5},
 		{"bare content, rejected token", "some bare text", []string{"--server", rejecting.URL}, 5},
-		{"capture tabs, unreachable", "", append([]string{"-c", "server.url=" + testguard.ClosedServerURL}, tabsArgs()...), 70},
-		{"capture tabs, rejected token", "", append([]string{"-c", "server.url=" + rejecting.URL}, tabsArgs()...), 5},
+		{"capture tabs, unreachable", "", append([]string{"-c", "server.urls=[" + testguard.ClosedServerURL + "]"}, tabsArgs()...), 70},
+		{"capture tabs, rejected token", "", append([]string{"-c", "server.urls=[" + rejecting.URL + "]"}, tabsArgs()...), 5},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

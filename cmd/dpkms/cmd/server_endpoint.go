@@ -15,7 +15,7 @@ const serverURLFlagUsage = "dpkms server URL for client commands; overrides serv
 // (healthcheck, pipeline, step) talk to, the same way ctxt's client
 // commands do: an explicit --server-url pins that URL, reusing the token of
 // a matching server.urls entry or server.token; otherwise the primary of
-// server.urls, then server.url (config file or -c), then the default.
+// server.urls, then the default.
 // Tokens only ever come from config.
 func serverEndpoint() dpkmsclient.Endpoint {
 	eps := configuredEndpoints()
@@ -39,7 +39,7 @@ func serverEndpoint() dpkmsclient.Endpoint {
 
 // configuredEndpoints lists the configured instances, primary first:
 // server.urls (server.token fills entries without their own), else
-// server.url, else the default.
+// the default.
 func configuredEndpoints() []dpkmsclient.Endpoint {
 	if cfg == nil {
 		return []dpkmsclient.Endpoint{{URL: dpkmsclient.DefaultURL}}
@@ -55,9 +55,6 @@ func configuredEndpoints() []dpkmsclient.Endpoint {
 			eps[i] = dpkmsclient.Endpoint{URL: u.URL, Token: tok}
 		}
 		return eps
-	}
-	if sc.URL != "" {
-		return []dpkmsclient.Endpoint{{URL: sc.URL, Token: sc.Token}}
 	}
 	return []dpkmsclient.Endpoint{{URL: dpkmsclient.DefaultURL, Token: sc.Token}}
 }

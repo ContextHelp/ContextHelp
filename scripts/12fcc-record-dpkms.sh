@@ -127,7 +127,7 @@ port_open() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
 write_dpkms_config() {
   local proj="$1" url="$2"
   mkdir -p "$proj/xdg/contexthelp"
-  (umask 077 && printf 'server:\n  url: %s\n' "$url" >"$proj/xdg/contexthelp/dpkms.yaml")
+  (umask 077 && printf 'server:\n  urls:\n    - %s\n' "$url" >"$proj/xdg/contexthelp/dpkms.yaml")
 }
 
 # as_scenario runs dpkms with the env a scenario's steps get (HOME and

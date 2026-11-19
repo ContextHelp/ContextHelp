@@ -47,7 +47,7 @@ Put each setting where the binary that acts on it reads it:
   `server.workers`, `server.access`, `server.auth`, `jobs`, `storage`,
   `secrets`, `browser`, `steps`.
 - **`ctxt.yaml`**: what the client needs: which instance to talk to
-  (`server.url`, `server.urls`, `server.token`), `profile`, `capture`,
+  (`server.urls`, `server.token`), `profile`, `capture`,
   `watch`, `search` (sent with each `ctxt find` query), `resurfacing`,
   `embeddings`, `uri`, `backup`.
 

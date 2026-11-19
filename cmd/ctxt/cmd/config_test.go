@@ -318,7 +318,7 @@ func TestConfigLoadNeverWritesFiles(t *testing.T) {
 		}
 	}
 	userCfg := filepath.Join(xdg, "contexthelp", "ctxt.yaml")
-	write(userCfg, "server:\n  url: "+testguard.ClosedServerURL+"\n")
+	write(userCfg, "server:\n  urls:\n    - "+testguard.ClosedServerURL+"\n")
 	cliCfg := filepath.Join(root, "cli", "ctxt.yaml")
 	write(cliCfg, "server:\n  urls:\n    - http://127.0.0.1:19997\n")
 
@@ -369,5 +369,56 @@ func TestConfigLoadNeverWritesFiles(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// writeServerLayers points XDG at a temp dir whose user layer is body and
+// returns a -c file holding cliBody.
+func writeServerLayers(t *testing.T, userBody, cliBody string) string {
+	t.Helper()
+	root := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
+	t.Setenv("CTXT_CONFIG", "")
+	userCfg := filepath.Join(root, "config", "contexthelp", "ctxt.yaml")
+	if err := os.MkdirAll(filepath.Dir(userCfg), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(userCfg, []byte(userBody), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cliCfg := filepath.Join(root, "cli.yaml")
+	if err := os.WriteFile(cliCfg, []byte(cliBody), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return cliCfg
+}
+
+// The original misroute, end to end: a user server.urls plus a closer
+// layer's server.url is a load error naming both keys, never a silent
+// resolve to the user's entry.
+func TestServerURLWithUserURLsFailsToLoad(t *testing.T) {
+	cliCfg := writeServerLayers(t,
+		"server:\n  urls:\n    - {name: pers, url: 'http://127.0.0.1:19991'}\n",
+		"server:\n  url: http://127.0.0.1:19992\n")
+	out, err := executeCommand("-c", cliCfg, "config", "validate")
+	if err == nil {
+		t.Fatalf("expected a load error; output: %s", out)
+	}
+	for _, want := range []string{"server.url", "server.urls"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should name %s; got: %v", want, err)
+		}
+	}
+}
+
+// `config validate` flags the deprecated server.url but still passes.
+func TestConfigValidateFlagsDeprecatedServerURL(t *testing.T) {
+	cliCfg := writeServerLayers(t, "storage:\n  type: sqlite\n", "server:\n  url: http://127.0.0.1:19992\n")
+	out, err := executeCommand("-c", cliCfg, "config", "validate")
+	if err != nil {
+		t.Fatalf("server.url alone must still validate: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "server.url") || !strings.Contains(out, "deprecated") {
+		t.Errorf("validate should flag server.url as deprecated; got: %s", out)
 	}
 }

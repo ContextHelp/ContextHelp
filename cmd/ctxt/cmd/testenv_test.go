@@ -153,7 +153,7 @@ func TestLiveServerGuardIsolatesSpawnedBinary(t *testing.T) {
 		t.Fatal(err)
 	}
 	realCfg := filepath.Join(cfgDir, "ctxt.yaml")
-	if err := os.WriteFile(realCfg, []byte("server:\n  url: "+s.url+"\n"), 0o600); err != nil {
+	if err := os.WriteFile(realCfg, []byte("server:\n  urls:\n    - "+s.url+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", real)
@@ -193,8 +193,8 @@ func TestLiveServerGuardUserConfigNotRewritten(t *testing.T) {
 	if err != nil {
 		t.Fatalf("guard user config: %v", err)
 	}
-	if want := "server:\n  url: " + testguard.ClosedServerURL + "\n"; string(before) != want {
-		t.Fatalf("guard user config = %q; want only server.url (%q)", before, want)
+	if want := "server:\n  urls:\n    - " + testguard.ClosedServerURL + "\n"; string(before) != want {
+		t.Fatalf("guard user config = %q; want only server.urls (%q)", before, want)
 	}
 	cfgArgs := serverURLsConfig(t, "http://127.0.0.1:19997")
 	if _, err := executeCommand(append([]string{"config", "paths"}, cfgArgs...)...); err != nil {

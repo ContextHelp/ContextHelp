@@ -154,7 +154,7 @@ so it is safe to run them while your own `dpkms serve` listens on
   `ctxt` binaries the e2e tests spawn inherit too;
 - clears every `CTXT_*`, `CH_*` and `DPKMS_*` variable, such as `CTXT_CONFIG`
   and `CTXT_INSTANCE`;
-- writes a user config whose `server.url` is `http://127.0.0.1:1`, a closed
+- writes a user config whose `server.urls` is `[http://127.0.0.1:1]`, a closed
   port, so a test that configures no server gets connection-refused;
 - wraps `http.DefaultTransport` to refuse requests to the loopback ports a
   real instance listens on: `:8080` and `:8081` (HTTP), `:9090` and `:9091`
@@ -168,8 +168,8 @@ Every new test package gets the same `TestMain`:
 func TestMain(m *testing.M) { os.Exit(testguard.Main(m, nil, "ctxt")) }
 ```
 
-A helper that builds its own subprocess env must set `server.url` or
-`server.urls` itself. It must never drop back to an empty config dir.
+A helper that builds its own subprocess env must set `server.urls` itself
+(`server.url` plus the guard's `server.urls` is a load error). It must never drop back to an empty config dir.
 
 A test that spawns `dpkms serve` passes free ports for `--port` and
 `--grpc-port` and `--cookie-bridge-port 0`, so the instance never binds a
@@ -190,7 +190,7 @@ out, err := db.exec("status")                      // routed to db.Server.URL
 resp := db.Server.Request(t, http.MethodGet, "/api/v1/objects/"+id, dpkmstest.RoleAdmin, nil)
 ```
 
-- `server.url`, plus `server.token` for a protected instance, goes into the
+- `server.urls`, plus `server.token` for a protected instance, goes into the
   user-level config (`db.ClientConfigPath`). `--config` layers over it, so a
   test that writes its own `server` section wins.
 - Options: `WithKeys()`, `WithAuthMethods(m...)` to plug in another chain

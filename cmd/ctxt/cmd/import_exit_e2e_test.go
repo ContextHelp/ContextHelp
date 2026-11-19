@@ -29,9 +29,9 @@ func TestE2EFeedImportServerExitCodes(t *testing.T) {
 		{"feed list, configured server down", []string{"feed", "list"}, 70},
 		{"feed list, --server down", []string{"feed", "list", "--server", testguard.ClosedServerURL}, 70},
 		{"feed list, server error", []string{"feed", "list", "--server", broken.URL}, 6},
-		{"feed list, -c server.url", []string{"-c", "server.url=" + ok.URL, "feed", "list"}, 0},
+		{"feed list, -c server.url", []string{"-c", "server.urls=[" + ok.URL + "]", "feed", "list"}, 0},
 		{"import chrome, configured server down", []string{"import", "chrome", "--file", bookmarks}, 70},
-		{"import chrome, -c server.url", []string{"-c", "server.url=" + ok.URL, "import", "chrome", "--file", bookmarks}, 0},
+		{"import chrome, -c server.url", []string{"-c", "server.urls=[" + ok.URL + "]", "import", "chrome", "--file", bookmarks}, 0},
 		{"import chrome, --server", []string{"import", "chrome", "--file", bookmarks, "--server", ok.URL}, 0},
 		{"import batch status, configured server down", []string{"import", "batch", "status", "batch_1"}, 70},
 	}
@@ -55,7 +55,7 @@ func TestE2EImportSendsConfiguredToken(t *testing.T) {
 	}
 	srv := newRecordedServer(t, fakeDpkmsAPI())
 	args := []string{
-		"-c", "server.url=" + srv.URL, "-c", "server.token=tok-e2e",
+		"-c", "server.urls=[" + srv.URL + "]", "-c", "server.token=tok-e2e",
 		"import", "chrome", "--file", writeTempBookmarks(t, chromeBookmarksFixture),
 	}
 	if got, out := runBuiltCtxt(t, args...); got != 0 {

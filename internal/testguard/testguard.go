@@ -9,7 +9,7 @@
 //     config, state or data;
 //   - clears the CTXT_*, CH_* and DPKMS_* variables that can redirect config
 //     loading, instance routing or storage;
-//   - writes a user config whose server.url is [ClosedServerURL], so a
+//   - writes a user config whose server.urls is [ClosedServerURL], so a
 //     command that resolves "the configured server" with nothing else set
 //     gets connection-refused instead of whatever listens on :8080;
 //   - wraps http.DefaultTransport so a request to a default local server
@@ -38,7 +38,7 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
-// ClosedServerURL is the server.url tests get when they configure nothing.
+// ClosedServerURL is the server.urls entry tests get when they configure nothing.
 // Port 1 (tcpmux) is never served on a developer machine or CI runner, so
 // any request fails fast with connection-refused.
 const ClosedServerURL = "http://127.0.0.1:1"
@@ -83,7 +83,7 @@ func TestingEnv(t testing.TB) Env {
 
 // Isolate points HOME and the XDG base dirs under root, clears the env that
 // can redirect config or server routing, pins the Go toolchain caches, and
-// writes a user config for each bin (e.g. "ctxt") whose server.url is
+// writes a user config for each bin (e.g. "ctxt") whose server.urls is
 // [ClosedServerURL]. Tests that pass their own -c config or set their own
 // XDG_CONFIG_HOME keep working: -c layers on top of the user config, and a
 // replaced XDG_CONFIG_HOME replaces it.
@@ -128,7 +128,7 @@ func Isolate(env Env, root string, bins ...string) error {
 }
 
 // WriteUserConfig writes the guard's user config for each bin under
-// configHome (an XDG_CONFIG_HOME): server.url is [ClosedServerURL]. Helpers
+// configHome (an XDG_CONFIG_HOME): server.urls is [ClosedServerURL]. Helpers
 // that give a spawned binary its own XDG tree call it so the binary never
 // falls back to the built-in default endpoint.
 func WriteUserConfig(configHome string, bins ...string) error {
@@ -136,7 +136,7 @@ func WriteUserConfig(configHome string, bins ...string) error {
 	if err := os.MkdirAll(cfgDir, 0o700); err != nil {
 		return fmt.Errorf("testguard: %w", err)
 	}
-	body := []byte("server:\n  url: " + ClosedServerURL + "\n")
+	body := []byte("server:\n  urls:\n    - " + ClosedServerURL + "\n")
 	for _, bin := range bins {
 		if err := os.WriteFile(filepath.Join(cfgDir, bin+".yaml"), body, 0o600); err != nil {
 			return fmt.Errorf("testguard: %w", err)

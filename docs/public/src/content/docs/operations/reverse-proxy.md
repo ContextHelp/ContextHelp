@@ -317,8 +317,8 @@ client address.
 
 The proxy's sign-in step stands between the ctxt CLI and dpkms. Point
 the CLI at dpkms directly (over a VPN, a tailnet or an SSH tunnel) with
-its own token in `server.url` and `server.token`, or in a `server.urls`
-entry. Give each machine its own entry under `server.auth.static.tokens`
+its own token in `server.urls` and `server.token`, or in a `server.urls`
+entry of its own. Give each machine its own entry under `server.auth.static.tokens`
 so you can revoke one without the others.
 
 ## Never proxy a private instance

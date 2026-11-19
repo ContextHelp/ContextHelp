@@ -421,7 +421,7 @@ jobs:
 	}
 	dir := filepath.Join(e.dirs["XDG_CONFIG_HOME"], "contexthelp")
 	for name, body := range map[string]string{
-		"ctxt.yaml":  common + "server:\n  url: " + server + "\n",
+		"ctxt.yaml":  common + "server:\n  urls:\n    - " + server + "\n",
 		"dpkms.yaml": common,
 	} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {

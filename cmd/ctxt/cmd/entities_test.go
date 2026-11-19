@@ -175,7 +175,7 @@ func TestEntityCommandsServerFlag(t *testing.T) {
 	seedEntityCommands(t, db)
 	db.useRole(t, dpkmstest.RoleAdmin)
 	// Route the config at a closed port; only --server reaches the data.
-	if err := os.WriteFile(db.ClientConfigPath, []byte("server:\n  url: "+testguard.ClosedServerURL+"\n"), 0o600); err != nil {
+	if err := os.WriteFile(db.ClientConfigPath, []byte("server:\n  urls:\n    - "+testguard.ClosedServerURL+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	out, err := db.exec("entity", "show", "ui.cart", "--server", db.Server.URL)

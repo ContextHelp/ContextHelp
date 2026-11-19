@@ -181,7 +181,7 @@ func TestLog_UsesConfiguredServerAndToken(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{}, "total": 7})
 	}))
 	db := setupTestDB(t)
-	appendConfig(t, db, "server:\n  url: "+srv.URL+"\n  token: tok-log\n")
+	appendConfig(t, db, "server:\n  urls:\n    - "+srv.URL+"\n  token: tok-log\n")
 
 	out, err := db.exec("log", "--format", "json")
 	if err != nil {

@@ -219,7 +219,7 @@ func TestServerClients_UseConfiguredServerAndToken(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			srv := newRecordedServer(t, fakeDpkmsAPI())
 			db := setupTestDB(t)
-			appendConfig(t, db, "server:\n  url: "+srv.URL+"\n  token: tok-cfg\n")
+			appendConfig(t, db, "server:\n  urls:\n    - "+srv.URL+"\n  token: tok-cfg\n")
 
 			out, err := db.exec(tc.args(t)...)
 			if err != nil {
@@ -230,23 +230,22 @@ func TestServerClients_UseConfiguredServerAndToken(t *testing.T) {
 	}
 }
 
-// The primary of server.urls wins over server.url, with its own token.
+// The primary of server.urls is used with its own token; later entries get nothing.
 func TestServerClients_UseServerURLsPrimary(t *testing.T) {
 	for _, tc := range serverClientCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			primary := newRecordedServer(t, fakeDpkmsAPI())
-			single := newRecordedServer(t, fakeDpkmsAPI())
+			second := newRecordedServer(t, fakeDpkmsAPI())
 			db := setupTestDB(t)
-			appendConfig(t, db, "server:\n  url: "+single.URL+"\n  token: tok-default\n"+
-				"  urls:\n    - url: "+primary.URL+"\n      token: tok-primary\n")
+			appendConfig(t, db, "server:\n  token: tok-default\n  urls:\n    - url: "+primary.URL+"\n      token: tok-primary\n    - "+second.URL+"\n")
 
 			out, err := db.exec(tc.args(t)...)
 			if err != nil {
 				t.Fatalf("%s: %v\n%s", tc.name, err, out)
 			}
 			assertAllAuthorized(t, primary.hits(), "Bearer tok-primary")
-			if n := len(single.hits()); n != 0 {
-				t.Fatalf("server.url got %d requests while server.urls is set, want 0", n)
+			if n := len(second.hits()); n != 0 {
+				t.Fatalf("second server.urls entry got %d requests, want 0 (no failover)", n)
 			}
 		})
 	}
@@ -259,7 +258,7 @@ func TestServerClients_ServerFlagOverridesConfig(t *testing.T) {
 			configured := newRecordedServer(t, fakeDpkmsAPI())
 			pinned := newRecordedServer(t, fakeDpkmsAPI())
 			db := setupTestDB(t)
-			appendConfig(t, db, "server:\n  url: "+configured.URL+"\n  token: tok-cfg\n")
+			appendConfig(t, db, "server:\n  urls:\n    - "+configured.URL+"\n  token: tok-cfg\n")
 
 			out, err := db.exec(append(tc.args(t), "--server", pinned.URL)...)
 			if err != nil {

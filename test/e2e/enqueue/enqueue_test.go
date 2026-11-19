@@ -152,7 +152,7 @@ func (c *client) assertNoDB(t *testing.T) {
 var jobIDRe = regexp.MustCompile(`Job ID: (\S+)`)
 
 func serverConfig(url, token string) string {
-	return fmt.Sprintf("server:\n  url: %s\n  token: %q\n", url, token)
+	return fmt.Sprintf("server:\n  urls:\n    - %s\n  token: %q\n", url, token)
 }
 
 func TestEnqueueAgainstProtectedDpkms(t *testing.T) {

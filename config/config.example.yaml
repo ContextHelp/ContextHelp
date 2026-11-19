@@ -108,9 +108,10 @@
 #      limit: 10000
 #      warn_at: 8000
 # --- clients (ctxt.yaml) ---
-# The instance to talk to. urls wins over url; without --server, --instance,
-# CTXT_INSTANCE or `ctxt instance use`, clients use the first entry only.
-#  url: http://127.0.0.1:8080
+# The instances to talk to. Without --server, --instance, CTXT_INSTANCE or
+# `ctxt instance use`, clients use the first entry only. The closest config
+# layer that sets urls replaces the list whole. (url is a deprecated
+# one-entry shorthand; setting url and urls together fails the load.)
 #  urls:
 #    - http://127.0.0.1:8080
 #    - name: home

@@ -96,7 +96,7 @@ func setupTestDB(t *testing.T, opts ...dpkmstest.Option) *testDB {
 // instance. A role the instance has no token for sends none.
 func (db *testDB) useRole(t *testing.T, role string) {
 	t.Helper()
-	body := "server:\n  url: " + db.Server.URL + "\n"
+	body := "server:\n  urls:\n    - " + db.Server.URL + "\n"
 	if tok := db.Server.Token(role); tok != "" {
 		body += "  token: " + tok + "\n"
 	}

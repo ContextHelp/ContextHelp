@@ -98,7 +98,7 @@ func TestLoadNeverWritesConfigFiles(t *testing.T) {
 
 	cases := map[string]func(t *testing.T, dir string) (cfgFile string, extra []string){
 		"user cascade slot": func(t *testing.T, dir string) (string, []string) {
-			writeAged(t, filepath.Join(dir, "contexthelp", "ctxt.yaml"), "server:\n  url: http://127.0.0.1:19990\n")
+			writeAged(t, filepath.Join(dir, "contexthelp", "ctxt.yaml"), "server:\n  urls:\n    - http://127.0.0.1:19990\n")
 			return "", nil
 		},
 		"CTXT_CONFIG": func(t *testing.T, dir string) (string, []string) {
@@ -113,7 +113,7 @@ func TestLoadNeverWritesConfigFiles(t *testing.T) {
 			return p, nil
 		},
 		"-c path over user slot": func(t *testing.T, dir string) (string, []string) {
-			writeAged(t, filepath.Join(dir, "contexthelp", "ctxt.yaml"), "server:\n  url: http://127.0.0.1:19990\n")
+			writeAged(t, filepath.Join(dir, "contexthelp", "ctxt.yaml"), "server:\n  urls:\n    - http://127.0.0.1:19990\n")
 			p := filepath.Join(dir, "extra", "overlay.yaml")
 			writeAged(t, p, "server:\n  port: 5454\n")
 			return "", []string{p}

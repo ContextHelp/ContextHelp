@@ -75,8 +75,10 @@ A 401 or 403 always ends the request. It is never retried against another instan
      - otherwise, exit 70, and the error lists the configured names.
   3. The current-instance state file written by `ctxt instance use`, resolved as in step 2. A stale selection is an error, not a silent fall-through.
   4. The first `server.urls` entry. Other entries are reachable only by name or `--server`.
-  5. `server.url`.
-  6. The default, `http://127.0.0.1:8080`.
+  5. The default, `http://127.0.0.1:8080`.
+
+  Amended 2026-11-19: `server.urls` is the sole endpoint key; the old step 5, `server.url`, is gone (see below).
+- **Layering and `server.url` (amended 2026-11-19).** Config layers (system, user, project `.contexthelp/ctxt.yaml` walking up from the working directory, `-c` paths) merge per leaf through kit's `config.Load`: scalars and lists are replaced, maps are merged. So the closest layer that sets `server.urls` replaces the list whole, and `server.token` layers like any scalar as the default token for entries without their own. `server.url` stays readable as a deprecated shorthand for a one-entry, unnamed `server.urls`; ctxt warns once per invocation and `ctxt config validate` flags it. A config that sets both `server.url` and `server.urls` after the merge, even from different layers, fails to load with an error naming both keys: before the amendment `server.urls` won whatever layer set each, so a project's `server.url` silently lost to a user's `server.urls`.
 - **No failover.** Every step yields exactly one endpoint. When it can't be dialled, ctxt exits 70. It never tries another `server.urls` entry, because that would write into, or read from, a different corpus.
 - **Instance key.** The resolver also returns a key: the entry's name, else the normalized URL. Client-side state (watch records, the browser-history position) is kept per key.
 - **Tokens come only from config,** never from flags. This is unchanged.

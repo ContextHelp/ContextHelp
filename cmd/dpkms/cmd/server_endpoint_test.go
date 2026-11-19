@@ -89,7 +89,7 @@ func TestDpkmsClients_UseConfiguredServerAndToken(t *testing.T) {
 		t.Run(args[0], func(t *testing.T) {
 			srv := newRecordedDpkms(t)
 			db := setupTestDB(t)
-			appendDpkmsConfig(t, db, "server:\n  url: "+srv.URL+"\n  token: tok-cfg\n")
+			appendDpkmsConfig(t, db, "server:\n  urls:\n    - "+srv.URL+"\n  token: tok-cfg\n")
 
 			if out, err := db.run(args...); err != nil {
 				t.Fatalf("dpkms %v: %v\n%s", args, err, out)
@@ -99,22 +99,21 @@ func TestDpkmsClients_UseConfiguredServerAndToken(t *testing.T) {
 	}
 }
 
-// The primary of server.urls wins over server.url, with its own token.
+// The primary of server.urls is used with its own token; later entries get nothing.
 func TestDpkmsClients_UseServerURLsPrimary(t *testing.T) {
 	for _, args := range dpkmsClientCommands {
 		t.Run(args[0], func(t *testing.T) {
 			primary := newRecordedDpkms(t)
-			single := newRecordedDpkms(t)
+			second := newRecordedDpkms(t)
 			db := setupTestDB(t)
-			appendDpkmsConfig(t, db, "server:\n  url: "+single.URL+"\n  token: tok-default\n"+
-				"  urls:\n    - url: "+primary.URL+"\n      token: tok-primary\n")
+			appendDpkmsConfig(t, db, "server:\n  token: tok-default\n  urls:\n    - url: "+primary.URL+"\n      token: tok-primary\n    - "+second.URL+"\n")
 
 			if out, err := db.run(args...); err != nil {
 				t.Fatalf("dpkms %v: %v\n%s", args, err, out)
 			}
 			assertDpkmsAuthorized(t, primary.hits(), "Bearer tok-primary")
-			if n := len(single.hits()); n != 0 {
-				t.Fatalf("server.url got %d requests while server.urls is set, want 0", n)
+			if n := len(second.hits()); n != 0 {
+				t.Fatalf("second server.urls entry got %d requests, want 0 (no failover)", n)
 			}
 		})
 	}
@@ -127,7 +126,7 @@ func TestDpkmsClients_ServerURLFlagOverridesConfig(t *testing.T) {
 			configured := newRecordedDpkms(t)
 			pinned := newRecordedDpkms(t)
 			db := setupTestDB(t)
-			appendDpkmsConfig(t, db, "server:\n  url: "+configured.URL+"\n  token: tok-cfg\n")
+			appendDpkmsConfig(t, db, "server:\n  urls:\n    - "+configured.URL+"\n  token: tok-cfg\n")
 
 			if out, err := db.run(append([]string{"--server-url", pinned.URL}, args...)...); err != nil {
 				t.Fatalf("dpkms --server-url %v: %v\n%s", args, err, out)
@@ -217,8 +216,8 @@ func TestE2EDpkmsHealthcheckUsesConfiguredServer(t *testing.T) {
 		want int
 	}{
 		{"configured server down", []string{"healthcheck", "--quiet"}, 6}, // TRANSIENT
-		{"-c server.url", []string{"-c", "server.url=" + srv.URL, "-c", "server.token=tok-e2e", "healthcheck", "--quiet"}, 0},
-		{"--server-url over -c", []string{"-c", "server.url=" + testguard.ClosedServerURL, "--server-url", srv.URL, "healthcheck", "--quiet"}, 0},
+		{"-c server.url", []string{"-c", "server.urls=[" + srv.URL + "]", "-c", "server.token=tok-e2e", "healthcheck", "--quiet"}, 0},
+		{"--server-url over -c", []string{"-c", "server.urls=[" + testguard.ClosedServerURL + "]", "--server-url", srv.URL, "healthcheck", "--quiet"}, 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

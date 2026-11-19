@@ -39,7 +39,7 @@ see [ctxt/configuration.md](ctxt/configuration.md).
 
 `internal/dpkmsclient` is ctxt's HTTP client for dpkms. A client talks to one
 endpoint (resolved from `--server`, `--instance`, `CTXT_INSTANCE`,
-`ctxt instance use`, `server.urls` or `server.url`), sends the endpoint's bearer
+`ctxt instance use`, or `server.urls`), sends the endpoint's bearer
 token, and maps failures to exit codes (unreachable 70, 401/403 5, 404 3,
 409 4, 400/422 2, 429 64, 5xx 6).
 

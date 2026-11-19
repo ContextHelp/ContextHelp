@@ -8,7 +8,7 @@ A private instance (the default, bound to `127.0.0.1`) needs no sign-in; `ctxt u
 
 ## Prerequisites
 
-- ctxt is configured to reach the instance with an API key it accepts: `server.url` (or a `server.urls` entry) and `server.token` (or that entry's own `token`). The key was created on the dpkms host, with dpkms stopped, with `dpkms auth key create --maintenance-override`; a key declared in the server's config by hash cannot sign a browser in.
+- ctxt is configured to reach the instance with an API key it accepts: a `server.urls` entry and `server.token` (or that entry's own `token`). The key was created on the dpkms host, with dpkms stopped, with `dpkms auth key create --maintenance-override`; a key declared in the server's config by hash cannot sign a browser in.
 - You reach the instance over HTTPS, or over HTTP on `localhost` / `127.0.0.1`. Browsers keep the session cookie only there; see [Sign-in does not stick](#sign-in-does-not-stick).
 
 ## Quick start

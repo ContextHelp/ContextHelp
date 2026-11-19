@@ -75,7 +75,7 @@ func recordFind(t *testing.T, db *testDB, role string) *findRecorder {
 	}))
 	t.Cleanup(srv.Close)
 
-	body := "server:\n  url: " + srv.URL + "\n"
+	body := "server:\n  urls:\n    - " + srv.URL + "\n"
 	if tok := db.Server.Token(role); tok != "" {
 		body += "  token: " + tok + "\n"
 	}

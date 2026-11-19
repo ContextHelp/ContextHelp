@@ -43,7 +43,7 @@ func TestListQueryRoutesViaDaemon(t *testing.T) {
 	srv := startMockSearchDaemon(t, &hits)
 	defer srv.Close()
 
-	out, err := executeCommand(append([]string{"list", "--q", "type==note", "-c", "server.url=" + srv.URL}, storageOverride(dbPath)...)...)
+	out, err := executeCommand(append([]string{"list", "--q", "type==note", "-c", "server.urls=[" + srv.URL + "]"}, storageOverride(dbPath)...)...)
 	if err != nil {
 		t.Fatalf("list --q via live daemon: %v", err)
 	}

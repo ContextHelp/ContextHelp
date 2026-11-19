@@ -363,6 +363,7 @@ func initConfig() {
 	// that's what targeting subcommands (edit, lint --fix, validate)
 	// should operate on. Empty when no -c <path> was given.
 	var err error
+	config.Quiet = viper.GetBool("quiet")
 	cfg, cfgFile, err = config.Bootstrap(binName, paths, overrides, parseErr)
 	if err != nil {
 		initConfigErr = err
