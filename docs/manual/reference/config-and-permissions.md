@@ -29,6 +29,16 @@ Configuration behavior is layered (defaults, system, user, env, flags). For full
 
 ## Runtime controls
 
+### Client endpoint across config layers
+
+`server.url`, `server.urls` and `server.token` (the endpoint ctxt talks to) are one unit. Of the config files (system, user, project `.contexthelp/ctxt.yaml`, then `-c` files; most specific last), the unit comes entirely from the most specific file that sets any of the three. The other files' endpoint keys are ignored, not merged:
+
+- A project `server.url` beats a user `server.urls`.
+- A project endpoint never uses the user file's `server.token`. With no token in the project file the endpoint is unauthenticated; set `server.token` there.
+- Other settings still merge key by key.
+
+`ctxt instance current` shows the endpoint and the layer that chose it.
+
 ### Server settings
 
 ```bash

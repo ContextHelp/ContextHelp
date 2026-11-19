@@ -77,6 +77,7 @@ A 401 or 403 always ends the request. It is never retried against another instan
   4. The first `server.urls` entry. Other entries are reachable only by name or `--server`.
   5. `server.url`.
   6. The default, `http://127.0.0.1:8080`.
+- **Config layers (amended 2026-11-19).** `server.url`, `server.urls` and `server.token` form one endpoint unit. Of the config files (system, user, project, then `-c` paths, least to most specific), the unit comes entirely from the most specific file that sets any of the three; the other files' endpoint keys are dropped, not merged. A project `server.url` therefore beats a user `server.urls`, and never picks up a user `server.token`: without a token in the owning file the endpoint is unauthenticated. With no file setting any of them, the default applies. Overrides still outrank files. The resolution order above is unchanged.
 - **No failover.** Every step yields exactly one endpoint. When it can't be dialled, ctxt exits 70. It never tries another `server.urls` entry, because that would write into, or read from, a different corpus.
 - **Instance key.** The resolver also returns a key: the entry's name, else the normalized URL. Client-side state (watch records, the browser-history position) is kept per key.
 - **Tokens come only from config,** never from flags. This is unchanged.

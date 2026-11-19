@@ -1298,6 +1298,23 @@ func LoadWithOverrides(bin, cfgFile string, extraPaths []string, overrides map[s
 	}); err != nil {
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
+	// server.url, server.urls and server.token are one endpoint unit: the
+	// file merge above mixed them key by key, so take the unit from the
+	// single most specific file that sets any of them, then put env and
+	// overrides back on top.
+	owner, err := endpointLayer(append([]string{system, user, project}, extraPaths...))
+	if err != nil {
+		return nil, err
+	}
+	if owner != "" {
+		if err := applyEndpointUnit(&cfg, owner); err != nil {
+			return nil, err
+		}
+		envOverride(&cfg)
+		if err := kitconfig.ApplyOverrides(&cfg, overrides); err != nil {
+			return nil, fmt.Errorf("apply CLI overrides: %w", err)
+		}
+	}
 	cfg.Server.resolveListenPorts()
 	if err := cfg.Storage.resolveDataPaths(); err != nil {
 		return nil, err
