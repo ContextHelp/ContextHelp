@@ -47,7 +47,6 @@ func LintConfig(cfg *Config, configPath string) []LintFinding {
 	findings = append(findings, lintSecrets(cfg)...)
 	findings = append(findings, lintPermissions(configPath)...)
 	findings = append(findings, lintAccess(cfg)...)
-	findings = append(findings, lintEndpoints(cfg)...)
 
 	return findings
 }
@@ -66,19 +65,6 @@ func lintAccess(cfg *Config) []LintFinding {
 		})
 	}
 	return findings
-}
-
-// lintEndpoints flags the deprecated server.url shorthand.
-func lintEndpoints(cfg *Config) []LintFinding {
-	if msg := cfg.Server.LegacyURLWarning(); msg != "" {
-		return []LintFinding{{
-			Severity: SeverityWarn,
-			Field:    "server.url",
-			Message:  msg,
-			Fix:      "move the URL into server.urls and drop server.url",
-		}}
-	}
-	return nil
 }
 
 // lintSchema converts ValidationErrors into LintFindings at ERROR severity.

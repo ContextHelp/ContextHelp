@@ -27,7 +27,7 @@
 # Server routing: ctxt commands run over the dpkms API, and with no
 # config ctxt targets the built-in default endpoint (127.0.0.1:8080),
 # where a developer's real instance may be listening. The recorder
-# therefore writes server.url into every scenario's own user config
+# therefore writes server.urls into every scenario's own user config
 # ($XDG_CONFIG_HOME/contexthelp/ctxt.yaml) before recording, and
 # verifies through `ctxt config show` that ctxt resolves exactly that
 # URL; a scenario is never recorded against the default. Each scenario
@@ -43,7 +43,7 @@
 #           is stopped, group and all, before the next scenario starts
 #           and on every exit path, and the recorder waits until its
 #           port no longer accepts connections.
-#   closed  server.url points at a port nothing listens on, for
+#   closed  server.urls points at a port nothing listens on, for
 #           scenarios that test behavior with no server running.
 #
 # After each scenario the captures are checked for any default-port

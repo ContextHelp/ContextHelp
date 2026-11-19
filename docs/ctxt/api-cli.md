@@ -747,10 +747,8 @@ Every command that talks to dpkms over its API (`status`, `log`,
 5. `http://127.0.0.1:8080`
 
 The closest config layer that sets `server.urls` replaces the list whole;
-`server.token` layers like any scalar. `server.url` is a deprecated
-shorthand for a one-entry `server.urls` (warns once per invocation,
-flagged by `ctxt config validate`); setting both keys, even in different
-layers, fails the load.
+`server.token` layers like any scalar. The old `server.url` key was
+removed: a config that sets it, in any layer, fails to load.
 
 Steps 2 and 3 take a `server.urls` name first, then a running local
 instance by name or port (as `http://127.0.0.1:<port>`, with the token of

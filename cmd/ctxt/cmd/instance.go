@@ -61,7 +61,7 @@ pidfile by name or port:
 
 Every command talks to exactly one instance, resolved in this order:
 --server, --instance or CTXT_INSTANCE, the current instance set by
-` + "`ctxt instance use`" + `, the first server.urls entry, server.url, then
+` + "`ctxt instance use`" + `, the first server.urls entry, then
 http://127.0.0.1:8080. An unknown or stale name exits 70; ctxt never
 falls back to another instance.
 
@@ -112,7 +112,7 @@ var instanceCurrentCmd = &cobra.Command{
 	Short: "Print the instance this invocation talks to",
 	Long: `Print the dpkms instance ctxt resolves to: its name, URL, the layer
 that chose it (--server, --instance, CTXT_INSTANCE, current-instance,
-server.urls, server.url or default) and whether a token is attached. The
+server.urls or default) and whether a token is attached. The
 token itself is never printed, and a password or token= parameter inside
 the URL is masked. A stale current-instance selection exits 70.`,
 	RunE: runInstanceCurrent,

@@ -34,7 +34,7 @@ Examples:
   # Import only recent messages from #general
   ctxt import slack --dir ./slack-export --since 2026-01-01 --channel general
 
-  # Import into a specific server (overrides server.url)
+  # Import into a specific server (overrides server.urls)
   ctxt import slack --dir ./slack-export --server https://dpkms.example.net`,
 	RunE: runImportSlack,
 }

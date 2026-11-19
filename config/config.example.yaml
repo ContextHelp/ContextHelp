@@ -110,8 +110,7 @@
 # --- clients (ctxt.yaml) ---
 # The instances to talk to. Without --server, --instance, CTXT_INSTANCE or
 # `ctxt instance use`, clients use the first entry only. The closest config
-# layer that sets urls replaces the list whole. (url is a deprecated
-# one-entry shorthand; setting url and urls together fails the load.)
+# layer that sets urls replaces the list whole.
 #  urls:
 #    - http://127.0.0.1:8080
 #    - name: home

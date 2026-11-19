@@ -98,7 +98,7 @@ func New(ep Endpoint, opts ...Option) (*Client, error) {
 	u, err := url.Parse(ep.URL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		e := output.UsageError(fmt.Sprintf("invalid dpkms server URL %q: want http(s)://host[:port]", config.RedactDSN(ep.URL)))
-		e.SuggestedFix = "check --server, server.url and server.urls in the ctxt config"
+		e.SuggestedFix = "check --server and server.urls in the ctxt config"
 		return nil, e
 	}
 	o := options{timeout: DefaultTimeout}

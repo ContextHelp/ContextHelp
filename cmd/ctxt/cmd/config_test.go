@@ -394,7 +394,7 @@ func writeServerLayers(t *testing.T, userBody, cliBody string) string {
 }
 
 // The original misroute, end to end: a user server.urls plus a closer
-// layer's server.url is a load error naming both keys, never a silent
+// layer's server.url is a load error, never a silent
 // resolve to the user's entry.
 func TestServerURLWithUserURLsFailsToLoad(t *testing.T) {
 	cliCfg := writeServerLayers(t,
@@ -404,21 +404,19 @@ func TestServerURLWithUserURLsFailsToLoad(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected a load error; output: %s", out)
 	}
-	for _, want := range []string{"server.url", "server.urls"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error should name %s; got: %v", want, err)
-		}
+	if !strings.Contains(err.Error(), "server.url is no longer supported") {
+		t.Errorf("error should say server.url is no longer supported; got: %v", err)
 	}
 }
 
-// `config validate` flags the deprecated server.url but still passes.
-func TestConfigValidateFlagsDeprecatedServerURL(t *testing.T) {
+// server.url alone fails the load, so `config validate` reports it as an error.
+func TestConfigValidateRejectsServerURL(t *testing.T) {
 	cliCfg := writeServerLayers(t, "storage:\n  type: sqlite\n", "server:\n  url: http://127.0.0.1:19992\n")
 	out, err := executeCommand("-c", cliCfg, "config", "validate")
-	if err != nil {
-		t.Fatalf("server.url alone must still validate: %v\n%s", err, out)
+	if err == nil {
+		t.Fatalf("server.url must fail; output: %s", out)
 	}
-	if !strings.Contains(out, "server.url") || !strings.Contains(out, "deprecated") {
-		t.Errorf("validate should flag server.url as deprecated; got: %s", out)
+	if !strings.Contains(err.Error(), "server.url is no longer supported") {
+		t.Errorf("error should say server.url is no longer supported; got: %v", err)
 	}
 }

@@ -8,7 +8,7 @@ import (
 )
 
 // serverURLFlagUsage is the --server-url help text.
-const serverURLFlagUsage = "dpkms server URL for client commands; overrides server.url and server.urls (default " +
+const serverURLFlagUsage = "dpkms server URL for client commands; overrides server.urls (default " +
 	dpkmsclient.DefaultURL + " when nothing is configured)"
 
 // serverEndpoint resolves the dpkms instance the client commands

@@ -312,7 +312,8 @@ func (e *env) writeCtxtConfig(name string, st *graphStore, serverURL, token, emb
   type: %s
   path: %q
 server:
-  url: %q
+  urls:
+    - %q
   token: %q
 providers:
   embedding:

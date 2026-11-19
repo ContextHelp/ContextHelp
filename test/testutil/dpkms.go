@@ -121,7 +121,7 @@ func (d *Dpkms) killGroup(grace time.Duration) error {
 // its path. A ctxt binary run with Env then talks to this instance.
 func (d *Dpkms) WriteCtxtConfig(t testing.TB, role string) string {
 	t.Helper()
-	server := map[string]any{"url": d.URL}
+	server := map[string]any{"urls": []string{d.URL}}
 	if tok := d.Token(role); tok != "" {
 		server["token"] = tok
 	}

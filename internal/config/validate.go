@@ -38,6 +38,9 @@ func Validate(c *Config) []ValidationError {
 		errs = append(errs, ValidationError{Field: "storage.type", Message: fmt.Sprintf("unknown storage type %q", c.Storage.Type)})
 	}
 
+	if c.Server.URL != "" {
+		errs = append(errs, ValidationError{Field: "server.url", Message: "no longer supported: use server.urls"})
+	}
 	errs = append(errs, validateServerPorts(&c.Server)...)
 	errs = append(errs, validateBlob(c.Storage.Blob, "storage.blob")...)
 	errs = append(errs, validateAccess(c)...)
@@ -452,38 +455,14 @@ func isHTTPURL(raw string) bool {
 	return err == nil && (u.Scheme == "http" || u.Scheme == "https")
 }
 
-// foldLegacyURL turns the deprecated server.url into a one-entry
-// server.urls. Both keys set is an error whichever layers set them: the
-// merge cannot say which one the user meant, so resolving either would
-// silently misroute (a project's server.url lost to a user's server.urls).
-func (s *ServerConfig) foldLegacyURL() error {
+// rejectLegacyURL fails the load when the removed server.url key is set,
+// in any layer. kit ignores unknown keys, so dropping it silently would
+// send clients to the default endpoint.
+func (s *ServerConfig) rejectLegacyURL() error {
 	if s.URL == "" {
 		return nil
 	}
-	if len(s.URLs) > 0 {
-		return fmt.Errorf("config: server.url and server.urls are both set; server.urls is the endpoint key: "+
-			"move server.url (%s) into server.urls, e.g. `urls: [%s]`, and drop server.url", s.URL, s.URL)
-	}
-	if err := validateEndpointURL(s.URL); err != nil {
-		return fmt.Errorf("config: server.url: %w", err)
-	}
-	s.URLs = []ServerEndpoint{{URL: s.URL}}
-	s.legacyURL, s.URL = s.URL, ""
-	return nil
-}
-
-// LegacyURL is the deprecated server.url value Load folded into URLs, or
-// "" when the config did not use it.
-func (s ServerConfig) LegacyURL() string { return s.legacyURL }
-
-// LegacyURLWarning is the deprecation message for a folded server.url,
-// or "" when there is none.
-func (s ServerConfig) LegacyURLWarning() string {
-	if s.legacyURL == "" {
-		return ""
-	}
-	return "server.url is deprecated: use server.urls (a one-entry list is the same endpoint); " +
-		"server.url will stop loading in a later release"
+	return fmt.Errorf("config: server.url is no longer supported: use server.urls, e.g. `urls: [%s]`", s.URL)
 }
 
 // validateServerEndpoints checks the client-routing endpoints. Runs at load

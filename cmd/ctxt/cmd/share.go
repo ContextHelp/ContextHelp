@@ -35,7 +35,7 @@ audience is a group of principals, a policy says what may be seen, a
 grant gives an audience a policy, and an invite minted with --audience
 puts the new person straight into that audience. Every command calls
 the instance (--server, --instance, CTXT_INSTANCE, the current instance,
-the first server.urls entry, or server.url) with its configured API
+or the first server.urls entry) with its configured API
 key, which must hold admin:shares: the owner's.
 
 Examples:
