@@ -47,10 +47,11 @@ import (
 // runbook exist in hybrid graphs only. The vault namespace is the one
 // the gated principal is not entitled to: vault/codename is mentioned by
 // runbook, rollback, postmortem (profile ops) and forecast (profile
-// fin). Within ops, runbook and rollback share project/atlas and
-// vault/codename (co_mention weight 2), runbook and postmortem share
-// person/alice-chen and vault/codename (weight 2), and rollback and
-// postmortem share vault/codename alone (weight 1).
+// fin). Runbook and rollback share project/atlas and vault/codename
+// (co_mention weight 2), runbook and postmortem share person/alice-chen
+// and vault/codename (weight 2), and rollback and postmortem share
+// vault/codename alone (weight 1), as does forecast with each of the
+// three. A profile on the request narrows none of this.
 type endpointObject struct {
 	alias     string
 	profile   string // owning profile; "" is global
