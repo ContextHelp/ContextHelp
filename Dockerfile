@@ -37,7 +37,7 @@ RUN GOWORK=off CGO_ENABLED=1 GOOS=linux go build -tags fts5 \
     -o /out/ctxt ./cmd/ctxt
 
 # ─── Stage 2: Runtime ────────────────────────────────────────────────────────
-FROM debian:bookworm-20260918-slim AS runtime
+FROM debian:bookworm-20261104-slim AS runtime
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates tzdata libsqlite3-0 wget \
