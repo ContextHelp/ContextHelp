@@ -91,7 +91,7 @@ func pipelineAgainst(t *testing.T, extra []string, opts ...dpkmstest.Option) (st
 	t.Helper()
 	srv := dpkmstest.Start(t, storageutil.NewTestDriver(t), opts...)
 	db := setupTestDB(t)
-	appendDpkmsConfig(t, db, "server:\n  url: "+srv.URL+"\n")
+	appendDpkmsConfig(t, db, "server:\n  urls:\n    - "+srv.URL+"\n")
 	args := append([]string{"--config", db.ConfigPath, "pipeline", "list"}, extra...)
 	stdout, stderr, err := executeSplit(args...)
 	if err != nil {

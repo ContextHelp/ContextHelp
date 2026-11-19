@@ -21,7 +21,7 @@ Send the tabs open in one browser profile to ctxt with one command, without a br
 
 ## Prerequisites
 
-1. A dpkms instance your client resolves (`--instance`, `ctxt instance use`, else the first `server.urls` entry or `server.url`). Tabs go to that instance, with its token, exactly as `ctxt analyze` routes; other `server.urls` entries are never tried, and nothing is queued on this machine. If it doesn't answer, the command stops with exit status `70`; if it rejects the token, with `5`.
+1. A dpkms instance your client resolves (`--instance`, `ctxt instance use`, else the first `server.urls` entry). Tabs go to that instance, with its token, exactly as `ctxt analyze` routes; other `server.urls` entries are never tried, and nothing is queued on this machine. If it doesn't answer, the command stops with exit status `70`; if it rejects the token, with `5`.
 2. You have used the browser profile at least once, so it has a session on disk. The browser does not need to be running.
 
 ## Procedure

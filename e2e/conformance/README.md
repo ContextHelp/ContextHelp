@@ -42,7 +42,7 @@ reach a committed capture.
 ctxt commands run over the dpkms API, and with nothing configured ctxt
 targets the built-in default endpoint (`127.0.0.1:8080`) — where a
 developer's real instance may be listening. `12fcc-record.sh` never
-lets a scenario reach it. Before recording, it writes `server.url`
+lets a scenario reach it. Before recording, it writes `server.urls`
 into the scenario's own user config
 (`$XDG_CONFIG_HOME/contexthelp/ctxt.yaml`) and checks, through `ctxt
 config show`, that ctxt resolves exactly that URL; on a mismatch it
@@ -82,11 +82,11 @@ and free of host-specific temp paths. Overriding it with
 
 The dpkms scenarios probe the substrate stopped: no scenario starts a
 daemon (`dpkms serve` needs `DPKMS_BUS_TOKEN`, which the scrub
-removes). The client commands still dial `server.url`, though —
+removes). The client commands still dial `server.urls`, though —
 `daemon-unreachable` runs `dpkms healthcheck` — and with nothing
 configured that is the default endpoint (`127.0.0.1:8080`), where a
 developer's real instance may answer. `12fcc-record-dpkms.sh` writes
-`server.url: http://127.0.0.1:1` (a port nothing listens on, the Go
+`server.urls: [http://127.0.0.1:1]` (a port nothing listens on, the Go
 test guard's closed endpoint) into every scenario's own user config
 (`$XDG_CONFIG_HOME/contexthelp/dpkms.yaml`). Before recording it
 checks that `dpkms config path` reports exactly that file and that a

@@ -357,6 +357,10 @@ func runConfigValidate(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	if msg := cfg.Server.LegacyURLWarning(); msg != "" {
+		fmt.Fprintf(out, "  ! server.url: %s\n", msg)
+	}
+
 	var secrets []config.SecretWarning
 	if checkSecrets, _ := cmd.Flags().GetBool("check-secrets"); checkSecrets {
 		secrets = config.ScanSecrets(cfg)

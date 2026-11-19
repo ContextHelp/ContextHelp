@@ -25,7 +25,7 @@ ctxt owns the user-facing workflow and anything that needs the local machine:
 - **Local capture**: clipboard and directory watchers (`ctxt watch`), browser tabs and history (`ctxt capture tabs|history`, `ctxt capture schedule install`). These read local state, filter it with `capture.url_filter`, and send it to dpkms. See [ambient.md](ambient.md).
 - **Reading and composing**: `ctxt find`, `list`, `show`, `stats`, `log`, `page`, `entity`; `ctxt compose brief|plan|summary|draft` renders compositions locally from objects read over the API.
 - **Focus profiles** (`ctxt profile`), hints and mentions attached at capture time.
-- **Instance selection**: `ctxt instance use|list|current`, `server.url` / `server.urls` and the token ctxt sends.
+- **Instance selection**: `ctxt instance use|list|current`, `server.urls` and the token ctxt sends.
 - **Interfaces**: `ctxt tui`, `ctxt shell`, `ctxt ui open` (signs the browser into the dpkms web UI).
 
 Every ctxt command talks to exactly one dpkms instance and never falls back to another; nothing is queued locally when it is unreachable.

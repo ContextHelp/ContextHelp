@@ -203,11 +203,17 @@ Commands that talk to dpkms pick one endpoint, first match wins:
 3. `CTXT_INSTANCE`
 4. the selection saved by `ctxt instance use`
 5. first entry of `server.urls`
-6. `server.url`
-7. `http://127.0.0.1:8080`
+6. `http://127.0.0.1:8080`
+
+`server.urls` is the only endpoint key. The closest config layer that
+sets it replaces the list whole (kit's per-leaf layering), and
+`server.token` layers like any scalar. `server.url` is a deprecated
+shorthand for a one-entry `server.urls`: it warns on stderr once per
+invocation, `ctxt config validate` flags it, and setting both keys, even in
+different layers, fails the load.
 
 `dpkms` client commands take `--server-url`, which overrides
-`server.url` and `server.urls`.
+`server.urls`.
 
 ### Global flags
 

@@ -75,14 +75,14 @@ func newOwnLayerEnv(t *testing.T, viaOverlay bool) *ownLayerEnv {
 	}
 
 	fixture := strings.ReplaceAll(ownLayerFixture, "{DB}", e.db)
-	userBody := "# user layer\nserver:\n  url: http://127.0.0.1:1\n"
+	userBody := "# user layer\nserver:\n  urls:\n    - http://127.0.0.1:1\n"
 	if viaOverlay {
 		e.overlay = filepath.Join(home, "overlay", "ctxt.yaml")
 		e.target = e.overlay
 		writeFile(t, e.overlay, fixture)
 	} else {
 		e.target = e.user
-		userBody = fixture + "server:\n  url: http://127.0.0.1:1\n"
+		userBody = fixture + "server:\n  urls:\n    - http://127.0.0.1:1\n"
 	}
 	writeFile(t, e.user, userBody)
 	writeFile(t, e.project,

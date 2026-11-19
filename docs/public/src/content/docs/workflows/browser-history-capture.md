@@ -50,7 +50,7 @@ Good to know:
 
 - `--browser-profile` takes the name shown in the browser's profile menu (`Work`) or the profile's folder name (`Profile 3`). Don't confuse it with `--profile`, which selects your ctxt focus profile.
 - The browser can stay open. ctxt reads a copy of the browser's history and never changes the browser's own files.
-- Visits go to the one dpkms instance ctxt resolves (`--instance`, `ctxt instance use`, else the first `server.urls` entry or `server.url`), with its token, the same way `ctxt analyze` routes. Other `server.urls` entries are never tried, and nothing is queued on this machine. If that instance doesn't answer, the run stops with exit status 70; if it rejects the token, with 5. Either way the position stays where it was.
+- Visits go to the one dpkms instance ctxt resolves (`--instance`, `ctxt instance use`, else the first `server.urls` entry), with its token, the same way `ctxt analyze` routes. Other `server.urls` entries are never tried, and nothing is queued on this machine. If that instance doesn't answer, the run stops with exit status 70; if it rejects the token, with 5. Either way the position stays where it was.
 - The saved position belongs to that instance: `home` in the output above is the `server.urls` entry's name (a URL for an unnamed one). Sending to another instance starts from its own position, so it gets the history the first one already has.
 - The same URL visited several times is sent once per run.
 

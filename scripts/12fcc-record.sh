@@ -286,11 +286,11 @@ EOF
 write_ctxt_config() {
   local proj="$1" url="$2"
   mkdir -p "$proj/xdg/contexthelp"
-  (umask 077 && printf 'server:\n  url: %s\n' "$url" >"$proj/xdg/contexthelp/ctxt.yaml")
+  (umask 077 && printf 'server:\n  urls:\n    - %s\n' "$url" >"$proj/xdg/contexthelp/ctxt.yaml")
 }
 
 # assert_routing fails unless ctxt, run exactly as the scenario's steps
-# are, resolves server.url to $2. Data/state/cache go to a scratch tree
+# are, resolves server.urls[0] to $2. Data/state/cache go to a scratch tree
 # so the check leaves no trace in the scenario's own dirs.
 assert_routing() {
   local proj="$1" want="$2" pre="$1.preflight" got
@@ -299,10 +299,10 @@ assert_routing() {
     XDG_CONFIG_HOME="$proj/xdg" XDG_DATA_HOME="$pre/data" \
     XDG_STATE_HOME="$pre/state" XDG_CACHE_HOME="$pre/cache" \
     "$BIN" config show --format json --no-hints 2>/dev/null |
-    python3 -c 'import json,sys; d=json.load(sys.stdin); s=d.get("server") or d.get("Server") or {}; print(s.get("url") or s.get("URL") or "")')"
+    python3 -c 'import json,sys; d=json.load(sys.stdin); s=d.get("server") or d.get("Server") or {}; u=s.get("urls") or s.get("URLs") or []; e=u[0] if u else {}; print(e if isinstance(e,str) else (e.get("url") or e.get("URL") or ""))')"
   rm -rf "$pre"
   if [ "$got" != "$want" ]; then
-    echo "ERROR: ctxt resolves server.url to '${got:-<unset>}', want '$want'; refusing to record" >&2
+    echo "ERROR: ctxt resolves server.urls[0] to '${got:-<unset>}', want '$want'; refusing to record" >&2
     return 1
   fi
 }

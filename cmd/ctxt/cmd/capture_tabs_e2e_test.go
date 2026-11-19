@@ -124,7 +124,7 @@ func newTabsEnv(t *testing.T, extraCfg string, profiles ...chromiumtest.Profile)
 	t.Cleanup(e.srv.Close)
 
 	e.cfgPath = filepath.Join(e.home, "ctxt.yaml")
-	cfg := fmt.Sprintf("server:\n  url: %s\n  token: %s\n%s", e.srv.URL, tabsTestToken, extraCfg)
+	cfg := fmt.Sprintf("server:\n  urls:\n    - %s\n  token: %s\n%s", e.srv.URL, tabsTestToken, extraCfg)
 	if err := os.WriteFile(e.cfgPath, []byte(cfg), 0o600); err != nil {
 		t.Fatal(err)
 	}

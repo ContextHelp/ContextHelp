@@ -69,13 +69,15 @@ func TestServerTokenDefault(t *testing.T) {
 	assert.Equal(t, "tok-default", cfg.Server.Token)
 }
 
-// TestServerURLSingle: the single-instance server.url form parses too.
+// TestServerURLSingle: the deprecated single-instance server.url form
+// still loads, as a one-entry server.urls.
 func TestServerURLSingle(t *testing.T) {
 	cfg, err := loadFromYAML(t, `server:
   url: http://127.0.0.1:9999
 `)
 	require.NoError(t, err)
-	assert.Equal(t, "http://127.0.0.1:9999", cfg.Server.URL)
+	require.Len(t, cfg.Server.URLs, 1)
+	assert.Equal(t, "http://127.0.0.1:9999", cfg.Server.URLs[0].URL)
 }
 
 // TestServerURLsMalformedEntryRejected: a bad entry must fail the load

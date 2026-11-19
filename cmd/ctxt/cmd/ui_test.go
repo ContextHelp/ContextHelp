@@ -102,7 +102,7 @@ func swapUISeams(t *testing.T, op launch.Opener, terminal func(io.Writer) bool) 
 func uiConfigured(t *testing.T, serverURL, token string) *testDB {
 	t.Helper()
 	db := setupTestDB(t)
-	cfg := "server:\n  url: " + serverURL + "\n"
+	cfg := "server:\n  urls:\n    - " + serverURL + "\n"
 	if token != "" {
 		cfg += "  token: " + token + "\n"
 	}

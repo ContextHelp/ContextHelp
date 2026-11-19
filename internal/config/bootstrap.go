@@ -3,6 +3,8 @@ package config
 import (
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"strings"
 )
 
@@ -53,10 +55,30 @@ func Bootstrap(binName string, paths []string, overrides map[string]any, parseEr
 		return nil, "", fmt.Errorf("%w: %w", ErrConfigLoadFailed, err)
 	}
 
+	warnLegacyURL(cfg)
+
 	if len(paths) > 0 {
 		effectivePath = paths[len(paths)-1]
 	}
 	return cfg, effectivePath, nil
+}
+
+// DeprecationWriter receives load-time deprecation warnings. Tests swap
+// it; Quiet silences it (the --quiet flag).
+var (
+	DeprecationWriter io.Writer = os.Stderr
+	Quiet             bool
+)
+
+// warnLegacyURL warns once per Bootstrap (one per invocation) when the
+// config used the deprecated server.url.
+func warnLegacyURL(cfg *Config) {
+	if Quiet || DeprecationWriter == nil {
+		return
+	}
+	if msg := cfg.Server.LegacyURLWarning(); msg != "" {
+		fmt.Fprintf(DeprecationWriter, "warning: %s\n", msg)
+	}
 }
 
 // WithOverride returns a copy of overrides (kit's nested -c key=value

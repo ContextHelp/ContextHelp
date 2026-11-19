@@ -452,15 +452,44 @@ func isHTTPURL(raw string) bool {
 	return err == nil && (u.Scheme == "http" || u.Scheme == "https")
 }
 
+// foldLegacyURL turns the deprecated server.url into a one-entry
+// server.urls. Both keys set is an error whichever layers set them: the
+// merge cannot say which one the user meant, so resolving either would
+// silently misroute (a project's server.url lost to a user's server.urls).
+func (s *ServerConfig) foldLegacyURL() error {
+	if s.URL == "" {
+		return nil
+	}
+	if len(s.URLs) > 0 {
+		return fmt.Errorf("config: server.url and server.urls are both set; server.urls is the endpoint key: "+
+			"move server.url (%s) into server.urls, e.g. `urls: [%s]`, and drop server.url", s.URL, s.URL)
+	}
+	if err := validateEndpointURL(s.URL); err != nil {
+		return fmt.Errorf("config: server.url: %w", err)
+	}
+	s.URLs = []ServerEndpoint{{URL: s.URL}}
+	s.legacyURL, s.URL = s.URL, ""
+	return nil
+}
+
+// LegacyURL is the deprecated server.url value Load folded into URLs, or
+// "" when the config did not use it.
+func (s ServerConfig) LegacyURL() string { return s.legacyURL }
+
+// LegacyURLWarning is the deprecation message for a folded server.url,
+// or "" when there is none.
+func (s ServerConfig) LegacyURLWarning() string {
+	if s.legacyURL == "" {
+		return ""
+	}
+	return "server.url is deprecated: use server.urls (a one-entry list is the same endpoint); " +
+		"server.url will stop loading in a later release"
+}
+
 // validateServerEndpoints checks the client-routing endpoints. Runs at load
 // (not just on `config validate`): a malformed URL must fail loudly, never
 // degrade into a silently unreachable instance.
 func (c *Config) validateServerEndpoints() error {
-	if c.Server.URL != "" {
-		if err := validateEndpointURL(c.Server.URL); err != nil {
-			return fmt.Errorf("config: server.url: %w", err)
-		}
-	}
 	seen := make(map[string]int, len(c.Server.URLs))
 	for i, ep := range c.Server.URLs {
 		if err := validateEndpointURL(ep.URL); err != nil {

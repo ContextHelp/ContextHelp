@@ -477,6 +477,7 @@ func initConfig() {
 	// Empty when no -c <path> was supplied; callers fall back to
 	// config.GetConfigPath in that case.
 	var err error
+	config.Quiet = viper.GetBool("quiet")
 	cfg, cfgFile, err = config.Bootstrap(binName, paths, overrides, parseErr)
 	if err != nil {
 		initConfigErr = err

@@ -71,7 +71,7 @@ gitleaks dir ~/.config/contexthelp/ --verbose --redact
 `ctxt config show` prints a redacted copy of the effective config, in the
 default view and every `--format` (`json`, `yaml`, ...). The secret-scan
 hints of `config validate` and `config doctor`, and the URL quoted in a
-`server.url` / `server.urls` load error, use the same masks:
+`server.urls` load error, use the same masks:
 
 | Value | Shown as |
 |---|---|

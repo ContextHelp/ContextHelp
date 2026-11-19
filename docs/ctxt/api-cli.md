@@ -87,7 +87,7 @@ List commands (`list`, `feed list`, `entity list`, `registry list`, `audit list`
 
 ### Selecting the dpkms server
 
-`--server <url>` is a global flag: it goes before or after the subcommand, and every command accepts it. It picks the dpkms endpoint for this run and wins over `--instance`, `CTXT_INSTANCE`, the current instance, `server.urls` and `server.url`. Commands that change the local store refuse it with exit 2: `upgrade plan`, `upgrade run`, `registry add|delete|sync|approve|reject`, `remind set|clear`, `resurface refresh|dismiss`, `embeddings register|set-default|deprecate|purge|migrate` and `ingest`. Other commands that never call dpkms ignore it.
+`--server <url>` is a global flag: it goes before or after the subcommand, and every command accepts it. It picks the dpkms endpoint for this run and wins over `--instance`, `CTXT_INSTANCE`, the current instance and `server.urls`. Commands that change the local store refuse it with exit 2: `upgrade plan`, `upgrade run`, `registry add|delete|sync|approve|reject`, `remind set|clear`, `resurface refresh|dismiss`, `embeddings register|set-default|deprecate|purge|migrate` and `ingest`. Other commands that never call dpkms ignore it.
 
 ### Offline mode
 
@@ -744,8 +744,13 @@ Every command that talks to dpkms over its API (`status`, `log`,
 2. `--instance` flag, else `CTXT_INSTANCE`
 3. The current instance set by `ctxt instance use`
 4. The first `server.urls` entry
-5. `server.url`
-6. `http://127.0.0.1:8080`
+5. `http://127.0.0.1:8080`
+
+The closest config layer that sets `server.urls` replaces the list whole;
+`server.token` layers like any scalar. `server.url` is a deprecated
+shorthand for a one-entry `server.urls` (warns once per invocation,
+flagged by `ctxt config validate`); setting both keys, even in different
+layers, fails the load.
 
 Steps 2 and 3 take a `server.urls` name first, then a running local
 instance by name or port (as `http://127.0.0.1:<port>`, with the token of

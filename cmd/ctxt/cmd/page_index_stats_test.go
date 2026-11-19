@@ -329,7 +329,7 @@ func TestStatsErrors(t *testing.T) {
 func TestPageIndexStatsServerFlag(t *testing.T) {
 	db := setupTestDB(t)
 	seedPagesIndexStats(t, db)
-	if err := os.WriteFile(db.ClientConfigPath, []byte("server:\n  url: "+testguard.ClosedServerURL+"\n"), 0o600); err != nil {
+	if err := os.WriteFile(db.ClientConfigPath, []byte("server:\n  urls:\n    - "+testguard.ClosedServerURL+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	for _, args := range [][]string{{"page", "show", "person.alice"}, {"page", "list"}, {"page", "refresh", "person.alice"}, {"index", "--refresh"}, {"stats"}} {

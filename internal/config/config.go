@@ -728,17 +728,20 @@ type ServerConfig struct {
 	// UI configures the web UI served at /ui on non-private instances.
 	UI ServerUIConfig `mapstructure:"ui" yaml:"ui,omitempty"`
 
-	// URL is the single dpkms instance clients route to when URLs is
-	// empty (also settable per command with --server where the flag
-	// exists). Validated at load: scheme http/https + host required.
+	// URL is the DEPRECATED shorthand for a one-entry URLs list. Load
+	// folds it into URLs ([{url: <it>}]) and clears it, so after Load it
+	// is always empty; LegacyURL reports what was folded. Setting both
+	// URL and URLs fails the load. Validated at load: scheme http/https
+	// + host required.
 	URL string `mapstructure:"url" yaml:"url,omitempty" secret:"dsn"`
-	// URLs lists the dpkms instances this client knows. Without a
-	// selection (--server, --instance, CTXT_INSTANCE, `ctxt instance
-	// use`) clients talk to the first entry and never to the others:
-	// those are reachable only by name or --server. Takes precedence
-	// over URL. Each entry is a bare URL string or a {name, url, token}
-	// mapping (see ServerEndpoint). Validated at load: a malformed
-	// entry or name fails the load.
+	// URLs is the one client-endpoint key: the dpkms instances this
+	// client knows. Without a selection (--server, --instance,
+	// CTXT_INSTANCE, `ctxt instance use`) clients talk to the first
+	// entry and never to the others: those are reachable only by name
+	// or --server. Layers replace the list whole: the closest layer
+	// that sets it wins. Each entry is a bare URL string or a
+	// {name, url, token} mapping (see ServerEndpoint). Validated at
+	// load: a malformed entry or name fails the load.
 	URLs []ServerEndpoint `mapstructure:"urls" yaml:"urls,omitempty"`
 	// Token is the default bearer token clients attach to requests
 	// against instances whose URLs entry carries no token of its own.
@@ -748,6 +751,10 @@ type ServerConfig struct {
 	// portsSet records which listener ports a layer above the built-in
 	// defaults set; filled by Load.
 	portsSet struct{ http, grpc, cookieBridge bool }
+
+	// legacyURL is the deprecated server.url value Load folded into
+	// URLs; empty when none was set.
+	legacyURL string
 }
 
 // PortSet reports whether Port was set by a config file, -c override or
@@ -1308,10 +1315,15 @@ func LoadWithOverrides(bin, cfgFile string, extraPaths []string, overrides map[s
 		return nil, err
 	}
 
+	// server.url is a deprecated one-entry server.urls: fold it in, or
+	// fail when both are set (the silent-misroute case).
+	if err := cfg.Server.foldLegacyURL(); err != nil {
+		return nil, err
+	}
 	// Reject malformed client-routing endpoints loudly at load time — a
-	// bad server.url/server.urls entry would otherwise probe as a
-	// permanently "down" instance and silently shift traffic to the next
-	// instance or the local fallback.
+	// bad server.urls entry would otherwise probe as a permanently
+	// "down" instance and silently shift traffic to the next instance or
+	// the local fallback.
 	if err := cfg.validateServerEndpoints(); err != nil {
 		return nil, err
 	}

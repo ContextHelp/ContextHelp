@@ -26,7 +26,6 @@ const (
 	LayerInstanceEnv  Layer = "CTXT_INSTANCE"
 	LayerCurrent      Layer = "current-instance"
 	LayerURLs         Layer = "server.urls"
-	LayerURL          Layer = "server.url"
 	LayerDefault      Layer = "default"
 )
 
@@ -62,8 +61,9 @@ type Resolved struct {
 
 // Resolve picks exactly one endpoint for sel, in ADR-077 §3 order:
 // --server, then --instance or CTXT_INSTANCE, then the current-instance
-// state, then the first server.urls entry, then server.url, then
-// DefaultURL.
+// state, then the first server.urls entry, then
+// DefaultURL. The deprecated server.url never reaches here: Load folds
+// it into server.urls.
 //
 // A name resolves to the server.urls entry with that name, else to a
 // running local instance (from locals) by pidfile name or port, as
@@ -89,8 +89,6 @@ func Resolve(sc config.ServerConfig, sel Selection, locals func() ([]pidfile.Inf
 		return byName(sc, sel.Current, LayerCurrent, locals)
 	case len(sc.URLs) > 0:
 		return entry(sc, sc.URLs[0], LayerURLs), nil
-	case sc.URL != "":
-		return atURL(sc, sc.URL, LayerURL), nil
 	default:
 		return atURL(sc, DefaultURL, LayerDefault), nil
 	}

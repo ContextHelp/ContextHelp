@@ -104,7 +104,7 @@ func closedServerURL(t *testing.T) string {
 // to the configured server.url and authenticates with server.token.
 func TestCaptureRoutesToConfiguredServerURL(t *testing.T) {
 	inst := startEndpointRecorder(t, "tok-url")
-	cfgPath := writeCaptureConfig(t, "server:\n  url: "+inst.URL()+"\n  token: tok-url\n")
+	cfgPath := writeCaptureConfig(t, "server:\n  urls:\n    - "+inst.URL()+"\n  token: tok-url\n")
 
 	out, err := executeCommand("capture", "routed content", "-c", cfgPath)
 	if err != nil {

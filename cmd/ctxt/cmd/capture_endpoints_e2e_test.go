@@ -68,14 +68,16 @@ func TestE2ECaptureBinaryUnconfiguredStaysOffDefault(t *testing.T) {
 	if exit != 0 {
 		t.Fatalf("config show: exit = %d; stderr=%q", exit, stderr)
 	}
-	var shown struct{ Server struct{ URL string } }
+	var shown struct {
+		Server struct{ URLs []struct{ URL string } }
+	}
 	if err := json.Unmarshal([]byte(stdout), &shown); err != nil {
 		t.Fatalf("config show json: %v\n%s", err, stdout)
 	}
 	// Interlock: never run the capture below unless routing is proven to
 	// be the closed port — otherwise it would post to the real default.
-	if shown.Server.URL != testguard.ClosedServerURL {
-		t.Fatalf("unconfigured binary resolves server.url %q; want %s", shown.Server.URL, testguard.ClosedServerURL)
+	if len(shown.Server.URLs) != 1 || shown.Server.URLs[0].URL != testguard.ClosedServerURL {
+		t.Fatalf("unconfigured binary resolves server.urls %+v; want [%s]", shown.Server.URLs, testguard.ClosedServerURL)
 	}
 
 	// The capture itself must target the closed port: connection refused,

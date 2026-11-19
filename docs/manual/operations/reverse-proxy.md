@@ -318,8 +318,8 @@ client address.
 
 The proxy's sign-in step stands between the ctxt CLI and dpkms. Point
 the CLI at dpkms directly (over a VPN, a tailnet or an SSH tunnel) with
-its own key in `server.url` and `server.token`, or in a `server.urls`
-entry. Create each machine its own key with `ctxt auth key create` (over the
+its own key in `server.urls` and `server.token`, or in a `server.urls`
+entry of its own. Create each machine its own key with `ctxt auth key create` (over the
 API) or, on the host with dpkms stopped, `dpkms auth key create
 --maintenance-override`, so you can revoke one without the others.
 

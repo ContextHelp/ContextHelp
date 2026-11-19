@@ -75,7 +75,7 @@ func assertModelBInProgress(t *testing.T, out string) {
 func TestUpgradeStatus_UsesConfiguredServerURL(t *testing.T) {
 	srv := newRecordedServer(t, inProgressHealthz(t))
 	db := setupTestDB(t)
-	appendConfig(t, db, "server:\n  url: "+srv.URL+"\n  token: tok-cfg\n")
+	appendConfig(t, db, "server:\n  urls:\n    - "+srv.URL+"\n  token: tok-cfg\n")
 
 	out, err := db.exec("upgrade", "status", "--format", "json")
 	if err != nil {
@@ -91,9 +91,9 @@ func TestUpgradeStatus_UsesConfiguredServerURL(t *testing.T) {
 func TestUpgradeStatus_ConfigOverlaySelectsServer(t *testing.T) {
 	srv := newRecordedServer(t, inProgressHealthz(t))
 	db := setupTestDB(t)
-	appendConfig(t, db, "server:\n  url: http://127.0.0.1:1\n")
+	appendConfig(t, db, "server:\n  urls:\n    - http://127.0.0.1:1\n")
 
-	out, err := db.exec("-c", "server.url="+srv.URL, "upgrade", "status", "--format", "json")
+	out, err := db.exec("-c", "server.urls=["+srv.URL+"]", "upgrade", "status", "--format", "json")
 	if err != nil {
 		t.Fatalf("upgrade status: %v\n%s", err, out)
 	}
@@ -105,7 +105,7 @@ func TestUpgradeStatus_ServerFlagOverridesConfig(t *testing.T) {
 	configured := newRecordedServer(t, inProgressHealthz(t))
 	pinned := newRecordedServer(t, inProgressHealthz(t))
 	db := setupTestDB(t)
-	appendConfig(t, db, "server:\n  url: "+configured.URL+"\n")
+	appendConfig(t, db, "server:\n  urls:\n    - "+configured.URL+"\n")
 
 	out, err := db.exec("upgrade", "status", "--server", pinned.URL, "--format", "json")
 	if err != nil {
