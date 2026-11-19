@@ -72,7 +72,7 @@ func TestAccessProvisioningRoutes(t *testing.T) {
 	driver := storageutil.NewTestDriver(t)
 	peer, err := bosaccess.Open(bosaccess.DeclaredProfile("test"), &bosaccess.MemStore{}, nil)
 	require.NoError(t, err)
-	srv := dpkmstest.Start(t, driver, dpkmstest.WithKeys(), dpkmstest.WithAuthority(peer))
+	srv := dpkmstest.Start(t, driver, dpkmstest.WithKeys(), dpkmstest.WithAuthority(peer), dpkmstest.WithAuthorityBinding("prn_bos", accScope))
 
 	ctx := context.Background()
 	require.NoError(t, driver.Auth().Principals().Create(ctx, &storage.Principal{
@@ -135,4 +135,61 @@ func TestAccessProvisioningRoutes(t *testing.T) {
 	entries, _, err := driver.AuditLog().List(ctx, storage.AuditFilter{EventTypes: []string{"access.applied", "access.refused"}})
 	require.NoError(t, err)
 	assert.GreaterOrEqual(t, len(entries), 6)
+}
+
+// Provisioning is bound to the one configured principal and scope: another
+// peer principal is refused, another scope is unknown, and an instance that
+// configures neither refuses everyone, however first they come.
+func TestAccessProvisioningIsBoundToTheConfiguredAuthority(t *testing.T) {
+	ctx := context.Background()
+	path := "/bos/v1/access/" + accBusiness
+	setup := func(t *testing.T, opts ...dpkmstest.Option) (*dpkmstest.Server, storage.StorageDriver, map[string]string, *bosaccess.Peer) {
+		driver := storageutil.NewTestDriver(t)
+		peer, err := bosaccess.Open(bosaccess.DeclaredProfile("test"), &bosaccess.MemStore{}, nil)
+		require.NoError(t, err)
+		srv := dpkmstest.Start(t, driver, append([]dpkmstest.Option{dpkmstest.WithKeys(), dpkmstest.WithAuthority(peer)}, opts...)...)
+		keys := map[string]string{}
+		for _, id := range []string{"prn_bos", "prn_other_peer"} {
+			require.NoError(t, driver.Auth().Principals().Create(ctx, &storage.Principal{
+				ID: id, Kind: storage.PrincipalKindPeer, DisplayName: id, Roles: []string{authn.RoleWriter}}))
+			secret, _, err := authn.NewKeysOver(driver.Auth(), nil).Mint(ctx, authn.MintKey{PrincipalID: id, Name: id})
+			require.NoError(t, err)
+			keys[id] = secret
+		}
+		return srv, driver, keys, peer
+	}
+
+	t.Run("another peer principal is forbidden and claims nothing", func(t *testing.T) {
+		srv, _, keys, peer := setup(t, dpkmstest.WithAuthorityBinding("prn_bos", accScope))
+		code, body := send(t, srv, keys["prn_other_peer"], http.MethodPut, path, accessSet(1, bosaccess.ModeFull, 0))
+		assert.Equal(t, http.StatusForbidden, code, string(body))
+		assert.Empty(t, peer.Scope(), "a refused caller must not bind the scope")
+		code, _ = send(t, srv, keys["prn_bos"], http.MethodPut, path, accessSet(1, bosaccess.ModeFull, 0))
+		assert.Equal(t, http.StatusOK, code)
+	})
+	t.Run("another scope is unknown, by path and by set", func(t *testing.T) {
+		srv, _, keys, peer := setup(t, dpkmstest.WithAuthorityBinding("prn_bos", accScope))
+		other := "bos://core.business_scopes/business_scopes_00000000000000000000000009"
+		code, body := send(t, srv, keys["prn_bos"], http.MethodPut, "/bos/v1/access/business_scopes_00000000000000000000000009", accessSet(1, bosaccess.ModeFull, 0))
+		assert.Equal(t, http.StatusNotFound, code, string(body))
+		// a set for another scope sent to the configured path
+		s := accessSet(1, bosaccess.ModeFull, 0)
+		s.Scope = other
+		s.Scopes = []bosaccess.Scope{{ID: other}}
+		s.RecordAccess[0].Scope = other
+		s.Digest = bosaccess.ContentDigest(s)
+		code, body = send(t, srv, keys["prn_bos"], http.MethodPut, path, s)
+		assert.Equal(t, http.StatusNotFound, code, string(body))
+		assert.Empty(t, peer.Scope())
+	})
+	t.Run("unconfigured refuses everyone", func(t *testing.T) {
+		srv, _, keys, peer := setup(t)
+		for _, id := range []string{"prn_bos", "prn_other_peer"} {
+			code, body := send(t, srv, keys[id], http.MethodPut, path, accessSet(1, bosaccess.ModeFull, 0))
+			assert.Equal(t, http.StatusForbidden, code, string(body))
+		}
+		code, _ := send(t, srv, keys["prn_bos"], http.MethodGet, path+"/state", nil)
+		assert.Equal(t, http.StatusForbidden, code)
+		assert.Empty(t, peer.Scope())
+	})
 }

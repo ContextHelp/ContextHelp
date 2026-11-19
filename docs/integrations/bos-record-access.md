@@ -18,16 +18,19 @@ Code: `internal/bosaccess` (peer side of the contract),
 sharing:
   authority:
     enabled: true
+    principal: prn_...          # the peer principal the authority provisions as (required)
+    scope: bos://core.business_scopes/...   # the one scope it provisions (required)
     feed:                       # optional: without it record-level reads stay denied
       url: https://bos.example
       peer: ctxt
-      scope: <business scope id>
       interval: 1m
 ```
 
-The feed's bearer credential is the secret `bos/feed-token`. The authority
-pushes to the routes below with the API key of a principal of kind `peer`
-(a private instance accepts its owner).
+The feed's bearer credential is the secret `bos/feed-token`; the feed reads
+the business scope named by `scope`. Provisioning is bound to one
+principal and one scope: only `principal` (kind `peer`) may push, only for
+`scope` (compared as the full address). With either unset every call is
+refused, so nobody claims a scope by pushing first.
 
 ## Routes
 
@@ -90,5 +93,12 @@ expired cursor starts over from the oldest retained event.
 
 `bosingest.Sink` stores a record as an object of source `bos` keyed by its
 address and retracts it on `deleted`, `erased` or when the reading principal
-can no longer read it. It needs a `ContentReader` (the authority's read
-operation); without one the feed feeds access only.
+can no longer read it. Content comes from the authority's served read
+commands over REST (`bosingest.RESTReader`):
+`POST /v1/commands/<path>` with `{"args": [<record id>]}` and ctxt's bearer
+credential (the feed token), so the authority's access decision applies. A
+403 or 404 means do not store, and retract what is held. Default commands:
+`core.parties` (`party get`), `core.documents` (`document get`),
+`billing.documents` (`billing get`), `contracts.contracts` (`contract show`);
+a record of another type is left alone. The text of a record is the fields
+the command returns; `document get` returns metadata, not the file's text.

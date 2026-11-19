@@ -53,7 +53,10 @@ func (s *Sink) Apply(ctx context.Context, ev bosaccess.Event) error {
 	case "deleted", "erased":
 		return s.retract(ctx, ev.Subject)
 	}
-	rec, err := s.Reader.Read(ctx, ev.Subject, 0)
+	rec, err := s.Reader.Read(ctx, ev.Subject, ev.Data.Revision)
+	if errors.Is(err, ErrUnmapped) {
+		return nil
+	}
 	if errors.Is(err, ErrNoAccess) {
 		return s.retract(ctx, ev.Subject)
 	}
