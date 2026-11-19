@@ -73,8 +73,8 @@ func runEndpointSuite(t *testing.T, typ string, newStore func(t *testing.T, name
 				t.Errorf("private instance hid %s: no gate applies without inbound auth", hiddenEntity)
 			}
 		})
-		t.Run("ProfileScopesObjects", func(t *testing.T) { testProfileScope(t, private.url, hybrid) })
-		t.Run("FindProfileScopesObjects", func(t *testing.T) { testFindProfileScope(t, private.url, hybrid) })
+		t.Run("ProfileIsALens", func(t *testing.T) { testProfileLens(t, private.url, hybrid) })
+		t.Run("FindProfileIsALens", func(t *testing.T) { testFindProfileLens(t, private.url, hybrid) })
 		t.Run("HybridSimilar", func(t *testing.T) { testHybridSimilar(t, private.url, hybrid) })
 		t.Run("ProviderDownFallsBackToFTS", func(t *testing.T) { testProviderDown(t, private.url, hybrid, prov) })
 		t.Run("Caps", func(t *testing.T) { testCaps(t, private.url, hybrid) })
@@ -262,42 +262,31 @@ func withoutGeneratedAt(doc jgf) jgf {
 
 // --- private instance ---------------------------------------------------
 
-// profile= scopes the objects to that profile's (global objects
-// included only when unscoped), and the entities to what those objects
-// mention.
-func testProfileScope(t *testing.T, base string, st *graphStore) {
-	for _, tc := range []struct {
-		profile  string
-		objects  []string
-		mentions int // vault/codename's mention_count; 0 = no node
-	}{
-		{"ops", []string{"capacity", "postmortem", "rollback", "runbook"}, 3},
-		{"fin", []string{"forecast"}, 1},
-		{"", []string{"capacity", "forecast", "glossary", "postmortem", "rollback", "runbook"}, 4},
-		{"nobody", nil, 0},
-	} {
-		t.Run("profile="+tc.profile, func(t *testing.T) {
+// profile= is a lens, not a filter: whatever profile is named (its own,
+// another, none, or one that owns nothing), the graph holds every
+// object the viewer may see, and the entities everything they mention.
+func testProfileLens(t *testing.T, base string, st *graphStore) {
+	all := []string{"capacity", "forecast", "glossary", "postmortem", "rollback", "runbook"}
+	for _, profile := range []string{"ops", "fin", "", "nobody"} {
+		t.Run("profile="+profile, func(t *testing.T) {
 			params := url.Values{"q": {"deployment"}}
-			if tc.profile != "" {
-				params.Set("profile", tc.profile)
+			if profile != "" {
+				params.Set("profile", profile)
 			}
 			doc, _ := endpointDoc(t, base, st, params, nil)
-			if got := objectAliases(doc); !slices.Equal(got, tc.objects) {
-				t.Errorf("objects = %v, want %v", got, tc.objects)
+			if got := objectAliases(doc); !slices.Equal(got, all) {
+				t.Errorf("objects = %v, want %v", got, all)
 			}
-			if got := entityNodes(doc)[hiddenEntity]; got != tc.mentions {
-				t.Errorf("%s mention_count = %d, want %d", hiddenEntity, got, tc.mentions)
-			}
-			if tc.profile == "fin" && len(coMentionWeights(doc)) != 0 {
-				t.Errorf("co_mention edges with one object: %v", coMentionWeights(doc))
+			if got := entityNodes(doc)[hiddenEntity]; got != 4 {
+				t.Errorf("%s mention_count = %d, want 4", hiddenEntity, got)
 			}
 		})
 	}
 }
 
-// POST /api/v1/find with a profile answers that profile's objects only,
-// in every mode, from the same store and semantic leg as the graph.
-func testFindProfileScope(t *testing.T, base string, st *graphStore) {
+// POST /api/v1/find with a profile answers every object the viewer may
+// see, in every mode, from the same store and semantic leg as the graph.
+func testFindProfileLens(t *testing.T, base string, st *graphStore) {
 	find := func(t *testing.T, body string) []string {
 		t.Helper()
 		res, err := http.Post(base+"/api/v1/find", "application/json", strings.NewReader(body))
@@ -335,25 +324,19 @@ func testFindProfileScope(t *testing.T, base string, st *graphStore) {
 		slices.Sort(ids)
 		return ids
 	}
-	ops := []string{"capacity", "postmortem", "rollback", "runbook"}
 	for _, mode := range []string{"hybrid", "vector", "fts"} {
 		t.Run(mode, func(t *testing.T) {
-			got := find(t, `{"query":"deployment","mode":"`+mode+`","limit":50,"profile":"ops"}`)
-			if len(got) == 0 {
-				t.Fatal("profile ops: no results")
+			unscoped := find(t, `{"query":"deployment","mode":"`+mode+`","limit":50}`)
+			if !slices.Contains(unscoped, "forecast") || !slices.Contains(unscoped, "runbook") {
+				t.Fatalf("unscoped: got %v, want every profile's objects", unscoped)
 			}
-			for _, id := range got {
-				if !slices.Contains(ops, id) {
-					t.Errorf("profile ops: %s is not an ops object (got %v)", id, got)
+			for _, profile := range []string{"ops", "nobody"} {
+				got := find(t, `{"query":"deployment","mode":"`+mode+`","limit":50,"profile":"`+profile+`"}`)
+				if !slices.Equal(got, unscoped) {
+					t.Errorf("profile %s: got %v, want the unscoped set %v", profile, got, unscoped)
 				}
 			}
-			if got := find(t, `{"query":"deployment","mode":"`+mode+`","limit":50,"profile":"nobody"}`); len(got) != 0 {
-				t.Errorf("profile nobody: got %v", got)
-			}
 		})
-	}
-	if got := find(t, `{"query":"deployment","limit":50}`); !slices.Contains(got, "forecast") || !slices.Contains(got, "runbook") {
-		t.Errorf("unscoped: got %v, want every profile's objects", got)
 	}
 }
 
@@ -508,18 +491,21 @@ func testCredentialRequired(t *testing.T, base string, st *graphStore) {
 // its share of every co_mention weight gone (and the edge with it when
 // nothing else is shared), one entity fewer in the counts, the other
 // entities' mention counts untouched, and its slug, namespace and title
-// nowhere in the body. Objects are profile-scoped, never entity-gated.
+// nowhere in the body. Objects are never entity-gated.
 func testGate(t *testing.T, base string, st *graphStore) {
-	params := url.Values{"q": {"deployment"}, "profile": {"ops"}}
+	params := url.Values{"q": {"deployment"}}
 	open, _ := endpointDoc(t, base, st, params, bearer(st.openToken))
 	gated, raw := endpointDoc(t, base, st, params, bearer(st.gatedToken))
 
 	// Guard: ungated, the vault entity is there and adds to every pair.
 	openEnts := entityNodes(open)
-	if openEnts[hiddenEntity] != 3 {
-		t.Fatalf("ungated %s mention_count = %d, want 3 (the gate-off baseline)", hiddenEntity, openEnts[hiddenEntity])
+	if openEnts[hiddenEntity] != 4 {
+		t.Fatalf("ungated %s mention_count = %d, want 4 (the gate-off baseline)", hiddenEntity, openEnts[hiddenEntity])
 	}
-	if got, want := coMentionWeights(open), map[string]int{"rollback|runbook": 2, "postmortem|runbook": 2, "postmortem|rollback": 1}; !maps.Equal(got, want) {
+	if got, want := coMentionWeights(open), map[string]int{
+		"rollback|runbook": 2, "postmortem|runbook": 2, "postmortem|rollback": 1,
+		"forecast|postmortem": 1, "forecast|rollback": 1, "forecast|runbook": 1,
+	}; !maps.Equal(got, want) {
 		t.Errorf("ungated co_mention weights = %v, want %v", got, want)
 	}
 
@@ -534,7 +520,7 @@ func testGate(t *testing.T, base string, st *graphStore) {
 			t.Errorf("gated edge touches the hidden entity: %v", edgeKey(e))
 		}
 	}
-	if got, want := relationCount(gated, "mentions"), relationCount(open, "mentions")-3; got != want {
+	if got, want := relationCount(gated, "mentions"), relationCount(open, "mentions")-4; got != want {
 		t.Errorf("gated mentions edges = %d, want %d", got, want)
 	}
 	if got, want := count(gated, "entities"), count(open, "entities")-1; got != want {
@@ -559,7 +545,7 @@ func testGate(t *testing.T, base string, st *graphStore) {
 // token does. A cross-site read with the cookie is refused.
 func testSessionCookie(t *testing.T, e *env, base string, st *graphStore, cfg string) {
 	cookie := exchangeCode(t, base, codeOf(t, e.signInLink(t, cfg, base)))
-	params := url.Values{"q": {"deployment"}, "profile": {"ops"}}
+	params := url.Values{"q": {"deployment"}}
 	viaCookie, _ := endpointDoc(t, base, st, params, sessionCookie(cookie, "same-origin"))
 	viaToken, _ := endpointDoc(t, base, st, params, bearer(st.gatedToken))
 	if hasNode(viaCookie, "ent:"+hiddenEntity) {
