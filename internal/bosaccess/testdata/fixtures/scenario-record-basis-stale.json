@@ -1,0 +1,169 @@
+{
+  "contract": "bos.access/v1",
+  "schema": "access-scenario",
+  "valid": true,
+  "description": "Record-level reads need a feed catch-up newer than the record-basis limit (policy.record_basis_max_staleness_seconds): before the first one, and after the limit, they are denied; a read by a type grant is not affected.",
+  "document": {
+    "requires": [
+      "record_access",
+      "row_relation"
+    ],
+    "steps": [
+      {
+        "at": "2026-11-12T10:00:00Z",
+        "apply": {
+          "contract": "bos.access/v1",
+          "epoch": 1,
+          "mode": "full",
+          "digest": "sha256:691dff870de3b742fdce2d822f1b4fed065e618f22142dba9ce678125cc25a67",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "generated_at": "2026-11-12T10:00:00Z",
+          "feed_seq": 1,
+          "policy": {
+            "max_staleness_seconds": 86400,
+            "reconcile_interval_seconds": 3600,
+            "record_basis_max_staleness_seconds": 3600
+          },
+          "scopes": [
+            {
+              "id": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+              "parent": null
+            },
+            {
+              "id": "bos://core.business_scopes/business_scopes_00000000000000000000000002",
+              "parent": "bos://core.business_scopes/business_scopes_00000000000000000000000001"
+            }
+          ],
+          "principals": [
+            {
+              "id": "bos://core.principals/principals_00000000000000000000000001",
+              "kind": "person",
+              "status": "active"
+            },
+            {
+              "id": "bos://core.principals/principals_00000000000000000000000003",
+              "kind": "person",
+              "status": "active"
+            }
+          ],
+          "audiences": [],
+          "restricted_types": [
+            "core.peers",
+            "core.record_sensitivities"
+          ],
+          "grants": [
+            {
+              "id": "access_grants_00000000000000000000000001",
+              "subject": "bos://core.principals/principals_00000000000000000000000003",
+              "target": {
+                "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+                "type_key": "core.documents"
+              },
+              "permission": "read"
+            }
+          ],
+          "record_access": [
+            {
+              "id": "rec_00000000000000000000000002",
+              "subject": "bos://core.principals/principals_00000000000000000000000001",
+              "anchor": "bos://projects.engagements/engagements_00000000000000000000000001",
+              "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+              "type_key": "core.documents",
+              "via": "assignment",
+              "grant": "access_grants_00000000000000000000000002"
+            }
+          ]
+        },
+        "expect": "applied"
+      },
+      {
+        "feed": {
+          "specversion": "1.0",
+          "id": "22",
+          "source": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type": "top.hop.bos.record.changed",
+          "subject": "bos://core.documents/documents_00000000000000000000000001",
+          "time": "2026-11-12T10:00:00Z",
+          "datacontenttype": "application/json",
+          "data": {
+            "revision": 22,
+            "change": "upserted",
+            "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+            "sensitivity": "internal",
+            "etag": "sha256:0000000000000000000000000000000000000000000000000000000000000016",
+            "under": [
+              "bos://projects.engagements/engagements_00000000000000000000000001"
+            ]
+          }
+        }
+      },
+      {
+        "note": "no catch-up yet",
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000001",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents",
+          "record": {
+            "address": "bos://core.documents/documents_00000000000000000000000001"
+          },
+          "expect": "deny"
+        }
+      },
+      {
+        "catch_up": true
+      },
+      {
+        "at": "2026-11-12T10:30:00Z",
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000001",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents",
+          "record": {
+            "address": "bos://core.documents/documents_00000000000000000000000001"
+          },
+          "expect": "allow"
+        }
+      },
+      {
+        "at": "2026-11-12T11:00:01Z",
+        "note": "the last catch-up is older than the limit",
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000001",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents",
+          "record": {
+            "address": "bos://core.documents/documents_00000000000000000000000001"
+          },
+          "expect": "deny"
+        }
+      },
+      {
+        "note": "a type grant needs no record basis",
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000003",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents",
+          "record": {
+            "address": "bos://core.documents/documents_00000000000000000000000001"
+          },
+          "expect": "allow"
+        }
+      },
+      {
+        "at": "2026-11-12T11:01:40Z",
+        "catch_up": true
+      },
+      {
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000001",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents",
+          "record": {
+            "address": "bos://core.documents/documents_00000000000000000000000001"
+          },
+          "expect": "allow"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,126 @@
+{
+  "contract": "bos.access/v1",
+  "schema": "access-scenario",
+  "valid": true,
+  "description": "A grant held by an audience reaches its members while their membership lasts.",
+  "document": {
+    "steps": [
+      {
+        "at": "2026-11-12T10:00:00Z",
+        "apply": {
+          "contract": "bos.access/v1",
+          "epoch": 1,
+          "mode": "full",
+          "digest": "sha256:1b257bd63d9f32bd68c62d5c29fd92d46d3dcd6346e1bde5a482c40225ffca7b",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "generated_at": "2026-11-12T10:00:00Z",
+          "feed_seq": 1,
+          "policy": {
+            "max_staleness_seconds": 86400,
+            "reconcile_interval_seconds": 3600
+          },
+          "scopes": [
+            {
+              "id": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+              "parent": null
+            },
+            {
+              "id": "bos://core.business_scopes/business_scopes_00000000000000000000000002",
+              "parent": "bos://core.business_scopes/business_scopes_00000000000000000000000001"
+            }
+          ],
+          "principals": [
+            {
+              "id": "bos://core.principals/principals_00000000000000000000000001",
+              "kind": "person",
+              "status": "active"
+            },
+            {
+              "id": "bos://core.principals/principals_00000000000000000000000003",
+              "kind": "person",
+              "status": "active"
+            },
+            {
+              "id": "bos://core.principals/principals_00000000000000000000000004",
+              "kind": "person",
+              "status": "active"
+            }
+          ],
+          "audiences": [
+            {
+              "id": "bos://core.identity_groups/identity_groups_00000000000000000000000001",
+              "members": [
+                {
+                  "principal": "bos://core.principals/principals_00000000000000000000000001"
+                },
+                {
+                  "principal": "bos://core.principals/principals_00000000000000000000000003",
+                  "valid_until": "2026-11-12T11:00:00Z"
+                }
+              ]
+            }
+          ],
+          "restricted_types": [
+            "core.peers",
+            "core.record_sensitivities"
+          ],
+          "grants": [
+            {
+              "id": "access_grants_00000000000000000000000001",
+              "subject": "bos://core.identity_groups/identity_groups_00000000000000000000000001",
+              "target": {
+                "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+                "type_key": "core.documents"
+              },
+              "permission": "read"
+            }
+          ]
+        },
+        "expect": "applied"
+      },
+      {
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000001",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents",
+          "expect": "allow"
+        }
+      },
+      {
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000003",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents",
+          "expect": "allow"
+        }
+      },
+      {
+        "note": "a principal of the set that is no member",
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000004",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents",
+          "expect": "deny"
+        }
+      },
+      {
+        "at": "2026-11-12T12:00:00Z",
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000001",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents",
+          "expect": "allow"
+        }
+      },
+      {
+        "note": "the membership ended at +1h, with no push",
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000003",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents",
+          "expect": "deny"
+        }
+      }
+    ]
+  }
+}

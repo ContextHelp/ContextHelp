@@ -1,0 +1,11 @@
+{
+  "contract": "bos.access/v1",
+  "schema": "access-error",
+  "valid": true,
+  "description": "A set older than the one applied is refused with the epoch held.",
+  "document": {
+    "applied_epoch": 7,
+    "code": "epoch_stale",
+    "message": "epoch 6 is older than the applied 7"
+  }
+}

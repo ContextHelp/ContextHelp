@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/bos/contracts/peer/access/v1/schema/access-error.schema.json",
+  "title": "Access error",
+  "description": "The error vocabulary of access provisioning. code is stable and machine-readable; a sender branches on code, never on message or status alone.",
+  "type": "object",
+  "properties": {
+    "code": {
+      "enum": [
+        "epoch_stale",
+        "base_epoch_mismatch",
+        "digest_mismatch",
+        "set_invalid",
+        "scope_unknown",
+        "unsupported_contract",
+        "forbidden",
+        "rate_limited",
+        "unavailable"
+      ]
+    },
+    "message": {"type": "string"},
+    "applied_epoch": {"type": ["integer", "null"], "description": "With epoch_stale and base_epoch_mismatch: the epoch the peer holds."},
+    "retry_after_seconds": {"type": "integer", "minimum": 1}
+  },
+  "required": ["code", "message"]
+}

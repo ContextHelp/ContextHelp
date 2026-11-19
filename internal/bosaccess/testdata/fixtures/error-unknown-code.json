@@ -1,0 +1,10 @@
+{
+  "contract": "bos.access/v1",
+  "schema": "access-error",
+  "valid": false,
+  "description": "A code outside the vocabulary.",
+  "document": {
+    "code": "teapot",
+    "message": "x"
+  }
+}

@@ -1,0 +1,165 @@
+{
+  "contract": "bos.access/v1",
+  "schema": "access-scenario",
+  "valid": true,
+  "description": "A grant on one record is an entry whose anchor is the record itself: the record is read, and what stands under it, and nothing beside it.",
+  "document": {
+    "requires": [
+      "record_access",
+      "row_relation",
+      "record_grant"
+    ],
+    "steps": [
+      {
+        "at": "2026-11-12T10:00:00Z",
+        "apply": {
+          "contract": "bos.access/v1",
+          "epoch": 1,
+          "mode": "full",
+          "digest": "sha256:fabc0e5f9bafcad36c24af6e0c43c71dc087587e6abcf95e18cf95674000ef4d",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "generated_at": "2026-11-12T10:00:00Z",
+          "feed_seq": 1,
+          "policy": {
+            "max_staleness_seconds": 86400,
+            "reconcile_interval_seconds": 3600,
+            "record_basis_max_staleness_seconds": 3600
+          },
+          "scopes": [
+            {
+              "id": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+              "parent": null
+            },
+            {
+              "id": "bos://core.business_scopes/business_scopes_00000000000000000000000002",
+              "parent": "bos://core.business_scopes/business_scopes_00000000000000000000000001"
+            }
+          ],
+          "principals": [
+            {
+              "id": "bos://core.principals/principals_00000000000000000000000001",
+              "kind": "person",
+              "status": "active"
+            }
+          ],
+          "audiences": [],
+          "restricted_types": [
+            "core.peers",
+            "core.record_sensitivities"
+          ],
+          "grants": [],
+          "record_access": [
+            {
+              "id": "rec_00000000000000000000000001",
+              "subject": "bos://core.principals/principals_00000000000000000000000001",
+              "anchor": "bos://core.documents/documents_00000000000000000000000001",
+              "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+              "type_key": null,
+              "via": "record_grant",
+              "grant": "access_grants_00000000000000000000000001"
+            }
+          ]
+        },
+        "expect": "applied"
+      },
+      {
+        "catch_up": true
+      },
+      {
+        "feed": {
+          "specversion": "1.0",
+          "id": "26",
+          "source": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type": "top.hop.bos.record.changed",
+          "subject": "bos://core.documents/documents_00000000000000000000000001",
+          "time": "2026-11-12T10:00:00Z",
+          "datacontenttype": "application/json",
+          "data": {
+            "revision": 26,
+            "change": "upserted",
+            "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+            "sensitivity": "internal",
+            "etag": "sha256:000000000000000000000000000000000000000000000000000000000000001a",
+            "under": []
+          }
+        }
+      },
+      {
+        "feed": {
+          "specversion": "1.0",
+          "id": "27",
+          "source": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type": "top.hop.bos.record.changed",
+          "subject": "bos://core.documents/documents_00000000000000000000000002",
+          "time": "2026-11-12T10:00:00Z",
+          "datacontenttype": "application/json",
+          "data": {
+            "revision": 27,
+            "change": "upserted",
+            "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+            "sensitivity": "internal",
+            "etag": "sha256:000000000000000000000000000000000000000000000000000000000000001b",
+            "under": []
+          }
+        }
+      },
+      {
+        "feed": {
+          "specversion": "1.0",
+          "id": "28",
+          "source": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type": "top.hop.bos.record.changed",
+          "subject": "bos://core.documents/documents_00000000000000000000000003",
+          "time": "2026-11-12T10:00:00Z",
+          "datacontenttype": "application/json",
+          "data": {
+            "revision": 28,
+            "change": "upserted",
+            "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+            "sensitivity": "internal",
+            "etag": "sha256:000000000000000000000000000000000000000000000000000000000000001c",
+            "under": [
+              "bos://core.documents/documents_00000000000000000000000001"
+            ]
+          }
+        }
+      },
+      {
+        "note": "the record is its own anchor; it stands under nothing else",
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000001",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents",
+          "record": {
+            "address": "bos://core.documents/documents_00000000000000000000000001"
+          },
+          "expect": "allow"
+        }
+      },
+      {
+        "note": "another record",
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000001",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents",
+          "record": {
+            "address": "bos://core.documents/documents_00000000000000000000000002"
+          },
+          "expect": "deny"
+        }
+      },
+      {
+        "note": "a record under the granted one",
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000001",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents",
+          "record": {
+            "address": "bos://core.documents/documents_00000000000000000000000003"
+          },
+          "expect": "allow"
+        }
+      }
+    ]
+  }
+}

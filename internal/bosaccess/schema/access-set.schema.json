@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/bos/contracts/peer/access/v1/schema/access-set.schema.json",
+  "title": "Access set",
+  "description": "What bos tells a peer about who may read what in one business scope: the principals by their bos address, the audiences (groups) and their members, and the read grants, each with the record types it covers. The peer enforces it locally. A set describes the scope the peer is bound to and its descendants and nothing outside them. Unknown top-level fields are ignored; a grant that carries a property the peer does not know is one the peer cannot represent, and it denies it. From document version 1.1 the set may also carry record_access: who stands in relation to which engagement, project or client file, so that a peer allows a record the person has no type grant for when the record stands under such an anchor; it is a separate list, never part of a grant's target, so a peer on version 1.0 ignores it and allows nothing through it.",
+  "type": "object",
+  "$defs": {
+    "address": {
+      "type": "string",
+      "pattern": "^bos://[a-z]([a-z_]*[a-z])?\\.[a-z]([a-z_]*[a-z])?/[a-z]([a-z_]*[a-z])?_[0-9a-hjkmnp-tv-z]{26}$",
+      "description": "bos://<type_key>/<typeid>, opaque to the peer."
+    },
+    "instant": {"type": "string", "format": "date-time"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "operation_grant": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string", "minLength": 1, "description": "Opaque, stable for the life of the grant."},
+        "subject": {"$ref": "#/$defs/address", "description": "A principal or an audience of this set."},
+        "scope": {"$ref": "#/$defs/address", "description": "Covers this scope and its descendants in the set. Never wider than the scope the peer is bound to."},
+        "operation": {"type": "string", "pattern": "^[a-z][a-z0-9-]*(\\.[A-Za-z][A-Za-z0-9-]*)+$", "description": "The operation, <namespace>.<Operation>, as bos names it. The peer maps it onto what it calls a capability."},
+        "valid_until": {"oneOf": [{"$ref": "#/$defs/instant"}, {"type": "null"}], "description": "As for a read grant: exclusive, already folded with the ends of any delegation chain."}
+      },
+      "required": ["id", "subject", "scope", "operation"],
+      "additionalProperties": false
+    },
+    "grant": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string", "minLength": 1, "description": "Opaque, stable for the life of the grant."},
+        "subject": {"$ref": "#/$defs/address", "description": "A principal or an audience of this set."},
+        "target": {
+          "type": "object",
+          "properties": {
+            "scope": {"$ref": "#/$defs/address", "description": "Covers this scope and its descendants in the set. Never wider than the scope the peer is bound to."},
+            "type_key": {"type": ["string", "null"], "description": "A record type key, <namespace>.* for every type of a namespace, or null for every type that is not restricted. A restricted type is covered only by a grant that names its exact key."}
+          },
+          "required": ["scope", "type_key"]
+        },
+        "permission": {"const": "read"},
+        "excluded_fields": {"type": "array", "items": {"type": "string"}, "uniqueItems": true, "description": "Output fields left out of what the grant lets its holder read. Absent or empty leaves none out. A peer that cannot leave a field out cannot represent the grant."},
+        "direction": {"enum": ["issued", "received", null], "description": "Limits a read of billing documents to one direction. Null or absent: both."},
+        "valid_until": {"oneOf": [{"$ref": "#/$defs/instant"}, {"type": "null"}], "description": "The grant stops covering at this instant (exclusive). The peer enforces it locally, so expiry works while bos is unreachable. Already folded with the ends of any delegation chain behind the grant."}
+      },
+      "required": ["id", "subject", "target", "permission"]
+    },
+    "record_entry": {
+      "type": "object",
+      "description": "One person standing in a relation to an anchor: the person is assigned to an engagement, a project or a client file, or holds a grant on one record that is its own anchor. The peer allows a read of a record when an entry of the person names an anchor the record stands under (the record's own `under`, its own address included), in force, for a scope and a type that cover the record. A peer that does not know the list ignores it and so allows nothing through it. An entry that carries a property the peer does not know is one it cannot represent, and it denies it.",
+      "properties": {
+        "id": {"type": "string", "minLength": 1, "description": "Opaque, stable for the same grant, person and anchor."},
+        "subject": {"$ref": "#/$defs/address", "description": "A principal of this set. Never an audience."},
+        "anchor": {"$ref": "#/$defs/address", "description": "The record the person stands in relation to: an engagement, a project, a client party, or, for a single-record grant, the record itself."},
+        "scope": {"$ref": "#/$defs/address", "description": "Covers records of this scope and its descendants in the set. Never wider than the scope the peer is bound to."},
+        "type_key": {"type": ["string", "null"], "description": "Which record types the entry covers, as for a grant target: a type key, <namespace>.* or null for every type that is not restricted. A restricted type is covered only by an entry that names its exact key."},
+        "via": {"enum": ["assignment", "record_grant"], "description": "assignment: the person is assigned to the anchor (a peer lists the shape row_relation to enforce it). record_grant: the anchor is the one record a grant covers (a peer lists record_grant)."},
+        "grant": {"type": "string", "minLength": 1, "description": "The id of the grant in bos behind the entry. Informational for the peer; it appears in what the peer reports it cannot express."},
+        "valid_from": {"oneOf": [{"$ref": "#/$defs/instant"}, {"type": "null"}], "description": "The entry starts covering at this instant (inclusive). Null or absent: in force already. The peer enforces it locally."},
+        "valid_until": {"oneOf": [{"$ref": "#/$defs/instant"}, {"type": "null"}], "description": "The entry stops covering at this instant (exclusive). Already folded with the ends of the facts behind it. Null or absent: no end."}
+      },
+      "required": ["id", "subject", "anchor", "scope", "type_key", "via", "grant"]
+    }
+  },
+  "properties": {
+    "contract": {"const": "bos.access/v1"},
+    "epoch": {"type": "integer", "minimum": 1, "description": "Monotonic per peer and scope: epochs of different scopes are not compared. A peer refuses an older epoch, and answers a replay of the epoch it holds, with the same digest, as a confirmation: nothing it holds changes but the time it counts the set's age from."},
+    "mode": {"enum": ["full", "delta"], "description": "full replaces everything the peer holds for the scope. delta applies to the set at base_epoch."},
+    "base_epoch": {"type": "integer", "minimum": 1, "description": "With delta: the epoch the delta applies to. The peer refuses it when its applied epoch is another."},
+    "digest": {"$ref": "#/$defs/digest", "description": "Digest of the content of the set this document produces (see the OpenAPI description). For a delta it is the digest of the result: the peer checks it after applying and refuses the delta when it differs."},
+    "scope": {"$ref": "#/$defs/address", "description": "The scope the peer is bound to."},
+    "generated_at": {"$ref": "#/$defs/instant"},
+    "feed_seq": {"type": "integer", "minimum": 0, "description": "The newest change-feed sequence number when bos computed the set. Informational."},
+    "policy": {
+      "type": "object",
+      "properties": {
+        "max_staleness_seconds": {"type": "integer", "minimum": 1, "description": "The peer denies every read when the set it holds was applied longer ago than this (or than its own declared limit, whichever is shorter)."},
+        "reconcile_interval_seconds": {"type": "integer", "minimum": 1},
+        "record_basis_max_staleness_seconds": {"type": "integer", "minimum": 1, "description": "With record_access entries: the peer denies a record-level read when its last complete catch-up of the change feed is older than this (or than its own declared limit, whichever is shorter). Reads by a type grant are not affected. Absent when the set carries no entries."}
+      },
+      "required": ["max_staleness_seconds", "reconcile_interval_seconds"]
+    },
+    "scopes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {"$ref": "#/$defs/address"},
+          "parent": {"oneOf": [{"$ref": "#/$defs/address"}, {"type": "null"}], "description": "Null for the scope the peer is bound to."}
+        },
+        "required": ["id", "parent"]
+      },
+      "description": "The scope the peer is bound to and its descendants, with their parents, so a grant on a scope can be applied to the scopes below it. No scope outside the binding appears."
+    },
+    "principals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {"$ref": "#/$defs/address"},
+          "kind": {"enum": ["person", "agent", "service"]},
+          "status": {"enum": ["active"], "description": "Only active principals are listed; one that is not listed is unknown and denied."}
+        },
+        "required": ["id", "kind", "status"]
+      },
+      "description": "The principals the set names, as a grant subject or as an audience member, and no others."
+    },
+    "audiences": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {"$ref": "#/$defs/address"},
+          "members": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "principal": {"$ref": "#/$defs/address"},
+                "valid_until": {"oneOf": [{"$ref": "#/$defs/instant"}, {"type": "null"}], "description": "The membership ends at this instant (exclusive)."}
+              },
+              "required": ["principal"]
+            },
+            "description": "Every principal that is a member now, directly or through a nested audience, flattened."
+          }
+        },
+        "required": ["id", "members"]
+      }
+    },
+    "restricted_types": {"type": "array", "items": {"type": "string"}, "uniqueItems": true, "description": "Record types only a grant naming the exact type covers: never a null type_key, a namespace pattern or another type. Includes the types the operator classified special_category."},
+    "grants": {"type": "array", "items": {"$ref": "#/$defs/grant"}, "description": "Read grants in force. In a delta: the grants added or changed; the rest are kept."},
+    "operations": {"type": "array", "items": {"$ref": "#/$defs/operation_grant"}, "description": "Operation grants in force: the operations a principal may run in the scope and below, named <namespace>.<Operation>. Carried only to a peer whose profile lists operation_grant; a peer that does not never receives the member. Replaced whole in a delta. Absent means none."},
+    "removed": {"type": "array", "items": {"type": "string"}, "uniqueItems": true, "description": "With delta: ids of grants to drop; absent means none."},
+    "record_access": {"type": "array", "items": {"$ref": "#/$defs/record_entry"}, "description": "Record-level entries in force or starting soon, one per grant, person and anchor. Sent only to a peer whose profile lists the feature record_access; absent otherwise. In a delta: the entries added or changed; the rest are kept. Never part of a grant's target."},
+    "record_access_removed": {"type": "array", "items": {"type": "string"}, "uniqueItems": true, "description": "With delta: ids of entries to drop; absent means none."}
+  },
+  "required": ["contract", "epoch", "mode", "digest", "scope", "generated_at", "policy", "scopes", "principals", "audiences", "restricted_types", "grants"],
+  "if": {"properties": {"mode": {"const": "delta"}}, "required": ["mode"]},
+  "then": {"required": ["base_epoch"]}
+}

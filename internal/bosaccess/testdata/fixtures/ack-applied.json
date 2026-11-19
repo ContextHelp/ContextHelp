@@ -1,0 +1,14 @@
+{
+  "contract": "bos.access/v1",
+  "schema": "access-ack",
+  "valid": true,
+  "description": "An acknowledgement: the epoch and digest held, when, and nothing unrepresentable.",
+  "document": {
+    "applied_at": "2026-11-12T10:01:00Z",
+    "contract": "bos.access/v1",
+    "digest": "sha256:da83452edbe8c7c63299700a1be9e501ff416590f7aab7acdbb605c21c5bdef6",
+    "epoch": 7,
+    "state": "applied",
+    "unrepresentable": []
+  }
+}

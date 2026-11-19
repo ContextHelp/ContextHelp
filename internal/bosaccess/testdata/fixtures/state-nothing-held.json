@@ -1,0 +1,14 @@
+{
+  "contract": "bos.access/v1",
+  "schema": "access-state",
+  "valid": true,
+  "description": "A peer that holds no set: it denies everything.",
+  "document": {
+    "applied_at": null,
+    "applied_epoch": null,
+    "contract": "bos.access/v1",
+    "digest": null,
+    "max_staleness_seconds": 86400,
+    "unrepresentable": []
+  }
+}

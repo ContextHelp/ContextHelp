@@ -1,0 +1,152 @@
+{
+  "contract": "bos.access/v1",
+  "schema": "access-scenario",
+  "valid": true,
+  "description": "An entry covers from valid_from (inclusive) to valid_until (exclusive), enforced by the peer without bos: an assignment that starts later is sent ahead and starts on time, one that ends stops on time.",
+  "document": {
+    "requires": [
+      "record_access",
+      "row_relation"
+    ],
+    "steps": [
+      {
+        "at": "2026-11-12T10:00:00Z",
+        "apply": {
+          "contract": "bos.access/v1",
+          "epoch": 1,
+          "mode": "full",
+          "digest": "sha256:3c78c1cc4472126839e25dc9ae4536440b38f26358f73f476847b4e06d0ae22f",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "generated_at": "2026-11-12T10:00:00Z",
+          "feed_seq": 1,
+          "policy": {
+            "max_staleness_seconds": 86400,
+            "reconcile_interval_seconds": 3600,
+            "record_basis_max_staleness_seconds": 3600
+          },
+          "scopes": [
+            {
+              "id": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+              "parent": null
+            },
+            {
+              "id": "bos://core.business_scopes/business_scopes_00000000000000000000000002",
+              "parent": "bos://core.business_scopes/business_scopes_00000000000000000000000001"
+            }
+          ],
+          "principals": [
+            {
+              "id": "bos://core.principals/principals_00000000000000000000000001",
+              "kind": "person",
+              "status": "active"
+            }
+          ],
+          "audiences": [],
+          "restricted_types": [
+            "core.peers",
+            "core.record_sensitivities"
+          ],
+          "grants": [],
+          "record_access": [
+            {
+              "id": "rec_00000000000000000000000001",
+              "subject": "bos://core.principals/principals_00000000000000000000000001",
+              "anchor": "bos://projects.engagements/engagements_00000000000000000000000001",
+              "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+              "type_key": "core.documents",
+              "via": "assignment",
+              "grant": "access_grants_00000000000000000000000001",
+              "valid_from": "2026-11-12T11:00:00Z",
+              "valid_until": "2026-11-12T13:00:00Z"
+            }
+          ]
+        },
+        "expect": "applied"
+      },
+      {
+        "catch_up": true
+      },
+      {
+        "feed": {
+          "specversion": "1.0",
+          "id": "5",
+          "source": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type": "top.hop.bos.record.changed",
+          "subject": "bos://core.documents/documents_00000000000000000000000001",
+          "time": "2026-11-12T10:00:00Z",
+          "datacontenttype": "application/json",
+          "data": {
+            "revision": 5,
+            "change": "upserted",
+            "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+            "sensitivity": "internal",
+            "etag": "sha256:0000000000000000000000000000000000000000000000000000000000000005",
+            "under": [
+              "bos://projects.engagements/engagements_00000000000000000000000001"
+            ]
+          }
+        }
+      },
+      {
+        "at": "2026-11-12T10:30:00Z",
+        "note": "before the start",
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000001",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents",
+          "record": {
+            "address": "bos://core.documents/documents_00000000000000000000000001"
+          },
+          "expect": "deny"
+        }
+      },
+      {
+        "at": "2026-11-12T11:00:00Z",
+        "catch_up": true
+      },
+      {
+        "note": "the start is inclusive",
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000001",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents",
+          "record": {
+            "address": "bos://core.documents/documents_00000000000000000000000001"
+          },
+          "expect": "allow"
+        }
+      },
+      {
+        "at": "2026-11-12T12:59:00Z",
+        "catch_up": true
+      },
+      {
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000001",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents",
+          "record": {
+            "address": "bos://core.documents/documents_00000000000000000000000001"
+          },
+          "expect": "allow"
+        }
+      },
+      {
+        "at": "2026-11-12T13:00:00Z",
+        "catch_up": true
+      },
+      {
+        "note": "the end is exclusive",
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000001",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents",
+          "record": {
+            "address": "bos://core.documents/documents_00000000000000000000000001"
+          },
+          "expect": "deny"
+        }
+      }
+    ]
+  }
+}

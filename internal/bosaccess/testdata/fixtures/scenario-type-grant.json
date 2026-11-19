@@ -1,0 +1,207 @@
+{
+  "contract": "bos.access/v1",
+  "schema": "access-scenario",
+  "valid": true,
+  "description": "Who may read which record type, where: exact, namespace and type-less grants; descendants; a scope outside the set; a restricted type is covered only by a grant naming it.",
+  "document": {
+    "steps": [
+      {
+        "at": "2026-11-12T10:00:00Z",
+        "apply": {
+          "contract": "bos.access/v1",
+          "epoch": 1,
+          "mode": "full",
+          "digest": "sha256:81d4f0e49061417c69c9f7f43950d712dd3ad6c0e5d279cd353dfc7bff75903c",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "generated_at": "2026-11-12T10:00:00Z",
+          "feed_seq": 1,
+          "policy": {
+            "max_staleness_seconds": 86400,
+            "reconcile_interval_seconds": 3600
+          },
+          "scopes": [
+            {
+              "id": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+              "parent": null
+            },
+            {
+              "id": "bos://core.business_scopes/business_scopes_00000000000000000000000002",
+              "parent": "bos://core.business_scopes/business_scopes_00000000000000000000000001"
+            }
+          ],
+          "principals": [
+            {
+              "id": "bos://core.principals/principals_00000000000000000000000001",
+              "kind": "person",
+              "status": "active"
+            },
+            {
+              "id": "bos://core.principals/principals_00000000000000000000000003",
+              "kind": "person",
+              "status": "active"
+            },
+            {
+              "id": "bos://core.principals/principals_00000000000000000000000005",
+              "kind": "person",
+              "status": "active"
+            },
+            {
+              "id": "bos://core.principals/principals_00000000000000000000000006",
+              "kind": "person",
+              "status": "active"
+            }
+          ],
+          "audiences": [],
+          "restricted_types": [
+            "core.peers",
+            "core.record_sensitivities"
+          ],
+          "grants": [
+            {
+              "id": "access_grants_00000000000000000000000001",
+              "subject": "bos://core.principals/principals_00000000000000000000000001",
+              "target": {
+                "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+                "type_key": "core.documents"
+              },
+              "permission": "read"
+            },
+            {
+              "id": "access_grants_00000000000000000000000002",
+              "subject": "bos://core.principals/principals_00000000000000000000000003",
+              "target": {
+                "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+                "type_key": "core.*"
+              },
+              "permission": "read"
+            },
+            {
+              "id": "access_grants_00000000000000000000000003",
+              "subject": "bos://core.principals/principals_00000000000000000000000005",
+              "target": {
+                "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+                "type_key": null
+              },
+              "permission": "read"
+            },
+            {
+              "id": "access_grants_00000000000000000000000004",
+              "subject": "bos://core.principals/principals_00000000000000000000000006",
+              "target": {
+                "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+                "type_key": "core.peers"
+              },
+              "permission": "read"
+            }
+          ]
+        },
+        "expect": "applied"
+      },
+      {
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000001",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents",
+          "expect": "allow"
+        }
+      },
+      {
+        "note": "a grant covers the scope and its descendants",
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000001",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000002",
+          "type_key": "core.documents",
+          "expect": "allow"
+        }
+      },
+      {
+        "note": "another type",
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000001",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.parties",
+          "expect": "deny"
+        }
+      },
+      {
+        "note": "a scope outside the binding",
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000001",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000009",
+          "type_key": "core.documents",
+          "expect": "deny"
+        }
+      },
+      {
+        "note": "unknown principal",
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000004",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents",
+          "expect": "deny"
+        }
+      },
+      {
+        "note": "namespace grant",
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000003",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.parties",
+          "expect": "allow"
+        }
+      },
+      {
+        "note": "a restricted type is not covered by a namespace grant",
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000003",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.peers",
+          "expect": "deny"
+        }
+      },
+      {
+        "note": "type-less grant: every unrestricted type",
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000005",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.notes",
+          "expect": "allow"
+        }
+      },
+      {
+        "note": "not the restricted ones",
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000005",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.peers",
+          "expect": "deny"
+        }
+      },
+      {
+        "note": "a grant naming the exact restricted type",
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000006",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.peers",
+          "expect": "allow"
+        }
+      },
+      {
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000006",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents",
+          "expect": "deny"
+        }
+      },
+      {
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000005",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.record_sensitivities",
+          "expect": "deny"
+        }
+      }
+    ]
+  }
+}

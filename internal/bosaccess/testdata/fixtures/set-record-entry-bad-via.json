@@ -1,0 +1,80 @@
+{
+  "contract": "bos.access/v1",
+  "schema": "access-set",
+  "valid": false,
+  "description": "An entry is by assignment or by a record grant.",
+  "document": {
+    "audiences": [],
+    "contract": "bos.access/v1",
+    "digest": "sha256:5dedf18295af08f51a405a9677ddc4c971ecb4a3cbe501c2a32efb1ab007ed4c",
+    "epoch": 9,
+    "feed_seq": 9,
+    "generated_at": "2026-11-12T10:00:00Z",
+    "grants": [
+      {
+        "id": "access_grants_00000000000000000000000001",
+        "permission": "read",
+        "subject": "bos://core.principals/principals_00000000000000000000000003",
+        "target": {
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.parties"
+        }
+      }
+    ],
+    "mode": "full",
+    "policy": {
+      "max_staleness_seconds": 86400,
+      "reconcile_interval_seconds": 3600,
+      "record_basis_max_staleness_seconds": 3600
+    },
+    "principals": [
+      {
+        "id": "bos://core.principals/principals_00000000000000000000000001",
+        "kind": "person",
+        "status": "active"
+      },
+      {
+        "id": "bos://core.principals/principals_00000000000000000000000003",
+        "kind": "person",
+        "status": "active"
+      }
+    ],
+    "record_access": [
+      {
+        "anchor": "bos://projects.engagements/engagements_00000000000000000000000001",
+        "grant": "access_grants_00000000000000000000000002",
+        "id": "rec_00000000000000000000000002",
+        "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+        "subject": "bos://core.principals/principals_00000000000000000000000001",
+        "type_key": "core.documents",
+        "valid_from": "2026-11-12T09:00:00Z",
+        "valid_until": "2026-11-14T10:00:00Z",
+        "via": "office"
+      },
+      {
+        "anchor": "bos://core.documents/documents_00000000000000000000000007",
+        "grant": "access_grants_00000000000000000000000003",
+        "id": "rec_00000000000000000000000003",
+        "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+        "subject": "bos://core.principals/principals_00000000000000000000000001",
+        "type_key": null,
+        "via": "record_grant"
+      }
+    ],
+    "restricted_types": [
+      "core.peers",
+      "core.record_sensitivities"
+    ],
+    "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+    "scopes": [
+      {
+        "id": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+        "parent": null
+      },
+      {
+        "id": "bos://core.business_scopes/business_scopes_00000000000000000000000002",
+        "parent": "bos://core.business_scopes/business_scopes_00000000000000000000000001"
+      }
+    ]
+  }
+}

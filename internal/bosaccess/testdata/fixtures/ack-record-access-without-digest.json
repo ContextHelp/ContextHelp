@@ -1,0 +1,18 @@
+{
+  "contract": "bos.access/v1",
+  "schema": "access-ack",
+  "valid": false,
+  "description": "The record entries a peer reports carry the digest of what it holds.",
+  "document": {
+    "applied_at": "2026-11-12T10:01:00Z",
+    "contract": "bos.access/v1",
+    "digest": "sha256:5dedf18295af08f51a405a9677ddc4c971ecb4a3cbe501c2a32efb1ab007ed4c",
+    "epoch": 9,
+    "record_access": {
+      "count": 2,
+      "unrepresentable": []
+    },
+    "state": "applied",
+    "unrepresentable": []
+  }
+}

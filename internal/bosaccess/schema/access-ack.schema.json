@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/bos/contracts/peer/access/v1/schema/access-ack.schema.json",
+  "title": "Access acknowledgement",
+  "description": "A peer's answer to an applied set: the epoch and digest it now holds, when it applied them (its clock), and the grants it could not apply and therefore denies.",
+  "type": "object",
+  "properties": {
+    "contract": {"const": "bos.access/v1"},
+    "epoch": {"type": "integer", "minimum": 1},
+    "state": {"enum": ["applied", "replayed"], "description": "replayed: the peer already held this epoch with this digest and changed nothing but the time it counts the set's age from."},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "description": "Digest of the set the peer holds, computed by the peer. bos treats a digest other than the one it sent as a failed push."},
+    "applied_at": {"type": "string", "format": "date-time", "description": "When the peer applied the set or last confirmed it by a replay, by its clock. The age of the set, for the staleness limit, is counted from here."},
+    "unrepresentable": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "grant": {"type": "string"},
+          "reason": {"type": "string"}
+        },
+        "required": ["grant"]
+      },
+      "description": "Grants of the set the peer cannot express. It denies each."
+    },
+    "record_access": {
+      "type": "object",
+      "description": "With a set that carries record_access entries: what the peer holds of them. Absent when the set carries none.",
+      "properties": {
+        "count": {"type": "integer", "minimum": 0, "description": "How many entries the peer holds."},
+        "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "description": "Digest of the entries the peer holds: sha256 of the canonical JSON of the array of entries, sorted by id, null dates left out (the same rule as the set's digest). bos treats a digest other than the one it computed as a failed push."},
+        "unrepresentable": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {"entry": {"type": "string", "description": "The id of the entry."}, "reason": {"type": "string"}},
+            "required": ["entry"]
+          },
+          "description": "Entries the peer cannot express, by entry id. It denies each."
+        }
+      },
+      "required": ["count", "digest", "unrepresentable"]
+    }
+  },
+  "required": ["contract", "epoch", "state", "digest", "applied_at", "unrepresentable"]
+}

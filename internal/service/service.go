@@ -68,6 +68,9 @@ type Service struct {
 	// nil in tests and outside dpkms serve; non-nil when the daemon
 	// has wired kit/runtime/policy on the bus.
 	policyPub domain.EventPublisher
+	// authority holds the access state an external authority provisions
+	// (record-level entries); nil when the instance takes none.
+	authority sharing.Holder
 
 	// registryTokens is where stored registry tokens are read from
 	// (WithRegistryTokens); registryAuth applies them to every request
@@ -87,6 +90,14 @@ type Service struct {
 // cfg arg is preserved); new behaviors (policy publisher, etc.) ride
 // in via Option closures.
 type Option func(*Service)
+
+// WithAuthorityAccess gives the service the access state an external
+// authority provisions (internal/bosaccess): the viewers it resolves then
+// carry the record-level reads the state allows at the moment of each
+// request, for principals bound to an address at the authority.
+func WithAuthorityAccess(h sharing.Holder) Option {
+	return func(s *Service) { s.authority = h }
+}
 
 // WithPolicyPublisher attaches a domain.EventPublisher to the
 // internal domain.Service[Pipeline] so policy.Engine can veto
@@ -152,6 +163,9 @@ func NewWithOptions(store storage.StorageDriver, queue *jobs.Queue, pipes pipeli
 	if store != nil {
 		s.pipelineSvc = newPipelineService(store.Pipelines(), s.policyPub)
 		s.viewers = sharing.NewResolver(store.Sharing()).WithRegistry(store.Auth())
+		if s.authority != nil {
+			s.viewers.WithRecords(sharing.AuthorityRecords{Holder: s.authority, Identities: store.Auth().Identities()})
+		}
 	}
 	return s
 }
