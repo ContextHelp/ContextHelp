@@ -1,0 +1,92 @@
+{
+  "contract": "bos.access/v1",
+  "schema": "access-scenario",
+  "valid": true,
+  "description": "A grant stops covering at its valid_until, enforced by the peer without bos.",
+  "document": {
+    "requires": [
+      "expiry"
+    ],
+    "steps": [
+      {
+        "at": "2026-11-12T10:00:00Z",
+        "apply": {
+          "contract": "bos.access/v1",
+          "epoch": 1,
+          "mode": "full",
+          "digest": "sha256:8e72d8bcb2d7c1225cb717ee6c02b467d30e1ffc7b3718086a9593d9e0f66adc",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "generated_at": "2026-11-12T10:00:00Z",
+          "feed_seq": 1,
+          "policy": {
+            "max_staleness_seconds": 86400,
+            "reconcile_interval_seconds": 3600
+          },
+          "scopes": [
+            {
+              "id": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+              "parent": null
+            },
+            {
+              "id": "bos://core.business_scopes/business_scopes_00000000000000000000000002",
+              "parent": "bos://core.business_scopes/business_scopes_00000000000000000000000001"
+            }
+          ],
+          "principals": [
+            {
+              "id": "bos://core.principals/principals_00000000000000000000000001",
+              "kind": "person",
+              "status": "active"
+            }
+          ],
+          "audiences": [],
+          "restricted_types": [
+            "core.peers",
+            "core.record_sensitivities"
+          ],
+          "grants": [
+            {
+              "id": "access_grants_00000000000000000000000001",
+              "subject": "bos://core.principals/principals_00000000000000000000000001",
+              "target": {
+                "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+                "type_key": "core.documents"
+              },
+              "permission": "read",
+              "valid_until": "2026-11-12T11:00:00Z"
+            }
+          ]
+        },
+        "expect": "applied"
+      },
+      {
+        "at": "2026-11-12T10:30:00Z",
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000001",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents",
+          "expect": "allow"
+        }
+      },
+      {
+        "at": "2026-11-12T11:00:00Z",
+        "note": "exclusive end",
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000001",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents",
+          "expect": "deny"
+        }
+      },
+      {
+        "at": "2026-11-12T12:00:00Z",
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000001",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents",
+          "expect": "deny"
+        }
+      }
+    ]
+  }
+}

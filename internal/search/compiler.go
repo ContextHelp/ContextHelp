@@ -15,6 +15,9 @@ var directColumns = map[string]bool{
 	"subtype":  true,
 	"pipeline": true,
 	"source":   true,
+	// source_key is the external identity of an ingested object; the
+	// record-level reads of an external authority match on it.
+	"source_key": true,
 }
 
 var dateColumns = map[string]bool{

@@ -1,0 +1,13 @@
+{
+  "contract": "bos.access/v1",
+  "schema": "access-ack",
+  "valid": false,
+  "description": "An acknowledgement without the digest of what the peer holds proves nothing.",
+  "document": {
+    "applied_at": "2026-11-12T10:01:00Z",
+    "contract": "bos.access/v1",
+    "epoch": 7,
+    "state": "applied",
+    "unrepresentable": []
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "contract": "bos.access/v1",
+  "schema": "access-state",
+  "valid": true,
+  "description": "What a peer holds: epoch, digest, time, the limit it enforces.",
+  "document": {
+    "applied_at": "2026-11-12T10:01:00Z",
+    "applied_epoch": 7,
+    "contract": "bos.access/v1",
+    "digest": "sha256:da83452edbe8c7c63299700a1be9e501ff416590f7aab7acdbb605c21c5bdef6",
+    "max_staleness_seconds": 3600,
+    "unrepresentable": []
+  }
+}

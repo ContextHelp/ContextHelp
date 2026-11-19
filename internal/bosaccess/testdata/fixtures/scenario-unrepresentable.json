@@ -1,0 +1,95 @@
+{
+  "contract": "bos.access/v1",
+  "schema": "access-scenario",
+  "valid": true,
+  "description": "A grant that carries a property the peer does not know is one it cannot represent: it names it in its acknowledgement and denies it, and the rest of the set is in force. Never allow with a warning.",
+  "document": {
+    "steps": [
+      {
+        "at": "2026-11-12T10:00:00Z",
+        "apply": {
+          "contract": "bos.access/v1",
+          "epoch": 1,
+          "mode": "full",
+          "digest": "sha256:110fb32bb1f8b801eb1fb68ccf238bd5070c7f49e19f226834f880b019e6e09b",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "generated_at": "2026-11-12T10:00:00Z",
+          "feed_seq": 1,
+          "policy": {
+            "max_staleness_seconds": 86400,
+            "reconcile_interval_seconds": 3600
+          },
+          "scopes": [
+            {
+              "id": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+              "parent": null
+            },
+            {
+              "id": "bos://core.business_scopes/business_scopes_00000000000000000000000002",
+              "parent": "bos://core.business_scopes/business_scopes_00000000000000000000000001"
+            }
+          ],
+          "principals": [
+            {
+              "id": "bos://core.principals/principals_00000000000000000000000001",
+              "kind": "person",
+              "status": "active"
+            },
+            {
+              "id": "bos://core.principals/principals_00000000000000000000000003",
+              "kind": "person",
+              "status": "active"
+            }
+          ],
+          "audiences": [],
+          "restricted_types": [
+            "core.peers",
+            "core.record_sensitivities"
+          ],
+          "grants": [
+            {
+              "id": "access_grants_00000000000000000000000001",
+              "subject": "bos://core.principals/principals_00000000000000000000000001",
+              "target": {
+                "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+                "type_key": "core.documents"
+              },
+              "permission": "read"
+            },
+            {
+              "id": "access_grants_00000000000000000000000002",
+              "permission": "read",
+              "row_relation": "own",
+              "subject": "bos://core.principals/principals_00000000000000000000000003",
+              "target": {
+                "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+                "type_key": "core.documents"
+              }
+            }
+          ]
+        },
+        "expect": "applied",
+        "unrepresentable": [
+          "access_grants_00000000000000000000000002"
+        ]
+      },
+      {
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000001",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents",
+          "expect": "allow"
+        }
+      },
+      {
+        "note": "the grant with the unknown limit",
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000003",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents",
+          "expect": "deny"
+        }
+      }
+    ]
+  }
+}

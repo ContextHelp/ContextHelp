@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/bos/contracts/peer/access/v1/schema/access-state.schema.json",
+  "title": "Access state",
+  "description": "What a peer holds for a scope now: served at GET /bos/v1/access/{business}/state so bos can compare the digest and repair drift.",
+  "type": "object",
+  "properties": {
+    "contract": {"const": "bos.access/v1"},
+    "applied_epoch": {"type": ["integer", "null"], "minimum": 1, "description": "Null when the peer holds no set for the scope: it denies everything."},
+    "digest": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+    "applied_at": {"type": ["string", "null"], "format": "date-time"},
+    "max_staleness_seconds": {"type": "integer", "minimum": 1, "description": "The limit the peer enforces now: the shorter of its own and the set's."},
+    "unrepresentable": {"type": "array", "items": {"type": "object", "properties": {"grant": {"type": "string"}, "reason": {"type": "string"}}, "required": ["grant"]}},
+    "record_access": {
+      "type": "object",
+      "description": "The record_access entries the peer holds, when it holds any.",
+      "properties": {
+        "count": {"type": "integer", "minimum": 0},
+        "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "unrepresentable": {"type": "array", "items": {"type": "object", "properties": {"entry": {"type": "string"}, "reason": {"type": "string"}}, "required": ["entry"]}}
+      },
+      "required": ["count", "digest", "unrepresentable"]
+    }
+  },
+  "required": ["contract", "applied_epoch", "digest", "applied_at", "max_staleness_seconds", "unrepresentable"]
+}

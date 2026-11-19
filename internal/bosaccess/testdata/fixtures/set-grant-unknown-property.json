@@ -1,0 +1,53 @@
+{
+  "contract": "bos.access/v1",
+  "schema": "access-set",
+  "valid": true,
+  "description": "A grant that carries a property this version does not define (a later minor adds a limit). The document is valid; a peer that does not know the property cannot represent the grant and denies it.",
+  "document": {
+    "contract": "bos.access/v1",
+    "epoch": 3,
+    "mode": "full",
+    "digest": "sha256:06768719e1007d005efbf766a42d57bca0edb1147b41046f0677ac8c7573e35f",
+    "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+    "generated_at": "2026-11-12T10:00:00Z",
+    "feed_seq": 3,
+    "policy": {
+      "max_staleness_seconds": 86400,
+      "reconcile_interval_seconds": 3600
+    },
+    "scopes": [
+      {
+        "id": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+        "parent": null
+      },
+      {
+        "id": "bos://core.business_scopes/business_scopes_00000000000000000000000002",
+        "parent": "bos://core.business_scopes/business_scopes_00000000000000000000000001"
+      }
+    ],
+    "principals": [
+      {
+        "id": "bos://core.principals/principals_00000000000000000000000001",
+        "kind": "person",
+        "status": "active"
+      }
+    ],
+    "audiences": [],
+    "restricted_types": [
+      "core.peers",
+      "core.record_sensitivities"
+    ],
+    "grants": [
+      {
+        "id": "access_grants_00000000000000000000000001",
+        "permission": "read",
+        "row_relation": "own",
+        "subject": "bos://core.principals/principals_00000000000000000000000001",
+        "target": {
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.billing_documents"
+        }
+      }
+    ]
+  }
+}

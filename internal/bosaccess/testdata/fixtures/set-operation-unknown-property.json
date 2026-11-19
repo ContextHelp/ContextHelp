@@ -1,0 +1,73 @@
+{
+  "contract": "bos.access/v1",
+  "schema": "access-set",
+  "valid": false,
+  "description": "An operation grant with a property this version does not know is refused by the schema.",
+  "document": {
+    "contract": "bos.access/v1",
+    "epoch": 7,
+    "mode": "full",
+    "digest": "sha256:030145a1fa7812748805fd15662ab66afa4f0d5b2aa9edad013d344d606fb90d",
+    "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+    "generated_at": "2026-11-12T10:00:00Z",
+    "feed_seq": 7,
+    "policy": {
+      "max_staleness_seconds": 86400,
+      "reconcile_interval_seconds": 3600
+    },
+    "scopes": [
+      {
+        "id": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+        "parent": null
+      },
+      {
+        "id": "bos://core.business_scopes/business_scopes_00000000000000000000000002",
+        "parent": "bos://core.business_scopes/business_scopes_00000000000000000000000001"
+      }
+    ],
+    "principals": [
+      {
+        "id": "bos://core.principals/principals_00000000000000000000000001",
+        "kind": "person",
+        "status": "active"
+      },
+      {
+        "id": "bos://core.principals/principals_00000000000000000000000002",
+        "kind": "agent",
+        "status": "active"
+      }
+    ],
+    "audiences": [],
+    "restricted_types": [
+      "core.peers",
+      "core.record_sensitivities"
+    ],
+    "grants": [
+      {
+        "id": "access_grants_00000000000000000000000001",
+        "subject": "bos://core.principals/principals_00000000000000000000000001",
+        "target": {
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents"
+        },
+        "permission": "read"
+      }
+    ],
+    "operations": [
+      {
+        "id": "access_grants_00000000000000000000000009",
+        "subject": "bos://core.principals/principals_00000000000000000000000002",
+        "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+        "operation": "billing.pay",
+        "permission": "read"
+      },
+      {
+        "id": "access_grants_00000000000000000000000010",
+        "subject": "bos://core.principals/principals_00000000000000000000000002",
+        "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+        "operation": "workflow.request-transition",
+        "valid_until": "2026-12-01T00:00:00Z"
+      }
+    ]
+  }
+}

@@ -35,6 +35,9 @@ type Resolver struct {
 	registry storage.AuthStore
 	// now is the clock; nil means time.Now.
 	now func() time.Time
+	// records adds the record-level reads an external authority provisions
+	// to each viewer; nil adds none.
+	records RecordSource
 
 	mu    sync.Mutex
 	cache map[string]Viewer
@@ -43,6 +46,16 @@ type Resolver struct {
 // NewResolver returns a Resolver over store.
 func NewResolver(store storage.SharingStore) *Resolver {
 	return &Resolver{store: store, cache: map[string]Viewer{}}
+}
+
+// WithRecords gives the resolver the source of record-level reads: each
+// viewer it compiles carries the records the source lists for its principal
+// at the moment of the request. The policy key names them, so a record that
+// starts or stops being readable (an entry's start or end, a stale set)
+// yields a new key and a cold cache entry, never a stale viewer.
+func (r *Resolver) WithRecords(src RecordSource) *Resolver {
+	r.records = src
+	return r
 }
 
 // WithClock sets the clock the resolver reads grant expiry against
@@ -77,6 +90,11 @@ func (r *Resolver) Resolve(ctx context.Context, principalID, kind, identityID st
 	}
 	if err != nil {
 		return Viewer{}, err
+	}
+	if r.records != nil {
+		if in.Records, err = r.records.ReadableRecords(ctx, principalID); err != nil {
+			return Viewer{}, err
+		}
 	}
 	key := identityID + "\x00" + in.Key()
 

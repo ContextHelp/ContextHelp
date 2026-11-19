@@ -1,0 +1,74 @@
+{
+  "contract": "bos.access/v1",
+  "schema": "access-set",
+  "valid": true,
+  "description": "A delta of record entries from epoch 9: one entry changed, one added, one dropped by id.",
+  "document": {
+    "contract": "bos.access/v1",
+    "epoch": 10,
+    "mode": "delta",
+    "base_epoch": 9,
+    "digest": "sha256:efb801475649f83e70628c49dc00f3dce2933740e5915533991d16f2a9a44daa",
+    "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+    "generated_at": "2026-11-12T10:00:00Z",
+    "feed_seq": 10,
+    "policy": {
+      "max_staleness_seconds": 86400,
+      "reconcile_interval_seconds": 3600,
+      "record_basis_max_staleness_seconds": 3600
+    },
+    "scopes": [
+      {
+        "id": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+        "parent": null
+      },
+      {
+        "id": "bos://core.business_scopes/business_scopes_00000000000000000000000002",
+        "parent": "bos://core.business_scopes/business_scopes_00000000000000000000000001"
+      }
+    ],
+    "principals": [
+      {
+        "id": "bos://core.principals/principals_00000000000000000000000001",
+        "kind": "person",
+        "status": "active"
+      },
+      {
+        "id": "bos://core.principals/principals_00000000000000000000000003",
+        "kind": "person",
+        "status": "active"
+      }
+    ],
+    "audiences": [],
+    "restricted_types": [
+      "core.peers",
+      "core.record_sensitivities"
+    ],
+    "grants": [],
+    "record_access": [
+      {
+        "id": "rec_00000000000000000000000002",
+        "subject": "bos://core.principals/principals_00000000000000000000000001",
+        "anchor": "bos://projects.engagements/engagements_00000000000000000000000001",
+        "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+        "type_key": "core.documents",
+        "via": "assignment",
+        "grant": "access_grants_00000000000000000000000002",
+        "valid_from": "2026-11-12T09:00:00Z",
+        "valid_until": "2026-11-15T10:00:00Z"
+      },
+      {
+        "id": "rec_00000000000000000000000004",
+        "subject": "bos://core.principals/principals_00000000000000000000000003",
+        "anchor": "bos://core.parties/parties_00000000000000000000000005",
+        "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+        "type_key": "core.documents",
+        "via": "assignment",
+        "grant": "access_grants_00000000000000000000000004"
+      }
+    ],
+    "record_access_removed": [
+      "rec_00000000000000000000000003"
+    ]
+  }
+}

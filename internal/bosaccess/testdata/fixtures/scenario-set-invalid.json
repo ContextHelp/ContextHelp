@@ -1,0 +1,125 @@
+{
+  "contract": "bos.access/v1",
+  "schema": "access-scenario",
+  "valid": true,
+  "description": "A set whose grant names a subject it does not list is refused whole; the peer keeps what it had.",
+  "document": {
+    "steps": [
+      {
+        "at": "2026-11-12T10:00:00Z",
+        "apply": {
+          "contract": "bos.access/v1",
+          "epoch": 1,
+          "mode": "full",
+          "digest": "sha256:f03758e875905e544174dd114b62bf33dbd8ff12a390dd3dd8f02a3500a74baa",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "generated_at": "2026-11-12T10:00:00Z",
+          "feed_seq": 1,
+          "policy": {
+            "max_staleness_seconds": 86400,
+            "reconcile_interval_seconds": 3600
+          },
+          "scopes": [
+            {
+              "id": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+              "parent": null
+            },
+            {
+              "id": "bos://core.business_scopes/business_scopes_00000000000000000000000002",
+              "parent": "bos://core.business_scopes/business_scopes_00000000000000000000000001"
+            }
+          ],
+          "principals": [
+            {
+              "id": "bos://core.principals/principals_00000000000000000000000001",
+              "kind": "person",
+              "status": "active"
+            }
+          ],
+          "audiences": [],
+          "restricted_types": [
+            "core.peers",
+            "core.record_sensitivities"
+          ],
+          "grants": [
+            {
+              "id": "access_grants_00000000000000000000000001",
+              "subject": "bos://core.principals/principals_00000000000000000000000001",
+              "target": {
+                "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+                "type_key": "core.documents"
+              },
+              "permission": "read"
+            }
+          ]
+        },
+        "expect": "applied"
+      },
+      {
+        "apply": {
+          "contract": "bos.access/v1",
+          "epoch": 2,
+          "mode": "full",
+          "digest": "sha256:15593f6a12e4388629418639720067ec6f60f025176d8c7cfa490ca557c57db0",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "generated_at": "2026-11-12T10:00:00Z",
+          "feed_seq": 2,
+          "policy": {
+            "max_staleness_seconds": 86400,
+            "reconcile_interval_seconds": 3600
+          },
+          "scopes": [
+            {
+              "id": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+              "parent": null
+            },
+            {
+              "id": "bos://core.business_scopes/business_scopes_00000000000000000000000002",
+              "parent": "bos://core.business_scopes/business_scopes_00000000000000000000000001"
+            }
+          ],
+          "principals": [
+            {
+              "id": "bos://core.principals/principals_00000000000000000000000001",
+              "kind": "person",
+              "status": "active"
+            }
+          ],
+          "audiences": [],
+          "restricted_types": [
+            "core.peers",
+            "core.record_sensitivities"
+          ],
+          "grants": [
+            {
+              "id": "access_grants_00000000000000000000000001",
+              "subject": "bos://core.principals/principals_00000000000000000000000003",
+              "target": {
+                "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+                "type_key": "core.documents"
+              },
+              "permission": "read"
+            }
+          ]
+        },
+        "expect": "set_invalid"
+      },
+      {
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000001",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents",
+          "expect": "allow"
+        }
+      },
+      {
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000003",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents",
+          "expect": "deny"
+        }
+      }
+    ]
+  }
+}

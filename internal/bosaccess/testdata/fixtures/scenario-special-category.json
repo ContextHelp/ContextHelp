@@ -1,0 +1,110 @@
+{
+  "contract": "bos.access/v1",
+  "schema": "access-scenario",
+  "valid": true,
+  "description": "A record classified special_category of its own is readable only with the clearance: a read grant naming core.record_sensitivities.",
+  "document": {
+    "steps": [
+      {
+        "at": "2026-11-12T10:00:00Z",
+        "apply": {
+          "contract": "bos.access/v1",
+          "epoch": 1,
+          "mode": "full",
+          "digest": "sha256:8fc0ed75647e57a133c9b0914f52ac995c0b364f512fd934f125bb3611d5d8ea",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "generated_at": "2026-11-12T10:00:00Z",
+          "feed_seq": 1,
+          "policy": {
+            "max_staleness_seconds": 86400,
+            "reconcile_interval_seconds": 3600
+          },
+          "scopes": [
+            {
+              "id": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+              "parent": null
+            },
+            {
+              "id": "bos://core.business_scopes/business_scopes_00000000000000000000000002",
+              "parent": "bos://core.business_scopes/business_scopes_00000000000000000000000001"
+            }
+          ],
+          "principals": [
+            {
+              "id": "bos://core.principals/principals_00000000000000000000000001",
+              "kind": "person",
+              "status": "active"
+            },
+            {
+              "id": "bos://core.principals/principals_00000000000000000000000003",
+              "kind": "person",
+              "status": "active"
+            }
+          ],
+          "audiences": [],
+          "restricted_types": [
+            "core.peers",
+            "core.record_sensitivities"
+          ],
+          "grants": [
+            {
+              "id": "access_grants_00000000000000000000000001",
+              "subject": "bos://core.principals/principals_00000000000000000000000001",
+              "target": {
+                "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+                "type_key": "core.documents"
+              },
+              "permission": "read"
+            },
+            {
+              "id": "access_grants_00000000000000000000000002",
+              "subject": "bos://core.principals/principals_00000000000000000000000001",
+              "target": {
+                "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+                "type_key": "core.record_sensitivities"
+              },
+              "permission": "read"
+            },
+            {
+              "id": "access_grants_00000000000000000000000003",
+              "subject": "bos://core.principals/principals_00000000000000000000000003",
+              "target": {
+                "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+                "type_key": "core.documents"
+              },
+              "permission": "read"
+            }
+          ]
+        },
+        "expect": "applied"
+      },
+      {
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000001",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents",
+          "sensitivity": "special_category",
+          "expect": "allow"
+        }
+      },
+      {
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000003",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents",
+          "sensitivity": "special_category",
+          "expect": "deny"
+        }
+      },
+      {
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000003",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents",
+          "sensitivity": "confidential",
+          "expect": "allow"
+        }
+      }
+    ]
+  }
+}

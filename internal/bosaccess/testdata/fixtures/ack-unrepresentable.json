@@ -1,0 +1,19 @@
+{
+  "contract": "bos.access/v1",
+  "schema": "access-ack",
+  "valid": true,
+  "description": "An acknowledgement that names a grant the peer cannot express.",
+  "document": {
+    "applied_at": "2026-11-12T10:01:00Z",
+    "contract": "bos.access/v1",
+    "digest": "sha256:da83452edbe8c7c63299700a1be9e501ff416590f7aab7acdbb605c21c5bdef6",
+    "epoch": 7,
+    "state": "applied",
+    "unrepresentable": [
+      {
+        "grant": "access_grants_00000000000000000000000002",
+        "reason": "the peer does not represent expiry"
+      }
+    ]
+  }
+}

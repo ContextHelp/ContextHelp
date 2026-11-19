@@ -1,0 +1,42 @@
+{
+  "contract": "bos.access/v1",
+  "schema": "access-set",
+  "valid": false,
+  "description": "Only active principals are listed; one that is not listed is unknown and denied.",
+  "document": {
+    "contract": "bos.access/v1",
+    "epoch": 1,
+    "mode": "full",
+    "digest": "sha256:aba551ef944ebe22d33319ed62a5825cb1c211a15bca5f17741eea1bd0b79121",
+    "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+    "generated_at": "2026-11-12T10:00:00Z",
+    "feed_seq": 1,
+    "policy": {
+      "max_staleness_seconds": 86400,
+      "reconcile_interval_seconds": 3600
+    },
+    "scopes": [
+      {
+        "id": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+        "parent": null
+      },
+      {
+        "id": "bos://core.business_scopes/business_scopes_00000000000000000000000002",
+        "parent": "bos://core.business_scopes/business_scopes_00000000000000000000000001"
+      }
+    ],
+    "principals": [
+      {
+        "id": "bos://core.principals/principals_00000000000000000000000001",
+        "kind": "person",
+        "status": "inactive"
+      }
+    ],
+    "audiences": [],
+    "restricted_types": [
+      "core.peers",
+      "core.record_sensitivities"
+    ],
+    "grants": []
+  }
+}

@@ -2,6 +2,7 @@ package sharing
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"slices"
@@ -24,6 +25,19 @@ type Grant struct {
 	ID       string
 	Audience string
 	Policy   Policy
+	// Node, when set, is the grant's data predicate and replaces the one
+	// Policy.Data parses to. Only code that builds a predicate itself sets it
+	// (the record-level reads of an external authority): a stored policy's
+	// data filter always goes through Policy.DataNode and its field check.
+	Node search.Node
+}
+
+// dataNode is the grant's data predicate.
+func (g Grant) dataNode() (search.Node, error) {
+	if g.Node != nil {
+		return g.Node, nil
+	}
+	return g.Policy.DataNode()
 }
 
 // Input is what Compile builds a viewer from: the principal's active
@@ -39,6 +53,14 @@ type Input struct {
 	// (principal_identities.share_policy_id), nil when unbound. It
 	// intersects with the principal's view: keys narrow, never widen.
 	KeyPolicy *Policy
+	// Records are the source keys (bos addresses) of the records an external
+	// authority lets the principal read now through record-level entries,
+	// sorted. They are one more grant of the principal, bound to the source
+	// the authority ingests under (RecordSource), so everything that narrows
+	// a grant (ceiling, key policy, exclusions) narrows them too. The caller
+	// evaluates the entries' dates and the set's freshness at the moment of
+	// the read; Compile only turns the result into a predicate.
+	Records []string
 }
 
 // GrantPlan is one grant's share of the render plan: what the grant
@@ -137,12 +159,12 @@ func Compile(in Input) (Viewer, error) {
 		principal: in.PrincipalID, identity: in.IdentityID,
 		sql: map[search.Dialect]predicate{}, unnumbered: map[search.Dialect]predicate{},
 	}
-	grants := slices.Clone(in.Grants)
+	grants := withRecordGrant(in)
 	sort.SliceStable(grants, func(i, j int) bool { return grants[i].ID < grants[j].ID })
 
 	union := make([]search.Node, 0, len(grants))
 	for _, g := range grants {
-		node, err := g.Policy.DataNode()
+		node, err := g.dataNode()
 		if err != nil {
 			return Viewer{}, fmt.Errorf("compile viewer: grant %s: policy %s: %w", g.ID, g.Policy.Name, err)
 		}
@@ -334,6 +356,10 @@ func policyKey(in Input, grants []Grant) string {
 	for _, g := range grants {
 		fmt.Fprintf(&b, ";grant=%s:%s@%d", g.ID, g.Policy.Name, g.Policy.Version)
 	}
+	if len(in.Records) > 0 {
+		sum := sha256.Sum256([]byte(strings.Join(in.Records, "\n")))
+		fmt.Fprintf(&b, ";records=%d:%x", len(in.Records), sum[:8])
+	}
 	return b.String()
 }
 
@@ -393,7 +419,7 @@ func loadInput(ctx context.Context, st storage.SharingStore, principalID, identi
 // ceiling, key policy and every grant with its policy version, in
 // grant order. It is what a cache of compiled viewers keys on.
 func (in Input) Key() string {
-	grants := slices.Clone(in.Grants)
+	grants := withRecordGrant(in)
 	sort.SliceStable(grants, func(i, j int) bool { return grants[i].ID < grants[j].ID })
 	return policyKey(in, grants)
 }

@@ -1,0 +1,135 @@
+{
+  "contract": "bos.access/v1",
+  "schema": "access-scenario",
+  "valid": true,
+  "description": "A peer keeps the entries and what its records stand under across a restart, and the time of its last catch-up: a restart does not refresh the record basis.",
+  "document": {
+    "requires": [
+      "record_access",
+      "row_relation"
+    ],
+    "steps": [
+      {
+        "at": "2026-11-12T10:00:00Z",
+        "apply": {
+          "contract": "bos.access/v1",
+          "epoch": 1,
+          "mode": "full",
+          "digest": "sha256:fa22cc6affbe07dd5a189b27e68cb31a7b36775623fa53d04ed8fc8b54d60270",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "generated_at": "2026-11-12T10:00:00Z",
+          "feed_seq": 1,
+          "policy": {
+            "max_staleness_seconds": 86400,
+            "reconcile_interval_seconds": 3600,
+            "record_basis_max_staleness_seconds": 3600
+          },
+          "scopes": [
+            {
+              "id": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+              "parent": null
+            },
+            {
+              "id": "bos://core.business_scopes/business_scopes_00000000000000000000000002",
+              "parent": "bos://core.business_scopes/business_scopes_00000000000000000000000001"
+            }
+          ],
+          "principals": [
+            {
+              "id": "bos://core.principals/principals_00000000000000000000000001",
+              "kind": "person",
+              "status": "active"
+            },
+            {
+              "id": "bos://core.principals/principals_00000000000000000000000003",
+              "kind": "person",
+              "status": "active"
+            }
+          ],
+          "audiences": [],
+          "restricted_types": [
+            "core.peers",
+            "core.record_sensitivities"
+          ],
+          "grants": [],
+          "record_access": [
+            {
+              "id": "rec_00000000000000000000000001",
+              "subject": "bos://core.principals/principals_00000000000000000000000001",
+              "anchor": "bos://projects.engagements/engagements_00000000000000000000000001",
+              "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+              "type_key": "core.documents",
+              "via": "assignment",
+              "grant": "access_grants_00000000000000000000000001"
+            },
+            {
+              "id": "rec_00000000000000000000000002",
+              "subject": "bos://core.principals/principals_00000000000000000000000003",
+              "anchor": "bos://projects.engagements/engagements_00000000000000000000000002",
+              "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+              "type_key": "core.documents",
+              "via": "assignment",
+              "grant": "access_grants_00000000000000000000000002"
+            }
+          ]
+        },
+        "expect": "applied"
+      },
+      {
+        "catch_up": true
+      },
+      {
+        "feed": {
+          "specversion": "1.0",
+          "id": "23",
+          "source": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type": "top.hop.bos.record.changed",
+          "subject": "bos://core.documents/documents_00000000000000000000000001",
+          "time": "2026-11-12T10:00:00Z",
+          "datacontenttype": "application/json",
+          "data": {
+            "revision": 23,
+            "change": "upserted",
+            "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+            "sensitivity": "internal",
+            "etag": "sha256:0000000000000000000000000000000000000000000000000000000000000017",
+            "under": [
+              "bos://projects.engagements/engagements_00000000000000000000000001"
+            ]
+          }
+        }
+      },
+      {
+        "restart": true
+      },
+      {
+        "at": "2026-11-12T10:01:00Z",
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000001",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents",
+          "record": {
+            "address": "bos://core.documents/documents_00000000000000000000000001"
+          },
+          "expect": "allow"
+        }
+      },
+      {
+        "restart": true
+      },
+      {
+        "at": "2026-11-12T12:00:00Z",
+        "note": "the catch-up is older than the limit; the restart did not renew it",
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000001",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents",
+          "record": {
+            "address": "bos://core.documents/documents_00000000000000000000000001"
+          },
+          "expect": "deny"
+        }
+      }
+    ]
+  }
+}
