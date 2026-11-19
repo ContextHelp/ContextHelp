@@ -26,7 +26,12 @@ type scenarioStep struct {
 	Restart bool            `json:"restart"`
 	Feed    *Event          `json:"feed"`
 	CatchUp bool            `json:"catch_up"`
-	Check   *struct {
+	Resolve *struct {
+		Issuer    string  `json:"issuer"`
+		Subject   string  `json:"subject"`
+		Principal *string `json:"principal"`
+	} `json:"resolve"`
+	Check *struct {
 		Query
 		Expect   string   `json:"expect"`
 		Excluded []string `json:"excluded"`
@@ -70,7 +75,7 @@ func readFixtures(t *testing.T) map[string]fixture {
 func allShapes() Profile {
 	return Profile{
 		Tool: "ctxt-test", ToolVersion: "0",
-		Contracts:  []Listed{{ID: Contract, Level: "complete", Features: []string{FeatureRecordAccess}}},
+		Contracts:  []Listed{{ID: Contract, Level: "complete", Features: []string{FeatureRecordAccess, FeaturePrincipalIdentities}}},
 		Represents: []string{ShapeTypeGrant, ShapeFieldExclusion, ShapeDirectionLimit, ShapeExpiry, ShapeRowRelation, ShapeRecordGrant},
 		Limits:     Limits{MaxStalenessSeconds: 86400},
 	}
@@ -147,6 +152,14 @@ func runScenario(t *testing.T, prof Profile, steps []scenarioStep) {
 		case st.Feed != nil:
 			if err := p.Consume(*st.Feed); err != nil {
 				t.Fatalf("%s: feed: %v", at, err)
+			}
+		case st.Resolve != nil:
+			want := ""
+			if st.Resolve.Principal != nil {
+				want = *st.Resolve.Principal
+			}
+			if got, _ := p.Resolve(st.Resolve.Issuer, st.Resolve.Subject); got != want {
+				t.Errorf("%s: identity %s of %s maps to %q, want %q", at, st.Resolve.Subject, st.Resolve.Issuer, got, want)
 			}
 		case st.CatchUp:
 			if err := p.CatchUp(); err != nil {

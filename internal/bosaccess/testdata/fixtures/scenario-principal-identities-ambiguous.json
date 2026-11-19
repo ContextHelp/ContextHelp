@@ -1,0 +1,111 @@
+{
+  "contract": "bos.access/v1",
+  "schema": "access-scenario",
+  "valid": true,
+  "description": "An identity two principals of the set carry maps to neither: the peer cannot tell whom it is. bos never sends one, but a peer that is sent one fails closed.",
+  "document": {
+    "requires": [
+      "principal_identities"
+    ],
+    "steps": [
+      {
+        "at": "2026-11-12T10:00:00Z",
+        "apply": {
+          "contract": "bos.access/v1",
+          "epoch": 1,
+          "mode": "full",
+          "digest": "sha256:9d02aec29d184912380ce38392d29ec871387ef5c271f0e83fe3ca24eb06f78d",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "generated_at": "2026-11-12T10:00:00Z",
+          "feed_seq": 1,
+          "policy": {
+            "max_staleness_seconds": 86400,
+            "reconcile_interval_seconds": 3600
+          },
+          "scopes": [
+            {
+              "id": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+              "parent": null
+            },
+            {
+              "id": "bos://core.business_scopes/business_scopes_00000000000000000000000002",
+              "parent": "bos://core.business_scopes/business_scopes_00000000000000000000000001"
+            }
+          ],
+          "principals": [
+            {
+              "id": "bos://core.principals/principals_00000000000000000000000001",
+              "kind": "person",
+              "status": "active",
+              "identities": [
+                {
+                  "issuer": "https://login.microsoftonline.com/0f3c1c52-0000-4000-8000-000000000001/v2.0",
+                  "subject": "9c0a1b5e-0000-4000-8000-00000000000a"
+                }
+              ]
+            },
+            {
+              "id": "bos://core.principals/principals_00000000000000000000000002",
+              "kind": "agent",
+              "status": "active"
+            },
+            {
+              "id": "bos://core.principals/principals_00000000000000000000000003",
+              "kind": "person",
+              "status": "active",
+              "identities": [
+                {
+                  "issuer": "https://login.microsoftonline.com/0f3c1c52-0000-4000-8000-000000000001/v2.0",
+                  "subject": "9c0a1b5e-0000-4000-8000-00000000000a"
+                }
+              ]
+            }
+          ],
+          "audiences": [],
+          "restricted_types": [
+            "core.peers",
+            "core.record_sensitivities"
+          ],
+          "grants": [
+            {
+              "id": "access_grants_00000000000000000000000001",
+              "subject": "bos://core.principals/principals_00000000000000000000000001",
+              "target": {
+                "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+                "type_key": "core.documents"
+              },
+              "permission": "read"
+            },
+            {
+              "id": "access_grants_00000000000000000000000002",
+              "subject": "bos://core.principals/principals_00000000000000000000000003",
+              "target": {
+                "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+                "type_key": "core.documents"
+              },
+              "permission": "read"
+            },
+            {
+              "id": "access_grants_00000000000000000000000003",
+              "subject": "bos://core.principals/principals_00000000000000000000000002",
+              "target": {
+                "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+                "type_key": "core.documents"
+              },
+              "permission": "read"
+            }
+          ]
+        },
+        "expect": "applied"
+      },
+      {
+        "note": "claimed by two principals",
+        "resolve": {
+          "issuer": "https://login.microsoftonline.com/0f3c1c52-0000-4000-8000-000000000001/v2.0",
+          "subject": "9c0a1b5e-0000-4000-8000-00000000000a",
+          "principal": null
+        }
+      }
+    ]
+  }
+}

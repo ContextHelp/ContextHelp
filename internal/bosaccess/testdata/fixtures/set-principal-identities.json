@@ -1,0 +1,96 @@
+{
+  "contract": "bos.access/v1",
+  "schema": "access-set",
+  "valid": true,
+  "description": "A full set whose principals carry their external identities: a person with two (one per issuer), a person with one, an agent with none. Only issuer and subject travel; the digest covers them, and a set without identities has the digest it always had. Sent only to a peer that lists the feature principal_identities.",
+  "document": {
+    "contract": "bos.access/v1",
+    "epoch": 1,
+    "mode": "full",
+    "digest": "sha256:7c1f677648130e19706470ee46ddd9acd69e8922af61d002f5c36642948c437d",
+    "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+    "generated_at": "2026-11-12T10:00:00Z",
+    "feed_seq": 1,
+    "policy": {
+      "max_staleness_seconds": 86400,
+      "reconcile_interval_seconds": 3600
+    },
+    "scopes": [
+      {
+        "id": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+        "parent": null
+      },
+      {
+        "id": "bos://core.business_scopes/business_scopes_00000000000000000000000002",
+        "parent": "bos://core.business_scopes/business_scopes_00000000000000000000000001"
+      }
+    ],
+    "principals": [
+      {
+        "id": "bos://core.principals/principals_00000000000000000000000001",
+        "kind": "person",
+        "status": "active",
+        "identities": [
+          {
+            "issuer": "https://login.microsoftonline.com/0f3c1c52-0000-4000-8000-000000000001/v2.0",
+            "subject": "9c0a1b5e-0000-4000-8000-00000000000a"
+          },
+          {
+            "issuer": "https://login.microsoftonline.com/0f3c1c52-0000-4000-8000-000000000002/v2.0",
+            "subject": "4e7d2f61-0000-4000-8000-00000000000a"
+          }
+        ]
+      },
+      {
+        "id": "bos://core.principals/principals_00000000000000000000000002",
+        "kind": "agent",
+        "status": "active"
+      },
+      {
+        "id": "bos://core.principals/principals_00000000000000000000000003",
+        "kind": "person",
+        "status": "active",
+        "identities": [
+          {
+            "issuer": "https://login.microsoftonline.com/0f3c1c52-0000-4000-8000-000000000001/v2.0",
+            "subject": "9c0a1b5e-0000-4000-8000-00000000000b"
+          }
+        ]
+      }
+    ],
+    "audiences": [],
+    "restricted_types": [
+      "core.peers",
+      "core.record_sensitivities"
+    ],
+    "grants": [
+      {
+        "id": "access_grants_00000000000000000000000001",
+        "subject": "bos://core.principals/principals_00000000000000000000000001",
+        "target": {
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents"
+        },
+        "permission": "read"
+      },
+      {
+        "id": "access_grants_00000000000000000000000002",
+        "subject": "bos://core.principals/principals_00000000000000000000000003",
+        "target": {
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents"
+        },
+        "permission": "read"
+      },
+      {
+        "id": "access_grants_00000000000000000000000003",
+        "subject": "bos://core.principals/principals_00000000000000000000000002",
+        "target": {
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents"
+        },
+        "permission": "read"
+      }
+    ]
+  }
+}

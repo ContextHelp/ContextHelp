@@ -13,6 +13,29 @@ type SharingConfig struct {
 	Classes ClassesConfig `mapstructure:"classes" yaml:"classes"`
 	// Audit configures the read audit of non-owner requests (§9).
 	Audit AuditConfig `mapstructure:"audit" yaml:"audit"`
+	// Authority configures access provisioned by an external authority.
+	Authority AuthorityConfig `mapstructure:"authority" yaml:"authority"`
+}
+
+// AuthorityConfig configures access provisioned by an external authority
+// (bos.access/v1): when enabled, the instance accepts the sets the authority
+// pushes and enforces their record-level entries on reads.
+type AuthorityConfig struct {
+	Enabled bool `mapstructure:"enabled" yaml:"enabled"`
+	// Feed is where the authority's change feed is read from. Without a
+	// URL no feed is read and record-level reads stay denied (no catch-up).
+	Feed AuthorityFeedConfig `mapstructure:"feed" yaml:"feed"`
+}
+
+// AuthorityFeedConfig locates the authority's change feed. The bearer
+// credential of the reading service principal is the secret
+// bos/feed-token.
+type AuthorityFeedConfig struct {
+	URL   string `mapstructure:"url" yaml:"url,omitempty" secret:"false"`
+	Peer  string `mapstructure:"peer" yaml:"peer,omitempty"`
+	Scope string `mapstructure:"scope" yaml:"scope,omitempty"`
+	// Interval is how often the feed is read; 1m when unset.
+	Interval time.Duration `mapstructure:"interval" yaml:"interval,omitempty"`
 }
 
 // DefaultAuditRetention is how long the read audit keeps the object id

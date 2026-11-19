@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://hop.top/bos/contracts/peer/access/v1/schema/access-set.schema.json",
   "title": "Access set",
-  "description": "What bos tells a peer about who may read what in one business scope: the principals by their bos address, the audiences (groups) and their members, and the read grants, each with the record types it covers. The peer enforces it locally. A set describes the scope the peer is bound to and its descendants and nothing outside them. Unknown top-level fields are ignored; a grant that carries a property the peer does not know is one the peer cannot represent, and it denies it. From document version 1.1 the set may also carry record_access: who stands in relation to which engagement, project or client file, so that a peer allows a record the person has no type grant for when the record stands under such an anchor; it is a separate list, never part of a grant's target, so a peer on version 1.0 ignores it and allows nothing through it.",
+  "description": "What bos tells a peer about who may read what in one business scope: the principals by their bos address, the audiences (groups) and their members, and the read grants, each with the record types it covers. The peer enforces it locally. A set describes the scope the peer is bound to and its descendants and nothing outside them. Unknown top-level fields are ignored; a grant that carries a property the peer does not know is one the peer cannot represent, and it denies it. From document version 1.1 the set may also carry record_access: who stands in relation to which engagement, project or client file, so that a peer allows a record the person has no type grant for when the record stands under such an anchor; it is a separate list, never part of a grant's target, so a peer on version 1.0 ignores it and allows nothing through it. A principal may also carry identities, its external identities, for a peer that maps principals to its own identity space.",
   "type": "object",
   "$defs": {
     "address": {
@@ -99,7 +99,22 @@
         "properties": {
           "id": {"$ref": "#/$defs/address"},
           "kind": {"enum": ["person", "agent", "service"]},
-          "status": {"enum": ["active"], "description": "Only active principals are listed; one that is not listed is unknown and denied."}
+          "status": {"enum": ["active"], "description": "Only active principals are listed; one that is not listed is unknown and denied."},
+          "identities": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "object",
+              "properties": {
+                "issuer": {"type": "string", "minLength": 1, "description": "The issuer that vouches for the identity: the tenant issuer of the directory the principal comes from (for Microsoft Entra ID, the v2.0 issuer URL of the tenant). Compared as a string."},
+                "subject": {"type": "string", "minLength": 1, "description": "The identifier the issuer gives the principal: the directory id (for Microsoft Entra ID, the object id). Scoped by the issuer."}
+              },
+              "required": ["issuer", "subject"],
+              "additionalProperties": false
+            },
+            "description": "From document version 1.1: the identities the principal has outside bos, so a peer can map the principal to its own identity space. Sent only to a peer whose profile lists the feature principal_identities for this contract, and left out when the principal has none. Issuer and subject only: no name, no address, nothing else, and an identity with another property is refused. Identities grant nothing; a grant does. An identity two principals of the set carry maps to neither."
+          }
         },
         "required": ["id", "kind", "status"]
       },

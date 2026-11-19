@@ -1,0 +1,34 @@
+{
+  "contract": "bos.peer/v1",
+  "schema": "peer-profile",
+  "valid": true,
+  "description": "A peer that maps bos principals to its own identity space: it lists the feature principal_identities on bos.access/v1, so the principals of a set it is sent carry their external identities (issuer and subject).",
+  "document": {
+    "tool": "mdx",
+    "tool_version": "1.5.0",
+    "contracts": [
+      {
+        "id": "bos.peer/v1",
+        "level": "complete"
+      },
+      {
+        "id": "bos.access/v1",
+        "level": "complete",
+        "features": [
+          "principal_identities"
+        ]
+      }
+    ],
+    "represents": [
+      "type_grant",
+      "expiry"
+    ],
+    "can": {
+      "erase": true,
+      "hold": true
+    },
+    "limits": {
+      "max_staleness_seconds": 86400
+    }
+  }
+}

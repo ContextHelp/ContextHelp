@@ -93,6 +93,11 @@ type RouterConfig struct {
 	// Audit receives one read audit entry per non-owner request
 	// (ADR-080 §9); nil logs nothing.
 	Audit *sharing.AuditWriter
+	// Access, when set, serves the routes an external authority calls to
+	// provision access (bos.access/v1) and its profile; AuditLog receives
+	// one entry per set applied or refused.
+	Access   AccessReceiver
+	AuditLog storage.AuditStore
 }
 
 // NewRouter creates the HTTP router with all routes and middleware.
@@ -201,7 +206,28 @@ func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
 		mountAPIRoutes(r, apiRoutes(svc, rc), rc, svc.Viewers())
 	})
 
+	if rc.Access != nil {
+		mountAccessRoutes(r, rc, svc)
+	}
+
 	return r
+}
+
+// mountAccessRoutes mounts the access provisioning routes of the authority
+// beside /api/v1, behind the same authentication.
+func mountAccessRoutes(r chi.Router, rc RouterConfig, svc *service.Service) {
+	a := accessRoutes{rc: rc, rcv: rc.Access}
+	r.Route("/bos/v1", func(r chi.Router) {
+		if rc.Auth != nil {
+			r.Use(RequireAuth(rc.Auth, rc.Security, rc.DevCORS, svc.Viewers()))
+		} else {
+			r.Use(WithViewer(sharing.Unrestricted))
+		}
+		r.Get("/profile", a.guard(a.profile))
+		r.Put("/access/{business}", a.guard(a.apply))
+		r.Patch("/access/{business}", a.guard(a.apply))
+		r.Get("/access/{business}/state", a.guard(a.state))
+	})
 }
 
 // mountAPIRoutes mounts the route-to-scope table. With an auth

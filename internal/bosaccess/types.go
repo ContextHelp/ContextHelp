@@ -51,6 +51,11 @@ const (
 // holds record entries and the under of each record.
 const FeatureRecordAccess = "record_access"
 
+// FeaturePrincipalIdentities is the feature a peer lists to be told the
+// external identities (issuer, subject) of the principals a set names, so it
+// can map its own sign-ins to them.
+const FeaturePrincipalIdentities = "principal_identities"
+
 // Vias of a record entry.
 const (
 	ViaAssignment  = "assignment"
@@ -125,6 +130,17 @@ type Principal struct {
 	ID     string `json:"id"`
 	Kind   string `json:"kind"`
 	Status string `json:"status"`
+	// Identities are the identities the principal has outside the authority,
+	// sent to a peer that lists the feature principal_identities. They grant
+	// nothing: a grant does.
+	Identities []Identity `json:"identities,omitempty"`
+}
+
+// Identity is one external identity of a principal: the issuer that vouches
+// for it and the subject the issuer gives the principal.
+type Identity struct {
+	Issuer  string `json:"issuer"`
+	Subject string `json:"subject"`
 }
 
 // Member is a member of an audience.
@@ -219,6 +235,15 @@ type Set struct {
 func (s *Set) Normalize() {
 	sort.Slice(s.Scopes, func(i, j int) bool { return s.Scopes[i].ID < s.Scopes[j].ID })
 	sort.Slice(s.Principals, func(i, j int) bool { return s.Principals[i].ID < s.Principals[j].ID })
+	for i := range s.Principals {
+		ids := s.Principals[i].Identities
+		sort.Slice(ids, func(a, b int) bool {
+			if ids[a].Issuer != ids[b].Issuer {
+				return ids[a].Issuer < ids[b].Issuer
+			}
+			return ids[a].Subject < ids[b].Subject
+		})
+	}
 	sort.Slice(s.Audiences, func(i, j int) bool { return s.Audiences[i].ID < s.Audiences[j].ID })
 	for i := range s.Audiences {
 		m := s.Audiences[i].Members

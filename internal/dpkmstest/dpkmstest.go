@@ -36,6 +36,7 @@ import (
 	kitbus "hop.top/kit/go/runtime/bus"
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
+	"github.com/ideacrafterslabs/ctxt/internal/bosaccess"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
 	httpserver "github.com/ideacrafterslabs/ctxt/internal/server/http"
@@ -126,6 +127,7 @@ type options struct {
 	unreachable bool
 	embedClient *http.Client
 	upgrade     *upgrade.Manager
+	authority   *bosaccess.Peer
 }
 
 // Option configures Start.
@@ -164,6 +166,13 @@ func WithEmbeddingHTTPClient(c *http.Client) Option {
 // (Start, Tick, Fail, Complete) to put the instance mid-upgrade.
 func WithUpgrade(m *upgrade.Manager) Option {
 	return func(o *options) { o.upgrade = m }
+}
+
+// WithAuthority gives the instance the access state of an external
+// authority: its viewers carry the record-level reads the state allows, and
+// the provisioning routes are served.
+func WithAuthority(p *bosaccess.Peer) Option {
+	return func(o *options) { o.authority = p }
 }
 
 // Unreachable returns a Server whose URL points at a closed port: no
@@ -247,6 +256,7 @@ func Start(t testing.TB, driver storage.StorageDriver, opts ...Option) *Server {
 		// A test instance refuses a response the backstop would strip:
 		// a leak is a failure, never a quietly cleaned body.
 		StrictSharing: true,
+		Authority:     o.authority,
 	})
 	if err != nil {
 		t.Fatalf("dpkmstest: build stack: %v", err)

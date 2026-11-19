@@ -9,7 +9,7 @@
   },
   "additionalProperties": false,
   "properties": {
-    "requires": {"type": "array", "items": {"enum": ["field_exclusion", "direction_limit", "expiry", "row_relation", "record_grant", "record_access"]}, "description": "What the peer must list in its profile for the scenario to apply: grant shapes (field_exclusion, direction_limit, expiry, row_relation, record_grant) or the contract feature record_access. A peer that does not list one skips the scenario."},
+    "requires": {"type": "array", "items": {"enum": ["field_exclusion", "direction_limit", "expiry", "row_relation", "record_grant", "record_access", "principal_identities"]}, "description": "What the peer must list in its profile for the scenario to apply: grant shapes (field_exclusion, direction_limit, expiry, row_relation, record_grant) or a contract feature (record_access, principal_identities). A peer that does not list one skips the scenario."},
     "steps": {
       "type": "array",
       "minItems": 1,
@@ -24,6 +24,17 @@
           "restart": {"const": true, "description": "Stop the peer and start it again. It keeps the last set durably, and what its records stand under, and the time of its last feed catch-up."},
           "feed": {"type": "object", "description": "The peer consumes this change event of the feed (a bos.peer/v1 event), in the order of the steps: upserted, refreshed and scope_changed replace what its subject stands under with data.under (none: not known), deleted and erased drop the record. Needs the feature record_access."},
           "catch_up": {"const": true, "description": "The peer completes a catch-up of the feed at the step's clock. Record-level reads are denied when the last one is older than policy.record_basis_max_staleness_seconds (or the peer's own limit), or none was done. Needs the feature record_access."},
+          "resolve": {
+            "type": "object",
+            "description": "Ask the peer which principal of the set it holds carries an external identity. The subject is scoped by its issuer; an identity no principal carries, or that more than one does, maps to nothing. Needs the feature principal_identities.",
+            "properties": {
+              "issuer": {"type": "string"},
+              "subject": {"type": "string"},
+              "principal": {"oneOf": [{"type": "string"}, {"type": "null"}], "description": "The address of the principal the identity maps to; null when it maps to nothing."}
+            },
+            "required": ["issuer", "subject", "principal"],
+            "additionalProperties": false
+          },
           "check": {
             "type": "object",
             "properties": {
@@ -55,8 +66,9 @@
           {"required": ["restart"]},
           {"required": ["feed"]},
           {"required": ["catch_up"]},
+          {"required": ["resolve"]},
           {"required": ["check"]},
-          {"required": ["at"], "not": {"anyOf": [{"required": ["apply"]}, {"required": ["restart"]}, {"required": ["feed"]}, {"required": ["catch_up"]}, {"required": ["check"]}]}}
+          {"required": ["at"], "not": {"anyOf": [{"required": ["apply"]}, {"required": ["restart"]}, {"required": ["feed"]}, {"required": ["catch_up"]}, {"required": ["resolve"]}, {"required": ["check"]}]}}
         ]
       }
     }

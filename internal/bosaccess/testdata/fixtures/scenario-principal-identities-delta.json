@@ -1,0 +1,196 @@
+{
+  "contract": "bos.access/v1",
+  "schema": "access-scenario",
+  "valid": true,
+  "description": "A delta replaces the principals whole, identities included: after it the added identity maps, the one the delta no longer lists maps to nothing, and the one it leaves alone still maps.",
+  "document": {
+    "requires": [
+      "principal_identities"
+    ],
+    "steps": [
+      {
+        "at": "2026-11-12T10:00:00Z",
+        "apply": {
+          "contract": "bos.access/v1",
+          "epoch": 2,
+          "mode": "full",
+          "digest": "sha256:063b0bb9eebe79c36b13b56a016a6cba6b745513f4f4a030d7bd7bea0f989a86",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "generated_at": "2026-11-12T10:00:00Z",
+          "feed_seq": 2,
+          "policy": {
+            "max_staleness_seconds": 86400,
+            "reconcile_interval_seconds": 3600
+          },
+          "scopes": [
+            {
+              "id": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+              "parent": null
+            },
+            {
+              "id": "bos://core.business_scopes/business_scopes_00000000000000000000000002",
+              "parent": "bos://core.business_scopes/business_scopes_00000000000000000000000001"
+            }
+          ],
+          "principals": [
+            {
+              "id": "bos://core.principals/principals_00000000000000000000000001",
+              "kind": "person",
+              "status": "active",
+              "identities": [
+                {
+                  "issuer": "https://login.microsoftonline.com/0f3c1c52-0000-4000-8000-000000000001/v2.0",
+                  "subject": "9c0a1b5e-0000-4000-8000-00000000000a"
+                }
+              ]
+            },
+            {
+              "id": "bos://core.principals/principals_00000000000000000000000002",
+              "kind": "agent",
+              "status": "active"
+            },
+            {
+              "id": "bos://core.principals/principals_00000000000000000000000003",
+              "kind": "person",
+              "status": "active",
+              "identities": [
+                {
+                  "issuer": "https://login.microsoftonline.com/0f3c1c52-0000-4000-8000-000000000001/v2.0",
+                  "subject": "9c0a1b5e-0000-4000-8000-0000000000bb"
+                }
+              ]
+            }
+          ],
+          "audiences": [],
+          "restricted_types": [
+            "core.peers",
+            "core.record_sensitivities"
+          ],
+          "grants": [
+            {
+              "id": "access_grants_00000000000000000000000001",
+              "subject": "bos://core.principals/principals_00000000000000000000000001",
+              "target": {
+                "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+                "type_key": "core.documents"
+              },
+              "permission": "read"
+            },
+            {
+              "id": "access_grants_00000000000000000000000002",
+              "subject": "bos://core.principals/principals_00000000000000000000000003",
+              "target": {
+                "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+                "type_key": "core.documents"
+              },
+              "permission": "read"
+            },
+            {
+              "id": "access_grants_00000000000000000000000003",
+              "subject": "bos://core.principals/principals_00000000000000000000000002",
+              "target": {
+                "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+                "type_key": "core.documents"
+              },
+              "permission": "read"
+            }
+          ]
+        },
+        "expect": "applied"
+      },
+      {
+        "resolve": {
+          "issuer": "https://login.microsoftonline.com/0f3c1c52-0000-4000-8000-000000000001/v2.0",
+          "subject": "9c0a1b5e-0000-4000-8000-0000000000bb",
+          "principal": "bos://core.principals/principals_00000000000000000000000003"
+        }
+      },
+      {
+        "at": "2026-11-12T11:00:00Z",
+        "apply": {
+          "contract": "bos.access/v1",
+          "epoch": 3,
+          "mode": "delta",
+          "base_epoch": 2,
+          "digest": "sha256:25d9165c4d01daf018ef7c0f91b60f7a840ca61e9c7bf375f58b4bbf970a3107",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "generated_at": "2026-11-12T10:00:00Z",
+          "feed_seq": 3,
+          "policy": {
+            "max_staleness_seconds": 86400,
+            "reconcile_interval_seconds": 3600
+          },
+          "scopes": [
+            {
+              "id": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+              "parent": null
+            },
+            {
+              "id": "bos://core.business_scopes/business_scopes_00000000000000000000000002",
+              "parent": "bos://core.business_scopes/business_scopes_00000000000000000000000001"
+            }
+          ],
+          "principals": [
+            {
+              "id": "bos://core.principals/principals_00000000000000000000000001",
+              "kind": "person",
+              "status": "active",
+              "identities": [
+                {
+                  "issuer": "https://login.microsoftonline.com/0f3c1c52-0000-4000-8000-000000000001/v2.0",
+                  "subject": "9c0a1b5e-0000-4000-8000-00000000000a"
+                }
+              ]
+            },
+            {
+              "id": "bos://core.principals/principals_00000000000000000000000002",
+              "kind": "agent",
+              "status": "active",
+              "identities": [
+                {
+                  "issuer": "https://login.microsoftonline.com/0f3c1c52-0000-4000-8000-000000000002/v2.0",
+                  "subject": "4e7d2f61-0000-4000-8000-0000000000aa"
+                }
+              ]
+            },
+            {
+              "id": "bos://core.principals/principals_00000000000000000000000003",
+              "kind": "person",
+              "status": "active"
+            }
+          ],
+          "audiences": [],
+          "restricted_types": [
+            "core.peers",
+            "core.record_sensitivities"
+          ],
+          "grants": []
+        },
+        "expect": "applied"
+      },
+      {
+        "note": "added by the delta",
+        "resolve": {
+          "issuer": "https://login.microsoftonline.com/0f3c1c52-0000-4000-8000-000000000002/v2.0",
+          "subject": "4e7d2f61-0000-4000-8000-0000000000aa",
+          "principal": "bos://core.principals/principals_00000000000000000000000002"
+        }
+      },
+      {
+        "note": "dropped by the delta",
+        "resolve": {
+          "issuer": "https://login.microsoftonline.com/0f3c1c52-0000-4000-8000-000000000001/v2.0",
+          "subject": "9c0a1b5e-0000-4000-8000-0000000000bb",
+          "principal": null
+        }
+      },
+      {
+        "resolve": {
+          "issuer": "https://login.microsoftonline.com/0f3c1c52-0000-4000-8000-000000000001/v2.0",
+          "subject": "9c0a1b5e-0000-4000-8000-00000000000a",
+          "principal": "bos://core.principals/principals_00000000000000000000000001"
+        }
+      }
+    ]
+  }
+}
