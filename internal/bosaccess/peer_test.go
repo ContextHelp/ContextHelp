@@ -1,12 +1,16 @@
 package bosaccess
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 const (
@@ -41,19 +45,22 @@ func docEvent(under ...string) Event {
 	return Event{Subject: tDoc, Data: EventData{Change: "upserted", Scope: tScope, Sensitivity: "internal", Under: under}}
 }
 
-// The declared profile lists the feature and the shapes entries need, and
-// no type grant: a grant is one ctxt does not enforce and says so.
+// The declared profile lists the features, the shapes ctxt enforces, and
+// not the ones it does not (field exclusions, direction limits, operations).
 func TestDeclaredProfile(t *testing.T) {
 	p := DeclaredProfile("1.2.3")
+	if !p.Supports(FeaturePrincipalIdentities) {
+		t.Fatalf("principal_identities not declared")
+	}
 	if !p.HasFeature(Contract, FeatureRecordAccess) || !p.Supports(FeatureRecordAccess) {
 		t.Fatalf("the feature is not declared: %+v", p.Contracts)
 	}
-	for _, s := range []string{ShapeRowRelation, ShapeRecordGrant} {
+	for _, s := range []string{ShapeRowRelation, ShapeRecordGrant, ShapeTypeGrant, ShapeExpiry} {
 		if !p.Expresses(s) {
 			t.Errorf("shape %s not declared", s)
 		}
 	}
-	for _, s := range []string{ShapeTypeGrant, ShapeOperation} {
+	for _, s := range []string{ShapeFieldExclusion, ShapeDirectionLimit, ShapeOperation} {
 		if p.Expresses(s) {
 			t.Errorf("shape %s declared; ctxt does not enforce it", s)
 		}
@@ -62,7 +69,7 @@ func TestDeclaredProfile(t *testing.T) {
 
 // What ctxt cannot enforce it denies and names in the acknowledgement: an
 // entry with a property it does not know (by entry id), a grant of a shape it
-// does not list and an operation grant (by id).
+// does not list (a field exclusion) and an operation grant (by id).
 func TestAckNamesWhatIsNotRepresentable(t *testing.T) {
 	p, err := Open(DeclaredProfile("t"), nil, func() time.Time { return t0 })
 	if err != nil {
@@ -74,7 +81,7 @@ func TestAckNamesWhatIsNotRepresentable(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := baseSet(1, entry("rec_ok", ViaAssignment), unknown)
-	s.Grants = []Grant{{ID: "grant_type", Subject: tPerson, Target: Target{Scope: tScope}, Permission: "read"}}
+	s.Grants = []Grant{{ID: "grant_fields", Subject: tPerson, Target: Target{Scope: tScope}, Permission: "read", ExcludedFields: []string{"x"}}}
 	s.Operations = []Operation{{ID: "op_1", Subject: tPerson, Scope: tScope, Operation: "core.Run"}}
 	s.Digest = ContentDigest(s)
 	ack, err := p.Apply(s)
@@ -85,7 +92,7 @@ func TestAckNamesWhatIsNotRepresentable(t *testing.T) {
 	for _, u := range ack.Unrepresentable {
 		grants = append(grants, u.Grant)
 	}
-	if !slices.Equal(grants, []string{"grant_type", "op_1"}) {
+	if !slices.Equal(grants, []string{"grant_fields", "op_1"}) {
 		t.Errorf("unrepresentable grants = %v", grants)
 	}
 	if ack.RecordAccess == nil || ack.RecordAccess.Count != 2 || len(ack.RecordAccess.Unrepresentable) != 1 || ack.RecordAccess.Unrepresentable[0].Entry != "rec_unknown" {
@@ -187,5 +194,64 @@ func TestReadableFollowsTheFloors(t *testing.T) {
 	clk.t = t0.Add(25 * time.Hour)
 	if got := p.Readable(tPerson); got != nil {
 		t.Fatalf("stale set: readable = %v", got)
+	}
+}
+
+// The declared profile is a valid peer profile document.
+func TestDeclaredProfileIsValid(t *testing.T) {
+	raw, err := os.ReadFile("testdata/common/peer-profile.schema.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := jsonschema.NewCompiler()
+	if err := c.AddResource("https://hop.top/bos/contracts/peer/common/v1/schema/peer-profile.schema.json", doc); err != nil {
+		t.Fatal(err)
+	}
+	sch, err := c.Compile("https://hop.top/bos/contracts/peer/common/v1/schema/peer-profile.schema.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, err := jsonschema.UnmarshalJSON(bytes.NewReader(mustJSON(DeclaredProfile("1.0.0"))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sch.Validate(v); err != nil {
+		t.Fatalf("declared profile is invalid: %v", err)
+	}
+}
+
+// Special-category records are readable by a person holding the clearance
+// grant (a type grant on the sensitivity type), and by nobody else.
+func TestClearanceLetsSpecialCategoryThrough(t *testing.T) {
+	clk := &clock{t: t0}
+	p, _ := Open(DeclaredProfile("t"), nil, clk.now)
+	docs := str("core.documents")
+	s := baseSet(1)
+	s.Grants = []Grant{{ID: "g_docs", Subject: tPerson, Target: Target{Scope: tScope, TypeKey: docs}, Permission: "read"}}
+	s.RestrictedTypes = []string{SensitivityClearanceType}
+	s.Digest = ContentDigest(s)
+	apply := func(s Set) {
+		t.Helper()
+		if _, err := p.Apply(s); err != nil {
+			t.Fatal(err)
+		}
+	}
+	apply(s)
+	_ = p.Consume(Event{Subject: tDoc, Data: EventData{Change: "upserted", Scope: tScope, Sensitivity: "special_category", Under: []string{}}})
+	_ = p.CatchUp()
+	if got := p.Readable(tPerson); got != nil {
+		t.Fatalf("without clearance readable = %v", got)
+	}
+	s2 := s
+	s2.Epoch = 2
+	s2.Grants = append(slices.Clone(s.Grants), Grant{ID: "g_clear", Subject: tPerson, Target: Target{Scope: tScope, TypeKey: str(SensitivityClearanceType)}, Permission: "read"})
+	s2.Digest = ContentDigest(s2)
+	apply(s2)
+	if got := p.Readable(tPerson); !slices.Equal(got, []string{tDoc}) {
+		t.Fatalf("with clearance readable = %v", got)
 	}
 }

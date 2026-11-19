@@ -25,10 +25,6 @@ const (
 	// RecordGrantID names the grant a principal's record-level reads compile
 	// to. It sorts after every grant id the store issues (grt_...).
 	RecordGrantID = "~record-access"
-	// RecordIdentityIssuer is the issuer of the identity that binds a ctxt
-	// principal to its address at the authority: an oidc identity whose
-	// subject is the principal's bos address.
-	RecordIdentityIssuer = "bos"
 	// MaxRecordAddresses bounds the records one viewer's predicate names;
 	// past it the first addresses in order are kept and the rest are left out
 	// (a read denied, never one widened).
@@ -45,7 +41,8 @@ type RecordSource interface {
 }
 
 // recordGrantPolicy is the policy a principal's record-level reads render
-// with: every field of the record, the search modes that filter rows. The
+// with: every field of the record, the search modes that filter rows, and
+// entities, export and MCP through the records that were released. The
 // authority's entries carry no field limits (a grant that would is not
 // provisioned as an entry), so none apply here.
 func recordGrantPolicy() Policy {
@@ -53,7 +50,7 @@ func recordGrantPolicy() Policy {
 		Name:         "bos-record-access",
 		Version:      1,
 		Fields:       map[string][]string{"*": {FieldAll}},
-		Capabilities: Capabilities{Search: []string{SearchFTS, SearchRSQL}},
+		Capabilities: Capabilities{Search: []string{SearchFTS, SearchRSQL}, Entities: true, Export: true, MCP: true},
 	}
 }
 
@@ -93,13 +90,17 @@ func recordNode(addresses []string) search.Node {
 // Holder is what the record source asks of the held access state: the
 // records a person of the authority may read now.
 type Holder interface {
+	// Resolve maps an external identity (issuer, subject) to the principal of
+	// the held set that carries it.
+	Resolve(issuer, subject string) (string, bool)
 	Readable(authorityPrincipal string) []string
 }
 
 // AuthorityRecords is a RecordSource over a held access state: it maps a
-// ctxt principal to its address at the authority through an active oidc
-// identity of issuer RecordIdentityIssuer, and lists what the state lets that
-// address read now.
+// ctxt principal to its principal at the authority through its active oidc
+// identities (issuer and subject, as the authority lists them in the set),
+// and lists what the state lets that principal read now. An identity no
+// principal of the set carries, or that two carry, maps to nothing.
 type AuthorityRecords struct {
 	Holder     Holder
 	Identities storage.IdentityStore
@@ -116,8 +117,11 @@ func (a AuthorityRecords) ReadableRecords(ctx context.Context, principalID strin
 	}
 	var out []string
 	for _, id := range ids {
-		if id.Active() && id.Method == storage.IdentityMethodOIDC && id.Issuer == RecordIdentityIssuer {
-			out = append(out, a.Holder.Readable(id.Subject)...)
+		if !id.Active() || id.Method != storage.IdentityMethodOIDC {
+			continue
+		}
+		if who, ok := a.Holder.Resolve(id.Issuer, id.Subject); ok {
+			out = append(out, a.Holder.Readable(who)...)
 		}
 	}
 	slices.Sort(out)
@@ -128,6 +132,26 @@ func (a AuthorityRecords) ReadableRecords(ctx context.Context, principalID strin
 		out = out[:MaxRecordAddresses]
 	}
 	return out, nil
+}
+
+// KVCursor keeps a feed cursor in the instance key-value store, under Key.
+type KVCursor struct {
+	KV  storage.KVStore
+	Key string
+}
+
+// Load returns the cursor saved, or "" when none.
+func (k KVCursor) Load() (string, error) {
+	b, ok, err := k.KV.Get(context.Background(), k.Key)
+	if err != nil || !ok {
+		return "", err
+	}
+	return string(b), nil
+}
+
+// Save replaces the cursor.
+func (k KVCursor) Save(v string) error {
+	return k.KV.Put(context.Background(), k.Key, []byte(v))
 }
 
 // KVState keeps the held access state in the instance database's key-value

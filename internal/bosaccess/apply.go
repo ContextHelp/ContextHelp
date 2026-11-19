@@ -139,6 +139,29 @@ func sortedIDs(m map[string]string) []string {
 	return ids
 }
 
+// Resolve maps an external identity to the principal of the held set that
+// carries it. An identity no principal carries, or that more than one does,
+// resolves to nothing; so does a peer that holds no set or lists no
+// principal_identities. A subject is scoped by its issuer.
+func (h *Held) Resolve(issuer, subject string) (string, bool) {
+	if h == nil {
+		return "", false
+	}
+	found := ""
+	for _, p := range h.Set.Principals {
+		for _, id := range p.Identities {
+			if id.Issuer != issuer || id.Subject != subject {
+				continue
+			}
+			if found != "" && found != p.ID {
+				return "", false
+			}
+			found = p.ID
+		}
+	}
+	return found, found != ""
+}
+
 // cannotExpressEntry returns why the peer cannot enforce the record entry as
 // written, "" when it can: a property it does not know, or a shape or the
 // feature its profile does not list.

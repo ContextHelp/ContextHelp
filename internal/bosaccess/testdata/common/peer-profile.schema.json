@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/bos/contracts/peer/common/v1/schema/peer-profile.schema.json",
+  "title": "Peer profile",
+  "description": "What a peer declares about itself: served at GET /.well-known/bos-peer, or printed by `<tool> capabilities --format json` for a peer with no server. Unknown fields are ignored.",
+  "type": "object",
+  "properties": {
+    "tool": {"type": "string", "minLength": 1},
+    "tool_version": {"type": "string", "minLength": 1},
+    "contracts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z][a-z0-9.]*/v[1-9][0-9]*$", "description": "Contract id with its major version, e.g. bos.peer/v1."},
+          "level": {"enum": ["complete", "partial", "unsupported"]},
+          "unsupported": {"type": "array", "items": {"type": "string"}, "description": "What a partial implementation leaves out, e.g. anonymize."},
+          "features": {"type": "array", "uniqueItems": true, "items": {"type": "string"}, "description": "Optional features of the contract the peer implements. record_access (on bos.access/v1): the peer holds record_access entries and the `under` of each record, and allows a record-level read when the two meet. bos sends entries and `under` only to a peer that lists it, together with the grant shapes (represents) the entries need. principal_identities (on bos.access/v1): the peer maps bos principals to its own identity space; bos sends the external identities (issuer and subject) of the principals a set names only to a peer that lists it. A value this version of bos does not know is ignored."}
+        },
+        "required": ["id", "level"]
+      }
+    },
+    "represents": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"enum": ["type_grant", "field_exclusion", "direction_limit", "row_relation", "office_following", "record_grant", "expiry", "operation_grant"]},
+      "description": "The grant shapes the peer can express and enforce. A shape not listed is one the peer denies."
+    },
+    "can": {
+      "type": "object",
+      "properties": {
+        "erase": {"type": "boolean", "description": "Delete a subject by its bos address."},
+        "hold": {"type": "boolean", "description": "Refuse to delete or expire a held subject."},
+        "anonymize": {"type": "boolean"},
+        "erase_derived": {"type": "boolean", "description": "Trace and erase what the peer derived from a source: embeddings, indexes, caches, conversions, summaries."}
+      },
+      "required": ["erase", "hold"]
+    },
+    "limits": {
+      "type": "object",
+      "properties": {
+        "max_staleness_seconds": {"type": "integer", "minimum": 1, "description": "Seconds after its last applied access set at which the peer denies instead of allowing. Required: a peer that never denies on a stale set cannot be bound."}
+      },
+      "required": ["max_staleness_seconds"]
+    },
+    "auth": {"type": "array", "items": {"type": "string"}},
+    "health": {"type": "string", "description": "Path of the health endpoint, or the CLI verb for a peer with no server."}
+  },
+  "required": ["tool", "tool_version", "contracts", "represents", "can", "limits"]
+}

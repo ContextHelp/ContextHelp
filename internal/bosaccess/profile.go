@@ -8,8 +8,16 @@ type Profile struct {
 	ToolVersion string   `json:"tool_version"`
 	Contracts   []Listed `json:"contracts"`
 	Represents  []string `json:"represents"`
+	Can         Can      `json:"can"`
 	Limits      Limits   `json:"limits"`
 	Auth        []string `json:"auth,omitempty"`
+}
+
+// Can is what the peer can do for the obligations contract; ctxt lists none
+// of it yet.
+type Can struct {
+	Erase bool `json:"erase"`
+	Hold  bool `json:"hold"`
 }
 
 // Listed is one entry of a profile's contracts list.
@@ -53,8 +61,8 @@ func (p Profile) HasFeature(contract, feature string) bool {
 // Supports reports whether the peer lists what a scenario requires: a grant
 // shape, or the feature record_access.
 func (p Profile) Supports(req string) bool {
-	if req == FeatureRecordAccess {
-		return p.HasFeature(Contract, FeatureRecordAccess)
+	if req == FeatureRecordAccess || req == FeaturePrincipalIdentities {
+		return p.HasFeature(Contract, req)
 	}
 	return p.Expresses(req)
 }
@@ -64,18 +72,18 @@ func (p Profile) Supports(req string) bool {
 const DefaultMaxStalenessSeconds = 86400
 
 // DeclaredProfile is what ctxt declares to the authority: bos.access/v1 with
-// the feature record_access, and the shapes the record entries need
-// (row_relation for an assignment, record_grant for a single record). It
-// lists no type grant shape: ctxt reads through its own share policies, so a
-// type grant the authority holds is one ctxt does not enforce and the
-// authority lists as not representable. Entry dates (valid_from,
-// valid_until) are part of the feature.
+// the features record_access and principal_identities, and the shapes it
+// enforces: type grants with an end (type_grant, expiry) and the record
+// entries (row_relation for an assignment, record_grant for a single
+// record). It lists no field exclusion or direction limit: a grant that
+// needs one is not enforced and the authority lists it as not representable.
+// Entry dates (valid_from, valid_until) are part of the feature.
 func DeclaredProfile(version string) Profile {
 	return Profile{
 		Tool:        "ctxt",
 		ToolVersion: version,
-		Contracts:   []Listed{{ID: Contract, Level: "partial", Features: []string{FeatureRecordAccess}}},
-		Represents:  []string{ShapeRowRelation, ShapeRecordGrant},
+		Contracts:   []Listed{{ID: "bos.peer/v1", Level: "complete"}, {ID: Contract, Level: "partial", Features: []string{FeatureRecordAccess, FeaturePrincipalIdentities}}},
+		Represents:  []string{ShapeTypeGrant, ShapeExpiry, ShapeRowRelation, ShapeRecordGrant},
 		Limits:      Limits{MaxStalenessSeconds: DefaultMaxStalenessSeconds},
 	}
 }

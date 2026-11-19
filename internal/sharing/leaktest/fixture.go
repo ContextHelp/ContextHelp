@@ -21,6 +21,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
+	"github.com/ideacrafterslabs/ctxt/internal/bosaccess"
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmstest"
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	grpcserver "github.com/ideacrafterslabs/ctxt/internal/server/grpc"
@@ -69,7 +70,16 @@ type Fixture struct {
 // Option configures Start.
 type Option func(*options)
 
-type options struct{ visibleTo string }
+type options struct {
+	visibleTo string
+	authority *bosaccess.Peer
+}
+
+// WithAuthority gives the instance the access state of an external
+// authority (record-level reads).
+func WithAuthority(p *bosaccess.Peer) Option {
+	return func(o *options) { o.authority = p }
+}
 
 // WithoutHiddenFor seeds only what principal (by name: "colleague",
 // "partner", ...) sees: no object, entity or edge hidden from it. The
@@ -130,7 +140,11 @@ func Start(t testing.TB, driver storage.StorageDriver, opts ...Option) *Fixture 
 	for _, opt := range opts {
 		opt(&o)
 	}
-	srv := dpkmstest.Start(t, driver, dpkmstest.WithKeys())
+	dopts := []dpkmstest.Option{dpkmstest.WithKeys()}
+	if o.authority != nil {
+		dopts = append(dopts, dpkmstest.WithAuthority(o.authority))
+	}
+	srv := dpkmstest.Start(t, driver, dopts...)
 	f := &Fixture{
 		Server:    srv,
 		owner:     Principal{Name: NameOwner, ID: storage.OwnerPrincipal, Token: srv.Token(dpkmstest.RoleAdmin)},

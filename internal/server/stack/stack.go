@@ -14,6 +14,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"slices"
 	"strconv"
@@ -25,11 +26,15 @@ import (
 	"hop.top/kit/go/storage/secret"
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
+	"github.com/ideacrafterslabs/ctxt/internal/bosaccess"
+	"github.com/ideacrafterslabs/ctxt/internal/bosfeed"
+	"github.com/ideacrafterslabs/ctxt/internal/bosingest"
 	"github.com/ideacrafterslabs/ctxt/internal/browser"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
 	embregistry "github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/events"
+	"github.com/ideacrafterslabs/ctxt/internal/ingest"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
@@ -94,7 +99,21 @@ type Inputs struct {
 	// would otherwise strip (ADR-080 §8): dpkms serve --strict-sharing,
 	// and every test instance.
 	StrictSharing bool
+	// Authority is the access state an external authority provisions. nil
+	// builds one over the instance database when sharing.authority.enabled
+	// is set, and none otherwise.
+	Authority *bosaccess.Peer
+	// AuthorityContent fetches the content of the authority's records for
+	// ingest; nil reads the feed for record-level access only.
+	AuthorityContent bosingest.ContentReader
 }
+
+// authorityStateKey is where the access state of the authority is kept in
+// the instance key-value store.
+const authorityStateKey = "bosaccess/state"
+
+// authorityCursorKey is where the feed cursor is kept.
+const authorityCursorKey = "bosaccess/feed-cursor"
 
 // Stack is the assembled request-serving stack.
 type Stack struct {
@@ -133,6 +152,10 @@ type Stack struct {
 	// into; the gRPC server the caller builds takes it too. Shutdown
 	// flushes it.
 	Audit *sharing.AuditWriter
+	// Authority is the access state of an external authority; nil when the
+	// instance takes none.
+	Authority *bosaccess.Peer
+	stopFeed  context.CancelFunc
 
 	policy *policy.Bootstrap
 }
@@ -156,7 +179,39 @@ func (s *Stack) Shutdown(ctx context.Context) error {
 		}
 	}
 	s.policy.Close()
+	if s.stopFeed != nil {
+		s.stopFeed()
+	}
 	return err
+}
+
+// startAuthorityFeed reads the authority's change feed in the background:
+// each event updates what records stand under and, with a content reader,
+// ingests the record. The cursor lives in the instance key-value store.
+func (s *Stack) startAuthorityFeed(in Inputs, fc config.AuthorityFeedConfig, secretsStore secret.Store) {
+	if s.Authority == nil || fc.URL == "" {
+		return
+	}
+	token := ""
+	if got, err := secretsStore.Get(context.Background(), "bos/feed-token"); err == nil {
+		token = string(got.Value)
+	}
+	r := &bosfeed.Reader{
+		Source: &bosfeed.Client{BaseURL: fc.URL, Peer: fc.Peer, Scope: fc.Scope, Token: token},
+		Basis:  s.Authority,
+		Cursor: sharing.KVCursor{KV: in.Driver.Auth().KV(), Key: authorityCursorKey},
+		Limit:  500,
+	}
+	if in.AuthorityContent != nil {
+		r.Sinks = []bosfeed.Sink{&bosingest.Sink{Reader: in.AuthorityContent, Store: in.Driver.Objects(), Runner: ingest.NewRunner(in.Driver.Objects())}}
+	}
+	interval := fc.Interval
+	if interval <= 0 {
+		interval = time.Minute
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	s.stopFeed = cancel
+	go r.Run(ctx, interval, func(err error) { slog.Warn("authority feed", "err", err) })
 }
 
 // Close is Shutdown bounded by a fixed drain timeout, for deferred and
@@ -400,16 +455,26 @@ func Build(in Inputs) (*Stack, error) {
 	}
 	s.policy = pol
 
+	s.Authority = in.Authority
+	if s.Authority == nil && cfg.Sharing.Authority.Enabled {
+		s.Authority, err = bosaccess.Open(bosaccess.DeclaredProfile(in.Probes.Version),
+			sharing.KVState{KV: in.Driver.Auth().KV(), Key: authorityStateKey}, nil)
+		if err != nil {
+			return nil, err
+		}
+	}
+	svcOpts := []service.Option{
+		service.WithPolicyPublisher(pol.Publisher()),
+		service.WithReservedStepNames(builtins.IsStepName),
+		// A server has no login keychain: registry tokens come from
+		// secrets.backend under registry/<name>.
+		service.WithRegistryTokens(registry.SecretTokens(func() (secret.Store, error) { return secretsStore, nil })),
+	}
+	if s.Authority != nil {
+		svcOpts = append(svcOpts, service.WithAuthorityAccess(s.Authority))
+	}
 	s.Service = service.NewWithOptions(
-		in.Driver, s.Queue, s.Pipelines, s.Engine, in.StepsPath, bus,
-		[]service.Option{
-			service.WithPolicyPublisher(pol.Publisher()),
-			service.WithReservedStepNames(builtins.IsStepName),
-			// A server has no login keychain: registry tokens come from
-			// secrets.backend under registry/<name>.
-			service.WithRegistryTokens(registry.SecretTokens(func() (secret.Store, error) { return secretsStore, nil })),
-		},
-		*cfg,
+		in.Driver, s.Queue, s.Pipelines, s.Engine, in.StepsPath, bus, svcOpts, *cfg,
 	)
 	s.Watcher = watcher.NewManager(in.Driver.Watches(), watcher.StoreRecords(in.Driver.Watches()), serviceIngester{s.Service})
 
@@ -447,7 +512,7 @@ func Build(in Inputs) (*Stack, error) {
 	// off the request path.
 	s.Audit = sharing.NewAuditWriter(in.Driver.Sharing().AccessLog(), sharing.AuditOptions{})
 
-	s.Router = httpserver.NewRouterWithConfig(s.Service, httpserver.RouterConfig{
+	rcfg := httpserver.RouterConfig{
 		Semantic:     QuerySemantic(in.Driver, resolver, in.Warnings),
 		DevCORS:      in.DevCORS,
 		Watcher:      s.Watcher,
@@ -471,6 +536,12 @@ func Build(in Inputs) (*Stack, error) {
 		Hosts:                hosts,
 		StrictSharing:        in.StrictSharing,
 		Audit:                s.Audit,
-	})
+		AuditLog:             in.Driver.AuditLog(),
+	}
+	if s.Authority != nil {
+		rcfg.Access = s.Authority
+	}
+	s.Router = httpserver.NewRouterWithConfig(s.Service, rcfg)
+	s.startAuthorityFeed(in, cfg.Sharing.Authority.Feed, secretsStore)
 	return s, nil
 }

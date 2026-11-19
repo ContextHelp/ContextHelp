@@ -12,13 +12,15 @@ import (
 )
 
 const (
-	recScope  = "bos://core.business_scopes/business_scopes_00000000000000000000000001"
-	recPerson = "bos://core.principals/principals_00000000000000000000000001"
-	recEng1   = "bos://projects.engagements/engagements_00000000000000000000000001"
-	recEng2   = "bos://projects.engagements/engagements_00000000000000000000000002"
-	recDoc1   = "bos://core.documents/documents_00000000000000000000000001"
-	recDoc2   = "bos://core.documents/documents_00000000000000000000000002"
-	recParty1 = "bos://core.parties/parties_00000000000000000000000001"
+	recIssuer  = "https://login.microsoftonline.com/0f3c1c52-0000-4000-8000-000000000001/v2.0"
+	recSubject = "9c0a1b5e-0000-4000-8000-00000000000a"
+	recScope   = "bos://core.business_scopes/business_scopes_00000000000000000000000001"
+	recPerson  = "bos://core.principals/principals_00000000000000000000000001"
+	recEng1    = "bos://projects.engagements/engagements_00000000000000000000000001"
+	recEng2    = "bos://projects.engagements/engagements_00000000000000000000000002"
+	recDoc1    = "bos://core.documents/documents_00000000000000000000000001"
+	recDoc2    = "bos://core.documents/documents_00000000000000000000000002"
+	recParty1  = "bos://core.parties/parties_00000000000000000000000001"
 )
 
 func rfc(t time.Time) *string { s := t.UTC().Format(time.RFC3339); return &s }
@@ -52,7 +54,7 @@ func newRecordFixture(t *testing.T) *recordFixture {
 		}
 	}
 	bind := &storage.Identity{PrincipalID: f.person.ID, Method: storage.IdentityMethodOIDC,
-		Issuer: sharing.RecordIdentityIssuer, Subject: recPerson, CreatedAt: t0}
+		Issuer: recIssuer, Subject: recSubject, CreatedAt: t0}
 	if err := f.drv.Auth().Identities().Create(ctx, bind); err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +78,7 @@ func (f *recordFixture) apply(epoch int64, from, until *string) {
 		GeneratedAt: t0.Format(time.RFC3339),
 		Policy:      bosaccess.Policy{MaxStalenessSeconds: 86400, ReconcileIntervalSeconds: 3600, RecordBasisMaxStalenessSeconds: 3600},
 		Scopes:      []bosaccess.Scope{{ID: recScope}},
-		Principals:  []bosaccess.Principal{{ID: recPerson, Kind: "person", Status: "active"}},
+		Principals:  []bosaccess.Principal{{ID: recPerson, Kind: "person", Status: "active", Identities: []bosaccess.Identity{{Issuer: recIssuer, Subject: recSubject}}}},
 		RecordAccess: []bosaccess.RecordEntry{{
 			ID: "rec_1", Subject: recPerson, Anchor: recEng1, Scope: recScope, TypeKey: &docs,
 			Via: bosaccess.ViaAssignment, Grant: "grant_1", ValidFrom: from, ValidUntil: until,
@@ -203,7 +205,7 @@ func TestRecordEntriesFollowMovesAndRemovals(t *testing.T) {
 		Contract: bosaccess.Contract, Epoch: 3, Mode: bosaccess.ModeDelta, BaseEpoch: 2, Scope: recScope,
 		Policy:              bosaccess.Policy{MaxStalenessSeconds: 86400, ReconcileIntervalSeconds: 3600, RecordBasisMaxStalenessSeconds: 3600},
 		Scopes:              []bosaccess.Scope{{ID: recScope}},
-		Principals:          []bosaccess.Principal{{ID: recPerson, Kind: "person", Status: "active"}},
+		Principals:          []bosaccess.Principal{{ID: recPerson, Kind: "person", Status: "active", Identities: []bosaccess.Identity{{Issuer: recIssuer, Subject: recSubject}}}},
 		RecordAccessRemoved: []string{"rec_1"},
 	}
 	set.Normalize()

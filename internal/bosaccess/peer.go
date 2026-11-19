@@ -236,6 +236,14 @@ func (p *Peer) Decide(q Query) Verdict {
 	return p.held.Decide(q, p.now(), p.own())
 }
 
+// Resolve maps an external identity (issuer, subject) to the principal of the
+// held set that carries it; "" and false when none does, or more than one.
+func (p *Peer) Resolve(issuer, subject string) (string, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.held.Resolve(issuer, subject)
+}
+
 // RecordTypeKey is the record type of a bos address: bos://<type_key>/<id>.
 func RecordTypeKey(address string) string {
 	rest, ok := strings.CutPrefix(address, "bos://")
@@ -247,8 +255,8 @@ func RecordTypeKey(address string) string {
 }
 
 // Readable lists the addresses of the records the principal may read now
-// through record entries (and any type grant the profile lets the peer
-// enforce), sorted. It is the read half of enforcement: every condition of
+// through record entries and type grants, sorted; only records the feed told
+// the peer of can be listed. It is the read half of enforcement: every condition of
 // Decide holds for each address, evaluated at the peer's clock, so an entry
 // that has not started or has ended, a stale set, a stale catch-up, a record
 // whose under is unknown or truncated all leave the record out. A peer
@@ -262,19 +270,19 @@ func (p *Peer) Readable(principal string) []string {
 	}
 	now, own := p.now(), p.own()
 	// the anchors of the principal's entries: a record outside them can only
-	// be read through a type grant, which the entries path does not cover
+	// be read through a type grant; a set with neither lists nothing
 	anchors := map[string]bool{}
 	for _, e := range h.Set.RecordAccess {
 		if e.Subject == principal {
 			anchors[e.Anchor] = true
 		}
 	}
-	if len(anchors) == 0 {
+	if len(anchors) == 0 && len(h.Set.Grants) == 0 {
 		return nil
 	}
 	var out []string
 	for addr, rec := range p.book.Records {
-		if !anchors[addr] && !anyIn(rec.Under, anchors) {
+		if len(h.Set.Grants) == 0 && !anchors[addr] && !anyIn(rec.Under, anchors) {
 			continue
 		}
 		q := Query{Principal: principal, Scope: rec.Scope, TypeKey: RecordTypeKey(addr), Sensitivity: rec.Sensitivity,
@@ -294,4 +302,14 @@ func anyIn(ss []string, set map[string]bool) bool {
 		}
 	}
 	return false
+}
+
+// Scope is the scope the held set is for; "" when the peer holds none.
+func (p *Peer) Scope() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.held == nil {
+		return ""
+	}
+	return p.held.Set.Scope
 }

@@ -1,0 +1,292 @@
+{
+  "contract": "bos.access/v1",
+  "schema": "access-scenario",
+  "valid": true,
+  "description": "A peer that lists principal_identities maps an external identity to the principal of the set that carries it: the subject is scoped by its issuer, an identity no principal carries maps to nothing, the mapping survives a restart, and a later set replaces it: an identity it no longer lists maps to nothing, one it adds maps.",
+  "document": {
+    "requires": [
+      "principal_identities"
+    ],
+    "steps": [
+      {
+        "note": "nothing held yet",
+        "resolve": {
+          "issuer": "https://login.microsoftonline.com/0f3c1c52-0000-4000-8000-000000000001/v2.0",
+          "subject": "9c0a1b5e-0000-4000-8000-00000000000b",
+          "principal": null
+        }
+      },
+      {
+        "at": "2026-11-12T10:00:00Z",
+        "apply": {
+          "contract": "bos.access/v1",
+          "epoch": 1,
+          "mode": "full",
+          "digest": "sha256:7c1f677648130e19706470ee46ddd9acd69e8922af61d002f5c36642948c437d",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "generated_at": "2026-11-12T10:00:00Z",
+          "feed_seq": 1,
+          "policy": {
+            "max_staleness_seconds": 86400,
+            "reconcile_interval_seconds": 3600
+          },
+          "scopes": [
+            {
+              "id": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+              "parent": null
+            },
+            {
+              "id": "bos://core.business_scopes/business_scopes_00000000000000000000000002",
+              "parent": "bos://core.business_scopes/business_scopes_00000000000000000000000001"
+            }
+          ],
+          "principals": [
+            {
+              "id": "bos://core.principals/principals_00000000000000000000000001",
+              "kind": "person",
+              "status": "active",
+              "identities": [
+                {
+                  "issuer": "https://login.microsoftonline.com/0f3c1c52-0000-4000-8000-000000000001/v2.0",
+                  "subject": "9c0a1b5e-0000-4000-8000-00000000000a"
+                },
+                {
+                  "issuer": "https://login.microsoftonline.com/0f3c1c52-0000-4000-8000-000000000002/v2.0",
+                  "subject": "4e7d2f61-0000-4000-8000-00000000000a"
+                }
+              ]
+            },
+            {
+              "id": "bos://core.principals/principals_00000000000000000000000002",
+              "kind": "agent",
+              "status": "active"
+            },
+            {
+              "id": "bos://core.principals/principals_00000000000000000000000003",
+              "kind": "person",
+              "status": "active",
+              "identities": [
+                {
+                  "issuer": "https://login.microsoftonline.com/0f3c1c52-0000-4000-8000-000000000001/v2.0",
+                  "subject": "9c0a1b5e-0000-4000-8000-00000000000b"
+                }
+              ]
+            }
+          ],
+          "audiences": [],
+          "restricted_types": [
+            "core.peers",
+            "core.record_sensitivities"
+          ],
+          "grants": [
+            {
+              "id": "access_grants_00000000000000000000000001",
+              "subject": "bos://core.principals/principals_00000000000000000000000001",
+              "target": {
+                "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+                "type_key": "core.documents"
+              },
+              "permission": "read"
+            },
+            {
+              "id": "access_grants_00000000000000000000000002",
+              "subject": "bos://core.principals/principals_00000000000000000000000003",
+              "target": {
+                "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+                "type_key": "core.documents"
+              },
+              "permission": "read"
+            },
+            {
+              "id": "access_grants_00000000000000000000000003",
+              "subject": "bos://core.principals/principals_00000000000000000000000002",
+              "target": {
+                "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+                "type_key": "core.documents"
+              },
+              "permission": "read"
+            }
+          ]
+        },
+        "expect": "applied"
+      },
+      {
+        "resolve": {
+          "issuer": "https://login.microsoftonline.com/0f3c1c52-0000-4000-8000-000000000001/v2.0",
+          "subject": "9c0a1b5e-0000-4000-8000-00000000000a",
+          "principal": "bos://core.principals/principals_00000000000000000000000001"
+        }
+      },
+      {
+        "note": "a second identity of the same principal",
+        "resolve": {
+          "issuer": "https://login.microsoftonline.com/0f3c1c52-0000-4000-8000-000000000002/v2.0",
+          "subject": "4e7d2f61-0000-4000-8000-00000000000a",
+          "principal": "bos://core.principals/principals_00000000000000000000000001"
+        }
+      },
+      {
+        "resolve": {
+          "issuer": "https://login.microsoftonline.com/0f3c1c52-0000-4000-8000-000000000001/v2.0",
+          "subject": "9c0a1b5e-0000-4000-8000-00000000000b",
+          "principal": "bos://core.principals/principals_00000000000000000000000003"
+        }
+      },
+      {
+        "note": "the same subject under another issuer",
+        "resolve": {
+          "issuer": "https://login.microsoftonline.com/0f3c1c52-0000-4000-8000-000000000002/v2.0",
+          "subject": "9c0a1b5e-0000-4000-8000-00000000000b",
+          "principal": null
+        }
+      },
+      {
+        "resolve": {
+          "issuer": "https://login.microsoftonline.com/0f3c1c52-0000-4000-8000-000000000001/v2.0",
+          "subject": "unknown",
+          "principal": null
+        }
+      },
+      {
+        "note": "identities grant nothing; the grant does",
+        "check": {
+          "principal": "bos://core.principals/principals_00000000000000000000000001",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "type_key": "core.documents",
+          "expect": "allow"
+        }
+      },
+      {
+        "restart": true
+      },
+      {
+        "note": "held across a restart",
+        "resolve": {
+          "issuer": "https://login.microsoftonline.com/0f3c1c52-0000-4000-8000-000000000001/v2.0",
+          "subject": "9c0a1b5e-0000-4000-8000-00000000000a",
+          "principal": "bos://core.principals/principals_00000000000000000000000001"
+        }
+      },
+      {
+        "at": "2026-11-12T11:00:00Z",
+        "apply": {
+          "contract": "bos.access/v1",
+          "epoch": 2,
+          "mode": "full",
+          "digest": "sha256:063b0bb9eebe79c36b13b56a016a6cba6b745513f4f4a030d7bd7bea0f989a86",
+          "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+          "generated_at": "2026-11-12T10:00:00Z",
+          "feed_seq": 2,
+          "policy": {
+            "max_staleness_seconds": 86400,
+            "reconcile_interval_seconds": 3600
+          },
+          "scopes": [
+            {
+              "id": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+              "parent": null
+            },
+            {
+              "id": "bos://core.business_scopes/business_scopes_00000000000000000000000002",
+              "parent": "bos://core.business_scopes/business_scopes_00000000000000000000000001"
+            }
+          ],
+          "principals": [
+            {
+              "id": "bos://core.principals/principals_00000000000000000000000001",
+              "kind": "person",
+              "status": "active",
+              "identities": [
+                {
+                  "issuer": "https://login.microsoftonline.com/0f3c1c52-0000-4000-8000-000000000001/v2.0",
+                  "subject": "9c0a1b5e-0000-4000-8000-00000000000a"
+                }
+              ]
+            },
+            {
+              "id": "bos://core.principals/principals_00000000000000000000000002",
+              "kind": "agent",
+              "status": "active"
+            },
+            {
+              "id": "bos://core.principals/principals_00000000000000000000000003",
+              "kind": "person",
+              "status": "active",
+              "identities": [
+                {
+                  "issuer": "https://login.microsoftonline.com/0f3c1c52-0000-4000-8000-000000000001/v2.0",
+                  "subject": "9c0a1b5e-0000-4000-8000-0000000000bb"
+                }
+              ]
+            }
+          ],
+          "audiences": [],
+          "restricted_types": [
+            "core.peers",
+            "core.record_sensitivities"
+          ],
+          "grants": [
+            {
+              "id": "access_grants_00000000000000000000000001",
+              "subject": "bos://core.principals/principals_00000000000000000000000001",
+              "target": {
+                "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+                "type_key": "core.documents"
+              },
+              "permission": "read"
+            },
+            {
+              "id": "access_grants_00000000000000000000000002",
+              "subject": "bos://core.principals/principals_00000000000000000000000003",
+              "target": {
+                "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+                "type_key": "core.documents"
+              },
+              "permission": "read"
+            },
+            {
+              "id": "access_grants_00000000000000000000000003",
+              "subject": "bos://core.principals/principals_00000000000000000000000002",
+              "target": {
+                "scope": "bos://core.business_scopes/business_scopes_00000000000000000000000001",
+                "type_key": "core.documents"
+              },
+              "permission": "read"
+            }
+          ]
+        },
+        "expect": "applied"
+      },
+      {
+        "note": "dropped by the later set",
+        "resolve": {
+          "issuer": "https://login.microsoftonline.com/0f3c1c52-0000-4000-8000-000000000002/v2.0",
+          "subject": "4e7d2f61-0000-4000-8000-00000000000a",
+          "principal": null
+        }
+      },
+      {
+        "note": "the old identity of bob",
+        "resolve": {
+          "issuer": "https://login.microsoftonline.com/0f3c1c52-0000-4000-8000-000000000001/v2.0",
+          "subject": "9c0a1b5e-0000-4000-8000-00000000000b",
+          "principal": null
+        }
+      },
+      {
+        "resolve": {
+          "issuer": "https://login.microsoftonline.com/0f3c1c52-0000-4000-8000-000000000001/v2.0",
+          "subject": "9c0a1b5e-0000-4000-8000-0000000000bb",
+          "principal": "bos://core.principals/principals_00000000000000000000000003"
+        }
+      },
+      {
+        "resolve": {
+          "issuer": "https://login.microsoftonline.com/0f3c1c52-0000-4000-8000-000000000001/v2.0",
+          "subject": "9c0a1b5e-0000-4000-8000-00000000000a",
+          "principal": "bos://core.principals/principals_00000000000000000000000001"
+        }
+      }
+    ]
+  }
+}

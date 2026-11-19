@@ -12,11 +12,15 @@ import (
 // Object is the adapter-output contract. Adapters emit a slice of
 // these; the runner handles dedup, storage, and indexing.
 type Object struct {
-	ID       string         `json:"id"`
-	Type     string         `json:"type"`
-	Content  string         `json:"content"`
-	Tags     []string       `json:"tags,omitempty"`
-	Metadata map[string]any `json:"metadata,omitempty"`
+	ID string `json:"id"`
+	// SourceKey, when set, is the object's source_key verbatim (the
+	// source's own address of the record); otherwise the runner keys it
+	// <source>:<ID>.
+	SourceKey string         `json:"source_key,omitempty"`
+	Type      string         `json:"type"`
+	Content   string         `json:"content"`
+	Tags      []string       `json:"tags,omitempty"`
+	Metadata  map[string]any `json:"metadata,omitempty"`
 	// Graph carries the parts an adapter keeps out of Content (a
 	// contact's note, classed personal). Node IDs are assigned by the
 	// runner from the object ID it mints; an adapter leaves them empty.

@@ -55,7 +55,7 @@ func (r *Runner) Run(ctx context.Context, adapter Adapter) (*Result, error) {
 	}
 
 	for _, obj := range objects {
-		sourceKey := adapter.Name() + ":" + obj.ID
+		sourceKey := keyOf(adapter.Name(), obj)
 		if err := r.upsert(ctx, adapter.Name(), sourceKey, obj); err != nil {
 			res.Errors++
 			continue
@@ -87,7 +87,7 @@ func (r *Runner) RunFromStdin(
 	}
 
 	for _, obj := range objects {
-		sourceKey := source + ":" + obj.ID
+		sourceKey := keyOf(source, obj)
 		if err := r.upsert(ctx, source, sourceKey, obj); err != nil {
 			res.Errors++
 			continue
@@ -97,6 +97,14 @@ func (r *Runner) RunFromStdin(
 
 	res.Elapsed = time.Since(start)
 	return res, nil
+}
+
+// keyOf is the source_key of obj from source.
+func keyOf(source string, obj Object) string {
+	if obj.SourceKey != "" {
+		return obj.SourceKey
+	}
+	return source + ":" + obj.ID
 }
 
 func (r *Runner) upsert(
