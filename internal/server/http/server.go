@@ -98,6 +98,11 @@ type RouterConfig struct {
 	// one entry per set applied or refused.
 	Access   AccessReceiver
 	AuditLog storage.AuditStore
+	// AccessPrincipal is the one principal (id) allowed to provision access
+	// and AccessScope the full scope address it provisions; both must be set
+	// or the routes refuse every call.
+	AccessPrincipal string
+	AccessScope     string
 }
 
 // NewRouter creates the HTTP router with all routes and middleware.

@@ -69,11 +69,20 @@ type accessRoutes struct {
 	rcv AccessReceiver
 }
 
+// guard admits only the one authority configured: provisioning is bound to
+// the principal named by sharing.authority.principal (a peer principal) and
+// to the scope named by sharing.authority.scope. Unconfigured, it refuses
+// everything: no caller claims a scope by being first.
 func (a accessRoutes) guard(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if a.rc.AccessPrincipal == "" || a.rc.AccessScope == "" {
+			writeAccessError(w, &bosaccess.Error{Code: "forbidden", Message: "access provisioning is not configured"})
+			return
+		}
 		if a.rc.Auth != nil {
-			if p, ok := authn.FromContext(r.Context()); !ok || p.Kind != storage.PrincipalKindPeer {
-				writeAccessError(w, &bosaccess.Error{Code: "forbidden", Message: "access provisioning needs the API key of a peer principal"})
+			p, ok := authn.FromContext(r.Context())
+			if !ok || p.Kind != storage.PrincipalKindPeer || p.ID != a.rc.AccessPrincipal {
+				writeAccessError(w, &bosaccess.Error{Code: "forbidden", Message: "access provisioning is for the configured authority only"})
 				return
 			}
 		}
@@ -81,11 +90,11 @@ func (a accessRoutes) guard(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// scopeOK reports whether the business of the path is the scope the peer is
-// bound to: the part of the scope's address after the last slash.
+// scopeOK reports whether the business of the path is the configured scope:
+// the part of its address after the last slash.
 func (a accessRoutes) scopeOK(business string) bool {
-	held := a.rcv.Scope()
-	return held == "" || held[strings.LastIndex(held, "/")+1:] == business
+	s := a.rc.AccessScope
+	return business != "" && s[strings.LastIndex(s, "/")+1:] == business
 }
 
 func (a accessRoutes) apply(w http.ResponseWriter, r *http.Request) {
@@ -101,7 +110,7 @@ func (a accessRoutes) apply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	business := chi.URLParam(r, "business")
-	if !a.scopeOK(business) || set.Scope[strings.LastIndex(set.Scope, "/")+1:] != business {
+	if !a.scopeOK(business) || set.Scope != a.rc.AccessScope {
 		err := &bosaccess.Error{Code: "scope_unknown", Message: "the peer is not bound to that scope"}
 		a.audit(r, set, bosaccess.Ack{}, err)
 		writeAccessError(w, err)

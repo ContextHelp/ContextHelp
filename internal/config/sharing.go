@@ -22,6 +22,12 @@ type SharingConfig struct {
 // pushes and enforces their record-level entries on reads.
 type AuthorityConfig struct {
 	Enabled bool `mapstructure:"enabled" yaml:"enabled"`
+	// Principal is the id of the ctxt principal (kind peer) the authority
+	// provisions access as, and Scope the full address of the business scope
+	// it provisions (bos://core.business_scopes/...). Both are required: with
+	// either unset the provisioning routes refuse every call.
+	Principal string `mapstructure:"principal" yaml:"principal,omitempty"`
+	Scope     string `mapstructure:"scope" yaml:"scope,omitempty"`
 	// Feed is where the authority's change feed is read from. Without a
 	// URL no feed is read and record-level reads stay denied (no catch-up).
 	Feed AuthorityFeedConfig `mapstructure:"feed" yaml:"feed"`
@@ -31,9 +37,8 @@ type AuthorityConfig struct {
 // credential of the reading service principal is the secret
 // bos/feed-token.
 type AuthorityFeedConfig struct {
-	URL   string `mapstructure:"url" yaml:"url,omitempty" secret:"false"`
-	Peer  string `mapstructure:"peer" yaml:"peer,omitempty"`
-	Scope string `mapstructure:"scope" yaml:"scope,omitempty"`
+	URL  string `mapstructure:"url" yaml:"url,omitempty" secret:"false"`
+	Peer string `mapstructure:"peer" yaml:"peer,omitempty"`
 	// Interval is how often the feed is read; 1m when unset.
 	Interval time.Duration `mapstructure:"interval" yaml:"interval,omitempty"`
 }

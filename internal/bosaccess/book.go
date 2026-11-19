@@ -10,6 +10,7 @@ type Event struct {
 
 // EventData is what an event says about a record: pointers and metadata.
 type EventData struct {
+	Revision    int64  `json:"revision,omitempty"`
 	Change      string `json:"change"`
 	Scope       string `json:"scope"`
 	Sensitivity string `json:"sensitivity"`

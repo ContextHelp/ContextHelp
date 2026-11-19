@@ -122,12 +122,13 @@ func (s *Server) Request(t testing.TB, method, path, role string, body io.Reader
 }
 
 type options struct {
-	keys        bool
-	methods     []authn.Method
-	unreachable bool
-	embedClient *http.Client
-	upgrade     *upgrade.Manager
-	authority   *bosaccess.Peer
+	keys                     bool
+	methods                  []authn.Method
+	unreachable              bool
+	embedClient              *http.Client
+	upgrade                  *upgrade.Manager
+	authority                *bosaccess.Peer
+	authPrincipal, authScope string
 }
 
 // Option configures Start.
@@ -173,6 +174,13 @@ func WithUpgrade(m *upgrade.Manager) Option {
 // the provisioning routes are served.
 func WithAuthority(p *bosaccess.Peer) Option {
 	return func(o *options) { o.authority = p }
+}
+
+// WithAuthorityBinding names the one principal (id) that provisions access
+// and the full scope address it provisions; without it the provisioning
+// routes refuse every call.
+func WithAuthorityBinding(principal, scope string) Option {
+	return func(o *options) { o.authPrincipal, o.authScope = principal, scope }
 }
 
 // Unreachable returns a Server whose URL points at a closed port: no
@@ -222,6 +230,7 @@ func Start(t testing.TB, driver storage.StorageDriver, opts ...Option) *Server {
 	if err != nil {
 		t.Fatalf("dpkmstest: load config: %v", err)
 	}
+	cfg.Sharing.Authority.Principal, cfg.Sharing.Authority.Scope = o.authPrincipal, o.authScope
 	srv.Config = cfg
 
 	access, err := stack.ResolveInboundAuth(cfg, false)

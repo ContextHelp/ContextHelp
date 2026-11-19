@@ -18,6 +18,7 @@ import (
 	"net"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -104,7 +105,8 @@ type Inputs struct {
 	// is set, and none otherwise.
 	Authority *bosaccess.Peer
 	// AuthorityContent fetches the content of the authority's records for
-	// ingest; nil reads the feed for record-level access only.
+	// ingest; nil reads them through the authority's served read commands
+	// (bosingest.RESTReader) with the feed credential.
 	AuthorityContent bosingest.ContentReader
 }
 
@@ -188,8 +190,8 @@ func (s *Stack) Shutdown(ctx context.Context) error {
 // startAuthorityFeed reads the authority's change feed in the background:
 // each event updates what records stand under and, with a content reader,
 // ingests the record. The cursor lives in the instance key-value store.
-func (s *Stack) startAuthorityFeed(in Inputs, fc config.AuthorityFeedConfig, secretsStore secret.Store) {
-	if s.Authority == nil || fc.URL == "" {
+func (s *Stack) startAuthorityFeed(in Inputs, fc config.AuthorityFeedConfig, authScope string, secretsStore secret.Store) {
+	if s.Authority == nil || fc.URL == "" || authScope == "" {
 		return
 	}
 	token := ""
@@ -197,14 +199,16 @@ func (s *Stack) startAuthorityFeed(in Inputs, fc config.AuthorityFeedConfig, sec
 		token = string(got.Value)
 	}
 	r := &bosfeed.Reader{
-		Source: &bosfeed.Client{BaseURL: fc.URL, Peer: fc.Peer, Scope: fc.Scope, Token: token},
+		Source: &bosfeed.Client{BaseURL: fc.URL, Peer: fc.Peer, Scope: scopeID(authScope), Token: token},
 		Basis:  s.Authority,
 		Cursor: sharing.KVCursor{KV: in.Driver.Auth().KV(), Key: authorityCursorKey},
 		Limit:  500,
 	}
-	if in.AuthorityContent != nil {
-		r.Sinks = []bosfeed.Sink{&bosingest.Sink{Reader: in.AuthorityContent, Store: in.Driver.Objects(), Runner: ingest.NewRunner(in.Driver.Objects())}}
+	content := in.AuthorityContent
+	if content == nil {
+		content = &bosingest.RESTReader{BaseURL: fc.URL, Token: token}
 	}
+	r.Sinks = []bosfeed.Sink{&bosingest.Sink{Reader: content, Store: in.Driver.Objects(), Runner: ingest.NewRunner(in.Driver.Objects())}}
 	interval := fc.Interval
 	if interval <= 0 {
 		interval = time.Minute
@@ -540,8 +544,13 @@ func Build(in Inputs) (*Stack, error) {
 	}
 	if s.Authority != nil {
 		rcfg.Access = s.Authority
+		rcfg.AccessPrincipal = cfg.Sharing.Authority.Principal
+		rcfg.AccessScope = cfg.Sharing.Authority.Scope
 	}
 	s.Router = httpserver.NewRouterWithConfig(s.Service, rcfg)
-	s.startAuthorityFeed(in, cfg.Sharing.Authority.Feed, secretsStore)
+	s.startAuthorityFeed(in, cfg.Sharing.Authority.Feed, cfg.Sharing.Authority.Scope, secretsStore)
 	return s, nil
 }
+
+// scopeID is the part of a scope address after the last slash.
+func scopeID(addr string) string { return addr[strings.LastIndex(addr, "/")+1:] }
