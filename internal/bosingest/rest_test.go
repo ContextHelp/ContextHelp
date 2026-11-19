@@ -46,6 +46,10 @@ func fakeBos(t *testing.T, calls *[]string) *httptest.Server {
 		switch {
 		case r.URL.Path == "/v1/commands/party/get" && req.Args[0] == "parties_00000000000000000000000001":
 			reply(200, map[string]any{"exit_code": 0, "data": []map[string]any{{"id": req.Args[0], "name": "Acme Holdings", "kind": "organization", "identifiers": []map[string]any{{"scheme": "siren", "value": "123456789"}}}}})
+		case r.URL.Path == "/v1/commands/billing/get" || r.URL.Path == "/v1/commands/contract/show":
+			reply(200, map[string]any{"exit_code": 0, "data": []map[string]any{{"id": req.Args[0], "title": "row of " + r.URL.Path}}})
+		case r.URL.Path == "/v1/commands/party/get":
+			reply(200, map[string]any{"exit_code": 0, "data": []map[string]any{{"id": req.Args[0], "name": "Person or org " + req.Args[0]}}})
 		case r.URL.Path == "/v1/commands/document/get" && req.Args[0] == "documents_00000000000000000000000001":
 			reply(200, map[string]any{"exit_code": 0, "data": []map[string]any{{"id": req.Args[0], "title": "Engagement letter", "kind": "contract", "versions": 2, "sha256": "abc"}}})
 		case r.URL.Path == "/v1/commands/document/get" && req.Args[0] == "documents_00000000000000000000000002":
@@ -153,4 +157,38 @@ type held struct{ key string }
 func (held) Name() string { return "bos" }
 func (h held) Fetch(context.Context) ([]ingest.Object, error) {
 	return []ingest.Object{{ID: h.key, SourceKey: h.key, Type: "core.documents", Content: "old"}}, nil
+}
+
+// Every mapped type reaches its served command with the record's id.
+func TestEveryMappedTypeUsesItsCommand(t *testing.T) {
+	var calls []string
+	srv := fakeBos(t, &calls)
+	defer srv.Close()
+	rd := &bosingest.RESTReader{BaseURL: srv.URL, Token: "ctxt-token"}
+	want := map[string]string{
+		"core.parties":           "party/get",
+		"core.people":            "party/get",
+		"core.organizations":     "party/get",
+		"core.documents":         "document/get",
+		"core.billing_documents": "billing/get",
+		"core.contracts":         "contract/show",
+	}
+	if len(want) != len(bosingest.DefaultCommands) {
+		t.Fatalf("the test covers %d types, the default mapping has %d", len(want), len(bosingest.DefaultCommands))
+	}
+	for typ, cmd := range want {
+		name := typ[strings.Index(typ, ".")+1:]
+		id := name + "_00000000000000000000000001"
+		calls = nil
+		if typ == "core.documents" {
+			id = "documents_00000000000000000000000001"
+		}
+		if _, err := rd.Read(context.Background(), "bos://"+typ+"/"+id, 0); err != nil {
+			t.Errorf("%s: %v", typ, err)
+			continue
+		}
+		if len(calls) != 1 || calls[0] != cmd+" "+id {
+			t.Errorf("%s: calls %v, want %s %s", typ, calls, cmd, id)
+		}
+	}
 }

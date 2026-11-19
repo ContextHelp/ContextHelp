@@ -24,10 +24,12 @@ var ErrUnmapped = errors.New("bosingest: no read command for the record type")
 // bos serves its command tree over REST as
 // POST /v1/commands/<path> {"args": [...], "flags": {...}}.
 var DefaultCommands = map[string][]string{
-	"core.parties":        {"party", "get"},
-	"core.documents":      {"document", "get"},
-	"billing.documents":   {"billing", "get"},
-	"contracts.contracts": {"contract", "show"},
+	"core.parties":           {"party", "get"},
+	"core.people":            {"party", "get"},
+	"core.organizations":     {"party", "get"},
+	"core.documents":         {"document", "get"},
+	"core.billing_documents": {"billing", "get"},
+	"core.contracts":         {"contract", "show"},
 }
 
 // RESTReader reads records through the authority's served read commands over
