@@ -1,7 +1,6 @@
 package config
 
 import (
-	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -40,45 +39,55 @@ func TestServerURLsProjectBeatsUser(t *testing.T) {
 }
 
 // The original misroute: user server.urls plus project server.url used to
-// resolve to the user's entry. It is now a load error naming both keys.
+// resolve to the user's entry. server.url is now a load error.
 func TestServerURLAcrossLayersIsError(t *testing.T) {
 	_, err := layered(t,
 		"server:\n  urls:\n    - {name: pers, url: 'http://pers.example.net:1'}\n",
 		"server:\n  url: 'http://work.example.net:2'\n")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "server.url")
-	assert.Contains(t, err.Error(), "server.urls")
+	assert.Contains(t, err.Error(), "server.url is no longer supported")
 	assert.Contains(t, err.Error(), "http://work.example.net:2")
 }
 
 func TestServerURLAndURLsSameFileIsError(t *testing.T) {
 	_, err := loadFromYAML(t, "server:\n  url: http://a.example.net\n  urls: [http://b.example.net]\n")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "both set")
+	assert.Contains(t, err.Error(), "server.url is no longer supported")
 }
 
-// server.url alone is a one-entry, unnamed server.urls.
-func TestServerURLFoldsIntoURLs(t *testing.T) {
-	cfg, err := loadFromYAML(t, "server:\n  url: http://a.example.net:7\n  token: tok\n")
-	require.NoError(t, err)
-	require.Len(t, cfg.Server.URLs, 1)
-	assert.Equal(t, "http://a.example.net:7", cfg.Server.URLs[0].URL)
-	assert.Empty(t, cfg.Server.URLs[0].Name)
-	assert.Empty(t, cfg.Server.URL)
-	assert.Equal(t, "http://a.example.net:7", cfg.Server.LegacyURL())
-	assert.NotEmpty(t, cfg.Server.LegacyURLWarning())
+// server.url alone is a load error: kit ignores unknown keys, so a silent
+// drop would route to the default endpoint.
+func TestServerURLAloneIsError(t *testing.T) {
+	_, err := loadFromYAML(t, "server:\n  url: http://a.example.net:7\n  token: tok\n")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "server.url is no longer supported")
+	assert.Contains(t, err.Error(), "urls: [http://a.example.net:7]")
 }
 
-func TestServerURLsAloneNoWarning(t *testing.T) {
+func TestServerURLInAnyLayerIsError(t *testing.T) {
+	_, err := layered(t, "server:\n  url: http://a.example.net\n", "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "server.url is no longer supported")
+}
+
+func TestServerURLsAloneLoads(t *testing.T) {
 	cfg, err := loadFromYAML(t, "server:\n  urls: [http://a.example.net]\n")
 	require.NoError(t, err)
-	assert.Empty(t, cfg.Server.LegacyURLWarning())
+	require.Len(t, cfg.Server.URLs, 1)
 }
 
-func TestServerURLInvalidStillFails(t *testing.T) {
-	_, err := loadFromYAML(t, "server:\n  url: not-a-url\n")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "server.url")
+func TestValidateFlagsServerURL(t *testing.T) {
+	errs := Validate(&Config{Server: ServerConfig{URL: "http://a.example.net"}})
+	var found bool
+	for _, e := range errs {
+		found = found || e.Field == "server.url"
+	}
+	assert.True(t, found)
+	var lint bool
+	for _, f := range LintConfig(&Config{Server: ServerConfig{URL: "http://a.example.net"}}, "") {
+		lint = lint || (f.Field == "server.url" && f.Severity == SeverityError)
+	}
+	assert.True(t, lint)
 }
 
 // server.token layers like any scalar: a user default token applies to a
@@ -91,38 +100,4 @@ func TestServerTokenLayersAcrossURLs(t *testing.T) {
 	assert.Equal(t, "tok-user", cfg.Server.Token)
 	require.Len(t, cfg.Server.URLs, 1)
 	assert.Empty(t, cfg.Server.URLs[0].Token)
-}
-
-// A user-only server.url works as one entry and Bootstrap warns once.
-func TestBootstrapWarnsLegacyURLOnce(t *testing.T) {
-	var buf bytes.Buffer
-	prevW, prevQ := DeprecationWriter, Quiet
-	DeprecationWriter, Quiet = &buf, false
-	t.Cleanup(func() { DeprecationWriter, Quiet = prevW, prevQ })
-
-	home := hermeticHome(t)
-	p := filepath.Join(home, "c.yaml")
-	require.NoError(t, os.WriteFile(p, []byte("server:\n  url: http://a.example.net\n"), 0o644))
-	cfg, _, err := Bootstrap("ctxt", []string{p}, nil, nil)
-	require.NoError(t, err)
-	require.Len(t, cfg.Server.URLs, 1)
-	assert.Equal(t, 1, bytes.Count(buf.Bytes(), []byte("server.url is deprecated")), buf.String())
-
-	buf.Reset()
-	Quiet = true
-	_, _, err = Bootstrap("ctxt", []string{p}, nil, nil)
-	require.NoError(t, err)
-	assert.Empty(t, buf.String())
-}
-
-func TestLintFlagsLegacyServerURL(t *testing.T) {
-	cfg, err := loadFromYAML(t, "server:\n  url: http://a.example.net\n")
-	require.NoError(t, err)
-	var found bool
-	for _, f := range LintConfig(cfg, "") {
-		if f.Field == "server.url" && f.Severity == SeverityWarn {
-			found = true
-		}
-	}
-	assert.True(t, found)
 }

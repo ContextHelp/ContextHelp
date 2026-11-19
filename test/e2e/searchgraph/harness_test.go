@@ -52,7 +52,8 @@ func newHome(dir, serverURL, embedURL string) (*home, error) {
 	cfg := fmt.Sprintf(`storage:
   path: %q
 server:
-  url: %q
+  urls:
+    - %q
 providers:
   embedding:
     backend: ollama

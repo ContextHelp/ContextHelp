@@ -32,9 +32,9 @@
 # stopped state instead and say so in their own descriptions.
 #
 # Server routing: the client commands (healthcheck among them) dial
-# server.url, and with no config they target the built-in default
+# server.urls, and with no config they target the built-in default
 # endpoint (127.0.0.1:8080), where a developer's real instance may be
-# listening. The recorder therefore writes server.url into every
+# listening. The recorder therefore writes server.urls into every
 # scenario's own user config ($XDG_CONFIG_HOME/contexthelp/dpkms.yaml),
 # pointing at a loopback port nothing listens on, and before recording
 # checks that dpkms resolves exactly that file (`dpkms config path`)

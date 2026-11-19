@@ -62,10 +62,6 @@ func runConfigValidate(cmd *cobra.Command, _ []string) error {
 	}
 	errs = append(errs, builtins.ValidateOverrides(cfg.Pipelines, cfg.Duplicates, has)...)
 
-	if msg := cfg.Server.LegacyURLWarning(); msg != "" {
-		fmt.Fprintf(out, "! server.url: %s\n", msg)
-	}
-
 	if len(errs) == 0 {
 		fmt.Fprintln(out, "✓ Configuration is valid")
 		return nil

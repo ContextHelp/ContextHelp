@@ -50,7 +50,7 @@ var uiOpenCmd = &cobra.Command{
 	Long: `Open the dpkms web UI signed in as the principal of your API key.
 
 ctxt asks the instance (--server, --instance, CTXT_INSTANCE, the current
-instance, the first server.urls entry, or server.url) for
+instance, or the first server.urls entry) for
 a single-use sign-in link, authenticating with its configured token, and
 opens it in your default browser. The link carries the code after '#',
 so it never reaches the server's or a proxy's logs; the web UI trades it

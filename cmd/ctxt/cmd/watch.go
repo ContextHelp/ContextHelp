@@ -28,7 +28,7 @@ var watchCmd = &cobra.Command{
 Watchers run on this machine. They monitor the clipboard and the
 directories in watch.dirs and enqueue new or changed content on the one
 dpkms instance ctxt resolves (--server, --instance, CTXT_INSTANCE, the
-current instance, then server.urls / server.url), over its API.
+current instance, then server.urls), over its API.
 
 What was already sent is ctxt's own record, one state file per instance
 under $XDG_STATE_HOME/ctxt/watch/: switching instances sends each file

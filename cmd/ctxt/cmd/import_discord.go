@@ -37,7 +37,7 @@ Examples:
   # Import only recent messages
   ctxt import discord --file ./export.json --since 2026-01-01
 
-  # Import into a specific server (overrides server.url)
+  # Import into a specific server (overrides server.urls)
   ctxt import discord --file ./export.json --server https://dpkms.example.net`,
 	RunE: runImportDiscord,
 }

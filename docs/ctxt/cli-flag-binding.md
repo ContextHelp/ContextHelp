@@ -207,10 +207,8 @@ Commands that talk to dpkms pick one endpoint, first match wins:
 
 `server.urls` is the only endpoint key. The closest config layer that
 sets it replaces the list whole (kit's per-leaf layering), and
-`server.token` layers like any scalar. `server.url` is a deprecated
-shorthand for a one-entry `server.urls`: it warns on stderr once per
-invocation, `ctxt config validate` flags it, and setting both keys, even in
-different layers, fails the load.
+`server.token` layers like any scalar. The old `server.url` key was
+removed: a config that sets it, in any layer, fails to load.
 
 `dpkms` client commands take `--server-url`, which overrides
 `server.urls`.

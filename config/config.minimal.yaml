@@ -14,7 +14,7 @@
 # dpkms.yaml: job workers dpkms serve runs.
 #  workers: 4
 # ctxt.yaml: the instance ctxt talks to.
-#  url: http://127.0.0.1:8080
+#  urls: [http://127.0.0.1:8080]
 
 # dpkms.yaml: LLM and embedding providers. auto uses a hosted LLM when its
 # API key is set (ANTHROPIC_API_KEY, OPENAI_API_KEY), else local Ollama.

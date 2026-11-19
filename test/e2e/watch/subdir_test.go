@@ -118,7 +118,8 @@ providers:
 	ctxtCfg := filepath.Join(dataDir, "ctxt.yaml")
 	writeFile(t, ctxtCfg, fmt.Sprintf(`
 server:
-  url: %s
+  urls:
+    - %s
 watch:
   dirs:
     - %s

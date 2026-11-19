@@ -25,8 +25,8 @@ var analyzeCmd = &cobra.Command{
 
 This does not run pipelines directly; the worker (dpkms serve) handles execution.
 The content goes only to the one dpkms instance ctxt resolves (--server,
---instance, CTXT_INSTANCE, the current instance, then server.urls or
-server.url). When nothing answers there the command exits 70; when the
+--instance, CTXT_INSTANCE, the current instance, then server.urls).
+When nothing answers there the command exits 70; when the
 instance rejects the token it exits 5. Nothing is queued locally and no
 other instance is tried.
 

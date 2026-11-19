@@ -29,7 +29,7 @@ Examples:
   # Import notes modified since a date
   ctxt import obsidian --vault ~/Documents/MyVault --since 2026-01-01
 
-  # Import into a specific server (overrides server.url)
+  # Import into a specific server (overrides server.urls)
   ctxt import obsidian --vault ~/Documents/MyVault --server https://dpkms.example.net`,
 	RunE: runImportObsidian,
 }

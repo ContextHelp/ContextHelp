@@ -62,8 +62,7 @@ type Resolved struct {
 // Resolve picks exactly one endpoint for sel, in ADR-077 §3 order:
 // --server, then --instance or CTXT_INSTANCE, then the current-instance
 // state, then the first server.urls entry, then
-// DefaultURL. The deprecated server.url never reaches here: Load folds
-// it into server.urls.
+// DefaultURL. The removed server.url never reaches here: Load rejects it.
 //
 // A name resolves to the server.urls entry with that name, else to a
 // running local instance (from locals) by pidfile name or port, as

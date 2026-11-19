@@ -30,7 +30,7 @@ Examples:
   # Import only journals modified since a date
   ctxt import logseq --graph ~/Documents/MyGraph --since 2026-01-01 --kind journal
 
-  # Import into a specific server (overrides server.url)
+  # Import into a specific server (overrides server.urls)
   ctxt import logseq --graph ~/Documents/MyGraph --server https://dpkms.example.net`,
 	RunE: runImportLogseq,
 }

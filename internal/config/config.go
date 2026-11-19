@@ -728,11 +728,9 @@ type ServerConfig struct {
 	// UI configures the web UI served at /ui on non-private instances.
 	UI ServerUIConfig `mapstructure:"ui" yaml:"ui,omitempty"`
 
-	// URL is the DEPRECATED shorthand for a one-entry URLs list. Load
-	// folds it into URLs ([{url: <it>}]) and clears it, so after Load it
-	// is always empty; LegacyURL reports what was folded. Setting both
-	// URL and URLs fails the load. Validated at load: scheme http/https
-	// + host required.
+	// URL is the removed single-endpoint key. It stays only so Load can
+	// detect it and fail: kit ignores unknown keys, so dropping it
+	// silently would fall back to the default endpoint. Use URLs.
 	URL string `mapstructure:"url" yaml:"url,omitempty" secret:"dsn"`
 	// URLs is the one client-endpoint key: the dpkms instances this
 	// client knows. Without a selection (--server, --instance,
@@ -751,10 +749,6 @@ type ServerConfig struct {
 	// portsSet records which listener ports a layer above the built-in
 	// defaults set; filled by Load.
 	portsSet struct{ http, grpc, cookieBridge bool }
-
-	// legacyURL is the deprecated server.url value Load folded into
-	// URLs; empty when none was set.
-	legacyURL string
 }
 
 // PortSet reports whether Port was set by a config file, -c override or
@@ -1315,9 +1309,9 @@ func LoadWithOverrides(bin, cfgFile string, extraPaths []string, overrides map[s
 		return nil, err
 	}
 
-	// server.url is a deprecated one-entry server.urls: fold it in, or
-	// fail when both are set (the silent-misroute case).
-	if err := cfg.Server.foldLegacyURL(); err != nil {
+	// server.url was removed: fail rather than silently route to the
+	// default endpoint.
+	if err := cfg.Server.rejectLegacyURL(); err != nil {
 		return nil, err
 	}
 	// Reject malformed client-routing endpoints loudly at load time — a

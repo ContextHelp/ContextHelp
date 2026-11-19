@@ -69,15 +69,15 @@ func TestServerTokenDefault(t *testing.T) {
 	assert.Equal(t, "tok-default", cfg.Server.Token)
 }
 
-// TestServerURLSingle: the deprecated single-instance server.url form
-// still loads, as a one-entry server.urls.
+// TestServerURLSingle: the removed single-instance server.url form fails
+// the load.
 func TestServerURLSingle(t *testing.T) {
 	cfg, err := loadFromYAML(t, `server:
   url: http://127.0.0.1:9999
 `)
-	require.NoError(t, err)
-	require.Len(t, cfg.Server.URLs, 1)
-	assert.Equal(t, "http://127.0.0.1:9999", cfg.Server.URLs[0].URL)
+	require.Error(t, err)
+	assert.Nil(t, cfg)
+	assert.Contains(t, err.Error(), "server.url is no longer supported")
 }
 
 // TestServerURLsMalformedEntryRejected: a bad entry must fail the load
@@ -111,14 +111,14 @@ func TestServerURLsMalformedEntryRejected(t *testing.T) {
 	}
 }
 
-// TestServerURLMalformedRejected: the single-URL form gets the same
-// validation.
+// TestServerURLMalformedRejected: a malformed server.url is still the
+// removed-key error.
 func TestServerURLMalformedRejected(t *testing.T) {
 	_, err := loadFromYAML(t, `server:
   url: not a url at all
 `)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "server.url")
+	assert.Contains(t, err.Error(), "server.url is no longer supported")
 }
 
 // TestServerURLsEntryBadShapeRejected: an entry that is neither a string

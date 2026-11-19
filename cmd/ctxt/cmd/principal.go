@@ -37,7 +37,7 @@ devices and federation peers, each a principal with its own keys,
 identities and sessions.
 
 Every command calls the instance (--server, --instance, CTXT_INSTANCE,
-the current instance, the first server.urls entry, or server.url) with
+the current instance, or the first server.urls entry) with
 its configured API key, which must hold admin:principals: the owner's.
 Keys for a principal come from 'ctxt auth key create --principal <id>'.
 

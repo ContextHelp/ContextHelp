@@ -195,7 +195,8 @@ browser:
 	writeFile(t, in.ctxtCfg, fmt.Sprintf(`storage:
   path: %q
 server:
-  url: %q
+  urls:
+    - %q
   token: %q
 `, filepath.Join(dir, "ctxt.db"), in.proxy.URL, in.token))
 

@@ -31,7 +31,7 @@ var authCmd = &cobra.Command{
 	Long: `Manage your own credentials on the dpkms instance ctxt talks to.
 
 Every command calls the instance (--server, --instance, CTXT_INSTANCE,
-the current instance, the first server.urls entry, or server.url) with
+the current instance, or the first server.urls entry) with
 its configured API key. What you may manage is your own: the keys,
 identities and browser sessions of the principal your key acts for.
 An admin key manages other principals' keys with --principal on the

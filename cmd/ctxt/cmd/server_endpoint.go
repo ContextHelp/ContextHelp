@@ -15,12 +15,12 @@ import (
 // serverFlagUsage is the --server help text of every command that talks
 // to dpkms over its API.
 const serverFlagUsage = "dpkms server URL; overrides --instance, CTXT_INSTANCE, the current instance, " +
-	"server.urls and server.url (default " + dpkmsclient.DefaultURL + " when nothing is configured)"
+	"server.urls (default " + dpkmsclient.DefaultURL + " when nothing is configured)"
 
 // resolveEndpoint picks the one dpkms endpoint this invocation talks to
 // (ADR-077 §3): --server, then --instance or CTXT_INSTANCE, then the
 // current-instance state, then the first server.urls entry, then
-// server.url, then the default. An unknown or stale name is a
+// the default. An unknown or stale name is a
 // PREREQUISITE error (exit 70). There is no failover.
 func resolveEndpoint(cmd *cobra.Command) (dpkmsclient.Resolved, error) {
 	var sel dpkmsclient.Selection
