@@ -51,16 +51,9 @@ func (s *Service) PatchObject(ctx context.Context, id string, p ObjectPatch) (*s
 	if p.Title != nil && p.Summary != nil {
 		return nil, fmt.Errorf("%w: title and summary both set the first summary; send one", ErrInvalidPatch)
 	}
-	var ms []uri.URI
-	if p.Mentions != nil {
-		ms = make([]uri.URI, 0, len(*p.Mentions))
-		for _, m := range *p.Mentions {
-			u, ok := mentions.Parse(strings.TrimSpace(m))
-			if !ok {
-				return nil, fmt.Errorf("%w %q: want @namespace.slug or ctxt://entity/<namespace>/<slug>", ErrInvalidMention, m)
-			}
-			ms = append(ms, u)
-		}
+	ms, err := parsePatchMentions(p.Mentions)
+	if err != nil {
+		return nil, err
 	}
 
 	// The stored row, refs and all: the patch touches no content.
@@ -95,11 +88,8 @@ func (s *Service) PatchObject(ctx context.Context, id string, p ObjectPatch) (*s
 		return nil, err
 	}
 	if p.Mentions != nil {
-		if err := s.writeUserMentionEdges(ctx, obj); err != nil {
-			return nil, fmt.Errorf("patch object: mentions: %w", err)
-		}
-		if err := s.dropUserMentionEdges(ctx, obj); err != nil {
-			return nil, fmt.Errorf("patch object: mentions: %w", err)
+		if err := s.patchMentions(ctx, obj); err != nil {
+			return nil, err
 		}
 	}
 	if err := s.resolveContent(ctx, obj); err != nil {
@@ -144,6 +134,36 @@ func (s *Service) ReprocessObject(ctx context.Context, id, step string) (*storag
 		return nil, err
 	}
 	return s.Queue.EnqueueReprocess(ctx, id, step)
+}
+
+// parsePatchMentions parses the mentions of a patch; nil when the patch
+// sets none, ErrInvalidMention for one that does not parse.
+func parsePatchMentions(raw *[]string) ([]uri.URI, error) {
+	if raw == nil {
+		return nil, nil
+	}
+	ms := make([]uri.URI, 0, len(*raw))
+	for _, m := range *raw {
+		u, ok := mentions.Parse(strings.TrimSpace(m))
+		if !ok {
+			return nil, fmt.Errorf("%w %q: want @namespace.slug or ctxt://entity/<namespace>/<slug>", ErrInvalidMention, m)
+		}
+		ms = append(ms, u)
+	}
+	return ms, nil
+}
+
+// patchMentions persists the mentions a patch set on obj: thin entity
+// rows and missing edges for each, and no edge for a mention the patch
+// dropped that the caller's mentions field had made.
+func (s *Service) patchMentions(ctx context.Context, obj *storage.KnowledgeObject) error {
+	if err := s.writeUserMentionEdges(ctx, obj); err != nil {
+		return fmt.Errorf("patch object: mentions: %w", err)
+	}
+	if err := s.dropUserMentionEdges(ctx, obj); err != nil {
+		return fmt.Errorf("patch object: mentions: %w", err)
+	}
+	return nil
 }
 
 // dropUserMentionEdges deletes, in both directions, the mention edges of
