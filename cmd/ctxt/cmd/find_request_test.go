@@ -235,6 +235,31 @@ func TestFindWithoutProfileSendsNone(t *testing.T) {
 	}
 }
 
+// profile.default picks the search strategy locally but is never sent:
+// an implicit default must not reach dpkms as a find input. Only an
+// explicit --profile travels, as the caller's lens.
+func TestFindDefaultProfileIsNotSent(t *testing.T) {
+	db := setupTestDB(t)
+	writeFindProfileConfig(t, db, "  default: growth\n")
+	rec := recordFind(t, db, dpkmstest.RoleAdmin)
+	if _, stderr, err := execFind(t, db, "find", "deploy", "--format", "json"); err != nil {
+		t.Fatalf("find: %v\n%s", err, stderr)
+	}
+	body := rec.last(t)
+	if _, ok := body["profile"]; ok {
+		t.Errorf("profile.default sent on find: %v", body["profile"])
+	}
+	if body["mode"] != "fts" {
+		t.Errorf("mode = %v, want fts (the default profile's strategy still applies locally)", body["mode"])
+	}
+	if _, stderr, err := execFind(t, db, "--profile", "growth", "find", "deploy", "--format", "json"); err != nil {
+		t.Fatalf("find --profile: %v\n%s", err, stderr)
+	}
+	if got := rec.last(t)["profile"]; got != "growth" {
+		t.Errorf("explicit --profile sent as %v, want growth", got)
+	}
+}
+
 // The active profile is a lens end to end: dpkms still answers objects
 // the profile does not own.
 func TestFindProfileDoesNotNarrowResults(t *testing.T) {

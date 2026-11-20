@@ -40,3 +40,16 @@ func activeProfile(cmd *cobra.Command) (string, config.FocusProfile, bool) {
 	p, ok := cfg.Profile.Profiles[name]
 	return name, p, ok
 }
+
+// explicitProfileName is the profile the caller passed with --profile, or
+// "" when the flag was not passed. profile.default is never returned: an
+// implicit default must not travel to a server as a request input.
+func explicitProfileName(cmd *cobra.Command) string {
+	if cmd == nil {
+		return ""
+	}
+	if f := cmd.Flags().Lookup("profile"); f != nil && f.Changed {
+		return f.Value.String()
+	}
+	return ""
+}

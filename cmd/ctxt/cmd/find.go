@@ -36,10 +36,11 @@ profile's search strategy and global config defaults.
 Resolution order: CLI flags → active profile search_strategy → global search config.
 
 find runs on the dpkms instance --server, --instance or the current
-instance names (POST /api/v1/find). ctxt sends the resolved mode, knobs and
-active profile; the profile is a lens and does not filter: results come
-from every profile, limited only by what the caller may see. dpkms embeds
-the query with its default embedding model.
+instance names (POST /api/v1/find). ctxt sends the resolved mode and knobs,
+and the profile only when --profile is passed; profile.default shapes the
+local search strategy and is never sent. The profile is a lens and does
+not filter: results come from every profile, limited only by what the
+caller may see. dpkms embeds the query with its default embedding model.
 
 Examples:
   # Hybrid search (default)
@@ -212,7 +213,7 @@ func runFind(cmd *cobra.Command, args []string) error {
 		Query:   query,
 		Mode:    mode,
 		Limit:   limit,
-		Profile: profile,
+		Profile: explicitProfileName(cmd),
 		Filter:  findFilter(cmd),
 		Search:  findSearchKnobs(searchCfg),
 		Explain: explain,
