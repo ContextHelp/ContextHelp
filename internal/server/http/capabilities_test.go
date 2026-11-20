@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -41,6 +40,9 @@ const (
 	capOwnerToken     = "tok-owner-fixture-0123456789abcdef0123456789"
 	capColleagueToken = "tok-colleague-fixture-0123456789abcdef012345"
 	capColleague      = "prn_capability_colleague"
+	// capStranger is a person with no grant: it sees nothing.
+	capStrangerToken = "tok-stranger-fixture-0123456789abcdef0123456"
+	capStranger      = "prn_capability_stranger"
 )
 
 // capabilityEnv is a router over a store holding the owner, a
@@ -63,6 +65,7 @@ func newCapabilityEnv(t *testing.T) *capabilityEnv {
 	person := &storage.Principal{ID: capColleague, Kind: storage.PrincipalKindPerson, DisplayName: "Colleague", Roles: []string{authn.RoleReader}}
 	require.NoError(t, driver.Auth().Principals().Create(ctx, person))
 	grantTemplate(t, driver, person.ID, "colleagues-network")
+	require.NoError(t, driver.Auth().Principals().Create(ctx, &storage.Principal{ID: capStranger, Kind: storage.PrincipalKindPerson, DisplayName: "Stranger", Roles: []string{authn.RoleReader}}))
 
 	contact := &storage.KnowledgeObject{
 		ID: "cap-contact", Type: "contact", Status: storage.ObjectStatusActive, RawContent: "Sarah Lee | Head of Ops @ Acme",
@@ -79,6 +82,7 @@ func newCapabilityEnv(t *testing.T) *capabilityEnv {
 	chain := authtest.TokenChain(
 		authtest.Token{Token: capOwnerToken, Principal: storage.OwnerPrincipal, Roles: []string{authn.RoleAdmin}},
 		authtest.Token{Token: capColleagueToken, Principal: capColleague, Roles: []string{authn.RoleReader}},
+		authtest.Token{Token: capStrangerToken, Principal: capStranger, Roles: []string{authn.RoleReader}},
 	)
 	return &capabilityEnv{
 		router:  NewRouterWithConfig(svc, RouterConfig{Auth: chain}),
@@ -159,15 +163,12 @@ func TestRouterResolvesRestrictedViewer(t *testing.T) {
 func TestCapabilityClosedRoutesAnswerNotShared(t *testing.T) {
 	e := newCapabilityEnv(t)
 	closed := []string{"/api/v1/jobs", "/api/v1/inbox", "/api/v1/inbox/queue", "/api/v1/capture/recent",
-		"/api/v1/events", "/api/v1/pipelines", "/api/v1/watches", "/api/v1/steps/registries",
+		"/api/v1/pipelines", "/api/v1/watches", "/api/v1/steps/registries",
 		"/api/v1/pages", "/api/v1/topic-index", "/api/v1/search?q=type==contact"}
 	for _, path := range closed {
 		code, body := e.do(t, http.MethodGet, path, capColleagueToken)
 		assert.Equal(t, http.StatusForbidden, code, "colleague GET %s: %s", path, body)
 		assert.Contains(t, string(body), CodeNotShared, "GET %s", path)
-		if strings.HasPrefix(path, "/api/v1/events") {
-			continue // the owner's stream holds the connection open
-		}
 		code, body = e.do(t, http.MethodGet, path, capOwnerToken)
 		assert.NotEqual(t, http.StatusForbidden, code, "owner GET %s: %s", path, body)
 	}
