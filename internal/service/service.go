@@ -18,7 +18,11 @@ import (
 	"strings"
 	"time"
 
+	kitbus "hop.top/kit/go/runtime/bus"
+
 	"github.com/google/uuid"
+
+	"hop.top/kit/go/runtime/domain"
 
 	"github.com/ideacrafterslabs/ctxt/internal/composition"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
@@ -36,7 +40,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
-	"hop.top/kit/go/runtime/domain"
 )
 
 // Service coordinates all business operations.
@@ -53,7 +56,7 @@ type Service struct {
 	Discovery *steps.StepDiscovery
 	// Installer installs and removes steps under steps.path.
 	Installer *steps.Installer
-	Bus       events.Bus
+	Bus       kitbus.Bus
 	Cfg       config.Config
 
 	// pipelineSvc delegates pipeline CRUD to kit/runtime/domain so
@@ -122,18 +125,18 @@ func WithRegistryTokens(tokens registrysync.TokenSource) Option {
 }
 
 // New creates a new service instance.
-func New(store storage.StorageDriver, queue *jobs.Queue, pipes pipeline.Registry, engine *search.Engine, stepsPath string, bus events.Bus, cfg ...config.Config) *Service {
+func New(store storage.StorageDriver, queue *jobs.Queue, pipes pipeline.Registry, engine *search.Engine, stepsPath string, bus kitbus.Bus, cfg ...config.Config) *Service {
 	return NewWithOptions(store, queue, pipes, engine, stepsPath, bus, nil, cfg...)
 }
 
 // NewWithOptions is the explicit constructor used by callers that need
 // to wire optional behaviors (e.g. policy publisher). Existing callers
 // of New continue to work unchanged.
-func NewWithOptions(store storage.StorageDriver, queue *jobs.Queue, pipes pipeline.Registry, engine *search.Engine, stepsPath string, bus events.Bus, opts []Option, cfg ...config.Config) *Service {
+func NewWithOptions(store storage.StorageDriver, queue *jobs.Queue, pipes pipeline.Registry, engine *search.Engine, stepsPath string, bus kitbus.Bus, opts []Option, cfg ...config.Config) *Service {
 	discovery := steps.NewStepDiscovery(store)
 
 	if bus == nil {
-		bus = events.NewLocalBus()
+		bus = kitbus.New()
 	}
 
 	var c config.Config
@@ -355,9 +358,7 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 		}
 		return "", err
 	}
-	if ev, err := events.NewEvent("service.analyze", string(events.TopicJobEnqueued), job); err == nil {
-		_ = s.Bus.Publish(ctx, ev)
-	}
+	_ = s.Bus.Publish(ctx, kitbus.NewEvent(events.TopicJobEnqueued, "service.analyze", job))
 	return job.ID, nil
 }
 
@@ -407,9 +408,7 @@ func (s *Service) analyzeRaw(ctx context.Context, req AnalyzeRequest, detectedTy
 	if err := s.writeUserMentionEdges(ctx, obj); err != nil {
 		return "", fmt.Errorf("analyze raw: user mentions: %w", err)
 	}
-	if ev, err := events.NewEvent("service.analyze", string(events.TopicObjectRawStored), obj); err == nil {
-		_ = s.Bus.Publish(ctx, ev)
-	}
+	_ = s.Bus.Publish(ctx, kitbus.NewEvent(events.TopicObjectRawStored, "service.analyze", obj))
 	return obj.ID, nil
 }
 
@@ -431,13 +430,11 @@ func (s *Service) updateRawBySourceKey(ctx context.Context, stored *storage.Know
 		if err := s.writeUserMentionEdges(ctx, stored); err != nil {
 			return "", fmt.Errorf("analyze raw: user mentions: %w", err)
 		}
-		if ev, err := events.NewEvent("service.analyze", string(events.TopicObjectUpdated), events.ObjectUpdatedPayload{
+		_ = s.Bus.Publish(ctx, kitbus.NewEvent(events.TopicObjectUpdated, "service.analyze", events.ObjectUpdatedPayload{
 			ObjectID: stored.ID,
 			Type:     stored.Type,
 			Fields:   fields,
-		}); err == nil {
-			_ = s.Bus.Publish(ctx, ev)
-		}
+		}))
 	}
 	return stored.ID, nil
 }
@@ -602,12 +599,10 @@ func (s *Service) UpdateObject(ctx context.Context, obj *storage.KnowledgeObject
 		return err
 	}
 	logOrphans("update object", obj.ID, orphans)
-	if ev, err := events.NewEvent("service.objects", string(events.TopicObjectUpdated), events.ObjectUpdatedPayload{
+	_ = s.Bus.Publish(ctx, kitbus.NewEvent(events.TopicObjectUpdated, "service.objects", events.ObjectUpdatedPayload{
 		ObjectID: obj.ID,
 		Type:     obj.Type,
-	}); err == nil {
-		_ = s.Bus.Publish(ctx, ev)
-	}
+	}))
 	return nil
 }
 
@@ -620,9 +615,7 @@ func (s *Service) DeleteObject(ctx context.Context, id string) error {
 		return err
 	}
 	logOrphans("delete object", id, orphans)
-	if ev, err := events.NewEvent("service.objects", string(events.TopicObjectDeleted), events.ObjectDeletedPayload{ObjectID: id}); err == nil {
-		_ = s.Bus.Publish(ctx, ev)
-	}
+	_ = s.Bus.Publish(ctx, kitbus.NewEvent(events.TopicObjectDeleted, "service.objects", events.ObjectDeletedPayload{ObjectID: id}))
 	return nil
 }
 
@@ -971,9 +964,7 @@ func (s *Service) Enqueue(ctx context.Context, req AnalyzeRequest) (string, erro
 		}
 		return "", err
 	}
-	if ev, err := events.NewEvent("service.analyze", string(events.TopicJobEnqueued), job); err == nil {
-		_ = s.Bus.Publish(ctx, ev)
-	}
+	_ = s.Bus.Publish(ctx, kitbus.NewEvent(events.TopicJobEnqueued, "service.analyze", job))
 	return job.ID, nil
 }
 

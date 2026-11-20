@@ -25,8 +25,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ideacrafterslabs/ctxt/internal/events"
 	"hop.top/kit/go/runtime/bus"
+
+	"github.com/ideacrafterslabs/ctxt/internal/events"
 )
 
 // reanalyzer is the subset of *service.Service.ReanalyzeObject the worker
@@ -58,13 +59,13 @@ type Worker struct {
 	db  *sql.DB
 	svc reanalyzer
 	mgr *Manager
-	bus events.Bus
+	bus bus.Bus
 }
 
 // NewWorker constructs a Worker. db must be the same *sql.DB the storage
 // driver uses (so the Selector queries match the live corpus). svc is the
 // in-process service.Service.
-func NewWorker(db *sql.DB, svc reanalyzer, mgr *Manager, busArg events.Bus) *Worker {
+func NewWorker(db *sql.DB, svc reanalyzer, mgr *Manager, busArg bus.Bus) *Worker {
 	return &Worker{
 		db:  db,
 		svc: svc,
@@ -260,15 +261,12 @@ func (r *reingestRun) fail(ctx context.Context, cause error, reason string) {
 	})
 }
 
-// publish wraps events.Bus.Publish with a CloudEvent envelope. nil bus is a
+// publish wraps bus.Bus.Publish with a CloudEvent envelope. nil bus is a
 // no-op so tests / unconfigured callers don't crash on missing wiring.
 func (w *Worker) publish(ctx context.Context, topic bus.Topic, payload any) {
 	if w.bus == nil {
 		return
 	}
-	ev, err := events.NewEvent("upgrade.worker", string(topic), payload)
-	if err != nil {
-		return
-	}
+	ev := bus.NewEvent(topic, "upgrade.worker", payload)
 	_ = w.bus.Publish(ctx, ev)
 }

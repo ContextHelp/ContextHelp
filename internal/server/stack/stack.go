@@ -127,7 +127,7 @@ type Stack struct {
 	// pipelines use; task jobs that run steps outside a pipeline use it too.
 	Providers *providers.Factory
 	// Bus is the in-process event bus the service publishes on.
-	Bus     events.Bus
+	Bus     kitbus.Bus
 	Service *service.Service
 	Watcher *watcher.Manager
 	// RouteAuth is the authentication chain guarding the route table
@@ -473,7 +473,9 @@ func Build(in Inputs) (*Stack, error) {
 
 	s.Engine = search.NewEngine(in.Driver)
 
-	bus := events.NewLocalBus()
+	bus := kitbus.New(kitbus.WithInvalidTopicReporter(func(err error) {
+		slog.Warn("event bus: topic outside kit grammar", "err", err)
+	}))
 	events.SetupSubscriber(bus, cfg, in.ConfigPath)
 	s.Bus = bus
 

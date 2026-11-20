@@ -11,23 +11,27 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/events"
 )
 
-// recordingBus is a synchronous events.Bus that keeps every published
+// recordingBus is a synchronous bus.Bus that keeps every published
 // event type in publish order.
 type recordingBus struct {
 	mu    sync.Mutex
 	types []string
 }
 
-func (b *recordingBus) Publish(_ context.Context, e events.Event) error {
+func (b *recordingBus) Publish(_ context.Context, e bus.Event) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.types = append(b.types, e.Type)
+	b.types = append(b.types, string(e.Topic))
 	return nil
 }
 
-func (b *recordingBus) Subscribe(string, events.Handler) {}
+func (b *recordingBus) Subscribe(string, bus.Handler) bus.Unsubscribe { return func() {} }
 
-func (b *recordingBus) Close() error { return nil }
+func (b *recordingBus) SubscribeAsync(string, bus.AsyncHandler) bus.Unsubscribe {
+	return func() {}
+}
+
+func (b *recordingBus) Close(context.Context) error { return nil }
 
 func (b *recordingBus) take() []string {
 	b.mu.Lock()

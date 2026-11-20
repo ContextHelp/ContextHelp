@@ -8,10 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"hop.top/kit/go/runtime/bus"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ideacrafterslabs/ctxt/internal/events"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -47,8 +48,8 @@ func TestUS0026_ShareEventRecordedOnBus(t *testing.T) {
 	ctx := ownerCtx()
 
 	// Register a subscriber for composition share events.
-	received := make(chan events.Event, 1)
-	env.svc.Bus.Subscribe("composition.shared", func(_ context.Context, e events.Event) error {
+	received := make(chan bus.Event, 1)
+	env.svc.Bus.Subscribe("ctxt.e2e.composition.shared", func(_ context.Context, e bus.Event) error {
 		received <- e
 		return nil
 	})
@@ -72,20 +73,19 @@ func TestUS0026_ShareEventRecordedOnBus(t *testing.T) {
 	require.NotEmpty(t, job.ResultID)
 
 	// Publish a share event to simulate a share operation.
-	shareEvt, err := events.NewEvent(
+	shareEvt := bus.NewEvent(
+		"ctxt.e2e.composition.shared",
 		"e2e-test",
-		"composition.shared",
 		map[string]string{"object_id": job.ResultID, "permission": "read"},
 	)
-	require.NoError(t, err)
 	require.NoError(t, env.svc.Bus.Publish(ctx, shareEvt))
 
 	// Subscriber should receive the event.
 	select {
 	case evt := <-received:
-		assert.Equal(t, "composition.shared", evt.Type,
+		assert.Equal(t, bus.Topic("ctxt.e2e.composition.shared"), evt.Topic,
 			"received event should be composition.shared")
-		assert.NotEmpty(t, evt.ID, "event should have a unique ID")
+		assert.Equal(t, "e2e-test", evt.Source, "event should carry its source")
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for share event on bus")
 	}
