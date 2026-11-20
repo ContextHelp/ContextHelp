@@ -2,10 +2,19 @@
 package mentions
 
 import (
+	"regexp"
 	"strings"
 
 	uri "hop.top/cite/scheme"
 )
+
+// tokenRe is the @namespace.slug grammar: a lowercase namespace and at
+// least one dotted slug segment, the same shape the entity extractor
+// matches in free text.
+var tokenRe = regexp.MustCompile(`^@[a-z][a-z0-9_-]*(?:\.[a-z][a-z0-9_-]*)+$`)
+
+// IsToken reports whether s is a well-formed @namespace.slug mention.
+func IsToken(s string) bool { return tokenRe.MatchString(s) }
 
 // Parse converts a mention string to a ctxt:// entity URI.
 // It accepts two forms:

@@ -84,8 +84,8 @@ func init() {
 	captureCmd.Flags().Duration("every", 0, "continuous mode: re-run on this cadence (one-shot when absent)")
 
 	// --- Metadata ---
-	captureCmd.Flags().StringSlice("hint", nil, "hints attached to the captured object (repeatable, CSV)")
-	captureCmd.Flags().StringSlice("mention", nil, "mention targets (repeatable, CSV)")
+	captureCmd.Flags().StringArray("hint", nil, hintFlagUsage)
+	captureCmd.Flags().StringArray("mention", nil, mentionFlagUsage)
 	captureCmd.Flags().String("note", "", "audit note explaining the capture")
 	// --profile is inherited from kit's persistent flag set; do not
 	// re-register it locally. capture resolves it via activeProfileName at run
@@ -216,8 +216,11 @@ func captureOnce(ctx context.Context, cmd *cobra.Command, args []string) error {
 	noFanout, _ := cmd.Flags().GetBool("no-fanout")
 	noDedup, _ := cmd.Flags().GetBool("no-dedup")
 	sourceKey, _ := cmd.Flags().GetString("source-key")
-	hints, _ := cmd.Flags().GetStringSlice("hint")
-	mentions, _ := cmd.Flags().GetStringSlice("mention")
+	hints := parseHintList(listFlag(cmd, "hint", ""))
+	mentions, err := parseMentionList(listFlag(cmd, "mention", ""))
+	if err != nil {
+		return err
+	}
 	profile := activeProfileName(cmd)
 	note, _ := cmd.Flags().GetString("note")
 	wait, _ := cmd.Flags().GetBool("wait")
