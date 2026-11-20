@@ -28,8 +28,9 @@ const seenCap = 10000
 //     (Service.Store), looked up by the event's object ID. Hidden and
 //     missing objects are dropped alike.
 //   - The payload is rebuilt from the object as the viewer reads it, so
-//     the policy's field projection applies: no field list on updates,
-//     no source_key, source and tags only when the policy projects them.
+//     the policy's field projection applies: no field list on updates;
+//     source, source_key and tags only when the policy projects them
+//     (source_key follows source).
 //   - A delete leaves nothing to read, so it passes only for an object
 //     this connection already delivered (the viewer saw it exist). A
 //     delete of any other ID is dropped, since delivering it would
@@ -92,6 +93,7 @@ func viewerPayload(e bus.Event, obj *storage.KnowledgeObject) any {
 			ObjectID:  obj.ID,
 			Type:      obj.Type,
 			Source:    obj.Source,
+			SourceKey: obj.SourceKey,
 			Pipeline:  obj.Pipeline,
 			ProfileID: obj.ProfileID,
 		}
