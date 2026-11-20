@@ -457,6 +457,13 @@ func (s *Service) writeUserMentionEdges(ctx context.Context, obj *storage.Knowle
 	return nil
 }
 
+// PersistMentionEdges persists thin entity rows and the missing mention
+// edges for obj's mentions, each edge with the provenance obj.Graph holds
+// for its mention: for a step that adds mentions to a stored object.
+func (s *Service) PersistMentionEdges(ctx context.Context, obj *storage.KnowledgeObject) error {
+	return s.writeUserMentionEdges(ctx, obj)
+}
+
 // GetObject retrieves a knowledge object by ID.
 // Externalized content comes back whole (see resolveContent).
 func (s *Service) GetObject(ctx context.Context, id string) (*storage.KnowledgeObject, error) {
