@@ -317,8 +317,9 @@ Filters combine with AND.
 | `--start <offset>` | Pagination offset |
 | `--sort <key>` | `created` (default; `recent` is a synonym) or `updated` |
 | `--dir <asc\|desc>` | Sort direction (default `desc`) |
+| `--changed-after <seq>` | List by change order: objects created or updated after change sequence `seq` (`0`: from the first), oldest change first. Prints `next_changed_after` (JSON/YAML field; a `next --changed-after N` line on stderr otherwise): pass it back to continue. Pair with `--status all` to see discards. Cannot be combined with `--sort`, `--dir`, `--start`, `--cursor`, `--q` or `--facets` (exit 2) |
 | `--facets` | Also print counts by metadata type |
-| `--cursor <name>` / `--advance` | Named cursor, kept in a client file: list only objects created since the cursor's last position, oldest first; `--advance` moves it |
+| `--cursor <name>` / `--advance` | Named cursor, kept in a client file (created_at based: an update to an old object does not return; use `--changed-after` for that): list only objects created since the cursor's last position, oldest first; `--advance` moves it |
 | `--format json\|yaml` | Structured output |
 
 A malformed date, several tags in `--tagged`, or an unknown `--sort` / `--dir` value exits 2. An unreachable instance exits 70, a refused token 5.

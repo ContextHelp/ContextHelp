@@ -60,6 +60,10 @@ Examples:
   # Most recently updated first
   ctxt list --sort updated
 
+  # Follow changes: objects created or updated after change sequence 0,
+  # oldest change first; pass next_changed_after back to continue
+  ctxt list --changed-after 0 --status all -o json
+
   # Show facet breakdown
   ctxt list --facets
 
@@ -110,6 +114,8 @@ func init() {
 	listCmd.Flags().Int("start", 0, "pagination offset")
 	listCmd.Flags().String("sort", "created", "sort by created (synonym: recent) or updated")
 	listCmd.Flags().String("dir", "desc", "sort direction (asc|desc)")
+	listCmd.Flags().Int64("changed-after", 0,
+		"list by change order: objects created or updated after this change sequence (0: from the first), oldest change first; prints next_changed_after")
 
 	// Named cursor: per-viewer position over results, kept in a client
 	// file.
@@ -122,7 +128,7 @@ func init() {
 	for _, name := range []string{
 		"type", "tagged", "mention", "pipeline", "subtype", "before", "after", "q", "status",
 		"meta-type", "topic", "person", "since", "until", "source-type", "facets",
-		"limit", "start", "sort", "dir", "cursor", "advance",
+		"limit", "start", "sort", "dir", "changed-after", "cursor", "advance",
 	} {
 		_ = viper.BindPFlag("list."+name, listCmd.Flags().Lookup(name))
 	}
@@ -138,6 +144,10 @@ func runList(cmd *cobra.Command, args []string) error {
 	advance := viper.GetBool("list.advance")
 	if advance && cursorName == "" {
 		return output.UsageError("--advance requires --cursor <name>")
+	}
+
+	if cmd.Flags().Changed("changed-after") {
+		return runListChanges(ctx, cmd, cursorName)
 	}
 
 	// --q is an RSQL query the instance's search engine answers
@@ -208,6 +218,49 @@ func runList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	return printObjectResults(cmd, objects, total)
+}
+
+// runListChanges lists by change order (--changed-after): the objects
+// changed since a change sequence, oldest change first. The sequence of
+// the next page comes back as next_changed_after; the caller keeps it,
+// as --cursor keeps a created_at position. Order and position flags
+// belong to other listings and are refused.
+func runListChanges(ctx context.Context, cmd *cobra.Command, cursorName string) error {
+	seq := viper.GetInt64("list.changed-after")
+	if seq < 0 {
+		return output.UsageError(fmt.Sprintf("--changed-after %d: want a change sequence >= 0", seq))
+	}
+	for _, other := range []string{"cursor", "q", "facets", "sort", "dir", "start"} {
+		if cmd.Flags().Changed(other) {
+			e := output.UsageError(fmt.Sprintf("--changed-after cannot be combined with --%s", other))
+			e.SuggestedFix = "--changed-after lists in change order and pages by next_changed_after; drop --" + other
+			return e
+		}
+	}
+	filter, err := listFilter()
+	if err != nil {
+		return err
+	}
+	filter.Sort, filter.Dir, filter.Offset = "", "", 0
+	filter.ChangedAfter = &seq
+	client, err := newDpkmsClient(cmd, dpkmsclient.DefaultTimeout)
+	if err != nil {
+		return err
+	}
+	page, err := client.ListObjectChanges(ctx, filter)
+	if err != nil {
+		return err
+	}
+	if isJSONOutput() {
+		return outputJSON(os.Stdout, map[string]any{
+			"objects":            page.Objects,
+			"total":              page.Total,
+			"next_changed_after": page.NextChangedAfter,
+		})
+	}
+	// The cursor is prose here: stderr keeps stdout a table or rows.
+	fmt.Fprintf(os.Stderr, "next --changed-after %d\n", page.NextChangedAfter)
+	return printObjectResults(cmd, page.Objects, page.Total)
 }
 
 // listFilter reads the list flags into the API filter. It rejects what

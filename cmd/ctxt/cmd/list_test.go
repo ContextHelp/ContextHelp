@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -83,9 +85,80 @@ func TestListHelp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list --help should succeed: %v", err)
 	}
-	for _, flag := range []string{"--type", "--tagged", "--mention", "--pipeline", "--subtype", "--before", "--after", "--q", "--status", "--meta-type", "--topic", "--person", "--source-type", "--since", "--until", "--facets", "--limit", "--start", "--sort", "--dir", "--cursor", "--advance"} {
+	for _, flag := range []string{"--type", "--tagged", "--mention", "--pipeline", "--subtype", "--before", "--after", "--q", "--status", "--meta-type", "--topic", "--person", "--source-type", "--since", "--until", "--facets", "--limit", "--start", "--sort", "--dir", "--changed-after", "--cursor", "--advance"} {
 		if !strings.Contains(out, flag) {
 			t.Errorf("list help should list flag %s", flag)
+		}
+	}
+}
+
+func TestListChangedAfter(t *testing.T) {
+	db := setupTestDB(t)
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+	for _, id := range []string{"chg_001", "chg_002"} {
+		obj := &storage.KnowledgeObject{ID: id, Type: "text", Status: "active", CreatedAt: now, UpdatedAt: now}
+		if err := db.Driver.Objects().Create(ctx, obj); err != nil {
+			t.Fatalf("seed object: %v", err)
+		}
+	}
+
+	out, err := db.exec("list", "--changed-after", "0", "--format", "json")
+	if err != nil {
+		t.Fatalf("list --changed-after 0: %v\n%s", err, out)
+	}
+	var first struct {
+		Objects []struct {
+			ID string `json:"id"`
+		} `json:"objects"`
+		Next int64 `json:"next_changed_after"`
+	}
+	if err := json.Unmarshal([]byte(out), &first); err != nil {
+		t.Fatalf("decode %q: %v", out, err)
+	}
+	if len(first.Objects) != 2 || first.Objects[0].ID != "chg_001" || first.Next == 0 {
+		t.Fatalf("first page = %+v", first)
+	}
+
+	// Update the old object: it lists again past the cursor.
+	o, err := db.Driver.Objects().Get(ctx, "chg_001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	o.Tags = []storage.Tag{{Label: "edited"}}
+	if err := db.Driver.Objects().Update(ctx, o); err != nil {
+		t.Fatal(err)
+	}
+	out, err = db.exec("list", "--changed-after", strconv.FormatInt(first.Next, 10), "--format", "json")
+	if err != nil {
+		t.Fatalf("list after cursor: %v\n%s", err, out)
+	}
+	var next struct {
+		Objects []struct {
+			ID string `json:"id"`
+		} `json:"objects"`
+	}
+	if err := json.Unmarshal([]byte(out), &next); err != nil {
+		t.Fatalf("decode %q: %v", out, err)
+	}
+	if len(next.Objects) != 1 || next.Objects[0].ID != "chg_001" {
+		t.Fatalf("after the update = %+v, want [chg_001]", next.Objects)
+	}
+}
+
+func TestListChangedAfterUsage(t *testing.T) {
+	db := setupTestDB(t)
+	for _, args := range [][]string{
+		{"list", "--changed-after", "-1"},
+		{"list", "--changed-after", "0", "--sort", "updated"},
+		{"list", "--changed-after", "0", "--dir", "asc"},
+		{"list", "--changed-after", "0", "--start", "1"},
+		{"list", "--changed-after", "0", "--cursor", "c", "--advance"},
+		{"list", "--changed-after", "0", "--q", "type==url"},
+		{"list", "--changed-after", "0", "--facets"},
+	} {
+		if _, err := db.exec(args...); err == nil {
+			t.Errorf("%v: want a usage error", args)
 		}
 	}
 }

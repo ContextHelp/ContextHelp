@@ -2,6 +2,7 @@ package http_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -176,6 +177,7 @@ func RunObjectReadSuite(t *testing.T, newDriver func(*testing.T) storage.Storage
 	t.Run("ListFilters", func(t *testing.T) { testListFilters(t, env) })
 	t.Run("ListOrderAndPaging", func(t *testing.T) { testListOrderAndPaging(t, env) })
 	t.Run("ListRejectsBadParams", func(t *testing.T) { testListRejectsBadParams(t, env) })
+	t.Run("ListChangedAfter", func(t *testing.T) { testListChangedAfter(t, newDriver) })
 	t.Run("Facets", func(t *testing.T) { testFacets(t, env) })
 	t.Run("FacetsRejectsBadParams", func(t *testing.T) { testFacetsRejectsBadParams(t, env) })
 	t.Run("Related", func(t *testing.T) { testRelated(t, env) })
@@ -259,11 +261,94 @@ func testListRejectsBadParams(t *testing.T, env objectReadEnv) {
 		{"q=" + url.QueryEscape("type==note"), "q"},
 		{"tag=ux&tag=design", "tag"},
 		{"type=", "type"},
+		{"changed_after=-1", "changed_after"},
+		{"changed_after=abc", "changed_after"},
+		{"changed_after=1.5", "changed_after"},
+		{"changed_after=99999999999999999999", "changed_after"},
+		{"changed_after=", "changed_after"},
+		{"changed_after=1&changed_after=2", "changed_after"},
+		{"changed_after=0&sort=created_at", "sort"},
+		{"changed_after=0&dir=asc", "dir"},
+		{"changed_after=0&offset=1", "offset"},
 	}
 	for _, tc := range cases {
 		code, body := env.get(t, "/api/v1/objects?"+tc.query, dpkmstest.RoleAdmin)
 		assertInvalidParam(t, code, body, tc.param)
 	}
+}
+
+// changeList is a changed_after page. Objects carry no change sequence
+// of their own: the page's cursor is next_changed_after.
+type changeList struct {
+	Data []storage.KnowledgeObject `json:"data"`
+	Next *int64                    `json:"next_changed_after"`
+}
+
+func (e objectReadEnv) changes(t *testing.T, rawQuery string) (changeList, []byte) {
+	t.Helper()
+	code, body := e.get(t, "/api/v1/objects?"+rawQuery, dpkmstest.RoleAdmin)
+	require.Equal(t, http.StatusOK, code, "GET /objects?%s: %s", rawQuery, body)
+	var out changeList
+	require.NoError(t, json.Unmarshal(body, &out))
+	return out, body
+}
+
+// changed_after lists in change order and pages by next_changed_after;
+// an update of an old object lists past the cursor taken before it,
+// where the created_at bound does not reach it.
+func testListChangedAfter(t *testing.T, newDriver func(*testing.T) storage.StorageDriver) {
+	driver := newDriver(t)
+	env := objectReadEnv{srv: dpkmstest.Start(t, driver, dpkmstest.WithKeys())}
+	seedObjectReadCorpus(t, driver)
+
+	// Insertion order is change order; paging walks it to the end.
+	all, body := env.changes(t, "changed_after=0&status=all")
+	assert.Equal(t, []string{"o-a", "o-b", "o-c", "o-i", "o-d", "o-r"}, ids(all.Data))
+	require.NotNil(t, all.Next, "%s", body)
+	assert.NotContains(t, string(body), "change_seq", "objects do not expose their sequence")
+
+	var walked []string
+	var cursor int64
+	for range 10 {
+		page, _ := env.changes(t, fmt.Sprintf("changed_after=%d&status=all&limit=2", cursor))
+		require.NotNil(t, page.Next)
+		if len(page.Data) == 0 {
+			assert.Equal(t, cursor, *page.Next, "an empty page keeps the cursor")
+			break
+		}
+		assert.Greater(t, *page.Next, cursor)
+		walked = append(walked, ids(page.Data)...)
+		cursor = *page.Next
+	}
+	assert.Equal(t, ids(all.Data), walked)
+	assert.Equal(t, *all.Next, cursor)
+
+	// Status keeps its default: the active objects only.
+	active, _ := env.changes(t, "changed_after=0")
+	assert.Equal(t, []string{"o-a", "o-b", "o-c"}, ids(active.Data))
+
+	// Update an old object, leaving its timestamps where they were.
+	before := *all.Next
+	ctx := ownerCtx()
+	o, err := driver.Objects().Get(ctx, "o-a")
+	require.NoError(t, err)
+	o.Tags = append(o.Tags, storage.Tag{Label: "edited"})
+	require.NoError(t, driver.Objects().Update(ctx, o))
+
+	changed, _ := env.changes(t, fmt.Sprintf("changed_after=%d&status=all", before))
+	assert.Equal(t, []string{"o-a"}, ids(changed.Data))
+	assert.Greater(t, *changed.Next, before)
+	byCreated := env.list(t, "status=all&after="+url.QueryEscape(o.CreatedAt.Add(time.Second).Format(time.RFC3339)))
+	assert.NotContains(t, ids(byCreated.Data), "o-a", "created_at does not see the update")
+
+	// Nothing since: empty page, same cursor, total 0.
+	none, _ := env.changes(t, fmt.Sprintf("changed_after=%d&status=all", *changed.Next))
+	assert.Empty(t, none.Data)
+	assert.Equal(t, *changed.Next, *none.Next)
+
+	// Without the parameter the response has no cursor.
+	_, plain := env.get(t, "/api/v1/objects", dpkmstest.RoleAdmin)
+	assert.NotContains(t, string(plain), "next_changed_after")
 }
 
 func (e objectReadEnv) facets(t *testing.T, rawQuery string) map[string]int {
@@ -301,6 +386,7 @@ func testFacetsRejectsBadParams(t *testing.T, env objectReadEnv) {
 		{"offset=1", "offset"},
 		{"sort=created_at", "sort"},
 		{"dir=asc", "dir"},
+		{"changed_after=0", "changed_after"},
 		{"after=bad", "after"},
 		{"status=nope", "status"},
 		{"foo=1", "foo"},

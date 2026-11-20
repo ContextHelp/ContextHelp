@@ -56,6 +56,12 @@ type ObjectFilter struct {
 	// default) or asc. ListObjects only.
 	Sort string
 	Dir  string
+	// ChangedAfter, when non-nil, lists by change order: objects whose
+	// change sequence is past it, oldest change first, paged by the
+	// NextChangedAfter of ListObjectChanges. It excludes Sort, Dir and
+	// Offset (dpkms answers the combination with 400). ListObjectChanges
+	// only; 0 starts from the first change.
+	ChangedAfter *int64
 }
 
 // filterQuery encodes the selecting fields, the parameters both
@@ -87,6 +93,9 @@ func (f ObjectFilter) query() url.Values {
 	if f.Offset > 0 {
 		q.Set("offset", strconv.Itoa(f.Offset))
 	}
+	if f.ChangedAfter != nil {
+		q.Set("changed_after", strconv.FormatInt(*f.ChangedAfter, 10))
+	}
 	return q
 }
 
@@ -101,6 +110,39 @@ func (c *Client) ListObjects(ctx context.Context, f ObjectFilter) ([]*storage.Kn
 		return nil, 0, err
 	}
 	return out.Data, out.Total, nil
+}
+
+// ObjectChanges is one page of a change-order list.
+type ObjectChanges struct {
+	Objects []*storage.KnowledgeObject
+	// Total counts every change past the request's cursor that the
+	// filter matches, not just this page.
+	Total int
+	// NextChangedAfter is the ChangedAfter of the next page: the last
+	// object's change sequence, or the request's own when the page is
+	// empty. Keep it to resume where this page ended.
+	NextChangedAfter int64
+}
+
+// ListObjectChanges returns one page of the objects f.ChangedAfter
+// selects, in change order (GET /api/v1/objects?changed_after=N). It is
+// ListObjects for a caller that follows changes: an object updated
+// since the cursor lists again, whatever its timestamps say. A nil
+// f.ChangedAfter lists from the first change.
+func (c *Client) ListObjectChanges(ctx context.Context, f ObjectFilter) (ObjectChanges, error) {
+	if f.ChangedAfter == nil {
+		var zero int64
+		f.ChangedAfter = &zero
+	}
+	var out struct {
+		Data  []*storage.KnowledgeObject `json:"data"`
+		Total int                        `json:"total"`
+		Next  int64                      `json:"next_changed_after"`
+	}
+	if err := c.Get(ctx, "/api/v1/objects", f.query(), &out); err != nil {
+		return ObjectChanges{}, err
+	}
+	return ObjectChanges{Objects: out.Data, Total: out.Total, NextChangedAfter: out.Next}, nil
 }
 
 // ObjectPatch is the body of PATCH /api/v1/objects/{id}. It mirrors the
