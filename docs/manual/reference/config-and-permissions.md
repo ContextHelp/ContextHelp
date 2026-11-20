@@ -191,6 +191,32 @@ are exact names: no scheme, port or wildcard. These fetches ignore
 `HTTP_PROXY` / `HTTPS_PROXY`. Calls to configured endpoints (providers,
 registries, federation peers) are not affected.
 
+### Call the GitHub API
+
+Repository URLs (`url.github.repo`) are read through the GitHub REST API. Without a token the API answers within the reduced anonymous rate budget. Tokens are never written in the config: each key names a secret in the configured [secrets backend](../../ctxt/configuration.md) (with the default `env` backend, the name is the environment variable).
+
+```yaml
+github:
+  api_url: https://api.github.com   # GitHub Enterprise Server: https://ghe.example/api/v3
+  credential: GITHUB_TOKEN          # secret holding the default token
+  max_wait: 30s                     # longest sleep out of a rate limit
+  accounts:                         # per-account tokens, by repository owner
+    - name: work
+      credential: GITHUB_TOKEN_WORK
+      owners: [acme, acme-labs]
+```
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `github.api_url` | `https://api.github.com` | REST API root. |
+| `github.credential` | `GITHUB_TOKEN` | Secret holding the default token, used for every owner no account claims. An unset secret means anonymous calls. |
+| `github.max_wait` | `30s` | A rate limit (reset time or `Retry-After`) longer than this is not slept out: the job fails with a rate-limit error and the job retry tries again later. |
+| `github.accounts[].name` | | Label used in errors. |
+| `github.accounts[].credential` | | Secret holding the account's token. Required. |
+| `github.accounts[].owners` | | Repository owners (users or organizations, case-insensitive) the token serves. Required; an owner may belong to one account only. |
+
+`dpkms config validate` rejects a missing credential or owner list, an owner claimed twice, a negative `max_wait` and a non-HTTP `api_url`.
+
 ### Send write requests from scripts
 
 A `POST`, `PATCH`, `PUT` or `DELETE` that carries a body must send

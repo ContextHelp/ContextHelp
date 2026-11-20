@@ -204,6 +204,46 @@ May be re-run by a scheduled refresh job when configured.
 
 ---
 
+## url.github.repo
+
+Processes a GitHub repository URL through the GitHub REST API (no HTML scrape).
+
+**Selector**: URL matches `https://github.com/<owner>/<repo>` (optional trailing slash, no sub-path, no `.git` suffix)
+
+**Steps**
+
+- github_repo_fetcher
+- github_repo_mapper
+- sectioner
+- tagger
+- entity_extractor
+- entity_resolver
+- dependency_enricher
+- embedding
+
+`github_repo_fetcher` reads the repository record and the README (capped at 64 KiB) through the extraction core. `github_repo_mapper` maps the snapshot onto the object.
+
+**Outputs**
+
+- Type `repo`, subtype `github`; `source` is the canonical repository URL.
+- Text: `# owner/repo`, description, topics and README.
+- Metadata: `forge` (`github`), `forge_id` (`owner/repo`, GitHub's casing), `repo_url`, `owner`, `name`, `description`, `language`, `topics`, `license` (SPDX id), `homepage`, `stars`, `forks`, `open_issues`, `archived`, `is_fork`, `default_branch`, `created_at`, `updated_at`, `pushed_at` (RFC 3339), `releases` (when fetched).
+- Tags (source `github`, kept by `tagger`): `lang:<language>`, each topic, and `archived` for an archived repository.
+
+**Deduplication**
+
+One object per repository. The content hash is taken over `forge` + `forge_id` and the canonical source, not over the text, so submitting the same repository again (any URL spelling, any later star count) reinforces the existing object instead of creating another.
+
+**Errors**
+
+Not found, unauthorized and forbidden responses fail the job without retry. Rate limits (primary and secondary, `Retry-After` honoured up to `github.max_wait`) and server errors are retried by the job system. There is no HTML fallback.
+
+**Configuration**
+
+`github.api_url`, `github.credential`, `github.max_wait` and `github.accounts[]`: see [Configuration and permissions](../manual/reference/config-and-permissions.md#call-the-github-api).
+
+---
+
 ## url.github.profile
 
 Processes GitHub user or organization profile pages.
@@ -516,6 +556,7 @@ Custom pipelines follow all standard rules:
 | text.short | ✓ | ✓ | (opt.) | – | ✓ | ✓ | 1-step |
 | text.long | ✓✓ | ✓✓ | ✓ | ✓ | ✓ | ✓ | multi-step |
 | url.generic | ✓ | ✓ | (opt.) | ✓ | ✓ | ✓ | multi-step |
+| url.github.repo | ✓ | ✓✓ | – | – | ✓ | ✓ | multi-step |
 | url.github.profile | ✓ | ✓ | – | – | ✓ | ✓ | multi-step |
 | url.github.starred | ✓ | ✓✓ | – | ✓ | ✓ | ✓ | multi-step |
 | url.repo | ✓✓ | ✓✓ | ✓ | ✓ | ✓ | ✓ | multi-step |
