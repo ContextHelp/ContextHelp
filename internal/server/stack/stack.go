@@ -35,6 +35,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
 	embregistry "github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/events"
+	"github.com/ideacrafterslabs/ctxt/internal/github"
 	"github.com/ideacrafterslabs/ctxt/internal/ingest"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
@@ -443,6 +444,7 @@ func Build(in Inputs) (*Stack, error) {
 	buildOpts.BlobThreshold = cfg.Storage.Blob.Threshold
 	buildOpts.BrowserClient = in.Browser
 	buildOpts.FetchGuard = config.FetchGuard(cfg)
+	buildOpts.GitHub = github.NewClientFromConfig(cfg.GitHub, secrets.Getter(secretsStore))
 	// ADR-080 §3, §7: on protected and public instances every pipeline
 	// runs content_classes with the configured class rules and the
 	// embedding step writes the masked variant; a private instance

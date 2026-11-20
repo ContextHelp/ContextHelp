@@ -43,3 +43,33 @@ func TestContentHash(t *testing.T) {
 		assert.Equal(t, h1, h2)
 	})
 }
+
+func TestDraftContentHash(t *testing.T) {
+	forge := func(id string) map[string]any { return map[string]any{"forge": "github", "forge_id": id} }
+
+	t.Run("forge identity ignores raw content", func(t *testing.T) {
+		h1 := DraftContentHash("stars: 1", "https://github.com/o/r", forge("o/r"))
+		h2 := DraftContentHash("stars: 2", "https://github.com/o/r", forge("o/r"))
+		assert.Equal(t, h1, h2)
+	})
+	t.Run("forge identity is case-insensitive", func(t *testing.T) {
+		assert.Equal(t,
+			DraftContentHash("a", "s", forge("Octo/Repo")),
+			DraftContentHash("b", "s", forge("octo/repo")))
+	})
+	t.Run("different repositories differ", func(t *testing.T) {
+		assert.NotEqual(t,
+			DraftContentHash("a", "s", forge("o/r1")),
+			DraftContentHash("a", "s", forge("o/r2")))
+	})
+	t.Run("non-forge objects hash exactly as before", func(t *testing.T) {
+		for _, md := range []map[string]any{nil, {}, {"final_url": "https://x", "stars": 3}, {"forge_id": "o/r"}, {"forge": ""}} {
+			assert.Equal(t, ContentHash("Some Body\n text", "https://x"), DraftContentHash("Some Body\n text", "https://x", md))
+		}
+	})
+	t.Run("no forge falls back to raw content", func(t *testing.T) {
+		assert.Equal(t, ContentHash("body", "src"), DraftContentHash("body", "src", nil))
+		assert.Equal(t, ContentHash("body", "src"), DraftContentHash("body", "src", map[string]any{"forge": "github"}))
+		assert.NotEqual(t, DraftContentHash("a", "src", nil), DraftContentHash("b", "src", nil))
+	})
+}

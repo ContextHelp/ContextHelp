@@ -17,6 +17,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/directopen"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
 	embregistry "github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
+	"github.com/ideacrafterslabs/ctxt/internal/github"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pidfile"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
@@ -24,6 +25,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
+	"github.com/ideacrafterslabs/ctxt/internal/secrets"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -221,7 +223,24 @@ func registryBuildOptsTo(driver storage.StorageDriver, warn io.Writer) builtins.
 		opts.ClassRules = builtins.ClassRulesFromConfig(cfg.Sharing)
 	}
 	opts.FetchGuard = config.FetchGuard(cfg)
+	opts.GitHub = githubClient(warn)
 	return opts
+}
+
+// githubClient builds the GitHub REST client from github.* config, its
+// token secrets read through the configured secrets backend. A backend
+// that fails to open (reported on warn) leaves the environment as the
+// token source.
+func githubClient(warn io.Writer) *github.Client {
+	if cfg == nil {
+		return nil
+	}
+	store, err := secrets.New(cfg.Secrets)
+	if err != nil {
+		fmt.Fprintf(warn, "Warning: secrets backend unavailable; GitHub tokens read from the environment: %v\n", err)
+		return github.NewClientFromConfig(cfg.GitHub, nil)
+	}
+	return github.NewClientFromConfig(cfg.GitHub, secrets.Getter(store))
 }
 
 // embeddingBuildOpts wires the embedding write path into the pipeline

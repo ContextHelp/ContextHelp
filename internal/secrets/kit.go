@@ -7,6 +7,8 @@
 package secrets
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -138,5 +140,21 @@ func New(cfg config.SecretsConfig) (secret.MutableStore, error) {
 		})
 	default:
 		return nil, fmt.Errorf("secrets: unknown backend %q", cfg.Backend)
+	}
+}
+
+// Getter adapts a secret store to the by-name string lookup the GitHub
+// client reads tokens through. A secret the store does not have is an
+// empty value, not an error: the caller falls back to anonymous access.
+func Getter(store secret.Store) func(ctx context.Context, name string) (string, error) {
+	return func(ctx context.Context, name string) (string, error) {
+		s, err := store.Get(ctx, name)
+		if errors.Is(err, secret.ErrNotFound) {
+			return "", nil
+		}
+		if err != nil {
+			return "", err
+		}
+		return string(s.Value), nil
 	}
 }
