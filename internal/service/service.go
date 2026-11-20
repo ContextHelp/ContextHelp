@@ -195,6 +195,32 @@ func (s *Service) Store(ctx context.Context) storage.StorageDriver {
 	return sharing.Scoped(ctx, s.store, s.provenance)
 }
 
+// Outbox is the instance's event outbox (ADR-075 §4), or nil when the
+// driver has none. It reads the unscoped store: callers filter per
+// viewer themselves.
+func (s *Service) Outbox() storage.OutboxStore {
+	if p, ok := s.store.(interface{ Outbox() storage.OutboxStore }); ok {
+		return p.Outbox()
+	}
+	return nil
+}
+
+// announce attaches the after event of an object mutation to ctx, for
+// the object store to write in the mutation's transaction, and returns
+// it for publish. The actor is the request's principal.
+func (s *Service) announce(ctx context.Context, topic kitbus.Topic, source, objectID string, payload any) (context.Context, *storage.OutboxEvent) {
+	actor := ""
+	if v, ok := sharing.FromContext(ctx); ok {
+		actor = v.PrincipalID()
+	}
+	return events.Announce(ctx, topic, source, events.OriginAPI, actor, objectID, payload)
+}
+
+// publish sends the live copy of a committed after event.
+func (s *Service) publish(ctx context.Context, ev *storage.OutboxEvent) {
+	_ = events.Publish(ctx, s.Bus, ev)
+}
+
 // provenance adapts the pipeline registry to the render layer: the
 // step contracts of the pipeline named name, with or without its @vN
 // suffix, so the derived rule can tell what each stored field was
@@ -399,7 +425,8 @@ func (s *Service) analyzeRaw(ctx context.Context, req AnalyzeRequest, detectedTy
 			return s.updateRawBySourceKey(ctx, stored, req)
 		}
 	}
-	if err := s.Store(ctx).Objects().Create(ctx, obj); err != nil {
+	cctx, rawEv := s.announce(ctx, events.TopicObjectRawStored, "service.analyze", obj.ID, obj)
+	if err := s.Store(cctx).Objects().Create(cctx, obj); err != nil {
 		return "", fmt.Errorf("analyze raw: store: %w", err)
 	}
 	// caller-asserted mentions become thin entity rows + mention
@@ -408,7 +435,7 @@ func (s *Service) analyzeRaw(ctx context.Context, req AnalyzeRequest, detectedTy
 	if err := s.writeUserMentionEdges(ctx, obj); err != nil {
 		return "", fmt.Errorf("analyze raw: user mentions: %w", err)
 	}
-	_ = s.Bus.Publish(ctx, kitbus.NewEvent(events.TopicObjectRawStored, "service.analyze", obj))
+	s.publish(ctx, rawEv)
 	return obj.ID, nil
 }
 
@@ -424,17 +451,18 @@ func (s *Service) updateRawBySourceKey(ctx context.Context, stored *storage.Know
 	}.Apply(stored)
 	if len(fields) > 0 {
 		stored.UpdatedAt = time.Now().Truncate(time.Second)
-		if err := s.Store(ctx).Objects().Update(ctx, stored); err != nil {
+		uctx, upEv := s.announce(ctx, events.TopicObjectUpdated, "service.analyze", stored.ID, events.ObjectUpdatedPayload{
+			ObjectID: stored.ID,
+			Type:     stored.Type,
+			Fields:   fields,
+		})
+		if err := s.Store(uctx).Objects().Update(uctx, stored); err != nil {
 			return "", fmt.Errorf("analyze raw: update by source key: %w", err)
 		}
 		if err := s.writeUserMentionEdges(ctx, stored); err != nil {
 			return "", fmt.Errorf("analyze raw: user mentions: %w", err)
 		}
-		_ = s.Bus.Publish(ctx, kitbus.NewEvent(events.TopicObjectUpdated, "service.analyze", events.ObjectUpdatedPayload{
-			ObjectID: stored.ID,
-			Type:     stored.Type,
-			Fields:   fields,
-		}))
+		s.publish(ctx, upEv)
 	}
 	return stored.ID, nil
 }
@@ -594,15 +622,16 @@ func (s *Service) UpdateObject(ctx context.Context, obj *storage.KnowledgeObject
 	if err != nil {
 		return err
 	}
-	orphans, err := blob.UpdateObject(ctx, s.Store(ctx), row)
+	uctx, ev := s.announce(ctx, events.TopicObjectUpdated, "service.objects", obj.ID, events.ObjectUpdatedPayload{
+		ObjectID: obj.ID,
+		Type:     obj.Type,
+	})
+	orphans, err := blob.UpdateObject(uctx, s.Store(ctx), row)
 	if err != nil {
 		return err
 	}
 	logOrphans("update object", obj.ID, orphans)
-	_ = s.Bus.Publish(ctx, kitbus.NewEvent(events.TopicObjectUpdated, "service.objects", events.ObjectUpdatedPayload{
-		ObjectID: obj.ID,
-		Type:     obj.Type,
-	}))
+	s.publish(ctx, ev)
 	return nil
 }
 
@@ -610,12 +639,13 @@ func (s *Service) UpdateObject(ctx context.Context, obj *storage.KnowledgeObject
 // content is externalized to (see blob.DeleteObject). A blob that could
 // not be deleted is logged as an orphan; the object is gone either way.
 func (s *Service) DeleteObject(ctx context.Context, id string) error {
-	orphans, err := blob.DeleteObject(ctx, s.Store(ctx), id)
+	dctx, ev := s.announce(ctx, events.TopicObjectDeleted, "service.objects", id, events.ObjectDeletedPayload{ObjectID: id})
+	orphans, err := blob.DeleteObject(dctx, s.Store(ctx), id)
 	if err != nil {
 		return err
 	}
 	logOrphans("delete object", id, orphans)
-	_ = s.Bus.Publish(ctx, kitbus.NewEvent(events.TopicObjectDeleted, "service.objects", events.ObjectDeletedPayload{ObjectID: id}))
+	s.publish(ctx, ev)
 	return nil
 }
 

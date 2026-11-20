@@ -57,6 +57,7 @@ The other serve settings follow the same order (flag, env var, file, default):
 | Dev-server CORS | `--dev` | | `server.dev` | false |
 | Reminder check interval | `--reminder-interval` | | `server.reminder_interval` | 1m |
 | Idle event-stream heartbeat | | | `server.events_heartbeat` | 15s |
+| Event outbox retention (how far a `Last-Event-ID` resume reaches) | | | `server.events_retention` | 168h (7 days) |
 | External steps directory | `--steps-path` | | `steps.path` | `~/.config/contexthelp/steps` |
 | Default focus profile | `--profile` | `CTXT_PROFILE` | `profile.default` | the only profile, if one is defined |
 

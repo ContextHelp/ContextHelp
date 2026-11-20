@@ -494,6 +494,18 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 	checker := remind.NewChecker(reminderBackend, reminderInterval)
 
+	// Event outbox retention (server.events_retention): prune rows past
+	// the window now and hourly.
+	components := []component(nil)
+	if op, ok := driver.(interface{ Outbox() storage.OutboxStore }); ok {
+		retention := cfg.Server.EventsRetention
+		if retention <= 0 {
+			retention = config.DefaultEventsRetention
+		}
+		pruner := &events.Pruner{Store: op.Outbox(), Retention: retention}
+		components = append(components, component{name: "events-prune", run: pruner.Run})
+	}
+
 	// Cookie bridge (for browser extension).
 	cookieBridge := wsserver.NewCookieBridgeServer(wsserver.NewCookieCache(), cookieBridgeHosts)
 
@@ -531,6 +543,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		drain: drainTimeout,
 		log:   os.Stderr,
 	}
+	runner.components = append(runner.components, components...)
 
 	// The signal channel is read for the runner's whole lifetime and
 	// released right after, so a signal is never parked on a channel
