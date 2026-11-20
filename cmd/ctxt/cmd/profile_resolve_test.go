@@ -85,7 +85,8 @@ func writeProfilesConfig(t *testing.T, db *testDB, configured string) {
 	}
 }
 
-// find sends the resolved profile in POST /api/v1/find.
+// find sends the profile only when --profile is passed: profile.default
+// and CTXT_PROFILE shape the local search strategy but never travel.
 func TestFindProfilePrecedence(t *testing.T) {
 	for _, tc := range profileCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -99,14 +100,18 @@ func TestFindProfilePrecedence(t *testing.T) {
 			}
 			body := rec.last(t)
 			got, sent := body["profile"]
-			if tc.want == "" {
+			want := ""
+			if len(tc.args) == 2 {
+				want = tc.args[1] // the explicit --profile value
+			}
+			if want == "" {
 				if sent {
 					t.Errorf("profile = %v, want none sent", got)
 				}
 				return
 			}
-			if got != tc.want {
-				t.Errorf("profile = %v, want %q", got, tc.want)
+			if got != want {
+				t.Errorf("profile = %v, want %q", got, want)
 			}
 		})
 	}
