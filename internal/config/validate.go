@@ -453,7 +453,7 @@ func validateFederations(feds []FederationEntry) []ValidationError {
 // https) target rather than a file one.
 func isHTTPURL(raw string) bool {
 	u, err := url.Parse(raw)
-	return err == nil && (u.Scheme == "http" || u.Scheme == "https")
+	return err == nil && (u.Scheme == schemeHTTP || u.Scheme == schemeHTTPS)
 }
 
 // rejectLegacyURL fails the load when the removed server.url key is set,
@@ -611,8 +611,8 @@ func validateGitHub(g GitHubConfig) []ValidationError {
 	owners := map[string]string{}
 	for i, a := range g.Accounts {
 		field := fmt.Sprintf("github.accounts[%d]", i)
-		if a.TokenSecret == "" {
-			errs = append(errs, ValidationError{Field: field + ".token_secret", Message: "required"})
+		if a.Credential == "" {
+			errs = append(errs, ValidationError{Field: field + ".credential", Message: "required"})
 		}
 		if len(a.Owners) == 0 {
 			errs = append(errs, ValidationError{Field: field + ".owners", Message: "at least one owner required"})

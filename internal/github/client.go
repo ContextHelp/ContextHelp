@@ -177,41 +177,47 @@ func (c *Client) get(ctx context.Context, owner, path, accept string) ([]byte, e
 			return body, nil
 		}
 
-		ae := &APIError{Status: resp.StatusCode, Method: http.MethodGet, URL: target, Message: messageOf(body)}
-		switch {
-		case resp.StatusCode == http.StatusUnauthorized:
-			ae.err = ErrUnauthorized
-			return nil, ae
-		case resp.StatusCode == http.StatusNotFound:
-			ae.err = ErrNotFound
-			return nil, ae
-		case resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests:
-			rl := c.classifyLimit(resp, ae)
-			if rl == nil {
-				ae.err = ErrForbidden
-				return nil, ae
-			}
-			if attempt >= c.maxRetries || rl.RetryAfter > c.maxWait {
-				return nil, rl
-			}
-			slog.Debug("github: rate limited, waiting", "kind", rl.Kind, "wait", rl.RetryAfter, "url", target)
-			if err := c.sleep(ctx, rl.RetryAfter); err != nil {
-				return nil, err
-			}
-			continue
-		case resp.StatusCode >= 500:
-			ae.err = ErrServer
-			if attempt >= c.maxRetries {
-				return nil, ae
-			}
-			if err := c.sleep(ctx, c.backoff<<attempt); err != nil {
-				return nil, err
-			}
-			continue
-		default:
-			ae.err = fmt.Errorf("github: unexpected status %d", resp.StatusCode)
-			return nil, ae
+		wait, retry, err := c.failure(resp, body, target, attempt)
+		if !retry {
+			return nil, err
 		}
+		if err := c.sleep(ctx, wait); err != nil {
+			return nil, err
+		}
+	}
+}
+
+// failure maps a non-success response to its error. retry is true when
+// the request should be repeated after wait; otherwise err is final.
+func (c *Client) failure(resp *http.Response, body []byte, target string, attempt int) (wait time.Duration, retry bool, err error) {
+	ae := &APIError{Status: resp.StatusCode, Method: http.MethodGet, URL: target, Message: messageOf(body)}
+	switch {
+	case resp.StatusCode == http.StatusUnauthorized:
+		ae.err = ErrUnauthorized
+		return 0, false, ae
+	case resp.StatusCode == http.StatusNotFound:
+		ae.err = ErrNotFound
+		return 0, false, ae
+	case resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests:
+		rl := c.classifyLimit(resp, ae)
+		if rl == nil {
+			ae.err = ErrForbidden
+			return 0, false, ae
+		}
+		if attempt >= c.maxRetries || rl.RetryAfter > c.maxWait {
+			return 0, false, rl
+		}
+		slog.Debug("github: rate limited, waiting", "kind", rl.Kind, "wait", rl.RetryAfter, "url", target)
+		return rl.RetryAfter, true, nil
+	case resp.StatusCode >= 500:
+		ae.err = ErrServer
+		if attempt >= c.maxRetries {
+			return 0, false, ae
+		}
+		return c.backoff << attempt, true, nil
+	default:
+		ae.err = fmt.Errorf("github: unexpected status %d", resp.StatusCode)
+		return 0, false, ae
 	}
 }
 
