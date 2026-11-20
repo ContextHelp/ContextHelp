@@ -85,26 +85,7 @@ func (s *Service) PatchObject(ctx context.Context, id string, p ObjectPatch) (*s
 		}
 	}
 	if p.Tags != nil {
-		// A label kept from the stored tags keeps its source and weight;
-		// only a new label is marked manual.
-		existing := make(map[string]storage.Tag, len(obj.Tags))
-		for _, t := range obj.Tags {
-			if _, ok := existing[t.Label]; !ok {
-				existing[t.Label] = t
-			}
-		}
-		tags := make([]storage.Tag, 0, len(*p.Tags))
-		for _, label := range *p.Tags {
-			if label = strings.TrimSpace(label); label == "" {
-				continue
-			}
-			if kept, ok := existing[label]; ok {
-				tags = append(tags, kept)
-				continue
-			}
-			tags = append(tags, storage.Tag{Label: label, Source: "manual"})
-		}
-		obj.Tags = tags
+		obj.Tags = patchTags(obj.Tags, *p.Tags)
 	}
 	if p.Mentions != nil {
 		obj.Mentions = ms
@@ -117,6 +98,30 @@ func (s *Service) PatchObject(ctx context.Context, id string, p ObjectPatch) (*s
 		return nil, err
 	}
 	return obj, nil
+}
+
+// patchTags replaces stored with labels. A label already stored keeps its
+// source and weight; a new label is marked manual; labels are trimmed and
+// empty ones dropped.
+func patchTags(stored []storage.Tag, labels []string) []storage.Tag {
+	existing := make(map[string]storage.Tag, len(stored))
+	for _, t := range stored {
+		if _, ok := existing[t.Label]; !ok {
+			existing[t.Label] = t
+		}
+	}
+	tags := make([]storage.Tag, 0, len(labels))
+	for _, label := range labels {
+		if label = strings.TrimSpace(label); label == "" {
+			continue
+		}
+		if kept, ok := existing[label]; ok {
+			tags = append(tags, kept)
+			continue
+		}
+		tags = append(tags, storage.Tag{Label: label, Source: "manual"})
+	}
+	return tags
 }
 
 // ReprocessObject enqueues a job that re-runs step on the object id
