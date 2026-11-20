@@ -796,3 +796,32 @@ func TestMatchesMetadataFacets(t *testing.T) {
 		assert.False(t, matchesMetadataFacets(nilObj, storage.ObjectFilter{MetadataType: "task"}))
 	})
 }
+
+// GetBySourceKey is scoped to the profile, and the key is unique per
+// (source_key, profile_id): another profile may reuse a key.
+func TestSourceKeyPerProfile(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+	mk := func(id, profile string) *storage.KnowledgeObject {
+		return &storage.KnowledgeObject{ID: id, Type: "text", RawContent: id, SourceKey: "k", ProfileID: profile,
+			ContentHash: "h-" + id, CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	}
+	if err := d.Objects().Create(ctx, mk("a", "alice")); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Objects().Create(ctx, mk("b", "bob")); err != nil {
+		t.Fatalf("another profile reusing the key must be accepted: %v", err)
+	}
+	if err := d.Objects().Create(ctx, mk("a2", "alice")); err == nil {
+		t.Fatal("a second object under (key, alice) must be refused")
+	}
+	for profile, want := range map[string]string{"alice": "a", "bob": "b"} {
+		got, err := d.Objects().GetBySourceKey(ctx, "k", profile)
+		if err != nil || got == nil || got.ID != want {
+			t.Errorf("GetBySourceKey(k, %s) = %v, %v; want %s", profile, got, err, want)
+		}
+	}
+	if got, _ := d.Objects().GetBySourceKey(ctx, "k", "carol"); got != nil {
+		t.Errorf("unknown profile found %s", got.ID)
+	}
+}

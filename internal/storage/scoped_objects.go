@@ -39,11 +39,11 @@ func (v restrictedObjects) GetByContentHash(ctx context.Context, hash, profileID
 	return v.scoped.GetByContentHash(ctx, hash, profileID)
 }
 
-func (v restrictedObjects) GetBySourceKey(ctx context.Context, key string) (*KnowledgeObject, error) {
+func (v restrictedObjects) GetBySourceKey(ctx context.Context, key, profileID string) (*KnowledgeObject, error) {
 	if v.scoped == nil {
 		return nil, refuseRead("Objects", "GetBySourceKey", v.refuse)
 	}
-	return v.scoped.GetBySourceKey(ctx, key)
+	return v.scoped.GetBySourceKey(ctx, key, profileID)
 }
 
 func (v restrictedObjects) List(ctx context.Context, filter ObjectFilter) ([]*KnowledgeObject, int, error) {

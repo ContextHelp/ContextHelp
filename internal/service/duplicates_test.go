@@ -27,7 +27,7 @@ func (s *stubObjectsForDup) GetByContentHash(_ context.Context, hash, _ string) 
 	return s.byHash[hash], nil
 }
 
-func (s *stubObjectsForDup) GetBySourceKey(_ context.Context, key string) (*storage.KnowledgeObject, error) {
+func (s *stubObjectsForDup) GetBySourceKey(_ context.Context, key, profileID string) (*storage.KnowledgeObject, error) {
 	if key == "" || s.bySourceKey == nil {
 		return nil, nil
 	}

@@ -153,3 +153,33 @@ func TestAnalyzeRawPersistsDataAndUpsertsBySourceKey(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, total)
 }
+
+// Raw path: a source key is per profile. Same profile updates; another
+// profile gets its own object and the first is left as it was.
+func TestAnalyzeRawSourceKeyIsScopedToProfile(t *testing.T) {
+	svc := newTestService(t)
+	ctx := ownerCtx()
+	raw := func(profile, body, note string, hints ...string) string {
+		id, err := svc.Analyze(ctx, AnalyzeRequest{
+			Content: body, Type: "text", Raw: true, SourceKey: "k:shared", Profile: profile,
+			Note: note, Data: map[string]any{"o": profile}, Hints: hints,
+		})
+		require.NoError(t, err)
+		return id
+	}
+	a := raw("alice", "alice body", "alice note", "mine")
+	assert.Equal(t, a, raw("alice", "alice body 2", "alice note v2"), "same profile updates")
+	b := raw("bob", "bob body", "bob note", "theirs")
+	require.NotEqual(t, a, b, "another profile must not update alice's object")
+
+	objA, err := svc.store.Objects().Get(ctx, a)
+	require.NoError(t, err)
+	assert.Equal(t, "alice note v2", objA.InboxNote)
+	assert.Equal(t, map[string]any{"o": "alice"}, objA.Metadata["data"])
+	require.Len(t, objA.Tags, 1)
+	assert.Equal(t, "mine", objA.Tags[0].Label)
+	objB, err := svc.store.Objects().Get(ctx, b)
+	require.NoError(t, err)
+	assert.Equal(t, "bob", objB.ProfileID)
+	assert.Equal(t, "bob note", objB.InboxNote)
+}

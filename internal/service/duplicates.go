@@ -52,7 +52,7 @@ func (s *Service) checkDuplicates(ctx context.Context, hash, sourceKey, profileI
 
 	// 2. Source-key match.
 	if sourceKey != "" {
-		existing, err := s.Store(ctx).Objects().GetBySourceKey(ctx, sourceKey)
+		existing, err := s.Store(ctx).Objects().GetBySourceKey(ctx, sourceKey, profileID)
 		if err != nil {
 			return nil, err
 		}

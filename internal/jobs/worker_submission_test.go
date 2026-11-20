@@ -257,3 +257,49 @@ func TestProcessJobSourceKeyWinsOverContentHash(t *testing.T) {
 		t.Errorf("other object touched: reinforced %d note %q", o.ReinforcementCount, o.InboxNote)
 	}
 }
+
+// A source key names a source within one profile: the same key from the
+// same profile updates, from another profile it is a separate object and
+// the first profile's object is untouched.
+func TestProcessJobSourceKeyIsScopedToProfile(t *testing.T) {
+	e := newSubmissionEnv(t)
+	a := makeJob("job-prof-a")
+	a.Payload = "profile a body about dingoes"
+	a.UserProfile, a.UserSourceKey = "alice", "k:shared"
+	a.UserNote, a.UserData, a.UserHints = "alice note", map[string]any{"o": "alice"}, []string{"mine"}
+	rA := e.run(t, a)
+
+	same := makeJob("job-prof-a2")
+	same.Payload = "profile a body, later"
+	same.UserProfile, same.UserSourceKey = "alice", "k:shared"
+	same.UserNote = "alice note v2"
+	if r := e.run(t, same); r.ResultID != rA.ResultID {
+		t.Fatalf("same profile: updated %s, want %s", r.ResultID, rA.ResultID)
+	}
+
+	other := makeJob("job-prof-b")
+	other.Payload = "profile b body about dingoes"
+	other.UserProfile, other.UserSourceKey = "bob", "k:shared"
+	other.UserNote, other.UserData, other.UserHints = "bob note", map[string]any{"o": "bob"}, []string{"theirs"}
+	rB := e.run(t, other)
+
+	if rB.ResultID == rA.ResultID {
+		t.Fatal("another profile's submission updated alice's object")
+	}
+	if n := e.count(t); n != 2 {
+		t.Fatalf("objects: %d, want 2", n)
+	}
+	objA := e.object(t, rA.ResultID)
+	if objA.InboxNote != "alice note v2" || dataOf(t, objA)["o"] != "alice" {
+		t.Errorf("alice's object changed: note %q data %v", objA.InboxNote, objA.Metadata)
+	}
+	for _, tag := range objA.Tags {
+		if tag.Label == "theirs" {
+			t.Errorf("bob's hint leaked onto alice's object: %+v", objA.Tags)
+		}
+	}
+	objB := e.object(t, rB.ResultID)
+	if objB.ProfileID != "bob" || objB.SourceKey != "k:shared" || objB.InboxNote != "bob note" {
+		t.Errorf("bob's object: profile %q key %q note %q", objB.ProfileID, objB.SourceKey, objB.InboxNote)
+	}
+}

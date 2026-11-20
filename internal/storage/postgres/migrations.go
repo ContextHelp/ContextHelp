@@ -394,6 +394,13 @@ var pgMigrations = []pgMigration{
 	{Version: 35, Name: "jobs.user_data, jobs.user_source_key", fn: func(ctx context.Context, d *Driver) error {
 		return migrateJobsUserDataSourceKey(ctx, d.db)
 	}},
+	// source_key unique per (source_key, profile_id), like content_hash
+	// since 34. Duplicates of a pair cannot exist: the old index was
+	// stricter.
+	{Version: 36, Name: "objects (source_key, profile_id) unique", Statements: []string{
+		`DROP INDEX IF EXISTS idx_objects_source_key`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_objects_source_key_profile ON objects(source_key, profile_id) WHERE source_key <> ''`,
+	}},
 }
 
 // sharingRegistryStatements create the sharing registry and add the

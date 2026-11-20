@@ -304,6 +304,10 @@ var migrations = []migration{
 	// data and the source key `analyze` carries to the worker. Column
 	// adds only; no FTS input changes.
 	{Version: 54, fn: migrate054JobsUserDataSourceKey},
+	// Migration 055: source_key is unique per (source_key, profile_id),
+	// like content_hash since 052: another profile may reuse a key, and a
+	// source-key update never reaches an object of another profile.
+	{Version: 55, fn: migrate055SourceKeyPerProfile},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
@@ -729,6 +733,21 @@ func migrate031JobsUserProfileNote(ctx context.Context, d *Driver) error {
 		return err
 	}
 	return addJobsColumnIfMissing(ctx, d, "user_note", "TEXT DEFAULT ''")
+}
+
+// migrate055SourceKeyPerProfile replaces the unique index on source_key
+// with one on (source_key, profile_id), still partial over non-empty keys.
+func migrate055SourceKeyPerProfile(ctx context.Context, d *Driver) error {
+	for _, stmt := range []string{
+		`DROP INDEX IF EXISTS idx_objects_source_key`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_objects_source_key_profile
+			ON objects(source_key, profile_id) WHERE source_key != ''`,
+	} {
+		if _, err := d.db.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("source key per profile: %w", err)
+		}
+	}
+	return nil
 }
 
 // migrate054JobsUserDataSourceKey adds the user_data (JSON object) and

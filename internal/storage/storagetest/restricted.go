@@ -275,10 +275,10 @@ func restrictedConfObjectLookups(t *testing.T, objects storage.ObjectStore, f *r
 	if got, err := objects.GetByContentHash(ctx, f.hidden.ContentHash, f.hidden.ProfileID); err != nil || got != nil {
 		t.Errorf("GetByContentHash(hidden) = %v, %v, want nil, nil", got, err)
 	}
-	if got, err := objects.GetBySourceKey(ctx, f.visible.SourceKey); err != nil || got == nil {
+	if got, err := objects.GetBySourceKey(ctx, f.visible.SourceKey, f.visible.ProfileID); err != nil || got == nil {
 		t.Errorf("GetBySourceKey(visible) = %v, %v", got, err)
 	}
-	if got, err := objects.GetBySourceKey(ctx, f.hidden.SourceKey); err != nil || got != nil {
+	if got, err := objects.GetBySourceKey(ctx, f.hidden.SourceKey, f.hidden.ProfileID); err != nil || got != nil {
 		t.Errorf("GetBySourceKey(hidden) = %v, %v, want nil, nil", got, err)
 	}
 }
