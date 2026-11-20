@@ -67,8 +67,9 @@ capabilities:
   entities: true
   export: false
   mcp: true
-  events: false
 ```
+
+`capabilities.events` is deprecated. It still parses, so existing policies load, but it opens and closes nothing: the event stream (`GET /api/v1/events`) shows a viewer the object events it may read, whatever the key says. Setting it logs a warning once per policy. Remove it. See [Listen for events](event-listener.md).
 
 ```bash
 ctxt share template list

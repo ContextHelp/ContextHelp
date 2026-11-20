@@ -1,9 +1,14 @@
 package sharing_test
 
 import (
+	"bytes"
 	"encoding/json"
+	"log/slog"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -243,4 +248,46 @@ func TestPolicySpecRoundTrip(t *testing.T) {
 	if _, err := sharing.PolicyFromSpec(nil); err == nil {
 		t.Error("PolicyFromSpec(nil) must fail")
 	}
+}
+
+// capture routes slog's default logger to a buffer for the test.
+func captureLog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	t.Cleanup(func() { slog.SetDefault(old) })
+	return &buf
+}
+
+// capabilities.events is deprecated: a policy that sets it, either way,
+// still loads and says so once; one that does not stays quiet.
+func TestPolicyEventsCapabilityIsDeprecated(t *testing.T) {
+	for _, tc := range []struct{ name, value string }{{"ev-false", "false"}, {"ev-true", "true"}} {
+		t.Run(tc.name, func(t *testing.T) {
+			buf := captureLog(t)
+			doc := []byte("name: " + tc.name + "\ndata: \"type==note\"\ncapabilities:\n  events: " + tc.value + "\n")
+			p, err := sharing.ParsePolicy(doc)
+			require.NoError(t, err)
+			assert.Equal(t, tc.name, p.Name)
+			assert.Contains(t, buf.String(), "capabilities.events is deprecated")
+			assert.Contains(t, buf.String(), tc.name)
+
+			// Loading the same policy again does not repeat the warning.
+			buf.Reset()
+			_, err = sharing.ParsePolicy(doc)
+			require.NoError(t, err)
+			assert.Empty(t, buf.String())
+		})
+	}
+
+	buf := captureLog(t)
+	_, err := sharing.ParsePolicy([]byte("name: ev-unset\ndata: \"type==note\"\ncapabilities:\n  mcp: true\n"))
+	require.NoError(t, err)
+	assert.Empty(t, buf.String())
+
+	// A policy built in code (the API path) that enables events warns too.
+	err = sharing.Policy{Name: "ev-code", Data: "type==note", Capabilities: sharing.Capabilities{Events: true}}.Validate()
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "ev-code")
 }
