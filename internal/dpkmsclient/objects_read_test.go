@@ -85,6 +85,95 @@ func TestObjectFilterQuery(t *testing.T) {
 	}
 }
 
+// ChangedAfter is a list-only parameter: ListObjects sends it, the
+// facets request does not.
+func TestObjectChangedAfterQuery(t *testing.T) {
+	c, got := captureQuery(t)
+	ctx := context.Background()
+	zero := int64(0)
+	if _, err := c.ListObjectChanges(ctx, dpkmsclient.ObjectFilter{Limit: 5}); err != nil {
+		t.Fatal(err)
+	}
+	if want := (url.Values{"limit": {"5"}, "changed_after": {"0"}}); !reflect.DeepEqual(*got, want) {
+		t.Errorf("default query = %v, want %v", *got, want)
+	}
+	seq := int64(42)
+	if _, err := c.ListObjectChanges(ctx, dpkmsclient.ObjectFilter{ChangedAfter: &seq, Status: "all"}); err != nil {
+		t.Fatal(err)
+	}
+	if want := (url.Values{"limit": {"0"}, "status": {"all"}, "changed_after": {"42"}}); !reflect.DeepEqual(*got, want) {
+		t.Errorf("query = %v, want %v", *got, want)
+	}
+	if _, err := c.ObjectFacets(ctx, dpkmsclient.ObjectFilter{ChangedAfter: &zero}); err != nil {
+		t.Fatal(err)
+	}
+	if want := (url.Values{}); !reflect.DeepEqual(*got, want) {
+		t.Errorf("facets query = %v, want %v", *got, want)
+	}
+}
+
+// ListObjectChanges follows the cursor dpkms answers with, and an
+// update of an old object comes back past it.
+func TestObjects_ListObjectChanges(t *testing.T) {
+	driver := storageutil.NewTestDriver(t)
+	srv := dpkmstest.Start(t, driver, dpkmstest.WithKeys())
+	c := roleClient(t, srv, dpkmstest.RoleReader)
+	ctx := context.Background()
+	at := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+	for _, id := range []string{"c-1", "c-2", "c-3"} {
+		o := &storage.KnowledgeObject{ID: id, Type: "note", Status: "active", RawContent: id, CreatedAt: at, UpdatedAt: at}
+		if err := driver.Objects().Create(ctx, o); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ids := func(p dpkmsclient.ObjectChanges) []string {
+		var out []string
+		for _, o := range p.Objects {
+			out = append(out, o.ID)
+		}
+		return out
+	}
+
+	p1, err := c.ListObjectChanges(ctx, dpkmsclient.ObjectFilter{Limit: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(ids(p1), []string{"c-1", "c-2"}) || p1.Total != 3 {
+		t.Fatalf("page 1 = %v total %d", ids(p1), p1.Total)
+	}
+	p2, err := c.ListObjectChanges(ctx, dpkmsclient.ObjectFilter{Limit: 2, ChangedAfter: &p1.NextChangedAfter})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(ids(p2), []string{"c-3"}) || p2.NextChangedAfter <= p1.NextChangedAfter {
+		t.Fatalf("page 2 = %v next %d", ids(p2), p2.NextChangedAfter)
+	}
+
+	o, err := driver.Objects().Get(ctx, "c-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	o.Tags = []storage.Tag{{Label: "edited"}}
+	if err := driver.Objects().Update(ctx, o); err != nil {
+		t.Fatal(err)
+	}
+	p3, err := c.ListObjectChanges(ctx, dpkmsclient.ObjectFilter{ChangedAfter: &p2.NextChangedAfter})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(ids(p3), []string{"c-1"}) {
+		t.Fatalf("after the update = %v, want [c-1]", ids(p3))
+	}
+	// An empty page keeps the cursor.
+	p4, err := c.ListObjectChanges(ctx, dpkmsclient.ObjectFilter{ChangedAfter: &p3.NextChangedAfter})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p4.Objects) != 0 || p4.NextChangedAfter != p3.NextChangedAfter {
+		t.Fatalf("empty page = %v next %d, want cursor %d", ids(p4), p4.NextChangedAfter, p3.NextChangedAfter)
+	}
+}
+
 // TestObjectFilterAcceptedByDpkms: every parameter the client sends is
 // one dpkms accepts (it answers an unknown one with 400).
 func TestObjectFilterAcceptedByDpkms(t *testing.T) {
