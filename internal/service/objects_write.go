@@ -99,6 +99,14 @@ func (s *Service) PatchObject(ctx context.Context, id string, p ObjectPatch) (*s
 	if err := s.UpdateObject(ctx, obj); err != nil {
 		return nil, err
 	}
+	if p.Mentions != nil {
+		if err := s.writeUserMentionEdges(ctx, obj); err != nil {
+			return nil, fmt.Errorf("patch object: mentions: %w", err)
+		}
+		if err := s.dropUserMentionEdges(ctx, obj); err != nil {
+			return nil, fmt.Errorf("patch object: mentions: %w", err)
+		}
+	}
 	if err := s.resolveContent(ctx, obj); err != nil {
 		return nil, err
 	}
@@ -117,4 +125,45 @@ func (s *Service) ReprocessObject(ctx context.Context, id, step string) (*storag
 		return nil, err
 	}
 	return s.Queue.EnqueueReprocess(ctx, id, step)
+}
+
+// dropUserMentionEdges deletes, in both directions, the mention edges of
+// obj that name an entity no longer in obj.Mentions and that came from
+// the mentions field as the caller asserted it (source_field
+// MentionSourceMentions). An edge extracted from the object's text stays:
+// the text still holds the mention. The entity rows stay too.
+func (s *Service) dropUserMentionEdges(ctx context.Context, obj *storage.KnowledgeObject) error {
+	kept := make(map[string]bool, len(obj.Mentions))
+	for _, m := range obj.Mentions {
+		kept[storage.MentionTarget(m)] = true
+	}
+	edges, err := s.Store(ctx).Edges().ListFrom(ctx, storage.EdgeEndpointObject, obj.ID)
+	if err != nil {
+		return fmt.Errorf("list mention edges: %w", err)
+	}
+	drop := make([]storage.EdgeMatch, 0, 2*len(edges))
+	for _, e := range edges {
+		if e.EdgeType != storage.EdgeTypeMentions || e.ToType != storage.EdgeEndpointEntity || kept[e.ToID] {
+			continue
+		}
+		if field, _ := e.Metadata[storage.ProvenanceSourceField].(string); field != storage.MentionSourceMentions {
+			continue
+		}
+		drop = append(drop, storage.EdgeMatch{
+			FromType: storage.EdgeEndpointObject, FromID: obj.ID,
+			ToType: storage.EdgeEndpointEntity, ToID: e.ToID,
+			EdgeTypes: []string{storage.EdgeTypeMentions},
+		}, storage.EdgeMatch{
+			FromType: storage.EdgeEndpointEntity, FromID: e.ToID,
+			ToType: storage.EdgeEndpointObject, ToID: obj.ID,
+			EdgeTypes: []string{storage.EdgeTypeMentionedIn},
+		})
+	}
+	if len(drop) == 0 {
+		return nil
+	}
+	if _, err := s.Store(ctx).Edges().DeleteMatching(ctx, drop); err != nil {
+		return fmt.Errorf("delete dropped mention edges: %w", err)
+	}
+	return nil
 }
