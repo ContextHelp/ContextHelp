@@ -6,7 +6,7 @@ Run your own program on every captured object before dpkms indexes, embeds, stor
 
 ## How a step works
 
-A step is a program dpkms runs once per object while a pipeline processes it. dpkms writes the knowledge object as JSON to the program's stdin. The program writes one JSON object to stdout: either `{"object": {...}}` holding only the fields it changed, or `{"error": {"code": "...", "message": "..."}}`. Any field the output omits keeps its original value.
+A step is a program dpkms runs once per object while a pipeline processes it. dpkms writes the knowledge object as JSON to the program's stdin. The program writes one JSON object to stdout: either `{"object": {...}}` holding only the fields it changed, or `{"error": {"code": "...", "message": "..."}}`. Any field the output omits keeps its original value. To change tags or metadata without echoing what is already there, return additive `ops` instead (see [Additive ops](#additive-ops)).
 
 A step may change only these fields: `type`, `subtype`, `raw_content`, `text_content`, `content_type`, `metadata`, `summaries`, `sections`, `tags`, `mentions`, `decisions`, `tasks`, `graph`, `inbox_note`. It may repeat read-only fields (`id`, `source`, `pipeline`, `created_at`, and others) unchanged. Changing a read-only field, or sending an unknown field, fails the object.
 
@@ -139,6 +139,24 @@ Check the stored object's content. You should see `[email]` and `[phone]` where 
 ```bash
 ctxt find jane --fts
 ```
+
+## Additive ops
+
+A field the output carries is replaced whole, so a step that returns `"tags": [...]` removes every other tag, including the ones captured with `--hint`. A step that only adds a tag returns `ops` instead:
+
+```json
+{"ops": [
+  {"op": "add_tags", "value": ["go", {"label": "cli", "weight": 0.8, "source": "my-step"}]},
+  {"op": "remove_tags", "value": ["draft"]},
+  {"op": "merge_metadata", "value": {"repo": {"stars": 10}, "stale": null}}
+]}
+```
+
+- `add_tags`: label strings or `{label, weight, source}` objects. A bare string gets weight 1.0 and source `step`. Labels are trimmed; a label already present (case-insensitive) is skipped and the existing tag is kept as is.
+- `remove_tags`: label strings, matched case-insensitive. A label that is absent is ignored.
+- `merge_metadata`: an object merged deeply into `metadata` (JSON Merge Patch): nested objects merge, scalars and arrays replace, `null` deletes the key. To replace metadata wholesale, return `object.metadata`.
+
+Ops run in order. If the output also has `object`, `object` applies first and the ops act on the result. An unknown op or a malformed value fails the object like any other protocol violation, with an error naming the step and the op's position. Steps inserted one after another each see the previous step's tags, so two tagging steps keep both sets.
 
 ## When a step fails
 

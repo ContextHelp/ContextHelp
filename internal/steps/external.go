@@ -260,12 +260,20 @@ func (s *ExternalStep) run(ctx context.Context, draft *storage.KnowledgeObject) 
 	if r.Error != nil {
 		return nil, r.Error.asError(s.name)
 	}
-	if r.Object == nil {
+	if r.Object == nil && r.Ops == nil {
 		return nil, pipeline.Permanent(fmt.Errorf("%s: invalid output: no object and no error", s.name))
 	}
-	merged, err := MergeStepOutput(draft, r.Object)
-	if err != nil {
-		return nil, pipeline.Permanent(fmt.Errorf("%s: %w", s.name, err))
+	// The replace form applies first, then ops act on its result.
+	merged := draft
+	if r.Object != nil {
+		if merged, err = MergeStepOutput(merged, r.Object); err != nil {
+			return nil, pipeline.Permanent(fmt.Errorf("%s: %w", s.name, err))
+		}
+	}
+	if r.Ops != nil {
+		if merged, err = ApplyStepOps(merged, r.Ops); err != nil {
+			return nil, pipeline.Permanent(fmt.Errorf("%s: %w", s.name, err))
+		}
 	}
 	return merged, nil
 }
@@ -320,7 +328,9 @@ func fileSHA256(path string) (string, error) {
 // stepResult is the step's stdout (ADR-058 StepResult).
 type stepResult struct {
 	Object json.RawMessage `json:"object"`
-	Error  *StepError      `json:"error"`
+	// Ops are additive operations applied after Object (see ApplyStepOps).
+	Ops   json.RawMessage `json:"ops"`
+	Error *StepError      `json:"error"`
 }
 
 // StepError is the error a step reports.
@@ -360,6 +370,9 @@ func parseResult(stdout []byte) (stepResult, error) {
 	}
 	if bytes.Equal(bytes.TrimSpace(r.Object), []byte("null")) {
 		r.Object = nil
+	}
+	if bytes.Equal(bytes.TrimSpace(r.Ops), []byte("null")) {
+		r.Ops = nil
 	}
 	return r, nil
 }

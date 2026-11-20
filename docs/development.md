@@ -562,7 +562,8 @@ type PipelineStep interface {
 
 A step that ships outside ctxt is an external step: a directory with a
 `SKILL.md` and an executable that reads the knowledge object on stdin and
-writes `{"object": ...}` (the fields it changed) on stdout, installed with
+writes `{"object": ...}` (the fields it changed, each replaced whole) and/or
+`{"ops": [...]}` (additive `add_tags`, `remove_tags`, `merge_metadata`) on stdout, installed with
 `dpkms pipeline step install` (ADR-058; example in `examples/steps/pii-mask`).
 
 ---
