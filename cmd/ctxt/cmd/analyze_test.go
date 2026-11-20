@@ -429,3 +429,23 @@ func TestAnalyzeHelpListsNoteData(t *testing.T) {
 		}
 	}
 }
+
+// --profile pins the capture to a focus profile: the request carries it,
+// so a source key is unique per profile instead of global.
+func TestAnalyzeProfileSentInRequest(t *testing.T) {
+	body, err := analyzeBody(t, "https://youtu.be/abc", "--type", "url",
+		"--source-key", "youtube:abc", "--profile", "research")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body["profile"] != "research" {
+		t.Errorf("profile: %v", body["profile"])
+	}
+	body, err = analyzeBody(t, "https://youtu.be/abc", "--type", "url")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, set := body["profile"]; set {
+		t.Errorf("profile sent without --profile: %v", body["profile"])
+	}
+}
