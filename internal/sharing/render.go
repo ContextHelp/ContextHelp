@@ -116,6 +116,9 @@ func alwaysKeptCopy(obj *storage.KnowledgeObject) *storage.KnowledgeObject {
 		ID: obj.ID, Type: obj.Type, Subtype: obj.Subtype, Status: obj.Status,
 		Pipeline: obj.Pipeline, ProfileID: obj.ProfileID,
 		CreatedAt: obj.CreatedAt, UpdatedAt: obj.UpdatedAt,
+		// A position in the store's change order, never serialized: a
+		// change-order list reads its cursor from the last object.
+		ChangeSeq: obj.ChangeSeq,
 	}
 }
 
