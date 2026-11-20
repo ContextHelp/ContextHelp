@@ -145,7 +145,10 @@ ctxt analyze <content> <options>
 |------|-------------|
 | `--type <text|url|image|audio|video|feed|auto>` | Input type override |
 | `--hints "<#hint #hint>"` | Influence tagging |
-| `--mentions "<@slug1 @slug2>"` | Explicit mentions to attach |
+| `--mention <@slug>` | Explicit mention to attach. Repeatable; a CSV or space-separated value also works (`--mention @channel.wild --mention @guest.ada`) |
+| `--note <text>` | Free-form text stored with the object, e.g. a video transcript. `@<path>` reads a file; a text that starts with `@` is written `@@…` |
+| `--data <json>` | Structured JSON object stored as object metadata, e.g. `{"title":"…","channel":"…"}`. Inline or `@<path>`; at most 256 KiB |
+| `--source-key <key>` | Stable identity of the source (`youtube:<id>`, a Slack ts). A repeat of the key updates the stored object instead of creating another |
 | `--file <path>` | Read input from file |
 | `--profile <name>` | Use focus profile |
 | `--pipeline <name>` | Force pipeline |
@@ -162,9 +165,26 @@ ctxt analyze <content> <options>
 - Content goes only to the one instance ctxt resolves (see [Resolution order](#resolution-order)). Nothing is queued on this machine and no other instance is tried.
 - Exit status: `70` nothing answered at the instance, `5` the instance rejected the token (not retried; a `reader` token lacks `write:objects`), `2` the instance refused the request (a `422` names the unrouted type or pipeline), `6` a server error.
 
+### Note, data and source key
+
+A capture can carry what the caller knows about its source beside the fetched content:
+
+- `--note` is stored as the object's `inbox_note`; `--data` as `metadata.data`. Both sit on the draft every pipeline step receives, next to the content: a URL capture fetches its page into the content and keeps the note and data as they were given. They are not part of the full-text index.
+- `--source-key` is stored as the object's `source_key`. Submitting the same key again, or the same content, **updates** the stored object: a non-empty `--note` replaces the stored note, a non-empty `--data` replaces `metadata.data`, `--hint` and `--mention` values are added to the stored ones, and the object is reinforced. A submission that gives no note or data leaves the stored ones. The stored content, its hash and the pipeline's own output are not changed. The key is checked before the content hash.
+- A submission that names a source key, or carries a note or data, is never dropped by `duplicates.policy: drop`: it reaches the worker so it can update the stored object.
+- `--no-dedup` does not allow two objects under one source key; the key is unique, so the second submission is an update.
+- `--data` that is not a JSON object, or over 256 KiB, and a `--note` over 2 MiB, are refused (exit `2`, or HTTP 400 on the API).
+
 ### Examples
 
 ```bash
+# A video, as a normal URL capture; re-run it with a better transcript to update it
+ctxt analyze https://www.youtube.com/watch?v=abc123 --type url \
+  --note @transcript.txt \
+  --data '{"title":"Self-hosting n8n","channel":"fireship","published_at":"2026-08-03T14:05:00Z"}' \
+  --mention @channel.fireship --mention @creator.ada --hint video \
+  --source-key youtube:abc123
+
 # Default behavior: capture clipboard
 ctxt
 

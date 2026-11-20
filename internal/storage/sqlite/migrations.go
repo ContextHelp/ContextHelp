@@ -300,6 +300,10 @@ var migrations = []migration{
 	// name are separate rows. Rebuilds the table (SQLite cannot change
 	// a primary key in place) and backfills the kind of existing rows.
 	{Version: 53, fn: migrate053EntitlementKind},
+	// Migration 054: jobs.user_data + jobs.user_source_key, the structured
+	// data and the source key `analyze` carries to the worker. Column
+	// adds only; no FTS input changes.
+	{Version: 54, fn: migrate054JobsUserDataSourceKey},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
@@ -725,6 +729,15 @@ func migrate031JobsUserProfileNote(ctx context.Context, d *Driver) error {
 		return err
 	}
 	return addJobsColumnIfMissing(ctx, d, "user_note", "TEXT DEFAULT ''")
+}
+
+// migrate054JobsUserDataSourceKey adds the user_data (JSON object) and
+// user_source_key TEXT columns to jobs. Idempotent per column.
+func migrate054JobsUserDataSourceKey(ctx context.Context, d *Driver) error {
+	if err := addJobsColumnIfMissing(ctx, d, "user_data", "TEXT DEFAULT ''"); err != nil {
+		return err
+	}
+	return addJobsColumnIfMissing(ctx, d, "user_source_key", "TEXT DEFAULT ''")
 }
 
 // migrate036JobsIdempotencyKey adds the idempotency_key column plus a partial

@@ -40,8 +40,8 @@ func (s *JobStore) Create(ctx context.Context, job *storage.Job) error {
 	_, err := s.db.ExecContext(ctx, `INSERT INTO jobs (
 		id, type, status, payload, pipeline, source, result_id, error,
 		retry_count, max_retries, created_at, updated_at, started_at, completed_at,
-		user_mentions, user_hints, user_profile, user_note, idempotency_key
-	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
+		user_mentions, user_hints, user_profile, user_note, idempotency_key, user_data, user_source_key
+	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
 		job.ID, job.Type, string(job.Status), job.Payload, job.Pipeline, job.Source,
 		job.ResultID, job.Error, job.RetryCount, job.MaxRetries,
 		job.CreatedAt.UTC(), job.UpdatedAt.UTC(),
@@ -49,6 +49,7 @@ func (s *JobStore) Create(ctx context.Context, job *storage.Job) error {
 		encodeUserStrings(job.UserMentions),
 		encodeUserStrings(job.UserHints),
 		job.UserProfile, job.UserNote, job.IdempotencyKey,
+		encodeUserData(job.UserData), job.UserSourceKey,
 	)
 	if err != nil {
 		return fmt.Errorf("create job: %w", err)
@@ -68,6 +69,33 @@ func encodeUserStrings(m []string) string {
 	return string(b)
 }
 
+// encodeUserData marshals the caller's structured data to the JSON text
+// the user_data column holds. Empty map -> empty string (the column
+// default).
+func encodeUserData(m map[string]any) string {
+	if len(m) == 0 {
+		return ""
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+// decodeUserData parses the user_data column back to a map. Empty or
+// invalid JSON -> nil.
+func decodeUserData(s string) map[string]any {
+	if s == "" {
+		return nil
+	}
+	var m map[string]any
+	if err := json.Unmarshal([]byte(s), &m); err != nil {
+		return nil
+	}
+	return m
+}
+
 // decodeUserStrings parses a JSON-encoded string-array column back to a
 // slice. Empty or invalid JSON → nil so callers can len()-check uniformly.
 func decodeUserStrings(s string) []string {
@@ -85,7 +113,7 @@ func (s *JobStore) Get(ctx context.Context, id string) (*storage.Job, error) {
 	row := s.db.QueryRowContext(ctx, `SELECT
 		id, type, status, payload, pipeline, source, result_id, error,
 		retry_count, max_retries, created_at, updated_at, started_at, completed_at,
-		user_mentions, user_hints, user_profile, user_note, idempotency_key
+		user_mentions, user_hints, user_profile, user_note, idempotency_key, user_data, user_source_key
 	FROM jobs WHERE id = $1`, id)
 	return scanJob(row)
 }
@@ -119,7 +147,7 @@ func (s *JobStore) List(ctx context.Context, filter storage.JobFilter) ([]*stora
 	query := `SELECT
 		id, type, status, payload, pipeline, source, result_id, error,
 		retry_count, max_retries, created_at, updated_at, started_at, completed_at,
-		user_mentions, user_hints, user_profile, user_note, idempotency_key
+		user_mentions, user_hints, user_profile, user_note, idempotency_key, user_data, user_source_key
 	FROM jobs ` + where + " ORDER BY created_at DESC"
 
 	if filter.Limit > 0 {
@@ -156,7 +184,7 @@ func (s *JobStore) AcquireNext(ctx context.Context) (*storage.Job, error) {
 	) AND status = 'pending'
 	RETURNING id, type, status, payload, pipeline, source, result_id, error,
 		retry_count, max_retries, created_at, updated_at, started_at, completed_at,
-		user_mentions, user_hints, user_profile, user_note, idempotency_key`, now, claim)
+		user_mentions, user_hints, user_profile, user_note, idempotency_key, user_data, user_source_key`, now, claim)
 
 	j, err := scanJob(row)
 	if err != nil {
@@ -281,11 +309,11 @@ func scanJob(row *sql.Row) (*storage.Job, error) {
 	var j storage.Job
 	var status string
 	var startedAt, completedAt sql.NullTime
-	var userMentions, userHints, userProfile, userNote, idemKey sql.NullString
+	var userMentions, userHints, userProfile, userNote, idemKey, userData, userSourceKey sql.NullString
 
 	err := row.Scan(&j.ID, &j.Type, &status, &j.Payload, &j.Pipeline, &j.Source,
 		&j.ResultID, &j.Error, &j.RetryCount, &j.MaxRetries,
-		&j.CreatedAt, &j.UpdatedAt, &startedAt, &completedAt, &userMentions, &userHints, &userProfile, &userNote, &idemKey)
+		&j.CreatedAt, &j.UpdatedAt, &startedAt, &completedAt, &userMentions, &userHints, &userProfile, &userNote, &idemKey, &userData, &userSourceKey)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, errJobNotFound
@@ -316,6 +344,12 @@ func scanJob(row *sql.Row) (*storage.Job, error) {
 	if idemKey.Valid {
 		j.IdempotencyKey = idemKey.String
 	}
+	if userData.Valid {
+		j.UserData = decodeUserData(userData.String)
+	}
+	if userSourceKey.Valid {
+		j.UserSourceKey = userSourceKey.String
+	}
 	return &j, nil
 }
 
@@ -323,11 +357,11 @@ func scanJobRow(rows *sql.Rows) (*storage.Job, error) {
 	var j storage.Job
 	var status string
 	var startedAt, completedAt sql.NullTime
-	var userMentions, userHints, userProfile, userNote, idemKey sql.NullString
+	var userMentions, userHints, userProfile, userNote, idemKey, userData, userSourceKey sql.NullString
 
 	err := rows.Scan(&j.ID, &j.Type, &status, &j.Payload, &j.Pipeline, &j.Source,
 		&j.ResultID, &j.Error, &j.RetryCount, &j.MaxRetries,
-		&j.CreatedAt, &j.UpdatedAt, &startedAt, &completedAt, &userMentions, &userHints, &userProfile, &userNote, &idemKey)
+		&j.CreatedAt, &j.UpdatedAt, &startedAt, &completedAt, &userMentions, &userHints, &userProfile, &userNote, &idemKey, &userData, &userSourceKey)
 	if err != nil {
 		return nil, fmt.Errorf("scan job row: %w", err)
 	}
@@ -355,6 +389,12 @@ func scanJobRow(rows *sql.Rows) (*storage.Job, error) {
 	if idemKey.Valid {
 		j.IdempotencyKey = idemKey.String
 	}
+	if userData.Valid {
+		j.UserData = decodeUserData(userData.String)
+	}
+	if userSourceKey.Valid {
+		j.UserSourceKey = userSourceKey.String
+	}
 	return &j, nil
 }
 
@@ -368,7 +408,7 @@ func (s *JobStore) GetByIdempotencyKey(ctx context.Context, key string) (*storag
 	row := s.db.QueryRowContext(ctx, `SELECT
 		id, type, status, payload, pipeline, source, result_id, error,
 		retry_count, max_retries, created_at, updated_at, started_at, completed_at,
-		user_mentions, user_hints, user_profile, user_note, idempotency_key
+		user_mentions, user_hints, user_profile, user_note, idempotency_key, user_data, user_source_key
 	FROM jobs WHERE idempotency_key = $1`, key)
 	j, err := scanJob(row)
 	if err != nil {

@@ -217,11 +217,18 @@ Enqueue a job that runs a full enrichment pipeline.
   "profile": "founder",
   "pipeline": "auto",
   "language": "en",
-  "skipTranslation": false
+  "skipTranslation": false,
+  "note": "free-form text, e.g. a transcript",
+  "data": {"title": "Self-hosting n8n", "channel": "fireship"},
+  "source_key": "youtube:abc123"
 }
 ```
 
 Notes:
+
+- `note` is stored as the object's `inbox_note` (at most 2 MiB); `data` is a JSON object (at most 256 KiB encoded) stored as `metadata.data`. Both are on the draft every pipeline step receives; neither replaces the fetched content. Over a limit: `400 INVALID_REQUEST`.
+- `source_key` is stored as the object's `source_key`. A submission whose key (or content hash) matches a stored object updates it instead of creating another: a non-empty `note` replaces the stored note, a non-empty `data` replaces `metadata.data`, `hints` and `mentions` are added, the object is reinforced, and the job's `result_id` is the stored object. The key is checked before the content hash, and a submission carrying a key, note or data is not dropped by `duplicates.policy: drop`. With `"raw": true` the same update applies and the response is the stored object's ID.
+- `POST /pipelines/enqueue` takes the same `note`, `data`, `source_key`, `hints`, `mentions` and `profile` fields.
 
 - The `mentions` field accepts `@namespace.slug` strings for backward compatibility. The pipeline converts them to `ctxt://entity/namespace/slug` URIs stored as `mention_uris`.
 - Mentions are **not resolved here**; resolution happens in the pipeline.

@@ -34,6 +34,8 @@ type AnalyzeRequest struct {
 	// when it is empty.
 	IdempotencyKey string `json:"idempotency_key,omitempty"`
 	Note           string `json:"note,omitempty"`
+	// Data is structured JSON stored on the object as metadata["data"].
+	Data map[string]any `json:"data,omitempty"`
 }
 
 // Analyze enqueues content with POST /api/v1/analyze and returns the job

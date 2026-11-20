@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -195,4 +196,49 @@ func TestAnalyzeRawThenPipelineSameContentStaysFTSIndexed(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, results, 1)
 	assert.Equal(t, objID, results[0].ID)
+}
+
+// note, data and source_key decode into the request and reach the worker;
+// a second submission under the key updates the stored object.
+func TestAnalyzeNoteDataSourceKeyUpsertOverHTTP(t *testing.T) {
+	ts := newTestServerBundle(t)
+	defer ts.Close()
+
+	first := postAnalyze(t, ts, map[string]any{
+		"content": "http capture body about wombat burrows",
+		"source":  "test", "source_key": "youtube:http1",
+		"note": "captions", "data": map[string]any{"title": "v1"},
+		"mentions": []string{"@channel.wild"},
+	})
+	j1 := runWorkerUntilDone(t, ts, first)
+	require.Equal(t, storage.JobCompleted, j1.Status, "job error: %s", j1.Error)
+
+	second := postAnalyze(t, ts, map[string]any{
+		"content": "http capture body about wombat burrows, recaptured",
+		"source":  "test", "source_key": "youtube:http1",
+		"note": "whisper", "data": map[string]any{"title": "v2"},
+	})
+	j2 := runWorkerUntilDone(t, ts, second)
+	require.Equal(t, storage.JobCompleted, j2.Status, "job error: %s", j2.Error)
+	assert.Equal(t, j1.ResultID, j2.ResultID)
+
+	obj, err := ts.svc.Store(ownerCtx()).Objects().Get(ownerCtx(), j1.ResultID)
+	require.NoError(t, err)
+	assert.Equal(t, "whisper", obj.InboxNote)
+	assert.Equal(t, map[string]any{"title": "v2"}, obj.Metadata["data"])
+	assert.Equal(t, "youtube:http1", obj.SourceKey)
+}
+
+func TestAnalyzeOversizedDataIs400(t *testing.T) {
+	ts := newTestServerBundle(t)
+	defer ts.Close()
+	raw, _ := json.Marshal(map[string]any{
+		"content": "x", "data": map[string]any{"blob": strings.Repeat("d", 300<<10)},
+	})
+	for _, path := range []string{"/api/v1/analyze", "/api/v1/pipelines/enqueue"} {
+		resp, err := http.Post(ts.URL+path, "application/json", bytes.NewReader(raw))
+		require.NoError(t, err)
+		resp.Body.Close()
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode, path)
+	}
 }

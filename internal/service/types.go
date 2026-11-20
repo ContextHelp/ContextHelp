@@ -53,6 +53,12 @@ type AnalyzeRequest struct {
 	// "operator-attached" field on KnowledgeObject; reusing it here
 	// keeps a single field name across capture, inbox, and pipeline.
 	Note string `json:"note,omitempty"`
+	// Data is caller-supplied structured JSON (`ctxt analyze --data`):
+	// a video's title, channel and publish time, say. It is stored on the
+	// object as metadata["data"] and is on the draft every pipeline step
+	// receives. It must be a JSON object of at most MaxAnalyzeDataBytes
+	// encoded.
+	Data map[string]any `json:"data,omitempty"`
 }
 
 // CreatePipelineRequest represents a request to create a custom pipeline.
