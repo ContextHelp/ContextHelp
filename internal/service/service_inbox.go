@@ -117,6 +117,8 @@ func (s *Service) TriageInbox(ctx context.Context, id string, req TriageRequest)
 		// forward caller-asserted hints to the worker so the
 		// auto-tagger merge preserves them as Tag{Source:"user"}.
 		UserHints: req.Hints,
+		// the item's profile attributes the processed object too.
+		UserProfile: obj.ProfileID,
 	}
 	if err := s.Queue.Enqueue(ctx, job); err != nil {
 		// Compensate: return the item to the inbox.

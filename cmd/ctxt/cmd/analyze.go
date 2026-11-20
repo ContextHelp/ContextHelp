@@ -208,6 +208,8 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 		SourceKey: sourceKey,
 		Mentions:  userMentions,
 		Hints:     userHints,
+		// the active profile attributes what analyze submits.
+		Profile: activeProfileName(cmd),
 	}
 
 	ctx := cmd.Context()

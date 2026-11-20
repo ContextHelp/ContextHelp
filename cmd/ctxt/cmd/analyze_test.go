@@ -269,3 +269,37 @@ func TestAnalyzeHelp(t *testing.T) {
 		}
 	}
 }
+
+// analyze attributes what it submits to the active profile: the explicit
+// --profile, else profile.default, rides in the request body.
+func TestAnalyzeStampsProfile(t *testing.T) {
+	var body map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/health":
+			w.WriteHeader(http.StatusOK)
+		case r.URL.Path == "/api/v1/analyze" && r.Method == http.MethodPost:
+			body = nil
+			json.NewDecoder(r.Body).Decode(&body)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusAccepted)
+			json.NewEncoder(w).Encode(map[string]string{"job_id": "job-p"})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	if _, err := executeCommand("analyze", "some content", "--profile", "growth", "--server", srv.URL); err != nil {
+		t.Fatalf("analyze --profile: %v", err)
+	}
+	if body["profile"] != "growth" {
+		t.Errorf("profile = %v, want growth", body["profile"])
+	}
+	if _, err := executeCommand("analyze", "some content", "--server", srv.URL); err != nil {
+		t.Fatalf("analyze: %v", err)
+	}
+	if _, ok := body["profile"]; ok {
+		t.Errorf("profile = %v with none active, want none", body["profile"])
+	}
+}

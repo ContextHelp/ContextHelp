@@ -16,14 +16,18 @@ import (
 // watchIngester hands `ctxt watch` content to the resolved dpkms
 // instance over its API: POST /analyze, GET /jobs/{id} for the object a
 // job produced, DELETE /objects/{id}.
-type watchIngester struct{ c *dpkmsclient.Client }
+type watchIngester struct {
+	c *dpkmsclient.Client
+	// profile attributes what the watcher submits; "" attributes none.
+	profile string
+}
 
 var _ watcher.Ingester = watchIngester{}
 
 func (w watchIngester) Analyze(ctx context.Context, req watcher.Request) (string, error) {
 	return w.c.Analyze(ctx, dpkmsclient.AnalyzeRequest{
 		Content: req.Content, Type: req.Type, Source: req.Source,
-		Pipeline: req.Pipeline, KnownHash: req.KnownHash,
+		Pipeline: req.Pipeline, KnownHash: req.KnownHash, Profile: w.profile,
 	})
 }
 

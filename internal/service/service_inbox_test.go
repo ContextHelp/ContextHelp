@@ -162,3 +162,21 @@ func TestTriageDiscardInboxItems(t *testing.T) {
 	require.ErrorIs(t, err, storage.ErrNotFound)
 	require.ErrorIs(t, svc.DiscardInbox(ctx, b.ID), storage.ErrNotFound)
 }
+
+// Triage keeps the item's profile: the job it enqueues carries it, so
+// the processed object is attributed to the profile the item was captured
+// under instead of landing in none.
+func TestTriageInboxCarriesProfile(t *testing.T) {
+	driver := storageutil.NewTestDriver(t)
+	svc := New(driver, jobs.NewQueue(driver.Jobs()), pipeline.DefaultRegistry(), search.NewEngine(driver), "", nil)
+	ctx := ownerCtx()
+
+	obj, err := svc.CaptureToInbox(ctx, InboxCaptureRequest{Content: "profiled item", Type: "text", Profile: "growth"})
+	require.NoError(t, err)
+
+	jobID, err := svc.TriageInbox(ctx, obj.ID, TriageRequest{})
+	require.NoError(t, err)
+	job, err := driver.Jobs().Get(ctx, jobID)
+	require.NoError(t, err)
+	assert.Equal(t, "growth", job.UserProfile, "triage job must carry the item's profile")
+}
