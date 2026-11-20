@@ -63,6 +63,10 @@ func newSSEEnv(t *testing.T) *sseEnv {
 	cb := &countingBus{Bus: e.svc.Bus}
 	e.svc.Bus = cb
 	e.svc.Cfg.Server.EventsHeartbeat = 40 * time.Millisecond
+	// Every event re-checks the caller, so a change shows at once.
+	old := sseRecheckTTL
+	sseRecheckTTL = 0
+	t.Cleanup(func() { sseRecheckTTL = old })
 	srv := httptest.NewServer(e.router)
 	t.Cleanup(srv.Close)
 	return &sseEnv{capabilityEnv: e, srv: srv, bus: cb}
@@ -75,6 +79,8 @@ type stream struct {
 	frames chan events.Event
 	lines  chan string // comment lines
 	cancel context.CancelFunc
+	// done closes when the server ends the stream.
+	done chan struct{}
 }
 
 func (e *sseEnv) open(t *testing.T, token string) *stream {
@@ -91,8 +97,10 @@ func (e *sseEnv) open(t *testing.T, token string) *stream {
 		frames: make(chan events.Event, 64),
 		lines:  make(chan string, 64),
 		cancel: cancel,
+		done:   make(chan struct{}),
 	}
 	go func() {
+		defer close(s.done)
 		defer resp.Body.Close()
 		sc := bufio.NewScanner(resp.Body)
 		for sc.Scan() {
@@ -264,7 +272,6 @@ func TestSSEDeleteOnlyForObjectsTheViewerSaw(t *testing.T) {
 // would say the route exists for others; it holds no subscription.
 func TestSSENoGrantGetsAnEmptyStream(t *testing.T) {
 	e := newSSEEnv(t)
-	base := e.bus.active.Load()
 	s := e.open(t, capStrangerToken)
 	require.Equal(t, http.StatusOK, s.status)
 	require.Contains(t, s.ctype, "text/event-stream")
@@ -277,7 +284,6 @@ func TestSSENoGrantGetsAnEmptyStream(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("an empty stream still carries heartbeats")
 	}
-	assert.Equal(t, base, e.bus.active.Load(), "a viewer that reads nothing needs no subscription")
 }
 
 // The owner's stream is unchanged: every event, as a CloudEvent with
@@ -326,4 +332,76 @@ func e2cfg(d time.Duration) config.Config {
 	var c config.Config
 	c.Server.EventsHeartbeat = d
 	return c
+}
+
+// A grant revoked mid-stream applies to the next event: the viewer is
+// the caller's current one, not the one compiled at connect.
+func TestSSERevokedGrantDropsTheNextEvent(t *testing.T) {
+	e := newSSEEnv(t)
+	e.svc.Cfg.Server.EventsHeartbeat = time.Hour // no tick may do the event's job
+	src := e.open(t, capSourcerToken)
+	e.waitSubscribed(t, 1)
+	ingested := events.ObjectIngestedPayload{ObjectID: capSourced, Type: "note", Source: "gh-stars"}
+
+	e.publish(t, events.TopicObjectIngested, "worker.pool", ingested)
+	assert.Equal(t, string(events.TopicObjectIngested), src.next(t).Type)
+
+	require.NoError(t, e.driver.Sharing().Grants().Revoke(ownerCtx(), e.sourcerGrant.ID, time.Now()))
+	e.publish(t, events.TopicObjectIngested, "worker.pool", ingested)
+	assert.Empty(t, src.quiet(300*time.Millisecond), "events after the grant was revoked")
+}
+
+// A key that stops authenticating ends the stream: on the next event,
+// and on the next heartbeat when no event comes.
+func TestSSERevokedKeyClosesTheStream(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		token string
+		event bool
+	}{
+		{"restricted, on an event", capSourcerToken, true},
+		{"owner, on an event", capOwnerToken, true},
+		{"restricted, on a heartbeat", capSourcerToken, false},
+		{"owner, on a heartbeat", capOwnerToken, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newSSEEnv(t)
+			if tc.event {
+				// No tick may do the event's job.
+				e.svc.Cfg.Server.EventsHeartbeat = time.Hour
+			} else {
+				// No cached check may do the tick's job.
+				sseRecheckTTL = time.Hour
+			}
+			s := e.open(t, tc.token)
+			e.waitSubscribed(t, 1)
+			e.revoke(tc.token)
+			if tc.event {
+				e.publish(t, events.TopicObjectIngested, "worker.pool", events.ObjectIngestedPayload{ObjectID: capSourced, Type: "note"})
+			}
+			select {
+			case <-s.done:
+			case <-time.After(3 * time.Second):
+				t.Fatal("stream still open after its key was revoked")
+			}
+			assert.Empty(t, s.frames, "no event after revocation")
+			require.Eventually(t, func() bool { return e.bus.active.Load() == 0 }, 3*time.Second, 10*time.Millisecond)
+		})
+	}
+}
+
+// The re-check is bounded by a TTL: a change inside it waits for it.
+func TestSSERecheckIsCachedForTheTTL(t *testing.T) {
+	e := newSSEEnv(t)
+	sseRecheckTTL = time.Hour
+	s := e.open(t, capSourcerToken)
+	e.waitSubscribed(t, 1)
+	ingested := events.ObjectIngestedPayload{ObjectID: capSourced, Type: "note"}
+	e.publish(t, events.TopicObjectIngested, "worker.pool", ingested)
+	s.next(t)
+	require.NoError(t, e.driver.Sharing().Grants().Revoke(ownerCtx(), e.sourcerGrant.ID, time.Now()))
+	e.publish(t, events.TopicObjectIngested, "worker.pool", ingested)
+	// The object is read through the cached viewer, which still matches
+	// it, so the event arrives.
+	assert.NotEmpty(t, s.quiet(300*time.Millisecond), "inside the TTL the cached viewer applies")
 }

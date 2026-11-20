@@ -31,7 +31,7 @@ A listener should hold a read-only key with a narrow grant, not an owner key.
 - The payload matches what a read of the object shows. `object.updated` has no `fields` list. `source_key` is present when the grant's policy projects `source`, and absent otherwise. When a payload lacks what the listener needs, fetch the object with `GET /api/v1/objects/{object_id}`.
 - A key with no grant gets `200` and a stream that carries only heartbeats. That is not an error: the grant is empty.
 - `object.deleted` arrives only for an object the same connection was already told about. After a reconnect, or for an object that predates the connection, run the catch-up below and treat objects that no longer appear as deleted.
-- A grant change takes effect when the listener reconnects.
+- The stream follows the key. A grant revoked or added takes effect on the next event, without a reconnect (a check is reused for up to 2 seconds during a burst). When the key is revoked or expires, the server writes `: closed: credential no longer valid` and ends the stream; reconnecting then answers 401.
 
 ## Heartbeat
 
