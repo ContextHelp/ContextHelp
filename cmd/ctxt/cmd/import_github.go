@@ -39,6 +39,16 @@ Authentication:
   Public starred/watched lists work without a token, but rate limits are tight
   and private data is inaccessible.
 
+Star lists:
+  --star-lists imports the token owner's starred repositories and GitHub Lists
+  (GraphQL) as URL captures: one object per repo (source key
+  github:<owner>/<repo>), hints "starred" and "star-list:<slug>", and the
+  list vocabulary (slug, name, description) in the object's data. The token
+  comes from github.accounts[] (--account NAME), not gh. Reruns submit only
+  repos whose membership changed; --full resubmits all; --dry-run submits
+  nothing and saves no state. A list a repo left keeps its star-list tag
+  (tags are only added); data.star_lists is the current membership.
+
 Lists:
   --lists starred      repositories the user has starred (default)
   --lists watched      repositories the user is watching
@@ -51,6 +61,10 @@ Examples:
 
   # Import starred + watched, enqueue into dpkms
   ctxt import github --username octocat --token $GITHUB_TOKEN --lists starred,watched
+
+  # Starred repos + GitHub Lists of the "stars" account, preview then import
+  ctxt import github --star-lists --account stars --dry-run
+  ctxt import github --star-lists --account stars
 
   # JSON output
   ctxt import github --username octocat --dry-run --format json`,
@@ -65,6 +79,8 @@ func init() {
 	importGitHubCmd.Flags().StringP("lists", "l", "starred", "comma-separated lists: starred,watched,contributed")
 	importGitHubCmd.Flags().String("pipeline", "text.long", "pipeline override for enqueued jobs")
 
+	addGitHubStarFlags(importGitHubCmd)
+
 	// hidden for test/dev overrides
 	importGitHubCmd.Flags().String("github-base-url", "", "override GitHub API base URL")
 	_ = importGitHubCmd.Flags().MarkHidden("github-base-url")
@@ -73,6 +89,9 @@ func init() {
 }
 
 func runImportGitHub(cmd *cobra.Command, args []string) error {
+	if stars, _ := cmd.Flags().GetBool("star-lists"); stars {
+		return runImportGitHubStars(cmd)
+	}
 	token, _ := cmd.Flags().GetString("token")
 	if strings.TrimSpace(token) == "" {
 		token = strings.TrimSpace(os.Getenv(githubTokenEnv))

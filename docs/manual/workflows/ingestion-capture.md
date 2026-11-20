@@ -158,6 +158,29 @@ Batch Markdown ingestion from a directory:
 find ./imports -type f -name "*.md" -print0 | xargs -0 -I{} ctxt analyze --file "{}" --type text
 ```
 
+## Import starred repos and GitHub star lists
+
+```bash
+ctxt import github --star-lists --account stars --dry-run   # plan only
+ctxt import github --star-lists --account stars             # submit
+```
+
+`--account` names a `github.accounts[]` entry ([config](../reference/config-and-permissions.md#call-the-github-api)); its token must belong to the user whose stars are read, because GitHub Lists are visible only to their owner. No `gh` CLI, no `GITHUB_TOKEN` fallback when an account is named. Starred repos and the Lists are read through GraphQL.
+
+Each repo becomes a URL capture, so `url.github.repo` runs and the repo dedups to one object (`forge:github:<owner/repo>`). The import adds:
+
+| Field | Value |
+|-------|-------|
+| source key | `github:<owner>/<repo>` (profile-scoped: the active `--profile`) |
+| hints (tags) | `starred`, and `star-list:<slug>` per List holding the repo |
+| `metadata.data.account` | login of the token owner |
+| `metadata.data.starred` | `true` when starred (a List can hold an unstarred repo) |
+| `metadata.data.star_lists` | `[{slug, name, description}]`, the current List membership and vocabulary |
+
+GitHub stays the source of truth: the vocabulary is rewritten from GitHub on every changed submission. Hints are only ever added to a stored object, so a repo that left a List keeps its `star-list:<slug>` tag; read `metadata.data.star_lists` for current membership.
+
+Reruns are incremental: a state file under `$XDG_STATE_HOME/ctxt/import/` (per instance, profile and account) keeps what was submitted, and only repos whose hints or vocabulary changed are submitted again. `--full` ignores it; losing it costs one idempotent full pass. `--dry-run` submits nothing and writes no state. The report counts `Submitted`, `Unchanged` and `Failed` (`--format json` for the per-repo rows); a failed repo is retried on the next run and the command exits non-zero. Repos unstarred since the last run are not removed.
+
 ## Outputs to validate
 
 - Object created with stable ID
