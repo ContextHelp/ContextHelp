@@ -1,0 +1,21 @@
+{
+  "id": 1296269,
+  "name": "Hello-World",
+  "full_name": "octocat/Hello-World",
+  "owner": {"login": "octocat"},
+  "html_url": "https://github.com/octocat/Hello-World",
+  "description": "My first repository on GitHub!",
+  "language": "Go",
+  "topics": ["octocat", "atom", "electron"],
+  "homepage": "https://github.com",
+  "stargazers_count": 80,
+  "forks_count": 9,
+  "open_issues_count": 2,
+  "archived": false,
+  "fork": false,
+  "default_branch": "master",
+  "created_at": "2011-01-26T19:01:12Z",
+  "updated_at": "2024-05-01T10:00:00Z",
+  "pushed_at": "2024-04-30T09:00:00Z",
+  "license": {"spdx_id": "MIT", "name": "MIT License"}
+}

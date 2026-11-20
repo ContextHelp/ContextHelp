@@ -47,6 +47,7 @@ func Validate(c *Config) []ValidationError {
 	errs = append(errs, validateAuth(c)...)
 	errs = append(errs, validateQuotas(c)...)
 	errs = append(errs, validateDuplicates(c.Duplicates)...)
+	errs = append(errs, validateGitHub(c.GitHub)...)
 	errs = append(errs, c.Pipelines.Validate()...)
 	errs = append(errs, validateFederations(c.Federations)...)
 	if n := c.Federation.MaxRequestBytes; n != 0 && n < MinFederationMaxRequestBytes {
@@ -595,6 +596,41 @@ func validateEndpointURL(raw string) error {
 		return fmt.Errorf("invalid URL %q: missing host", shown)
 	}
 	return nil
+}
+
+func validateGitHub(g GitHubConfig) []ValidationError {
+	var errs []ValidationError
+	if g.APIURL != "" {
+		if u, err := url.Parse(g.APIURL); err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+			errs = append(errs, ValidationError{Field: "github.api_url", Message: fmt.Sprintf("must be an http(s) URL; got %q", g.APIURL)})
+		}
+	}
+	if g.MaxWait < 0 {
+		errs = append(errs, ValidationError{Field: "github.max_wait", Message: "must not be negative"})
+	}
+	owners := map[string]string{}
+	for i, a := range g.Accounts {
+		field := fmt.Sprintf("github.accounts[%d]", i)
+		if a.TokenSecret == "" {
+			errs = append(errs, ValidationError{Field: field + ".token_secret", Message: "required"})
+		}
+		if len(a.Owners) == 0 {
+			errs = append(errs, ValidationError{Field: field + ".owners", Message: "at least one owner required"})
+		}
+		for _, o := range a.Owners {
+			k := strings.ToLower(strings.TrimSpace(o))
+			if k == "" {
+				errs = append(errs, ValidationError{Field: field + ".owners", Message: "owner must not be empty"})
+				continue
+			}
+			if prev, dup := owners[k]; dup {
+				errs = append(errs, ValidationError{Field: field + ".owners", Message: fmt.Sprintf("owner %q already served by account %s", o, prev)})
+				continue
+			}
+			owners[k] = a.Name
+		}
+	}
+	return errs
 }
 
 func validateDuplicates(d DuplicatesConfig) []ValidationError {

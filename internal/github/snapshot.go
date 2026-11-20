@@ -1,7 +1,9 @@
-// Package github provides typed snapshot structs for the GitHub pipeline adapter.
+// Package github is the GitHub extraction core: a REST client (token per
+// owner, rate-limit handling, ETag revalidation, typed errors) and the typed
+// snapshot structs it fills.
 //
-// Snapshots are produced by FetchRepo / FetchIssue / FetchPR and consumed by
-// pipeline mapper steps and post-ingest enrichers.
+// Snapshots are produced by Client.FetchRepo / Client.FetchIssue and consumed
+// by pipeline mapper steps and post-ingest enrichers.
 package github
 
 import (
@@ -12,7 +14,7 @@ import (
 
 // RepoSnapshot is the normalised view of a GitHub repository page.
 //
-// Populated by FetchRepo; consumed by the github_repo_mapper pipeline step and
+// Populated by Client.FetchRepo; consumed by the github_repo_mapper pipeline step and
 // repo_health_enricher / alternative_detector / dependency_enricher steps.
 type RepoSnapshot struct {
 	// Identity
@@ -26,6 +28,7 @@ type RepoSnapshot struct {
 	Language    string            `json:"language,omitempty"`
 	Topics      []string          `json:"topics,omitempty"`
 	License     string            `json:"license,omitempty"`
+	Homepage    string            `json:"homepage,omitempty"`
 	README      string            `json:"readme,omitempty"`
 	Sections    []storage.Section `json:"sections,omitempty"`
 
@@ -33,6 +36,9 @@ type RepoSnapshot struct {
 	Stars      int `json:"stars"`
 	Forks      int `json:"forks"`
 	OpenIssues int `json:"open_issues"`
+
+	// DefaultBranch is the repository's default branch name.
+	DefaultBranch string `json:"default_branch,omitempty"`
 
 	// Flags
 	IsArchived bool `json:"is_archived"`
@@ -52,7 +58,7 @@ type RepoSnapshot struct {
 
 // IssueSnapshot is the normalised view of a GitHub issue page.
 //
-// Populated by FetchIssue; consumed by the github_issue_mapper pipeline step.
+// Populated by Client.FetchIssue; consumed by the github_issue_mapper pipeline step.
 type IssueSnapshot struct {
 	// Identity
 	Owner  string `json:"owner"`
