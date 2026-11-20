@@ -67,9 +67,40 @@ func RequireAuth(chain *authn.Chain, sec *security.Emitter, devCORS bool, viewer
 				WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "viewer resolution failed")
 				return
 			}
+			ctx = withRecheck(ctx, chain, credentialFromRequest(r), viewers)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+// recheckKey keys the Recheck a long-lived request carries.
+type recheckKey struct{}
+
+// Recheck authenticates the request's own credential again and resolves
+// the caller's viewer as it is now. It fails when the credential no
+// longer authenticates (a revoked or expired key, an ended session) or
+// the viewer cannot be resolved; a long-lived handler (the event
+// stream) ends on that, since the connection was authorized once, at its
+// start.
+type Recheck func(ctx context.Context) (sharing.Viewer, error)
+
+// withRecheck attaches the Recheck of the credential cred to ctx.
+func withRecheck(ctx context.Context, chain *authn.Chain, cred authn.Credential, viewers *sharing.Resolver) context.Context {
+	rc := Recheck(func(ctx context.Context) (sharing.Viewer, error) {
+		res, err := chain.Authenticate(ctx, cred)
+		if err != nil {
+			return sharing.Viewer{}, err
+		}
+		return viewers.Resolve(ctx, res.Principal.ID, res.Principal.Kind, res.Principal.Meta[authn.MetaIdentityID])
+	})
+	return context.WithValue(ctx, recheckKey{}, rc)
+}
+
+// recheckFrom returns the Recheck RequireAuth attached, or nil on a
+// request it did not authenticate (a private instance).
+func recheckFrom(ctx context.Context) Recheck {
+	rc, _ := ctx.Value(recheckKey{}).(Recheck)
+	return rc
 }
 
 // browserRulesPass applies the ambient-identity rules to r and writes

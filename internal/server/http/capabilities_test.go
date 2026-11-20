@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -57,11 +58,15 @@ const (
 // colleague principal granted the colleagues template, a work-tagged
 // contact the colleague sees and a note it does not.
 type capabilityEnv struct {
-	driver  storage.StorageDriver
-	router  http.Handler
-	svc     *service.Service
-	contact string
-	note    string
+	// revoke makes the token fail authentication from now on, as a
+	// revoked or expired key does.
+	revoke       func(token string)
+	sourcerGrant *storage.ShareGrant
+	driver       storage.StorageDriver
+	router       http.Handler
+	svc          *service.Service
+	contact      string
+	note         string
 }
 
 func newCapabilityEnv(t *testing.T) *capabilityEnv {
@@ -75,7 +80,7 @@ func newCapabilityEnv(t *testing.T) *capabilityEnv {
 	require.NoError(t, driver.Auth().Principals().Create(ctx, person))
 	grantTemplate(t, driver, person.ID, "colleagues-network")
 	require.NoError(t, driver.Auth().Principals().Create(ctx, &storage.Principal{ID: capSourcer, Kind: storage.PrincipalKindPerson, DisplayName: "Sourcer", Roles: []string{authn.RoleReader}}))
-	grantPolicy(t, driver, capSourcer, sharing.Policy{
+	sourcerGrant := grantPolicy(t, driver, capSourcer, sharing.Policy{
 		Name: "cap-sourcer", Data: "source==gh-stars",
 		Fields: map[string][]string{"*": {sharing.FieldSource}},
 	})
@@ -97,18 +102,21 @@ func newCapabilityEnv(t *testing.T) *capabilityEnv {
 		require.NoError(t, driver.Objects().Create(ctx, o))
 	}
 
-	chain := authtest.TokenChain(
+	rev := &revocable{Method: authtest.Tokens(
 		authtest.Token{Token: capOwnerToken, Principal: storage.OwnerPrincipal, Roles: []string{authn.RoleAdmin}},
 		authtest.Token{Token: capColleagueToken, Principal: capColleague, Roles: []string{authn.RoleReader}},
 		authtest.Token{Token: capSourcerToken, Principal: capSourcer, Roles: []string{authn.RoleReader}},
 		authtest.Token{Token: capStrangerToken, Principal: capStranger, Roles: []string{authn.RoleReader}},
-	)
+	), revoked: map[string]bool{}}
+	chain := authn.NewChain(rev)
 	return &capabilityEnv{
-		driver:  driver,
-		router:  NewRouterWithConfig(svc, RouterConfig{Auth: chain}),
-		svc:     svc,
-		contact: contact.ID,
-		note:    note.ID,
+		driver:       driver,
+		revoke:       rev.revokeToken,
+		sourcerGrant: sourcerGrant,
+		router:       NewRouterWithConfig(svc, RouterConfig{Auth: chain}),
+		svc:          svc,
+		contact:      contact.ID,
+		note:         note.ID,
 	}
 }
 
@@ -130,6 +138,29 @@ func grantTemplate(t *testing.T, driver storage.StorageDriver, principalID, poli
 	require.NoError(t, st.Audiences().Create(ctx, aud))
 	require.NoError(t, st.Audiences().AddMember(ctx, &storage.AudienceMember{AudienceID: aud.ID, PrincipalID: principalID, AddedBy: storage.OwnerPrincipal}))
 	require.NoError(t, st.Grants().Create(ctx, &storage.ShareGrant{AudienceID: aud.ID, PolicyID: tpl.ID, CreatedBy: storage.OwnerPrincipal}))
+}
+
+// revocable is a token method whose tokens can be revoked mid-test.
+type revocable struct {
+	authn.Method
+	mu      sync.Mutex
+	revoked map[string]bool
+}
+
+func (r *revocable) revokeToken(token string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.revoked[token] = true
+}
+
+func (r *revocable) Authenticate(ctx context.Context, cred authn.Credential) (*authn.Principal, bool, error) {
+	r.mu.Lock()
+	gone := r.revoked[cred.Token]
+	r.mu.Unlock()
+	if gone {
+		return nil, false, authn.ErrInvalidCredential
+	}
+	return r.Method.Authenticate(ctx, cred)
 }
 
 // grantPolicy installs policy and grants it to principalID through an
