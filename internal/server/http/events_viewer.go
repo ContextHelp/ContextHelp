@@ -97,8 +97,17 @@ func viewerPayload(e bus.Event, obj *storage.KnowledgeObject) any {
 			Pipeline:  obj.Pipeline,
 			ProfileID: obj.ProfileID,
 		}
-		if orig, ok := e.Payload.(events.ObjectIngestedPayload); ok {
+		// The owner payload's duration, whether the event is the
+		// publisher's value (a bus event) or the stored JSON (an
+		// outbox row).
+		switch orig := e.Payload.(type) {
+		case events.ObjectIngestedPayload:
 			p.DurationMs = orig.DurationMs
+		case json.RawMessage:
+			var stored events.ObjectIngestedPayload
+			if json.Unmarshal(orig, &stored) == nil {
+				p.DurationMs = stored.DurationMs
+			}
 		}
 		for _, t := range obj.Tags {
 			p.Tags = append(p.Tags, t.Label)
