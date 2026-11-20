@@ -314,10 +314,10 @@ func TestAuth_TokenPerOwnerAndAnonymousFallback(t *testing.T) {
 
 	secrets := map[string]string{"GITHUB_TOKEN": "tok-default", "GH_WORK": " tok-work\n"} // GH_MISSING absent
 	cfg := config.GitHubConfig{
-		TokenSecret: "GITHUB_TOKEN",
+		Credential: "GITHUB_TOKEN",
 		Accounts: []config.GitHubAccount{
-			{Name: "work", TokenSecret: "GH_WORK", Owners: []string{"Acme"}},
-			{Name: "ghost", TokenSecret: "GH_MISSING", Owners: []string{"ghost"}},
+			{Name: "work", Credential: "GH_WORK", Owners: []string{"Acme"}},
+			{Name: "ghost", Credential: "GH_MISSING", Owners: []string{"ghost"}},
 		},
 	}
 	get := func(_ context.Context, name string) (string, error) { return secrets[name], nil }
@@ -341,7 +341,7 @@ func TestAuth_TokenPerOwnerAndAnonymousFallback(t *testing.T) {
 
 func TestAuth_SecretErrorFailsTheFetch(t *testing.T) {
 	boom := errors.New("keyring locked")
-	cfg := config.GitHubConfig{TokenSecret: "GITHUB_TOKEN"}
+	cfg := config.GitHubConfig{Credential: "GITHUB_TOKEN"}
 	c := NewClientFromConfig(cfg, func(context.Context, string) (string, error) { return "", boom })
 	if _, err := c.FetchRepo(context.Background(), "o", "r"); !errors.Is(err, boom) {
 		t.Errorf("err = %v, want wrapped %v", err, boom)

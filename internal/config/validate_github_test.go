@@ -14,14 +14,14 @@ func TestValidateGitHub(t *testing.T) {
 	}{
 		{"zero value", GitHubConfig{}, ""},
 		{"full", GitHubConfig{APIURL: "https://ghe.example/api/v3", MaxWait: time.Minute,
-			Accounts: []GitHubAccount{{Name: "a", TokenSecret: "T", Owners: []string{"x"}}}}, ""},
+			Accounts: []GitHubAccount{{Name: "a", Credential: "T", Owners: []string{"x"}}}}, ""},
 		{"bad api url", GitHubConfig{APIURL: "ftp://x"}, "github.api_url"},
 		{"negative wait", GitHubConfig{MaxWait: -1}, "github.max_wait"},
-		{"account no secret", GitHubConfig{Accounts: []GitHubAccount{{Owners: []string{"x"}}}}, "token_secret"},
-		{"account no owners", GitHubConfig{Accounts: []GitHubAccount{{TokenSecret: "T"}}}, "owners"},
+		{"account no secret", GitHubConfig{Accounts: []GitHubAccount{{Owners: []string{"x"}}}}, "credential"},
+		{"account no owners", GitHubConfig{Accounts: []GitHubAccount{{Credential: "T"}}}, "owners"},
 		{"owner claimed twice", GitHubConfig{Accounts: []GitHubAccount{
-			{Name: "a", TokenSecret: "T", Owners: []string{"Acme"}},
-			{Name: "b", TokenSecret: "U", Owners: []string{"acme"}}}}, "already served"},
+			{Name: "a", Credential: "T", Owners: []string{"Acme"}},
+			{Name: "b", Credential: "U", Owners: []string{"acme"}}}}, "already served"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

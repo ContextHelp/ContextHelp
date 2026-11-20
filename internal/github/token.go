@@ -43,7 +43,7 @@ func (c *ConfigTokens) Token(ctx context.Context, owner string) (string, error) 
 	for _, a := range c.cfg.Accounts {
 		for _, o := range a.Owners {
 			if strings.EqualFold(strings.TrimSpace(o), owner) {
-				tok, err := c.get(ctx, a.TokenSecret)
+				tok, err := c.get(ctx, a.Credential)
 				if err != nil {
 					return "", fmt.Errorf("github: token for account %q: %w", a.Name, err)
 				}
@@ -51,9 +51,9 @@ func (c *ConfigTokens) Token(ctx context.Context, owner string) (string, error) 
 			}
 		}
 	}
-	name := c.cfg.TokenSecret
+	name := c.cfg.Credential
 	if name == "" {
-		name = config.DefaultGitHubTokenSecret
+		name = config.DefaultGitHubCredential
 	}
 	tok, err := c.get(ctx, name)
 	if err != nil {

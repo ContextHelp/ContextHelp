@@ -23,11 +23,11 @@ const redactFixture = `storage:
       secret_key: S3-SECRET-KEY-SECRET-0003
 server:
   access: protected
-  token: SERVER-CLIENT-TOKEN-SECRET-0004
+  token: SERVER-CLIENT-BEARER-SECRET-0004
   urls:
     - name: home
       url: https://primary.example.net:7700
-      token: SERVER-URLS-TOKEN-SECRET-0005
+      token: SERVER-URLS-BEARER-SECRET-0005
   public_url: https://dpkms.example.net
   auth:
     keys:
@@ -39,7 +39,7 @@ federations:
     url: https://peer.example.net:8080
     sync_mode: async
     interval: 1h
-    token: FEDERATION-PEER-TOKEN-SECRET-0008
+    token: FEDERATION-PEER-AUTH-SECRET-0008
 security:
   alerts:
     webhook_url: https://hooks.example.net/services/ALERT-CAPABILITY-0012
@@ -50,9 +50,9 @@ var redactFixtureSecrets = []string{
 	"PG-TEST-PASSWORD-0001",
 	"S3-ACCESS-KEY-SECRET-0002",
 	"S3-SECRET-KEY-SECRET-0003",
-	"SERVER-CLIENT-TOKEN-SECRET-0004",
-	"SERVER-URLS-TOKEN-SECRET-0005",
-	"FEDERATION-PEER-TOKEN-SECRET-0008",
+	"SERVER-CLIENT-BEARER-SECRET-0004",
+	"SERVER-URLS-BEARER-SECRET-0005",
+	"FEDERATION-PEER-AUTH-SECRET-0008",
 	"ALERT-CAPABILITY-0012",
 }
 
@@ -121,7 +121,7 @@ func TestConfigShowStructuredKeepsMask(t *testing.T) {
 			if err != nil {
 				t.Fatalf("config show --format %s: %v\n%s", f, err, out)
 			}
-			// SERVER-CLIENT-TOKEN-SECRET-0004 is >= 16 chars: mask + last 4.
+			// SERVER-CLIENT-BEARER-SECRET-0004 is >= 16 chars: mask + last 4.
 			if !strings.Contains(out, "****0004") {
 				t.Errorf("want masked server token ****0004 in output:\n%s", out)
 			}
