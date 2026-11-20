@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -21,8 +22,12 @@ func EnsureMentionEntity(ctx context.Context, entities EntityStore, u uri.URI, n
 	if slug == "" {
 		return nil, false, nil
 	}
-	if found, rerr := entities.Resolve(ctx, slug); rerr == nil && found != nil {
+	found, rerr := entities.Resolve(ctx, slug)
+	switch {
+	case rerr == nil && found != nil:
 		return found, false, nil
+	case rerr != nil && !errors.Is(rerr, ErrNotFound):
+		return nil, false, fmt.Errorf("resolve entity %q: %w", slug, rerr)
 	}
 	entity = &Entity{
 		Slug:          slug,
