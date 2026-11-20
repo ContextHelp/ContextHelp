@@ -102,6 +102,9 @@ var migration041 string
 //go:embed migrations/044_registry_pending_entities.sql
 var migration044 string
 
+//go:embed migrations/056_event_outbox.sql
+var migration056 string
+
 type migration struct {
 	Version int
 	SQL     string
@@ -308,6 +311,9 @@ var migrations = []migration{
 	// like content_hash since 052: another profile may reuse a key, and a
 	// source-key update never reaches an object of another profile.
 	{Version: 55, fn: migrate055SourceKeyPerProfile},
+	// Migration 056: event_outbox and instance_meta (ADR-075 §4). New
+	// tables only; IF NOT EXISTS makes it re-runnable.
+	{Version: 56, SQL: migration056},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
