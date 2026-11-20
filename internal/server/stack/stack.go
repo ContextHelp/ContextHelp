@@ -366,6 +366,39 @@ func buildAuth(ctx context.Context, notes io.Writer, driver storage.StorageDrive
 	return chain, keys, sessions, nil
 }
 
+// openAuthority returns the injected authority peer, or opens one over the
+// driver's KV when the config enables it; nil when neither applies.
+func openAuthority(in Inputs, cfg *config.Config) (*bosaccess.Peer, error) {
+	if in.Authority != nil || !cfg.Sharing.Authority.Enabled {
+		return in.Authority, nil
+	}
+	return bosaccess.Open(bosaccess.DeclaredProfile(in.Probes.Version),
+		sharing.KVState{KV: in.Driver.Auth().KV(), Key: authorityStateKey}, nil)
+}
+
+// applyAuthorityRoutes points the router's access decisions at the authority
+// peer; a no-op without one.
+func applyAuthorityRoutes(rcfg *httpserver.RouterConfig, peer *bosaccess.Peer, ac config.AuthorityConfig) {
+	if peer == nil {
+		return
+	}
+	rcfg.Access = peer
+	rcfg.AccessPrincipal = ac.Principal
+	rcfg.AccessScope = ac.Scope
+}
+
+// newEntitlements builds the inbound gate with the configured quotas.
+func newEntitlements(driver storage.StorageDriver, cfg *config.Config) *registry.InboundGate {
+	g := registry.NewInboundGate(driver.Entitlements(), driver.Metering())
+	for _, q := range cfg.Server.Quotas {
+		g.SetQuota(q.Principal, storage.MeteringEventType(q.Event), storage.QuotaConfig{
+			Limit:  q.Limit,
+			WarnAt: q.WarnAt,
+		})
+	}
+	return g
+}
+
 // Build assembles the stack over in.Driver.
 func Build(in Inputs) (*Stack, error) {
 	cfg := in.Config
@@ -459,13 +492,8 @@ func Build(in Inputs) (*Stack, error) {
 	}
 	s.policy = pol
 
-	s.Authority = in.Authority
-	if s.Authority == nil && cfg.Sharing.Authority.Enabled {
-		s.Authority, err = bosaccess.Open(bosaccess.DeclaredProfile(in.Probes.Version),
-			sharing.KVState{KV: in.Driver.Auth().KV(), Key: authorityStateKey}, nil)
-		if err != nil {
-			return nil, err
-		}
+	if s.Authority, err = openAuthority(in, cfg); err != nil {
+		return nil, err
 	}
 	svcOpts := []service.Option{
 		service.WithPolicyPublisher(pol.Publisher()),
@@ -503,13 +531,7 @@ func Build(in Inputs) (*Stack, error) {
 	// entitlement rows keyed by principal ID, quotas come from
 	// server.quotas. nil on private instances = no gating.
 	if s.RouteAuth != nil {
-		s.Entitlements = registry.NewInboundGate(in.Driver.Entitlements(), in.Driver.Metering())
-		for _, q := range cfg.Server.Quotas {
-			s.Entitlements.SetQuota(q.Principal, storage.MeteringEventType(q.Event), storage.QuotaConfig{
-				Limit:  q.Limit,
-				WarnAt: q.WarnAt,
-			})
-		}
+		s.Entitlements = newEntitlements(in.Driver, cfg)
 	}
 
 	// The read audit of shared viewers (ADR-080 §9): buffered, flushed
@@ -542,11 +564,7 @@ func Build(in Inputs) (*Stack, error) {
 		Audit:                s.Audit,
 		AuditLog:             in.Driver.AuditLog(),
 	}
-	if s.Authority != nil {
-		rcfg.Access = s.Authority
-		rcfg.AccessPrincipal = cfg.Sharing.Authority.Principal
-		rcfg.AccessScope = cfg.Sharing.Authority.Scope
-	}
+	applyAuthorityRoutes(&rcfg, s.Authority, cfg.Sharing.Authority)
 	s.Router = httpserver.NewRouterWithConfig(s.Service, rcfg)
 	s.startAuthorityFeed(in, cfg.Sharing.Authority.Feed, cfg.Sharing.Authority.Scope, secretsStore)
 	return s, nil
