@@ -89,3 +89,66 @@ func TestTagger_MergesWithUserTags(t *testing.T) {
 	assert.True(t, labels["uxr"], "auto-extracted uxr must be present")
 	assert.True(t, labels["design"], "auto-extracted design must be present")
 }
+
+// Tags added by earlier steps (any source the tagger does not own) survive.
+func TestTagger_KeepsTagsFromEarlierSteps(t *testing.T) {
+	tagger := NewTagger()
+	draft := &storage.KnowledgeObject{
+		RawContent: "research research design design",
+		Tags: []storage.Tag{
+			{Label: "x", Source: "step", Weight: 1},
+			{Label: "star:review", Source: "gh-stars", Weight: 1},
+			{Label: "u", Source: "user", Weight: 1},
+			{Label: "g", Source: githubTagSource, Weight: 1},
+			{Label: "stale", Source: "auto", Weight: 1},
+			{Label: "stale-llm", Source: "llm", Weight: 1},
+		},
+	}
+	out, err := tagger.Run(context.Background(), draft)
+	require.NoError(t, err)
+	src := map[string]string{}
+	for _, tag := range out.Tags {
+		src[tag.Label] = tag.Source
+	}
+	assert.Equal(t, "step", src["x"])
+	assert.Equal(t, "gh-stars", src["star:review"])
+	assert.Equal(t, "user", src["u"])
+	assert.Equal(t, githubTagSource, src["g"])
+	assert.NotContains(t, src, "stale", "own auto tags are regenerated")
+	assert.NotContains(t, src, "stale-llm")
+	assert.Equal(t, "auto", src["research"])
+}
+
+// Empty content: foreign tags still survive.
+func TestTagger_EmptyContentKeepsStepTags(t *testing.T) {
+	draft := &storage.KnowledgeObject{Tags: []storage.Tag{{Label: "x", Source: "step"}, {Label: "a", Source: "auto"}}}
+	out, err := NewTagger().Run(context.Background(), draft)
+	require.NoError(t, err)
+	require.Len(t, out.Tags, 1)
+	assert.Equal(t, "x", out.Tags[0].Label)
+}
+
+// Re-running the tagger does not duplicate its own tags; an existing tag wins.
+func TestTagger_RerunNoDuplicates(t *testing.T) {
+	tagger := NewTagger()
+	draft := &storage.KnowledgeObject{
+		RawContent: "research research design",
+		Tags:       []storage.Tag{{Label: "design", Source: "step"}},
+	}
+	ctx := context.Background()
+	out, err := tagger.Run(ctx, draft)
+	require.NoError(t, err)
+	out, err = tagger.Run(ctx, out)
+	require.NoError(t, err)
+	count := map[string]int{}
+	for _, tag := range out.Tags {
+		count[tag.Label]++
+	}
+	assert.Equal(t, 1, count["research"])
+	assert.Equal(t, 1, count["design"])
+	for _, tag := range out.Tags {
+		if tag.Label == "design" {
+			assert.Equal(t, "step", tag.Source)
+		}
+	}
+}

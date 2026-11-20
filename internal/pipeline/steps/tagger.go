@@ -53,17 +53,18 @@ func (t *Tagger) Name() string { return "tagger" }
 
 // Run extracts heuristic + (optional) LLM tags from draft.RawContent and
 // merges them with any pre-existing draft.Tags entries that have
-// Source:"user" (or "github": facts the GitHub mapper read from the API). User-asserted tags WIN on lowercase-label
-// collision — operator intent overrides auto-extraction. Non-user
-// pre-existing tags are dropped (the prior behaviour was to overwrite
-// the slice, so this keeps the same effective contract for them).
+// every source it does not own: user, github, and tags added by earlier
+// steps (installed steps via add_tags, other built-ins). The tagger owns
+// only Source "auto" and "llm": those are dropped and regenerated, so a
+// re-run never duplicates them. Pre-existing tags WIN on lowercase-label
+// collision, operator intent first.
 func (t *Tagger) Run(ctx context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
 	// preserve any caller-asserted user tags pre-populated on the
 	// draft (by jobs.worker via Job.UserHints, or by Service.Analyze on
 	// the raw path). They will be merged in below the auto-extracted set.
 	var userTags []storage.Tag
 	for _, tag := range draft.Tags {
-		if tag.Source == "user" || tag.Source == githubTagSource {
+		if tag.Source != "auto" && tag.Source != "llm" {
 			userTags = append(userTags, tag)
 		}
 	}
