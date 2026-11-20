@@ -825,3 +825,30 @@ func TestSourceKeyPerProfile(t *testing.T) {
 		t.Errorf("unknown profile found %s", got.ID)
 	}
 }
+
+// The empty profile is its own scope: an object stored without a profile
+// is found by an empty-profile lookup and by no named profile; a named
+// profile's object is never found by the empty one.
+func TestSourceKeyEmptyProfileScope(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+	mk := func(id, key, profile string) *storage.KnowledgeObject {
+		return &storage.KnowledgeObject{ID: id, Type: "text", RawContent: id, SourceKey: key, ProfileID: profile,
+			ContentHash: "h-" + id, CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	}
+	if err := d.Objects().Create(ctx, mk("global", "k", "")); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Objects().Create(ctx, mk("owned", "only-alice", "alice")); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := d.Objects().GetBySourceKey(ctx, "k", ""); err != nil || got == nil || got.ID != "global" {
+		t.Errorf("empty profile lookup = %v, %v; want global", got, err)
+	}
+	if got, _ := d.Objects().GetBySourceKey(ctx, "k", "alice"); got != nil {
+		t.Errorf("profile alice found the empty-profile object %s", got.ID)
+	}
+	if got, _ := d.Objects().GetBySourceKey(ctx, "only-alice", ""); got != nil {
+		t.Errorf("empty profile found alice's object %s", got.ID)
+	}
+}

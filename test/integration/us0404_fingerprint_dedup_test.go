@@ -64,8 +64,10 @@ func TestUS0404_ExactDuplicateBlocked(t *testing.T) {
 	assert.Equal(t, "us0404-existing-1", result["job_id"])
 }
 
-// TestUS0404_SourceKeyBlocked verifies that ingesting content with a
-// source_key that already exists returns the existing object ID.
+// TestUS0404_SourceKeyBlocked verifies that a submission under a stored
+// source key is an update of that object, never a second object and never
+// dropped at analyze time: it is accepted as a job, and the worker applies
+// it to the object in the same (source_key, profile) scope.
 func TestUS0404_SourceKeyBlocked(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
@@ -86,14 +88,29 @@ func TestUS0404_SourceKeyBlocked(t *testing.T) {
 	}
 	require.NoError(t, env.driver.Objects().Create(t.Context(), obj))
 
-	// POST with same source_key — should match.
 	status, result := postAnalyzeWithOpts(t, env.URL, map[string]any{
 		"content":    "different content but same key",
 		"type":       "text",
 		"source_key": "slack:C01/9876.5432",
 	})
 	assert.Equal(t, gohttp.StatusAccepted, status)
-	assert.Equal(t, "us0404-sk-1", result["job_id"])
+	jobID := result["job_id"]
+	require.NotEmpty(t, jobID)
+	assert.NotEqual(t, "us0404-sk-1", jobID, "a keyed submission is a job, not a drop")
+
+	waitForJob(t, env.URL, jobID, storage.JobCompleted)
+
+	// Still one object under the key: the original, content untouched.
+	got, err := env.driver.Objects().GetBySourceKey(t.Context(), "slack:C01/9876.5432", "")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "us0404-sk-1", got.ID)
+	assert.Equal(t, "original slack message", got.RawContent)
+
+	// A different profile's lookup never reaches this object.
+	other, err := env.driver.Objects().GetBySourceKey(t.Context(), "slack:C01/9876.5432", "someone-else")
+	require.NoError(t, err)
+	assert.Nil(t, other)
 }
 
 // TestUS0404_SourceKeyNewProceeds verifies that a new source_key
