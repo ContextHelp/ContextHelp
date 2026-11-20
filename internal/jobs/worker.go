@@ -325,6 +325,10 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 	// job; the object has already been persisted but no edges exist yet,
 	// so the job is retryable and a subsequent run will re-create the
 	// object (content-hash dedup) and re-attempt edge writes.
+	if err := storage.EnsureMentionEntities(ctx, p.store.Entities(), draft.Mentions, time.Now().UTC()); err != nil {
+		p.markFailed(ctx, job.ID, fmt.Sprintf("entity write: mentions: %s", err), draft.ID)
+		return
+	}
 	edges := storage.MentionEdges(draft, draft.Mentions, false, time.Now())
 	if _, err := p.store.Edges().CreateMissing(ctx, edges); err != nil {
 		p.markFailed(ctx, job.ID, fmt.Sprintf("edge write: mentions: %s", err), draft.ID)
