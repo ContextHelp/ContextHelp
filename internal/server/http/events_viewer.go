@@ -35,8 +35,8 @@ const seenCap = 10000
 //     this connection already delivered (the viewer saw it exist). A
 //     delete of any other ID is dropped, since delivering it would
 //     confirm an ID the viewer never saw.
-//   - The viewer is the one compiled when the connection was made: a
-//     grant change applies on reconnect.
+//   - The viewer is the caller's current one, passed in per event (see
+//     callerView), so a revoked grant applies to the next event.
 type viewerEvents struct {
 	svc  *service.Service
 	seen *idSet
