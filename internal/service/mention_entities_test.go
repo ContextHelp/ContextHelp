@@ -74,3 +74,28 @@ func TestFanOutEnsuresEntityRowsKeepsFullEntity(t *testing.T) {
 	assert.Equal(t, "Acme Corp", acme.Title)
 	assert.Equal(t, "the real one", acme.Description)
 }
+
+// GetEntity reads the dot form the CLI shows (@ns.name, ns.name) and the
+// URI form as the namespace/name row, while a stored slug that itself
+// holds a dot still matches exactly.
+func TestGetEntityAcceptsMentionForms(t *testing.T) {
+	svc := newFanOutService(t)
+	ctx := ownerCtx()
+	now := time.Now()
+	for _, slug := range []string{"product/foo", "lib/v1.2"} {
+		require.NoError(t, svc.store.Entities().UpsertThin(ctx, &storage.Entity{
+			Slug: slug, Title: slug, Namespace: "x", ContentStatus: storage.ContentStatusThin, CreatedAt: now, UpdatedAt: now,
+		}))
+	}
+	for _, in := range []string{"product/foo", "product.foo", "@product.foo", "ctxt://entity/product/foo"} {
+		e, err := svc.GetEntity(ctx, in)
+		require.NoError(t, err, in)
+		assert.Equal(t, "product/foo", e.Slug, in)
+	}
+	e, err := svc.GetEntity(ctx, "lib/v1.2")
+	require.NoError(t, err)
+	assert.Equal(t, "lib/v1.2", e.Slug)
+
+	_, err = svc.GetEntity(ctx, "product.nope")
+	assert.ErrorIs(t, err, storage.ErrNotFound)
+}
