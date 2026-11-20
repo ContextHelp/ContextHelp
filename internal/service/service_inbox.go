@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"time"
 
+	kitbus "hop.top/kit/go/runtime/bus"
+
 	"github.com/google/uuid"
 
 	"github.com/ideacrafterslabs/ctxt/internal/events"
@@ -55,9 +57,7 @@ func (s *Service) CaptureToInbox(ctx context.Context, req InboxCaptureRequest) (
 		return nil, fmt.Errorf("capture to inbox: %w", err)
 	}
 
-	if ev, err := events.NewEvent("service.inbox", string(events.TopicInboxCaptured), obj); err == nil {
-		_ = s.Bus.Publish(ctx, ev)
-	}
+	_ = s.Bus.Publish(ctx, kitbus.NewEvent(events.TopicInboxCaptured, "service.inbox", obj))
 	return obj, nil
 }
 
@@ -126,9 +126,7 @@ func (s *Service) TriageInbox(ctx context.Context, id string, req TriageRequest)
 		return "", fmt.Errorf("triage inbox enqueue: %w", err)
 	}
 
-	if ev, err := events.NewEvent("service.inbox", string(events.TopicInboxTriaged), obj); err == nil {
-		_ = s.Bus.Publish(ctx, ev)
-	}
+	_ = s.Bus.Publish(ctx, kitbus.NewEvent(events.TopicInboxTriaged, "service.inbox", obj))
 	return job.ID, nil
 }
 

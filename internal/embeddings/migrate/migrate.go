@@ -26,6 +26,8 @@ import (
 	"sync"
 	"time"
 
+	"hop.top/kit/go/runtime/bus"
+
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/events"
@@ -33,7 +35,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/upgrade"
-	"hop.top/kit/go/runtime/bus"
 )
 
 // JobType is the task job type of an embedding migration.
@@ -195,7 +196,7 @@ type Runner struct {
 	Store    storage.EmbeddingStore
 	Resolver embeddings.ProviderResolver
 	Progress Progress
-	Bus      events.Bus
+	Bus      bus.Bus
 	Clock    Clock
 
 	sem  chan struct{}
@@ -457,10 +458,7 @@ func (x *run) publish(ctx context.Context, topic bus.Topic, reason string) {
 	if topic == events.TopicDpkmsEmbeddingsMigrationCompleted || topic == events.TopicDpkmsEmbeddingsMigrationFailed {
 		payload.DurationMs = x.clock.Now().Sub(x.start).Milliseconds()
 	}
-	ev, err := events.NewEvent(eventSource, string(topic), payload)
-	if err != nil {
-		return
-	}
+	ev := bus.NewEvent(topic, eventSource, payload)
 	if err := x.Bus.Publish(ctx, ev); err != nil {
 		slog.Warn("embeddings migrate: publish event", "topic", topic, "err", err)
 	}

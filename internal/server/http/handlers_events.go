@@ -4,15 +4,22 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
+
+	"hop.top/kit/go/runtime/bus"
 
 	"github.com/ideacrafterslabs/ctxt/internal/events"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 )
 
-// HandleSSE streams all bus events as Server-Sent Events to the client.
-// Each event is encoded as a JSON payload in the SSE `data:` field.
-// The connection is held open until the client disconnects.
+// sseBuffer is how many events one connection holds before it drops.
+const sseBuffer = 64
+
+// HandleSSE streams every bus event as Server-Sent Events to the client.
+// Each event is a CloudEvents JSON envelope in the SSE `data:` field.
+// The connection is held open until the client disconnects; its bus
+// subscription ends with it.
 //
 // Route: GET /api/v1/events
 func HandleSSE(svc *service.Service) http.HandlerFunc {
@@ -35,10 +42,12 @@ func HandleSSE(svc *service.Service) http.HandlerFunc {
 		flusher.Flush()
 
 		// Channel for events delivered to this connection.
-		ch := make(chan events.Event, 64)
-
-		// Subscribe to all events via wildcard.
-		svc.Bus.Subscribe("*", func(_ context.Context, e events.Event) error {
+		ch := make(chan bus.Event, sseBuffer)
+		// A sync handler runs on the publisher's goroutine, so it only
+		// hands off, and it never returns an error: that would veto the
+		// publish. Unsubscribe on disconnect, or the subscriber outlives
+		// the connection.
+		unsub := svc.Bus.Subscribe("#", func(_ context.Context, e bus.Event) error {
 			select {
 			case ch <- e:
 			default:
@@ -46,6 +55,7 @@ func HandleSSE(svc *service.Service) http.HandlerFunc {
 			}
 			return nil
 		})
+		defer unsub()
 
 		// Stream events until client disconnects.
 		ctx := r.Context()
@@ -54,7 +64,12 @@ func HandleSSE(svc *service.Service) http.HandlerFunc {
 			case <-ctx.Done():
 				return
 			case e := <-ch:
-				data, err := json.Marshal(e)
+				ce, err := events.CloudEvent(e)
+				if err != nil {
+					slog.Warn("events: skipping event", "topic", e.Topic, "err", err)
+					continue
+				}
+				data, err := json.Marshal(ce)
 				if err != nil {
 					continue
 				}

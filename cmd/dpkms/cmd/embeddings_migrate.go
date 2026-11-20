@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"os"
 
+	kitbus "hop.top/kit/go/runtime/bus"
+
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings/migrate"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
-	"github.com/ideacrafterslabs/ctxt/internal/events"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/upgrade"
@@ -18,7 +19,7 @@ import (
 // goes to the daemon's upgrade status, so `ctxt upgrade status` and the
 // CLI banner show it. Without a readable model registry the handler is
 // not registered and migration jobs fail with no handler.
-func handleEmbeddingsMigrate(pool *jobs.WorkerPool, driver storage.StorageDriver, mgr *upgrade.Manager, bus events.Bus) {
+func handleEmbeddingsMigrate(pool *jobs.WorkerPool, driver storage.StorageDriver, mgr *upgrade.Manager, bus kitbus.Bus) {
 	reg, err := registry.ForDriver(driver)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "warning: embedding model registry unavailable; embedding migrations will not run: %v\n", err)

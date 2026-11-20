@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"time"
 
+	"hop.top/kit/go/runtime/bus"
+
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -94,12 +96,16 @@ func (h *jobHandler) WatchJob(req *pb.WatchJobRequest, stream pb.JobService_Watc
 	// Subscribe to job events on the bus.
 	updates := make(chan *pb.JobStatusUpdate, 16)
 
-	h.svc.Bus.Subscribe(string(events.TopicJobCompleted), func(_ context.Context, e events.Event) error {
+	// Both subscriptions end with the stream: a subscriber left on the
+	// bus after the client goes away is a leak.
+	unsubDone := h.svc.Bus.Subscribe(string(events.TopicJobCompleted), func(_ context.Context, e bus.Event) error {
 		return forwardIfMatch(req.Id, e, updates)
 	})
-	h.svc.Bus.Subscribe(string(events.TopicJobFailed), func(_ context.Context, e events.Event) error {
+	defer unsubDone()
+	unsubFailed := h.svc.Bus.Subscribe(string(events.TopicJobFailed), func(_ context.Context, e bus.Event) error {
 		return forwardIfMatch(req.Id, e, updates)
 	})
+	defer unsubFailed()
 
 	// Poll every 2 s as fallback (bus is best-effort / async).
 	ticker := time.NewTicker(2 * time.Second)
@@ -183,26 +189,26 @@ type jobEventPayload struct {
 	Error    string `json:"error,omitempty"`
 }
 
-func forwardIfMatch(jobID string, e events.Event, ch chan<- *pb.JobStatusUpdate) error {
+func forwardIfMatch(jobID string, e bus.Event, ch chan<- *pb.JobStatusUpdate) error {
 	// An event whose payload is not a jobEventPayload cannot belong to the
 	// job we are streaming, so it is skipped exactly like a non-matching ID.
-	// Propagating would be pointless either way: LocalBus.Publish discards
-	// handler errors (`_ = handler(...)`), so the only effect of returning
-	// one here would be to abandon an otherwise healthy stream.
-	raw, err := json.Marshal(e.Data)
+	// A sync handler's error vetoes the publish on kit's bus, so a stream
+	// handler never returns one: it would fail the publisher for a
+	// listener's problem.
+	raw, err := events.PayloadJSON(e)
 	if err != nil {
-		return nil //nolint:nilerr // undecodable payload cannot match jobID; bus discards handler errors
+		return nil //nolint:nilerr // undecodable payload cannot match jobID; a handler error would veto the publish
 	}
 	var p jobEventPayload
 	if err := json.Unmarshal(raw, &p); err != nil {
-		return nil //nolint:nilerr // undecodable payload cannot match jobID; bus discards handler errors
+		return nil //nolint:nilerr // undecodable payload cannot match jobID; a handler error would veto the publish
 	}
 	if p.ID != jobID {
 		return nil
 	}
 	upd := &pb.JobStatusUpdate{
 		JobId:     jobID,
-		Status:    eventTypeToStatus(e.Type),
+		Status:    eventTypeToStatus(string(e.Topic)),
 		Error:     p.Error,
 		ResultId:  p.ResultID,
 		UpdatedAt: timestamppb.New(time.Now()),
