@@ -3,9 +3,12 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"hop.top/kit/go/runtime/bus"
@@ -14,22 +17,52 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/events"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/sharing"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 // sseBuffer is how many events one connection holds before it drops.
 const sseBuffer = 64
 
-// HandleSSE streams bus events as Server-Sent Events to the client.
-// Each event is a CloudEvents JSON envelope in the SSE `data:` field.
+// CodeEventIDExpired is the error code of the 410 a Last-Event-ID
+// answers when the outbox no longer holds the rows after it (past
+// server.events_retention), or the id is ahead of anything the
+// instance wrote. The client resyncs from the API and reconnects
+// without an id.
+const CodeEventIDExpired = "EVENT_ID_EXPIRED"
+
+// CodeInvalidEventID is the error code of the 400 a malformed
+// Last-Event-ID (or last_event_id) answers.
+const CodeInvalidEventID = "INVALID_EVENT_ID"
+
+// sseReplayPage is how many outbox rows one read returns. A package
+// variable so tests can make a replay span pages.
+var sseReplayPage = 200
+
+// sseAfterPage, when set by a test, runs after each page of rows has
+// been written to the stream.
+var sseAfterPage func()
+
+// HandleSSE streams events as Server-Sent Events to the client. Each
+// event is a CloudEvents JSON envelope in the SSE `data:` field.
 // The connection is held open until the client disconnects; its bus
 // subscription ends with it.
 //
+// Object events (ingested, updated, deleted, raw_stored) are read from
+// the event outbox (ADR-075 §4), in seq order, and carry `id: <seq>`
+// and the row's UUIDv7 as the envelope id. The bus only wakes the
+// stream: one cursor reads the outbox, so a reconnect with
+// Last-Event-ID replays the rows after it and then follows live with no
+// gap and no duplicate. An id older than the retention window is
+// answered 410 Gone (EVENT_ID_EXPIRED) before the stream starts. The
+// other event types (jobs, upgrades, ...) are owner-only, live from the
+// bus, and carry no id.
+//
 // The owner (and every caller on a private instance) gets every event.
 // Any other principal gets the object events for objects its viewer may
-// read, filtered per event (see viewerEvents); a viewer that may read
-// nothing gets an empty stream, never a 403, so the answer does not
-// reveal whether anything exists. While the stream is idle the handler
-// writes an SSE comment every server.events_heartbeat.
+// read, filtered per event (see viewerEvents), replayed rows included; a
+// viewer that may read nothing gets an empty stream, never a 403, so the
+// answer does not reveal whether anything exists. While the stream is
+// idle the handler writes an SSE comment every server.events_heartbeat.
 //
 // The stream follows the caller: each event (at most every
 // sseRecheckTTL) and each heartbeat authenticates the credential again
@@ -46,6 +79,11 @@ func HandleSSE(svc *service.Service) http.HandlerFunc {
 			WriteError(w, http.StatusInternalServerError, "STREAMING_UNSUPPORTED", "streaming not supported")
 			return
 		}
+		after, resume, err := lastEventID(r)
+		if err != nil {
+			WriteError(w, http.StatusBadRequest, CodeInvalidEventID, err.Error())
+			return
+		}
 
 		// A caller with no viewer attached is the zero viewer: nothing
 		// visible. Only an explicit Unrestricted viewer sees everything.
@@ -60,6 +98,60 @@ func HandleSSE(svc *service.Service) http.HandlerFunc {
 			pattern = "#"
 		}
 
+		// Subscribe before reading the outbox: a row committed from now
+		// on wakes the stream, and a row committed before is read. The
+		// handlers only hand off and never return an error: that would
+		// veto the publish. Unsubscribe on disconnect, or the subscriber
+		// outlives the connection.
+		outbox := svc.Outbox()
+		wake := make(chan struct{}, 1)
+		ch := make(chan bus.Event, sseBuffer)
+		unsub := svc.Bus.Subscribe(pattern, func(_ context.Context, e bus.Event) error {
+			if outbox != nil && events.OutboxTopics[e.Topic] {
+				select {
+				case wake <- struct{}{}:
+				default: // a wake-up is already pending
+				}
+				return nil
+			}
+			select {
+			case ch <- e:
+			default:
+				// Drop on full buffer rather than blocking the bus.
+			}
+			return nil
+		})
+		defer unsub()
+
+		ctx := r.Context()
+		cursor := after
+		var first []storage.OutboxRow
+		if outbox != nil {
+			if !resume {
+				// A plain connect follows live: nothing before now.
+				if cursor, err = outbox.Head(ctx); err != nil {
+					WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "event outbox unavailable")
+					return
+				}
+			} else {
+				head, herr := outbox.Head(ctx)
+				if herr == nil && after > head {
+					writeEventIDGone(w, "the event id is ahead of the newest event this instance wrote", 0, head)
+					return
+				}
+				first, err = outbox.Since(ctx, cursor, sseReplayPage)
+				if err != nil {
+					var exp *storage.OutboxExpiredError
+					if errors.As(err, &exp) {
+						writeEventIDGone(w, "the event id is older than the retained events", exp.Oldest, head)
+						return
+					}
+					WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "event outbox unavailable")
+					return
+				}
+			}
+		}
+
 		// Set SSE headers.
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
@@ -70,26 +162,113 @@ func HandleSSE(svc *service.Service) http.HandlerFunc {
 		// stays "connecting" and never fires open.
 		flusher.Flush()
 
-		// Channel for events delivered to this connection. A sync handler
-		// runs on the publisher's goroutine, so it only hands off, and it
-		// never returns an error: that would veto the publish. Unsubscribe
-		// on disconnect, or the subscriber outlives the connection.
-		ch := make(chan bus.Event, sseBuffer)
-		unsub := svc.Bus.Subscribe(pattern, func(_ context.Context, e bus.Event) error {
-			select {
-			case ch <- e:
-			default:
-				// Drop on full buffer rather than blocking the bus.
+		// write sends one event to this viewer, or drops it. It
+		// reports false when the caller no longer authenticates and the
+		// stream must end. seq is the outbox row's seq, 0 for a bus event.
+		write := func(e bus.Event, seq int64, id string) bool {
+			v, ok := callerView.current(false)
+			if !ok {
+				closeStream(w, flusher)
+				return false
 			}
-			return nil
-		})
-		defer unsub()
+			var ce events.Event
+			var err error
+			if v.IsUnrestricted() {
+				ce, err = events.CloudEvent(e)
+			} else {
+				var send bool
+				ce, send, err = filter.project(sharing.WithViewer(ctx, v), e)
+				if !send && err == nil {
+					return true
+				}
+			}
+			if err != nil {
+				slog.Warn("events: skipping event", "topic", e.Topic, "err", err)
+				return true
+			}
+			if id != "" {
+				ce.ID = id
+			}
+			data, err := json.Marshal(ce)
+			if err != nil {
+				return true
+			}
+			if seq > 0 {
+				fmt.Fprintf(w, "id: %d\n", seq)
+			}
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
+			return true
+		}
+		// emit writes a page of outbox rows and advances the cursor
+		// past each, sent or dropped.
+		emit := func(rows []storage.OutboxRow) bool {
+			for _, row := range rows {
+				cursor = row.Seq
+				e := bus.Event{
+					Topic:     bus.Topic(row.Topic),
+					Source:    row.Source,
+					Timestamp: row.OccurredAt,
+					Payload:   json.RawMessage(row.Payload),
+				}
+				if !write(e, row.Seq, row.ID) {
+					return false
+				}
+			}
+			return true
+		}
+		// drain reads the outbox from the cursor to its end, a page at
+		// a time. Only this goroutine moves the cursor, so a row is
+		// written once and in order, whether it arrived before the
+		// connection (a replay) or after.
+		drain := func() bool {
+			if outbox == nil {
+				return true
+			}
+			for {
+				rows, err := outbox.Since(ctx, cursor, sseReplayPage)
+				if err != nil {
+					if ctx.Err() == nil {
+						slog.Warn("events: outbox read", "err", err)
+						fmt.Fprint(w, ": closed: events no longer retained\n\n")
+						flusher.Flush()
+					}
+					return false
+				}
+				if !emit(rows) {
+					return false
+				}
+				if sseAfterPage != nil {
+					sseAfterPage()
+				}
+				if len(rows) < sseReplayPage {
+					return true
+				}
+			}
+		}
 
 		heartbeat := time.NewTicker(sseHeartbeat(svc.Cfg))
 		defer heartbeat.Stop()
 
+		// The first page was read before the headers went out (so a
+		// stale id could still be a 410); write it, then carry on.
+		if len(first) > 0 {
+			if !emit(first) {
+				return
+			}
+			if sseAfterPage != nil {
+				sseAfterPage()
+			}
+			if len(first) == sseReplayPage && !drain() {
+				return
+			}
+		}
+		// Rows committed since the subscription are read at once.
+		if !drain() {
+			return
+		}
+
 		// Stream events until client disconnects.
-		ctx := r.Context()
 		for {
 			select {
 			case <-ctx.Done():
@@ -101,38 +280,57 @@ func HandleSSE(svc *service.Service) http.HandlerFunc {
 					closeStream(w, flusher)
 					return
 				}
-				fmt.Fprint(w, ": heartbeat\n\n")
-				flusher.Flush()
-			case e := <-ch:
-				v, ok := callerView.current(false)
-				if !ok {
-					closeStream(w, flusher)
+				// A tick also reads the outbox, in case a wake-up was
+				// lost (a row written by another process).
+				if !drain() {
 					return
 				}
-				var ce events.Event
-				var err error
-				if v.IsUnrestricted() {
-					ce, err = events.CloudEvent(e)
-				} else {
-					var send bool
-					ce, send, err = filter.project(sharing.WithViewer(ctx, v), e)
-					if !send && err == nil {
-						continue
-					}
-				}
-				if err != nil {
-					slog.Warn("events: skipping event", "topic", e.Topic, "err", err)
-					continue
-				}
-				data, err := json.Marshal(ce)
-				if err != nil {
-					continue
-				}
-				fmt.Fprintf(w, "data: %s\n\n", data)
+				fmt.Fprint(w, ": heartbeat\n\n")
 				flusher.Flush()
+			case <-wake:
+				if !drain() {
+					return
+				}
+			case e := <-ch:
+				if !write(e, 0, "") {
+					return
+				}
 			}
 		}
 	}
+}
+
+// lastEventID is the id a reconnecting client resumes after: the
+// Last-Event-ID header an EventSource sends, or the last_event_id query
+// parameter for clients that cannot set headers (the header wins).
+// resume is false when neither is present. An id is a decimal seq; "0"
+// replays everything retained.
+func lastEventID(r *http.Request) (after int64, resume bool, err error) {
+	raw := strings.TrimSpace(r.Header.Get("Last-Event-ID"))
+	if raw == "" {
+		raw = strings.TrimSpace(r.URL.Query().Get("last_event_id"))
+	}
+	if raw == "" {
+		return 0, false, nil
+	}
+	n, perr := strconv.ParseInt(raw, 10, 64)
+	if perr != nil || n < 0 {
+		return 0, false, fmt.Errorf("Last-Event-ID must be an event id from this stream (a non-negative integer)")
+	}
+	return n, true, nil
+}
+
+// writeEventIDGone answers a Last-Event-ID the outbox cannot resume
+// from: 410 Gone, with the oldest retained id and the newest id in the
+// details.
+func writeEventIDGone(w http.ResponseWriter, msg string, oldest, head int64) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusGone)
+	_ = json.NewEncoder(w).Encode(ErrorEnvelope{Error: ErrorBody{
+		Code:    CodeEventIDExpired,
+		Message: msg + "; resync from the API and reconnect without Last-Event-ID",
+		Details: map[string]any{"oldest_retained": oldest, "newest": head},
+	}})
 }
 
 // sseHeartbeat is the interval between heartbeat comments:
