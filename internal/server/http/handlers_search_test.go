@@ -85,3 +85,37 @@ func TestSearchPagination(t *testing.T) {
 		t.Errorf("data len: got %d, want 2", len(body.Data))
 	}
 }
+
+// GET /api/v1/search with a profile is a lens, as for POST /find: it
+// answers every profile's objects, and the empty profile's, exactly as
+// without one.
+func TestSearchProfileIsALens(t *testing.T) {
+	ts := newTestServerBundle(t)
+	defer ts.Close()
+
+	now := time.Now().Truncate(time.Second)
+	for id, profile := range map[string]string{"s-alpha": "alpha", "s-beta": "beta", "s-none": ""} {
+		if err := ts.svc.Store(ownerCtx()).Objects().Create(ownerCtx(), &storage.KnowledgeObject{
+			ID: id, Type: "note", ProfileID: profile, CreatedAt: now, UpdatedAt: now,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, profile := range []string{"", "alpha", "nobody"} {
+		resp, err := http.Get(ts.URL + "/api/v1/search?q=type==note&profile=" + profile)
+		if err != nil {
+			t.Fatalf("request: %v", err)
+		}
+		var body struct {
+			Total int `json:"total"`
+		}
+		err = json.NewDecoder(resp.Body).Decode(&body)
+		resp.Body.Close()
+		if err != nil || resp.StatusCode != http.StatusOK {
+			t.Fatalf("profile %q: status %d, decode %v", profile, resp.StatusCode, err)
+		}
+		if body.Total != 3 {
+			t.Errorf("profile %q: total %d, want 3 (profile must not narrow)", profile, body.Total)
+		}
+	}
+}

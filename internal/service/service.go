@@ -582,12 +582,11 @@ func (s *Service) DeleteObject(ctx context.Context, id string) error {
 }
 
 // SearchObjects executes an RSQL query and returns matching objects.
-// profileID, when non-empty, restricts results to the named profile's
-// objects. The query runs as the caller's viewer: over its scoped
-// store, with the cross-object operators compiled on both sides of
-// their edges (ADR-080 §7).
-func (s *Service) SearchObjects(ctx context.Context, query string, limit, offset int, profileID ...string) ([]*storage.KnowledgeObject, int, error) {
-	objs, total, err := s.Search.SearchAs(ctx, s.viewer(ctx), s.Store(ctx).Objects(), query, limit, offset, profileID...)
+// A focus profile is a lens and never narrows the query. The query runs
+// as the caller's viewer: over its scoped store, with the cross-object
+// operators compiled on both sides of their edges (ADR-080 §7).
+func (s *Service) SearchObjects(ctx context.Context, query string, limit, offset int) ([]*storage.KnowledgeObject, int, error) {
+	objs, total, err := s.Search.SearchAs(ctx, s.viewer(ctx), s.Store(ctx).Objects(), query, limit, offset)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -1423,7 +1422,7 @@ func objectSnippet(obj *storage.KnowledgeObject) string {
 // NodeAwareFilter constraints (NodeTypes / EdgeTypes). Storage does not yet
 // expose native node-type filtering, so the filtering happens in-process.
 // When filter is nil or empty, behaviour is identical to SearchObjects.
-func (s *Service) SearchObjectsNodeAware(ctx context.Context, query string, limit, offset int, filter *storage.NodeAwareFilter, profileID ...string) ([]*storage.KnowledgeObject, int, error) {
+func (s *Service) SearchObjectsNodeAware(ctx context.Context, query string, limit, offset int, filter *storage.NodeAwareFilter) ([]*storage.KnowledgeObject, int, error) {
 	// Fetch a wider candidate pool when node filtering is active so the final
 	// page still has enough results after the in-process filter.
 	fetchLimit := limit
@@ -1436,7 +1435,7 @@ func (s *Service) SearchObjectsNodeAware(ctx context.Context, query string, limi
 		fetchOffset = 0
 	}
 
-	all, _, err := s.Search.Search(ctx, s.Store(ctx).Objects(), query, fetchLimit, fetchOffset, profileID...)
+	all, _, err := s.Search.Search(ctx, s.Store(ctx).Objects(), query, fetchLimit, fetchOffset)
 	if err != nil {
 		return nil, 0, err
 	}

@@ -58,7 +58,8 @@ type SearchRequest struct {
 	Query  string
 	Limit  int
 	Offset int
-	// Profile scopes the search to a focus profile; "" searches globally.
+	// Profile is the caller's focus profile, a lens: dpkms never
+	// narrows the search by it. "" names none.
 	Profile string
 }
 

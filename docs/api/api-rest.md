@@ -331,7 +331,7 @@ Order and paging:
 | `limit` | integer >= 0; `0` returns every match | `20` |
 | `offset` | integer >= 0 | `0` |
 
-RSQL queries go to `GET /search?q=`; `q` is not a parameter here.
+RSQL queries go to `GET /search?q=`; `q` is not a parameter here. `GET /search` accepts `profile` as the caller's focus profile, a lens: it never narrows the results, and what a caller sees is set by its viewer scope alone (ADR-080). The gRPC `Search` and `NodeAwareSearch` `profile_id` field works the same way.
 
 #### Response
 

@@ -18,6 +18,8 @@ import (
 	grpcserver "github.com/ideacrafterslabs/ctxt/internal/server/grpc"
 	pb "github.com/ideacrafterslabs/ctxt/internal/server/grpc/pb"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
@@ -25,8 +27,16 @@ import (
 // a cancel func that stops the server.
 func newTestServer(t *testing.T) (addr string, conn *grpc.ClientConn) {
 	t.Helper()
+	addr, conn, _ = newTestServerOver(t)
+	return addr, conn
+}
 
-	driver := storageutil.NewTestDriver(t)
+// newTestServerOver is newTestServer that also returns the driver the
+// server reads, for tests that seed it.
+func newTestServerOver(t *testing.T) (addr string, conn *grpc.ClientConn, driver storage.StorageDriver) {
+	t.Helper()
+
+	driver = storageutil.NewTestDriver(t)
 	q := jobs.NewQueue(driver.Jobs())
 	pipes := builtins.Registry()
 	engine := search.NewEngine(driver)
@@ -62,7 +72,7 @@ func newTestServer(t *testing.T) (addr string, conn *grpc.ClientConn) {
 
 	waitForServing(t, conn)
 
-	return addr, conn
+	return addr, conn, driver
 }
 
 // waitForServing blocks until the server answers a health check, so a test
@@ -187,5 +197,35 @@ func TestListObjects_Empty(t *testing.T) {
 	}
 	if resp == nil {
 		t.Fatal("nil response")
+	}
+}
+
+// Search and NodeAwareSearch with a profile_id answer every profile's
+// objects: the profile is a lens, never a filter.
+func TestSearch_ProfileIsALens(t *testing.T) {
+	_, conn, driver := newTestServerOver(t)
+	ctx := sharing.WithViewer(context.Background(), sharing.Unrestricted)
+	now := time.Now().Truncate(time.Second)
+	for id, profile := range map[string]string{"g-alpha": "alpha", "g-beta": "beta", "g-none": ""} {
+		if err := driver.Objects().Create(ctx, &storage.KnowledgeObject{ID: id, Type: "note", ProfileID: profile, CreatedAt: now, UpdatedAt: now}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c := pb.NewQueryServiceClient(conn)
+	for _, profile := range []string{"", "alpha", "nobody"} {
+		resp, err := c.Search(context.Background(), &pb.SearchRequest{Query: "type==note", ProfileId: profile})
+		if err != nil {
+			t.Fatalf("search %q: %v", profile, err)
+		}
+		if resp.Total != 3 {
+			t.Errorf("Search profile %q: total %d, want 3", profile, resp.Total)
+		}
+		na, err := c.NodeAwareSearch(context.Background(), &pb.NodeAwareSearchRequest{Query: "type==note", ProfileId: profile})
+		if err != nil {
+			t.Fatalf("node-aware search %q: %v", profile, err)
+		}
+		if len(na.Results) != 3 {
+			t.Errorf("NodeAwareSearch profile %q: %d results, want 3", profile, len(na.Results))
+		}
 	}
 }

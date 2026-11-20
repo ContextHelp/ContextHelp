@@ -31,7 +31,7 @@ type SearchRequest struct {
 	TopK int
 	// Mode is one of SearchModes.
 	Mode string
-	// Profile restricts results to one profile's objects when set.
+	// Profile is the caller's focus profile, a lens: it never narrows results.
 	Profile string
 	// MinScore sets the hybrid threshold when set; hybrid only.
 	MinScore *float64

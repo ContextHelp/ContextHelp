@@ -109,9 +109,9 @@ func TestUS0017_RSQLViaHTTPEndpoint(t *testing.T) {
 	assert.Equal(t, "rsql-http-1", body.Data[0].ID)
 }
 
-// TestUS0017_RSQLProfileScopeRestrictsResults verifies that profile_id scoping
-// restricts the RSQL result set to the named profile.
-func TestUS0017_RSQLProfileScopeRestrictsResults(t *testing.T) {
+// TestUS0017_RSQLProfileIsALens verifies that a profile named on a search
+// never narrows the RSQL result set: it is a lens, not a filter.
+func TestUS0017_RSQLProfileIsALens(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -125,10 +125,12 @@ func TestUS0017_RSQLProfileScopeRestrictsResults(t *testing.T) {
 		ID: "rsql-prof-b", Type: "note", ProfileID: "beta", CreatedAt: now, UpdatedAt: now,
 	}))
 
-	// Scoped to profile "alpha" — must return only rsql-prof-a.
-	objs, total, err := env.svc.SearchObjects(ctx, "type==note", 20, 0, "alpha")
-	require.NoError(t, err)
-	assert.Equal(t, 1, total)
-	require.Len(t, objs, 1)
-	assert.Equal(t, "rsql-prof-a", objs[0].ID)
+	// Naming profile "alpha" still returns both profiles' objects.
+	resp := doGet(t, env.URL+"/api/v1/search?q=type==note&profile=alpha")
+	defer resp.Body.Close()
+	var body searchResponse
+	decodeJSON(t, resp.Body, &body)
+	assert.Equal(t, 2, body.Total)
+	assert.True(t, containsID(body.Data, "rsql-prof-a"))
+	assert.True(t, containsID(body.Data, "rsql-prof-b"))
 }

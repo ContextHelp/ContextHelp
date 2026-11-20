@@ -33,7 +33,7 @@ func (h *queryHandler) Search(ctx context.Context, req *pb.SearchRequest) (*pb.S
 		limit = 20
 	}
 
-	objs, total, err := h.svc.SearchObjects(ctx, req.Query, limit, int(req.Offset), req.ProfileId)
+	objs, total, err := h.svc.SearchObjects(ctx, req.Query, limit, int(req.Offset))
 	if err != nil {
 		return nil, toStatus(ctx, "objects", err)
 	}
@@ -112,8 +112,7 @@ func (h *queryHandler) NodeAwareSearch(
 		}
 	}
 
-	profileID := req.ProfileId
-	objs, total, err := h.svc.SearchObjectsNodeAware(ctx, req.Query, limit, int(req.Offset), apiFilter, profileID)
+	objs, total, err := h.svc.SearchObjectsNodeAware(ctx, req.Query, limit, int(req.Offset), apiFilter)
 	if err != nil {
 		return nil, toStatus(ctx, "objects", err)
 	}

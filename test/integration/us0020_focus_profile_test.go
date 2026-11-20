@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestUS0020_FocusProfileRestrictsSearchScope verifies that passing a profileID
-// to SearchObjects restricts results to objects owned by that profile.
-func TestUS0020_FocusProfileRestrictsSearchScope(t *testing.T) {
+// TestUS0020_FocusProfileDoesNotRestrictSearchScope verifies that naming a
+// profile on a search returns every profile's matches: the profile is a lens.
+func TestUS0020_FocusProfileDoesNotRestrictSearchScope(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -38,12 +38,14 @@ func TestUS0020_FocusProfileRestrictsSearchScope(t *testing.T) {
 		}))
 	}
 
-	// Search scoped to "engineering" profile.
-	objs, total, err := env.svc.SearchObjects(ctx, "type==decision", 20, 0, "engineering")
-	require.NoError(t, err)
-	assert.Equal(t, 1, total, "only one decision belongs to engineering profile")
-	require.Len(t, objs, 1)
-	assert.Equal(t, "fp-eng-1", objs[0].ID)
+	// Search naming the "engineering" profile still sees both decisions.
+	resp := doGet(t, env.URL+"/api/v1/search?q=type==decision&profile=engineering")
+	defer resp.Body.Close()
+	var body searchResponse
+	decodeJSON(t, resp.Body, &body)
+	assert.Equal(t, 2, body.Total, "both decisions match whatever profile is named")
+	assert.True(t, containsID(body.Data, "fp-eng-1"))
+	assert.True(t, containsID(body.Data, "fp-sec-1"))
 }
 
 // TestUS0020_FocusProfileAllObjectsWhenNoProfile verifies that omitting profileID
@@ -79,7 +81,7 @@ func TestUS0020_FocusProfileAllObjectsWhenNoProfile(t *testing.T) {
 }
 
 // TestUS0020_FocusProfileViaHTTPSearchQuery verifies the HTTP search endpoint
-// parses the profile query param and scopes results to that profile.
+// accepts the profile query param as a lens that does not narrow results.
 func TestUS0020_FocusProfileViaHTTPSearchQuery(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
@@ -96,7 +98,7 @@ func TestUS0020_FocusProfileViaHTTPSearchQuery(t *testing.T) {
 		CreatedAt: now, UpdatedAt: now,
 	}))
 
-	// HTTP search with profile=ops must only return "ops" objects.
+	// HTTP search with profile=ops returns the "dev" object too.
 	resp := doGet(t, env.URL+"/api/v1/search?q=type==article&profile=ops")
 	defer resp.Body.Close()
 	assert.Equal(t, 200, resp.StatusCode)
@@ -105,19 +107,25 @@ func TestUS0020_FocusProfileViaHTTPSearchQuery(t *testing.T) {
 	decodeJSON(t, resp.Body, &body)
 	assert.True(t, containsID(body.Data, "fp-http-1"),
 		"ops article must appear when profile=ops")
-	assert.False(t, containsID(body.Data, "fp-http-2"),
-		"dev article must not appear when profile=ops")
+	assert.True(t, containsID(body.Data, "fp-http-2"),
+		"dev article must still appear when profile=ops")
 }
 
-// TestUS0020_FocusProfileNoMatchReturnsEmpty verifies that a profile with no
-// objects returns an empty list (not 404 or error).
+// TestUS0020_FocusProfileWithNoObjectsDoesNotEmptyResults verifies that naming
+// a profile that owns nothing leaves the results as they are.
 func TestUS0020_FocusProfileNoMatchReturnsEmpty(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
 	ctx := ownerCtx()
-	objs, total, err := env.svc.SearchObjects(ctx, "type==text", 20, 0, "nonexistent-profile")
-	require.NoError(t, err)
-	assert.Equal(t, 0, total)
-	assert.Empty(t, objs)
+	now := nowTrunc()
+	require.NoError(t, env.driver.Objects().Create(ctx, &storage.KnowledgeObject{
+		ID: "fp-none-1", Type: "text", ProfileID: "alpha", CreatedAt: now, UpdatedAt: now,
+	}))
+	resp := doGet(t, env.URL+"/api/v1/search?q=type==text&profile=nonexistent-profile")
+	defer resp.Body.Close()
+	var body searchResponse
+	decodeJSON(t, resp.Body, &body)
+	assert.Equal(t, 1, body.Total)
+	assert.True(t, containsID(body.Data, "fp-none-1"))
 }
