@@ -1,6 +1,6 @@
 # ADR-075 – External Hook Surface: Pre and Post Hooks on ctxt and dpkms Events
 
-> **Status:** Accepted (2026-09-26), amended 2026-09-27 (see [Amendment 2026-09-27](#amendment-2026-09-27)) and 2026-11-20 (see [Amendment 2026-11-20](#amendment-2026-11-20))
+> **Status:** Accepted (2026-09-26), amended 2026-09-27 (see [Amendment 2026-09-27](#amendment-2026-09-27)), 2026-11-20 (see [Amendment 2026-11-20](#amendment-2026-11-20)) and again 2026-11-20 (see [Amendment 2026-11-20 (b)](#amendment-2026-11-20-b-the-outbox-slice-behind-the-sse-stream))
 > **Date:** 2026-09-26
 > **Author:** jadb
 > **Applies to:** dPKMS, ctxt
@@ -377,3 +377,30 @@ kit's `SQLiteAdapter` was probed as a source of monotonic IDs and replay, and it
 - It writes its own database file, outside the mutation's transaction. Adopting it would add a second durable store beside `event_outbox`, which decision 7 and ADR-007 rule out.
 
 So the SSE `id:` field and `Last-Event-ID` replay are the outbox's job (section 4): `id:` is the row's `seq`, a reconnect replays rows after it within the 7-day retention, an older `seq` gets `410 Gone`, and the per-viewer filter above applies to replayed events as it does to live ones. Replay also removes the delete limitation of section 2: a stored delete row can carry what the viewer could read before the delete.
+
+---
+
+## Amendment 2026-11-20 (b): the outbox slice behind the SSE stream
+
+> **Status:** Accepted, implemented
+> **Scope:** the part of section 4 that gives the SSE stream durable ids. Hooks, pull, webhooks, the `/ws/bus` mirror and stale-subscriber handling stay as designed and are not built.
+
+### 1. What is implemented
+
+- **The table.** `event_outbox` with the columns of section 4 (`seq`, `id` UUIDv7, `topic`, `source`, `occurred_at`, `origin`, `actor`, `instance_id`, `payload`) plus `object_id`, in SQLite (migration 056) and Postgres (migration 37). `seq` is `AUTOINCREMENT` (SQLite) or `BIGSERIAL` (Postgres): monotonic, never reused after a prune. `instance_meta` holds the `instance_id`, minted once per database on the first row (section 6), and `outbox_pruned_through`, the highest `seq` ever pruned. It is a separate table from `sync_log`.
+- **Writing.** The object store's `Create`, `Update` and `Delete` write the event attached to the request's context (`storage.WithOutboxEvent`) in the mutation's own transaction. A mutation that fails, or that is a duplicate or a miss, leaves no row. The service (`analyze` raw, update by source key, `UpdateObject`, `DeleteObject`) and the worker pool (ingest, update by source key, applied submission) attach the event; the live bus publish follows the commit. `origin` is `api` or `job`; `actor` is the request's principal, empty for jobs. Topics recorded: `object.ingested`, `object.updated`, `object.deleted`, `object.raw_stored`. Other topics, and mutations that publish no object event today (`ctxt ingest`, importers, status transitions), write no row.
+- **Postgres ordering.** Postgres assigns `seq` at insert and commits later, so a reader could see seq 6 before seq 5 commits and skip it. An append takes a transaction-scoped advisory lock just before its insert, so `seq` order is commit order. SQLite serializes writers.
+- **Retention.** 7 days, `server.events_retention` (default `168h`). `dpkms serve` runs a pruner at start and hourly. A prune deletes rows older than the cutoff, always keeps the newest row, and records the highest pruned `seq`. A cursor below it is stale, which stays correct where `seq` has gaps (Postgres sequences are not rolled back).
+- **SSE.** An object event frame carries `id: <seq>` and the row's UUIDv7 as the envelope `id` (replacing the UUIDv5 of the earlier amendment, as that amendment said it would). `Last-Event-ID` (or `last_event_id`) replays rows after it. An id below the pruned floor, or above the newest `seq`, is `410 Gone` with code `EVENT_ID_EXPIRED` and `details.oldest_retained` and `details.newest`; a malformed id is `400 INVALID_EVENT_ID`. Docs: [REST API, Events](../api/api-rest.md#events), [Listen for events](../manual/workflows/event-listener.md).
+
+### 2. How a live event learns its seq
+
+The stream reads the row; it does not receive the seq on the bus event. The bus event is a wake-up. One cursor per connection reads the outbox in `seq` order: first the replay, then each row committed after it. This was chosen over publishing the seq with the bus event because it keeps one source of `seq` (the row), makes a replay-to-live switch a single loop with no hand-off (the connection subscribes before its first read, so a row committed after that read is announced, and a row committed before it is read), and cannot show a client a `seq` out of order or twice. A dropped wake-up is made up at the next heartbeat tick. The bus stays the live path for everything else and for other subscribers; kit's bus is unchanged.
+
+### 3. Delete events for a non-owner
+
+Not changed by this slice. A delete is delivered to a non-owner only for an object the connection was already sent, a replayed event included. ADR-080 does not say how to judge, after the fact, that a viewer could read an object before its deletion: the viewer's predicate is evaluated over stored object rows (tags, mentions, metadata, classes, edges), and a delete row cannot carry enough of them to evaluate it without storing a copy of the object. Storing such a snapshot, or the per-viewer predicate result at deletion time, is left open.
+
+### 4. Not implemented
+
+Before hooks and the dispatcher, the hook catalog, `exec` and webhook hooks, subscriptions with cursors and `stale` marking, `ctxt.runtime.hook.gap_detected`, the pull endpoint (`GET /api/v1/events?after=`), `ctxt events tail`, webhook push, the `/ws/bus` mirror. The outbox rows are what those will read.
