@@ -75,6 +75,7 @@ server:
   public: false
   dev: false
   reminder_interval: 1m
+  events_heartbeat: 15s
 
 steps:
   path: ~/.config/contexthelp/steps
