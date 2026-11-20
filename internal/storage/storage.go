@@ -197,7 +197,7 @@ type ObjectStore interface {
 	// dedup stays inside a profile (ADR-080 §4): the same content under
 	// another profile is another object.
 	GetByContentHash(ctx context.Context, hash, profileID string) (*KnowledgeObject, error)
-	GetBySourceKey(ctx context.Context, key string) (*KnowledgeObject, error)
+	GetBySourceKey(ctx context.Context, key, profileID string) (*KnowledgeObject, error)
 	List(ctx context.Context, filter ObjectFilter) ([]*KnowledgeObject, int, error)
 	// CountByType counts every stored object, whatever its status, by
 	// type. Types with no object are absent.

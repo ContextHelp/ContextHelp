@@ -50,7 +50,7 @@ func (m *memObjectStore) GetByContentHash(_ context.Context, _, _ string) (*stor
 	return nil, nil
 }
 
-func (m *memObjectStore) GetBySourceKey(_ context.Context, key string) (*storage.KnowledgeObject, error) {
+func (m *memObjectStore) GetBySourceKey(_ context.Context, key, profileID string) (*storage.KnowledgeObject, error) {
 	return m.sourceKeys[key], nil
 }
 

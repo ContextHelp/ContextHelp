@@ -390,7 +390,7 @@ func (s *Service) analyzeRaw(ctx context.Context, req AnalyzeRequest, detectedTy
 	}
 	// A raw submission under a stored source key updates that object.
 	if req.SourceKey != "" {
-		stored, err := s.Store(ctx).Objects().GetBySourceKey(ctx, req.SourceKey)
+		stored, err := s.Store(ctx).Objects().GetBySourceKey(ctx, req.SourceKey, req.Profile)
 		if err != nil {
 			return "", fmt.Errorf("analyze raw: source key lookup: %w", err)
 		}

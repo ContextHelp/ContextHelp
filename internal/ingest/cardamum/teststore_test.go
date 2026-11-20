@@ -36,7 +36,7 @@ func (m *testStore) GetByContentHash(_ context.Context, _, _ string) (*storage.K
 	return nil, nil
 }
 
-func (m *testStore) GetBySourceKey(_ context.Context, key string) (*storage.KnowledgeObject, error) {
+func (m *testStore) GetBySourceKey(_ context.Context, key, profileID string) (*storage.KnowledgeObject, error) {
 	return m.sourceKeys[key], nil
 }
 

@@ -276,7 +276,7 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 	// submission as an update, whatever the fetched content hashes to.
 	// It is checked before the content hash, so a submission that carries
 	// a key never lands on another object by a hash match.
-	if p.updateBySourceKey(ctx, job, draft.SourceKey, durationMs) {
+	if p.updateBySourceKey(ctx, job, draft.SourceKey, draft.ProfileID, durationMs) {
 		return
 	}
 
@@ -315,7 +315,7 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 		// (in the same profile) concurrently.
 		if errors.Is(err, storage.ErrAlreadyExists) {
 			// Another worker stored this source key first: this is its update.
-			if p.updateBySourceKey(ctx, job, draft.SourceKey, durationMs) {
+			if p.updateBySourceKey(ctx, job, draft.SourceKey, draft.ProfileID, durationMs) {
 				return
 			}
 			existingID, rerr := p.reinforceAfterRace(ctx, draft)
@@ -382,14 +382,14 @@ func submission(job *storage.Job) storageutil.Submission {
 	}
 }
 
-// updateBySourceKey settles job as an update of the object stored under
-// key, when there is one, and reports whether it did. A failed lookup
+// updateBySourceKey settles job as an update of the object the submitting
+// profile stored under key (a key in another profile is another source), when there is one, and reports whether it did. A failed lookup
 // settles the job as a retry or failure and reports true.
-func (p *WorkerPool) updateBySourceKey(ctx context.Context, job *storage.Job, key string, durationMs int64) bool {
+func (p *WorkerPool) updateBySourceKey(ctx context.Context, job *storage.Job, key, profileID string, durationMs int64) bool {
 	if key == "" {
 		return false
 	}
-	stored, err := p.store.Objects().GetBySourceKey(ctx, key)
+	stored, err := p.store.Objects().GetBySourceKey(ctx, key, profileID)
 	if err != nil {
 		p.retryOrFail(ctx, job.ID, fmt.Sprintf("source key lookup: %s", err))
 		return true

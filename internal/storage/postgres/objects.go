@@ -133,14 +133,14 @@ func (s *ObjectStore) GetByContentHash(ctx context.Context, hash, profileID stri
 	return obj, err
 }
 
-func (s *ObjectStore) GetBySourceKey(ctx context.Context, key string) (*storage.KnowledgeObject, error) {
+func (s *ObjectStore) GetBySourceKey(ctx context.Context, key, profileID string) (*storage.KnowledgeObject, error) {
 	if key == "" {
 		return nil, nil
 	}
-	idx := 2
+	idx := 3
 	clause, sargs := s.andScope(&idx)
 	// #nosec G202 -- clause is compiled SQL whose values are bound in sargs.
-	row := s.db.QueryRowContext(ctx, objectSelectCols+` FROM objects WHERE source_key = $1`+clause+` LIMIT 1`, append([]any{key}, sargs...)...)
+	row := s.db.QueryRowContext(ctx, objectSelectCols+` FROM objects WHERE source_key = $1 AND profile_id = $2`+clause+` LIMIT 1`, append([]any{key, profileID}, sargs...)...)
 	obj, err := scanObjectRow(row)
 	if errors.Is(err, errObjectNotFound) {
 		return nil, nil

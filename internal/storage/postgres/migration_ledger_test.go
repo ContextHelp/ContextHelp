@@ -184,7 +184,7 @@ func TestPostgres_FreshDatabase_ObjectRoundtrip(t *testing.T) {
 	if got.SourceKey != ko.SourceKey {
 		t.Errorf("source_key round-trip: got %q want %q", got.SourceKey, ko.SourceKey)
 	}
-	bySK, err := drv.Objects().GetBySourceKey(ctx, ko.SourceKey)
+	bySK, err := drv.Objects().GetBySourceKey(ctx, ko.SourceKey, ko.ProfileID)
 	if err != nil {
 		t.Fatalf("GetBySourceKey: %v", err)
 	}

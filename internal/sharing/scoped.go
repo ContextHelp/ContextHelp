@@ -192,8 +192,8 @@ func (s renderObjects) GetByContentHash(ctx context.Context, hash, profileID str
 	return s.d.render(o), nil
 }
 
-func (s renderObjects) GetBySourceKey(ctx context.Context, key string) (*storage.KnowledgeObject, error) {
-	o, err := s.ObjectStore.GetBySourceKey(ctx, key)
+func (s renderObjects) GetBySourceKey(ctx context.Context, key, profileID string) (*storage.KnowledgeObject, error) {
+	o, err := s.ObjectStore.GetBySourceKey(ctx, key, profileID)
 	if err != nil {
 		return nil, err
 	}

@@ -34,7 +34,7 @@ func (s *stubObjectStore) GetByContentHash(_ context.Context, _, _ string) (*sto
 	return nil, io.EOF
 }
 
-func (s *stubObjectStore) GetBySourceKey(_ context.Context, _ string) (*storage.KnowledgeObject, error) {
+func (s *stubObjectStore) GetBySourceKey(_ context.Context, _, profileID string) (*storage.KnowledgeObject, error) {
 	return nil, nil
 }
 

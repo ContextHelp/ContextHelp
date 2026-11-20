@@ -196,7 +196,7 @@ func (s *ObjectStore) GetByContentHash(ctx context.Context, hash, profileID stri
 	return obj, err
 }
 
-func (s *ObjectStore) GetBySourceKey(ctx context.Context, key string) (*storage.KnowledgeObject, error) {
+func (s *ObjectStore) GetBySourceKey(ctx context.Context, key, profileID string) (*storage.KnowledgeObject, error) {
 	if key == "" {
 		return nil, nil
 	}
@@ -208,7 +208,7 @@ func (s *ObjectStore) GetBySourceKey(ctx context.Context, key string) (*storage.
 		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
 		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq, classes
-	FROM objects WHERE source_key = ?`+s.andScope()+` LIMIT 1`, append([]any{key}, s.scopeArgs()...)...)
+	FROM objects WHERE source_key = ? AND profile_id = ?`+s.andScope()+` LIMIT 1`, append([]any{key, profileID}, s.scopeArgs()...)...)
 	obj, err := scanObject(row)
 	if errors.Is(err, errObjectNotFound) {
 		return nil, nil

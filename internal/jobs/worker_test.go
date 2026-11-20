@@ -582,7 +582,7 @@ func (s *raceObjectStore) GetByContentHash(_ context.Context, _, _ string) (*sto
 	return nil, nil
 }
 
-func (s *raceObjectStore) GetBySourceKey(_ context.Context, _ string) (*storage.KnowledgeObject, error) {
+func (s *raceObjectStore) GetBySourceKey(_ context.Context, _, profileID string) (*storage.KnowledgeObject, error) {
 	return nil, nil
 }
 

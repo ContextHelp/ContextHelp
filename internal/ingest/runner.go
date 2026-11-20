@@ -110,7 +110,7 @@ func keyOf(source string, obj Object) string {
 func (r *Runner) upsert(
 	ctx context.Context, source, sourceKey string, obj Object,
 ) error {
-	existing, err := r.store.GetBySourceKey(ctx, sourceKey)
+	existing, err := r.store.GetBySourceKey(ctx, sourceKey, "")
 	if err != nil {
 		return err
 	}
