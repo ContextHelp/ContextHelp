@@ -95,6 +95,9 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 	if err := insertObjectFTSTx(ctx, tx, obj.ID, index); err != nil {
 		return fmt.Errorf("create object fts index: %w", err)
 	}
+	if err := appendOutboxTx(ctx, tx); err != nil {
+		return err
+	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("create object: commit: %w", err)
 	}
@@ -425,6 +428,9 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 	if err := insertObjectFTSTx(ctx, tx, obj.ID, index); err != nil {
 		return fmt.Errorf("update object fts index: %w", err)
 	}
+	if err := appendOutboxTx(ctx, tx); err != nil {
+		return err
+	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("update object: commit: %w", err)
 	}
@@ -475,6 +481,9 @@ func (s *ObjectStore) Delete(ctx context.Context, id string) error {
 	n, _ := result.RowsAffected()
 	if n == 0 {
 		return fmt.Errorf("delete object %s: %w", id, storage.ErrNotFound)
+	}
+	if err := appendOutboxTx(ctx, tx); err != nil {
+		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("delete object: commit: %w", err)
