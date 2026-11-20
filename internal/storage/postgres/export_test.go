@@ -1,6 +1,10 @@
 package postgres
 
-import "context"
+import (
+	"context"
+
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
+)
 
 // MigrateThroughForTest runs Migrate with the ledger stopped at version,
 // building a database at a historic schema.
@@ -23,4 +27,20 @@ func (d *Driver) ReplayEntitlementKindForTest(ctx context.Context) error {
 // that already has it, pinning that a replay is a no-op.
 func (d *Driver) ReplayContentHashPerProfileForTest(ctx context.Context) error {
 	return migrateContentHashPerProfile(ctx, d)
+}
+
+// AppendOutboxHeldForTest appends ev in a transaction and runs held after
+// the row is written but before commit, so a test can observe how
+// concurrent appends and readers behave while the append is in flight.
+func (d *Driver) AppendOutboxHeldForTest(ctx context.Context, ev *storage.OutboxEvent, held func()) error {
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := writeOutbox(ctx, tx, ev); err != nil {
+		return err
+	}
+	held()
+	return tx.Commit()
 }
