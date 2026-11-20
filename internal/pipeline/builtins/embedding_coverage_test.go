@@ -11,7 +11,9 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings/embeddingtest"
+	"github.com/ideacrafterslabs/ctxt/internal/github"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -41,6 +43,8 @@ var fanOutPipelines = map[string]bool{
 var acquisitionSteps = map[string]bool{
 	"url_fetcher": true,
 	"ibr_fetcher": true,
+
+	"github_repo_fetcher": true,
 }
 
 const articleHTML = `<html><head><title>Numbat recovery</title></head><body>
@@ -71,6 +75,8 @@ type coverageCase struct {
 	// extracted is a phrase of a binary input's text. The embedding text
 	// must carry it, and never the file's leading bytes.
 	extracted string
+	// snapshot is what github_repo_fetcher hands the mapper.
+	snapshot *github.RepoSnapshot
 }
 
 var embeddingPipelines = map[string]coverageCase{
@@ -95,8 +101,12 @@ var embeddingPipelines = map[string]coverageCase{
 		source: "https://app.example.com/numbats", ctype: "text/markdown", fetched: true,
 		raw: "## Threats\nFeral cats and foxes remain the main predators of the numbat.\n",
 	},
-	"url.repo":           {source: "https://gitlab.com/wildlife/numbat-tracker", raw: articleHTML, ctype: "text/html", fetched: true},
-	"url.github.repo":    {source: "https://github.com/wildlife/numbat-tracker", raw: articleHTML, ctype: "text/html", fetched: true},
+	"url.repo": {source: "https://gitlab.com/wildlife/numbat-tracker", raw: articleHTML, ctype: "text/html", fetched: true},
+	"url.github.repo": {source: "https://github.com/wildlife/numbat-tracker", snapshot: &github.RepoSnapshot{
+		Owner: "wildlife", Name: "numbat-tracker", FullName: "wildlife/numbat-tracker",
+		URL: "https://github.com/wildlife/numbat-tracker", Description: "Tracks numbat sightings", Language: "Go",
+		README: "## Survey\nRangers counted forty numbats in the Dryandra woodland this spring.\n",
+	}},
 	"url.github.issue":   {source: "https://github.com/wildlife/numbat-tracker/issues/7", raw: articleHTML, ctype: "text/html", fetched: true},
 	"url.github.pr":      {source: "https://github.com/wildlife/numbat-tracker/pull/8", raw: articleHTML, ctype: "text/html", fetched: true},
 	"url.github.release": {source: "https://github.com/wildlife/numbat-tracker/releases/tag/v1.0.0", raw: articleHTML, ctype: "text/html", fetched: true},
@@ -159,6 +169,9 @@ func (c coverageCase) draft(t *testing.T, name string) *storage.KnowledgeObject 
 	}
 	if c.fetched {
 		d.Metadata = map[string]any{"final_url": c.source, "content_type": c.ctype}
+	}
+	if c.snapshot != nil {
+		d.Metadata = map[string]any{steps.MetaGitHubSnapshot: c.snapshot}
 	}
 	return d
 }

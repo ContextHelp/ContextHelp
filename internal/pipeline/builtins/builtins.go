@@ -16,6 +16,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/browser"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
+	"github.com/ideacrafterslabs/ctxt/internal/github"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
@@ -109,6 +110,8 @@ var stepConstructors = map[string]func() pipeline.PipelineStep{
 	"structured_metadata": func() pipeline.PipelineStep { return steps.NewStructuredMetadataExtractor() },
 	// Content classification via hop.top/c12n; graceful no-op without cgo.
 	"c12n_classify": func() pipeline.PipelineStep { return steps.NewC12nClassifier() },
+	// GitHub repo mapper: snapshot (from github_repo_fetcher) onto the draft.
+	"github_repo_mapper": func() pipeline.PipelineStep { return steps.NewGitHubRepoMapper() },
 	// Browser-based fetcher: nil client → returns error at run time.
 	"ibr_fetcher": func() pipeline.PipelineStep { return steps.NewIBRFetcher(nil) },
 }
@@ -123,6 +126,12 @@ var fetchStepConstructors = map[string]func(*safefetch.Guard) pipeline.PipelineS
 	"feed_fetcher": func(g *safefetch.Guard) pipeline.PipelineStep {
 		return steps.NewFeedFetcher(steps.WithFeedFetchGuard(g))
 	},
+}
+
+// githubStepConstructors maps the steps that call the GitHub REST API to
+// constructors taking the shared client (BuildOpts.GitHub).
+var githubStepConstructors = map[string]func(*github.Client) pipeline.PipelineStep{
+	"github_repo_fetcher": func(c *github.Client) pipeline.PipelineStep { return steps.NewGitHubRepoFetcher(c) },
 }
 
 // browserStepConstructors maps step names to browser-client-aware constructors.
@@ -149,6 +158,10 @@ type BuildOpts struct {
 	// captured URLs through (config.FetchGuard). Nil uses the default
 	// guard: every private-network address refused.
 	FetchGuard *safefetch.Guard
+	// GitHub is the REST client github_repo_fetcher calls the API
+	// through (github.NewClientFromConfig). Nil builds an anonymous
+	// client that reads GITHUB_TOKEN from the environment.
+	GitHub *github.Client
 
 	// Models is the registry the embedding step reads its populate set
 	// from, and dedup its default model.
@@ -313,6 +326,9 @@ func resolveStep(name string, opts BuildOpts) (pipeline.PipelineStep, error) {
 	if ctor, ok := fetchStepConstructors[name]; ok {
 		return ctor(guard), nil
 	}
+	if step, ok := githubStep(name, opts); ok {
+		return step, nil
+	}
 	if opts.BrowserClient != nil {
 		if ctor, ok := browserStepConstructors[name]; ok {
 			return ctor(opts.BrowserClient, guard), nil
@@ -326,28 +342,50 @@ func resolveStep(name string, opts BuildOpts) (pipeline.PipelineStep, error) {
 	if ctor, ok := stepConstructors[name]; ok {
 		return ctor(), nil
 	}
-	// Provider step without factory: use zero-arg fallback (stub providers).
-	switch name {
-	case "ocr_extractor":
-		return steps.NewOCRExtractor(), nil
-	case "vision_analyzer":
-		return steps.NewVisionAnalyzer(), nil
-	case "audio_transcriber":
-		return steps.NewAudioTranscriber(), nil
-	case "speaker_diarizer":
-		return steps.NewSpeakerDiarizer(false), nil
-	case "audio_extractor":
-		return steps.NewAudioExtractor(), nil
-	case "frame_sampler":
-		return steps.NewFrameSampler(), nil
-	case "frame_ocr":
-		return steps.NewFrameOCR(), nil
-	case "pdf_extractor":
-		return steps.NewPDFExtractor(), nil
-	case "office_extractor":
-		return steps.NewOfficeExtractor(), nil
+	if step, ok := fallbackStep(name); ok {
+		return step, nil
 	}
 	return nil, fmt.Errorf("builtins: unknown step %q", name)
+}
+
+// fallbackStep builds a provider step without a factory: the zero-arg
+// fallback (stub providers).
+func fallbackStep(name string) (pipeline.PipelineStep, bool) {
+	switch name {
+	case "ocr_extractor":
+		return steps.NewOCRExtractor(), true
+	case "vision_analyzer":
+		return steps.NewVisionAnalyzer(), true
+	case "audio_transcriber":
+		return steps.NewAudioTranscriber(), true
+	case "speaker_diarizer":
+		return steps.NewSpeakerDiarizer(false), true
+	case "audio_extractor":
+		return steps.NewAudioExtractor(), true
+	case "frame_sampler":
+		return steps.NewFrameSampler(), true
+	case "frame_ocr":
+		return steps.NewFrameOCR(), true
+	case "pdf_extractor":
+		return steps.NewPDFExtractor(), true
+	case "office_extractor":
+		return steps.NewOfficeExtractor(), true
+	}
+	return nil, false
+}
+
+// githubStep builds name when it is a GitHub API step; a nil
+// opts.GitHub falls back to an anonymous client.
+func githubStep(name string, opts BuildOpts) (pipeline.PipelineStep, bool) {
+	ctor, ok := githubStepConstructors[name]
+	if !ok {
+		return nil, false
+	}
+	gh := opts.GitHub
+	if gh == nil {
+		gh = github.NewClientFromConfig(config.GitHubConfig{Credential: config.DefaultGitHubCredential}, nil)
+	}
+	return ctor(gh), true
 }
 
 // stepSpec is one step of a pipeline being built: its name and, for a
@@ -779,6 +817,9 @@ func IsStepName(name string) bool {
 		return true
 	}
 	if _, ok := fetchStepConstructors[name]; ok {
+		return true
+	}
+	if _, ok := githubStepConstructors[name]; ok {
 		return true
 	}
 	if _, ok := browserStepConstructors[name]; ok {

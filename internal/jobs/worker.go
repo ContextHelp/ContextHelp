@@ -268,7 +268,7 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 	}
 
 	draft.UpdatedAt = time.Now()
-	draft.ContentHash = storageutil.ContentHash(draft.RawContent, draft.Source)
+	draft.ContentHash = storageutil.DraftContentHash(draft.RawContent, draft.Source, draft.Metadata)
 
 	durationMs := time.Since(start).Milliseconds()
 
