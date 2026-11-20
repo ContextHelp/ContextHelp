@@ -171,7 +171,7 @@ func TestHiddenIs404AndClosedIs403(t *testing.T) {
 		assert.NotContains(t, string(backlinks.Body), NoteSarah, p.Name)
 	}
 
-	for _, path := range []string{"/jobs", "/jobs/" + f.JobID, "/inbox", "/inbox/queue", "/capture/recent", "/events",
+	for _, path := range []string{"/jobs", "/jobs/" + f.JobID, "/inbox", "/inbox/queue", "/capture/recent",
 		"/pipelines", "/watches", "/pages", "/topic-index", "/search?q=type==contact"} {
 		for _, p := range f.Viewers() {
 			ctx, cancel := context.WithTimeout(context.Background(), StreamWindow)

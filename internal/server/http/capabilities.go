@@ -9,7 +9,7 @@ import (
 
 // Capability-closed routes (ADR-080 §4, §6; plan decision D19). A
 // restricted viewer reaches a route only when the route table opens
-// it: the owner-only routes (jobs, inbox, capture payloads, events,
+// it: the owner-only routes (jobs, inbox, capture payloads,
 // pipelines, steps, registries, feeds, imports, watches, entity pages,
 // the topic index, system reminders, the audit log) answer 403
 // NOT_SHARED, never an empty 200, because their rows never belong to a
@@ -36,6 +36,9 @@ type routeAccess struct {
 	capability string
 	// shape is the response shape the backstop walks.
 	shape sharing.Shape
+	// stream marks a route that holds its response open and filters
+	// its own frames: the backstop cannot buffer it.
+	stream bool
 }
 
 // Route access kinds.
@@ -43,6 +46,11 @@ var (
 	routeOwnerOnly = routeAccess{ownerOnly: true, shape: sharing.ShapeNone}
 	// routeNone is open and carries no object, entity or edge.
 	routeNone = routeAccess{shape: sharing.ShapeNone}
+	// routeEvents is open to every viewer and streams: the handler
+	// filters each event for the viewer itself (viewerEvents), and the
+	// visibility middleware, which buffers a whole response to check
+	// it, lets the stream through.
+	routeEvents = routeAccess{shape: sharing.ShapeNone, stream: true}
 	// routeObjects is open and carries objects; the entity routes are
 	// all capability-gated (needs).
 	routeObjects = routeAccess{shape: sharing.ShapeObjects}
@@ -152,7 +160,7 @@ var routeAccessTable = map[string]routeAccess{
 	"POST /inbox/{id}/triage":  routeOwnerOnly,
 	"POST /inbox/{id}/discard": routeOwnerOnly,
 
-	"GET /events": routeOwnerOnly,
+	"GET /events": routeEvents,
 
 	"POST /aliases":           routeNone,
 	"GET /aliases":            routeObjects,
@@ -248,6 +256,13 @@ func routeKey(method, pattern string) string {
 func RouteAccess(method, pattern string) (ownerOnly bool, capability string, known bool) {
 	a, ok := routeAccessTable[routeKey(method, pattern)]
 	return a.ownerOnly, a.capability, ok
+}
+
+// RouteStreams reports whether the route mounted on method and pattern
+// streams its response and filters its own frames, so the visibility
+// middleware passes it through unbuffered.
+func RouteStreams(method, pattern string) bool {
+	return routeAccessTable[routeKey(method, pattern)].stream
 }
 
 // RouteShape reports the response shape the route mounted on method

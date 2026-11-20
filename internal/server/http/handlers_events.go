@@ -11,15 +11,22 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/events"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 )
 
 // sseBuffer is how many events one connection holds before it drops.
 const sseBuffer = 64
 
-// HandleSSE streams every bus event as Server-Sent Events to the client.
+// HandleSSE streams bus events as Server-Sent Events to the client.
 // Each event is a CloudEvents JSON envelope in the SSE `data:` field.
 // The connection is held open until the client disconnects; its bus
 // subscription ends with it.
+//
+// The owner (and every caller on a private instance) gets every event.
+// Any other principal gets the object events for objects its viewer may
+// read, filtered per event (see viewerEvents); a viewer that may read
+// nothing gets an empty stream, never a 403, so the answer does not
+// reveal whether anything exists.
 //
 // Route: GET /api/v1/events
 func HandleSSE(svc *service.Service) http.HandlerFunc {
@@ -29,6 +36,16 @@ func HandleSSE(svc *service.Service) http.HandlerFunc {
 		if !ok {
 			WriteError(w, http.StatusInternalServerError, "STREAMING_UNSUPPORTED", "streaming not supported")
 			return
+		}
+
+		// A caller with no viewer attached is the zero viewer: nothing
+		// visible. Only an explicit Unrestricted viewer sees everything.
+		viewer, _ := sharing.FromContext(r.Context())
+		var filter *viewerEvents
+		pattern := "#"
+		if !viewer.IsUnrestricted() {
+			filter = newViewerEvents(svc)
+			pattern = "ctxt.runtime.object.*"
 		}
 
 		// Set SSE headers.
@@ -41,21 +58,24 @@ func HandleSSE(svc *service.Service) http.HandlerFunc {
 		// stays "connecting" and never fires open.
 		flusher.Flush()
 
-		// Channel for events delivered to this connection.
+		// Channel for events delivered to this connection. A viewer that
+		// matches nothing needs no subscription at all.
 		ch := make(chan bus.Event, sseBuffer)
-		// A sync handler runs on the publisher's goroutine, so it only
-		// hands off, and it never returns an error: that would veto the
-		// publish. Unsubscribe on disconnect, or the subscriber outlives
-		// the connection.
-		unsub := svc.Bus.Subscribe("#", func(_ context.Context, e bus.Event) error {
-			select {
-			case ch <- e:
-			default:
-				// Drop on full buffer rather than blocking the bus.
-			}
-			return nil
-		})
-		defer unsub()
+		if filter == nil || !viewer.MatchesNothing() {
+			// A sync handler runs on the publisher's goroutine, so it only
+			// hands off, and it never returns an error: that would veto
+			// the publish. Unsubscribe on disconnect, or the subscriber
+			// outlives the connection.
+			unsub := svc.Bus.Subscribe(pattern, func(_ context.Context, e bus.Event) error {
+				select {
+				case ch <- e:
+				default:
+					// Drop on full buffer rather than blocking the bus.
+				}
+				return nil
+			})
+			defer unsub()
+		}
 
 		// Stream events until client disconnects.
 		ctx := r.Context()
@@ -64,7 +84,17 @@ func HandleSSE(svc *service.Service) http.HandlerFunc {
 			case <-ctx.Done():
 				return
 			case e := <-ch:
-				ce, err := events.CloudEvent(e)
+				var ce events.Event
+				var err error
+				if filter == nil {
+					ce, err = events.CloudEvent(e)
+				} else {
+					var send bool
+					ce, send, err = filter.project(ctx, e)
+					if !send && err == nil {
+						continue
+					}
+				}
 				if err != nil {
 					slog.Warn("events: skipping event", "topic", e.Topic, "err", err)
 					continue
