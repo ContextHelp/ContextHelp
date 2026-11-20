@@ -147,7 +147,7 @@ func runList(cmd *cobra.Command, args []string) error {
 	}
 
 	if cmd.Flags().Changed("changed-after") {
-		return runListChanges(ctx, cmd, cursorName)
+		return runListChanges(ctx, cmd)
 	}
 
 	// --q is an RSQL query the instance's search engine answers
@@ -225,7 +225,7 @@ func runList(cmd *cobra.Command, args []string) error {
 // the next page comes back as next_changed_after; the caller keeps it,
 // as --cursor keeps a created_at position. Order and position flags
 // belong to other listings and are refused.
-func runListChanges(ctx context.Context, cmd *cobra.Command, cursorName string) error {
+func runListChanges(ctx context.Context, cmd *cobra.Command) error {
 	seq := viper.GetInt64("list.changed-after")
 	if seq < 0 {
 		return output.UsageError(fmt.Sprintf("--changed-after %d: want a change sequence >= 0", seq))
