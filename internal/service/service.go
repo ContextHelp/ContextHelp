@@ -587,9 +587,24 @@ func (s *Service) RetryJob(ctx context.Context, id string) error {
 	return s.Queue.Retry(ctx, id)
 }
 
-// GetEntity retrieves an entity by slug.
+// GetEntity retrieves an entity by slug. A stored slug matches exactly
+// first, dots and all; a miss falls back to slug read as a mention
+// (@namespace.name, as the CLI shows entities, or a ctxt://entity/ URI),
+// whose row key is the namespace/name slug, as EntityBacklinks reads it.
 func (s *Service) GetEntity(ctx context.Context, slug string) (*storage.Entity, error) {
-	return s.Store(ctx).Entities().Get(ctx, slug)
+	e, err := s.Store(ctx).Entities().Get(ctx, slug)
+	if err == nil || !errors.Is(err, storage.ErrNotFound) {
+		return e, err
+	}
+	u, ok := mentions.Parse(slug)
+	if !ok {
+		return e, err
+	}
+	key := storage.MentionSlug(u)
+	if key == "" || key == slug {
+		return e, err
+	}
+	return s.Store(ctx).Entities().Get(ctx, key)
 }
 
 // ResolveEntity returns the entity whose slug, else one of whose
