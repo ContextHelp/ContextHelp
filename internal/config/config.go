@@ -127,6 +127,51 @@ type Config struct {
 
 	// Sharing configures content classes and sharing (ADR-080).
 	Sharing SharingConfig `mapstructure:"sharing" yaml:"sharing"`
+
+	// GitHub configures the REST client behind the url.github.* pipelines.
+	GitHub GitHubConfig `mapstructure:"github" yaml:"github"`
+}
+
+// GitHub client defaults.
+const (
+	// DefaultGitHubAPIURL is the REST API root.
+	DefaultGitHubAPIURL = "https://api.github.com"
+	// DefaultGitHubTokenSecret is the secret the default token is read
+	// from; the env backend maps it to the GITHUB_TOKEN variable.
+	DefaultGitHubTokenSecret = "GITHUB_TOKEN"
+	// DefaultGitHubMaxWait is the longest the client sleeps out a rate
+	// limit before it gives up with a typed error.
+	DefaultGitHubMaxWait = 30 * time.Second
+)
+
+// GitHubConfig configures the GitHub REST extraction core. Tokens are
+// never written here: each names a secret in the secrets backend.
+type GitHubConfig struct {
+	// APIURL is the REST API root. Defaults to https://api.github.com;
+	// set it for GitHub Enterprise Server.
+	APIURL string `mapstructure:"api_url" yaml:"api_url" secret:"dsn"`
+	// TokenSecret names the secret holding the default token, used for
+	// every owner no account claims. Defaults to GITHUB_TOKEN. Without
+	// a value the client calls the API anonymously.
+	TokenSecret string `mapstructure:"token_secret" yaml:"token_secret" secret:"false"`
+	// MaxWait caps how long one request sleeps out a rate limit
+	// (Retry-After or the reset time) before it fails with a rate-limit
+	// error the job retry handles. Defaults to 30s.
+	MaxWait time.Duration `mapstructure:"max_wait" yaml:"max_wait"`
+	// Accounts holds per-account tokens: the first account listing an
+	// owner serves requests for that owner's repositories.
+	Accounts []GitHubAccount `mapstructure:"accounts" yaml:"accounts"`
+}
+
+// GitHubAccount is one GitHub account's token and the repository
+// owners (users or organizations, case-insensitive) it serves.
+type GitHubAccount struct {
+	// Name labels the account in logs and errors.
+	Name string `mapstructure:"name" yaml:"name"`
+	// TokenSecret names the secret holding the account's token.
+	TokenSecret string `mapstructure:"token_secret" yaml:"token_secret" secret:"false"`
+	// Owners lists the repository owners the token serves.
+	Owners []string `mapstructure:"owners" yaml:"owners"`
 }
 
 // Embedding-model lifecycle defaults (ADR-071 "Default-flip control").
@@ -1527,6 +1572,11 @@ func setDefaults(v *viper.Viper) {
 
 	// Inbox defaults — leave path empty (resolved at runtime)
 	v.SetDefault("inbox.pipeline", "text.short")
+
+	// GitHub client defaults
+	v.SetDefault("github.api_url", DefaultGitHubAPIURL)
+	v.SetDefault("github.token_secret", DefaultGitHubTokenSecret)
+	v.SetDefault("github.max_wait", DefaultGitHubMaxWait)
 
 	// Duplicates defaults
 	v.SetDefault("duplicates.policy", "warn")
