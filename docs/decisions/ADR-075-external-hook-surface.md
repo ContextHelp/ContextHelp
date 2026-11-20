@@ -1,6 +1,6 @@
 # ADR-075 – External Hook Surface: Pre and Post Hooks on ctxt and dpkms Events
 
-> **Status:** Accepted (2026-09-26), amended 2026-09-27 (see [Amendment 2026-09-27](#amendment-2026-09-27))
+> **Status:** Accepted (2026-09-26), amended 2026-09-27 (see [Amendment 2026-09-27](#amendment-2026-09-27)) and 2026-11-20 (see [Amendment 2026-11-20](#amendment-2026-11-20))
 > **Date:** 2026-09-26
 > **Author:** jadb
 > **Applies to:** dPKMS, ctxt
@@ -27,6 +27,8 @@ The owner's rule for this design: **kit is the authority on event naming and on 
 
   > **Amended 2026-09-27.** ADR-077 removes the direct writer: every ctxt command reaches dpkms through its API, and `--instance` resolves to one endpoint. This paragraph describes the code this ADR was written against; it is no longer a premise for where hooks run. See [Amendment 2026-09-27](#amendment-2026-09-27).
 - **Domain events stay on ctxt's in-process `events.LocalBus` (`svc.Bus`).** `GET /api/v1/events` streams that bus as SSE. The stream carries no event IDs and cannot be resumed.
+
+  > **Amended 2026-11-20.** `svc.Bus` is kit's `runtime/bus.Bus`; `events.LocalBus` is gone. The stream still carries no event IDs and cannot be resumed. See [Amendment 2026-11-20](#amendment-2026-11-20).
 - **`/ws/bus` carries no domain events.** It is a kit `NetworkAdapter` behind one shared `BUS_TOKEN` with no principal attached. Relay mode is off, and nothing is bridged onto it.
 - **The veto seams already in use are kit's own.**
   - `domain.Service[Pipeline]` feeds the policy engine on the hub bus.
@@ -345,3 +347,33 @@ The following statements of this ADR are **superseded**. Each is struck through 
 - **Positive:** every covered mutation runs its hooks in one process, whatever its origin. A hook cannot be skipped by choosing a different client. The first increment wires the `domain.Service` wrappers, the dispatcher and `policy.Wire` in the daemon only, and the later `cel` increment needs no CLI wiring.
 - **Negative:** configuring an `exec` hook needs write access to the dpkms host's config. Before-hook time now adds to an API request's latency, so the CLI's request timeout for covered mutations must allow for it (up to 30 s per hook).
 - **Neutral:** the first increment's scope is unchanged apart from dropping `ctxt events deliver`. `ctxt events tail` stays.
+
+---
+
+## Amendment 2026-11-20
+
+> **Status:** Accepted
+> **Scope:** the in-process bus and the SSE stream. The outbox, retention, the veto seams and the hook surface stand as written.
+
+### 1. Domain events move onto kit's bus
+
+- **`svc.Bus` is kit's `runtime/bus.Bus`.** `events.LocalBus` and `events.Bus` are removed. kit is the authority (owner rule); ctxt conforms. Every publisher and subscriber moved: the worker pool, the service, the upgrade and embedding workers, reproject, `dpkms serve`, the profile subscriber and gRPC `WatchJob`.
+- **Topics.** Every ctxt topic constant and every publish site passes `bus.ValidateTopic` (K1, K2), enforced by `internal/events/topics_guard_test.go`. None needed a rename. The inbound `aps.profile.created|updated|deleted` subscriptions have 3 segments, so they do not match K1. aps owns them and ctxt only subscribes, so they stay as aps publishes them.
+- **Handler semantics.** A sync handler runs on the publisher's goroutine and its error vetoes the publish (K6). Stream handlers hand off and return nil. The profile subscriber runs asynchronously, detached from the publisher's context, as `LocalBus` did.
+- **Leak fixed.** The SSE handler and `WatchJob` subscribed per connection and never unsubscribed, so each connect left a subscriber on the bus. Both now unsubscribe when the connection ends.
+- **What the outbox records is unchanged.** The bus stays the live, best-effort path (K6). The outbox row, written in the mutation's transaction, is the durable record. Moving the bus does not change either.
+- **SSE wire format.** Unchanged: a CloudEvents envelope. The envelope `id` is now a UUIDv5 over topic, source, time and payload, the same on every connection. When the outbox lands, its UUIDv7 `id` replaces it.
+
+### 2. The stream serves non-owners
+
+Implements ADR-080 §6 for `GET /api/v1/events`: a non-owner principal receives the object events its viewer may read, filtered per event by object ID through the scoped read `find` and `list` use; non-object events stay owner-only; a principal with no grant gets an empty `200` stream, not a 403. A delete is delivered only for an object the connection was already sent. The stream writes an SSE comment every `server.events_heartbeat` (default 15s). Details: [REST API, Events](../api/api-rest.md#events).
+
+### 3. IDs and `Last-Event-ID` resume stay with the outbox
+
+kit's `SQLiteAdapter` was probed as a source of monotonic IDs and replay, and it does not fit:
+
+- It hands handlers an `Event` of `Topic`, `Source`, `Timestamp`, `Payload` and `WorkspaceID`. The row ID is not exposed, so there is nothing to put in an `id:` field.
+- A subscriber starts at the current maximum ID. There is no replay-since-ID call and no retention or prune: the adapter's methods are `Publish`, `Subscribe`, `SubscribeAsync` and `Close`.
+- It writes its own database file, outside the mutation's transaction. Adopting it would add a second durable store beside `event_outbox`, which decision 7 and ADR-007 rule out.
+
+So the SSE `id:` field and `Last-Event-ID` replay are the outbox's job (section 4): `id:` is the row's `seq`, a reconnect replays rows after it within the 7-day retention, an older `seq` gets `410 Gone`, and the per-viewer filter above applies to replayed events as it does to live ones. Replay also removes the delete limitation of section 2: a stored delete row can carry what the viewer could read before the delete.

@@ -248,11 +248,21 @@ Notes:
 
 ### `GET /events`
 
-Server-Sent Events stream of every bus event. For an external listener (a recipe that reacts to new objects), see [Listen for events](../manual/workflows/event-listener.md).
+Server-Sent Events stream of bus events. For an external listener (a recipe that reacts to new objects), see [Listen for events](../manual/workflows/event-listener.md).
 
-- Scope `read:objects`, and the owner only today. A non-owner principal, even with `read:objects`, gets 403 `NOT_SHARED`. A listener needs an owner key. A private instance needs no key.
+- Scope `read:objects`. A private instance needs no key.
 - `Content-Type: text/event-stream`. One `data: <CloudEvents JSON>` per event, a blank line between.
-- Not provided: `id:` or `event:` fields, `Last-Event-ID` resume, heartbeat lines, topic filter. Each connection holds a 64-event buffer; events are dropped when it is full. A listener that was disconnected misses events: catch up with a ctxt cursor (`ctxt list --cursor <name> --advance`). The durable, at-least-once successor is the `event_outbox` of [ADR-075](../decisions/ADR-075-external-hook-surface.md).
+- **Owner.** Every event, with the publisher's whole payload.
+- **Any other principal** (a key with a share grant). Only object events (`object.ingested`, `object.updated`, `object.deleted`, `object.raw_stored`), only for objects its viewer may read: the same scoped read `find`, `list` and `get` use, decided per event by object ID.
+  - The payload is rebuilt from the object as the viewer reads it. `object.updated` carries `object_id` and `type`, not `fields`. `source_key` is omitted. `source` and `tags` appear only when the policy projects them.
+  - A hidden or missing object produces no event, as if it did not exist.
+  - Jobs, upgrade, inbox, embedding and every other non-object event stay owner-only.
+  - A principal with no grant gets `200` and an empty stream (heartbeats only), never `403`, so the answer does not reveal what exists.
+  - The viewer is the one compiled when the connection opened. A grant change applies when the client reconnects.
+- **Deletes.** The object is gone when `object.deleted` fires, so the viewer's read cannot decide it. A non-owner gets the event only for an object that connection was already sent an event for (it saw the object exist). A delete of any other ID is dropped. A listener that connects after the object appeared, or that missed its events, does not learn of the delete from the stream: reconcile with `find` or `list`.
+- **Heartbeat.** While the stream is idle the server writes an SSE comment line, `: heartbeat`, every `server.events_heartbeat` (default `15s`; zero or negative selects the default). Clients ignore comment lines; proxies and clients use them to tell a quiet stream from a dead one.
+- Not provided: `id:` or `event:` fields, `Last-Event-ID` resume, topic filter. Each connection holds a 64-event buffer; events are dropped when it is full. A listener that was disconnected misses events: catch up with a ctxt cursor (`ctxt list --cursor <name> --advance`). The durable, at-least-once successor, with monotonic ids and `Last-Event-ID` replay inside a retention window, is the `event_outbox` of [ADR-075](../decisions/ADR-075-external-hook-surface.md).
+- The envelope `id` is a UUIDv5 over topic, source, time and payload: the same event carries the same `id` on every connection, so a listener can deduplicate on it. It is not ordered.
 
 Envelope: `{id, source, specversion: "1.0", type, datacontenttype, time, data}`. `type` is the topic.
 
