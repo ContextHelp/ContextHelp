@@ -1,0 +1,14 @@
+# The classify step's own config (config_file above). Self-contained: the
+# step reads nothing else from the host.
+vllm_sr:
+  endpoint: http://router.internal:8899   # unreachable: regex fallback decides
+thresholds:
+  star_confidence: 0.8   # at or above: star:auto
+  review_floor: 0.5      # from here up to star_confidence: star:review
+lists:
+  triage: "triage"
+  score_floor: 0.15
+  max_per_repo: 2
+  catalog:               # used when the object has no data.star_lists
+    - {name: "agent tooling", description: "CLIs, runtimes and MCP servers for AI agents"}
+    - {name: "infrastructure", description: "servers, containers and databases"}
