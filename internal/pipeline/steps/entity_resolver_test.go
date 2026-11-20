@@ -69,7 +69,7 @@ func (s *stubEntityStore) Resolve(_ context.Context, mention string) (*storage.E
 	if e, ok := s.entities[mention]; ok {
 		return e, nil
 	}
-	return nil, fmt.Errorf("entity not found: %s", mention)
+	return nil, fmt.Errorf("entity %s: %w", mention, storage.ErrNotFound)
 }
 
 type stubEdgeStore struct {
