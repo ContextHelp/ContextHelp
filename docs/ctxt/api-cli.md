@@ -322,7 +322,7 @@ ctxt find <query> <options>
 | Flag | Description |
 |------|-------------|
 | `--fts`, `--semantic`, `--hybrid` | Mode: full-text, vector or hybrid. Default: the profile's `search_strategy.mode`, else `search.default_mode` |
-| `--profile <name>` | Search only the objects this profile owns, with its `search_strategy` |
+| `--profile <name>` | Use this profile's `search_strategy`; a lens, results still come from every profile |
 | `--limit <n>` | Max results (default 10) |
 | `--rrf-k`, `--fts-weight`, `--vector-weight`, `--fts-pool`, `--vector-pool`, `--min-score` | Override one search knob for this run |
 | `--meta-type`, `--topic`, `--person`, `--source-type`, `--since`, `--until` | Metadata filters; dates as `YYYY-MM-DD` |

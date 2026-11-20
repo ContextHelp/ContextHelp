@@ -45,9 +45,9 @@ func TestUS0053_GlobalSearchIncludesAllProfiles(t *testing.T) {
 		"global search must include objects without a profile_id")
 }
 
-// TestUS0053_PerProfileSearchReturnsIsolatedResults verifies that separate
-// per-profile searches each return only their own objects.
-func TestUS0053_PerProfileSearchReturnsIsolatedResults(t *testing.T) {
+// TestUS0053_PerProfileSearchSpansProfiles verifies that searches naming
+// different profiles each return every profile's objects.
+func TestUS0053_PerProfileSearchSpansProfiles(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -68,18 +68,14 @@ func TestUS0053_PerProfileSearchReturnsIsolatedResults(t *testing.T) {
 		}))
 	}
 
-	engObjs, engTotal, err := env.svc.SearchObjects(ctx, "type==note", 50, 0, "engineering")
-	require.NoError(t, err)
-	assert.Equal(t, 2, engTotal)
-	for _, o := range engObjs {
-		assert.Equal(t, "engineering", o.ProfileID)
+	// Whichever profile a search names, it sees all three notes.
+	for _, profile := range []string{"engineering", "security"} {
+		resp := doGet(t, env.URL+"/api/v1/search?q=type==note&profile="+profile)
+		var body searchResponse
+		decodeJSON(t, resp.Body, &body)
+		resp.Body.Close()
+		assert.Equal(t, 3, body.Total, "profile %s", profile)
 	}
-
-	secObjs, secTotal, err := env.svc.SearchObjects(ctx, "type==note", 50, 0, "security")
-	require.NoError(t, err)
-	assert.Equal(t, 1, secTotal)
-	require.Len(t, secObjs, 1)
-	assert.Equal(t, "cp-iso-sec-1", secObjs[0].ID)
 }
 
 // TestUS0053_AggregatedSearchViaHTTP verifies the REST endpoint returns objects

@@ -67,15 +67,15 @@ Restart the client or refresh its MCP server list to pick up the tools.
 
 > ctxt is the user's personal knowledge graph — captures, decisions, mentions, sessions, projects, people, recent activity. CALL THESE TOOLS FIRST whenever the user asks about themselves, their work, their recent context: "what was I doing this afternoon?" / "what did I decide about X?" / "summarize my last session on Y" / "who is Alice?" — prefer this graph over replying "I don't know."
 
-### Step 5: Profile scoping
+### Step 5: Profile lens
 
-Pass `profile` per `search` call:
+Pass `profile` per `search` call to name your focus profile. It is a lens and never narrows the results:
 
 ```
 search(query="auth bug", profile="work")
 ```
 
-Without `profile`, `search` covers every profile.
+With or without `profile`, `search` covers every profile.
 
 ## Outputs to validate
 
@@ -102,7 +102,7 @@ Without `profile`, `search` covers every profile.
 
 ### "search returns fewer results than expected"
 
-- A `profile` argument narrows to that profile; drop it to search every profile.
+- A `profile` argument never narrows the results: `search` covers every profile whatever it says, limited only by what the caller may see.
 - `executed_mode: fts_only` (no embedding model) or `fts_fallback` (the semantic leg failed) means only keyword matches came back; `diagnostics.semantic` says why.
 
 ## Not implemented

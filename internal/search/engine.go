@@ -63,10 +63,10 @@ func NewEngineWithDialect(d Dialect) *Engine {
 // Search parses an RSQL query, compiles it to SQL, and executes it through
 // objects.ListBySQL with a List filter, so it reads like a List: only active
 // objects, since the query language has no status field and none is asked
-// for. profileID, when non-empty, restricts results to objects owned by
-// that profile.
-func (e *Engine) Search(ctx context.Context, objects storage.ObjectStore, query string, limit, offset int, profileID ...string) ([]*storage.KnowledgeObject, int, error) {
-	return e.SearchAs(ctx, nil, objects, query, limit, offset, profileID...)
+// for. A focus profile never narrows a search: what a query sees is the
+// store the caller passes, scoped to the viewer (ADR-080).
+func (e *Engine) Search(ctx context.Context, objects storage.ObjectStore, query string, limit, offset int) ([]*storage.KnowledgeObject, int, error) {
+	return e.SearchAs(ctx, nil, objects, query, limit, offset)
 }
 
 // SearchAs is Search on behalf of viewer v: objects is the viewer's
@@ -75,7 +75,7 @@ func (e *Engine) Search(ctx context.Context, objects storage.ObjectStore, query 
 // with v's predicate on both sides of their edge subqueries (ADR-080
 // §7), so a hidden object never selects a visible one. A nil or
 // unrestricted v compiles as Search does.
-func (e *Engine) SearchAs(ctx context.Context, v storage.Viewer, objects storage.ObjectStore, query string, limit, offset int, profileID ...string) ([]*storage.KnowledgeObject, int, error) {
+func (e *Engine) SearchAs(ctx context.Context, v storage.Viewer, objects storage.ObjectStore, query string, limit, offset int) ([]*storage.KnowledgeObject, int, error) {
 	ast, err := Parse(query)
 	if err != nil {
 		return nil, 0, &invalidQuery{stage: "parse", cause: err}
@@ -90,9 +90,5 @@ func (e *Engine) SearchAs(ctx context.Context, v storage.Viewer, objects storage
 		return nil, 0, &invalidQuery{stage: "compile", cause: err}
 	}
 
-	filter := storage.ObjectFilter{Limit: limit, Offset: offset}
-	if len(profileID) > 0 {
-		filter.ProfileID = profileID[0]
-	}
-	return objects.ListBySQL(ctx, where, args, filter)
+	return objects.ListBySQL(ctx, where, args, storage.ObjectFilter{Limit: limit, Offset: offset})
 }

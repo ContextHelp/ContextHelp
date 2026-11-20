@@ -211,50 +211,24 @@ func TestSearchInvalidQuery(t *testing.T) {
 	}
 }
 
-// TestProfileIsolation verifies profile A cannot see profile B objects.
-func TestProfileIsolation(t *testing.T) {
+// Search takes no profile: objects of every profile, and of none, are
+// hits, so a profile can only be a lens on top of it.
+func TestSearchSpansEveryProfile(t *testing.T) {
 	driver := storageutil.NewTestDriver(t)
 	engine := NewEngine(driver)
 	ctx := context.Background()
 
-	// obj-a belongs to profile "alice", obj-b to "bob", obj-g is global ("").
 	seedObjectWithProfile(t, driver, "obj-a", "note", nil, "alice")
 	seedObjectWithProfile(t, driver, "obj-b", "note", nil, "bob")
 	seedObjectWithProfile(t, driver, "obj-g", "note", nil, "")
 
-	// Alice's scoped search should return only obj-a.
-	results, total, err := engine.Search(ctx, driver.Objects(), "type==note", 10, 0, "alice")
+	_, total, err := engine.Search(ctx, driver.Objects(), "type==note", 10, 0)
 	if err != nil {
-		t.Fatalf("search alice: %v", err)
-	}
-	if total != 1 {
-		t.Errorf("alice total: got %d, want 1", total)
-	}
-	if len(results) != 1 || results[0].ID != "obj-a" {
-		t.Errorf("alice results: got %v", results)
-	}
-
-	// Bob's scoped search should return only obj-b.
-	results, total, err = engine.Search(ctx, driver.Objects(), "type==note", 10, 0, "bob")
-	if err != nil {
-		t.Fatalf("search bob: %v", err)
-	}
-	if total != 1 {
-		t.Errorf("bob total: got %d, want 1", total)
-	}
-	if len(results) != 1 || results[0].ID != "obj-b" {
-		t.Errorf("bob results: got %v", results)
-	}
-
-	// Unscoped search returns all three.
-	results, total, err = engine.Search(ctx, driver.Objects(), "type==note", 10, 0)
-	if err != nil {
-		t.Fatalf("search global: %v", err)
+		t.Fatalf("search: %v", err)
 	}
 	if total != 3 {
-		t.Errorf("global total: got %d, want 3", total)
+		t.Errorf("total: got %d, want 3", total)
 	}
-	_ = results
 }
 
 // TestSearchStatusScope pins that a query-language search reads like List:

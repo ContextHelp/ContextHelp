@@ -129,9 +129,10 @@ func TestUS0030_EmptyProfileIDIsGlobal(t *testing.T) {
 	assert.Empty(t, got.ProfileID, "object without profile must have empty ProfileID")
 }
 
-// TestUS0030_SearchFilteredByProfileReturnsCorrectObjects verifies that search
-// scoped to a ProfileID returns only objects with that profile, not global ones.
-func TestUS0030_SearchFilteredByProfileReturnsCorrectObjects(t *testing.T) {
+// TestUS0030_SearchWithProfileReturnsGlobalObjectsToo verifies that a search
+// naming a profile returns that profile's objects and the global ones: the
+// profile is a lens, not a filter.
+func TestUS0030_SearchWithProfileReturnsGlobalObjectsToo(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -155,16 +156,12 @@ func TestUS0030_SearchFilteredByProfileReturnsCorrectObjects(t *testing.T) {
 	require.NoError(t, env.driver.Objects().Create(ctx, founderObj))
 	require.NoError(t, env.driver.Objects().Create(ctx, globalObj))
 
-	// SearchObjects with profileID="founder" should return only founder-scoped objects.
-	results, total, err := env.svc.SearchObjects(ctx, "type==article", 100, 0, "founder")
-	require.NoError(t, err)
-
-	assert.GreaterOrEqual(t, total, 1, "at least one founder-scoped object expected")
-
-	for _, r := range results {
-		assert.Equal(t, "founder", r.ProfileID,
-			"all results must belong to the founder profile, got ProfileID=%q", r.ProfileID)
-	}
+	resp := doGet(t, env.URL+"/api/v1/search?q=type==article&profile=founder")
+	defer resp.Body.Close()
+	var body searchResponse
+	decodeJSON(t, resp.Body, &body)
+	assert.True(t, containsID(body.Data, "search-founder-obj"))
+	assert.True(t, containsID(body.Data, "search-global-obj"), "global objects stay visible under a profile")
 }
 
 // TestUS0030_MultipleProfilesCoexistIndependently verifies that objects from
