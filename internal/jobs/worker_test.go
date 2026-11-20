@@ -660,3 +660,36 @@ func TestProcessJobMentionEdgesCarryProvenance(t *testing.T) {
 		storage.ProvenanceSourceField: storage.MentionSourceRawContent,
 	}, edges[0].Metadata)
 }
+
+func TestEmitObjectIngestedCarriesSourceAndSourceKey(t *testing.T) {
+	bus := events.NewLocalBus()
+	var mu sync.Mutex
+	var got []events.Event
+	bus.Subscribe(string(events.TopicObjectIngested), func(_ context.Context, e events.Event) error {
+		mu.Lock()
+		got = append(got, e)
+		mu.Unlock()
+		return nil
+	})
+	pool := &WorkerPool{bus: bus}
+	pool.emitObjectIngested(context.Background(), &storage.KnowledgeObject{
+		ID: "o1", Type: "text", Source: "yta", SourceKey: "yta:vid1",
+	}, 5)
+	time.Sleep(100 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(got) != 1 {
+		t.Fatalf("events: got %d, want 1", len(got))
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(got[0].Data, &raw); err != nil {
+		t.Fatal(err)
+	}
+	if raw["source"] != "yta" {
+		t.Errorf("source: got %v, want yta", raw["source"])
+	}
+	if raw["source_key"] != "yta:vid1" {
+		t.Errorf("source_key: got %v, want yta:vid1", raw["source_key"])
+	}
+}

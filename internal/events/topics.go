@@ -139,6 +139,8 @@ const (
 type ObjectIngestedPayload struct {
 	ObjectID   string   `json:"object_id"`
 	Type       string   `json:"type"`
+	Source     string   `json:"source"`
+	SourceKey  string   `json:"source_key"`
 	Pipeline   string   `json:"pipeline"`
 	Tags       []string `json:"tags"`
 	ProfileID  string   `json:"profile_id"`

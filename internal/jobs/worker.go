@@ -536,6 +536,8 @@ func (p *WorkerPool) emitObjectIngested(ctx context.Context, draft *storage.Know
 	ev, err := events.NewEvent(SourceWorkerPool, string(TopicObjectIngested), events.ObjectIngestedPayload{
 		ObjectID:   draft.ID,
 		Type:       draft.Type,
+		Source:     draft.Source,
+		SourceKey:  draft.SourceKey,
 		Pipeline:   draft.Pipeline,
 		Tags:       tags,
 		DurationMs: durationMs,
