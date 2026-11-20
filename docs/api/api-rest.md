@@ -259,10 +259,30 @@ Server-Sent Events stream of bus events. For an external listener (a recipe that
   - Jobs, upgrade, embedding and every other non-object event stay owner-only, and so do the inbox events (`inbox.captured`, `inbox.triaged`): the inbox is an owner-only surface, so a non-owner never receives them even though they carry an object.
   - A principal with no grant gets `200` and an empty stream (heartbeats only), never `403`, so the answer does not reveal what exists.
   - The stream follows the caller. Each event, and each heartbeat, authenticates the credential again and resolves the viewer as it is then (the check is reused for at most 2 seconds during a burst of events). A grant revoked or added mid-stream applies to the next event, with no reconnect. When the key or session itself is revoked or expires, the server writes a final comment, `: closed: credential no longer valid`, and ends the stream. This holds for the owner's key too; a private instance has no credential to check.
-- **Deletes.** The object is gone when `object.deleted` fires, so the viewer's read cannot decide it. A non-owner gets the event only for an object that connection was already sent an event for (it saw the object exist). A delete of any other ID is dropped. A listener that connects after the object appeared, or that missed its events, does not learn of the delete from the stream: reconcile with `find` or `list`.
+- **Deletes.** The object is gone when `object.deleted` fires, so the viewer's read cannot decide it. A non-owner gets the event only for an object that connection was already sent an event for (it saw the object exist), a replayed event included: a replay that delivers an object's `object.ingested` or `object.updated` and then its `object.deleted` delivers both. A delete of any other ID is dropped, so a listener that was away while an object it knew was deleted does not learn of it from the stream: reconcile with `find` or `list`. (The delete row does not record what the viewer could read before the deletion, so the stream cannot decide it for an object the connection never saw.)
 - **Heartbeat.** While the stream is idle the server writes an SSE comment line, `: heartbeat`, every `server.events_heartbeat` (default `15s`; zero or negative selects the default). Clients ignore comment lines; proxies and clients use them to tell a quiet stream from a dead one.
-- Not provided: `id:` or `event:` fields, `Last-Event-ID` resume, topic filter. Each connection holds a 64-event buffer; events are dropped when it is full. A listener that was disconnected misses events: catch up with a ctxt cursor (`ctxt list --cursor <name> --advance`). The durable, at-least-once successor, with monotonic ids and `Last-Event-ID` replay inside a retention window, is the `event_outbox` of [ADR-075](../decisions/ADR-075-external-hook-surface.md).
-- The envelope `id` is a UUIDv5 over topic, source, time and payload: the same event carries the same `id` on every connection, so a listener can deduplicate on it. It is not ordered.
+- Not provided: `event:` fields and a topic filter.
+
+#### Event ids and resume
+
+Object events (`object.ingested`, `object.updated`, `object.deleted`, `object.raw_stored`) are written to the `event_outbox` table in the transaction of the change that caused them ([ADR-075](../decisions/ADR-075-external-hook-surface.md) §4), and the stream serves them from it.
+
+- **`id:`.** Each object event frame starts with `id: <seq>`, the row's position in the outbox: a positive integer that grows with every row and is never reused. Events that are not object events (jobs, upgrades, embeddings; owner-only) are live from the bus and carry no `id:` line. An `EventSource` remembers the last `id:` and sends it back on reconnect.
+- **Envelope `id`.** An object event's envelope `id` is the row's UUIDv7, the same on every connection and on replay: deduplicate on it. Other events keep the UUIDv5 over topic, source, time and payload.
+- **Resume.** `Last-Event-ID: <seq>` (header, or the `last_event_id` query parameter for clients that cannot set headers; the header wins) replays the rows with a greater `seq`, then follows live. `Last-Event-ID: 0` replays everything retained. Without either, the stream starts at the present: nothing earlier is sent.
+- **Gap-free switch.** One cursor reads the outbox: a replay reads rows in `seq` order, a page at a time, until none is left, and the live tail reads from the same cursor when a new row is committed. A row written during the replay is read as part of it, and no row is read twice. The bus only wakes the stream; a lost wake-up is made up at the next heartbeat.
+- **Viewer filter.** Replayed rows go through the same per-viewer filter, caller re-check and payload projection as live ones. A replay under a grant that has since been revoked yields nothing for what it no longer reads, and a hidden object's rows never arrive.
+- **Retention.** Rows are kept `server.events_retention` (default `168h`, 7 days) and pruned hourly. The newest row is always kept.
+- **`410 Gone`.** An id older than the oldest retained row (`Last-Event-ID` below the pruned floor), or ahead of the newest row the instance wrote (a restored database), is answered before the stream starts:
+
+  ```json
+  {"error": {"code": "EVENT_ID_EXPIRED",
+             "message": "the event id is older than the retained events; resync from the API and reconnect without Last-Event-ID",
+             "details": {"oldest_retained": 1840, "newest": 2210}}}
+  ```
+
+  Recover by re-reading current state through the API (`find`, `list`, or a ctxt cursor), then reconnect without `Last-Event-ID`, or with `newest` from the body. An `EventSource` that gets a non-200 answer stops reconnecting; the client must open a new one. A malformed id is `400 INVALID_EVENT_ID`.
+- **Delivery.** Events are delivered at least once: a client that reconnects with the last `id:` it processed gets every later row, and may see one it had already handled if it did not record the id. Each connection still holds a 64-event buffer for the non-object events; those are dropped when it is full. Not built yet: pull (`?after=`), webhooks, the `/ws/bus` mirror and the hooks ([ADR-075](../decisions/ADR-075-external-hook-surface.md)).
 
 Envelope: `{id, source, specversion: "1.0", type, datacontenttype, time, data}`. `type` is the topic.
 
