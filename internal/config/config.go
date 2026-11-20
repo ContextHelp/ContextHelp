@@ -729,6 +729,10 @@ const (
 	// DefaultEventsHeartbeat is how often an idle GET /api/v1/events
 	// stream writes a keep-alive comment (server.events_heartbeat).
 	DefaultEventsHeartbeat = 15 * time.Second
+	// DefaultEventsRetention is how long the event outbox keeps a row
+	// (server.events_retention): the window a Last-Event-ID resume can
+	// reach back over.
+	DefaultEventsRetention = 7 * 24 * time.Hour
 )
 
 // ServerConfig represents server configuration
@@ -752,6 +756,10 @@ type ServerConfig struct {
 	// writes an SSE comment line, so proxies and clients can tell a
 	// quiet stream from a dead one. Zero or negative means the default.
 	EventsHeartbeat time.Duration `mapstructure:"events_heartbeat" yaml:"events_heartbeat"`
+	// EventsRetention is how long the event outbox keeps a row. A
+	// Last-Event-ID older than that is answered 410 Gone. Zero or
+	// negative means the default (7 days).
+	EventsRetention time.Duration `mapstructure:"events_retention" yaml:"events_retention"`
 	// Access classifies the instance: "private" (default), "protected",
 	// or "public". Empty means unset; EffectiveAccess resolves the
 	// default and the legacy server.public shorthand.
@@ -1528,6 +1536,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("server.dev", false)
 	v.SetDefault("server.reminder_interval", DefaultReminderInterval)
 	v.SetDefault("server.events_heartbeat", DefaultEventsHeartbeat)
+	v.SetDefault("server.events_retention", DefaultEventsRetention)
 
 	// Federation receive-side defaults
 	v.SetDefault("federation.max_request_bytes", DefaultFederationMaxRequestBytes)

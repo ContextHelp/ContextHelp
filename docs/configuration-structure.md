@@ -77,6 +77,7 @@ server:
   access: private              # private | protected | public
   reminder_interval: 1m
   events_heartbeat: 15s
+  events_retention: 168h       # event outbox retention (7 days)
 
 jobs:
   poll_interval: 500ms
