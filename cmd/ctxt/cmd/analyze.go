@@ -269,6 +269,7 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 		NoFanout:  noFanout,
 		Force:     noDedup,
 		SourceKey: sourceKey,
+		Profile:   activeProfileName(cmd),
 		Mentions:  userMentions,
 		Hints:     userHints,
 		Note:      note,
