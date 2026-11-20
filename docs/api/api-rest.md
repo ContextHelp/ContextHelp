@@ -121,6 +121,7 @@ Core endpoints:
 - `GET /jobs/{id}`
 - `POST /jobs/{id}/retry`
 - `POST /jobs/{id}/cancel`
+- `GET /events` (SSE)
 - `GET /objects`
 - `GET /objects/facets`
 - `GET /objects/{id}`
@@ -233,6 +234,37 @@ Notes:
   "status": "pending"
 }
 ```
+
+---
+
+## Events
+
+### `GET /events`
+
+Server-Sent Events stream of every bus event. For an external listener (a recipe that reacts to new objects), see [Listen for events](../manual/workflows/event-listener.md).
+
+- Scope `read:objects`, and the owner only today. A non-owner principal, even with `read:objects`, gets 403 `NOT_SHARED`. A listener needs an owner key. A private instance needs no key.
+- `Content-Type: text/event-stream`. One `data: <CloudEvents JSON>` per event, a blank line between.
+- Not provided: `id:` or `event:` fields, `Last-Event-ID` resume, heartbeat lines, topic filter. Each connection holds a 64-event buffer; events are dropped when it is full. A listener that was disconnected misses events: catch up with a ctxt cursor (`ctxt list --cursor <name> --advance`). The durable, at-least-once successor is the `event_outbox` of [ADR-075](../decisions/ADR-075-external-hook-surface.md).
+
+Envelope: `{id, source, specversion: "1.0", type, datacontenttype, time, data}`. `type` is the topic.
+
+| Topic | `source` | `data` |
+|---|---|---|
+| `ctxt.runtime.object.ingested` | `worker.pool` | `object_id`, `type`, `source`, `source_key`, `pipeline`, `tags` (labels), `profile_id`, `duration_ms` |
+| `ctxt.runtime.object.updated` | `service.objects` | `object_id`, `type`, `fields` (always `null` today) |
+| `ctxt.runtime.object.deleted` | `service.objects` | `object_id` |
+| `ctxt.runtime.job.enqueued` | `service.analyze` | the full job, including its payload |
+| `ctxt.runtime.job.completed` | `worker.pool` | `job_id`, `object_count`, `duration_ms` |
+| `ctxt.runtime.job.failed` | `worker.pool` | `job_id`, `error`, `object_id` |
+
+`object.ingested` example:
+
+```
+data: {"id":"…","source":"worker.pool","specversion":"1.0","type":"ctxt.runtime.object.ingested","datacontenttype":"application/json","time":"2026-11-19T21:30:00Z","data":{"object_id":"852e0fac-…","type":"text","source":"yta","source_key":"","pipeline":"text.short","tags":["star-candidate"],"profile_id":"","duration_ms":173}}
+```
+
+`source` is the object's source (`yta`, `cli`, ...). `source_key` is the object's external dedup key; it is empty for objects created through the job pipeline, which does not persist one. Reinforced duplicates (existing content hash) publish no `object.ingested`. `ctxt ingest` and importer-direct writes publish no events.
 
 ---
 
