@@ -31,3 +31,7 @@ func (o systemReprocessObjects) GetObject(ctx context.Context, id string) (*stor
 func (o systemReprocessObjects) UpdateObject(ctx context.Context, obj *storage.KnowledgeObject) error {
 	return o.svc.UpdateObject(asSystem(ctx), obj)
 }
+
+func (o systemReprocessObjects) PersistMentionEdges(ctx context.Context, obj *storage.KnowledgeObject) error {
+	return o.svc.PersistMentionEdges(asSystem(ctx), obj)
+}

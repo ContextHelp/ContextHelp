@@ -69,6 +69,15 @@ type ReprocessObjects interface {
 	UpdateObject(ctx context.Context, obj *storage.KnowledgeObject) error
 }
 
+// MentionWriter is the part of ReprocessObjects a step that produces
+// mentions needs: it persists the thin entity rows and the mention edges
+// of obj's mentions, the writers of those edges' shared step. A
+// ReprocessObjects that does not implement it leaves the edges alone.
+// *service.Service implements it.
+type MentionWriter interface {
+	PersistMentionEdges(ctx context.Context, obj *storage.KnowledgeObject) error
+}
+
 // Reprocessor runs reprocess jobs.
 type Reprocessor struct {
 	Objects ReprocessObjects
@@ -119,6 +128,16 @@ func (r *Reprocessor) Handle(ctx context.Context, job *storage.Job) (string, err
 	out.UpdatedAt = time.Now().UTC().Truncate(time.Second)
 	if err := r.Objects.UpdateObject(ctx, out); err != nil {
 		return "", fmt.Errorf("reprocess %s: update object: %w", p.ObjectID, err)
+	}
+	if p.Step == StepEntityExtractor {
+		// The step's mentions are the edges' source of truth (ADR-049):
+		// write the rows and edges the ingest worker would have written,
+		// with the provenance of the entity_mention nodes the step added.
+		if w, ok := r.Objects.(MentionWriter); ok {
+			if err := w.PersistMentionEdges(ctx, out); err != nil {
+				return "", fmt.Errorf("reprocess %s: mention edges: %w", p.ObjectID, err)
+			}
+		}
 	}
 	return out.ID, nil
 }
