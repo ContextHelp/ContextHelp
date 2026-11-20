@@ -76,6 +76,7 @@ server:
   workers: 4                   # job workers; --workers wins
   access: private              # private | protected | public
   reminder_interval: 1m
+  events_heartbeat: 15s
 
 jobs:
   poll_interval: 500ms

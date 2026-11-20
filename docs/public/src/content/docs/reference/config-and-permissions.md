@@ -56,6 +56,7 @@ The other serve settings follow the same order (flag, env var, file, default):
 | Job workers | `--workers` | `DPKMS_WORKERS` | `server.workers` | 4 |
 | Dev-server CORS | `--dev` | | `server.dev` | false |
 | Reminder check interval | `--reminder-interval` | | `server.reminder_interval` | 1m |
+| Idle event-stream heartbeat | | | `server.events_heartbeat` | 15s |
 | External steps directory | `--steps-path` | | `steps.path` | `~/.config/contexthelp/steps` |
 | Default focus profile | `--profile` | `CTXT_PROFILE` | `profile.default` | the only profile, if one is defined |
 
