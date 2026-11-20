@@ -211,11 +211,13 @@ github:
 | `github.api_url` | `https://api.github.com` | REST API root. |
 | `github.credential` | `GITHUB_TOKEN` | Secret holding the default token, used for every owner no account claims. An unset secret means anonymous calls. |
 | `github.max_wait` | `30s` | A rate limit (reset time or `Retry-After`) longer than this is not slept out: the job fails with a rate-limit error and the job retry tries again later. |
-| `github.accounts[].name` | | Label used in errors. |
+| `github.accounts[].name` | | Label used in errors; `ctxt import github --star-lists --account <name>` selects the account by it. |
 | `github.accounts[].credential` | | Secret holding the account's token. Required. |
 | `github.accounts[].owners` | | Repository owners (users or organizations, case-insensitive) the token serves. Required; an owner may belong to one account only. |
 
 `dpkms config validate` rejects a missing credential or owner list, an owner claimed twice, a negative `max_wait` and a non-HTTP `api_url`.
+
+The same client calls the GraphQL API (`/graphql`; Enterprise Server `/api/graphql`, derived from `api_url`) for `ctxt import github --star-lists`. A GraphQL rate limit is slept out or fails like a REST one. GitHub Lists are readable only by their owner, so the account's token must belong to the user whose stars are imported; scope `user` (classic) or the fine-grained equivalent.
 
 ### Send write requests from scripts
 

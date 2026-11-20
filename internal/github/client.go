@@ -1,6 +1,7 @@
 package github
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -131,7 +132,12 @@ func sleepCtx(ctx context.Context, d time.Duration) error {
 // of owner and returns the body. accept overrides the Accept header when
 // non-empty. 304 answers are served from the ETag cache.
 func (c *Client) get(ctx context.Context, owner, path, accept string) ([]byte, error) {
-	target := c.baseURL + path
+	return c.do(ctx, http.MethodGet, c.baseURL+path, owner, accept, nil)
+}
+
+// do performs one request on behalf of owner with the rate-limit and
+// retry handling every call shares. Only GET answers are ETag-cached.
+func (c *Client) do(ctx context.Context, method, target, owner, accept string, payload []byte) ([]byte, error) {
 	token, err := c.tokens.Token(ctx, owner)
 	if err != nil {
 		return nil, err
@@ -142,24 +148,15 @@ func (c *Client) get(ctx context.Context, owner, path, accept string) ([]byte, e
 	cacheKey := accept + "\x00" + token + "\x00" + target
 
 	for attempt := 0; ; attempt++ {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+		req, err := c.newRequest(ctx, method, target, accept, token, payload)
 		if err != nil {
 			return nil, err
 		}
-		req.Header.Set("Accept", accept)
-		req.Header.Set("X-GitHub-Api-Version", apiVersion)
-		req.Header.Set("User-Agent", c.userAgent)
-		if token != "" {
-			req.Header.Set("Authorization", "Bearer "+token)
-		}
-		cached, haveCached := c.cache.get(cacheKey)
-		if haveCached {
-			req.Header.Set("If-None-Match", cached.etag)
-		}
+		cached, haveCached := c.conditional(req, cacheKey)
 
 		resp, err := c.hc.Do(req)
 		if err != nil {
-			return nil, fmt.Errorf("github: GET %s: %w", target, err)
+			return nil, fmt.Errorf("github: %s %s: %w", method, target, err)
 		}
 		body, rerr := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
 		resp.Body.Close()
@@ -170,14 +167,18 @@ func (c *Client) get(ctx context.Context, owner, path, accept string) ([]byte, e
 		switch {
 		case resp.StatusCode == http.StatusNotModified && haveCached:
 			return cached.body, nil
+		case resp.StatusCode >= 200 && resp.StatusCode < 300 && method == http.MethodPost && graphqlRateLimited(body):
+			// GraphQL answers its rate limit with 200: handle it as the
+			// 403 REST gives, from the same headers.
+			resp.StatusCode = http.StatusForbidden
 		case resp.StatusCode >= 200 && resp.StatusCode < 300:
-			if etag := resp.Header.Get("ETag"); etag != "" {
+			if etag := resp.Header.Get("ETag"); etag != "" && method == http.MethodGet {
 				c.cache.put(cacheKey, etag, body)
 			}
 			return body, nil
 		}
 
-		wait, retry, err := c.failure(resp, body, target, attempt)
+		wait, retry, err := c.failure(resp, method, body, target, attempt)
 		if !retry {
 			return nil, err
 		}
@@ -187,10 +188,45 @@ func (c *Client) get(ctx context.Context, owner, path, accept string) ([]byte, e
 	}
 }
 
+// conditional adds If-None-Match to a GET with a cached answer and
+// returns that answer.
+func (c *Client) conditional(req *http.Request, key string) (cachedBody, bool) {
+	if req.Method != http.MethodGet {
+		return cachedBody{}, false
+	}
+	cached, ok := c.cache.get(key)
+	if ok {
+		req.Header.Set("If-None-Match", cached.etag)
+	}
+	return cached, ok
+}
+
+// newRequest builds one API request with the headers every call carries.
+func (c *Client) newRequest(ctx context.Context, method, target, accept, token string, payload []byte) (*http.Request, error) {
+	var rd io.Reader
+	if payload != nil {
+		rd = bytes.NewReader(payload)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, target, rd)
+	if err != nil {
+		return nil, err
+	}
+	if payload != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	req.Header.Set("Accept", accept)
+	req.Header.Set("X-GitHub-Api-Version", apiVersion)
+	req.Header.Set("User-Agent", c.userAgent)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	return req, nil
+}
+
 // failure maps a non-success response to its error. retry is true when
 // the request should be repeated after wait; otherwise err is final.
-func (c *Client) failure(resp *http.Response, body []byte, target string, attempt int) (wait time.Duration, retry bool, err error) {
-	ae := &APIError{Status: resp.StatusCode, Method: http.MethodGet, URL: target, Message: messageOf(body)}
+func (c *Client) failure(resp *http.Response, method string, body []byte, target string, attempt int) (wait time.Duration, retry bool, err error) {
+	ae := &APIError{Status: resp.StatusCode, Method: method, URL: target, Message: messageOf(body)}
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized:
 		ae.err = ErrUnauthorized
