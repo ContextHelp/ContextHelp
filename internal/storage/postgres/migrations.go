@@ -401,6 +401,29 @@ var pgMigrations = []pgMigration{
 		`DROP INDEX IF EXISTS idx_objects_source_key`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_objects_source_key_profile ON objects(source_key, profile_id) WHERE source_key <> ''`,
 	}},
+	// event_outbox and instance_meta (ADR-075 §4), mirroring SQLite
+	// migration 056. seq is BIGSERIAL; appends take an advisory lock so
+	// seq order is commit order (see appendOutboxTx).
+	{Version: 37, Name: "event_outbox + instance_meta", Statements: []string{
+		`CREATE TABLE IF NOT EXISTS event_outbox (
+			seq         BIGSERIAL PRIMARY KEY,
+			id          TEXT NOT NULL UNIQUE,
+			topic       TEXT NOT NULL,
+			source      TEXT NOT NULL,
+			occurred_at TIMESTAMPTZ NOT NULL,
+			origin      TEXT NOT NULL DEFAULT '',
+			actor       TEXT NOT NULL DEFAULT '',
+			instance_id TEXT NOT NULL,
+			object_id   TEXT NOT NULL DEFAULT '',
+			payload     TEXT NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_event_outbox_occurred_at ON event_outbox(occurred_at)`,
+		`CREATE TABLE IF NOT EXISTS instance_meta (
+			singleton             INTEGER PRIMARY KEY CHECK (singleton = 1),
+			instance_id           TEXT NOT NULL,
+			outbox_pruned_through BIGINT NOT NULL DEFAULT 0
+		)`,
+	}},
 }
 
 // sharingRegistryStatements create the sharing registry and add the

@@ -91,6 +91,9 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 	if err := upsertObjectNodesTx(ctx, tx, obj.ID, obj.Graph); err != nil {
 		return fmt.Errorf("create object nodes: %w", err)
 	}
+	if err := appendOutboxTx(ctx, tx); err != nil {
+		return err
+	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("create object: commit: %w", err)
 	}
@@ -329,6 +332,9 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 	if err := upsertObjectNodesTx(ctx, tx, obj.ID, obj.Graph); err != nil {
 		return fmt.Errorf("update object nodes: %w", err)
 	}
+	if err := appendOutboxTx(ctx, tx); err != nil {
+		return err
+	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("update object: commit: %w", err)
 	}
@@ -355,13 +361,24 @@ func (s *ObjectStore) TransitionStatus(ctx context.Context, id, from, to string,
 }
 
 func (s *ObjectStore) Delete(ctx context.Context, id string) error {
-	result, err := s.db.ExecContext(ctx, "DELETE FROM objects WHERE id = $1", id)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("delete object: begin tx: %w", err)
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, "DELETE FROM objects WHERE id = $1", id)
 	if err != nil {
 		return fmt.Errorf("delete object: %w", err)
 	}
 	n, _ := result.RowsAffected()
 	if n == 0 {
 		return fmt.Errorf("delete object %s: %w", id, storage.ErrNotFound)
+	}
+	if err := appendOutboxTx(ctx, tx); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("delete object: commit: %w", err)
 	}
 	return nil
 }
