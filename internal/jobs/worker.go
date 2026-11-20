@@ -313,7 +313,8 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 
 	draft.ReinforcementCount = 1
 
-	if err := p.store.Objects().Create(ctx, draft); err != nil {
+	ingestCtx, ingestEv := p.announceIngested(ctx, draft, durationMs)
+	if err := p.store.Objects().Create(ingestCtx, draft); err != nil {
 		// Unique constraint race: another worker inserted the same hash
 		// (in the same profile) concurrently.
 		if errors.Is(err, storage.ErrAlreadyExists) {
@@ -361,7 +362,7 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 	}
 
 	durationMs = time.Since(start).Milliseconds()
-	p.emitObjectIngested(ctx, draft, durationMs)
+	p.publishAfter(ctx, ingestEv)
 	p.markCompleted(ctx, job.ID, draft.ID, durationMs)
 
 	// Post-ingest fan-out enrichment (bidirectional edges, audit log).
@@ -414,12 +415,13 @@ func (p *WorkerPool) updateStored(ctx context.Context, job *storage.Job, stored 
 	stored.ReinforcementCount++
 	stored.LastReinforcedAt = &now
 	stored.UpdatedAt = now
-	if err := p.store.Objects().Update(ctx, stored); err != nil {
+	uctx, upEv := p.announceUpdated(ctx, stored, fields)
+	if err := p.store.Objects().Update(uctx, stored); err != nil {
 		p.retryOrFail(ctx, job.ID, fmt.Sprintf("update by source key: %s", err), stored.ID)
 		return
 	}
 	p.writeSubmissionEdges(ctx, stored, job)
-	p.emitObjectUpdated(ctx, stored, fields)
+	p.publishAfter(ctx, upEv)
 	p.markCompleted(ctx, job.ID, stored.ID, durationMs)
 }
 
@@ -441,11 +443,12 @@ func (p *WorkerPool) applySubmission(ctx context.Context, job *storage.Job, id s
 		return
 	}
 	stored.UpdatedAt = time.Now()
-	if err := p.store.Objects().Update(ctx, stored); err != nil {
+	uctx, upEv := p.announceUpdated(ctx, stored, fields)
+	if err := p.store.Objects().Update(uctx, stored); err != nil {
 		slog.Warn("jobs: apply submission: update object", "object", id, "err", err)
 		return
 	}
-	p.emitObjectUpdated(ctx, stored, fields)
+	p.publishAfter(ctx, upEv)
 }
 
 // writeSubmissionEdges writes the mention edges for the mentions the job
@@ -461,17 +464,23 @@ func (p *WorkerPool) writeSubmissionEdges(ctx context.Context, stored *storage.K
 	}
 }
 
-func (p *WorkerPool) emitObjectUpdated(ctx context.Context, obj *storage.KnowledgeObject, fields []string) {
-	if p.bus == nil || len(fields) == 0 {
-		return
-	}
-	ev := kitbus.NewEvent(events.TopicObjectUpdated, SourceWorkerPool, events.ObjectUpdatedPayload{
+// announceUpdated attaches the object.updated after event for the
+// object store to write in the update's transaction.
+func (p *WorkerPool) announceUpdated(ctx context.Context, obj *storage.KnowledgeObject, fields []string) (context.Context, *storage.OutboxEvent) {
+	return events.Announce(ctx, events.TopicObjectUpdated, SourceWorkerPool, events.OriginJob, "", obj.ID, events.ObjectUpdatedPayload{
 		ObjectID: obj.ID,
 		Type:     obj.Type,
 		Fields:   fields,
 	})
-	if pubErr := p.bus.Publish(ctx, ev); pubErr != nil {
-		slog.Warn("jobs: failed to publish object.updated event", "object", obj.ID, "err", pubErr)
+}
+
+// publishAfter sends the live copy of a committed after event.
+func (p *WorkerPool) publishAfter(ctx context.Context, ev *storage.OutboxEvent) {
+	if p.bus == nil || ev == nil {
+		return
+	}
+	if err := events.Publish(ctx, p.bus, ev); err != nil {
+		slog.Warn("jobs: failed to publish after event", "topic", ev.Topic, "err", err)
 	}
 }
 
@@ -644,26 +653,23 @@ func (p *WorkerPool) emitFailed(ctx context.Context, jobID, reason string, objec
 	}
 }
 
-func (p *WorkerPool) emitObjectIngested(ctx context.Context, draft *storage.KnowledgeObject, durationMs int64) {
-	if p.bus == nil {
-		return
-	}
+// announceIngested attaches the object.ingested after event for the
+// object store to write in the create's transaction.
+func (p *WorkerPool) announceIngested(ctx context.Context, draft *storage.KnowledgeObject, durationMs int64) (context.Context, *storage.OutboxEvent) {
 	tags := make([]string, len(draft.Tags))
 	for i, t := range draft.Tags {
 		tags[i] = t.Label
 	}
-	ev := kitbus.NewEvent(TopicObjectIngested, SourceWorkerPool, events.ObjectIngestedPayload{
+	return events.Announce(ctx, TopicObjectIngested, SourceWorkerPool, events.OriginJob, "", draft.ID, events.ObjectIngestedPayload{
 		ObjectID:   draft.ID,
 		Type:       draft.Type,
 		Source:     draft.Source,
 		SourceKey:  draft.SourceKey,
 		Pipeline:   draft.Pipeline,
 		Tags:       tags,
+		ProfileID:  draft.ProfileID,
 		DurationMs: durationMs,
 	})
-	if pubErr := p.bus.Publish(ctx, ev); pubErr != nil {
-		slog.Warn("jobs: failed to publish object.ingested event", "object", draft.ID, "err", pubErr)
-	}
 }
 
 func (p *WorkerPool) recoverStaleLoop(ctx context.Context) error {

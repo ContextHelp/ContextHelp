@@ -13,6 +13,7 @@ import (
 	kitbus "hop.top/kit/go/runtime/bus"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	uri "hop.top/cite/scheme"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
@@ -375,6 +376,55 @@ func TestWorkerPoolEmitsObjectCreated(t *testing.T) {
 	}
 }
 
+// An ingest writes its object.ingested event to the outbox in the
+// transaction of the object's insert, with or without a bus.
+func TestWorkerPoolIngestWritesOutboxRow(t *testing.T) {
+	for _, withBus := range []bool{true, false} {
+		t.Run(fmt.Sprintf("bus=%v", withBus), func(t *testing.T) {
+			driver := storageutil.NewTestDriver(t)
+			q := NewQueue(driver.Jobs())
+			var b kitbus.Bus
+			if withBus {
+				b = kitbus.New()
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			job := makeJob("job-ob-1")
+			job.Payload = "outbox row content"
+			job.Pipeline = "text.short"
+			q.Enqueue(ctx, job)
+			pool := NewWorkerPool(q, builtins.Registry(), driver, 1, b, defaultTestJobsCfg())
+			go func() {
+				for {
+					got, _ := q.Get(ctx, "job-ob-1")
+					if got != nil && got.Status == storage.JobCompleted {
+						cancel()
+						return
+					}
+					time.Sleep(50 * time.Millisecond)
+				}
+			}()
+			pool.Start(ctx)
+
+			ob := driver.(interface{ Outbox() storage.OutboxStore }).Outbox()
+			rows, err := ob.Since(context.Background(), 0, 0)
+			require.NoError(t, err)
+			require.Len(t, rows, 1)
+			r := rows[0]
+			assert.Equal(t, string(events.TopicObjectIngested), r.Topic)
+			assert.Equal(t, SourceWorkerPool, r.Source)
+			assert.Equal(t, events.OriginJob, r.Origin)
+			var pl events.ObjectIngestedPayload
+			require.NoError(t, json.Unmarshal(r.Payload, &pl))
+			assert.NotEmpty(t, pl.ObjectID)
+			assert.Equal(t, pl.ObjectID, r.ObjectID)
+			got, err := driver.Objects().Get(context.Background(), pl.ObjectID)
+			require.NoError(t, err)
+			assert.NotNil(t, got)
+		})
+	}
+}
+
 func TestWorkerPoolNoObjectCreatedOnFailure(t *testing.T) {
 	driver := storageutil.NewTestDriver(t)
 	q := NewQueue(driver.Jobs())
@@ -676,9 +726,10 @@ func TestEmitObjectIngestedCarriesSourceAndSourceKey(t *testing.T) {
 		return nil
 	})
 	pool := &WorkerPool{bus: bus}
-	pool.emitObjectIngested(context.Background(), &storage.KnowledgeObject{
+	_, ev := pool.announceIngested(context.Background(), &storage.KnowledgeObject{
 		ID: "o1", Type: "text", Source: "yta", SourceKey: "yta:vid1",
 	}, 5)
+	pool.publishAfter(context.Background(), ev)
 	time.Sleep(100 * time.Millisecond)
 
 	mu.Lock()

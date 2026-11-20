@@ -67,6 +67,9 @@
 #  reminder_interval: 1m
 # Idle GET /api/v1/events streams write an SSE comment this often.
 #  events_heartbeat: 15s
+# How long the event outbox keeps a row: the window a Last-Event-ID
+# resume on GET /api/v1/events can reach back over. Older ids get 410.
+#  events_retention: 168h
 # CORS for the Vite dev server (http://localhost:5173).
 #  dev: false
 # private (loopback only) | protected (trusted network) | public. A

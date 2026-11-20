@@ -76,6 +76,7 @@ server:
   dev: false
   reminder_interval: 1m
   events_heartbeat: 15s
+  events_retention: 168h       # event outbox retention (7 days)
 
 steps:
   path: ~/.config/contexthelp/steps
