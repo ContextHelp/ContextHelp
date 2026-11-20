@@ -13,12 +13,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ideacrafterslabs/ctxt/internal/safefetch"
-	"github.com/ideacrafterslabs/ctxt/internal/urlfilter"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
 	kitconfig "hop.top/kit/go/core/config"
 	"hop.top/kit/go/core/xdg"
+
+	"github.com/ideacrafterslabs/ctxt/internal/safefetch"
+	"github.com/ideacrafterslabs/ctxt/internal/urlfilter"
 )
 
 const (
@@ -725,6 +726,9 @@ const (
 	// DefaultReminderInterval is how often serve checks for due
 	// reminders (server.reminder_interval).
 	DefaultReminderInterval = time.Minute
+	// DefaultEventsHeartbeat is how often an idle GET /api/v1/events
+	// stream writes a keep-alive comment (server.events_heartbeat).
+	DefaultEventsHeartbeat = 15 * time.Second
 )
 
 // ServerConfig represents server configuration
@@ -744,6 +748,10 @@ type ServerConfig struct {
 	Dev bool `mapstructure:"dev" yaml:"dev"`
 	// ReminderInterval is how often serve checks for due reminders.
 	ReminderInterval time.Duration `mapstructure:"reminder_interval" yaml:"reminder_interval"`
+	// EventsHeartbeat is how often an idle GET /api/v1/events stream
+	// writes an SSE comment line, so proxies and clients can tell a
+	// quiet stream from a dead one. Zero or negative means the default.
+	EventsHeartbeat time.Duration `mapstructure:"events_heartbeat" yaml:"events_heartbeat"`
 	// Access classifies the instance: "private" (default), "protected",
 	// or "public". Empty means unset; EffectiveAccess resolves the
 	// default and the legacy server.public shorthand.
@@ -1519,6 +1527,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("server.public", false)
 	v.SetDefault("server.dev", false)
 	v.SetDefault("server.reminder_interval", DefaultReminderInterval)
+	v.SetDefault("server.events_heartbeat", DefaultEventsHeartbeat)
 
 	// Federation receive-side defaults
 	v.SetDefault("federation.max_request_bytes", DefaultFederationMaxRequestBytes)
