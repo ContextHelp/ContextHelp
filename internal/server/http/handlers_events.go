@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"hop.top/kit/go/runtime/bus"
 
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/events"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/sharing"
@@ -26,7 +28,8 @@ const sseBuffer = 64
 // Any other principal gets the object events for objects its viewer may
 // read, filtered per event (see viewerEvents); a viewer that may read
 // nothing gets an empty stream, never a 403, so the answer does not
-// reveal whether anything exists.
+// reveal whether anything exists. While the stream is idle the handler
+// writes an SSE comment every server.events_heartbeat.
 //
 // Route: GET /api/v1/events
 func HandleSSE(svc *service.Service) http.HandlerFunc {
@@ -77,12 +80,18 @@ func HandleSSE(svc *service.Service) http.HandlerFunc {
 			defer unsub()
 		}
 
+		heartbeat := time.NewTicker(sseHeartbeat(svc.Cfg))
+		defer heartbeat.Stop()
+
 		// Stream events until client disconnects.
 		ctx := r.Context()
 		for {
 			select {
 			case <-ctx.Done():
 				return
+			case <-heartbeat.C:
+				fmt.Fprint(w, ": heartbeat\n\n")
+				flusher.Flush()
 			case e := <-ch:
 				var ce events.Event
 				var err error
@@ -108,4 +117,14 @@ func HandleSSE(svc *service.Service) http.HandlerFunc {
 			}
 		}
 	}
+}
+
+// sseHeartbeat is the interval between heartbeat comments:
+// server.events_heartbeat, or the default when it is unset. A negative
+// value is treated as unset too, so the ticker is always valid.
+func sseHeartbeat(cfg config.Config) time.Duration {
+	if d := cfg.Server.EventsHeartbeat; d > 0 {
+		return d
+	}
+	return config.DefaultEventsHeartbeat
 }

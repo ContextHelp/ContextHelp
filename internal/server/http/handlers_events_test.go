@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"hop.top/kit/go/runtime/bus"
 
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/events"
 )
 
@@ -49,7 +50,7 @@ func (c *countingBus) SubscribeAsync(p string, h bus.AsyncHandler) bus.Unsubscri
 }
 
 // sseEnv is the capability fixture behind a real listener, with a
-// counting bus under the service.
+// counting bus under the service and a short heartbeat.
 type sseEnv struct {
 	*capabilityEnv
 	srv *httptest.Server
@@ -61,6 +62,7 @@ func newSSEEnv(t *testing.T) *sseEnv {
 	e := newCapabilityEnv(t)
 	cb := &countingBus{Bus: e.svc.Bus}
 	e.svc.Bus = cb
+	e.svc.Cfg.Server.EventsHeartbeat = 40 * time.Millisecond
 	srv := httptest.NewServer(e.router)
 	t.Cleanup(srv.Close)
 	return &sseEnv{capabilityEnv: e, srv: srv, bus: cb}
@@ -247,6 +249,11 @@ func TestSSENoGrantGetsAnEmptyStream(t *testing.T) {
 	e.publish(t, events.TopicObjectIngested, "worker.pool", events.ObjectIngestedPayload{ObjectID: e.contact, Type: "contact"})
 	e.publish(t, events.TopicJobCompleted, "worker.pool", events.JobCompletedPayload{JobID: "j"})
 	assert.Empty(t, s.quiet(300*time.Millisecond))
+	select {
+	case <-s.lines:
+	case <-time.After(time.Second):
+		t.Fatal("an empty stream still carries heartbeats")
+	}
 	assert.Equal(t, base, e.bus.active.Load(), "a viewer that reads nothing needs no subscription")
 }
 
@@ -269,4 +276,31 @@ func TestSSEOwnerGetsEveryEventUnchanged(t *testing.T) {
 	assert.JSONEq(t, `{"object_id":"`+e.note+`","type":"note","fields":["tags"]}`, string(up.Data))
 	assert.Equal(t, string(events.TopicJobCompleted), own.next(t).Type)
 	assert.Equal(t, string(events.TopicObjectDeleted), own.next(t).Type)
+}
+
+// An idle stream writes an SSE comment at the configured interval.
+func TestSSEHeartbeat(t *testing.T) {
+	e := newSSEEnv(t)
+	own := e.open(t, capOwnerToken)
+	for i := 0; i < 3; i++ {
+		select {
+		case l := <-own.lines:
+			assert.Equal(t, ": heartbeat", l)
+		case <-time.After(2 * time.Second):
+			t.Fatalf("heartbeat %d missing", i)
+		}
+	}
+}
+
+func TestSSEHeartbeatInterval(t *testing.T) {
+	cfg := e2cfg(0)
+	assert.Equal(t, 15*time.Second, sseHeartbeat(cfg), "the documented default")
+	assert.Equal(t, 15*time.Second, sseHeartbeat(e2cfg(-time.Second)))
+	assert.Equal(t, 2*time.Second, sseHeartbeat(e2cfg(2*time.Second)))
+}
+
+func e2cfg(d time.Duration) config.Config {
+	var c config.Config
+	c.Server.EventsHeartbeat = d
+	return c
 }
