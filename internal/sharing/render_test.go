@@ -307,3 +307,24 @@ func TestPolicyFieldAllMustBeAlone(t *testing.T) {
 	bad := sharing.Policy{Name: "all", Data: "type==note", Fields: map[string][]string{"*": {"*", "title"}}}
 	assert.Error(t, bad.Validate())
 }
+
+// source_key travels with source: a policy that projects source shows
+// the external dedup key, one that does not hides both.
+func TestRenderSourceKeyFollowsSource(t *testing.T) {
+	obj := &storage.KnowledgeObject{
+		ID: "obj-star", Type: "text", Status: storage.ObjectStatusActive, RawContent: "starred repo",
+		Source: "gh-stars", SourceKey: "gh:repo:42", ContentHash: "sha256:star",
+	}
+	withSource := sharing.Policy{Name: "with-source", Data: "type!=__none__", Fields: map[string][]string{"*": {sharing.FieldSource}}}
+	noSource := sharing.Policy{Name: "no-source", Data: "type!=__none__", Fields: map[string][]string{"*": {sharing.FieldTitle}}}
+
+	out := sharing.Render(viewerFor(t, withSource), obj, nil).Object
+	assert.Equal(t, "gh-stars", out.Source)
+	assert.Equal(t, "gh:repo:42", out.SourceKey)
+
+	out = sharing.Render(viewerFor(t, noSource), obj, nil).Object
+	assert.Empty(t, out.Source)
+	assert.Empty(t, out.SourceKey)
+
+	assert.Equal(t, "gh:repo:42", sharing.Render(sharing.Unrestricted, obj, nil).Object.SourceKey)
+}

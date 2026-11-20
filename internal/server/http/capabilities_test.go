@@ -17,6 +17,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
@@ -43,12 +44,20 @@ const (
 	// capStranger is a person with no grant: it sees nothing.
 	capStrangerToken = "tok-stranger-fixture-0123456789abcdef0123456"
 	capStranger      = "prn_capability_stranger"
+	// capSourcer holds a custom policy that projects every object's
+	// source (and so its source_key) and nothing else.
+	capSourcerToken = "tok-sourcer-fixture-0123456789abcdef0123456"
+	capSourcer      = "prn_capability_sourcer"
+	// capSourced is a note with a source and a source_key; only the
+	// sourcer reads it.
+	capSourced = "cap-sourced"
 )
 
 // capabilityEnv is a router over a store holding the owner, a
 // colleague principal granted the colleagues template, a work-tagged
 // contact the colleague sees and a note it does not.
 type capabilityEnv struct {
+	driver  storage.StorageDriver
 	router  http.Handler
 	svc     *service.Service
 	contact string
@@ -65,6 +74,11 @@ func newCapabilityEnv(t *testing.T) *capabilityEnv {
 	person := &storage.Principal{ID: capColleague, Kind: storage.PrincipalKindPerson, DisplayName: "Colleague", Roles: []string{authn.RoleReader}}
 	require.NoError(t, driver.Auth().Principals().Create(ctx, person))
 	grantTemplate(t, driver, person.ID, "colleagues-network")
+	require.NoError(t, driver.Auth().Principals().Create(ctx, &storage.Principal{ID: capSourcer, Kind: storage.PrincipalKindPerson, DisplayName: "Sourcer", Roles: []string{authn.RoleReader}}))
+	grantPolicy(t, driver, capSourcer, sharing.Policy{
+		Name: "cap-sourcer", Data: "source==gh-stars",
+		Fields: map[string][]string{"*": {sharing.FieldSource}},
+	})
 	require.NoError(t, driver.Auth().Principals().Create(ctx, &storage.Principal{ID: capStranger, Kind: storage.PrincipalKindPerson, DisplayName: "Stranger", Roles: []string{authn.RoleReader}}))
 
 	contact := &storage.KnowledgeObject{
@@ -75,16 +89,22 @@ func newCapabilityEnv(t *testing.T) *capabilityEnv {
 		ID: "cap-note", Type: "note", Status: storage.ObjectStatusActive, RawContent: "private note about Sarah",
 		ContentHash: "sha256:cap-note", CreatedAt: now, UpdatedAt: now,
 	}
-	for _, o := range []*storage.KnowledgeObject{contact, note} {
+	sourced := &storage.KnowledgeObject{
+		ID: capSourced, Type: "note", Status: storage.ObjectStatusActive, RawContent: "starred repo",
+		Source: "gh-stars", SourceKey: "gh:repo:42", ContentHash: "sha256:cap-sourced", CreatedAt: now, UpdatedAt: now,
+	}
+	for _, o := range []*storage.KnowledgeObject{contact, note, sourced} {
 		require.NoError(t, driver.Objects().Create(ctx, o))
 	}
 
 	chain := authtest.TokenChain(
 		authtest.Token{Token: capOwnerToken, Principal: storage.OwnerPrincipal, Roles: []string{authn.RoleAdmin}},
 		authtest.Token{Token: capColleagueToken, Principal: capColleague, Roles: []string{authn.RoleReader}},
+		authtest.Token{Token: capSourcerToken, Principal: capSourcer, Roles: []string{authn.RoleReader}},
 		authtest.Token{Token: capStrangerToken, Principal: capStranger, Roles: []string{authn.RoleReader}},
 	)
 	return &capabilityEnv{
+		driver:  driver,
 		router:  NewRouterWithConfig(svc, RouterConfig{Auth: chain}),
 		svc:     svc,
 		contact: contact.ID,
@@ -110,6 +130,24 @@ func grantTemplate(t *testing.T, driver storage.StorageDriver, principalID, poli
 	require.NoError(t, st.Audiences().Create(ctx, aud))
 	require.NoError(t, st.Audiences().AddMember(ctx, &storage.AudienceMember{AudienceID: aud.ID, PrincipalID: principalID, AddedBy: storage.OwnerPrincipal}))
 	require.NoError(t, st.Grants().Create(ctx, &storage.ShareGrant{AudienceID: aud.ID, PolicyID: tpl.ID, CreatedBy: storage.OwnerPrincipal}))
+}
+
+// grantPolicy installs policy and grants it to principalID through an
+// audience of its own.
+func grantPolicy(t *testing.T, driver storage.StorageDriver, principalID string, policy sharing.Policy) *storage.ShareGrant {
+	t.Helper()
+	ctx := ownerCtx()
+	st := driver.Sharing()
+	spec, err := json.Marshal(policy)
+	require.NoError(t, err)
+	row := &storage.SharePolicy{Name: policy.Name, Spec: spec}
+	require.NoError(t, st.Policies().Create(ctx, row))
+	aud := &storage.Audience{Name: "aud-" + policy.Name}
+	require.NoError(t, st.Audiences().Create(ctx, aud))
+	require.NoError(t, st.Audiences().AddMember(ctx, &storage.AudienceMember{AudienceID: aud.ID, PrincipalID: principalID, AddedBy: storage.OwnerPrincipal}))
+	g := &storage.ShareGrant{AudienceID: aud.ID, PolicyID: row.ID, CreatedBy: storage.OwnerPrincipal}
+	require.NoError(t, st.Grants().Create(ctx, g))
+	return g
 }
 
 func (e *capabilityEnv) do(t *testing.T, method, path, token string) (int, []byte) {

@@ -196,7 +196,30 @@ func TestSSEColleagueGetsOnlyReadableObjectEvents(t *testing.T) {
 	rest := col.quiet(300 * time.Millisecond)
 	assert.Empty(t, rest, "frames after the readable one")
 	assert.NotContains(t, string(ev.Data), e.note)
-	assert.NotContains(t, string(ev.Data), "k-1", "source_key is not part of what a viewer reads")
+	assert.NotContains(t, string(ev.Data), "k-1", "the colleague policy projects no source, so no source_key")
+}
+
+// source_key follows source: a viewer whose policy projects source gets
+// the key in the event, and in a read of the object; one whose policy
+// does not gets neither.
+func TestSSESourceKeyFollowsTheProjectedSource(t *testing.T) {
+	e := newSSEEnv(t)
+	src := e.open(t, capSourcerToken)
+	e.waitSubscribed(t, 1)
+	e.publish(t, events.TopicObjectIngested, "worker.pool", events.ObjectIngestedPayload{ObjectID: capSourced, Type: "note", Source: "gh-stars", SourceKey: "gh:repo:42"})
+
+	ev := src.next(t)
+	var p events.ObjectIngestedPayload
+	require.NoError(t, json.Unmarshal(ev.Data, &p))
+	assert.Equal(t, "gh-stars", p.Source)
+	assert.Equal(t, "gh:repo:42", p.SourceKey)
+
+	code, body := e.do(t, http.MethodGet, "/api/v1/objects/"+capSourced, capSourcerToken)
+	require.Equal(t, http.StatusOK, code, "%s", body)
+	assert.Contains(t, string(body), "gh:repo:42")
+	code, body = e.do(t, http.MethodGet, "/api/v1/objects", capColleagueToken)
+	require.Equal(t, http.StatusOK, code, "%s", body)
+	assert.NotContains(t, string(body), "gh:repo:42")
 }
 
 // An update carries the object and its type, not the list of changed
