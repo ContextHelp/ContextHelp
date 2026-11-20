@@ -35,14 +35,16 @@ func TestServeSettingsDefaults(t *testing.T) {
 	assert.False(t, cfg.Server.Dev)
 	assert.Equal(t, DefaultReminderInterval, cfg.Server.ReminderInterval)
 	assert.Equal(t, DefaultEventsHeartbeat, cfg.Server.EventsHeartbeat)
+	assert.Equal(t, DefaultEventsRetention, cfg.Server.EventsRetention)
 	assert.Empty(t, cfg.Steps.Path)
 }
 
 func TestServeSettingsFromFile(t *testing.T) {
-	cfg := loadServe(t, "server:\n  workers: 6\n  dev: true\n  reminder_interval: 30s\n  events_heartbeat: 5s\nsteps:\n  path: /srv/steps\n")
+	cfg := loadServe(t, "server:\n  workers: 6\n  dev: true\n  reminder_interval: 30s\n  events_heartbeat: 5s\n  events_retention: 48h\nsteps:\n  path: /srv/steps\n")
 	assert.Equal(t, 6, cfg.Server.Workers)
 	assert.True(t, cfg.Server.Dev)
 	assert.Equal(t, 30*time.Second, cfg.Server.ReminderInterval)
 	assert.Equal(t, 5*time.Second, cfg.Server.EventsHeartbeat)
+	assert.Equal(t, 48*time.Hour, cfg.Server.EventsRetention)
 	assert.Equal(t, "/srv/steps", cfg.Steps.Path)
 }
