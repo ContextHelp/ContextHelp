@@ -170,7 +170,7 @@ dpkms pipeline step install gh-stars-classify --path dist/step
 
 Then merge [`examples/recipes/github-repo-classify/dpkms.yaml`](../../../examples/recipes/github-repo-classify/dpkms.yaml) into `dpkms.yaml`, put [`classify.yaml`](../../../examples/recipes/github-repo-classify/classify.yaml) at the path `config_file` names, run `dpkms config validate`, and restart.
 
-Place the step `after: tagger`. Tagger keeps only user- and GitHub-sourced tags, so a step inserted earlier (for example after `github_repo_mapper`) keeps its `metadata` but loses its tags. Reinstall the step after rebuilding it: ctxt pins the executable's SHA-256.
+Place the step `after: tagger`. Either side of `tagger` works: tagger replaces only the tags it generated (sources `auto` and `llm`) and keeps every other tag, including those an earlier step added. Reinstall the step after rebuilding it: ctxt pins the executable's SHA-256.
 
 ## When a step fails
 

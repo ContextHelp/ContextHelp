@@ -5,8 +5,8 @@ pipelines:
   overrides:
     url.github.repo:
       insert_steps:
-        # After tagger: tagger rebuilds the tag list and keeps only user-
-        # and GitHub-sourced tags, so a step before it loses its tags.
+        # After tagger, by convention. Before it works too: tagger replaces
+        # only its own auto/llm tags and keeps tags earlier steps added.
         - step: gh-stars-classify
           after: tagger
           timeout: 30s
