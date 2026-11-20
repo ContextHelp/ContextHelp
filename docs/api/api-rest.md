@@ -385,7 +385,7 @@ Send only the fields to change. Each field is optional, but the body needs at le
 | `subtype` | string | replaces the subtype |
 | `title` | string | replaces the summaries with this one; `ctxt list` and `show` print the first summary as the title |
 | `summary` | string | replaces the first summary and keeps the others |
-| `tags` | string array | replaces the tags; each label is trimmed, empty labels are dropped, and each tag gets `source: "manual"`. `[]` clears the tags |
+| `tags` | string array | replaces the tags; each label is trimmed and empty labels are dropped. A label already on the object keeps its `source` and `weight`; a new label gets `source: "manual"`. `[]` clears the tags |
 | `mentions` | string array | replaces the mentions; each is `@namespace.slug` or `ctxt://entity/<namespace>/<slug>`. `[]` clears them |
 
 `updated_at` moves to the time of the update.

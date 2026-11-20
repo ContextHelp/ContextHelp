@@ -25,7 +25,8 @@ type ObjectPatch struct {
 	Title *string `json:"title,omitempty"`
 	// Summary replaces the first summary and keeps the others.
 	Summary *string `json:"summary,omitempty"`
-	// Tags replaces the tags with these labels, marked source "manual".
+	// Tags replaces the tags with these labels. A label already on the
+	// object keeps its source and weight; a new label is marked "manual".
 	Tags *[]string `json:"tags,omitempty"`
 	// Mentions replaces the mentions, each "@ns.slug" or a
 	// ctxt://entity/... URI.
@@ -84,11 +85,24 @@ func (s *Service) PatchObject(ctx context.Context, id string, p ObjectPatch) (*s
 		}
 	}
 	if p.Tags != nil {
+		// A label kept from the stored tags keeps its source and weight;
+		// only a new label is marked manual.
+		existing := make(map[string]storage.Tag, len(obj.Tags))
+		for _, t := range obj.Tags {
+			if _, ok := existing[t.Label]; !ok {
+				existing[t.Label] = t
+			}
+		}
 		tags := make([]storage.Tag, 0, len(*p.Tags))
 		for _, label := range *p.Tags {
-			if label = strings.TrimSpace(label); label != "" {
-				tags = append(tags, storage.Tag{Label: label, Source: "manual"})
+			if label = strings.TrimSpace(label); label == "" {
+				continue
 			}
+			if kept, ok := existing[label]; ok {
+				tags = append(tags, kept)
+				continue
+			}
+			tags = append(tags, storage.Tag{Label: label, Source: "manual"})
 		}
 		obj.Tags = tags
 	}
