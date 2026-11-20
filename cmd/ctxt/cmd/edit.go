@@ -57,7 +57,7 @@ func init() {
 	editCmd.Flags().String("title", "", "replace the summaries with this title")
 	editCmd.Flags().String("summary", "", "replace the first summary")
 	editCmd.Flags().String("tags", "", "replace tags (comma-separated)")
-	editCmd.Flags().String("mention", "", "replace mentions (space-separated @namespace.slug)")
+	editCmd.Flags().StringArray("mention", nil, "replace mentions with @namespace.slug; repeatable, comma- or space-separated (e.g. --mention @client.acme,@project.foo)")
 	editCmd.Flags().String("subtype", "", "update subtype")
 }
 
@@ -86,10 +86,13 @@ func runEdit(cmd *cobra.Command, args []string) error {
 		patch.Tags = &tags
 		fields = append(fields, editField{"tags", v})
 	}
-	if v := flag("mention"); v != "" {
-		ms := strings.Fields(v)
+	ms, err := parseMentionList(listFlag(cmd, "mention", ""))
+	if err != nil {
+		return err
+	}
+	if len(ms) > 0 {
 		patch.Mentions = &ms
-		fields = append(fields, editField{"mentions", v})
+		fields = append(fields, editField{"mentions", strings.Join(ms, " ")})
 	}
 	if v := flag("subtype"); v != "" {
 		patch.Subtype = &v

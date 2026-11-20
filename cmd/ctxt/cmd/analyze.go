@@ -7,7 +7,6 @@ import (
 	gohttp "net/http"
 	"net/url"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli"
@@ -74,8 +73,8 @@ func init() {
 	// Register flags on analyzeCmd for `ctxt analyze --help`.
 	analyzeCmd.Flags().String("type", objectTypeText, "input type (text|url|image|audio|video|feed|auto)")
 	analyzeCmd.Flags().StringP("file", "f", "", "read input from file")
-	analyzeCmd.Flags().StringSlice("hint", nil, "tagging hints attached to the captured object (repeatable, CSV)")
-	analyzeCmd.Flags().String("mention", "", "explicit mentions to attach (e.g., \"@entity.slug\")")
+	analyzeCmd.Flags().StringArray("hint", nil, hintFlagUsage)
+	analyzeCmd.Flags().StringArray("mention", nil, mentionFlagUsage)
 	analyzeCmd.Flags().String("pipeline", "", "force specific pipeline")
 	analyzeCmd.Flags().String("language", "", "input language override")
 	analyzeCmd.Flags().String("translate", "", "translation mode (none to skip)")
@@ -89,8 +88,8 @@ func init() {
 	// without leaking these flags into every subcommand's help.
 	rootCmd.Flags().String("type", objectTypeText, "input type (text|url|image|audio|video|feed|auto)")
 	rootCmd.Flags().StringP("file", "f", "", "read input from file")
-	rootCmd.Flags().StringSlice("hint", nil, "tagging hints attached to the captured object (repeatable, CSV)")
-	rootCmd.Flags().String("mention", "", "explicit mentions to attach (e.g., \"@entity.slug\")")
+	rootCmd.Flags().StringArray("hint", nil, hintFlagUsage)
+	rootCmd.Flags().StringArray("mention", nil, mentionFlagUsage)
 	rootCmd.Flags().String("pipeline", "", "force specific pipeline")
 	rootCmd.Flags().String("language", "", "input language override")
 	rootCmd.Flags().String("translate", "", "translation mode (none to skip)")
@@ -123,6 +122,12 @@ func flagString(cmd *cobra.Command, name, viperKey string) string {
 }
 
 func RunAnalyze(cmd *cobra.Command, args []string) error {
+	// Validate list flags before anything is read or sent.
+	validMentions, err := parseMentionList(listFlag(cmd, "mention", "analyze.mention"))
+	if err != nil {
+		return err
+	}
+
 	// The one instance this invocation talks to (see resolveEndpoint).
 	client, _, err := enqueueClient(cmd)
 	if err != nil {
@@ -178,20 +183,13 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 	// server so user-asserted mentions become real edges + entity rows
 	// (handled by service.Analyze + jobs/worker.go). The CLI flag is
 	// --mention; the server-side JSON field is still `mentions`.
-	mentionsFlag := flagString(cmd, "mention", "analyze.mention")
-	var userMentions []string
-	if mentionsFlag != "" {
-		userMentions = strings.Fields(mentionsFlag)
-	}
+	userMentions := validMentions
 
 	// ship `--hint research,ux` (repeatable, CSV) through to the
 	// server as a JSON array. service.Analyze pre-populates draft.Tags
 	// with Source:"user"; the auto-tagger merges with these rather
 	// than overwriting.
-	var userHints []string
-	if f := cmd.Flags().Lookup("hint"); f != nil && f.Changed {
-		userHints, _ = cmd.Flags().GetStringSlice("hint")
-	}
+	userHints := parseHintList(listFlag(cmd, "hint", ""))
 
 	// Use actual source value; "argument"/"stdin"/"clipboard"/"file" are not
 	// fetchable URLs — downstream steps (url_fetcher) must validate before use.
