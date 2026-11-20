@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -110,7 +111,7 @@ func (s *outboxStore) Since(ctx context.Context, after int64, limit int) ([]stor
 	var pruned int64
 	err := s.db.QueryRowContext(ctx,
 		`SELECT outbox_pruned_through FROM instance_meta WHERE singleton = 1`).Scan(&pruned)
-	if err != nil && err != sql.ErrNoRows {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("event outbox: floor: %w", err)
 	}
 	if after < pruned {
@@ -151,7 +152,7 @@ func (s *outboxStore) Head(ctx context.Context) (int64, error) {
 	var head sql.NullInt64
 	err := s.db.QueryRowContext(ctx,
 		`SELECT seq FROM sqlite_sequence WHERE name = 'event_outbox'`).Scan(&head)
-	if err != nil && err != sql.ErrNoRows {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return 0, fmt.Errorf("event outbox: head: %w", err)
 	}
 	return head.Int64, nil
