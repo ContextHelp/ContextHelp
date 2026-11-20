@@ -154,31 +154,13 @@ func runScenario(t *testing.T, prof Profile, steps []scenarioStep) {
 				t.Fatalf("%s: feed: %v", at, err)
 			}
 		case st.Resolve != nil:
-			want := ""
-			if st.Resolve.Principal != nil {
-				want = *st.Resolve.Principal
-			}
-			if got, _ := p.Resolve(st.Resolve.Issuer, st.Resolve.Subject); got != want {
-				t.Errorf("%s: identity %s of %s maps to %q, want %q", at, st.Resolve.Subject, st.Resolve.Issuer, got, want)
-			}
+			checkResolve(t, p, st, at)
 		case st.CatchUp:
 			if err := p.CatchUp(); err != nil {
 				t.Fatalf("%s: catch up: %v", at, err)
 			}
 		case st.Check != nil:
-			v := p.Decide(st.Check.Query)
-			if got := verdictWord(v); got != st.Check.Expect {
-				t.Errorf("%s: %s may read %s in %s (on behalf of %q): got %s (%s), want %s",
-					at, st.Check.Principal, st.Check.TypeKey, st.Check.Scope, st.Check.OnBehalfOf, got, v.Reason, st.Check.Expect)
-			}
-			if st.Check.Expect == "allow" && v.Allow && len(st.Check.Excluded) > 0 {
-				ex, want := slices.Clone(v.Excluded), slices.Clone(st.Check.Excluded)
-				sort.Strings(ex)
-				sort.Strings(want)
-				if !slices.Equal(ex, want) {
-					t.Errorf("%s: leaves out %v, want %v", at, ex, want)
-				}
-			}
+			checkDecision(t, p, st, at)
 		}
 	}
 }
@@ -289,5 +271,33 @@ func checkRecordAck(t *testing.T, ack Ack, held []RecordEntry, at string) {
 		t.Errorf("%s: set carries %d entries, acknowledgement says nothing of them", at, n)
 	case ra.Count != n || ra.Digest != want:
 		t.Errorf("%s: holds %d entries digest %s, sent %d digest %s", at, ra.Count, ra.Digest, n, want)
+	}
+}
+
+func checkResolve(t *testing.T, p *Peer, st scenarioStep, at string) {
+	t.Helper()
+	want := ""
+	if st.Resolve.Principal != nil {
+		want = *st.Resolve.Principal
+	}
+	if got, _ := p.Resolve(st.Resolve.Issuer, st.Resolve.Subject); got != want {
+		t.Errorf("%s: identity %s of %s maps to %q, want %q", at, st.Resolve.Subject, st.Resolve.Issuer, got, want)
+	}
+}
+
+func checkDecision(t *testing.T, p *Peer, st scenarioStep, at string) {
+	t.Helper()
+	v := p.Decide(st.Check.Query)
+	if got := verdictWord(v); got != st.Check.Expect {
+		t.Errorf("%s: %s may read %s in %s (on behalf of %q): got %s (%s), want %s",
+			at, st.Check.Principal, st.Check.TypeKey, st.Check.Scope, st.Check.OnBehalfOf, got, v.Reason, st.Check.Expect)
+	}
+	if st.Check.Expect == "allow" && v.Allow && len(st.Check.Excluded) > 0 {
+		ex, want := slices.Clone(v.Excluded), slices.Clone(st.Check.Excluded)
+		sort.Strings(ex)
+		sort.Strings(want)
+		if !slices.Equal(ex, want) {
+			t.Errorf("%s: leaves out %v, want %v", at, ex, want)
+		}
 	}
 }
