@@ -70,6 +70,7 @@ func Visibility(method, pattern string, scope authn.Scope, cfg VisibilityConfig)
 	shape, known := RouteShape(method, pattern)
 	route := routeKey(method, pattern)
 	reads := method == "" || isSafeMethod(method) || scope.Verb() == "read"
+	streams := RouteStreams(method, pattern)
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			v, ok := sharing.FromContext(r.Context())
@@ -82,6 +83,12 @@ func Visibility(method, pattern string, scope authn.Scope, cfg VisibilityConfig)
 				r = r.WithContext(previewContext(r.Context(), pv, target))
 			}
 			if ok && v.IsUnrestricted() {
+				next.ServeHTTP(w, r)
+				return
+			}
+			if streams {
+				// The handler filters each frame for the viewer; a
+				// buffered check would hold the stream until it ends.
 				next.ServeHTTP(w, r)
 				return
 			}
