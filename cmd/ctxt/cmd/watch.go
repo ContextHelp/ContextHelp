@@ -243,7 +243,7 @@ func runWatchStart(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	ing := watchIngester{client}
+	ing := watchIngester{c: client, profile: activeProfileName(cmd)}
 	records := loggedRecords{FileRecords: store, w: errOut}
 	fmt.Fprintf(out, "Watching for instance %s (%s)\n", r.Key, client.URL())
 	fmt.Fprintf(out, "State file: %s\n", store.Path())
