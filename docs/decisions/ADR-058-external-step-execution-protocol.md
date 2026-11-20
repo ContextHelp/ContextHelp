@@ -1,6 +1,6 @@
 # ADR-058 – External Step Execution Protocol
 
-> **Status:** Accepted (amended 2026-10-14: see [Amendment](#amendment-2026-10-14-implementation))
+> **Status:** Accepted (amended 2026-10-14: see [Amendment](#amendment-2026-10-14-implementation); amended 2026-11-19: see [Amendment](#amendment-2026-11-19-additive-ops))
 > **Date:** 2026-02-18
 > **Author:** @jadb
 > **Applies to:** dPKMS
@@ -514,3 +514,41 @@ Installed steps now run in pipelines. This amendment records where the implement
 ### Not covered
 
 - The job record keeps the submitted content after the job completes, `ctxt analyze --raw` bypasses pipelines, and media providers see the original media. A step cannot mask those.
+
+---
+
+## Amendment (2026-11-19): additive ops
+
+The replace form drops what a step does not echo: a step returning `tags` replaces every tag, user hints included, so two steps cannot each add a tag without each echoing the other's. The output gains an additive form. Where this amendment and the sections above disagree, this amendment wins.
+
+### Output
+
+```json
+{
+  "object": {"raw_content": "..."},
+  "ops": [
+    {"op": "add_tags", "value": ["alpha", {"label": "beta", "weight": 0.8, "source": "my-step"}]},
+    {"op": "remove_tags", "value": ["draft"]},
+    {"op": "merge_metadata", "value": {"repo": {"stars": 10}, "stale": null}}
+  ]
+}
+```
+
+- `ops` sits beside `object`. Either, or both, may be present; with neither (and no `error`) the output is invalid. `"ops": []` is a no-change output.
+- Precedence: `object` (replace form, per the 2026-10-14 amendment) applies first, then `ops` run in array order on the result. An `add_tags` after an `object` that replaced `tags` adds to the replaced set.
+- The replace form is unchanged, and so are its checks: a read-only field in `object` still fails the object.
+- Each op is `{"op", "value"}`; any other key fails.
+
+### Operations
+
+- `add_tags`: `value` is an array of label strings or `{label, weight, source}` objects. A bare string becomes weight 1.0, source `step`. Labels are trimmed; empty labels drop. A label that matches an existing tag, trimmed and case-insensitive (the tagger's dedup), is not added: the existing tag keeps its weight, source and spelling. Added tags go after existing ones, in order.
+- `remove_tags`: `value` is an array of label strings, matched trimmed and case-insensitive. A label that matches nothing is not an error.
+- `merge_metadata`: `value` is an object, merged into `metadata` as an RFC 7386 JSON Merge Patch: deep. Objects merge recursively, scalars and arrays replace, `null` deletes the key. A shallow merge (replace per top-level key) is `object.metadata` with the full value.
+
+### Failure
+
+An unknown `op`, a missing `op`, a `value` of the wrong shape, an unknown key in an op, or `ops` that is not an array fails the object, permanently, like any protocol violation. The error names the step, the op's index and kind, never its values. Ops apply to a copy: a failure stores nothing.
+
+### Not added
+
+No ops for other fields (`summaries`, `mentions`, `graph`, ...): replace remains their only form until a step needs more.
