@@ -447,39 +447,14 @@ func (s *Service) writeUserMentionEdges(ctx context.Context, obj *storage.Knowle
 		return nil
 	}
 	now := time.Now().UTC()
-	for _, mention := range obj.Mentions {
-		slug := storage.MentionSlug(mention)
-		if slug == "" {
-			continue
-		}
-		ns := strings.SplitN(slug, "/", 2)[0]
-		entity := &storage.Entity{
-			Slug:          slug,
-			Title:         humanizeSlug(slug),
-			Namespace:     ns,
-			ContentStatus: storage.ContentStatusThin,
-			CreatedAt:     now,
-			UpdatedAt:     now,
-		}
-		if err := s.Store(ctx).Entities().UpsertThin(ctx, entity); err != nil {
-			return fmt.Errorf("upsert thin entity %q: %w", slug, err)
-		}
+	if err := storage.EnsureMentionEntities(ctx, s.Store(ctx).Entities(), obj.Mentions, now); err != nil {
+		return err
 	}
 	edges := storage.MentionEdges(obj, obj.Mentions, false, now)
 	if _, err := s.Store(ctx).Edges().CreateMissing(ctx, edges); err != nil {
 		return fmt.Errorf("create user-mention edges: %w", err)
 	}
 	return nil
-}
-
-// humanizeSlug derives a display title from a namespace/slug path: takes the
-// last segment, replaces dashes/underscores with spaces.
-func humanizeSlug(slug string) string {
-	parts := strings.Split(slug, "/")
-	last := parts[len(parts)-1]
-	last = strings.ReplaceAll(last, "-", " ")
-	last = strings.ReplaceAll(last, "_", " ")
-	return last
 }
 
 // GetObject retrieves a knowledge object by ID.

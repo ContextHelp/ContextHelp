@@ -46,6 +46,9 @@ func (s *Service) FanOut(ctx context.Context, objectID string) (*FanOutResult, e
 	// obj.Graph that holds the mention and the field it came from. The
 	// store keeps an edge already there for the pair (the worker wrote
 	// the forward ones), so a rerun creates nothing.
+	if err := storage.EnsureMentionEntities(ctx, s.Store(ctx).Entities(), obj.Mentions, now); err != nil {
+		return nil, fmt.Errorf("fanout: ensure entities: %w", err)
+	}
 	edges := storage.MentionEdges(obj, obj.Mentions, true, now)
 	created, err := s.Store(ctx).Edges().CreateMissing(ctx, edges)
 	if err != nil {

@@ -3,7 +3,6 @@ package steps
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
@@ -64,16 +63,13 @@ func (r *EntityResolver) Run(ctx context.Context, draft *storage.KnowledgeObject
 			continue
 		}
 
-		entity, err := r.entities.Resolve(ctx, slug)
+		entity, created, err := storage.EnsureMentionEntity(ctx, r.entities, u, time.Now().UTC())
 		if err != nil {
-			// Unresolved: create a local placeholder entity.
-			// Derive namespace from the first path segment of the slug.
-			ns := strings.SplitN(slug, "/", 2)[0]
-			if _, perr := r.createPlaceholder(ctx, ns, slug); perr != nil {
-				// Non-fatal: log and continue.
-				fmt.Printf("entity_resolver: create placeholder %q: %v\n", slug, perr)
-				continue
-			}
+			// Non-fatal: log and continue.
+			fmt.Printf("entity_resolver: ensure entity %q: %v\n", slug, err)
+			continue
+		}
+		if created {
 			placeholder = append(placeholder, slug)
 		} else {
 			resolved = append(resolved, entity.Slug)
@@ -102,28 +98,4 @@ func (r *EntityResolver) Run(ctx context.Context, draft *storage.KnowledgeObject
 	}
 
 	return draft, nil
-}
-
-// createPlaceholder inserts a thin local placeholder entity and returns it.
-func (r *EntityResolver) createPlaceholder(ctx context.Context, namespace, slug string) (*storage.Entity, error) {
-	now := time.Now().UTC()
-
-	// Derive a human-readable title from the slug (last segment, dashes→spaces).
-	segments := strings.Split(slug, "/")
-	last := segments[len(segments)-1]
-	title := strings.ReplaceAll(last, "-", " ")
-	title = strings.ReplaceAll(title, "_", " ")
-
-	entity := &storage.Entity{
-		Slug:          slug,
-		Title:         title,
-		Namespace:     namespace,
-		ContentStatus: storage.ContentStatusThin,
-		CreatedAt:     now,
-		UpdatedAt:     now,
-	}
-	if err := r.entities.UpsertThin(ctx, entity); err != nil {
-		return nil, err
-	}
-	return entity, nil
 }
