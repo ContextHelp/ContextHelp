@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/events"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 // countingBus counts the subscriptions a bus holds now.
@@ -77,6 +79,11 @@ type stream struct {
 	status int
 	ctype  string
 	frames chan events.Event
+	// sseIDs holds, per frame and in order, the `id:` line that preceded
+	// it ("" for none).
+	sseIDs chan string
+	// body is the response body of a non-200 answer.
+	body   string
 	lines  chan string // comment lines
 	cancel context.CancelFunc
 	// done closes when the server ends the stream.
@@ -84,33 +91,60 @@ type stream struct {
 }
 
 func (e *sseEnv) open(t *testing.T, token string) *stream {
+	return e.openAt(t, token, "", "")
+}
+
+// openAt opens the stream with a Last-Event-ID header and a
+// last_event_id query value, each when non-empty.
+func (e *sseEnv) openAt(t *testing.T, token, header, query string) *stream {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, e.srv.URL+"/api/v1/events", nil)
+	url := e.srv.URL + "/api/v1/events"
+	if query != "" {
+		url += "?last_event_id=" + query
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	require.NoError(t, err)
 	req.Header.Set("Authorization", "Bearer "+token)
+	if header != "" {
+		req.Header.Set("Last-Event-ID", header)
+	}
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	s := &stream{
 		status: resp.StatusCode,
 		ctype:  resp.Header.Get("Content-Type"),
 		frames: make(chan events.Event, 64),
+		sseIDs: make(chan string, 64),
 		lines:  make(chan string, 64),
 		cancel: cancel,
 		done:   make(chan struct{}),
+	}
+	if resp.StatusCode != http.StatusOK {
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		s.body = string(b)
+		close(s.done)
+		t.Cleanup(cancel)
+		return s
 	}
 	go func() {
 		defer close(s.done)
 		defer resp.Body.Close()
 		sc := bufio.NewScanner(resp.Body)
+		lastID := ""
 		for sc.Scan() {
 			line := sc.Text()
 			switch {
+			case strings.HasPrefix(line, "id: "):
+				lastID = strings.TrimPrefix(line, "id: ")
 			case strings.HasPrefix(line, "data: "):
 				var ev events.Event
 				if json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &ev) == nil {
+					s.sseIDs <- lastID
 					s.frames <- ev
 				}
+				lastID = ""
 			case strings.HasPrefix(line, ":"):
 				select {
 				case s.lines <- line:
@@ -154,9 +188,28 @@ func (e *sseEnv) waitSubscribed(t *testing.T, n int64) {
 	require.Eventually(t, func() bool { return e.bus.active.Load() >= n }, 3*time.Second, 5*time.Millisecond)
 }
 
-func (e *sseEnv) publish(t *testing.T, topic bus.Topic, source string, payload any) {
+// publish announces an event as the service does: an object event is
+// appended to the outbox (the stream reads it from there) and then
+// published live; any other event goes on the bus only. It returns the
+// outbox row's seq, 0 for a bus-only event.
+func (e *sseEnv) publish(t *testing.T, topic bus.Topic, source string, payload any) int64 {
 	t.Helper()
-	require.NoError(t, e.svc.Bus.Publish(context.Background(), bus.NewEvent(topic, source, payload)))
+	ctx := context.Background()
+	if !events.OutboxTopics[topic] {
+		require.NoError(t, e.svc.Bus.Publish(ctx, bus.NewEvent(topic, source, payload)))
+		return 0
+	}
+	ev := &storage.OutboxEvent{Topic: string(topic), Source: source, Origin: events.OriginAPI, Payload: payload, OccurredAt: time.Now().UTC()}
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err)
+	var ids struct {
+		ObjectID string `json:"object_id"`
+	}
+	_ = json.Unmarshal(raw, &ids)
+	ev.ObjectID = ids.ObjectID
+	require.NoError(t, e.svc.Outbox().Append(ctx, ev))
+	require.NoError(t, events.Publish(ctx, e.svc.Bus, ev))
+	return ev.Seq
 }
 
 // Every connection's bus subscription ends with the connection: N
@@ -297,14 +350,20 @@ func TestSSEOwnerGetsEveryEventUnchanged(t *testing.T) {
 	e.publish(t, events.TopicJobCompleted, "worker.pool", events.JobCompletedPayload{JobID: "job-1", ObjectCount: 1})
 	e.publish(t, events.TopicObjectDeleted, "service.objects", events.ObjectDeletedPayload{ObjectID: "never-seen"})
 
-	up := own.next(t)
+	// Object events come from the outbox, the job event from the bus:
+	// each path keeps its own order.
+	byType := map[string]events.Event{}
+	for i := 0; i < 3; i++ {
+		ev := own.next(t)
+		byType[ev.Type] = ev
+	}
+	up := byType[string(events.TopicObjectUpdated)]
 	assert.Equal(t, "1.0", up.SpecVersion)
-	assert.Equal(t, string(events.TopicObjectUpdated), up.Type)
 	assert.Equal(t, "worker.pool", up.Source)
 	assert.NotEmpty(t, up.ID)
 	assert.JSONEq(t, `{"object_id":"`+e.note+`","type":"note","fields":["tags"]}`, string(up.Data))
-	assert.Equal(t, string(events.TopicJobCompleted), own.next(t).Type)
-	assert.Equal(t, string(events.TopicObjectDeleted), own.next(t).Type)
+	assert.Contains(t, byType, string(events.TopicJobCompleted))
+	assert.Contains(t, byType, string(events.TopicObjectDeleted))
 }
 
 // An idle stream writes an SSE comment at the configured interval.
