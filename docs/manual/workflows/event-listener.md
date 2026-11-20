@@ -63,6 +63,7 @@ A browser `EventSource` does this on its own. Where you cannot set a header, use
   ```
 
   It returns the objects created since the cursor's last advance. The 410 body names the oldest retained id (`details.oldest_retained`) and the newest (`details.newest`).
+- **Polling instead.** A listener that cannot hold a stream open can catch up by change sequence: `GET /api/v1/objects?changed_after=<seq>&status=all` (or `ctxt list --changed-after <seq> --status all`) lists the objects created or updated since `seq`, oldest first, and answers `next_changed_after`; keep it and ask again later. Unlike `--cursor`, which follows `created_at`, an edit to an old object comes back. It sees object changes only (not jobs, upgrades or deletions), and it has no retention window: a sequence never expires, so it also serves as the resync after a 410. It returns current state, not each event: several edits between polls arrive as one object.
 - **At least once.** If you crash between handling an event and recording its id, the next replay includes it again: deduplicate on the envelope `id` (a UUIDv7, stable across connections).
 - Events that are not object events (jobs, upgrades) are owner-only, live, and carry no `id`.
 

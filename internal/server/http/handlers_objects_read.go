@@ -31,7 +31,7 @@ var objectFilterParams = []string{
 }
 
 // objectPageParams order and page a list. Only GET /objects takes them.
-var objectPageParams = []string{"limit", "offset", "sort", "dir"}
+var objectPageParams = []string{"limit", "offset", "sort", "dir", "changed_after"}
 
 // objectStatuses are the values of the status parameter. "all" lifts
 // the status filter; an absent status means "active".
@@ -132,9 +132,21 @@ func parseObjectFilter(q url.Values) (storage.ObjectFilter, *paramError) {
 	return f, nil
 }
 
-// parseObjectPage reads objectPageParams into f.
+// parseObjectPage reads objectPageParams into f. changed_after pages by
+// change order, so it excludes the parameters that choose another order
+// or position: sort, dir and offset.
 func parseObjectPage(q url.Values, f *storage.ObjectFilter) *paramError {
 	var err *paramError
+	if f.ChangedAfter, err = changeSeqParam(q, "changed_after"); err != nil {
+		return err
+	}
+	if f.ChangedAfter != nil {
+		for _, name := range []string{"sort", "dir", "offset"} {
+			if q.Has(name) {
+				return badParam(name, "%s cannot be combined with changed_after: changes list in change order, paged by the cursor", name)
+			}
+		}
+	}
 	if f.Limit, err = intParam(q, "limit", defaultListLimit, 0, 0); err != nil {
 		return err
 	}
@@ -154,6 +166,19 @@ func parseObjectPage(q url.Values, f *storage.ObjectFilter) *paramError {
 		return badParam("dir", "dir must be asc or desc")
 	}
 	return nil
+}
+
+// changeSeqParam parses a change sequence: a non-negative integer.
+func changeSeqParam(q url.Values, name string) (*int64, *paramError) {
+	v := q.Get(name)
+	if v == "" {
+		return nil, nil
+	}
+	n, err := strconv.ParseInt(v, 10, 64)
+	if err != nil || n < 0 {
+		return nil, badParam(name, "%s must be a non-negative integer", name)
+	}
+	return &n, nil
 }
 
 // instantParam parses an RFC 3339 timestamp or a YYYY-MM-DD date
@@ -235,11 +260,23 @@ func ListObjects(svc *service.Service) http.HandlerFunc {
 		if objs == nil {
 			objs = []*storage.KnowledgeObject{}
 		}
-		WriteJSON(w, http.StatusOK, map[string]any{
-			"data":  objs,
-			"total": total,
-		})
+		resp := map[string]any{"data": objs, "total": total}
+		if filter.ChangedAfter != nil {
+			resp["next_changed_after"] = nextChangedAfter(objs, *filter.ChangedAfter)
+		}
+		WriteJSON(w, http.StatusOK, resp)
 	}
+}
+
+// nextChangedAfter is the cursor to pass as changed_after for the page
+// after objs: the last object's change sequence, or after itself when
+// the page is empty (nothing visible changed past it). It is the only
+// change sequence a response carries; objects do not expose theirs.
+func nextChangedAfter(objs []*storage.KnowledgeObject, after int64) int64 {
+	if n := len(objs); n > 0 && objs[n-1].ChangeSeq > after {
+		return objs[n-1].ChangeSeq
+	}
+	return after
 }
 
 // ObjectFacets handles GET /api/v1/objects/facets: counts of the objects

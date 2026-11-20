@@ -399,6 +399,9 @@ Order and paging:
 | `dir` | `asc`, `desc` | `desc` |
 | `limit` | integer >= 0; `0` returns every match | `20` |
 | `offset` | integer >= 0 | `0` |
+| `changed_after` | integer >= 0, a change sequence | none |
+
+`changed_after=N` lists by change order instead: the objects created or updated after change sequence `N`, oldest change first. Every insert and update moves an object's sequence past all earlier ones, whatever its `created_at` and `updated_at` say, so an old object edited since `N` appears here and not under `after=<created_at>`. It cannot be combined with `sort`, `dir` or `offset` (400 `INVALID_PARAM` naming that parameter): the order is fixed and the position is the cursor. `status` and the other filters still apply; `status` defaults to `active`, so pass `status=all` to see an object that was discarded. `0` starts from the first change. Not accepted by `GET /objects/facets`.
 
 RSQL queries go to `GET /search?q=`; `q` is not a parameter here. `GET /search` accepts `profile` as the caller's focus profile, a lens: it never narrows the results, and what a caller sees is set by its viewer scope alone (ADR-080). The gRPC `Search` and `NodeAwareSearch` `profile_id` field works the same way.
 
@@ -415,11 +418,19 @@ RSQL queries go to `GET /search?q=`; `q` is not a parameter here. `GET /search` 
 }
 ```
 
+With `changed_after`, the response also carries `next_changed_after`: the change sequence of the page's last object, or the request's own value when the page is empty. Pass it as `changed_after` for the next page; a page shorter than `limit` means the listing has caught up. Objects do not carry their own sequence: it is an offset in one store's change order, and the response-level cursor is the only place it appears.
+
+```json
+{"data": [{"id": "o-a", "...": "..."}], "total": 1, "next_changed_after": 17}
+```
+
+Viewer scoping: a restricted viewer is listed only the objects it may see, rendered through its policy, and `total` counts only those. The cursor is a position in the store's whole change order, so it jumps over the changes to objects the viewer cannot see. That gap (how many changes lie between two visible ones) is the one thing the list reveals about hidden objects, and it cannot be removed while the cursor is a store position. No hidden object's id, content or existence is named. An empty page returns the viewer's own cursor unchanged, so a viewer never learns that hidden changes happened after it.
+
 ### `GET /objects/facets`
 
 Counts the objects that match a filter by `metadata.type`. Objects without one count under `(none)`. Scope: `read:objects`.
 
-Takes the filter parameters of `GET /objects` (`type` through `until`), with the same validation. `limit`, `offset`, `sort` and `dir` are rejected: counts cover every match.
+Takes the filter parameters of `GET /objects` (`type` through `until`), with the same validation. `limit`, `offset`, `sort`, `dir` and `changed_after` are rejected: counts cover every match.
 
 ```json
 {"data": {"observation": 1, "task": 1, "(none)": 1}}
