@@ -254,7 +254,7 @@ Server-Sent Events stream of bus events. For an external listener (a recipe that
 - `Content-Type: text/event-stream`. One `data: <CloudEvents JSON>` per event, a blank line between.
 - **Owner.** Every event, with the publisher's whole payload.
 - **Any other principal** (a key with a share grant). Only object events (`object.ingested`, `object.updated`, `object.deleted`, `object.raw_stored`), only for objects its viewer may read: the same scoped read `find`, `list` and `get` use, decided per event by object ID.
-  - The payload is rebuilt from the object as the viewer reads it. `object.updated` carries `object_id` and `type`, not `fields`. `source_key` is omitted. `source` and `tags` appear only when the policy projects them.
+  - The payload is rebuilt from the object as the viewer reads it. `object.updated` carries `object_id` and `type`, not `fields`. `source` and `tags` appear only when the policy projects them, and `source_key` appears with `source` (the same rule find, list and get apply to the object).
   - A hidden or missing object produces no event, as if it did not exist.
   - Jobs, upgrade, inbox, embedding and every other non-object event stay owner-only.
   - A principal with no grant gets `200` and an empty stream (heartbeats only), never `403`, so the answer does not reveal what exists.

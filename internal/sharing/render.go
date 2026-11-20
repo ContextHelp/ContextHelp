@@ -179,7 +179,10 @@ func (r *renderer) generic(out *storage.KnowledgeObject) {
 		out.Tags = slices.Clone(obj.Tags)
 	}
 	if r.fs.has(FieldSource) {
+		// source_key is the source's own dedup key for the object: it
+		// shows with the source, never alone.
 		out.Source = obj.Source
+		out.SourceKey = obj.SourceKey
 	}
 	r.genericMetadata(out)
 	r.genericGraph(out)
