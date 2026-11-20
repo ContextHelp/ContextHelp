@@ -7,6 +7,8 @@ import (
 	"log"
 	"sync"
 
+	"hop.top/kit/go/runtime/bus"
+
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 )
 
@@ -48,14 +50,30 @@ func NewSubscriber(cfg *config.Config, cfgPath string) *Subscriber {
 	return &Subscriber{cfg: cfg, cfgPath: cfgPath}
 }
 
-// Register wires all aps.profile.* handlers onto the bus.
-func (s *Subscriber) Register(b Bus) {
-	b.Subscribe("aps.profile.created", s.onProfileCreated)
-	b.Subscribe("aps.profile.updated", s.onProfileUpdated)
-	b.Subscribe("aps.profile.deleted", s.onProfileDeleted)
+// Register wires all aps.profile.* handlers onto the bus and returns a
+// func that removes them. The handlers run asynchronously, detached from
+// the publisher's context: a config write must outlive the publish call
+// and cannot veto it.
+func (s *Subscriber) Register(b bus.Bus) func() {
+	subs := []bus.Unsubscribe{
+		b.SubscribeAsync("aps.profile.created", s.async(s.onProfileCreated)),
+		b.SubscribeAsync("aps.profile.updated", s.async(s.onProfileUpdated)),
+		b.SubscribeAsync("aps.profile.deleted", s.async(s.onProfileDeleted)),
+	}
+	return func() {
+		for _, u := range subs {
+			u()
+		}
+	}
 }
 
-func (s *Subscriber) onProfileCreated(_ context.Context, e Event) error {
+func (s *Subscriber) async(h func(context.Context, bus.Event) error) bus.AsyncHandler {
+	return func(ctx context.Context, e bus.Event) {
+		_ = h(context.WithoutCancel(ctx), e)
+	}
+}
+
+func (s *Subscriber) onProfileCreated(_ context.Context, e bus.Event) error {
 	p, err := decodeProfilePayload(e)
 	if err != nil {
 		log.Printf("[events] profile.created: bad payload: %v", err)
@@ -91,7 +109,7 @@ func (s *Subscriber) onProfileCreated(_ context.Context, e Event) error {
 	return nil
 }
 
-func (s *Subscriber) onProfileUpdated(_ context.Context, e Event) error {
+func (s *Subscriber) onProfileUpdated(_ context.Context, e bus.Event) error {
 	p, err := decodeProfilePayload(e)
 	if err != nil {
 		log.Printf("[events] profile.updated: bad payload: %v", err)
@@ -122,7 +140,7 @@ func (s *Subscriber) onProfileUpdated(_ context.Context, e Event) error {
 	return nil
 }
 
-func (s *Subscriber) onProfileDeleted(_ context.Context, e Event) error {
+func (s *Subscriber) onProfileDeleted(_ context.Context, e bus.Event) error {
 	p, err := decodeProfilePayload(e)
 	if err != nil {
 		log.Printf("[events] profile.deleted: bad payload: %v", err)
@@ -170,9 +188,13 @@ func buildFocusProfile(p ProfilePayload, m deptMapping) config.FocusProfile {
 	}
 }
 
-func decodeProfilePayload(e Event) (ProfilePayload, error) {
+func decodeProfilePayload(e bus.Event) (ProfilePayload, error) {
 	var p ProfilePayload
-	if err := json.Unmarshal(e.Data, &p); err != nil {
+	raw, err := PayloadJSON(e)
+	if err != nil {
+		return p, fmt.Errorf("marshal: %w", err)
+	}
+	if err := json.Unmarshal(raw, &p); err != nil {
 		return p, fmt.Errorf("unmarshal: %w", err)
 	}
 	if p.ID == "" {

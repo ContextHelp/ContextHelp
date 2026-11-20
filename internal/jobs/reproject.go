@@ -111,13 +111,13 @@ type Reprojector struct {
 	// is re-projected.
 	Stamp    func(ctx context.Context) error
 	Progress ReprojectProgress
-	Bus      events.Bus
+	Bus      bus.Bus
 	Batch    int
 	BusyPoll time.Duration
 }
 
 // NewReprojector builds the Reprojector for a SQLite or Postgres driver.
-func NewReprojector(driver storage.StorageDriver, progress ReprojectProgress, b events.Bus) (*Reprojector, error) {
+func NewReprojector(driver storage.StorageDriver, progress ReprojectProgress, b bus.Bus) (*Reprojector, error) {
 	store, ok := driver.Objects().(storage.ProjectionStore)
 	if !ok {
 		return nil, fmt.Errorf("reproject: %T object store cannot re-project", driver.Objects())
@@ -139,7 +139,7 @@ func NewReprojector(driver storage.StorageDriver, progress ReprojectProgress, b 
 // a mismatch against a stamped signature (a first boot has nothing to
 // re-project). A job already pending or running (a resumed run) is
 // returned instead of a second one. A nil job means nothing to do.
-func ScheduleReprojection(ctx context.Context, q *Queue, verify *indexsig.VerifyResult, b events.Bus) (*storage.Job, error) {
+func ScheduleReprojection(ctx context.Context, q *Queue, verify *indexsig.VerifyResult, b bus.Bus) (*storage.Job, error) {
 	if verify == nil || verify.Match || verify.FirstBoot {
 		return nil, nil
 	}
@@ -357,14 +357,11 @@ func (x *reprojectRun) publish(ctx context.Context, topic bus.Topic, reason stri
 	publishReprojection(ctx, x.Bus, topic, p)
 }
 
-func publishReprojection(ctx context.Context, b events.Bus, topic bus.Topic, p events.ReprojectionPayload) {
+func publishReprojection(ctx context.Context, b bus.Bus, topic bus.Topic, p events.ReprojectionPayload) {
 	if b == nil {
 		return
 	}
-	ev, err := events.NewEvent(reprojectEventSource, string(topic), p)
-	if err != nil {
-		return
-	}
+	ev := bus.NewEvent(topic, reprojectEventSource, p)
 	if err := b.Publish(ctx, ev); err != nil {
 		slog.Warn("reproject: publish event", "topic", topic, "err", err)
 	}

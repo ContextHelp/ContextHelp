@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	kitbus "hop.top/kit/go/runtime/bus"
+
 	"github.com/google/uuid"
 
 	"github.com/ideacrafterslabs/ctxt/internal/events"
@@ -239,13 +241,10 @@ func (p *WorkerPool) emitTaskCompleted(ctx context.Context, jobID string, durati
 	if p.bus == nil {
 		return
 	}
-	ev, err := events.NewEvent(SourceWorkerPool, string(TopicJobCompleted), events.JobCompletedPayload{
+	ev := kitbus.NewEvent(TopicJobCompleted, SourceWorkerPool, events.JobCompletedPayload{
 		JobID:      jobID,
 		DurationMs: durationMs,
 	})
-	if err != nil {
-		return
-	}
 	if pubErr := p.bus.Publish(ctx, ev); pubErr != nil {
 		slog.Warn("jobs: failed to publish job.completed event", "job", jobID, "err", pubErr)
 	}

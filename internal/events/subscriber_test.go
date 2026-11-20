@@ -1,21 +1,21 @@
 package events
 
 import (
+	"time"
+
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+	"hop.top/kit/go/runtime/bus"
+
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 )
 
-func newTestEvent(eventType string, payload ProfilePayload) Event {
-	data, _ := json.Marshal(payload)
-	e, _ := NewEvent("test", eventType, nil)
-	e.Type = eventType
-	e.Data = data
-	return e
+func newTestEvent(topic string, payload ProfilePayload) bus.Event {
+	return bus.NewEvent(bus.Topic(topic), "test", payload)
 }
 
 func TestOnProfileCreated(t *testing.T) {
@@ -178,9 +178,10 @@ func TestBusIntegration(t *testing.T) {
 	cfgPath := filepath.Join(dir, "config.yaml")
 
 	cfg := &config.Config{}
-	bus := NewLocalBus()
+	b := bus.New()
 	sub := NewSubscriber(cfg, cfgPath)
-	sub.Register(bus)
+	unregister := sub.Register(b)
+	defer unregister()
 
 	e := newTestEvent("aps.profile.created", ProfilePayload{
 		ID:         "bustest",
@@ -188,10 +189,12 @@ func TestBusIntegration(t *testing.T) {
 		Department: "legal",
 	})
 
-	// Publish fires async; call handler directly for deterministic test.
-	_ = sub.onProfileCreated(context.Background(), e)
-
-	if _, ok := cfg.Profile.Profiles["bustest"]; !ok {
-		t.Error("profile not created via bus integration")
-	}
+	// The handlers run async: wait for the one to land.
+	require.NoError(t, b.Publish(context.Background(), e))
+	require.Eventually(t, func() bool {
+		sub.mu.Lock()
+		defer sub.mu.Unlock()
+		_, ok := cfg.Profile.Profiles["bustest"]
+		return ok
+	}, 2*time.Second, 10*time.Millisecond, "profile not created via bus integration")
 }

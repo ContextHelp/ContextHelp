@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	kitbus "hop.top/kit/go/runtime/bus"
+
 	"github.com/stretchr/testify/require"
 
 	"github.com/ideacrafterslabs/ctxt/internal/events"
@@ -62,14 +64,17 @@ type recordingBus struct {
 	types []string
 }
 
-func (b *recordingBus) Publish(_ context.Context, e events.Event) error {
+func (b *recordingBus) Publish(_ context.Context, e kitbus.Event) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.types = append(b.types, e.Type)
+	b.types = append(b.types, string(e.Topic))
 	return nil
 }
-func (b *recordingBus) Subscribe(string, events.Handler) {}
-func (b *recordingBus) Close() error                     { return nil }
+func (b *recordingBus) Subscribe(string, kitbus.Handler) kitbus.Unsubscribe { return func() {} }
+func (b *recordingBus) SubscribeAsync(string, kitbus.AsyncHandler) kitbus.Unsubscribe {
+	return func() {}
+}
+func (b *recordingBus) Close(context.Context) error { return nil }
 
 func (b *recordingBus) has(topic string) bool {
 	b.mu.Lock()

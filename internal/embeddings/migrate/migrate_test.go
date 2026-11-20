@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	kitbus "hop.top/kit/go/runtime/bus"
+
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings/migrate"
@@ -189,24 +191,27 @@ func requireOneRowEach(t *testing.T, rows map[string]int, ids ...string) {
 // recBus records every published event synchronously.
 type recBus struct {
 	mu  sync.Mutex
-	evs []events.Event
+	evs []kitbus.Event
 }
 
-func (b *recBus) Publish(_ context.Context, e events.Event) error {
+func (b *recBus) Publish(_ context.Context, e kitbus.Event) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.evs = append(b.evs, e)
 	return nil
 }
-func (b *recBus) Subscribe(string, events.Handler) {}
-func (b *recBus) Close() error                     { return nil }
+func (b *recBus) Subscribe(string, kitbus.Handler) kitbus.Unsubscribe { return func() {} }
+func (b *recBus) SubscribeAsync(string, kitbus.AsyncHandler) kitbus.Unsubscribe {
+	return func() {}
+}
+func (b *recBus) Close(context.Context) error { return nil }
 
 func (b *recBus) topics() []string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	out := make([]string, len(b.evs))
 	for i, e := range b.evs {
-		out[i] = e.Type
+		out[i] = string(e.Topic)
 	}
 	return out
 }
@@ -215,9 +220,10 @@ func (b *recBus) last(topic string) (events.EmbeddingsMigrationPayload, bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	for i := len(b.evs) - 1; i >= 0; i-- {
-		if b.evs[i].Type == topic {
+		if string(b.evs[i].Topic) == topic {
 			var p events.EmbeddingsMigrationPayload
-			_ = json.Unmarshal(b.evs[i].Data, &p)
+			raw, _ := events.PayloadJSON(b.evs[i])
+			_ = json.Unmarshal(raw, &p)
 			return p, true
 		}
 	}

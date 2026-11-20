@@ -10,6 +10,11 @@ import (
 	"testing"
 	"time"
 
+	kitbus "hop.top/kit/go/runtime/bus"
+
+	"github.com/stretchr/testify/assert"
+	uri "hop.top/cite/scheme"
+
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/events"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
@@ -17,8 +22,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
-	"github.com/stretchr/testify/assert"
-	uri "hop.top/cite/scheme"
 )
 
 // defaultTestJobsCfg returns a JobsConfig with fast poll for tests.
@@ -313,11 +316,11 @@ func TestWorkerPoolEmitsObjectCreated(t *testing.T) {
 	driver := storageutil.NewTestDriver(t)
 	q := NewQueue(driver.Jobs())
 	pipes := builtins.Registry()
-	bus := events.NewLocalBus()
+	bus := kitbus.New()
 
 	var mu sync.Mutex
-	var received []events.Event
-	bus.Subscribe(string(events.TopicObjectIngested), func(_ context.Context, e events.Event) error {
+	var received []kitbus.Event
+	bus.Subscribe(string(events.TopicObjectIngested), func(_ context.Context, e kitbus.Event) error {
 		mu.Lock()
 		received = append(received, e)
 		mu.Unlock()
@@ -353,8 +356,9 @@ func TestWorkerPoolEmitsObjectCreated(t *testing.T) {
 	count := len(received)
 	var objectID string
 	if count > 0 {
+		raw, _ := events.PayloadJSON(received[0])
 		var payload events.ObjectIngestedPayload
-		if err := json.Unmarshal(received[0].Data, &payload); err == nil {
+		if err := json.Unmarshal(raw, &payload); err == nil {
 			objectID = payload.ObjectID
 		}
 	}
@@ -375,11 +379,11 @@ func TestWorkerPoolNoObjectCreatedOnFailure(t *testing.T) {
 	driver := storageutil.NewTestDriver(t)
 	q := NewQueue(driver.Jobs())
 	pipes := pipeline.NewRegistry() // empty — pipeline not found → job fails
-	bus := events.NewLocalBus()
+	bus := kitbus.New()
 
 	var mu sync.Mutex
-	var received []events.Event
-	bus.Subscribe(string(events.TopicObjectIngested), func(_ context.Context, e events.Event) error {
+	var received []kitbus.Event
+	bus.Subscribe(string(events.TopicObjectIngested), func(_ context.Context, e kitbus.Event) error {
 		mu.Lock()
 		received = append(received, e)
 		mu.Unlock()
@@ -432,10 +436,10 @@ func TestEdgeWriteFailureFails(t *testing.T) {
 		Steps:        []pipeline.PipelineStep{&mentionStep{}},
 	})
 
-	bus := events.NewLocalBus()
+	bus := kitbus.New()
 	var mu sync.Mutex
 	var objectCreatedCount int
-	bus.Subscribe(string(events.TopicObjectIngested), func(_ context.Context, _ events.Event) error {
+	bus.Subscribe(string(events.TopicObjectIngested), func(_ context.Context, _ kitbus.Event) error {
 		mu.Lock()
 		objectCreatedCount++
 		mu.Unlock()
@@ -662,10 +666,10 @@ func TestProcessJobMentionEdgesCarryProvenance(t *testing.T) {
 }
 
 func TestEmitObjectIngestedCarriesSourceAndSourceKey(t *testing.T) {
-	bus := events.NewLocalBus()
+	bus := kitbus.New()
 	var mu sync.Mutex
-	var got []events.Event
-	bus.Subscribe(string(events.TopicObjectIngested), func(_ context.Context, e events.Event) error {
+	var got []kitbus.Event
+	bus.Subscribe(string(events.TopicObjectIngested), func(_ context.Context, e kitbus.Event) error {
 		mu.Lock()
 		got = append(got, e)
 		mu.Unlock()
@@ -682,8 +686,9 @@ func TestEmitObjectIngestedCarriesSourceAndSourceKey(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("events: got %d, want 1", len(got))
 	}
+	rawData, _ := events.PayloadJSON(got[0])
 	var raw map[string]any
-	if err := json.Unmarshal(got[0].Data, &raw); err != nil {
+	if err := json.Unmarshal(rawData, &raw); err != nil {
 		t.Fatal(err)
 	}
 	if raw["source"] != "yta" {

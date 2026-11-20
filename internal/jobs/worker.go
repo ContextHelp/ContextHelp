@@ -12,8 +12,12 @@ import (
 	"sync"
 	"time"
 
+	kitbus "hop.top/kit/go/runtime/bus"
+
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
+
+	uri "hop.top/cite/scheme"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/events"
@@ -22,7 +26,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
-	uri "hop.top/cite/scheme"
 )
 
 // parseUserMentions converts caller-asserted @namespace.slug strings
@@ -72,7 +75,7 @@ type WorkerPool struct {
 	queue        *Queue
 	pipelines    pipeline.Registry
 	store        storage.StorageDriver
-	bus          events.Bus
+	bus          kitbus.Bus
 	workers      int
 	staleTimeout time.Duration
 	pollInterval time.Duration
@@ -87,7 +90,7 @@ type WorkerPool struct {
 }
 
 // NewWorkerPool creates a worker pool.
-func NewWorkerPool(queue *Queue, pipelines pipeline.Registry, store storage.StorageDriver, workers int, bus events.Bus, cfg config.JobsConfig) *WorkerPool {
+func NewWorkerPool(queue *Queue, pipelines pipeline.Registry, store storage.StorageDriver, workers int, bus kitbus.Bus, cfg config.JobsConfig) *WorkerPool {
 	return &WorkerPool{
 		queue:        queue,
 		pipelines:    pipelines,
@@ -462,15 +465,13 @@ func (p *WorkerPool) emitObjectUpdated(ctx context.Context, obj *storage.Knowled
 	if p.bus == nil || len(fields) == 0 {
 		return
 	}
-	ev, err := events.NewEvent(SourceWorkerPool, string(events.TopicObjectUpdated), events.ObjectUpdatedPayload{
+	ev := kitbus.NewEvent(events.TopicObjectUpdated, SourceWorkerPool, events.ObjectUpdatedPayload{
 		ObjectID: obj.ID,
 		Type:     obj.Type,
 		Fields:   fields,
 	})
-	if err == nil {
-		if pubErr := p.bus.Publish(ctx, ev); pubErr != nil {
-			slog.Warn("jobs: failed to publish object.updated event", "object", obj.ID, "err", pubErr)
-		}
+	if pubErr := p.bus.Publish(ctx, ev); pubErr != nil {
+		slog.Warn("jobs: failed to publish object.updated event", "object", obj.ID, "err", pubErr)
 	}
 }
 
@@ -607,9 +608,7 @@ func (p *WorkerPool) fanOutItems(ctx context.Context, draft *storage.KnowledgeOb
 			continue
 		}
 		if p.bus != nil {
-			if ev, err := events.NewEvent(SourceWorkerPoolFanOut, string(TopicJobEnqueued), job); err == nil {
-				_ = p.bus.Publish(ctx, ev)
-			}
+			_ = p.bus.Publish(ctx, kitbus.NewEvent(TopicJobEnqueued, SourceWorkerPoolFanOut, job))
 		}
 	}
 }
@@ -618,15 +617,13 @@ func (p *WorkerPool) emitCompleted(ctx context.Context, jobID string, durationMs
 	if p.bus == nil {
 		return
 	}
-	ev, err := events.NewEvent(SourceWorkerPool, string(TopicJobCompleted), events.JobCompletedPayload{
+	ev := kitbus.NewEvent(TopicJobCompleted, SourceWorkerPool, events.JobCompletedPayload{
 		JobID:       jobID,
 		ObjectCount: 1,
 		DurationMs:  durationMs,
 	})
-	if err == nil {
-		if pubErr := p.bus.Publish(ctx, ev); pubErr != nil {
-			slog.Warn("jobs: failed to publish job.completed event", "job", jobID, "err", pubErr)
-		}
+	if pubErr := p.bus.Publish(ctx, ev); pubErr != nil {
+		slog.Warn("jobs: failed to publish job.completed event", "job", jobID, "err", pubErr)
 	}
 }
 
@@ -641,11 +638,9 @@ func (p *WorkerPool) emitFailed(ctx context.Context, jobID, reason string, objec
 	if len(objectID) > 0 {
 		payload.ObjectID = objectID[0]
 	}
-	ev, err := events.NewEvent(SourceWorkerPool, string(TopicJobFailed), payload)
-	if err == nil {
-		if pubErr := p.bus.Publish(ctx, ev); pubErr != nil {
-			slog.Warn("jobs: failed to publish job.failed event", "job", jobID, "err", pubErr)
-		}
+	ev := kitbus.NewEvent(TopicJobFailed, SourceWorkerPool, payload)
+	if pubErr := p.bus.Publish(ctx, ev); pubErr != nil {
+		slog.Warn("jobs: failed to publish job.failed event", "job", jobID, "err", pubErr)
 	}
 }
 
@@ -657,7 +652,7 @@ func (p *WorkerPool) emitObjectIngested(ctx context.Context, draft *storage.Know
 	for i, t := range draft.Tags {
 		tags[i] = t.Label
 	}
-	ev, err := events.NewEvent(SourceWorkerPool, string(TopicObjectIngested), events.ObjectIngestedPayload{
+	ev := kitbus.NewEvent(TopicObjectIngested, SourceWorkerPool, events.ObjectIngestedPayload{
 		ObjectID:   draft.ID,
 		Type:       draft.Type,
 		Source:     draft.Source,
@@ -666,10 +661,8 @@ func (p *WorkerPool) emitObjectIngested(ctx context.Context, draft *storage.Know
 		Tags:       tags,
 		DurationMs: durationMs,
 	})
-	if err == nil {
-		if pubErr := p.bus.Publish(ctx, ev); pubErr != nil {
-			slog.Warn("jobs: failed to publish object.ingested event", "object", draft.ID, "err", pubErr)
-		}
+	if pubErr := p.bus.Publish(ctx, ev); pubErr != nil {
+		slog.Warn("jobs: failed to publish object.ingested event", "object", draft.ID, "err", pubErr)
 	}
 }
 

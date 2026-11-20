@@ -353,19 +353,16 @@ func runServe(cmd *cobra.Command, args []string) error {
 					shortHash(res.OldHash), shortHash(res.NewHash), res.InputsSummary,
 				)
 			}
-			ev, err := events.NewEvent(
+			_ = st.Bus.Publish(context.Background(), kitbus.NewEvent(
+				events.TopicDpkmsUpgradeSignatureMismatch,
 				"dpkms.serve",
-				string(events.TopicDpkmsUpgradeSignatureMismatch),
 				events.UpgradeSignatureMismatchPayload{
 					SignatureID:   res.SignatureID,
 					OldHash:       res.OldHash,
 					NewHash:       res.NewHash,
 					InputsSummary: res.InputsSummary,
 				},
-			)
-			if err == nil {
-				_ = st.Bus.Publish(context.Background(), ev)
-			}
+			))
 		}
 	}
 
