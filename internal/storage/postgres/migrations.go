@@ -389,6 +389,11 @@ var pgMigrations = []pgMigration{
 	// refuses, naming them, and changes nothing (see
 	// migrateContentHashPerProfile). Index only, no re-projection.
 	{Version: 34, Name: "objects (content_hash, profile_id) unique", fn: migrateContentHashPerProfile},
+	// jobs.user_data + jobs.user_source_key: the structured data and the
+	// source key `analyze` carries to the worker.
+	{Version: 35, Name: "jobs.user_data, jobs.user_source_key", fn: func(ctx context.Context, d *Driver) error {
+		return migrateJobsUserDataSourceKey(ctx, d.db)
+	}},
 }
 
 // sharingRegistryStatements create the sharing registry and add the
@@ -1550,6 +1555,17 @@ func migrateJobsUserProfileNote(ctx context.Context, db *sql.DB) error {
 		return err
 	}
 	return nil
+}
+
+// migrateJobsUserDataSourceKey adds user_data (JSON object text) and
+// user_source_key to jobs. Idempotent per column.
+func migrateJobsUserDataSourceKey(ctx context.Context, db *sql.DB) error {
+	if err := addJobsColumnIfMissing(ctx, db, "user_data",
+		`ALTER TABLE jobs ADD COLUMN user_data TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+	return addJobsColumnIfMissing(ctx, db, "user_source_key",
+		`ALTER TABLE jobs ADD COLUMN user_source_key TEXT NOT NULL DEFAULT ''`)
 }
 
 // migrateJobsIdempotencyKey adds the idempotency_key column plus a partial

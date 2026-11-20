@@ -214,6 +214,13 @@ func (p *WorkerPool) processWithHops(ctx context.Context, job *storage.Job) (*st
 		// to merge instead.
 		ProfileID: job.UserProfile,
 		InboxNote: job.UserNote,
+		// caller-supplied source key and structured data start on the
+		// draft too, so steps see them next to the fetched content
+		// (which they never replace) and the stored object keeps them.
+		SourceKey: job.UserSourceKey,
+	}
+	if len(job.UserData) > 0 {
+		draft.Metadata = map[string]any{storageutil.MetadataDataKey: job.UserData}
 	}
 
 	draft, err = p.runSteps(ctx, pipe, draft)
@@ -265,6 +272,14 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 
 	durationMs := time.Since(start).Milliseconds()
 
+	// A source key names one source: a stored object under it takes this
+	// submission as an update, whatever the fetched content hashes to.
+	// It is checked before the content hash, so a submission that carries
+	// a key never lands on another object by a hash match.
+	if p.updateBySourceKey(ctx, job, draft.SourceKey, durationMs) {
+		return
+	}
+
 	// Dedup stays inside the draft's profile (ADR-080 §4): the same
 	// content under another profile becomes its own object.
 	existing, err := p.store.Objects().GetByContentHash(ctx, draft.ContentHash, draft.ProfileID)
@@ -277,6 +292,9 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 			return
 		}
 		p.putVectors(ctx, existingID, draft)
+		// The caller's note and data on a re-submission replace the stored
+		// ones: reinforcing alone would keep the first capture's.
+		p.applySubmission(ctx, job, existingID)
 		p.markCompleted(ctx, job.ID, existingID, durationMs)
 		return
 	}
@@ -296,6 +314,10 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 		// Unique constraint race: another worker inserted the same hash
 		// (in the same profile) concurrently.
 		if errors.Is(err, storage.ErrAlreadyExists) {
+			// Another worker stored this source key first: this is its update.
+			if p.updateBySourceKey(ctx, job, draft.SourceKey, durationMs) {
+				return
+			}
 			existingID, rerr := p.reinforceAfterRace(ctx, draft)
 			if rerr != nil {
 				p.markFailed(ctx, job.ID, fmt.Sprintf("reinforce after race: %s", rerr), draft.ID)
@@ -348,6 +370,108 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 
 	// Fan out per-item jobs if the pipeline staged items for enqueueing.
 	p.fanOutItems(ctx, draft)
+}
+
+// submission is what the job's caller attached to the capture.
+func submission(job *storage.Job) storageutil.Submission {
+	return storageutil.Submission{
+		Note:     job.UserNote,
+		Data:     job.UserData,
+		Hints:    parseUserHints(job.UserHints),
+		Mentions: parseUserMentions(job.UserMentions),
+	}
+}
+
+// updateBySourceKey settles job as an update of the object stored under
+// key, when there is one, and reports whether it did. A failed lookup
+// settles the job as a retry or failure and reports true.
+func (p *WorkerPool) updateBySourceKey(ctx context.Context, job *storage.Job, key string, durationMs int64) bool {
+	if key == "" {
+		return false
+	}
+	stored, err := p.store.Objects().GetBySourceKey(ctx, key)
+	if err != nil {
+		p.retryOrFail(ctx, job.ID, fmt.Sprintf("source key lookup: %s", err))
+		return true
+	}
+	if stored == nil {
+		return false
+	}
+	p.updateStored(ctx, job, stored, durationMs)
+	return true
+}
+
+// updateStored settles job as an update of stored, the object its source
+// key names: the caller's note, data, hints and mentions are applied, the
+// object is reinforced, and the job answers with its ID. The stored
+// content, its hash and the pipeline's own output are left as they are.
+func (p *WorkerPool) updateStored(ctx context.Context, job *storage.Job, stored *storage.KnowledgeObject, durationMs int64) {
+	fields := submission(job).Apply(stored)
+	now := time.Now()
+	stored.ReinforcementCount++
+	stored.LastReinforcedAt = &now
+	stored.UpdatedAt = now
+	if err := p.store.Objects().Update(ctx, stored); err != nil {
+		p.retryOrFail(ctx, job.ID, fmt.Sprintf("update by source key: %s", err), stored.ID)
+		return
+	}
+	p.writeSubmissionEdges(ctx, stored, job)
+	p.emitObjectUpdated(ctx, stored, fields)
+	p.markCompleted(ctx, job.ID, stored.ID, durationMs)
+}
+
+// applySubmission applies the job's note, data, hints and mentions to the
+// stored object id after a content-hash reinforce. Failures are logged:
+// the reinforce already succeeded and the job must not fail for it.
+func (p *WorkerPool) applySubmission(ctx context.Context, job *storage.Job, id string) {
+	sub := submission(job)
+	if sub.Note == "" && len(sub.Data) == 0 {
+		return
+	}
+	stored, err := p.store.Objects().Get(ctx, id)
+	if err != nil || stored == nil {
+		slog.Warn("jobs: apply submission: load object", "object", id, "err", err)
+		return
+	}
+	fields := sub.Apply(stored)
+	if len(fields) == 0 {
+		return
+	}
+	stored.UpdatedAt = time.Now()
+	if err := p.store.Objects().Update(ctx, stored); err != nil {
+		slog.Warn("jobs: apply submission: update object", "object", id, "err", err)
+		return
+	}
+	p.emitObjectUpdated(ctx, stored, fields)
+}
+
+// writeSubmissionEdges writes the mention edges for the mentions the job
+// carries onto stored. The store keeps an edge already there.
+func (p *WorkerPool) writeSubmissionEdges(ctx context.Context, stored *storage.KnowledgeObject, job *storage.Job) {
+	targets := parseUserMentions(job.UserMentions)
+	if len(targets) == 0 {
+		return
+	}
+	edges := storage.MentionEdges(stored, targets, false, time.Now())
+	if _, err := p.store.Edges().CreateMissing(ctx, edges); err != nil {
+		slog.Warn("jobs: update by source key: mention edges", "object", stored.ID, "err", err)
+	}
+}
+
+func (p *WorkerPool) emitObjectUpdated(ctx context.Context, obj *storage.KnowledgeObject, fields []string) {
+	if p.bus == nil || len(fields) == 0 {
+		return
+	}
+	ev, err := events.NewEvent(SourceWorkerPool, string(events.TopicObjectUpdated), events.ObjectUpdatedPayload{
+		ObjectID: obj.ID,
+		Type:     obj.Type,
+		Fields:   fields,
+	})
+	if err == nil {
+		if pubErr := p.bus.Publish(ctx, ev); pubErr != nil {
+			slog.Warn("jobs: failed to publish object.updated event", "object", obj.ID, "err", pubErr)
+		}
+	}
 }
 
 // reinforceAfterRace reinforces the object another worker inserted with

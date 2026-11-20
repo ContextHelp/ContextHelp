@@ -266,6 +266,9 @@ func (s *Service) pipelineExists(ctx context.Context, name string) bool {
 // exempt because it bypasses the pipeline entirely and persists the
 // object directly.
 func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, error) {
+	if err := validateSubmission(req); err != nil {
+		return "", fmt.Errorf("analyze: %w", err)
+	}
 	now := time.Now().Truncate(time.Second)
 
 	// Auto-detect type if it's "text" but content looks like a URL.
@@ -308,7 +311,9 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 	}
 
 	// Duplicate detection (exact match only at analyze time; embeddings not yet computed).
-	if !req.Force {
+	// A submission that carries a source key, a note or data is an update
+	// of what is stored, never a duplicate to drop: the worker applies it.
+	if !req.Force && !req.updatesStored() {
 		if existingID, drop, err := s.analyzeDuplicate(ctx, req, jobSource); err != nil {
 			return "", err
 		} else if drop {
@@ -335,7 +340,9 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 		UserHints:    req.Hints,    // forwarded to draft.Tags (Source:"user") in worker.
 		UserProfile:  req.Profile,  // forwarded to draft.ProfileID in worker.
 		UserNote:     req.Note,     // forwarded to draft.InboxNote in worker.
+		UserData:     req.Data,     // forwarded to draft.Metadata["data"] in worker.
 
+		UserSourceKey:  req.SourceKey, // forwarded to draft.SourceKey in worker.
 		IdempotencyKey: req.IdempotencyKey,
 	}
 
@@ -378,6 +385,19 @@ func (s *Service) analyzeRaw(ctx context.Context, req AnalyzeRequest, detectedTy
 		ProfileID: req.Profile,
 		InboxNote: req.Note,
 	}
+	if len(req.Data) > 0 {
+		obj.Metadata = map[string]any{storageutil.MetadataDataKey: req.Data}
+	}
+	// A raw submission under a stored source key updates that object.
+	if req.SourceKey != "" {
+		stored, err := s.Store(ctx).Objects().GetBySourceKey(ctx, req.SourceKey)
+		if err != nil {
+			return "", fmt.Errorf("analyze raw: source key lookup: %w", err)
+		}
+		if stored != nil {
+			return s.updateRawBySourceKey(ctx, stored, req)
+		}
+	}
 	if err := s.Store(ctx).Objects().Create(ctx, obj); err != nil {
 		return "", fmt.Errorf("analyze raw: store: %w", err)
 	}
@@ -391,6 +411,35 @@ func (s *Service) analyzeRaw(ctx context.Context, req AnalyzeRequest, detectedTy
 		_ = s.Bus.Publish(ctx, ev)
 	}
 	return obj.ID, nil
+}
+
+// updateRawBySourceKey applies a raw submission to the object its source
+// key names: the note, data, hints and mentions, as the worker applies
+// them to a pipeline submission. The stored content stays.
+func (s *Service) updateRawBySourceKey(ctx context.Context, stored *storage.KnowledgeObject, req AnalyzeRequest) (string, error) {
+	fields := storageutil.Submission{
+		Note:     req.Note,
+		Data:     req.Data,
+		Hints:    userHintsToTags(req.Hints),
+		Mentions: mentions.ParseSlice(req.Mentions),
+	}.Apply(stored)
+	if len(fields) > 0 {
+		stored.UpdatedAt = time.Now().Truncate(time.Second)
+		if err := s.Store(ctx).Objects().Update(ctx, stored); err != nil {
+			return "", fmt.Errorf("analyze raw: update by source key: %w", err)
+		}
+		if err := s.writeUserMentionEdges(ctx, stored); err != nil {
+			return "", fmt.Errorf("analyze raw: user mentions: %w", err)
+		}
+		if ev, err := events.NewEvent("service.analyze", string(events.TopicObjectUpdated), events.ObjectUpdatedPayload{
+			ObjectID: stored.ID,
+			Type:     stored.Type,
+			Fields:   fields,
+		}); err == nil {
+			_ = s.Bus.Publish(ctx, ev)
+		}
+	}
+	return stored.ID, nil
 }
 
 // analyzeDuplicate runs Analyze's exact-match duplicate check. drop
@@ -871,6 +920,9 @@ func (s *Service) dedupeOnIdempotencyKey(ctx context.Context, key string) (jobID
 }
 
 func (s *Service) Enqueue(ctx context.Context, req AnalyzeRequest) (string, error) {
+	if err := validateSubmission(req); err != nil {
+		return "", fmt.Errorf("enqueue: %w", err)
+	}
 	now := time.Now().Truncate(time.Second)
 
 	// Same replay contract as Analyze: a key already enqueued wins.
@@ -902,6 +954,13 @@ func (s *Service) Enqueue(ctx context.Context, req AnalyzeRequest) (string, erro
 		CreatedAt:      now,
 		UpdatedAt:      now,
 		IdempotencyKey: req.IdempotencyKey,
+		// The same caller-supplied fields Analyze forwards.
+		UserMentions:  req.Mentions,
+		UserHints:     req.Hints,
+		UserProfile:   req.Profile,
+		UserNote:      req.Note,
+		UserData:      req.Data,
+		UserSourceKey: req.SourceKey,
 	}
 
 	if err := s.Queue.Enqueue(ctx, job); err != nil {

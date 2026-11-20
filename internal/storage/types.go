@@ -372,6 +372,17 @@ type Job struct {
 	// on KnowledgeObject; reusing it here keeps a single field name
 	// across inbox and pipeline paths.
 	UserNote string `json:"user_note,omitempty"`
+	// UserData is the caller-supplied structured JSON object
+	// (`ctxt analyze --data`). The worker stores it on the persisted
+	// object as Metadata["data"], namespaced so it cannot collide with
+	// the keys steps write. Stored as a JSON-encoded object in the
+	// user_data column.
+	UserData map[string]any `json:"user_data,omitempty"`
+	// UserSourceKey is the caller-supplied stable identity of the source
+	// (`ctxt analyze --source-key youtube:<id>`). The worker persists it
+	// as KnowledgeObject.SourceKey, so a later submission of the same key
+	// updates that object instead of creating another.
+	UserSourceKey string `json:"user_source_key,omitempty"`
 	// IdempotencyKey is the client-generated key for one logical
 	// submission. The enqueue surface dedupes on it: a replay carrying
 	// a key already present returns the existing job instead of minting

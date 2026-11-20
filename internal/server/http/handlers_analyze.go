@@ -36,6 +36,11 @@ func Analyze(svc *service.Service) http.HandlerFunc {
 				WriteError(w, http.StatusUnprocessableEntity, "PIPELINE_NOT_FOUND", err.Error())
 				return
 			}
+			// a note or data over its limit is the caller's to fix.
+			if errors.Is(err, service.ErrInvalidSubmission) {
+				WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
+				return
+			}
 			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 			return
 		}

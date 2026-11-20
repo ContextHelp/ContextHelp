@@ -303,3 +303,129 @@ func TestAnalyzeStampsProfile(t *testing.T) {
 		t.Errorf("profile = %v with none active, want none", body["profile"])
 	}
 }
+
+// analyzeBody runs `ctxt analyze` against a mock dpkms and returns the JSON
+// request body it posted.
+func analyzeBody(t *testing.T, args ...string) (map[string]any, error) {
+	t.Helper()
+	var body map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if r.URL.Path == "/api/v1/analyze" && r.Method == http.MethodPost {
+			json.NewDecoder(r.Body).Decode(&body)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusAccepted)
+			json.NewEncoder(w).Encode(map[string]string{"job_id": "job-x"})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+	_, err := executeCommand(append([]string{"analyze"}, append(args, "--server", srv.URL)...)...)
+	return body, err
+}
+
+func TestAnalyzeMentionRepeatableAndCompat(t *testing.T) {
+	cases := map[string][]string{
+		"repeated":   {"--mention", "@channel.wild", "--mention", "@creator.ada", "--mention", "@guest.bob"},
+		"csv":        {"--mention", "@channel.wild,@creator.ada,@guest.bob"},
+		"whitespace": {"--mention", "@channel.wild @creator.ada @guest.bob"},
+		"mixed":      {"--mention", "@channel.wild,@creator.ada", "--mention", "@guest.bob"},
+	}
+	for name, flags := range cases {
+		t.Run(name, func(t *testing.T) {
+			body, err := analyzeBody(t, append([]string{"some text"}, flags...)...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, _ := body["mentions"].([]any)
+			want := []any{"@channel.wild", "@creator.ada", "@guest.bob"}
+			if len(got) != 3 || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
+				t.Errorf("mentions: got %v, want %v", got, want)
+			}
+		})
+	}
+}
+
+func TestAnalyzeNoteDataSourceKeySentInRequest(t *testing.T) {
+	body, err := analyzeBody(t, "https://youtu.be/abc", "--type", "url",
+		"--note", "the full transcript",
+		"--data", `{"title":"T","meta":{"views":3}}`,
+		"--source-key", "youtube:abc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body["note"] != "the full transcript" {
+		t.Errorf("note: %v", body["note"])
+	}
+	if body["source_key"] != "youtube:abc" {
+		t.Errorf("source_key: %v", body["source_key"])
+	}
+	data, _ := body["data"].(map[string]any)
+	if data["title"] != "T" || data["meta"].(map[string]any)["views"] != float64(3) {
+		t.Errorf("data: %v", body["data"])
+	}
+}
+
+func TestAnalyzeNoteAndDataFromFile(t *testing.T) {
+	dir := t.TempDir()
+	note := filepath.Join(dir, "t.txt")
+	data := filepath.Join(dir, "d.json")
+	os.WriteFile(note, []byte("transcript from file\n"), 0o644)
+	os.WriteFile(data, []byte(`{"channel":"wild"}`), 0o644)
+
+	body, err := analyzeBody(t, "text", "--note", "@"+note, "--data", "@"+data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body["note"] != "transcript from file\n" {
+		t.Errorf("note: %q", body["note"])
+	}
+	if d, _ := body["data"].(map[string]any); d["channel"] != "wild" {
+		t.Errorf("data: %v", body["data"])
+	}
+
+	body, err = analyzeBody(t, "text", "--note", "@@handle is literal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body["note"] != "@handle is literal" {
+		t.Errorf("@@ must give a literal @: %q", body["note"])
+	}
+}
+
+func TestAnalyzeDataRejectsBadInput(t *testing.T) {
+	big := `{"x":"` + strings.Repeat("d", 300<<10) + `"}`
+	for name, data := range map[string]string{
+		"invalid json": `{"title":`,
+		"array":        `[1,2]`,
+		"scalar":       `"x"`,
+		"too large":    big,
+		"missing file": "@/nonexistent/d.json",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := analyzeBody(t, "text", "--data", data)
+			if err == nil {
+				t.Fatal("must fail before anything is sent")
+			}
+			if !strings.Contains(err.Error(), "--data") {
+				t.Errorf("error should name the flag: %v", err)
+			}
+		})
+	}
+}
+
+func TestAnalyzeHelpListsNoteData(t *testing.T) {
+	out, err := executeCommand("analyze", "--help")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, flag := range []string{"--note", "--data", "--source-key", "--no-dedup"} {
+		if !strings.Contains(out, flag) {
+			t.Errorf("analyze help should list %s", flag)
+		}
+	}
+}

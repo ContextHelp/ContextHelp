@@ -2,19 +2,23 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	gohttp "net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
+	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"hop.top/kit/go/console/output"
 )
 
 var analyzeCmd = &cobra.Command{
@@ -81,7 +85,9 @@ func init() {
 	analyzeCmd.Flags().Bool("raw", false, "disable AI; store raw knowledge object")
 	analyzeCmd.Flags().Bool("no-fanout", false, "skip post-ingest fan-out enrichment")
 	analyzeCmd.Flags().Bool("no-dedup", false, "skip duplicate detection")
-	analyzeCmd.Flags().String("source-key", "", "external dedup key (Slack ts, tweet ID, etc.)")
+	analyzeCmd.Flags().String("source-key", "", "stable source identity (youtube:<id>, Slack ts, ...); a repeat updates the stored object's note and data")
+	analyzeCmd.Flags().String("note", "", "free-form text stored with the object, e.g. a transcript (@file reads a file, @@ starts a literal @)")
+	analyzeCmd.Flags().String("data", "", "structured JSON object stored as object metadata, inline or @file (max 256 KiB)")
 	analyzeCmd.Flags().Bool("wait", false, "block until job completes")
 
 	// Mirror flags on rootCmd (local, not persistent) so `ctxt <content> --type url` works
@@ -96,7 +102,9 @@ func init() {
 	rootCmd.Flags().Bool("raw", false, "disable AI; store raw knowledge object")
 	rootCmd.Flags().Bool("no-fanout", false, "skip post-ingest fan-out enrichment")
 	rootCmd.Flags().Bool("no-dedup", false, "skip duplicate detection")
-	rootCmd.Flags().String("source-key", "", "external dedup key (Slack ts, tweet ID, etc.)")
+	rootCmd.Flags().String("source-key", "", "stable source identity (youtube:<id>, Slack ts, ...); a repeat updates the stored object's note and data")
+	rootCmd.Flags().String("note", "", "free-form text stored with the object, e.g. a transcript (@file reads a file, @@ starts a literal @)")
+	rootCmd.Flags().String("data", "", "structured JSON object stored as object metadata, inline or @file (max 256 KiB)")
 	rootCmd.Flags().Bool("wait", false, "block until job completes")
 
 	// Bind viper keys: RunAnalyze reads from cmd.Flags() directly, so viper bindings
@@ -105,6 +113,8 @@ func init() {
 	viper.BindPFlag("analyze.file", analyzeCmd.Flags().Lookup("file"))
 	viper.BindPFlag("analyze.hint", analyzeCmd.Flags().Lookup("hint"))
 	viper.BindPFlag("analyze.mention", analyzeCmd.Flags().Lookup("mention"))
+	viper.BindPFlag("analyze.note", analyzeCmd.Flags().Lookup("note"))
+	viper.BindPFlag("analyze.data", analyzeCmd.Flags().Lookup("data"))
 	viper.BindPFlag("analyze.pipeline", analyzeCmd.Flags().Lookup("pipeline"))
 	viper.BindPFlag("analyze.language", analyzeCmd.Flags().Lookup("language"))
 	viper.BindPFlag("analyze.translate", analyzeCmd.Flags().Lookup("translate"))
@@ -121,9 +131,64 @@ func flagString(cmd *cobra.Command, name, viperKey string) string {
 	return viper.GetString(viperKey)
 }
 
+// maxDataFlagBytes mirrors the server's limit on --data, so an oversized
+// value fails here before it is sent.
+const maxDataFlagBytes = service.MaxAnalyzeDataBytes
+
+// noteFlag resolves --note: its value, the contents of the file named
+// after a leading @, or a literal text starting with @ written @@.
+func noteFlag(cmd *cobra.Command) (string, error) {
+	v := flagString(cmd, "note", "analyze.note")
+	switch {
+	case strings.HasPrefix(v, "@@"):
+		return v[1:], nil
+	case strings.HasPrefix(v, "@"):
+		b, err := os.ReadFile(v[1:])
+		if err != nil {
+			return "", output.UsageError(fmt.Sprintf("--note: %v", err))
+		}
+		return string(b), nil
+	}
+	return v, nil
+}
+
+// dataFlag resolves --data to a JSON object: the value inline, or the
+// file named after a leading @. Anything but an object, or one over the
+// size limit, is a usage error.
+func dataFlag(cmd *cobra.Command) (map[string]any, error) {
+	v := strings.TrimSpace(flagString(cmd, "data", "analyze.data"))
+	if v == "" {
+		return nil, nil
+	}
+	raw := []byte(v)
+	if strings.HasPrefix(v, "@") {
+		b, err := os.ReadFile(v[1:])
+		if err != nil {
+			return nil, output.UsageError(fmt.Sprintf("--data: %v", err))
+		}
+		raw = b
+	}
+	if len(raw) > maxDataFlagBytes {
+		return nil, output.UsageError(fmt.Sprintf("--data: %d bytes, the limit is %d", len(raw), maxDataFlagBytes))
+	}
+	var data map[string]any
+	if err := json.Unmarshal(raw, &data); err != nil {
+		return nil, output.UsageError(fmt.Sprintf("--data: want a JSON object: %v", err))
+	}
+	return data, nil
+}
+
 func RunAnalyze(cmd *cobra.Command, args []string) error {
-	// Validate list flags before anything is read or sent.
+	// Flag values that can be refused fail before any instance is probed.
 	validMentions, err := parseMentionList(listFlag(cmd, "mention", "analyze.mention"))
+	if err != nil {
+		return err
+	}
+	note, err := noteFlag(cmd)
+	if err != nil {
+		return err
+	}
+	data, err := dataFlag(cmd)
 	if err != nil {
 		return err
 	}
@@ -179,8 +244,8 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 
 	sourceKey := flagString(cmd, "source-key", "analyze.source_key")
 
-	// ship `--mention "@client.acme @project.foo"` through to the
-	// server so user-asserted mentions become real edges + entity rows
+	// ship `--mention "@client.acme" --mention "@project.foo"` through to
+	// the server so user-asserted mentions become real edges + entity rows
 	// (handled by service.Analyze + jobs/worker.go). The CLI flag is
 	// --mention; the server-side JSON field is still `mentions`.
 	userMentions := validMentions
@@ -206,6 +271,8 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 		SourceKey: sourceKey,
 		Mentions:  userMentions,
 		Hints:     userHints,
+		Note:      note,
+		Data:      data,
 		// the active profile attributes what analyze submits.
 		Profile: activeProfileName(cmd),
 	}

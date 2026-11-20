@@ -208,7 +208,8 @@ func Enqueue(svc *service.Service) http.HandlerFunc {
 			// check, and the queue's validator deeper in Enqueue. Match
 			// both, otherwise a genuinely invalid request falls through
 			// to a generic 500.
-			if errors.Is(err, service.ErrPipelineNotFound) || errors.Is(err, jobs.ErrPipelineNotFound) {
+			if errors.Is(err, service.ErrPipelineNotFound) || errors.Is(err, jobs.ErrPipelineNotFound) ||
+				errors.Is(err, service.ErrInvalidSubmission) {
 				WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
 				return
 			}

@@ -289,3 +289,40 @@ func TestIdempotencyKeyEmptyNotUnique(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, got, "empty key must never match")
 }
+
+// user_data and user_source_key survive Create -> Get and AcquireNext.
+func TestJobUserDataAndSourceKeyRoundTrip(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	job := makeJob("job-ud")
+	job.UserData = map[string]any{"title": "T", "n": float64(2), "nested": map[string]any{"a": "b"}}
+	job.UserSourceKey = "youtube:abc"
+	if err := d.Jobs().Create(ctx, job); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	plain := makeJob("job-plain")
+	if err := d.Jobs().Create(ctx, plain); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	got, err := d.Jobs().Get(ctx, "job-ud")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.UserSourceKey != "youtube:abc" || got.UserData["title"] != "T" ||
+		got.UserData["nested"].(map[string]any)["a"] != "b" {
+		t.Errorf("got key %q data %v", got.UserSourceKey, got.UserData)
+	}
+	if p, _ := d.Jobs().Get(ctx, "job-plain"); p.UserData != nil || p.UserSourceKey != "" {
+		t.Errorf("plain job: key %q data %v", p.UserSourceKey, p.UserData)
+	}
+
+	acq, err := d.Jobs().AcquireNext(ctx)
+	if err != nil {
+		t.Fatalf("acquire: %v", err)
+	}
+	if acq.ID == "job-ud" && (acq.UserSourceKey != "youtube:abc" || acq.UserData["title"] != "T") {
+		t.Errorf("acquired key %q data %v", acq.UserSourceKey, acq.UserData)
+	}
+}
