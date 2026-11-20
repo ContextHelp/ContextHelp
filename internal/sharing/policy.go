@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 
 	"gopkg.in/yaml.v3"
 
@@ -58,7 +60,10 @@ type Capabilities struct {
 	Entities bool `yaml:"entities,omitempty" json:"entities,omitempty"`
 	Export   bool `yaml:"export,omitempty" json:"export,omitempty"`
 	MCP      bool `yaml:"mcp,omitempty" json:"mcp,omitempty"`
-	Events   bool `yaml:"events,omitempty" json:"events,omitempty"`
+	// Events is deprecated and ignored: GET /events is open to every
+	// viewer and shows it the object events it may read, whatever this
+	// says. It still parses, so existing policies load; setting it warns.
+	Events bool `yaml:"events,omitempty" json:"events,omitempty"`
 }
 
 // Redaction styles.
@@ -135,6 +140,7 @@ func ParsePolicies(data []byte) ([]Policy, error) {
 	if len(out) == 0 {
 		return nil, errors.New("policy: no document")
 	}
+	warnDeclaredEvents(data, out)
 	return out, nil
 }
 
@@ -158,7 +164,64 @@ func (p Policy) Validate() error {
 	errs = append(errs, p.validateFields()...)
 	errs = append(errs, p.Redact.validate()...)
 	errs = append(errs, p.Capabilities.validate()...)
+	if p.Capabilities.Events {
+		warnEventsDeprecated(p.Name)
+	}
 	return errors.Join(errs...)
+}
+
+// eventsWarned records the policies that already got the deprecation
+// warning, so each warns once per process.
+var eventsWarned sync.Map
+
+// warnEventsDeprecated logs, once per policy name, that
+// capabilities.events no longer gates anything.
+func warnEventsDeprecated(name string) {
+	if _, dup := eventsWarned.LoadOrStore(name, struct{}{}); dup {
+		return
+	}
+	slog.Warn("share policy: capabilities.events is deprecated and ignored: the event stream shows a viewer the object events it may read whatever this says; remove the key",
+		"policy", name)
+}
+
+// warnDeclaredEvents warns for each policy of the stream whose document
+// names capabilities.events. The strict decode cannot tell `events:
+// false` from no key, so the documents are read again as written.
+func warnDeclaredEvents(data []byte, policies []Policy) {
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	for _, p := range policies {
+		var doc yaml.Node
+		if dec.Decode(&doc) != nil {
+			return
+		}
+		if declaresEvents(&doc) {
+			warnEventsDeprecated(p.Name)
+		}
+	}
+}
+
+// declaresEvents reports whether a policy document names
+// capabilities.events at all, true or false: a false value decodes to
+// the zero Capabilities and could not be told from an absent key.
+func declaresEvents(doc *yaml.Node) bool {
+	if doc.Kind == yaml.DocumentNode && len(doc.Content) == 1 {
+		doc = doc.Content[0]
+	}
+	if doc.Kind != yaml.MappingNode {
+		return false
+	}
+	for i := 0; i+1 < len(doc.Content); i += 2 {
+		if doc.Content[i].Value != "capabilities" || doc.Content[i+1].Kind != yaml.MappingNode {
+			continue
+		}
+		caps := doc.Content[i+1]
+		for j := 0; j+1 < len(caps.Content); j += 2 {
+			if caps.Content[j].Value == "events" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (p Policy) validateFields() []error {

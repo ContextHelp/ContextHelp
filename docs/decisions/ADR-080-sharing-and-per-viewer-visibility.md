@@ -1,6 +1,6 @@
 # ADR-080 – Sharing: Audiences, Share Policies and Per-Viewer Visibility
 
-> **Status:** Accepted (2026-10-14; decisions D1–D15 as recommended in the plan; amended the same day after review, D18–D23)
+> **Status:** Accepted (2026-10-14; decisions D1–D15 as recommended in the plan; amended the same day after review, D18–D23; amended 2026-11-20, see [Amendment 2026-11-20](#amendment-2026-11-20))
 > **Date:** 2026-10-14
 > **Author:** jadb
 > **Applies to:** dPKMS, ctxt
@@ -344,6 +344,18 @@ SQLite migrations continue the numbered series from 047 (045 and 046 are Go migr
 - **Ceiling:** a principal in both audiences with `deny_classes: [personal]` never receives a `personal` object or part through either grant.
 - **Dedup:** the same content captured under two profiles yields two objects, and the viewer's copy carries only its own tags.
 - **Conformance:** every scoped store method, on both drivers, in `storagetest`.
+
+
+---
+
+## Amendment 2026-11-20
+
+> **Status:** Accepted
+> **Scope:** the event stream and the `source` field. The rest stands.
+
+- **`GET /events` is open to every viewer** (§4, §6). It was owner-only and answered a restricted viewer 403 `NOT_SHARED`. A non-owner now receives the object events (`object.ingested`, `object.updated`, `object.deleted`, `object.raw_stored`) for objects its viewer may read, decided per event by object ID through the scoped read `find`, `list` and `get` use; the payload is rebuilt from the object as rendered. Every other event type, inbox events included, stays owner-only. A principal with no grant gets an empty `200` stream, not a 403, so the answer does not reveal what exists. A delete is delivered only for an object that connection was already sent. The stream follows the caller: each event and heartbeat authenticates the credential and resolves the viewer again, so a revoked grant applies to the next event and a revoked or expired key ends the stream. Details: [REST API, Events](../api/api-rest.md#events), [ADR-075 amendment 2026-11-20](ADR-075-external-hook-surface.md#amendment-2026-11-20).
+- **`capabilities.events` is deprecated.** It still parses, so existing policies load, but it gates nothing: no built-in template sets it, and the route no longer closes on it. Setting it logs a warning once per policy. The `events: false` lines in the policy examples above are historical.
+- **`source_key` follows `source`** (§5). A policy that projects the `source` field renders the object's `source_key` with it, in `find`, `list`, `get` and event payloads alike; a policy that does not renders neither. No separate policy field.
 
 ---
 
