@@ -50,7 +50,7 @@ flowchart TD
 
 Pipelines are extended without changing core code through:
 
-- **Overrides**: `pipelines.overrides.<pipeline>` in config sets `providers`, `skip_steps` and `insert_steps` for a built-in pipeline.
+- **Overrides**: `pipelines.overrides.<pipeline>` in config sets `providers`, `skip_steps` and `insert_steps` for a built-in pipeline. A repo URL capture routes to `url.github.repo` on its own and picks up its overrides; see [classify GitHub repos on capture](../manual/admin-extensibility/custom-steps.md#example-classify-github-repos-on-capture).
 - **Custom pipelines**: `dpkms pipeline create <file>` (or `POST /api/v1/pipelines`) defines a new pipeline from built-in and installed steps.
 - **Installed steps**: `dpkms pipeline step install <name> --path <dir>` (or `--registry <url>`) installs a program that `insert_steps` runs out of process on every object ([ADR-058](../decisions/ADR-058-external-step-execution-protocol.md), [Add a custom step](../manual/admin-extensibility/custom-steps.md)).
 - **Hooks** (accepted, not implemented yet): other applications will react before or after pipeline events through the external hook surface ([ADR-075](../decisions/ADR-075-external-hook-surface.md)).

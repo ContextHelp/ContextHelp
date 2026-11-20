@@ -158,6 +158,20 @@ A field the output carries is replaced whole, so a step that returns `"tags": [.
 
 Ops run in order. If the output also has `object`, `object` applies first and the ops act on the result. An unknown op or a malformed value fails the object like any other protocol violation, with an error naming the step and the op's position. Steps inserted one after another each see the previous step's tags, so two tagging steps keep both sets.
 
+## Example: classify GitHub repos on capture
+
+The `url.github.repo` pipeline types a captured repository URL as `repo/github` and writes its API metadata. An installed step can judge the repo afterwards. The `gh-stars-classify` step (built from the gh-stars project: `make step`) adds `star-candidate` and `star:auto` or `star:review` through additive ops, and `metadata.gh_stars` (confidence, suggested lists, decider). It leaves a repo alone when `metadata.data.starred` is true, as the star-lists import records it.
+
+Routing needs nothing extra. A plain `ctxt analyze https://github.com/<owner>/<repo>` selects `url.github.repo` by its URL pattern, and the registry that selection reads includes the overrides, so no `--pipeline` is needed. Overrides are read at startup: restart `dpkms serve` after changing them.
+
+```bash
+dpkms pipeline step install gh-stars-classify --path dist/step
+```
+
+Then merge [`examples/recipes/github-repo-classify/dpkms.yaml`](../../../examples/recipes/github-repo-classify/dpkms.yaml) into `dpkms.yaml`, put [`classify.yaml`](../../../examples/recipes/github-repo-classify/classify.yaml) at the path `config_file` names, run `dpkms config validate`, and restart.
+
+Place the step `after: tagger`. Tagger keeps only user- and GitHub-sourced tags, so a step inserted earlier (for example after `github_repo_mapper`) keeps its `metadata` but loses its tags. Reinstall the step after rebuilding it: ctxt pins the executable's SHA-256.
+
 ## When a step fails
 
 With the default `on_error: fail`, the object fails closed: it is not stored and its job fails with an error that names the step.

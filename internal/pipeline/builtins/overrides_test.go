@@ -2,6 +2,7 @@ package builtins_test
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
@@ -176,4 +177,29 @@ func TestDedupAnchor(t *testing.T) {
 		"text.short": {InsertSteps: []config.StepInsert{{Step: "noop", After: "dedup"}}},
 	}}, config.DuplicatesConfig{}, nil)
 	assert.Len(t, errs, 1)
+}
+
+// TestGitHubRepoURLRoutesToOverriddenPipeline: a plain capture of a repo
+// URL (no explicit pipeline) selects url.github.repo, and the registry
+// that selection reads carries that pipeline's insert_steps. The step goes
+// after tagger: tagger rebuilds the tag list, so an earlier step's tags
+// would be lost.
+func TestGitHubRepoURLRoutesToOverriddenPipeline(t *testing.T) {
+	ext := &fakeExternal{installed: map[string]bool{"gh-stars-classify": true}}
+	reg, err := buildWith(t, ext, map[string]config.PipelineOverride{
+		"url.github.repo": {InsertSteps: []config.StepInsert{
+			{Step: "gh-stars-classify", After: "tagger"},
+		}},
+	})
+	require.NoError(t, err)
+
+	name := reg.SelectPipeline("https://github.com/acme/agent-kit", "")
+	require.Equal(t, "url.github.repo", name)
+	pipe, err := reg.Get(name)
+	require.NoError(t, err)
+	names := stepNames(pipe)
+	i := slices.Index(names, "gh-stars-classify")
+	require.GreaterOrEqual(t, i, 1, "inserted step missing: %v", names)
+	assert.Equal(t, "tagger", names[i-1])
+	assert.Contains(t, names[:i], "github_repo_mapper")
 }

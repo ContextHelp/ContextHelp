@@ -1,0 +1,17 @@
+# Merge into dpkms.yaml. Install the step first:
+#   dpkms pipeline step install gh-stars-classify --path <dir with SKILL.md and the executable>
+# then restart dpkms serve.
+pipelines:
+  overrides:
+    url.github.repo:
+      insert_steps:
+        # After tagger: tagger rebuilds the tag list and keeps only user-
+        # and GitHub-sourced tags, so a step before it loses its tags.
+        - step: gh-stars-classify
+          after: tagger
+          timeout: 30s
+          config:
+            # Absolute path readable by the dpkms user. The step runs with
+            # PATH=/usr/bin:/bin and a temporary HOME, so it cannot find
+            # its config any other way.
+            config_file: /etc/gh-stars/classify.yaml
