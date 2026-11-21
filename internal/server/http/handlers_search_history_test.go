@@ -104,3 +104,24 @@ func TestSearch_RecordsHistory(t *testing.T) {
 	require.Len(t, out.Data, 2, "repeated identical queries are separate entries")
 	assert.Equal(t, "type==article", out.Data[0].Query)
 }
+
+// search.history.enabled=false: GET /search answers and records nothing.
+func TestSearch_HistoryDisabled(t *testing.T) {
+	ts := newTestServerBundle(t)
+	defer ts.Close()
+	ts.svc.Cfg.Search.History.Enabled = false
+
+	resp, err := http.Get(ts.URL + "/api/v1/search?q=type==article&profile=prof_off")
+	require.NoError(t, err)
+	resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	resp, err = http.Get(ts.URL + "/api/v1/search-history?profile_id=prof_off")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	var out struct {
+		Data []*storage.SearchHistoryEntry `json:"data"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
+	assert.Empty(t, out.Data)
+}

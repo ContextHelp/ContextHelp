@@ -143,6 +143,9 @@ func NewWithOptions(store storage.StorageDriver, queue *jobs.Queue, pipes pipeli
 	var c config.Config
 	if len(cfg) > 0 {
 		c = cfg[0]
+	} else {
+		// no config given: built-in search defaults (history recording on)
+		c.Search = config.DefaultSearchConfig()
 	}
 
 	s := &Service{
@@ -2008,11 +2011,15 @@ func (s *Service) AppendSearchHistory(ctx context.Context, query, profileID, str
 	return s.Store(ctx).SearchHistory().Append(ctx, e)
 }
 
-// RecordSearchHistory persists one executed search (US-0055). History is
+// RecordSearchHistory persists one executed search (US-0055) unless
+// search.history.enabled is false. History is
 // a convenience log: a store that refuses or fails is logged and never
 // fails the search that already answered. The store is the viewer's, so the
 // entry is owned by the searching principal.
 func (s *Service) RecordSearchHistory(ctx context.Context, query, profileID, strategies string, resultCount int) {
+	if !s.Cfg.Search.History.Enabled { // search.history.enabled: false
+		return
+	}
 	if err := s.AppendSearchHistory(ctx, query, profileID, strategies, resultCount); err != nil {
 		slog.Warn("search history not recorded", "err", err)
 	}

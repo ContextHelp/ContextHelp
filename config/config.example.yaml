@@ -201,6 +201,8 @@
 #    vector: 50
 #  min_score: 0
 #  fallback_to_fts: true
+#  history:
+#    enabled: true   # record executed searches (dpkms); false records nothing
 #  reranker:
 #    mention_boost_per_mention: 0.05
 #    max_mention_boost: 1.0
