@@ -67,7 +67,7 @@ func UpdateObject(svc *service.Service) http.HandlerFunc {
 		case errors.Is(err, service.ErrInvalidMention):
 			WriteError(w, http.StatusBadRequest, "INVALID_MENTION", err.Error())
 			return
-		case errors.Is(err, service.ErrInvalidPatch):
+		case errors.Is(err, service.ErrInvalidPatch), errors.Is(err, service.ErrInvalidSubmission):
 			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
 			return
 		case err != nil:
