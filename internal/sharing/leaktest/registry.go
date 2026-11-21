@@ -1,6 +1,7 @@
 package leaktest
 
 import (
+	"bytes"
 	"context"
 	"net/http"
 	"slices"
@@ -34,6 +35,9 @@ type Principal struct {
 	// Revoked marks a principal the instance refuses outright: every
 	// route answers 401 (Unauthenticated), never a body.
 	Revoked bool
+	// HTTPOnly marks a principal that authenticates with a browser
+	// session cookie: it speaks HTTP and no gRPC (Reaches).
+	HTTPOnly bool
 	// viewer is the viewer the instance compiles for it; the zero
 	// viewer for the owner, whose checks are the no-server-error one.
 	viewer sharing.Viewer
@@ -66,8 +70,16 @@ type Result struct {
 }
 
 // ServerError reports whether the route failed on the server: an HTTP
-// 5xx, or a gRPC code the server answers its own failures with.
+// 5xx, or a gRPC code the server answers its own failures with. An
+// HTTP 501 NOT_IMPLEMENTED is the backend lacking the store the route
+// reads (Unsupported), not a failure: nothing was returned. gRPC
+// Unimplemented stays a failure: no RPC maps a missing store to it, and
+// it is also how an unregistered method answers, which the suite must
+// keep catching.
 func (r Result) ServerError() bool {
+	if r.Unsupported() {
+		return false
+	}
 	if r.Status >= http.StatusInternalServerError {
 		return true
 	}
@@ -77,6 +89,13 @@ func (r Result) ServerError() bool {
 	default:
 		return false
 	}
+}
+
+// Unsupported reports whether an HTTP route answered 501
+// NOT_IMPLEMENTED: the storage backend has no store for what the route
+// reads (the Postgres saved-search and search-history placeholders).
+func (r Result) Unsupported() bool {
+	return r.Status == http.StatusNotImplemented && bytes.Contains(r.Body, []byte(`"code":"NOT_IMPLEMENTED"`))
 }
 
 // CallFunc calls a case's route as p against f.

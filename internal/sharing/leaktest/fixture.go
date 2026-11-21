@@ -61,6 +61,8 @@ type Fixture struct {
 
 	owner      Principal
 	restricted []Principal
+	// admins hold the admin bundle under no grant (fixture_admin.go).
+	admins []Principal
 	// visibleTo, when set, names the principal the fixture was seeded
 	// for: only the rows that principal sees exist. "" seeds everything.
 	visibleTo string
@@ -151,6 +153,7 @@ func Start(t testing.TB, driver storage.StorageDriver, opts ...Option) *Fixture 
 		visibleTo: o.visibleTo,
 	}
 	f.seedPrincipals(t)
+	f.seedAdmins(t)
 	f.seed(t)
 	f.serveGRPC(t)
 	return f
@@ -176,7 +179,7 @@ func (f *Fixture) principal(name string) Principal {
 	if name == NameOwner {
 		return f.owner
 	}
-	for _, p := range f.restricted {
+	for _, p := range slices.Concat(f.restricted, f.admins) {
 		if p.Name == name {
 			return p
 		}

@@ -18,10 +18,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
-// driverFunc opens a fresh store for one fixture: SQLite here, Postgres
-// in the integration-tagged runs of the same tests.
-type driverFunc func(*testing.T) storage.StorageDriver
-
 // Per-object rendering (ADR-080 §5): a viewer under two grants sees
 // each object through the grants that cover it, never through the
 // union of every grant it holds. The principal below holds a grant
