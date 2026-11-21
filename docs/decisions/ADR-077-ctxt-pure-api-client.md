@@ -6,6 +6,8 @@
 > **Applies to:** ctxt CLI (every command), dPKMS HTTP and gRPC surface, client endpoint configuration
 > **Supersedes:** None
 > **Amends:** ADR-075 §2 "Hook hosts" (the CLI stops being a host; see Consequences)
+> **Amended by:** ADR-082 §10 (2026-10-16): only the local owner bypasses the inbound entitlement and metering gate; the `admin` role does not (future work; `next` still bypasses on the `admin` role)
+> **Amended by:** ADR-082 §9 (2026-10-16): the PACT holder key is not a token and never comes from config or the environment (future work, gated on the PACT library's published tag); *amended 2026-10-20:* it is a 0600 file under `$XDG_STATE_HOME/ctxt/pact/`, and holder refusals have exit classes (§2)
 > **References:** ADR-023 (authentication and authorization), ADR-056 (unified enqueue API), ADR-066 (ambient capture substrate), ADR-070 (pipeline and index versioning), ADR-071 (embedding index versioning), ADR-074 (same-owner device sync), ADR-075 (external hook surface)
 > **Plan:** [`docs/plans/2026-09-27-ctxt-remote-client.md`](../plans/2026-09-27-ctxt-remote-client.md) holds the per-command audit, the endpoint map, the missing endpoints and the phased tasks.
 
@@ -49,6 +51,9 @@ There is no local write, local read or local search fallback. Failures map onto 
 | 429 | 64 `RATE_LIMITED` (kit's own 429 mapping) |
 | 5xx, or a timeout or dropped connection after connecting | 6 `TRANSIENT` |
 | Any other status (405, 413, ...) | 1 `GENERIC` |
+| PACT holder: the contract does not verify under the configured publisher keys, does not match the request, or has expired (*amended 2026-10-20; applies when the holder is built*) | 5 `UNAUTHORIZED` |
+| PACT holder: no usable holder state or key, or the presentation cannot be built (*amended 2026-10-20; applies when the holder is built*) | 70 `PREREQUISITE` |
+| PACT: the instance refuses the contract request or the presented request (*amended 2026-10-20; applies when the holder is built*) | the status's row above (401/403 → 5) |
 
 A 401 or 403 always ends the request. It is never retried against another instance.
 
@@ -81,7 +86,7 @@ A 401 or 403 always ends the request. It is never retried against another instan
 - **Layering and `server.url` (amended 2026-11-19).** Config layers (system, user, project `.contexthelp/ctxt.yaml` walking up from the working directory, `-c` paths) merge per leaf through kit's `config.Load`: scalars and lists are replaced, maps are merged. So the closest layer that sets `server.urls` replaces the list whole, and `server.token` layers like any scalar as the default token for entries without their own. `server.url` is removed. kit ignores unknown keys, so a config that still sets it, in any layer, fails to load with `server.url is no longer supported: use server.urls`; dropping it silently would fall back to the default endpoint. Before the amendment `server.urls` won over `server.url` whatever layer set each, so a project's `server.url` silently lost to a user's `server.urls`.
 - **No failover.** Every step yields exactly one endpoint. When it can't be dialled, ctxt exits 70. It never tries another `server.urls` entry, because that would write into, or read from, a different corpus.
 - **Instance key.** The resolver also returns a key: the entry's name, else the normalized URL. Client-side state (watch records, the browser-history position) is kept per key.
-- **Tokens come only from config,** never from flags. This is unchanged.
+- **Tokens come only from config,** never from flags. This is unchanged. *Amended 2026-10-16 (ADR-082 §9):* when ctxt acts as a PACT holder for an enrolled agent, the holder private key is not a token and is never read from config or the environment; it lives in a file only its owner can read (0600) under `$XDG_STATE_HOME/ctxt/pact/<instance>/`, not the OS keychain and not config. ctxt writes no protocol crypto: it uses the `hop.top/pact-go` module. Future work, gated on that module's published tag.
 - **`ctxt instance list | use | current`** shows and selects named endpoints as well as running local instances. `current` prints the resolved URL, the layer that chose it, and whether a token is attached.
 
 ### 4. Authorization: route scopes, role bundles
@@ -96,7 +101,7 @@ This follows ADR-023's capability model:
   - `reader` holds every `read:*` scope.
 - A principal without the scope gets 403. A route with no declared scope fails a test, so every new route has to choose one.
 - **Private instances** (no auth provider, loopback only) grant every scope, as today.
-- **Admin principals bypass the inbound entitlement and metering gate** on entity reads. That gate exists for third-party consumers, not the owner.
+- **Admin principals bypass the inbound entitlement and metering gate** on entity reads. That gate exists for third-party consumers, not the owner. *Amended 2026-10-16 by ADR-082 §10 (future work):* administering an instance is not access to its data, so the bypass is to belong to the local owner (principal kind `owner`) alone. A principal holding the `admin` role, IdP-mapped or not, is then gated and metered like any other consumer. On `next` the gate is still skipped for the `admin` role (`BypassesEntityGate`).
 - **`GET /api/v1/whoami`** returns the principal ID and its effective scopes, so `ctxt status` and `ctxt instance current` can show who the client is.
 
 ### 5. Where each operator command lives

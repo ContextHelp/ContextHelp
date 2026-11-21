@@ -6,6 +6,7 @@
 > **Applies to:** dPKMS
 > **Supersedes:** None
 > **References:** ADR-037, ADR-049, ADR-063
+> **Amended by:** ADR-074 (Phase 3, same-owner scope); ADR-082 (inbound pushes by a `peer` principal are PACT-admitted)
 
 ---
 
@@ -122,6 +123,7 @@ What gets federated:
 - Entities and search indexes rebuilt at target — enrichment pipelines must run at target too.
 - Cycle detection in DAG config required at startup (not runtime).
 - HTTP pusher (Phase 2) needs auth; token-per-target config shape TBD.
+  > *Amended 2026-10-16.* The inbound credential is the API key of a `peer` principal (ADR-079 §1). ADR-082 §12 adds PACT admission to the push route: the pusher is an enrolled holder presenting a request-bound proof. Peers remain owner-trusted replicas (ADR-080 §6).
 - Pull support (Phase 3) will need conflict resolution strategy; ADR to follow.
 
 ---

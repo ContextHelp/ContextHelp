@@ -450,7 +450,7 @@ BEAM/LIGHT (Tavakoli et al., ICLR 2026) benchmarks 10 cognitive memory abilities
 Establishes the KnowledgeObject as the canonical graph node and pipeline-draft target. Mentions, edges, and graph queries all anchor on this canonical type. Foundation for ADR-053's pipeline-draft model.
 
 ### **ADR-064 – Federation (Accepted)**
-Push-only DAG federation between dPKMS instances. Each instance pushes objects + edges (not jobs/feeds/pipelines/indexes) to zero or more federation targets. Targets can be local SQLite paths or remote HTTP endpoints. Sync modes: async (background) or inline (synchronous during pipeline). Content-hash idempotent at target. Multi-platform deployments compose via federation, not via multi-backend single-protocol adapters. *Amended by ADR-074:* Phase 3's same-owner scope is decided there as a separate protocol; cross-owner pull remains deferred.
+Push-only DAG federation between dPKMS instances. Each instance pushes objects + edges (not jobs/feeds/pipelines/indexes) to zero or more federation targets. Targets can be local SQLite paths or remote HTTP endpoints. Sync modes: async (background) or inline (synchronous during pipeline). Content-hash idempotent at target. Multi-platform deployments compose via federation, not via multi-backend single-protocol adapters. *Amended by ADR-074:* Phase 3's same-owner scope is decided there as a separate protocol; cross-owner pull remains deferred. *Amended by ADR-082:* inbound pushes by a `peer` principal are PACT-admitted; peers stay owner-trusted replicas.
 
 ### **ADR-065 – Pluggable Adapters: Protocol Server + Read/Write Substrate (Proposed)**
 Typed adapter substrate at `internal/adapter/` with five concepts: protocol slots (email, contacts, calendar, …), adapters (with capabilities: fetch / serve / submit / emit-events / subscribe-events), backends (concrete platform configs: stalwart, mxhook+gmail, cardamum, himalaya, …), one-platform-per-protocol invariant enforced at registration, lifecycle on kit/runtime/bus. Migrates legacy `internal/ingest/` adapters (cardamum, himalaya) to the typed substrate via a backwards-compat shim. Federation composition (ADR-064) handles multi-platform deployments.
@@ -506,7 +506,7 @@ Phase 1 of multimodal content: images, audio, video and meetings become typed te
 ctxt never opens the dpkms store. Every command reaches dpkms through its REST API over one code path, whether dpkms is local or remote. Plan: [`docs/plans/2026-09-27-ctxt-remote-client.md`](../plans/2026-09-27-ctxt-remote-client.md).
 - **No fallback.** The local write, read and search fallbacks are deleted. An unreachable instance exits 70, a 401 or 403 exits 5, and nothing in ctxt creates or migrates a database.
 - **Instances are endpoints.** `server.urls` entries take an optional `name`. Resolution order: `--server` > `--instance` / `CTXT_INSTANCE` (named entry, then a running local pidfile instance) > `ctxt instance use` state > first `server.urls` entry > default. (`server.url` was removed 2026-11-19; a config that sets it fails to load.) Every step yields one endpoint, and there is no failover.
-- **Authorization.** Every HTTP route and gRPC method declares an ADR-023 scope. The static provider's `admin`, `writer` (capture devices) and `reader` roles are fixed scope bundles. Private instances grant everything. Admin principals bypass the inbound entitlement and metering gate.
+- **Authorization.** Every HTTP route and gRPC method declares an ADR-023 scope. The static provider's `admin`, `writer` (capture devices) and `reader` roles are fixed scope bundles. Private instances grant everything. Admin principals bypass the inbound entitlement and metering gate (*amended by ADR-082 §10, future work:* only the local owner is to).
 - **Placement.** Every operator command stays in ctxt. The embedding lifecycle, registries, lint and upgrade runs sit behind admin-scoped endpoints; `upgrade run` accepts a pipeline filter only, with no raw SQL. Brain settings (profiles, search knobs) are resolved by ctxt and sent with each request.
 - **Local capture stays local.** Watchers, clipboard, browser and adapter sources enqueue over HTTP. Directory-watch dedup state and the browser-history position are kept client-side, per instance. Amends ADR-075 §2: the CLI is no longer a hook host.
 
@@ -516,20 +516,20 @@ ctxt and dpkms load no plugins, now or later; there is no plugin API, registry, 
 - **Auth.** Extended through a trusted proxy or OIDC, to be designed as an ADR-023 extension.
 - **Model.** The knowledge-object types live in `internal/storage`; the step contract in `internal/pipeline`.
 
-### **ADR-079 – Authentication Methods, Principals and the kit/ctxt Split (Accepted)**
+### **ADR-079 – Authentication Methods, Principals and the kit/ctxt Split (Accepted, amended 2026-10-16)**
 Extends ADR-023. dpkms authenticates through an ordered chain of methods, each resolving to a principal in an instance-local registry. Plan: [`docs/plans/2026-10-14-auth-and-sharing.md`](../plans/2026-10-14-auth-and-sharing.md).
-- **Principals.** `owner` (one per instance), `person`, `agent`, `device`, `peer`; each can have several identities, bound only by an explicit act.
+- **Principals.** `owner` (one per instance), `person`, `device`, `peer`; each can have several identities, bound only by an explicit act. Agents are not principals: keys on the owner and devices, enrolled identities under a person or peer (*amended by ADR-082*); the steward bundles sit outside `admin` (*amended by ADR-083*).
 - **Core methods (no external IdP).** Owner-local, API keys (replace static tokens), invite links, magic links, passkeys, trusted proxy identity (Tailscale, forward auth). Later and opt-in: mTLS, enterprise OIDC, social login. Passwords stay rejected.
 - **Chain.** Stops on the first match and on the first refusal; proxy headers count only from `trusted_proxies`.
 - **Split.** Generic verification (chain, proxy identity, passkeys, tickets, sessions, OIDC sign-in) goes to kit as proposals K1–K6; principals, scopes, audiences and sharing stay in ctxt.
 
-### **ADR-080 – Sharing: Audiences, Share Policies and Per-Viewer Visibility (Accepted)**
+### **ADR-080 – Sharing: Audiences, Share Policies and Per-Viewer Visibility (Accepted, amended 2026-10-16, 2026-11-20)**
 Named share policies (RSQL data filter, class exclusions, field projection, redaction, capabilities) granted to audiences of principals; owner bypass with preview. Plan: [`docs/plans/2026-10-14-auth-and-sharing.md`](../plans/2026-10-14-auth-and-sharing.md).
 - **Rows.** A scoped storage driver ANDs the viewer predicate into every read, so counts, ranking and pagination never see hidden objects.
 - **Fields.** A render layer projects fields, rebuilds structured types (contacts) from visible fields, drops derived fields whose inputs are hidden, and masks detected PII spans.
 - **Derived data.** Edges, entities, backlinks, counts and multi-source objects inherit visibility through recorded provenance; content-derived entity attributes must go through `entity_facts`.
 - **Search.** Restricted viewers search a masked shadow index (FTS + masked vectors) plus `pii_terms` for revealed categories.
-- **Backstop.** A fail-closed check of every ID and every masked value in each response; a read audit of who saw what. Ingest-time masking (ADR-058 custom steps) stays the "never store" option.
+- **Backstop.** A fail-closed check of every ID and every masked value in each response; a read audit of who saw what. Ingest-time masking (ADR-058 custom steps) stays the "never store" option. Steward reads are to be audited durably before release (*amended by ADR-083*).
 
 ### **ADR-081 – Capture URL Hygiene: Canonicalization and Noise Presets (Accepted; Q8-Q9 open)**
 Client-side stages between the browser and enqueue for `ctxt capture tabs` and `history`: canonicalize URLs (tracking params, fragments, GitHub file URLs), then apply shipped opt-out category presets (webmail, calendar, finance, auth, checkout, admin consoles) as ordinary `urlfilter` rules.
@@ -537,6 +537,27 @@ Client-side stages between the browser and enqueue for `ctxt capture tabs` and `
 - **Visibility.** `--dry-run` shows rewrites and the matching rule scope (`preset:<level>/<category>`); decisions are still logged without the URL.
 - **Order.** Rules run on the raw URL first; only allowed URLs are canonicalized and re-checked. Applies to `capture tabs`, `capture history` and ambient `browserhistory`.
 - **Decisions.** Keep GitHub file URLs (strip anchors), `default` preset level on, drop fragments, browser capture only (ambient included), release-bound lists, shared `internal/githuburl`; every protection-lowering knob is user-layer-only. Open: strict-level credential-key check; bookmark import treatment (recommended: canonicalize + user url_filter, presets off by default; today bookmarks bypass url_filter).
+
+### **ADR-082 – PACT Admission for Non-Owner Agents and Federation Peers (Accepted; implementation gated on pact-go publication)**
+Adopts PACT (draft 0.1.0) as an extra AND admission condition for requests by the agents of non-owner principals and by federation peers, in the in-gateway form; native authorization (scopes, share-policy viewer, backstop) is unchanged and a PACT pass never grants. Amends ADR-079 D16 ("agents are keys") and parts of ADR-080.
+- **Scope.** Non-owner agents, federation peers, later Cloud and marketplace. Owner, owner agents, devices and human browser sessions stay outside.
+- **Agent identity.** A stable `agent_id` enrolled under the principal it acts for, separate from the bearer key and the holder key; keys rotate under it; compromise is terminal; never more scopes or visibility than the principal. Person API keys are refused only where PACT enforcement is on.
+- **Mapping.** Share policy and version is the PACT purpose; contracts are derived from scopes, policy and route; roles are Gateway, Validator and publisher in dpkms, Holder in ctxt and peers; Reputation and Learning are not operated (partial claim until the `single-owner` profile exists).
+- **Rollout.** `pact.default` is `off` when unset. Observation with labelled records, then enforcement per route class.
+- **Receipts.** Signed admission receipts join the receipt-shaped read audit; dedicated ES256 PACT signing keys, not the Ed25519 instance key.
+- **Library.** `hop.top/pact-go`, consumed by published tag only; no protocol logic in ctxt, no local `replace`, no `go.work` `use`. Nothing is implemented until the tag (`pact-go/v1.0.0-alpha.1`) and the `hop-top/pact-go` mirror are published. Planned shape: dpkms gateway in `internal/pactgw`, ctxt holder in `internal/pactholder` and `ctxt agent holder`, holder key a 0600 file under `$XDG_STATE_HOME/ctxt/pact/`, no `pact.keys` in the first cut.
+- **Enterprise IdPs.** Business-owned instance with namespaced IdP principals, versioned issuer-scoped role mappings, local owner as break-glass, per-source freshness and fail-closed membership TTL. The steward flow that replaces a data-admin tier is ADR-083.
+
+### **ADR-083 – Steward Access for Business Instances (Accepted; design only, not implemented)**
+Designs the audited, time-boxed access ADR-082 left for business-owned instances: no data-admin tier, owner bypass only. Access beyond a principal's own grants is a steward grant, never a role.
+- **Roles.** `request:steward` and `approve:steward` in two bundles that `admin` does not contain; only the owner assigns them or maps IdP roles to them; the approver is never the requester or the steward; optional N-approver rule.
+- **Approvals.** One shared mechanism, built first: requests of a kind with a frozen payload, N distinct approvers who are never the requester or a beneficiary, a pending TTL and a computed state machine. Steward grants and admin changes are kinds on it.
+- **Grant.** A frozen share-policy scope (ADR-080 compilation, no new visibility language) with required reason, window under an instance hard cap, and a lifecycle (approved, active, expired, revoked) computed from the clock.
+- **Admin is not data access.** An admin never receives a working credential for another principal: keys, sign-in links and invites go to the owner, identity bindings need the owner or the target. A non-owner admin's sharing change that could widen any view waits for the owner or a `share-approver`; narrowing applies at once.
+- **Visibility.** Explicit elevation, one grant at a time: the viewer is that grant's compiled scope, not a merge with the ordinary view. The steward's ceiling, withheld classes and the backstop still apply; owner-only routes stay closed.
+- **Expiry and revocation.** Fail closed and effective on the next request, because viewers are resolved per request; streams re-check.
+- **Audit.** Every elevated request is recorded with grant ID and reason joined, durably and before release, in a hash chain exempt from the 90-day object-list prune; per-grant activity report and signed-manifest export.
+- **Limits.** Access is not preservation; no per-document source ACL mirroring; a steward who exports has the data. Steward agents, CLI and a preserve-in-place hold are deferred.
 
 ---
 

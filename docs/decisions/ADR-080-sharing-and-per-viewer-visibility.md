@@ -1,10 +1,12 @@
 # ADR-080 – Sharing: Audiences, Share Policies and Per-Viewer Visibility
 
-> **Status:** Accepted (2026-10-14; decisions D1–D15 as recommended in the plan; amended the same day after review, D18–D23; amended 2026-11-20, see [Amendment 2026-11-20](#amendment-2026-11-20))
+> **Status:** Accepted (2026-10-14; decisions D1–D15 as recommended in the plan; amended the same day after review, D18–D23; amended 2026-10-16 by ADR-082 and ADR-083; amended 2026-11-20, see [Amendment 2026-11-20](#amendment-2026-11-20))
 > **Date:** 2026-10-14
 > **Author:** jadb
 > **Applies to:** dPKMS, ctxt
 > **Depends on:** ADR-079 (authentication methods and principals)
+> **Amended by:** ADR-082 (PACT admission): §1 vocabulary (agents), §2 keys narrow, §6 federation row, §9 audit, audience membership sources
+> **Amended by:** ADR-083 (steward access): §2 a steward grant is a viewer input used by explicit elevation; §9 steward reads are recorded durably before release and are exempt from the object-list prune; §11 a non-owner admin's widening sharing change is pending until approved
 > **Extends:** ADR-023 (profile-scoped access, never built), ADR-015 (focus profiles)
 > **References:** ADR-010/ADR-050 (RSQL), ADR-019 (encryption and privacy), ADR-049 (edges table), ADR-058 (external steps; ingest-time masking), ADR-063 (graph-canonical object), ADR-064 (federation), ADR-068 (MCP read surface), ADR-071 (embedding index versioning), ADR-075 (hooks and events)
 > **Plan:** [`docs/plans/2026-10-14-auth-and-sharing.md`](../plans/2026-10-14-auth-and-sharing.md)
@@ -61,7 +63,7 @@ Response-only filtering (strip what the caller may not see from the JSON) was re
 
 | Term | Meaning |
 |---|---|
-| **Principal** | ADR-079: owner, person, device, peer. An agent is a key on one of them, not a principal. |
+| **Principal** | ADR-079: owner, person, device, peer. An agent is not a principal. *Amended 2026-10-16 (ADR-082 §3):* an agent of the owner or a device is a key on it; an agent of a person or peer is an enrolled identity under it. |
 | **Audience** | A named, owner-managed group of principals (`colleagues`, `partners`). A principal can be in several. |
 | **Share policy** | A named, reusable rule: data filter + exclusions + field projection + redaction + capabilities. Versioned. |
 | **Grant** | Audience × share policy, with an optional expiry. Grants are the only thing that gives a non-owner any data. |
@@ -105,8 +107,8 @@ Rules:
 - **Union across grants.** An object is visible if *any* grant's `data` matches and that same grant's exclusions do not remove it. The viewer sees the union of the fields the matching grants allow. A category stays masked only if *every* matching grant masks it.
 - **Exclusions are per grant.** `exclude_classes` in one grant does not hide data another grant shows.
 - **A per-principal ceiling is the hard guarantee.** `principals.deny_classes` lists classes a principal may never see, whatever its grants say. It is ANDed into the predicate after the grant union and applied to parts in the render layer. A partner who is also a colleague keeps both views and still never sees `personal`. One column; no audience gymnastics.
-- **Keys narrow, never widen.** An API key bound to a share policy (ADR-079: `principal_identities.share_policy_id`) intersects with its principal's view. An agent is such a key (ADR-079 §1), so it is never broader than the person it acts for.
-- **Expiry everywhere.** Grants, audience memberships, invites and keys each carry an optional expiry. The shortest one wins.
+- **Keys narrow, never widen.** An API key bound to a share policy (ADR-079: `principal_identities.share_policy_id`) intersects with its principal's view. An agent is such a key (ADR-079 §1), so it is never broader than the person it acts for. *Amended 2026-10-16 (ADR-082 §2, §3):* an enrolled agent of a non-owner principal is governed by the same intersection (principal view ∩ key policy), and PACT admission is an additional AND condition that can refuse a request but never widens a viewer.
+- **Expiry everywhere.** Grants, audience memberships, invites and keys each carry an optional expiry. The shortest one wins. *Amended 2026-10-16 (ADR-082 §10):* an audience may also take members from an external group source, merged with its local members and cached per viewer. Removal and account-disabled events invalidate the cache entry at once; a TTL bounds missed events; past the TTL with the source unavailable, external memberships drop (local members stay).
 - **Owner bypass.** The owner sees raw data and pays no cost. `ctxt --as <principal|policy>` (header `X-Ctxt-View-As`, owner only) runs a request through another viewer, so the owner can check what a colleague sees before sending the invite. That is also how the owner gets masking on their own requests (for example, during a screen share).
 - **The data filter is RSQL**, already compiled for SQLite and Postgres by `internal/search.CompileFor`. The compiler handles `type`, `subtype`, `pipeline`, `source`, `tag`, `mention` and the date fields today. It gains `profile`, `topic`, `class` and `metadata.<key>` for policies. The `related` and `mention` operators are refused inside a policy, because they reach across objects.
 
@@ -161,7 +163,7 @@ Rows that pass §4 go through `sharing.Render(viewer, obj)` before any encoder s
 | Events / SSE / watch streams | Event payload object IDs | Delivered per subscriber after a visibility check on the payload's object. Event types without an object (jobs, pipelines) are owner-only. `/ws/bus` stays peer-only. | Filter |
 | Jobs, inbox, capture/recent | Payload = raw content | Owner-only scopes. They never belong to a share policy. | Deny |
 | Export (`ctxt export`, bundles) | Scoped reads | Export as a restricted viewer is the rendered view, only if `capabilities.export` allows it | Filter |
-| Federation push (ADR-064) | Syncer reads | Peers stay owner-trusted replicas. Pushing a policy-filtered view to someone else's instance is a later addition (a peer principal with a share policy). | Out of scope |
+| Federation push (ADR-064) | Syncer reads | Peers stay owner-trusted replicas. Pushing a policy-filtered view to someone else's instance is a later addition (a peer principal with a share policy). *Amended 2026-10-16 (ADR-082 §12):* inbound pushes are PACT-admitted; admission adds nothing to what a peer can read. | Out of scope |
 | MCP tools | Same service calls | Inherit everything above. Capability `mcp` gates the mount for the viewer. | Filter |
 
 Provenance changes this ADR requires:
@@ -210,6 +212,8 @@ Every request by a non-owner principal appends one entry to `access_log`, shaped
 **Operation digest.** `v1:sha256:<hex>` over the method, the route template and the sorted query, path and request parameters (for gRPC, the populated fields of the request message; for a stream, the method alone). Body-like fields are left out on gRPC as REST leaves the body out: bytes fields, the fields named `content`, `body`, `raw_content` and `text_content`, and any string longer than 256 bytes. The digest stays `v1`. Parameter order does not change it; values are hashed, never stored, but a value with few possibilities can be confirmed by guessing, so the digest identifies an operation and hides nothing from someone who can guess it. Version 1 covers no request body: hashing one needs RFC 8785 canonical JSON, and no dependency of the module provides it. A digest that covers a body takes a new prefix.
 
 **Who is recorded.** Only attributed principals: a request with no credential or a bad one has no principal, is never recorded (an unauthenticated flood must not grow the table) and reaches the security events instead. Authentication-layer refusals of an authenticated principal (the browser rules for a session cookie) are not recorded either: a hostile page could otherwise fill a victim's log. The same holds for a refusal by the session guard (`SessionGuard`) and for a failed viewer resolution after authentication (`attachCaller`, a 500): both happen before the receipt opens.
+
+> **Amended 2026-10-16 (ADR-082 §8; not built yet, future work).** Entries are to become receipt-shaped (decision, ordered check results with reason codes, operation digest; denied and backstop-refused requests included). For a PACT-evaluated request the entry stores the digest of the signed admission receipt. The entry stays the local record of what was released to whom; the receipt is the signed record of what the validator asserted. A receipt would be written durably before a positive enforced admission, outside the buffered writer.
 
 ### 10. Ingest-time masking stays as "never store"
 

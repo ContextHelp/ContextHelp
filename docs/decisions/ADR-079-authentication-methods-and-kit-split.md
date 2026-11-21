@@ -1,10 +1,12 @@
 # ADR-079 – Authentication Methods, Principals and the kit/ctxt Split
 
-> **Status:** Accepted (2026-10-14; decisions D1–D15 as recommended in the plan; amended the same day after review, D16–D17)
+> **Status:** Accepted (2026-10-14; decisions D1–D15 as recommended in the plan; amended the same day after review, D16–D17), amended 2026-10-16 by ADR-082 (agents of non-owner principals; enterprise IdP authority)
 > **Date:** 2026-10-14
 > **Author:** jadb
 > **Applies to:** dPKMS, ctxt
 > **Extends:** ADR-023 (authentication and authorization model)
+> **Amended by:** ADR-082 (PACT admission): §1 "Agents are keys, not principals" (plan D16) for non-owner principals; §2 enterprise OIDC for business-owned instances; §5 admin bundle through an IdP mapping
+> **Amended by:** ADR-083 (steward access): §5 the `admin` bundle excludes the steward scopes `request:steward` and `approve:steward` and the approver scope `approve:shares`; only the owner assigns those bundles; an admin's request for another principal's key, sign-in link, invite or identity binding is delivered to the owner or that principal, never to the admin
 > **References:** ADR-031 (nodes and cloud boundary), ADR-033 (team RBAC over scopes), ADR-064 (federation), ADR-074 (same-owner device sync), ADR-077 (ctxt is a pure API client), ADR-078 (no plugin system), ADR-080 (sharing and per-viewer visibility)
 > **Plan:** [`docs/plans/2026-10-14-auth-and-sharing.md`](../plans/2026-10-14-auth-and-sharing.md)
 
@@ -54,7 +56,14 @@ A principal is a row in the instance database, never just a config entry.
 | `device` | An owned device (capture, sync) | API key now; mTLS / device certificate under ADR-074 | Writer scopes. |
 | `peer` | A federation target (ADR-064) | API key | Replaces the separate `federation.token` for inbound pushes. The outbound credential this instance presents to its targets stays in `federation.targets[]`. |
 
-**Agents are keys, not principals.** An AI agent or script gets an API key on the principal it acts for, bound to a share policy that narrows that principal's view (ADR-080 §2). It can never hold more scopes or see more data than that principal. Revoking the key ends the agent, and the access log attributes its reads by key. A separate `agent` principal kind with a parent link was considered and dropped: it duplicates what a key with a policy already expresses, and it leaves open whether grants flow through the parent.
+~~**Agents are keys, not principals.** An AI agent or script gets an API key on the principal it acts for, bound to a share policy that narrows that principal's view (ADR-080 §2). It can never hold more scopes or see more data than that principal. Revoking the key ends the agent, and the access log attributes its reads by key.~~ A separate `agent` principal kind with a parent link was considered and dropped: it duplicates what a key with a policy already expresses, and it leaves open whether grants flow through the parent.
+
+> **Amended 2026-10-16 by ADR-082 §3.** An agent is never a principal: it holds no grants, joins no audience and has no scopes of its own. It acts for exactly one principal and can never hold more scopes or see more data than that principal, narrowed further by the share policy bound to its credential (ADR-080 §2).
+>
+> - **Agents of the owner and of devices** remain keys: an API key on that principal, optionally bound to a narrowing share policy; revoking the key ends the agent; the access log attributes reads by key.
+> - **Agents of a non-owner principal (`person`, `peer`) are enrolled.** Enrollment creates a stable `agent_id` under that principal and binds it to one native credential (its API key identity) and to one PACT holder key. The bearer key, the holder key and the `agent_id` are three separate things; keys rotate under the `agent_id`. Where PACT enforcement is on, an API key on a non-owner person principal is valid only as the credential of an enrolled agent (ADR-082 §11; not built, and `pact.default` is `off` when unset).
+>
+> The `agent` principal kind stays dropped: grants stay on the principal only.
 
 On a `private` instance every request is the owner (today's `LocalPrincipal`, whose ID `local` becomes `owner`). On `protected` and `public` instances an unauthenticated request is anonymous and reaches only the routes that are already open.
 
@@ -74,7 +83,7 @@ Phases refer to the [plan](../plans/2026-10-14-auth-and-sharing.md).
 | **Trusted proxy identity** | Core, Phase 3 | Identity header set by a proxy whose address is in `trusted_proxies`. Presets: `tailscale` (`Tailscale-User-Login`, `Tailscale-User-Name`) and `forward_auth` (`X-Forwarded-User`/`Remote-User`, `X-Forwarded-Email`, as oauth2-proxy and Authelia send them) | Tailnets, existing SSO proxies | kit `ClientAddress` + proposal K2 |
 | **Browser sessions** | Core (exists, generalized) | `__Host-` cookie + `X-Ctxt-CSRF` | Every interactive method ends in one | ctxt `ui_sessions`; kit proposal K5 later |
 | **mTLS** | Later, opt-in | Client certificate; principal from SAN/CN | Devices, ADR-074 hub transport, service-to-service | kit `ClientCertAuth`, `auth.mtls.*` |
-| **Enterprise OIDC** | Later, opt-in | Authorization code + PKCE sign-in for browsers; IdP-issued JWT bearer tokens for machines | Companies that run Okta, Entra ID, Keycloak, Authentik | kit `authn.NewOIDC` + proposal K6 |
+| **Enterprise OIDC** | Later, opt-in. *Amended 2026-10-16:* on a business-owned instance the IdP is the authority for principals and roles, with versioned issuer-scoped role mappings and the local owner as break-glass (ADR-082 §10) | Authorization code + PKCE sign-in for browsers; IdP-issued JWT bearer tokens for machines | Companies that run Okta, Entra ID, Keycloak, Authentik | kit `authn.NewOIDC` + proposal K6 |
 | **Social login** | Later, opt-in | Same flow as OIDC (Google is OIDC; GitHub is plain OAuth 2.0 and needs a userinfo call) | Invitees who prefer a social account | Proposal K6 |
 | **Passwords** | Rejected | | | ADR-023 rejected them; passkeys cover the same need without stored secrets |
 
@@ -136,7 +145,7 @@ Proxy headers are read only when the TCP peer is in `trusted_proxies`. They are 
 
 Authentication produces a principal. Authorization is decided afterwards and unchanged in kind. Scopes are the effective capability set and every route declares one. `admin`/`writer`/`reader` remain fixed bundles. ADR-033 team roles are still a convenience that compiles down to scopes. Two additions:
 
-- `admin:principals` lets a principal manage principals, identities, keys and invites. `admin:shares` lets it manage audiences, share policies and ceilings (ADR-080). Both sit in the `admin` bundle, which only `owner` holds by default.
+- `admin:principals` lets a principal manage principals, identities, keys and invites. `admin:shares` lets it manage audiences, share policies and ceilings (ADR-080). Both sit in the `admin` bundle, which only `owner` holds by default. *Amended 2026-10-16:* on a business-owned instance an issuer-scoped role mapping may give the `admin` bundle to IdP principals (ADR-082 §10). That does not make them the owner: the owner protections below and ADR-080's owner bypass stay owner-only.
 - `write:self` lets a principal manage its own credentials and sessions: create and revoke its own API keys, register and remove its own passkeys, list and end its own sessions. Every role bundle includes it, and a route under it checks that the target belongs to the caller. Without it a `person` could never register the passkey the invite flow asks for.
 - **No route yields more than the caller holds.** Every credential-producing path (creating a principal, minting a key or a sign-in link, binding an identity) refuses with 403 when the result's effective scopes would exceed the caller's own, so an `admin:principals` holder with reader-level scopes cannot create a writer or hand a key to one. One helper implements the ceiling for all of them.
 - **The owner is protected.** Only the owner mints owner credentials, binds or removes owner identities, or suspends and revokes the owner; any other caller gets 403 whatever its scopes. Host-side `dpkms auth key create --principal owner` stays the bootstrap and recovery path.
