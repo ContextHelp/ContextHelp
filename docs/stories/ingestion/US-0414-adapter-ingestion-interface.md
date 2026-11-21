@@ -2,7 +2,7 @@
 status: shipped
 ---
 
-# US-0320: Generic Adapter Ingestion Interface
+# US-0414: Generic Adapter Ingestion Interface
 
 **System Types:** ctxt
 **Personas:** [Platform Integrators](../../personas/platform-integrators.md)
@@ -62,7 +62,7 @@ The adapter contract:
 
 - [US-0300](./US-0300-importer-extension-interface.md) —
   full importer lifecycle (heavier)
-- [US-0321](./US-0321-cardamum-contacts-ingestion.md) —
+- [US-0415](./US-0415-cardamum-contacts-ingestion.md) —
   first adapter on this interface
 
 ---

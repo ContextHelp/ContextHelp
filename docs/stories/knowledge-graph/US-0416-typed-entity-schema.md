@@ -2,7 +2,7 @@
 status: shipped-no-e2e
 ---
 
-# US-0407: Typed Entity Schema for Mentions
+# US-0416: Typed Entity Schema for Mentions
 
 **System Types:** ctxt
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md),

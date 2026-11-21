@@ -2,7 +2,7 @@
 status: shipped
 ---
 
-# US-0409: Schema Co-Evolution per Profile
+# US-0418: Schema Co-Evolution per Profile
 
 > **Implementation status:** Not built: `profile schema evolve --apply` (evolve is read-only).
 

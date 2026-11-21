@@ -2,7 +2,7 @@
 status: partial
 ---
 
-# US-0062: Graph-Canonical KO with Projected Document Views
+# US-0411: Graph-Canonical KO with Projected Document Views
 
 > **Implementation status:** Built: graph-canonical storage, stable node URIs, document/index projections (gRPC), node-aware search (gRPC). Not built: REST `document` field, `ctxt open`, `ctxt find --node-type`, `GET /objects/{id}/nodes`, `GET /nodes/<uri>`, REST `node_type` search.
 
@@ -317,11 +317,8 @@ Projections invoked by storage Get/List (never persisted in graph_json):
 
 ## E2E Tests
 
-- `test/integration/us0062_secrets_cli_test.go::TestUS0062_EnvBackendGetSet`
-- `test/integration/us0062_secrets_cli_test.go::TestUS0062_EnvBackendBareValue`
-- `test/integration/us0062_secrets_cli_test.go::TestUS0062_FactoryEnvBackend`
-- `test/integration/us0062_secrets_cli_test.go::TestUS0062_KeychainBackendSkippedInCI`
-- `test/integration/us0062_secrets_cli_test.go::TestUS0062_AgeFileBackendMissingFilesErrors`
-- `test/integration/us0062_secrets_cli_test.go::TestUS0062_OnePasswordBackendMissingVaultErrors`
-- `test/integration/us0062_secrets_cli_test.go::TestUS0062_GHSecretsBackendEnvFallback`
-- `test/integration/us0062_secrets_cli_test.go::TestUS0062_UnknownBackendValidationError`
+- `internal/storage/sqlite/graph_rw_test.go::TestObjectStore_CreateAndGet_GraphRoundtrip`
+- `internal/storage/sqlite/graph_rw_test.go::TestObjectStore_Update_GraphRoundtrip`
+- `internal/storage/node_identity_test.go::TestNodeURI_Format`
+- `internal/storage/node_identity_test.go::TestObjectNodeURI_ParseRoundtrip`
+- `internal/storage/node_identity_test.go::TestParseNodeID_MalformedInput`

@@ -2,7 +2,7 @@
 status: shipped-no-e2e
 ---
 
-# US-0321: Cardamum Contacts Ingestion Adapter
+# US-0415: Cardamum Contacts Ingestion Adapter
 
 > **Implementation status:** Implemented and unit-tested; no integration test against a real adapter run.
 
@@ -62,7 +62,7 @@ contact), and deduplicates by card UID.
 
 ## Related Stories
 
-- [US-0320](./US-0320-adapter-ingestion-interface.md) —
+- [US-0414](./US-0414-adapter-ingestion-interface.md) —
   generic adapter interface
 
 ---
