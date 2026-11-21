@@ -44,8 +44,8 @@ type EntityVisibilityFunc func(*http.Request) searchgraph.EntityVisibility
 // principal is entitled to its namespace — the unmetered check
 // ListEntities filters with — and an entity without a stored record is
 // hidden (fail closed: no namespace to check). Without a gate (private
-// instance), or for a principal that bypasses it (admin), every entity
-// is visible, as on every other entity route.
+// instance), or for the principal that bypasses it (the owner), every
+// entity is visible, as on every other entity route.
 func GateEntityVisibility(gate *registry.InboundGate) EntityVisibilityFunc {
 	return func(r *http.Request) searchgraph.EntityVisibility {
 		gate := entityGate(r, gate)

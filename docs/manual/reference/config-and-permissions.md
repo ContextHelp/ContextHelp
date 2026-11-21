@@ -93,7 +93,7 @@ Every `/api/v1` route and gRPC method requires one scope. A role is a fixed bund
 
 | Role | Scopes |
 |---|---|
-| `admin` | every scope except `signout:ui`; also skips the entity entitlement and metering gate |
+| `admin` | every scope except `signout:ui`. The entity entitlement and metering gate still applies: only the instance owner skips it |
 | `writer` | every `read:*` and `write:*` scope |
 | `reader` | every `read:*` scope |
 

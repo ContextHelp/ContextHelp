@@ -28,8 +28,9 @@ import (
 // entitlement gate and a threshold-1 security emitter, seeded with one
 // entity in a granted namespace and one outside it. The gated test
 // principal "ops" (token tok-valid-fixture-0123456789abcdef0123456789, role writer) and the admin
-// principal "owner" (token tok-admin-fixture-0123456789abcdef0123456789) are both granted "ai.*"; only the
-// admin bypasses the gate.
+// principal "owner" (token tok-admin-fixture-0123456789abcdef0123456789) are both granted "ai.*", and so
+// are the non-owner administrators (adminTokens): a device and a person
+// holding the admin role. Only the owner bypasses the gate.
 func newGatedServer(t *testing.T) (*httptest.Server, *registry.InboundGate, <-chan security.Alert) {
 	t.Helper()
 	ts, gate, alerts, _ := newGatedServerWithDriver(t, storageutil.NewTestDriver(t))
@@ -60,10 +61,12 @@ func newGatedServerWithDriver(t *testing.T, driver storage.StorageDriver) (*http
 	// The reader is a non-owner principal: it sees entities only
 	// through a share grant; the namespace entitlement narrows further.
 	sharingtest.EnsurePrincipal(t, driver, "ops", storage.PrincipalKindPerson, authn.RoleReader)
-	sharingtest.GrantEverything(t, driver, "ops")
-	// Both principals hold a grant limited to ai.*: only the admin
+	sharingtest.EnsurePrincipal(t, driver, adminDeviceID, storage.PrincipalKindDevice, authn.RoleAdmin)
+	sharingtest.EnsurePrincipal(t, driver, adminPersonID, storage.PrincipalKindPerson, authn.RoleAdmin)
+	sharingtest.GrantEverything(t, driver, "ops", adminDeviceID, adminPersonID)
+	// Every principal holds a grant limited to ai.*: only the owner's
 	// bypass lets "owner" past it.
-	for _, principal := range []string{"ops", "owner"} {
+	for _, principal := range []string{"ops", "owner", adminDeviceID, adminPersonID} {
 		require.NoError(t, driver.Entitlements().Upsert(ctx, &storage.RegistryEntitlement{
 			Kind:         storage.EntitlementInbound,
 			RegistryName: principal,
@@ -78,6 +81,8 @@ func newGatedServerWithDriver(t *testing.T, driver storage.StorageDriver) (*http
 	provider := authtest.TokenChain(
 		authtest.Token{Token: "tok-valid-fixture-0123456789abcdef0123456789", Principal: "ops", Roles: []string{authn.RoleWriter}},
 		authtest.Token{Token: "tok-admin-fixture-0123456789abcdef0123456789", Principal: "owner", Roles: []string{authn.RoleAdmin}},
+		authtest.Token{Token: adminTokens[adminDeviceID], Principal: adminDeviceID, Kind: storage.PrincipalKindDevice, Roles: []string{authn.RoleAdmin}},
+		authtest.Token{Token: adminTokens[adminPersonID], Principal: adminPersonID, Kind: storage.PrincipalKindPerson, Roles: []string{authn.RoleAdmin}},
 	)
 	ts := httptest.NewServer(NewRouterWithConfig(svc, RouterConfig{
 		Auth:         provider,

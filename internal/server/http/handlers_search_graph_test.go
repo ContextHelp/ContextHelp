@@ -40,12 +40,12 @@ func graphFixture(t *testing.T, withModel bool) *servicetest.HybridFixture {
 }
 
 // gatedGraphServer serves f behind bearer auth and the inbound gate; the
-// reader "ops" (token tok-valid-fixture-0123456789abcdef0123456789) and the admin "owner" (token tok-admin-fixture-0123456789abcdef0123456789)
-// are both entitled to the open namespace only; the admin bypasses the
-// gate.
+// reader "ops" (token tok-valid-fixture-0123456789abcdef0123456789) and the owner (token tok-admin-fixture-0123456789abcdef0123456789)
+// are both entitled to the open namespace only, and so are the non-owner
+// administrators (adminTokens); only the owner bypasses the gate.
 func gatedGraphServer(t *testing.T, f *servicetest.HybridFixture) *httptest.Server {
 	t.Helper()
-	for _, principal := range []string{"ops", "owner"} {
+	for _, principal := range []string{"ops", "owner", adminDeviceID, adminPersonID} {
 		require.NoError(t, f.Drv.Entitlements().Upsert(ownerCtx(), &storage.RegistryEntitlement{
 			Kind: storage.EntitlementInbound, RegistryName: principal, Plan: "inbound", Namespaces: []string{servicetest.GraphOpenNamespace},
 			FetchedAt: time.Now().Truncate(time.Second),
@@ -54,10 +54,14 @@ func gatedGraphServer(t *testing.T, f *servicetest.HybridFixture) *httptest.Serv
 	// The reader is a non-owner principal: it sees the corpus only
 	// through a share grant; the namespace entitlement narrows further.
 	sharingtest.EnsurePrincipal(t, f.Drv, "ops", storage.PrincipalKindPerson, authn.RoleReader)
-	sharingtest.GrantEverything(t, f.Drv, "ops")
+	sharingtest.EnsurePrincipal(t, f.Drv, adminDeviceID, storage.PrincipalKindDevice, authn.RoleAdmin)
+	sharingtest.EnsurePrincipal(t, f.Drv, adminPersonID, storage.PrincipalKindPerson, authn.RoleAdmin)
+	sharingtest.GrantEverything(t, f.Drv, "ops", adminDeviceID, adminPersonID)
 	provider := authtest.TokenChain(
 		authtest.Token{Token: "tok-valid-fixture-0123456789abcdef0123456789", Principal: "ops", Roles: []string{authn.RoleReader}},
 		authtest.Token{Token: "tok-admin-fixture-0123456789abcdef0123456789", Principal: "owner", Roles: []string{authn.RoleAdmin}},
+		authtest.Token{Token: adminTokens[adminDeviceID], Principal: adminDeviceID, Kind: storage.PrincipalKindDevice, Roles: []string{authn.RoleAdmin}},
+		authtest.Token{Token: adminTokens[adminPersonID], Principal: adminPersonID, Kind: storage.PrincipalKindPerson, Roles: []string{authn.RoleAdmin}},
 	)
 	ts := httptest.NewServer(NewRouterWithConfig(f.Svc, RouterConfig{
 		Semantic:     f.Sem,
@@ -287,10 +291,21 @@ func TestSearchGraph_EntitlementHidesEntities(t *testing.T) {
 	assert.Len(t, nodesOfKind(doc, searchgraph.KindObject), 2*len(servicetest.ProfileCorpusProfiles),
 		"objects are not entity-gated, and the profile does not narrow them")
 
-	// The admin owner ignores its restrictive grant, as on every entity
-	// route.
-	admin := fetchGraph(t, ts, "tok-admin-fixture-0123456789abcdef0123456789", alphaParams())
-	assert.Contains(t, admin.Graph.Nodes, "ent:"+servicetest.GraphSecretEntity)
+	// The owner ignores its restrictive grant, as on every entity route.
+	owner := fetchGraph(t, ts, "tok-admin-fixture-0123456789abcdef0123456789", alphaParams())
+	assert.Contains(t, owner.Graph.Nodes, "ent:"+servicetest.GraphSecretEntity)
+
+	// A non-owner administrator does not: administering the instance is
+	// not access to its data (ADR-082 §10, ADR-083 §10).
+	for _, id := range []string{adminDeviceID, adminPersonID} {
+		resp, body := getGraph(t, ts, adminTokens[id], alphaParams())
+		doc := graphOK(t, resp, body)
+		assert.ElementsMatch(t, []string{"ent:" + servicetest.GraphOpenEntity}, nodesOfKind(doc, searchgraph.KindEntity), id)
+		assert.Zero(t, relationCount(doc, searchgraph.RelCoMention), id)
+		for _, secret := range []string{servicetest.GraphSecretEntity, servicetest.GraphSecretTitle, servicetest.GraphSecretNamespace} {
+			assert.NotContains(t, string(body), secret, id)
+		}
+	}
 
 	// The route sits behind the /api/v1 auth middleware.
 	resp, body = getGraph(t, ts, "", alphaParams())

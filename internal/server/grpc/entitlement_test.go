@@ -32,7 +32,8 @@ import (
 // threshold-1 security emitter, seeded with one entity in a granted
 // namespace and one outside it. The gated principal "ops" (token
 // tok-valid-fixture-0123456789abcdef0123456789, role reader) and the admin principal "owner" (token
-// tok-admin-fixture-0123456789abcdef0123456789) are both granted "ai.*"; only the admin bypasses the gate.
+// tok-admin-fixture-0123456789abcdef0123456789) are both granted "ai.*", and so are the non-owner
+// administrators (grpcAdminTokens); only the owner bypasses the gate.
 func newGatedGRPCServer(t *testing.T) (pb.EntityServiceClient, *registry.InboundGate, <-chan security.Alert) {
 	t.Helper()
 	h := startGatedGRPC(t)
@@ -73,8 +74,10 @@ func startGatedGRPC(t *testing.T) gatedGRPC {
 	// entities only through a share grant.
 	sharingtest.EnsurePrincipal(t, driver, "ops", storage.PrincipalKindPerson, authn.RoleReader)
 	sharingtest.EnsurePrincipal(t, driver, "phone", storage.PrincipalKindDevice, authn.RoleWriter)
-	sharingtest.GrantEverything(t, driver, "ops", "phone")
-	for _, principal := range []string{"ops", "owner"} {
+	sharingtest.EnsurePrincipal(t, driver, grpcAdminDeviceID, storage.PrincipalKindDevice, authn.RoleAdmin)
+	sharingtest.EnsurePrincipal(t, driver, grpcAdminPersonID, storage.PrincipalKindPerson, authn.RoleAdmin)
+	sharingtest.GrantEverything(t, driver, "ops", "phone", grpcAdminDeviceID, grpcAdminPersonID)
+	for _, principal := range []string{"ops", "owner", grpcAdminDeviceID, grpcAdminPersonID} {
 		if err := driver.Entitlements().Upsert(ctx, &storage.RegistryEntitlement{
 			Kind:         storage.EntitlementInbound,
 			RegistryName: principal,
@@ -104,6 +107,8 @@ func startGatedGRPC(t *testing.T) gatedGRPC {
 		authtest.Token{Token: "tok-valid-fixture-0123456789abcdef0123456789", Principal: "ops", Roles: []string{authn.RoleReader}},
 		authtest.Token{Token: "tok-writer-fixture-0123456789abcdef0123456789", Principal: "phone", Roles: []string{authn.RoleWriter}},
 		authtest.Token{Token: "tok-admin-fixture-0123456789abcdef0123456789", Principal: "owner", Roles: []string{authn.RoleAdmin}},
+		authtest.Token{Token: grpcAdminTokens[grpcAdminDeviceID], Principal: grpcAdminDeviceID, Kind: storage.PrincipalKindDevice, Roles: []string{authn.RoleAdmin}},
+		authtest.Token{Token: grpcAdminTokens[grpcAdminPersonID], Principal: grpcAdminPersonID, Kind: storage.PrincipalKindPerson, Roles: []string{authn.RoleAdmin}},
 	)
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")

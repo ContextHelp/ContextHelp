@@ -17,7 +17,7 @@ import (
 // filtered to the namespaces the authenticated principal is entitled to
 // — an index browse, so no metering charge. The filter runs in the store
 // ahead of limit and offset, so a page holds only entitled entities and
-// is never short while more remain. Admin principals see every entity.
+// is never short while more remain. The owner sees every entity.
 func ListEntities(svc *service.Service, gate *registry.InboundGate) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		filter := storage.EntityFilter{
@@ -47,8 +47,8 @@ func ListEntities(svc *service.Service, gate *registry.InboundGate) http.Handler
 
 // GetEntity returns a single entity by slug. A wired inbound gate
 // charges the access as a metered entity_resolve against the
-// principal's namespace entitlement and quota. Admin principals are
-// neither gated nor metered.
+// principal's namespace entitlement and quota. The owner is neither
+// gated nor metered.
 func GetEntity(svc *service.Service, gate *registry.InboundGate) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		slug := chi.URLParam(r, "slug")
@@ -72,7 +72,7 @@ func GetEntity(svc *service.Service, gate *registry.InboundGate) http.HandlerFun
 // ResolveEntity returns the entity a mention names: the entity with that
 // exact slug, else the one carrying it as an alias. Like GetEntity, a
 // wired inbound gate charges the read as a metered entity_resolve, and
-// admin principals are neither gated nor metered. A missing mention is a
+// the owner is neither gated nor metered. A missing mention is a
 // 400 and a mention that names nothing a 404.
 func ResolveEntity(svc *service.Service, gate *registry.InboundGate) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -105,8 +105,8 @@ func ResolveEntity(svc *service.Service, gate *registry.InboundGate) http.Handle
 // EntityBacklinks returns objects that mention the given entity. The
 // gate check is unmetered — backlinks ride on the entity's namespace
 // entitlement without a quota charge. An entity the store cannot
-// resolve fails CLOSED: a lookup error never skips the gate. Admin
-// principals skip the gate.
+// resolve fails CLOSED: a lookup error never skips the gate. The owner
+// skips the gate.
 func EntityBacklinks(svc *service.Service, gate *registry.InboundGate) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		slug := chi.URLParam(r, "slug")

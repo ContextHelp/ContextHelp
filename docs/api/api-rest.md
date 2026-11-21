@@ -929,7 +929,7 @@ Generate compositions (briefs, plans, summaries, drafts) from knowledge objects.
 
 ## Entities & Mentions
 
-Every entity read needs `read:objects`. On a non-private instance the inbound entitlement gate applies to every principal except `admin`: listings drop entities outside the principal's granted namespaces, and a read of one entity is refused with 403 `ENTITLEMENT_REQUIRED` outside them. A metered read past the principal's quota is a 429 `QUOTA_EXHAUSTED`. Admin principals are neither gated nor metered.
+Every entity read needs `read:objects`. On a non-private instance the inbound entitlement gate applies to every principal except the instance owner, principals holding the `admin` role included. Listings drop entities outside the principal's granted namespaces. A read of one entity is refused with 403 `ENTITLEMENT_REQUIRED` outside them. A metered read past the principal's quota is a 429 `QUOTA_EXHAUSTED`. The owner is neither gated nor metered.
 
 Search and resolve are REST only. gRPC `EntityService` has `ListEntities`, `GetEntity` and `GetEntityBacklinks`, with no query field and no resolve method; ctxt uses REST.
 

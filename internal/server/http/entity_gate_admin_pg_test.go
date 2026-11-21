@@ -2,9 +2,9 @@
 
 package http
 
-// Postgres parity for the entity gate: the admin bypass and the
-// non-admin metering and quota both read and write metering rows in the
-// store. Reads the POSTGRES_* env block the
+// Postgres parity for the entity gate: the owner bypass, and the
+// metering and quota of everyone else (non-owner administrators
+// included), read and write metering rows in the store. Reads the POSTGRES_* env block the
 // other integration suites use:
 //
 //	POSTGRES_HOST=localhost POSTGRES_USER=contexthelp POSTGRES_PASSWORD=test_password \
@@ -79,8 +79,12 @@ func freshPostgres(t *testing.T) storage.StorageDriver {
 	return d
 }
 
-func TestAdminBypassesEntityGate_Postgres(t *testing.T) {
-	runAdminEntityGateBypass(t, freshPostgres(t))
+func TestOwnerBypassesEntityGate_Postgres(t *testing.T) {
+	runOwnerEntityGateBypass(t, freshPostgres(t))
+}
+
+func TestEntityGateHoldsNonOwnerAdmins_Postgres(t *testing.T) {
+	runNonOwnerAdminEntityGate(t, freshPostgres(t))
 }
 
 func TestEntityGateMetersNonAdmin_Postgres(t *testing.T) {

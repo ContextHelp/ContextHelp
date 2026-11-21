@@ -12,19 +12,21 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
-func TestAdminBypassesEntityGate(t *testing.T) {
-	runAdminEntityGateBypass(t, storageutil.NewTestDriver(t))
+func TestOwnerBypassesEntityGate(t *testing.T) {
+	runOwnerEntityGateBypass(t, storageutil.NewTestDriver(t))
 }
 
 func TestEntityGateMetersNonAdmin(t *testing.T) {
 	runNonAdminEntityGateMetering(t, storageutil.NewTestDriver(t))
 }
 
-// runAdminEntityGateBypass drives the entity surface as the admin owner
-// and as a gated writer over driver. The admin ignores its restrictive
-// grant and a one-read quota and records no metering event; the writer
-// stays gated and metered. Shared with the Postgres parity test.
-func runAdminEntityGateBypass(t *testing.T, driver storage.StorageDriver) {
+// runOwnerEntityGateBypass drives the entity surface as the instance
+// owner and as a gated writer over driver. The owner ignores its
+// restrictive grant and a one-read quota and records no metering event;
+// the writer stays gated and metered. The non-owner administrators are
+// gated too (runNonOwnerAdminEntityGate). Shared with the Postgres
+// parity test.
+func runOwnerEntityGateBypass(t *testing.T, driver storage.StorageDriver) {
 	t.Helper()
 	ts, gate, _, driver := newGatedServerWithDriver(t, driver)
 	gate.SetQuota("owner", storage.MeteringEventEntityResolve, storage.QuotaConfig{Limit: 1})
@@ -33,7 +35,7 @@ func runAdminEntityGateBypass(t *testing.T, driver storage.StorageDriver) {
 	// Metered read outside the grant, twice past a quota of one.
 	for i := 0; i < 2; i++ {
 		resp, body := gatedDoAs(t, "tok-admin-fixture-0123456789abcdef0123456789", http.MethodGet, ts.URL+"/api/v1/entities/med.claims")
-		require.Equal(t, http.StatusOK, resp.StatusCode, "admin read %d: %s", i+1, body)
+		require.Equal(t, http.StatusOK, resp.StatusCode, "owner read %d: %s", i+1, body)
 	}
 
 	// Listing is not filtered by the grant.
@@ -43,7 +45,7 @@ func runAdminEntityGateBypass(t *testing.T, driver storage.StorageDriver) {
 		Data []storage.Entity `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(body, &list))
-	assert.Len(t, list.Data, 2, "admin listing must include every namespace")
+	assert.Len(t, list.Data, 2, "owner listing must include every namespace")
 
 	resp, body = gatedDoAs(t, "tok-admin-fixture-0123456789abcdef0123456789", http.MethodGet, ts.URL+"/api/v1/entities/med.claims/backlinks")
 	assert.Equal(t, http.StatusOK, resp.StatusCode, string(body))
@@ -52,10 +54,10 @@ func runAdminEntityGateBypass(t *testing.T, driver storage.StorageDriver) {
 	// metered, past the same quota of one.
 	resp, body = gatedDoAs(t, "tok-admin-fixture-0123456789abcdef0123456789", http.MethodGet, ts.URL+"/api/v1/entities?q=.")
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(body))
-	assert.Equal(t, []string{"ai.bert", "med.claims"}, entitySlugs(t, body), "admin search must include every namespace")
+	assert.Equal(t, []string{"ai.bert", "med.claims"}, entitySlugs(t, body), "owner search must include every namespace")
 	for i := 0; i < 2; i++ {
 		resp, body = gatedDoAs(t, "tok-admin-fixture-0123456789abcdef0123456789", http.MethodGet, ts.URL+"/api/v1/entities/resolve?mention=med.claims")
-		require.Equal(t, http.StatusOK, resp.StatusCode, "admin resolve %d: %s", i+1, body)
+		require.Equal(t, http.StatusOK, resp.StatusCode, "owner resolve %d: %s", i+1, body)
 	}
 
 	// The pull passes the gate; it then fails on the missing registry
@@ -68,7 +70,7 @@ func runAdminEntityGateBypass(t *testing.T, driver storage.StorageDriver) {
 
 	ownerEvents, err := driver.Metering().List(ownerCtx(), storage.MeteringFilter{RegistryName: "owner"})
 	require.NoError(t, err)
-	assert.Empty(t, ownerEvents, "admin entity reads must not be metered")
+	assert.Empty(t, ownerEvents, "owner entity reads must not be metered")
 
 	// The gate stays for everyone else: metered inside the grant,
 	// refused outside it.

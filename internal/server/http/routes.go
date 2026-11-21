@@ -89,7 +89,7 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 			Handler: SearchGraph(svc, rc.Semantic, GateEntityVisibility(rc.Entitlements))},
 
 		// Entities. The entity-serving surface is where inbound
-		// entitlements and metering bite for non-admin principals.
+		// entitlements and metering bite for every principal but the owner.
 		{Method: get, Pattern: "/entities", Scope: authn.ScopeReadObjects, Handler: ListEntities(svc, rc.Entitlements)},
 		// Static, so it wins over /entities/{slug}; an entity whose slug
 		// is "resolve" resolves through ?mention=resolve.
