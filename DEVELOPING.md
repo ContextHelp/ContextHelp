@@ -285,10 +285,15 @@ POSTGRES_USER=ctxt POSTGRES_PASSWORD=ctxt POSTGRES_DB=ctxt \
 go test -tags=integration,fts5 ./test/integration/...
 ```
 
-That is only the first tree CI covers. The Postgres driver, storage factory
-and embeddings-registry suites live next to their code, carry the same
-`integration` tag and read the same `POSTGRES_*` block, and the job-queue,
-HTTP handler, embeddings journey and search-graph Postgres tests run by name.
+That is only the first tree CI covers. `make ci-integration-suites` runs
+every package with an `integration`-tagged test file (found with
+`scripts/ci/integration-pkgs.sh`): the Postgres driver, storage factory and
+embeddings-registry suites, and any suite added later next to its code. All
+read the same `POSTGRES_*` block. The job-queue (`_Postgres$`), HTTP handler,
+embeddings journey and search-graph Postgres tests run by name in their own
+steps, and the discovery skips those packages so no suite runs twice. A new
+`integration`-tagged package needs no Makefile edit; one that must run by
+name or with extra tags goes in `CI_INTEGRATION_NAMED_PKGS`.
 `make ci-integration` runs exactly the commands of CI's integration job.
 Its `POSTGRES_*` defaults are the CI service's (`contexthelp` /
 `test_password` / `contexthelp_test` on `localhost:5432`); export the block

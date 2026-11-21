@@ -663,6 +663,7 @@ ci-lint:
 	$(CI_STEP) ci-lint-full
 	$(CI_STEP) ci-gofmt
 	$(CI_STEP) ci-vet
+	$(CI_STEP) ci-gowork-off
 
 # Local only: findings your branch introduces, for a faster loop. CI runs
 # the full scan (ci-lint-full), which is a superset of this.
@@ -688,6 +689,14 @@ ci-gofmt:
 
 ci-vet:
 	$(GO) vet -tags fts5 ./...
+
+# CI builds with no go.work. A workspace use that is absolute or outside the
+# repo makes a laptop build pass where CI cannot resolve the module, so the
+# tree must build and vet with GOWORK=off, and a tracked go.work may only
+# `use` paths inside the repo.
+ci-gowork-off:
+	scripts/ci/check-gowork.sh
+	GOWORK=off $(GO) build -tags fts5 ./... && GOWORK=off $(GO) vet -tags fts5 ./...
 
 # GoReleaser ships windows/amd64 binaries, cross-compiled with CGO and
 # mingw-w64. Type-check every package, tests included, for that target,
@@ -758,24 +767,29 @@ ci-integration:
 	$(CI_STEP) ci-integration-journey
 	$(CI_STEP) ci-integration-searchgraph
 
-# The build-tagged suites under test/integration/ plus the Postgres driver,
-# storage factory and embeddings registry suites, which live next to their
-# code; all read the POSTGRES_* env, so each tree must be listed or its
-# Postgres coverage never runs.
+# Packages whose integration-tagged suites have their own ci-integration-*
+# step below (a -run subset, or extra tags). ci-integration-suites runs every
+# other package with an integration-tagged test file, found by
+# scripts/ci/integration-pkgs.sh, so a new suite (sharing, steward, approval,
+# sharechange, agents, ...) runs in CI with no Makefile edit and none runs
+# twice. All read the POSTGRES_* env.
+CI_INTEGRATION_NAMED_PKGS := ./internal/jobs ./internal/server/http ./cmd/ctxt/cmd ./test/e2e/searchgraph
+
+# Every other integration-tagged package: test/integration/ plus the Postgres
+# driver, storage factory and embeddings registry suites, and any suite that
+# lands next to its code.
 ci-integration-suites:
 	@$(CI_PREREQ) postgres
-	$(GO) test -failfast -v -tags=integration,fts5 \
-		./test/integration/... \
-		./internal/storage/postgres/... \
-		./internal/storageutil/... \
-		./internal/embeddings/registry/...
+	@pkgs="$$(scripts/ci/integration-pkgs.sh $(CI_INTEGRATION_NAMED_PKGS))" || exit 1; \
+	echo "integration packages:" $$pkgs; \
+	$(GO) test -failfast -v -tags=integration,fts5 $$pkgs
 
 # Task-job claim and re-projection on Postgres (the SQLite variants run in
 # the test job).
 ci-integration-jobs:
 	@$(CI_PREREQ) postgres
 	$(GO) test -failfast -v -tags=integration,fts5 -count=1 \
-		-run 'Test(Claim|Reproject)_.*_Postgres' ./internal/jobs/
+		-run '_Postgres$$' ./internal/jobs/
 
 # HTTP handlers against a Postgres store; the package's other tests run in
 # the test job.
@@ -818,13 +832,13 @@ ci-build-verify:
 # golangci-lint is missing here.
 CGO_TARGETS := build-ctxt build-dpkms install test-unit test-integration test-smoke \
 	test-e2e test-cover test-gate test-docker vuln-scan govulncheck lint gosec lint-new \
-	ci-lint-full ci-vet ci-windows-vet ci-windows-build ci-test-unit ci-test-e2e \
+	ci-lint-full ci-vet ci-gowork-off ci-windows-vet ci-windows-build ci-test-unit ci-test-e2e \
 	$(CI_INTEGRATION_STEPS) ci-build-dpkms ci-build-ctxt $(BEN_BINARY) $(BEN_ADAPTER)
 $(CGO_TARGETS): $(CGO_SQLITE3_H)
 
 .PHONY: ci ci-parity-check check-operator-impact ci-drop-replaces govulncheck \
 	$(addprefix ci-,$(CI_JOBS)) $(CI_INTEGRATION_STEPS) \
-	lint-new ci-lint-full ci-gofmt ci-vet ci-windows-vet ci-windows-build \
+	lint-new ci-lint-full ci-gofmt ci-vet ci-gowork-off ci-windows-vet ci-windows-build \
 	ci-test-unit ci-test-e2e ci-build-dpkms ci-build-ctxt ci-build-verify
 
 ## help: Show this help message

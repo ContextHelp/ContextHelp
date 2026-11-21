@@ -82,7 +82,12 @@ func TestCheckCIParity_Drift(t *testing.T) {
 		{
 			name:  "step dropped from CI",
 			edits: []edit{{"ci", "      - name: Run go vet\n        run: make ci-vet\n", ""}},
-			want:  "Makefile ci-lint runs [ci-drop-replaces ci-lint-full ci-gofmt ci-vet] but .github/workflows/ci.yml job lint runs [ci-drop-replaces ci-lint-full ci-gofmt]",
+			want:  "Makefile ci-lint runs [ci-drop-replaces ci-lint-full ci-gofmt ci-vet ci-gowork-off] but .github/workflows/ci.yml job lint runs [ci-drop-replaces ci-lint-full ci-gofmt ci-gowork-off]",
+		},
+		{
+			name:  "gowork guard dropped from CI",
+			edits: []edit{{"ci", "      - name: Build and vet without go.work\n        run: make ci-gowork-off\n", ""}},
+			want:  "Makefile ci-lint runs [ci-drop-replaces ci-lint-full ci-gofmt ci-vet ci-gowork-off] but .github/workflows/ci.yml job lint runs [ci-drop-replaces ci-lint-full ci-gofmt ci-vet]",
 		},
 		{
 			name:  "step dropped locally",
@@ -92,12 +97,12 @@ func TestCheckCIParity_Drift(t *testing.T) {
 		{
 			name:  "steps reordered locally",
 			edits: []edit{{"mk", "\t$(CI_STEP) ci-gofmt\n\t$(CI_STEP) ci-vet\n", "\t$(CI_STEP) ci-vet\n\t$(CI_STEP) ci-gofmt\n"}},
-			want:  "Makefile ci-lint runs [ci-drop-replaces ci-lint-full ci-vet ci-gofmt]",
+			want:  "Makefile ci-lint runs [ci-drop-replaces ci-lint-full ci-vet ci-gofmt ci-gowork-off]",
 		},
 		{
 			name:  "blocking step made advisory in CI",
 			edits: []edit{{"ci", "        run: make ci-lint-full\n", "        continue-on-error: true\n        run: make ci-lint-full\n"}},
-			want:  "job lint runs [ci-drop-replaces -ci-lint-full ci-gofmt ci-vet]",
+			want:  "job lint runs [ci-drop-replaces -ci-lint-full ci-gofmt ci-vet ci-gowork-off]",
 		},
 		{
 			name:  "test job left out of make test",
@@ -107,7 +112,7 @@ func TestCheckCIParity_Drift(t *testing.T) {
 		{
 			name:  "blocking step made advisory locally",
 			edits: []edit{{"mk", "\t$(CI_STEP) ci-lint-full\n", "\t-$(CI_STEP) ci-lint-full\n"}},
-			want:  "Makefile ci-lint runs [ci-drop-replaces -ci-lint-full ci-gofmt ci-vet]",
+			want:  "Makefile ci-lint runs [ci-drop-replaces -ci-lint-full ci-gofmt ci-vet ci-gowork-off]",
 		},
 		{
 			name:  "local target runs its own command",
