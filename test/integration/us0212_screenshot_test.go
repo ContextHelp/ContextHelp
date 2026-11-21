@@ -18,51 +18,43 @@ import (
 )
 
 func TestScreenshot_HotkeyTrigger(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: per-OS Capturer (ScreenCaptureKit Swift bridge / Windows " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: per-OS Capturer (ScreenCaptureKit Swift bridge / Windows " +
 		"Graphics Capture C++ bridge / xdg-desktop-portal D-Bus) + global " +
 		"hotkey listener registration")
 }
 
 func TestScreenshot_CLITrigger(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: ctxt capture screenshot CLI subcommand (currently planned " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: ctxt capture screenshot CLI subcommand (currently planned " +
 		"in cmd/ctxt/cmd/capture_screenshot.go); substrate Source.Trigger ready")
 }
 
 func TestScreenshot_RoutesToImageOCR(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: E2E harness (start dpkms + ctxd, drive screenshot capture, " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: E2E harness (start dpkms + ctxd, drive screenshot capture, " +
 		"assert KnowledgeObject via image.ocr pipeline with non-empty OCR text)")
 }
 
 func TestScreenshot_BundleDenyList(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: per-OS Capturer (foreground bundle id detection at trigger " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: per-OS Capturer (foreground bundle id detection at trigger " +
 		"time); substrate-side ExcludeBundles check is implemented + tested")
 }
 
 func TestScreenshot_CELVeto(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: kit/policy CEL rule wiring at ctxt.ambient.event.captured")
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: kit/policy CEL rule wiring at ctxt.ambient.event.captured")
 }
 
 func TestScreenshot_PerceptualHashDedup(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: per-OS Capturer must populate PerceptualHash (substrate " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: per-OS Capturer must populate PerceptualHash (substrate " +
 		"falls back to file-content SHA-256 today; image.ocr-fed pipeline " +
 		"verifies dedup on the substrate side)")
 }
 
 func TestScreenshot_PermissionFlow(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: per-OS Capturer (must surface OS permission prompt on " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: per-OS Capturer (must surface OS permission prompt on " +
 		"first use; manual UI test, not automatable in CI)")
 }
 
 func TestScreenshot_MediaRetentionEviction(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: meeting/retention policy is implemented, but " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: meeting/retention policy is implemented, but " +
 		"screenshot media tier integration not wired; need shared retention " +
 		"runner across meeting + screenshot media files")
 }

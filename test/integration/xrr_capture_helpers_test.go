@@ -29,7 +29,7 @@ package integration
 //
 // Re-record (against the in-repo fixture servers):
 //
-//	INTEGRATION=1 XRR_MODE=record go test -count=1 ./test/integration/ -run TestUS02
+//	XRR_MODE=record go test -count=1 ./test/integration/ -run TestUS02
 //
 // Default mode is replay.
 

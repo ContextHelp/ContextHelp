@@ -712,6 +712,17 @@ ci-test-unit:
 ci-test-e2e:
 	@$(CI_PREREQ) chrome
 	$(GO) test -failfast -v -count=1 -tags 'fts5 e2e' ./test/e2e/...
+	$(CI_STEP) ci-test-e2e-tagged
+
+# Suites under test/e2e/ with their own tags, hermetic (in-process stores,
+# throwaway HOME, OS-assigned loopback ports). cursor and watch drive the
+# built bin/ctxt and bin/dpkms.
+ci-test-e2e-tagged:
+	$(GO) build -tags fts5 -o bin/ctxt ./cmd/ctxt
+	$(GO) build -tags fts5 -o bin/dpkms ./cmd/dpkms
+	$(GO) test -failfast -v -count=1 -tags 'fts5 federation_e2e' ./test/e2e/federation/...
+	$(GO) test -failfast -v -count=1 -tags 'fts5 cursor_e2e' ./test/e2e/cursor/...
+	$(GO) test -failfast -v -count=1 -tags 'fts5 watch_e2e' ./test/e2e/watch/...
 
 ci-viewer:
 	$(CI_STEP) test-searchgraph-viewer-js
@@ -798,14 +809,14 @@ ci-build-verify:
 # golangci-lint is missing here.
 CGO_TARGETS := build-ctxt build-dpkms install test-unit test-integration test-smoke \
 	test-e2e test-cover test-gate test-docker vuln-scan govulncheck lint gosec lint-new \
-	ci-lint-full ci-vet ci-windows-vet ci-windows-build ci-test-unit ci-test-e2e \
+	ci-lint-full ci-vet ci-windows-vet ci-windows-build ci-test-unit ci-test-e2e ci-test-e2e-tagged \
 	$(CI_INTEGRATION_STEPS) ci-build-dpkms ci-build-ctxt $(BEN_BINARY) $(BEN_ADAPTER)
 $(CGO_TARGETS): $(CGO_SQLITE3_H)
 
 .PHONY: ci ci-parity-check check-operator-impact ci-drop-replaces govulncheck \
 	$(addprefix ci-,$(CI_JOBS)) $(CI_INTEGRATION_STEPS) \
 	lint-new ci-lint-full ci-gofmt ci-vet ci-windows-vet ci-windows-build \
-	ci-test-unit ci-test-e2e ci-build-dpkms ci-build-ctxt ci-build-verify
+	ci-test-unit ci-test-e2e ci-test-e2e-tagged ci-build-dpkms ci-build-ctxt ci-build-verify
 
 ## help: Show this help message
 help:

@@ -2,75 +2,247 @@ package integration
 
 // US-0211: Passive Clipboard Watcher (re-grounded in ADR-066).
 //
-// E2E acceptance criteria from docs/stories/capture/US-0211-passive-clipboard-watcher.md.
-// Verifies: ctxd's clipboard source emits RawEvents through the substrate Runner
-// to a real dpkms over /api/v1/analyze, with substrate-level redaction, dedup,
-// session tagging, and bus-event emission firing as specified.
+// Drives the real ambient substrate in-process: a clipboard.Source polling a
+// fake OS clipboard (the only stub; the OS boundary), the ambient.Runner, the
+// fingerprint dedup cache and the HTTP enqueuer, against the in-process dpkms
+// server for the end-to-end case. No OS clipboard, no daemon, no ports other
+// than loopback httptest/in-process listeners.
 //
-// Test gate: INTEGRATION=1 env var required (running dpkms + ctxd).
-//
-// **Status: skeleton.** The named test functions below match the
-// "planned" list in the user story document. Each currently calls
-// t.Skip with a reason; the body is filled in when the corresponding
-// implementation phase exercises this end-to-end. The skeletons exist
-// so the acceptance criteria have a discoverable, executable home and
-// `go test ./test/integration/...` reports the planned test surface
-// even before the real assertions land.
+// Not covered here (unbuilt): no binary constructs an ambient.Runner and
+// `ctxt capture --ambient` returns "not yet implemented", so pause/resume and
+// the foreground-app deny-list have nothing to drive.
 
 import (
-	"os"
+	"context"
+	"strings"
+	"sync"
 	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"hop.top/kit/go/runtime/bus"
+
+	"github.com/ideacrafterslabs/ctxt/internal/ambient"
+	"github.com/ideacrafterslabs/ctxt/internal/ambient/clipboard"
+	"github.com/ideacrafterslabs/ctxt/internal/ambient/dedup"
+	"github.com/ideacrafterslabs/ctxt/internal/ambient/enqueue"
+	"github.com/ideacrafterslabs/ctxt/internal/events"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
-func skipUnlessE2E(t *testing.T) {
+// fakeClipboard is the OS boundary: tests set what "the clipboard" holds.
+type fakeClipboard struct {
+	mu   sync.Mutex
+	text string
+}
+
+func (f *fakeClipboard) set(s string) {
+	f.mu.Lock()
+	f.text = s
+	f.mu.Unlock()
+}
+
+func (f *fakeClipboard) ReadText(context.Context) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.text, nil
+}
+
+// recordingEnqueuer records events and optionally forwards to a real enqueuer.
+type recordingEnqueuer struct {
+	mu   sync.Mutex
+	evs  []ambient.RawEvent
+	next ambient.Enqueuer
+}
+
+func (r *recordingEnqueuer) Enqueue(ctx context.Context, ev ambient.RawEvent) error {
+	r.mu.Lock()
+	r.evs = append(r.evs, ev)
+	r.mu.Unlock()
+	if r.next != nil {
+		return r.next.Enqueue(ctx, ev)
+	}
+	return nil
+}
+
+func (r *recordingEnqueuer) snapshot() []ambient.RawEvent {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]ambient.RawEvent(nil), r.evs...)
+}
+
+// clipboardRig is a running Runner with a clipboard source.
+type clipboardRig struct {
+	clip *fakeClipboard
+	enq  *recordingEnqueuer
+
+	mu      sync.Mutex
+	topics  []string
+	stopRun func()
+}
+
+func (c *clipboardRig) topicCount(topic string) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	n := 0
+	for _, tp := range c.topics {
+		if tp == topic {
+			n++
+		}
+	}
+	return n
+}
+
+func startClipboardRig(t *testing.T, next ambient.Enqueuer) *clipboardRig {
 	t.Helper()
-	if os.Getenv("INTEGRATION") != "1" {
-		t.Skip("integration test requires INTEGRATION=1 + running dpkms + ctxd")
+	rig := &clipboardRig{clip: &fakeClipboard{}, enq: &recordingEnqueuer{next: next}}
+
+	b := bus.New()
+	b.Subscribe("ctxt.ambient.#", func(_ context.Context, e bus.Event) error {
+		rig.mu.Lock()
+		rig.topics = append(rig.topics, string(e.Topic))
+		rig.mu.Unlock()
+		return nil
+	})
+
+	src, err := clipboard.New(rig.clip, clipboard.Config{PollInterval: 10 * time.Millisecond})
+	require.NoError(t, err)
+	runner, err := ambient.NewRunner(ambient.RunnerOptions{
+		Bus:      b,
+		Dedup:    dedup.NewCache(),
+		Enqueuer: rig.enq,
+	})
+	require.NoError(t, err)
+	require.NoError(t, runner.Register(src))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = runner.Start(ctx)
+	}()
+	rig.stopRun = func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Error("runner did not stop")
+		}
+	}
+	t.Cleanup(rig.stopRun)
+	return rig
+}
+
+func waitEvents(t *testing.T, rig *clipboardRig, n int) []ambient.RawEvent {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if evs := rig.enq.snapshot(); len(evs) >= n {
+			return evs
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("want %d enqueued events, got %d", n, len(rig.enq.snapshot()))
+	return nil
+}
+
+const longClip = "Quarterly planning notes: the migration to the new queue backend " +
+	"finishes in March, the rollback plan is documented, and the owners are Dana and Priya."
+
+// Copying long text yields a KnowledgeObject through the real dpkms analyze
+// path, routed to the text.short pipeline, with a populated fingerprint.
+func TestClipboardWatcher_CapturesPlainText(t *testing.T) {
+	env := startTestEnv(t)
+	defer env.stop(t)
+
+	client, err := enqueue.New(env.URL)
+	require.NoError(t, err)
+	rig := startClipboardRig(t, client)
+
+	rig.clip.set(longClip)
+	evs := waitEvents(t, rig, 1)
+	assert.Equal(t, "clipboard", evs[0].Source)
+	assert.Equal(t, ambient.KindText, evs[0].Kind)
+	assert.NotEmpty(t, evs[0].Fingerprint, "fingerprint must be populated")
+
+	// The job the runner enqueued lands in dpkms and completes.
+	var jobID string
+	require.Eventually(t, func() bool {
+		jobs, _, err := env.driver.Jobs().List(ownerCtx(), storage.JobFilter{Limit: 10})
+		if err != nil || len(jobs) == 0 {
+			return false
+		}
+		jobID = jobs[0].ID
+		return true
+	}, 10*time.Second, 50*time.Millisecond, "no job created from clipboard event")
+
+	job := waitForJob(t, env.URL, jobID, storage.JobCompleted)
+	assert.Equal(t, "text.short", job.Pipeline)
+	obj := getObject(t, env.URL, job.ResultID)
+	assert.Equal(t, longClip, strings.TrimSpace(obj.TextContent))
+}
+
+// Identical content copied again inside the window is dropped by the
+// fingerprint dedup at the enqueue boundary and announced on the bus.
+func TestClipboardWatcher_DedupeRapidUpdates(t *testing.T) {
+	rig := startClipboardRig(t, nil)
+
+	other := longClip + " Second variant."
+	rig.clip.set(longClip)
+	waitEvents(t, rig, 1)
+	rig.clip.set(other)
+	waitEvents(t, rig, 2)
+	// Source-side suppression only covers consecutive repeats; copying the
+	// first text again reaches the substrate dedup.
+	rig.clip.set(longClip)
+	require.Eventually(t, func() bool {
+		return rig.topicCount(string(events.TopicAmbientEventDeduped)) >= 1
+	}, 10*time.Second, 10*time.Millisecond, "repeat copy must emit a deduped event")
+
+	assert.Len(t, rig.enq.snapshot(), 2, "the repeat must not be enqueued")
+}
+
+// Routing heuristics: URL to url.generic, fenced code and long text to
+// text.short, short plain text skipped.
+func TestClipboardWatcher_RoutesToTextPipeline(t *testing.T) {
+	rig := startClipboardRig(t, nil)
+
+	steps := []struct {
+		clip     string
+		kind     ambient.Kind
+		pipeline string
+	}{
+		{"https://example.com/some/article", ambient.KindURL, "url.generic"},
+		{"```go\nfmt.Println(1)\n```", ambient.KindText, "text.short"},
+		{longClip, ambient.KindText, "text.short"},
+	}
+	// A short plain string must be skipped; copy it first so a leak would
+	// show up ahead of the expected events.
+	rig.clip.set("too short")
+	time.Sleep(100 * time.Millisecond)
+	for i, s := range steps {
+		rig.clip.set(s.clip)
+		waitEvents(t, rig, i+1)
+	}
+
+	evs := rig.enq.snapshot()
+	require.Len(t, evs, len(steps), "short text must not be enqueued")
+	for i, s := range steps {
+		assert.Equal(t, s.kind, evs[i].Kind, "step %d kind", i)
+		assert.Equal(t, s.pipeline, evs[i].SuggestedPipeline, "step %d pipeline", i)
 	}
 }
 
-// TestClipboardWatcher_CapturesPlainText verifies that copying long-enough
-// text to the OS clipboard produces a KnowledgeObject via the text.short
-// pipeline with ambient_source=clipboard and a populated Fingerprint.
-func TestClipboardWatcher_CapturesPlainText(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending implementation: substrate ready; E2E harness " +
-		"(start dpkms + ctxd, drive OS clipboard, assert KnowledgeObject) not built")
-}
-
-// TestClipboardWatcher_DedupeRapidUpdates verifies the substrate's
-// fingerprint dedup at the enqueue boundary drops repeat copies
-// of identical content within the configurable window.
-func TestClipboardWatcher_DedupeRapidUpdates(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending implementation: substrate ready; E2E " +
-		"harness not built")
-}
-
-// TestClipboardWatcher_RespectsAppAllowlist verifies that the
-// kit/runtime/policy CEL guard at ctxt.ambient.event.captured drops
-// clipboard events while a configured deny-list bundle is foreground
-// (e.g. com.1password.* per ADR-066).
+// TestClipboardWatcher_RespectsAppAllowlist: unbuilt. clipboard.Config has no
+// deny-list, the Runner has no policy hook and no foreground signal reaches
+// clipboard events.
 func TestClipboardWatcher_RespectsAppAllowlist(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending implementation: kit/policy CEL wiring + foreground signal " +
-		"plumbing into the clipboard event metadata")
+	t.Skip("unbuilt: clipboard.Config has no app deny-list and no foreground signal reaches clipboard events")
 }
 
-// TestClipboardWatcher_PauseResume verifies the daemon-management
-// commands (`ctxt capture --ambient stop` / start) cleanly pause + resume
-// the source without losing buffered events.
+// TestClipboardWatcher_PauseResume: unbuilt. No binary constructs an
+// ambient.Runner and `ctxt capture --ambient` returns "not yet implemented".
 func TestClipboardWatcher_PauseResume(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending implementation: ctxt capture --ambient stop/status CLI surface " +
-		"(currently scaffolded, not wired to ctxd)")
-}
-
-// TestClipboardWatcher_RoutesToTextPipeline verifies the routing
-// heuristics from ADR-066: URL → url.generic, code block → text.short
-// (code subtype), long text → text.short.
-func TestClipboardWatcher_RoutesToTextPipeline(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending implementation: substrate ready; E2E harness " +
-		"+ dpkms-side type-routing assertions not built")
+	t.Skip("unbuilt: no binary constructs ambient.Runner; `ctxt capture --ambient` is not implemented")
 }

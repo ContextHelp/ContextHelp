@@ -18,40 +18,34 @@ import (
 )
 
 func TestFilewatch_RoutesByExtension(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: E2E harness (start dpkms + ctxd, drop sample files of each " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: E2E harness (start dpkms + ctxd, drop sample files of each " +
 		"supported extension into the watch dir, assert each KnowledgeObject " +
 		"used the expected pipeline). Substrate routing is unit-tested in " +
 		"internal/ambient/filewatch/filewatch_test.go::TestSource_RoutesByExtension")
 }
 
 func TestFilewatch_MovesToProcessed(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: daemon driver wiring — Source.MoveToProcessed is implemented " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: daemon driver wiring — Source.MoveToProcessed is implemented " +
 		"and unit-tested but isn't yet invoked by the Runner on enqueue success")
 }
 
 func TestFilewatch_RestartCatchUp(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: E2E harness — Source.initialScan is unit-tested but full " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: E2E harness — Source.initialScan is unit-tested but full " +
 		"daemon-restart-with-pre-existing-files flow needs a real ctxd lifecycle")
 }
 
 func TestFilewatch_ProfileScopedDirs(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: profile-scoped directory configuration (per-directory " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: profile-scoped directory configuration (per-directory " +
 		"profile field documented in US-0213 acceptance; Config struct " +
 		"currently treats all directories as global)")
 }
 
 func TestFilewatch_MaxFileSizeSkip(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: E2E harness — substrate-side cap is unit-tested in " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: E2E harness — substrate-side cap is unit-tested in " +
 		"TestSource_RejectsFilesOverSizeLimit; E2E verifies the bus-event " +
 		"emission to a real subscriber")
 }
 
 func TestFilewatch_CELVetoOnPath(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: kit/policy CEL rule wiring at ctxt.ambient.event.captured")
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: kit/policy CEL rule wiring at ctxt.ambient.event.captured")
 }

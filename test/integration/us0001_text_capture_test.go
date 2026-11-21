@@ -2,7 +2,6 @@ package integration
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	gohttp "net/http"
@@ -11,41 +10,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
-
-// ---------------------------------------------------------------------------
-// Mock pipeline steps for text capture tests.
-// ---------------------------------------------------------------------------
-
-// textTypeSetterStep sets Type = "text" and Subtype on the draft.
-type textTypeSetterStep struct {
-	pipeline.BaseContract
-	subtype string
-}
-
-func (s *textTypeSetterStep) Name() string { return "test-text-type-setter" }
-func (s *textTypeSetterStep) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
-	draft.Type = "text"
-	draft.Subtype = s.subtype
-	return draft, nil
-}
-
-// textProfileStep records profile/project metadata from the draft's Metadata map.
-type textProfileStep struct {
-	pipeline.BaseContract
-}
-
-func (s *textProfileStep) Name() string { return "test-text-profile" }
-func (s *textProfileStep) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
-	if draft.Metadata == nil {
-		draft.Metadata = make(map[string]any)
-	}
-	// pass-through: Metadata already contains profile/project values from ingest
-	return draft, nil
-}
 
 // ---------------------------------------------------------------------------
 // US-0001 Tests
@@ -73,41 +40,27 @@ func TestUS0001_PlainTextPostReturnsJobID(t *testing.T) {
 	assert.NotEmpty(t, result["job_id"], "response must contain a job_id")
 }
 
-// TestUS0001_JobCompletesWithCorrectTypeAndPipeline verifies text object stored with correct
-// content_type and pipeline assigned after job completion.
+// Short text with no pipeline named is routed to the real text.short
+// pipeline; the object carries type, pipeline and source.
 func TestUS0001_JobCompletesWithCorrectTypeAndPipeline(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Upsert("text.short", &pipeline.Pipeline{
-		PipelineName: "text.short",
-		Steps: []pipeline.PipelineStep{
-			&textTypeSetterStep{subtype: "short"},
-		},
-	})
-
 	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
-		Content:  "Short text insight for testing",
-		Type:     "text",
-		Pipeline: "text.short",
-		Source:   "e2e-test",
+		Content: "Short text insight for testing",
+		Type:    "text",
+		Source:  "e2e-test",
 	})
 	require.NoError(t, err)
 
 	job := waitForJob(t, env.URL, jobID, storage.JobCompleted)
 	require.NotEmpty(t, job.ResultID)
+	assert.Equal(t, "text.short", job.Pipeline)
 
-	resp, err := gohttp.Get(fmt.Sprintf("%s/api/v1/objects/%s", env.URL, job.ResultID))
-	require.NoError(t, err)
-	defer resp.Body.Close()
-	require.Equal(t, gohttp.StatusOK, resp.StatusCode)
-
-	var obj storage.KnowledgeObject
-	require.NoError(t, json.NewDecoder(resp.Body).Decode(&obj))
-
-	assert.Equal(t, "text", obj.Type, "type should be text")
-	assert.Equal(t, "text.short", obj.Pipeline, "pipeline should be text.short")
-	assert.Equal(t, "e2e-test", obj.Source, "source should be e2e-test")
+	obj := getObject(t, env.URL, job.ResultID)
+	assert.Equal(t, "text", obj.Type)
+	assert.Equal(t, "text.short", obj.Pipeline)
+	assert.Equal(t, "e2e-test", obj.Source)
 }
 
 // TestUS0001_ObjectRetrievableByID verifies the object is retrievable via GET /objects/{id}.
@@ -132,38 +85,25 @@ func TestUS0001_ObjectRetrievableByID(t *testing.T) {
 	assert.Equal(t, content, obj.RawContent, "raw_content must match submitted content")
 }
 
-// TestUS0001_ProfileAndProjectPersistedInMetadata verifies profile and project fields
-// submitted in the request are persisted in the object's Metadata.
-func TestUS0001_ProfileAndProjectPersistedInMetadata(t *testing.T) {
+// The profile named on the request is persisted on the object. (The story
+// also names a project field; AnalyzeRequest has none, so it is not tested.)
+func TestUS0001_ProfilePersisted(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Upsert("text.short", &pipeline.Pipeline{
-		PipelineName: "text.short",
-		Steps: []pipeline.PipelineStep{
-			&textProfileStep{},
-		},
-	})
-
 	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
-		Content:  "Insight with profile context",
-		Type:     "text",
-		Pipeline: "text.short",
-		Source:   "e2e-test",
+		Content: "Insight with profile context",
+		Type:    "text",
+		Source:  "e2e-test",
+		Profile: "founder",
 	})
 	require.NoError(t, err)
 
 	job := waitForJob(t, env.URL, jobID, storage.JobCompleted)
 	require.NotEmpty(t, job.ResultID)
 
-	resp, err := gohttp.Get(fmt.Sprintf("%s/api/v1/objects/%s", env.URL, job.ResultID))
-	require.NoError(t, err)
-	defer resp.Body.Close()
-	require.Equal(t, gohttp.StatusOK, resp.StatusCode)
-
-	var obj storage.KnowledgeObject
-	require.NoError(t, json.NewDecoder(resp.Body).Decode(&obj))
-	assert.Equal(t, job.ResultID, obj.ID)
+	obj := getObject(t, env.URL, job.ResultID)
+	assert.Equal(t, "founder", obj.ProfileID)
 }
 
 // TestUS0001_JobIDReturnedImmediately verifies POST /analyze is non-blocking:

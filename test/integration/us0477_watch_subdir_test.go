@@ -9,7 +9,6 @@ package integration
 // for the watcher's enqueued job to complete, and validates the resulting
 // KnowledgeObject contains the expected text body.
 //
-// Gate: INTEGRATION=1.
 
 import (
 	"encoding/json"
@@ -30,10 +29,6 @@ import (
 )
 
 func TestUS0477_WatchPicksUpFileInNewSubdir(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
-
 	root := t.TempDir()
 
 	env := startTestEnv(t)
@@ -43,8 +38,9 @@ func TestUS0477_WatchPicksUpFileInNewSubdir(t *testing.T) {
 	mgr := watcher.NewManager(ws, watcher.StoreRecords(ws), stack.ServiceIngester(env.svc))
 	t.Cleanup(mgr.Stop)
 
+	n := 0
 	cfg := &storage.WatchConfig{
-		ID:              "t0477",
+		ID:              "subdir-watch",
 		Path:            root,
 		Mode:            "generic",
 		IncludePatterns: []string{"**/*.md"},
@@ -55,18 +51,27 @@ func TestUS0477_WatchPicksUpFileInNewSubdir(t *testing.T) {
 	}
 	require.NoError(t, mgr.AddWatch(ownerCtx(), cfg))
 
-	// Allow fsnotify to register on the root.
-	time.Sleep(200 * time.Millisecond)
+	// Wait until the watcher is live. Registration with fsnotify happens
+	// on the watch goroutine after AddWatch returns, and a file written
+	// before that is never seen (no initial scan), so write a fresh probe
+	// file each round until one is ingested.
+	require.Eventually(t, func() bool {
+		n++
+		name := fmt.Sprintf("probe-%d.md", n)
+		if err := os.WriteFile(filepath.Join(root, name), []byte("# Probe\n\nready\n"), 0o644); err != nil {
+			return false
+		}
+		return watchJobExists(env.URL, "watch:generic:probe-", 500*time.Millisecond)
+	}, 20*time.Second, 50*time.Millisecond, "watcher never ingested a root-level probe file")
 
 	// Create a NEW nested subdirectory and a markdown file inside it.
-	// Mirrors the original Claude-Code Write-tool repro where
-	// clients/bgroup/wechalet/bankruptcy/ was created post-registration
-	// and never picked up by the watcher.
-	sub := filepath.Join(root, "bgroup", "wechalet", "bankruptcy")
+	// Regression: a subdirectory created after registration was never
+	// picked up by the watcher.
+	sub := filepath.Join(root, "bgroup", "acme", "renewal")
 	require.NoError(t, os.MkdirAll(sub, 0o755))
 
-	const needle = "wechalet-bankruptcy-marker-T0477"
-	relFile := filepath.Join("bgroup", "wechalet", "bankruptcy", "call-2026-05-04-jonathan-roy.md")
+	const needle = "acme-renewal-marker-subdir"
+	relFile := filepath.Join("bgroup", "acme", "renewal", "call-2026-05-04-jane-doe.md")
 	absFile := filepath.Join(root, relFile)
 	require.NoError(t, os.WriteFile(absFile, []byte("# Note\n\n"+needle+" body\n"), 0o644))
 
@@ -113,4 +118,27 @@ func waitForWatchJob(t *testing.T, baseURL, sourceFragment string, within time.D
 	}
 	t.Fatalf("no job appeared with source containing %q within %s", sourceFragment, within)
 	return ""
+}
+
+// watchJobExists polls /api/v1/jobs for up to within, reporting whether a job
+// whose Source contains fragment appeared.
+func watchJobExists(baseURL, fragment string, within time.Duration) bool {
+	deadline := time.Now().Add(within)
+	for time.Now().Before(deadline) {
+		resp, err := gohttp.Get(baseURL + "/api/v1/jobs?limit=100")
+		if err == nil {
+			var payload struct {
+				Data []storage.Job `json:"data"`
+			}
+			_ = json.NewDecoder(resp.Body).Decode(&payload)
+			resp.Body.Close()
+			for _, j := range payload.Data {
+				if strings.Contains(j.Source, fragment) {
+					return true
+				}
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return false
 }

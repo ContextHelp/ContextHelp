@@ -17,7 +17,6 @@ package integration
 // Re-record: XRR_MODE=record go test -count=1 ./test/integration/ \
 //   -run TestUS0206_RecordCassettes
 //
-// Gate: INTEGRATION=1 env var required.
 
 import (
 	"context"
@@ -25,7 +24,6 @@ import (
 	"fmt"
 	gohttp "net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -212,10 +210,6 @@ func TestUS0206_RecordCassettes(t *testing.T) {
 // TestUS0206_MergedProfileFromMultipleSources verifies that data from multiple
 // mock platforms is aggregated into a single merged profile.
 func TestUS0206_MergedProfileFromMultipleSources(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
-
 	const slug = osintJaneSlug
 
 	// Replay answers from the cassettes; the fixture servers only matter
@@ -277,10 +271,6 @@ func TestUS0206_MergedProfileFromMultipleSources(t *testing.T) {
 
 // TestUS0206_SingleSourceAggregation verifies single-source aggregation works.
 func TestUS0206_SingleSourceAggregation(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
-
 	const slug = osintJohnSlug
 
 	srv := httptest.NewServer(osintSourceHandler(osintSingleFixture()))
