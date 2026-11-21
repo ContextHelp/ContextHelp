@@ -13,6 +13,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/ambient"
 	"github.com/ideacrafterslabs/ctxt/internal/ambient/enqueue"
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
@@ -137,15 +138,46 @@ func TestAmbientEnqueueClientRoundTrip(t *testing.T) {
 	assert.Equal(t, map[string]any{"foreground_bundle_id": "com.apple.Terminal"}, obj.Metadata["client"])
 }
 
-func TestAnalyzeOversizedBodyIs413(t *testing.T) {
+// The body cap depends on the access class: none on a private instance;
+// server.max_analyze_bytes of content plus headroom on protected and
+// public ones, where 0 lifts it.
+func TestAnalyzeBodyLimitByAccess(t *testing.T) {
+	const capBytes = 1 << 20
+	big := `{"content":"` + strings.Repeat("a", capBytes+service.MaxAnalyzeNoteBytes+service.MaxAnalyzeDataBytes+service.MaxAnalyzeMetadataBytes+(128<<10)) + `"}`
+	for _, tc := range []struct {
+		name, access string
+		maxBytes     int64
+		want         int
+	}{
+		{"private has no cap", config.AccessPrivate, capBytes, http.StatusAccepted},
+		{"default access is private", "", capBytes, http.StatusAccepted},
+		{"protected over cap", config.AccessProtected, capBytes, http.StatusRequestEntityTooLarge},
+		{"public over cap", config.AccessPublic, capBytes, http.StatusRequestEntityTooLarge},
+		{"protected zero is unlimited", config.AccessProtected, 0, http.StatusAccepted},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ts := newTestServerBundle(t)
+			defer ts.Close()
+			ts.svc.Cfg.Server.Access = tc.access
+			ts.svc.Cfg.Server.MaxAnalyzeBytes = tc.maxBytes
+			for _, path := range []string{"/api/v1/analyze", "/api/v1/pipelines/enqueue"} {
+				resp, err := http.Post(ts.URL+path, "application/json", strings.NewReader(big))
+				require.NoError(t, err)
+				resp.Body.Close()
+				assert.Equal(t, tc.want, resp.StatusCode, path)
+			}
+		})
+	}
+}
+
+// The per-field limits hold in every access mode.
+func TestAnalyzeFieldLimitsHoldOnPrivate(t *testing.T) {
 	ts := newTestServerBundle(t)
 	defer ts.Close()
-
-	body := `{"content":"` + strings.Repeat("a", int(service.MaxAnalyzeBodyBytes)+1) + `"}`
-	for _, path := range []string{"/api/v1/analyze", "/api/v1/pipelines/enqueue"} {
-		resp, err := http.Post(ts.URL+path, "application/json", strings.NewReader(body))
-		require.NoError(t, err)
-		resp.Body.Close()
-		assert.Equal(t, http.StatusRequestEntityTooLarge, resp.StatusCode, path)
-	}
+	raw, err := json.Marshal(map[string]any{"content": "x", "metadata": map[string]any{"b": strings.Repeat("m", 300<<10)}})
+	require.NoError(t, err)
+	resp, err := http.Post(ts.URL+"/api/v1/analyze", "application/json", bytes.NewReader(raw))
+	require.NoError(t, err)
+	resp.Body.Close()
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }

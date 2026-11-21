@@ -107,6 +107,9 @@ func validateServerPorts(s *ServerConfig) []ValidationError {
 			errs = append(errs, ValidationError{Field: p.field, Message: fmt.Sprintf("must be 1024–65535, got %d", p.port)})
 		}
 	}
+	if s.MaxAnalyzeBytes < 0 {
+		errs = append(errs, ValidationError{Field: "server.max_analyze_bytes", Message: fmt.Sprintf("must be 0 (unlimited) or positive, got %d", s.MaxAnalyzeBytes)})
+	}
 	return errs
 }
 

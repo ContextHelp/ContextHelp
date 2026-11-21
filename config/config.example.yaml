@@ -70,6 +70,11 @@
 # How long the event outbox keeps a row: the window a Last-Event-ID
 # resume on GET /api/v1/events can reach back over. Older ids get 410.
 #  events_retention: 168h
+# Largest content one POST /analyze or /pipelines/enqueue accepts on a
+# protected or public instance (the note, data and metadata limits come on
+# top); a larger body gets 413. 0 = unlimited. A private (loopback-only)
+# instance has no cap.
+#  max_analyze_bytes: 67108864
 # CORS for the Vite dev server (http://localhost:5173).
 #  dev: false
 # private (loopback only) | protected (trusted network) | public. A
