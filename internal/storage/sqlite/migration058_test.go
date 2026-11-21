@@ -54,7 +54,7 @@ func TestMigration058_AmbientSession(t *testing.T) {
 		t.Errorf("pre-existing object lost its NULL session id")
 	}
 	// Re-run: every step is idempotent.
-	if err := migrate057AmbientSession(ctx, d); err != nil {
+	if err := migrate058AmbientSession(ctx, d); err != nil {
 		t.Errorf("re-run: %v", err)
 	}
 }
