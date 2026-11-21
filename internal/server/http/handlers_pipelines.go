@@ -3,8 +3,11 @@ package http
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
+
+	"hop.top/kit/go/runtime/domain"
 
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
@@ -35,11 +38,21 @@ func CreatePipeline(svc *service.Service) http.HandlerFunc {
 			if writePolicyError(w, r, err) {
 				return
 			}
-			statusCode := http.StatusInternalServerError
-			if strings.Contains(err.Error(), "parse steps") || strings.Contains(err.Error(), "invalid JSON") {
-				statusCode = http.StatusBadRequest
+			switch {
+			case errors.Is(err, service.ErrProtectedPipeline):
+				WriteError(w, http.StatusForbidden, "PROTECTED_PIPELINE", err.Error())
+			case errors.Is(err, domain.ErrValidation):
+				WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+			case errors.Is(err, domain.ErrConflict):
+				WriteError(w, http.StatusConflict, "DUPLICATE_NAME", fmt.Sprintf("pipeline %q already exists", req.Name))
+			case errors.Is(err, service.ErrStepValidationUnavailable):
+				// A misconfigured server, not a bad request: 500 with a code that says so.
+				WriteError(w, http.StatusInternalServerError, "STEP_VALIDATION_UNAVAILABLE", err.Error())
+			case strings.Contains(err.Error(), "parse steps") || strings.Contains(err.Error(), "invalid JSON"):
+				WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
+			default:
+				WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 			}
-			WriteError(w, statusCode, "INTERNAL_ERROR", err.Error())
 			return
 		}
 
@@ -211,6 +224,10 @@ func Enqueue(svc *service.Service) http.HandlerFunc {
 			if errors.Is(err, service.ErrPipelineNotFound) || errors.Is(err, jobs.ErrPipelineNotFound) ||
 				errors.Is(err, service.ErrInvalidSubmission) {
 				WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
+				return
+			}
+			if errors.Is(err, service.ErrPipelineArchived) {
+				WriteError(w, http.StatusConflict, "CONFLICT", err.Error())
 				return
 			}
 			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())

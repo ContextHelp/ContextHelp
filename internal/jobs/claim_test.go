@@ -180,7 +180,7 @@ func runLeaseStoreContract(t *testing.T, store storage.JobStore) {
 	third, err := store.AcquireNext(ctx)
 	require.NoError(t, err)
 	require.NotNil(t, third)
-	require.NoError(t, store.Retry(ctx, job.ID))
+	require.NoError(t, store.Requeue(ctx, job.ID, third.Claim))
 	held, err = store.ExtendLease(ctx, job.ID, third.Claim, time.Minute)
 	require.NoError(t, err)
 	require.False(t, held, "a retried job kept its claim")

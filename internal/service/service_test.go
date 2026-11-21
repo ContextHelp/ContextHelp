@@ -9,6 +9,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/retrieval"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -31,7 +32,11 @@ func newTestService(t *testing.T) *Service {
 	// fresh registry without this stub.
 	pipes.Upsert("text.short", &pipeline.Pipeline{PipelineName: "text.short"})
 	engine := search.NewEngine(driver)
-	return New(driver, q, pipes, engine, "", nil)
+	svc := New(driver, q, pipes, engine, "", nil)
+	// pipeline create validation fails closed without the built-in step
+	// predicate, as the stack wires it.
+	svc.Installer.Reserved = builtins.IsStepName
+	return svc
 }
 
 func TestAnalyzeDuplicateDrop(t *testing.T) {

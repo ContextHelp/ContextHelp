@@ -260,7 +260,7 @@ func callStore(store reflect.Value, m reflect.Method) (reached bool, err error) 
 var principalWrites = map[string][]string{
 	"Resurfacing":   {"Upsert"},
 	"SavedSearches": {"Create", "Update", "Delete"},
-	"SearchHistory": {"Append"},
+	"SearchHistory": {"Append", "Clear"},
 }
 
 // restrictedStoreMethods walks every method of every scoped accessor's

@@ -49,6 +49,8 @@ func toStatus(ctx context.Context, what string, err error) error {
 		}
 	case errors.Is(err, search.ErrInvalidQuery), errors.Is(err, service.ErrPipelineNotFound):
 		return status.Error(codes.InvalidArgument, err.Error())
+	case errors.Is(err, service.ErrPipelineArchived):
+		return status.Error(codes.FailedPrecondition, err.Error())
 	case errors.Is(err, context.Canceled):
 		return status.Errorf(codes.Canceled, "%s: %v", what, err)
 	case errors.Is(err, context.DeadlineExceeded):

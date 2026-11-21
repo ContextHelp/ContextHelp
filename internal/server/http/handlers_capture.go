@@ -2,6 +2,7 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/ideacrafterslabs/ctxt/internal/service"
@@ -123,6 +124,10 @@ func enqueueCapture(w http.ResponseWriter, r *http.Request, svc *service.Service
 	}
 	jobID, err := svc.Analyze(r.Context(), req)
 	if err != nil {
+		if errors.Is(err, service.ErrPipelineArchived) {
+			WriteError(w, http.StatusConflict, "CONFLICT", err.Error())
+			return
+		}
 		WriteError(w, http.StatusInternalServerError, "ANALYZE_FAILED", err.Error())
 		return
 	}

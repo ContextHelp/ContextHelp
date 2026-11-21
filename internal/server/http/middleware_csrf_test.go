@@ -171,7 +171,7 @@ func TestLegitimateClientsPass(t *testing.T) {
 		{router, csrfCase{name: "web UI bodyless delete", method: http.MethodDelete, path: "/api/v1/objects/missing",
 			contentType: "application/json", origin: "http://" + testHost, fetchSite: "same-origin", wantStatus: http.StatusNotFound}},
 		{router, csrfCase{name: "CLI bodyless retry, no Content-Type", method: http.MethodPost, path: "/api/v1/jobs/missing/retry",
-			wantStatus: http.StatusBadRequest, wantCode: "INVALID_REQUEST"}},
+			wantStatus: http.StatusNotFound, wantCode: "NOT_FOUND"}},
 		{router, csrfCase{name: "MCP client", method: http.MethodPost, path: "/api/v1/mcp",
 			body: `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`, contentType: "application/json", wantStatus: http.StatusOK}},
 		{router, csrfCase{name: "cross-site read", method: http.MethodGet, path: "/api/v1/objects",

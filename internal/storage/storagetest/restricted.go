@@ -559,6 +559,17 @@ func restrictedConfPrincipalQueues(t *testing.T, scoped, drv storage.StorageDriv
 	if err != nil || len(hist) != 1 || hist[0].ID != "rv-sh-mine" {
 		t.Errorf("restricted history List = %+v, %v, want the viewer's own entry", hist, err)
 	}
+	// Clear is the viewer's own: entries with no profile included, the
+	// owner's and other principals' entries untouched.
+	if err := scoped.SearchHistory().Clear(ctx, storage.SearchHistoryFilter{}); err != nil {
+		t.Fatalf("restricted Clear: %v", err)
+	}
+	if hist, err = scoped.SearchHistory().List(ctx, storage.SearchHistoryFilter{}); err != nil || len(hist) != 0 {
+		t.Errorf("restricted history after Clear = %+v, %v, want empty", hist, err)
+	}
+	if all, err := drv.SearchHistory().List(ctx, storage.SearchHistoryFilter{OwnerPrincipal: storage.OwnerPrincipal}); err != nil || len(all) != 1 || all[0].ID != "rv-sh-owner" {
+		t.Errorf("owner history after a restricted Clear = %+v, %v, want the owner's entry kept", all, err)
+	}
 
 	if err := drv.Resurfacing().Upsert(ctx, &storage.ResurfacingEntry{ID: "rv-rs-owner", ObjectID: "rv-visible", Score: 1, CreatedAt: now}); err != nil {
 		t.Fatalf("owner Upsert: %v", err)

@@ -28,14 +28,11 @@ func ListSearchHistory(svc *service.Service) http.HandlerFunc {
 	}
 }
 
-// ClearSearchHistory handles DELETE /api/v1/search-history
+// ClearSearchHistory handles DELETE /api/v1/search-history: the caller's
+// own history, one profile's with profile_id, otherwise all of it.
 func ClearSearchHistory(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		profileID := r.URL.Query().Get("profile_id")
-		if profileID == "" {
-			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "profile_id is required")
-			return
-		}
 		if err := svc.ClearSearchHistory(r.Context(), profileID); err != nil {
 			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 			return

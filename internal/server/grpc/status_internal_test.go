@@ -38,6 +38,7 @@ func TestToStatusMapsServiceErrors(t *testing.T) {
 		{"owner refused", owner, restrictedRefusal(), codes.Internal},
 		{"no viewer refused", none, restrictedRefusal(), codes.Internal},
 		{"invalid query", none, fmt.Errorf("x: %w", search.ErrInvalidQuery), codes.InvalidArgument},
+		{"archived pipeline", none, fmt.Errorf("analyze: %w", service.ErrPipelineArchived), codes.FailedPrecondition},
 		{"unknown pipeline", none, fmt.Errorf("analyze: %w", service.ErrPipelineNotFound), codes.InvalidArgument},
 		{"canceled", none, fmt.Errorf("get: %w", context.Canceled), codes.Canceled},
 		{"deadline", none, fmt.Errorf("get: %w", context.DeadlineExceeded), codes.DeadlineExceeded},

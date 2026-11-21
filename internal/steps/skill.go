@@ -217,3 +217,10 @@ func compileSchema(schema map[string]any) (*jsonschema.Schema, error) {
 	}
 	return c.Compile("step-config.json")
 }
+
+// ValidateResources reports whether r's limits parse: sizes such as 256MB,
+// a duration such as 30s, a CPU share or count.
+func ValidateResources(r storage.StepResources) error {
+	_, err := parseResources(r)
+	return err
+}

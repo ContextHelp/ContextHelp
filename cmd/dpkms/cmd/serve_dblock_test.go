@@ -23,7 +23,10 @@ func shortServeLockBudget(t *testing.T, d time.Duration) {
 }
 
 func sqliteServeConfig(dbPath string) *config.Config {
-	return &config.Config{Storage: config.StorageConfig{Type: "sqlite", Path: dbPath}}
+	return &config.Config{
+		Storage: config.StorageConfig{Type: "sqlite", Path: dbPath},
+		Server:  config.ServerConfig{Workers: config.DefaultServerWorkers},
+	}
 }
 
 // A second serve on the same SQLite database fails fast, naming the

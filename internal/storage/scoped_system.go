@@ -59,6 +59,10 @@ func (v restrictedJobs) Cancel(_ context.Context, _ string) error {
 	return restrictedWrite("Jobs", "Cancel")
 }
 
+func (v restrictedJobs) Requeue(_ context.Context, _ string, _ string) error {
+	return restrictedWrite("Jobs", "Requeue")
+}
+
 func (v restrictedJobs) RecoverStale(_ context.Context, _ int64) (int, error) {
 	return 0, restrictedWrite("Jobs", "RecoverStale")
 }

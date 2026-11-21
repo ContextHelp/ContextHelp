@@ -57,6 +57,9 @@ The other serve settings follow the same order (flag, env var, file, default):
 | Event outbox retention (how far a `Last-Event-ID` resume reaches) | | | `server.events_retention` | 168h (7 days) |
 | External steps directory | `--steps-path` | | `steps.path` | `~/.config/contexthelp/steps` |
 | Default focus profile | `--profile` | `CTXT_PROFILE` | `profile.default` | the only profile, if one is defined |
+| Search history recording | | | `search.history.enabled` | true |
+
+`search.history.enabled` is read by dpkms. Searches a person runs (`ctxt find`, `POST /find`, `GET /search`) are recorded per principal; MCP search tool calls from agents are never recorded. When it is `false`, `ctxt find` and `GET /search` record nothing in search history; entries already stored stay until cleared. Clear your own history with `DELETE /api/v1/search-history` (all of it, entries recorded with no profile included) or `DELETE /api/v1/search-history?profile_id=<id>` (one profile); it never removes another principal's entries and needs `delete:searches`. Set the option in `dpkms.yaml`, or per run with `dpkms serve -c search.history.enabled=false`; there is no env var.
 
 ### Inbound auth, roles and scopes
 

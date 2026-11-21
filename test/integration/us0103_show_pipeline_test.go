@@ -16,7 +16,7 @@ func TestUS0103_ShowExisting(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"}]`
+	stepsJSON := `[{"type":"noop"}]`
 	body, _ := json.Marshal(map[string]string{
 		"name":        "show-pipeline",
 		"description": "For testing",
@@ -51,7 +51,7 @@ func TestUS0103_ShowArchived(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"}]`
+	stepsJSON := `[{"type":"noop"}]`
 	body, _ := json.Marshal(map[string]string{
 		"name":  "show-archived-pl",
 		"steps": stepsJSON,
@@ -82,7 +82,7 @@ func TestUS0103_ShowStepsWithConfigs(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary","config":{"max_length":100}}]`
+	stepsJSON := `[{"type":"noop","config":{"max_length":100}}]`
 	body, _ := json.Marshal(map[string]string{
 		"name":  "steps-config-pl",
 		"steps": stepsJSON,
@@ -101,14 +101,14 @@ func TestUS0103_ShowStepsWithConfigs(t *testing.T) {
 	var pipeline storage.Pipeline
 	require.NoError(t, json.NewDecoder(respGet.Body).Decode(&pipeline))
 	require.NotEmpty(t, pipeline.Steps)
-	assert.Equal(t, "text_summary", pipeline.Steps[0].Name)
+	assert.Equal(t, "noop", pipeline.Steps[0].Name)
 }
 
 func TestUS0103_ResourceLimitsRoundTrip(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"}]`
+	stepsJSON := `[{"type":"noop"}]`
 	sandbox := map[string]any{
 		"enabled":         true,
 		"isolation_level": "container",
@@ -117,7 +117,7 @@ func TestUS0103_ResourceLimitsRoundTrip(t *testing.T) {
 			"max_cpu":    "1.5",
 			"timeout":    "60s",
 		},
-		"network": true,
+		"network": false,
 	}
 
 	body, _ := json.Marshal(map[string]any{
@@ -141,7 +141,7 @@ func TestUS0103_ResourceLimitsRoundTrip(t *testing.T) {
 	require.NotNil(t, pipeline.Sandbox)
 	assert.True(t, pipeline.Sandbox.Enabled)
 	assert.Equal(t, "container", pipeline.Sandbox.IsolationLevel)
-	assert.True(t, pipeline.Sandbox.Network)
+	assert.False(t, pipeline.Sandbox.Network)
 	require.NotNil(t, pipeline.Sandbox.ResourceLimits)
 	assert.Equal(t, "256MB", pipeline.Sandbox.ResourceLimits.MaxMemory)
 	assert.Equal(t, "1.5", pipeline.Sandbox.ResourceLimits.MaxCPU)
@@ -152,7 +152,7 @@ func TestUS0103_SandboxConfigComplete(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"}]`
+	stepsJSON := `[{"type":"noop"}]`
 	sandbox := map[string]any{
 		"enabled":         true,
 		"isolation_level": "container",
@@ -203,7 +203,7 @@ func TestUS0103_MetadataAccurate(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"}]`
+	stepsJSON := `[{"type":"noop"}]`
 	body, _ := json.Marshal(map[string]string{
 		"name":        "metadata-pl",
 		"description": "A pipeline for metadata accuracy testing",
@@ -235,7 +235,7 @@ func TestUS0103_ShowMultipleStepsPreservesOrder(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"},{"type":"entity_extraction"},{"type":"tagging"}]`
+	stepsJSON := `[{"type":"noop"},{"type":"entity_resolver"},{"type":"tagger"}]`
 	body, _ := json.Marshal(map[string]string{
 		"name":  "ordered-steps-pl",
 		"steps": stepsJSON,
@@ -254,16 +254,16 @@ func TestUS0103_ShowMultipleStepsPreservesOrder(t *testing.T) {
 	var pipeline storage.Pipeline
 	require.NoError(t, json.NewDecoder(respGet.Body).Decode(&pipeline))
 	require.Len(t, pipeline.Steps, 3)
-	assert.Equal(t, "text_summary", pipeline.Steps[0].Name)
-	assert.Equal(t, "entity_extraction", pipeline.Steps[1].Name)
-	assert.Equal(t, "tagging", pipeline.Steps[2].Name)
+	assert.Equal(t, "noop", pipeline.Steps[0].Name)
+	assert.Equal(t, "entity_resolver", pipeline.Steps[1].Name)
+	assert.Equal(t, "tagger", pipeline.Steps[2].Name)
 }
 
 func TestUS0103_ShowReturnsJSONContentType(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"}]`
+	stepsJSON := `[{"type":"noop"}]`
 	body, _ := json.Marshal(map[string]string{
 		"name":  "content-type-pl",
 		"steps": stepsJSON,

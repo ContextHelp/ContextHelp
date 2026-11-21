@@ -1,7 +1,10 @@
 package service
 
 import (
+	"bytes"
+	"context"
 	"errors"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -201,6 +204,7 @@ func TestFindSearch_Apply(t *testing.T) {
 		CandidatePool: config.CandidatePoolConfig{FTS: 11, Vector: 13},
 		MinScore:      0.2,
 		FallbackToFTS: false,
+		History:       base.History,
 		Reranker: config.RerankerConfig{
 			MentionBoostPerMention: 0.01, MaxMentionBoost: 0.5, DirectBacklinkBoost: 0.02, HopBacklinkBoost: 0.04,
 		},
@@ -234,4 +238,102 @@ func TestResolveFind_Filter(t *testing.T) {
 	_, filter, _, err = resolveFind(FindRequest{Query: "q", Limit: 3})
 	require.NoError(t, err)
 	assert.Equal(t, 3, filter.Limit)
+}
+
+// Every executed find is persisted to search history with its profile,
+// mode and result count; repeats are separate entries (US-0055). A
+// trace run is not a typed query and records nothing.
+func TestFind_RecordsSearchHistory(t *testing.T) {
+	f := newSemanticFixture(t)
+	ctx := ownerCtx()
+
+	for i := 0; i < 2; i++ {
+		res, err := f.svc.Find(ctx, FindRequest{Query: semanticQuery, Mode: FindModeFTS, Profile: "growth", RecordHistory: true}, f.sem)
+		require.NoError(t, err)
+		require.NotEmpty(t, res.Objects)
+	}
+	_, err := f.svc.Find(ctx, FindRequest{Query: semanticQuery, Trace: true, RecordHistory: true}, f.sem)
+	require.NoError(t, err)
+
+	got, err := f.svc.ListSearchHistory(ctx, storage.SearchHistoryFilter{ProfileID: "growth", Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, got, 2, "identical queries are not deduplicated; trace runs are not recorded")
+	assert.Equal(t, semanticQuery, got[0].Query)
+	assert.Equal(t, FindModeFTS, got[0].StrategiesUsed)
+	assert.Equal(t, 1, got[0].ResultCount)
+
+	// An invalid request never ran: nothing recorded.
+	_, err = f.svc.Find(ctx, FindRequest{Query: " ", Profile: "growth", RecordHistory: true}, f.sem)
+	require.Error(t, err)
+	got, err = f.svc.ListSearchHistory(ctx, storage.SearchHistoryFilter{ProfileID: "growth", Limit: 10})
+	require.NoError(t, err)
+	assert.Len(t, got, 2)
+}
+
+// search.history.enabled=false: Find records nothing.
+func TestFind_SearchHistoryDisabled(t *testing.T) {
+	f := newSemanticFixture(t)
+	ctx := ownerCtx()
+	f.svc.Cfg.Search.History.Enabled = false
+
+	res, err := f.svc.Find(ctx, FindRequest{Query: semanticQuery, Mode: FindModeFTS, Profile: "quiet", RecordHistory: true}, f.sem)
+	require.NoError(t, err)
+	require.NotEmpty(t, res.Objects, "the search itself still answers")
+
+	got, err := f.svc.ListSearchHistory(ctx, storage.SearchHistoryFilter{ProfileID: "quiet", Limit: 10})
+	require.NoError(t, err)
+	assert.Empty(t, got)
+}
+
+// A service built without a config keeps the built-in default: recording on.
+func TestRecordSearchHistory_DefaultOnWithoutConfig(t *testing.T) {
+	svc := newTestService(t)
+	require.True(t, svc.Cfg.Search.History.Enabled)
+}
+
+// Callers that are not a person typing a query (the MCP search tool,
+// internal callers) leave RecordHistory unset: nothing is recorded.
+func TestFind_NoHistoryUnlessRecordHistory(t *testing.T) {
+	f := newSemanticFixture(t)
+	ctx := ownerCtx()
+
+	res, err := f.svc.Find(ctx, FindRequest{Query: semanticQuery, Mode: FindModeFTS, Profile: "agent"}, f.sem)
+	require.NoError(t, err)
+	require.NotEmpty(t, res.Objects)
+
+	got, err := f.svc.ListSearchHistory(ctx, storage.SearchHistoryFilter{ProfileID: "agent", Limit: 10})
+	require.NoError(t, err)
+	assert.Empty(t, got)
+}
+
+// The entry names the mode that ran: a hybrid request whose semantic leg
+// could not run answered from full-text and is recorded as fts.
+func TestFind_HistoryRecordsExecutedMode(t *testing.T) {
+	f := newSemanticFixture(t)
+	ctx := ownerCtx()
+	_, err := f.db.Exec(`UPDATE embedding_models SET is_default = 0`)
+	require.NoError(t, err)
+
+	res, err := f.svc.Find(ctx, FindRequest{Query: semanticQuery, Mode: FindModeHybrid, Profile: "exec", RecordHistory: true}, f.sem)
+	require.NoError(t, err)
+	require.NotEmpty(t, res.Objects)
+
+	got, err := f.svc.ListSearchHistory(ctx, storage.SearchHistoryFilter{ProfileID: "exec", Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, FindModeFTS, got[0].StrategiesUsed)
+}
+
+// A store that does not keep history (postgres) or a viewer without a
+// principal is not a failure worth a warning: the search answers and
+// nothing is recorded.
+func TestRecordSearchHistory_UnsupportedStoreIsQuiet(t *testing.T) {
+	svc := newTestService(t)
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	svc.RecordSearchHistory(context.Background(), "q", "p", "fts", 0) // no viewer attached: ErrNoViewer
+	assert.Empty(t, buf.String(), "a viewer with no principal is not worth a warning")
 }

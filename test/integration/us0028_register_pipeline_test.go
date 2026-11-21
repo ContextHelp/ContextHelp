@@ -61,7 +61,7 @@ func TestUS0028_RegisterPipelineViaAPI(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"}]`
+	stepsJSON := `[{"type":"noop"}]`
 	body, _ := json.Marshal(map[string]string{
 		"name":        "my-custom-pipeline",
 		"description": "Custom pipeline for US-0028 test",
@@ -85,7 +85,7 @@ func TestUS0028_RegisteredPipelineRetrievableByName(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"}]`
+	stepsJSON := `[{"type":"noop"}]`
 	createBody, _ := json.Marshal(map[string]string{
 		"name":        "retrievable-pipeline",
 		"description": "Pipeline to verify retrieval",
@@ -122,7 +122,7 @@ func TestUS0028_RegisteredPipelineAppearsInListing(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"}]`
+	stepsJSON := `[{"type":"noop"}]`
 	createBody, _ := json.Marshal(map[string]string{
 		"name":  "listing-pipeline",
 		"steps": stepsJSON,
@@ -205,7 +205,7 @@ func TestUS0028_MissingNameReturns400(t *testing.T) {
 	defer env.stop(t)
 
 	body, _ := json.Marshal(map[string]string{
-		"steps": `[{"type":"text_summary"}]`,
+		"steps": `[{"type":"noop"}]`,
 	})
 
 	resp, err := gohttp.Post(env.URL+"/api/v1/pipelines", "application/json", bytes.NewReader(body))

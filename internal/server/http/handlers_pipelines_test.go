@@ -171,3 +171,56 @@ func TestEnqueue_StoreBackedPipelineAccepted(t *testing.T) {
 		t.Fatalf("status: got %d, want 202 (envelope: %+v)", status, env.Error)
 	}
 }
+
+// TestEnqueue_ArchivedPipelineReturns409: archived pipelines are disabled;
+// enqueue answers 409 CONFLICT and creates no job.
+func TestEnqueue_ArchivedPipelineReturns409(t *testing.T) {
+	driver := storageutil.NewTestDriver(t)
+	q := jobs.NewQueue(driver.Jobs())
+	engine := search.NewEngine(driver)
+	svc := service.New(driver, q, pipeline.DefaultRegistry(), engine, "", nil)
+	now := time.Now().Truncate(time.Second)
+	if err := driver.Pipelines().Create(ownerCtx(), &storage.Pipeline{
+		ID: "pipeline-arch", Name: "user.archived", Archived: true, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("seed pipeline: %v", err)
+	}
+	ts := &testServerBundle{Server: httptest.NewServer(NewRouter(svc, false, nil)), svc: svc}
+	defer ts.Close()
+
+	status, env := enqueueRequest(t, ts, `{"content":"hello","type":"text","pipeline":"user.archived"}`)
+	if status != http.StatusConflict {
+		t.Fatalf("status: got %d, want 409 (envelope: %+v)", status, env.Error)
+	}
+	if env.Error.Code != "CONFLICT" {
+		t.Errorf("code: got %q, want CONFLICT", env.Error.Code)
+	}
+}
+
+// POST /pipelines answers a malformed steps value 400 INVALID_REQUEST and a
+// server with no step predicate 500 STEP_VALIDATION_UNAVAILABLE, each with
+// its own code.
+func TestCreatePipeline_ErrorCodes(t *testing.T) {
+	ts := newTestServerBundle(t)
+	defer ts.Close()
+
+	post := func(body string) (int, ErrorEnvelope) {
+		t.Helper()
+		resp, err := http.Post(ts.URL+"/api/v1/pipelines", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatalf("post: %v", err)
+		}
+		defer resp.Body.Close()
+		var env ErrorEnvelope
+		_ = json.NewDecoder(resp.Body).Decode(&env)
+		return resp.StatusCode, env
+	}
+
+	if status, env := post(`{"name":"bad-steps","steps":"not json"}`); status != http.StatusBadRequest || env.Error.Code != "INVALID_REQUEST" {
+		t.Errorf("malformed steps: %d %q, want 400 INVALID_REQUEST", status, env.Error.Code)
+	}
+	// The test server's service has no built-in step predicate.
+	if status, env := post(`{"name":"some-pl","steps":"[{\"name\":\"noop\"}]"}`); status != http.StatusInternalServerError || env.Error.Code != "STEP_VALIDATION_UNAVAILABLE" {
+		t.Errorf("no predicate: %d %q, want 500 STEP_VALIDATION_UNAVAILABLE", status, env.Error.Code)
+	}
+}

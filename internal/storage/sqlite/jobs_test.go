@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -324,5 +325,34 @@ func TestJobUserDataAndSourceKeyRoundTrip(t *testing.T) {
 	}
 	if acq.ID == "job-ud" && (acq.UserSourceKey != "youtube:abc" || acq.UserData["title"] != "T") {
 		t.Errorf("acquired key %q data %v", acq.UserSourceKey, acq.UserData)
+	}
+}
+
+// TestJobRetryRefusesNonFailed: retry applies to failed jobs (and the
+// worker's running ones); pending and completed jobs are refused and left
+// untouched.
+func TestJobRetryRefusesNonFailed(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	d.Jobs().Create(ctx, makeJob("job-done"))
+	d.Jobs().AcquireNext(ctx)
+	d.Jobs().Complete(ctx, "job-done", "res")
+	d.Jobs().Create(ctx, makeJob("job-pending"))
+	err := d.Jobs().Retry(ctx, "job-pending")
+	if err == nil || !strings.Contains(err.Error(), "only failed jobs can be retried") {
+		t.Fatalf("pending retry: got %v", err)
+	}
+	err = d.Jobs().Retry(ctx, "job-done")
+	if err == nil || !strings.Contains(err.Error(), "only failed jobs can be retried") {
+		t.Fatalf("completed retry: got %v", err)
+	}
+	got, _ := d.Jobs().Get(ctx, "job-done")
+	if got.Status != storage.JobCompleted || got.RetryCount != 0 {
+		t.Errorf("completed job mutated: status=%q retry_count=%d", got.Status, got.RetryCount)
+	}
+
+	if err := d.Jobs().Retry(ctx, "nope"); err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Errorf("missing retry: got %v", err)
 	}
 }

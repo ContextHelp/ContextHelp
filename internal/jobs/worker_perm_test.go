@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -124,5 +125,68 @@ func TestTransientErrorUsesRetry(t *testing.T) {
 	// Transient errors should have used all retries before failing.
 	if got.RetryCount < 1 {
 		t.Errorf("retry_count: got %d, want >= 1 (transient errors should retry)", got.RetryCount)
+	}
+}
+
+// A worker whose claim is gone (lease expired, job requeued and claimed by
+// another worker) must not requeue or fail the job: it is not its to settle.
+func TestRetryOrFailLeavesForeignClaimAlone(t *testing.T) {
+	driver := storageutil.NewTestDriver(t)
+	q := NewQueue(driver.Jobs())
+	ctx := context.Background()
+
+	job := makeJob("job-foreign")
+	job.MaxRetries = 3
+	if err := q.Enqueue(ctx, job); err != nil {
+		t.Fatal(err)
+	}
+	held, err := q.AcquireNext(ctx)
+	if err != nil || held == nil {
+		t.Fatalf("acquire: %v, %v", held, err)
+	}
+	pool := NewWorkerPool(q, pipeline.NewRegistry(), driver, 1, nil, config.JobsConfig{MaxRetries: 3})
+
+	pool.retryOrFail(ctx, held.ID, "stale-claim", "transient")
+
+	got, _ := q.Get(ctx, held.ID)
+	if got.Status != storage.JobRunning || got.RetryCount != 0 || got.Error != "" {
+		t.Errorf("job after foreign retryOrFail = status %q retry %d error %q; want untouched running", got.Status, got.RetryCount, got.Error)
+	}
+
+	pool.retryOrFail(ctx, held.ID, held.Claim, "transient")
+	got, _ = q.Get(ctx, held.ID)
+	if got.Status != storage.JobPending || got.RetryCount != 1 {
+		t.Errorf("job after own retryOrFail = status %q retry %d; want pending, 1", got.Status, got.RetryCount)
+	}
+}
+
+// A job already queued when its pipeline is archived must not run: it
+// fails with a message that names the cause, spending no retry.
+func TestProcessFailsJobOfArchivedPipeline(t *testing.T) {
+	driver := storageutil.NewTestDriver(t)
+	q := NewQueue(driver.Jobs())
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+	if err := driver.Pipelines().Create(ctx, &storage.Pipeline{
+		ID: "p-arch", Name: "user.archived", Archived: true, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	job := makeJob("job-arch")
+	job.Pipeline = "user.archived"
+	if err := q.Enqueue(ctx, job); err != nil {
+		t.Fatal(err)
+	}
+	held, err := q.AcquireNext(ctx)
+	if err != nil || held == nil {
+		t.Fatalf("acquire: %v, %v", held, err)
+	}
+	pool := NewWorkerPool(q, pipeline.NewRegistry(), driver, 1, nil, config.JobsConfig{MaxRetries: 3, MaxHops: 5})
+
+	pool.process(ctx, held)
+
+	got, _ := q.Get(ctx, held.ID)
+	if got.Status != storage.JobFailed || !strings.Contains(got.Error, "archived") || got.RetryCount != 0 {
+		t.Errorf("job = status %q error %q retries %d; want failed, mentioning archived, no retry", got.Status, got.Error, got.RetryCount)
 	}
 }

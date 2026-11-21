@@ -88,6 +88,12 @@ type FindRequest struct {
 	// only; any other mode is an ErrInvalidFind. In-process callers
 	// only: it is not part of the request body.
 	Trace bool `json:"-"`
+	// RecordHistory records the executed search in the caller's search
+	// history (US-0055). Only the surfaces where a person types a query
+	// set it (POST /find); the MCP search tool and internal callers do
+	// not, so an agent's queries never land in the owner's history. Not
+	// part of the request body.
+	RecordHistory bool `json:"-"`
 }
 
 // FindFilter is find's filter: tag selection, creation bounds and metadata
@@ -219,6 +225,9 @@ func (s *Service) Find(ctx context.Context, req FindRequest, sem retrieval.Seman
 			return nil, fmt.Errorf("find facets: %w", err)
 		}
 	}
+	if req.RecordHistory && !req.Trace { // a trace run is not a query the user typed
+		s.RecordSearchHistory(ctx, req.Query, req.Profile, executedFindMode(res), res.Total)
+	}
 	return res, nil
 }
 
@@ -342,4 +351,14 @@ func (k FindSearch) apply(base config.SearchConfig) (config.SearchConfig, error)
 		out.FallbackToFTS = *k.FallbackToFTS
 	}
 	return out, nil
+}
+
+// executedFindMode is the mode that answered: the requested one, or fts
+// when a vector or hybrid search fell back to full-text because its
+// semantic leg could not run.
+func executedFindMode(res *FindResult) string {
+	if rep := res.Diagnostics.Semantic; res.Mode != FindModeFTS && rep != nil && !rep.OK() {
+		return FindModeFTS
+	}
+	return res.Mode
 }

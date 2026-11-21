@@ -13,6 +13,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	ctxtpolicy "github.com/ideacrafterslabs/ctxt/internal/policy"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
@@ -36,7 +37,7 @@ func newPolicyTestService(t *testing.T) (*Service, func()) {
 	require.NoError(t, err)
 
 	svc := NewWithOptions(driver, q, pipes, engine, "", nil,
-		[]Option{WithPolicyPublisher(pol.Publisher())},
+		[]Option{WithPolicyPublisher(pol.Publisher()), WithReservedStepNames(builtins.IsStepName)},
 	)
 	cleanup := func() {
 		pol.Close()
@@ -55,7 +56,7 @@ func TestPolicy_DeletePipeline_DeniesWithoutNote(t *testing.T) {
 	ctx := ownerCtx()
 	_, err := svc.CreatePipeline(ctx, CreatePipelineRequest{
 		Name:  "to-delete",
-		Steps: `[{"name":"text_summary"}]`,
+		Steps: `[{"name":"noop"}]`,
 	})
 	require.NoError(t, err)
 
@@ -80,7 +81,7 @@ func TestPolicy_DeletePipeline_AllowsWithNote(t *testing.T) {
 	ctx := ownerCtx()
 	_, err := svc.CreatePipeline(ctx, CreatePipelineRequest{
 		Name:  "to-delete",
-		Steps: `[{"name":"text_summary"}]`,
+		Steps: `[{"name":"noop"}]`,
 	})
 	require.NoError(t, err)
 
@@ -104,7 +105,7 @@ func TestPolicy_ArchivePipeline_DeniesWithoutNote_PassesUnarchive(t *testing.T) 
 	ctx := ownerCtx()
 	_, err := svc.CreatePipeline(ctx, CreatePipelineRequest{
 		Name:  "to-archive",
-		Steps: `[{"name":"text_summary"}]`,
+		Steps: `[{"name":"noop"}]`,
 	})
 	require.NoError(t, err)
 

@@ -16,7 +16,7 @@ func TestUS0105_ArchiveSetsFlag(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"}]`
+	stepsJSON := `[{"type":"noop"}]`
 	body, _ := json.Marshal(map[string]string{
 		"name":  "archive-pipeline",
 		"steps": stepsJSON,
@@ -39,7 +39,7 @@ func TestUS0105_UnarchiveMakesAvailable(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"}]`
+	stepsJSON := `[{"type":"noop"}]`
 	body, _ := json.Marshal(map[string]string{
 		"name":  "unarch-pipeline",
 		"steps": stepsJSON,
@@ -64,7 +64,7 @@ func TestUS0105_ArchiveIdempotent(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"}]`
+	stepsJSON := `[{"type":"noop"}]`
 	body, _ := json.Marshal(map[string]string{
 		"name":  "idem-pl",
 		"steps": stepsJSON,
@@ -96,7 +96,7 @@ func TestUS0105_ArchiveExcludesFromDefaultList(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"}]`
+	stepsJSON := `[{"type":"noop"}]`
 	body, _ := json.Marshal(map[string]string{
 		"name":  "arch-excl-pl",
 		"steps": stepsJSON,
@@ -130,7 +130,7 @@ func TestUS0105_UnarchiveIdempotent(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"}]`
+	stepsJSON := `[{"type":"noop"}]`
 	body, _ := json.Marshal(map[string]string{
 		"name":  "unarch-idem-pl",
 		"steps": stepsJSON,
