@@ -4,10 +4,12 @@ package cursor
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cursor"
+	"github.com/ideacrafterslabs/ctxt/internal/mentions"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/ideacrafterslabs/ctxt/internal/tagfilter"
@@ -15,18 +17,27 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestCursor_ComposesWithMention: cursor + --mention preserves the mention
-// flag in the filter and stores it in the query snapshot, while gating by
-// time. (Storage-side mention filtering is out of cursor's scope; this test
-// asserts the composition contract: cursor passes Mention through unchanged
-// AND adds the time gate.)
+// TestCursor_ComposesWithMention: cursor + --mention keeps the mention
+// flag in the filter, stores it in the query snapshot, and gates by time.
+// Against real storage the composed filter returns only objects that carry
+// the mention AND sit past the cursor; a non-mentioning object is excluded.
 func TestCursor_ComposesWithMention(t *testing.T) {
 	env := newCursorEnv(t)
 	driver := storageutil.NewTestDriver(t)
 	ctx := context.Background()
 
-	ids := listKOs(t, driver, 3, "ko-mention", "@client.acme")
-	require.Len(t, ids, 3)
+	// Chronological: [0] mentions (becomes the cursor head), [1] does not,
+	// [2] mentions (the only expected hit).
+	base := time.Now().UTC().Truncate(time.Second).Add(-time.Hour)
+	for i, mentioned := range []bool{true, false, true} {
+		ko := storageutil.BuildGraphKO(fmt.Sprintf("ko-mention-%d", i), "text", "body")
+		if mentioned {
+			ko.Mentions = mentions.ParseSlice([]string{"@client.acme"})
+		}
+		ko.CreatedAt = base.Add(time.Duration(i) * time.Second)
+		ko.UpdatedAt = ko.CreatedAt
+		require.NoError(t, driver.Objects().Create(ctx, ko))
+	}
 
 	// Pull all with ASC sort so objs[0] is earliest.
 	objs, _, err := driver.Objects().List(ctx, storage.ObjectFilter{
@@ -55,17 +66,19 @@ func TestCursor_ComposesWithMention(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"@client.acme"}, stored.Query.Mention)
 
-	// The seeded objects carry the mention only in body text, no mention
-	// edge, so the real mention filter matches none of them.
-	objs2, _, err := driver.Objects().List(ctx, filter)
+	// Mention + time gate: only the later mentioning object. The head is
+	// gated out; the non-mentioning object is filtered out.
+	got, _, err := driver.Objects().List(ctx, filter)
 	require.NoError(t, err)
-	assert.Empty(t, objs2, "mention filter requires a mention edge; none seeded")
+	require.Len(t, got, 1)
+	assert.Equal(t, "ko-mention-2", got[0].ID)
 
-	// Without the mention filter the time gate alone excludes the head.
+	// Without the mention filter the time gate alone keeps both later
+	// objects, including the non-mentioning one.
 	filter.Mention = ""
-	objs3, _, err := driver.Objects().List(ctx, filter)
+	all, _, err := driver.Objects().List(ctx, filter)
 	require.NoError(t, err)
-	assert.Len(t, objs3, 2, "cursor time gate excludes the advanced-to head")
+	assert.Len(t, all, 2, "cursor time gate excludes the advanced-to head")
 }
 
 // TestCursor_ComposesWithTag: cursor+--tagged.
