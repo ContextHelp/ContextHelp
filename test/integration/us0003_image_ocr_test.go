@@ -71,7 +71,7 @@ func analyzeFile(t *testing.T, env *testEnv, path string) string {
 	data, err := os.ReadFile(path)
 	require.NoError(t, err)
 	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
-		Content: string(data), Type: "image", Source: path, Pipeline: "image.ocr",
+		Content: string(data), Type: "image", Source: path,
 	})
 	require.NoError(t, err)
 	return jobID
@@ -95,7 +95,7 @@ func TestUS0003_ImageFileReturnsJobID(t *testing.T) {
 	data, err := os.ReadFile(path)
 	require.NoError(t, err)
 	body, err := json.Marshal(map[string]string{
-		"content": string(data), "type": "image", "source": path, "pipeline": "image.ocr",
+		"content": string(data), "type": "image", "source": path,
 	})
 	require.NoError(t, err)
 	jobID := postForJobID(t, env.URL+"/api/v1/analyze", body)
