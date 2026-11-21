@@ -84,7 +84,7 @@ ctxt job retry <job_id>
 Find recent objects likely affected:
 
 ```bash
-ctxt list --after 2026-02-01 --limit 20
+ctxt list --since 2026-02-01 --limit 20
 ctxt list --pipeline text.long --limit 20
 ```
 

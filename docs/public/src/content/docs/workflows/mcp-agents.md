@@ -58,7 +58,7 @@ Restart the client or refresh its MCP server list to pick up the tools.
 
 | Tool | Args | Returns | When the agent should use it |
 |---|---|---|---|
-| `search` | query, top_k=10 (1-100), mode=hybrid\|fts\|vector, profile?, min_score? (hybrid), meta_type?, topic?, person?, source_type?, since?, until? | ranked results with title, snippet, score and (hybrid) score_breakdown; `executed_mode` and `diagnostics.semantic` say when semantic search could not run and full-text answered | Specific keywords (person, project, error msg, file path) or related wording. Same search as `POST /api/v1/find`. Without `profile` it searches every profile. `since`/`until` are `YYYY-MM-DD` dates mentioned in the object |
+| `search` | query, top_k=10 (1-100), mode=hybrid\|fts\|vector, profile?, min_score? (hybrid), tagged?, since?, until?, meta_type?, topic?, person?, source_type?, mentioned_since?, mentioned_until? | ranked results with title, snippet, score and (hybrid) score_breakdown; `executed_mode` and `diagnostics.semantic` say when semantic search could not run and full-text answered | Specific keywords (person, project, error msg, file path) or related wording. Same search as `POST /api/v1/find`. Without `profile` it searches every profile. `tagged` is a string or array in the `--tagged` grammar (`a,b` any, `+a,+b` all, `+a,b` a required, b optional, see [tag and date filters](tag-and-date-filters.md)); `since`/`until` bound the created time (RFC 3339 or `YYYY-MM-DD`); `mentioned_since`/`mentioned_until` are `YYYY-MM-DD` dates mentioned in the object |
 | `schema` | (no args) | storage taxonomy: object kinds, edge types, pipelines | Agent constructing structured queries |
 
 ### Step 4: Server-level instructions

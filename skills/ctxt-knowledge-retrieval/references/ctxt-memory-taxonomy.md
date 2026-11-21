@@ -32,20 +32,20 @@ Examples:
 ### Retrieve recent lessons for one project
 
 ```bash
-ctxt list --q "type==text;tag=in=(lesson,insight,decision);mention:project.checkout-redesign" --after 2026-02-01 --limit 30
+ctxt list --q "type==text;tag=in=(lesson,insight,decision);mention:project.checkout-redesign" --since 2026-02-01 --limit 30
 ```
 
 ### Retrieve failure history only
 
 ```bash
-ctxt list --q "type==text;tag=in=(error,trial)" --after 2026-02-01 --limit 50
+ctxt list --q "type==text;tag=in=(error,trial)" --since 2026-02-01 --limit 50
 ```
 
 ### Retrieve by agent and summarize handoff
 
 ```bash
-ctxt list --q "type==text;tag=in=(insight,trial,error,decision,lesson);mention:agent.codex" --after 2026-02-01 --limit 50
-ctxt make brief --tag insight,trial,error,decision,lesson --since 2026-02-01 --output-file codex-handoff-brief.md
+ctxt list --q "type==text;tag=in=(insight,trial,error,decision,lesson);mention:agent.codex" --since 2026-02-01 --limit 50
+ctxt compose brief --tagged insight,trial,error,decision,lesson --since 2026-02-01 --output-file codex-handoff-brief.md
 ```
 
 ## Minimum Memory Record Fields

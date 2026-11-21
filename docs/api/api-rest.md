@@ -381,15 +381,15 @@ Every parameter is optional and takes exactly one non-empty value. An unknown, r
 | Parameter | Matches |
 |---|---|
 | `type`, `subtype` | the object's type or subtype |
-| `tag` | objects carrying the tag label |
+| `tagged` | objects by tag: `a,b` any of the labels; a leading `+` marks a label required (`+a,+b` all; `+a,b,+c` a and c required, b only ranks); with no `+` label one plain label must match. Every listed label an object carries counts one in the ranking, more first. The parameter may repeat; values join in order. Only commas separate labels, so a label may hold spaces (`machine learning` is `machine%20learning`); labels are case-sensitive. `+` is read raw from the query string, not as a space: `tagged=+a,b` and `tagged=%2Ba,b` both mean a required, and a `+` past a label's first character is literal. An unknown label matches nothing; an empty label, a bare `+`, or a leading `-` (reserved for exclusion) is 400 |
 | `mention` | objects mentioning the entity, as `@ns.slug` or `ctxt://entity/...` |
 | `pipeline` | the pipeline that produced the object |
 | `status` | `active` (the default), `inbox`, `discarded`, `raw`, or `all` for every status |
-| `after`, `before` | `created_at` at or after / at or before the instant: RFC 3339 (`2026-02-10T09:00:00Z`) or a date (`2026-02-10`, midnight UTC) |
+| `since`, `until` | `created_at` bounds, half-open: `since <= created_at < until`. RFC 3339 (`2026-02-10T09:00:00Z`) or a UTC date (`2026-02-10`): a date `since` is that day's start, a date `until` the start of the next day, so `until=2026-02-10` takes the whole 10th |
 | `meta_type` | `metadata.type` |
 | `topic`, `person` | an element of `metadata.topics` / `metadata.people` |
 | `source_type` | `metadata.source_type` |
-| `since`, `until` | a `metadata.dates_mentioned` date on or after / on or before the date (`YYYY-MM-DD` only) |
+| `mentioned_since`, `mentioned_until` | a `metadata.dates_mentioned` date on or after / on or before the date (`YYYY-MM-DD` only) |
 
 Order and paging:
 
@@ -401,7 +401,7 @@ Order and paging:
 | `offset` | integer >= 0 | `0` |
 | `changed_after` | integer >= 0, a change sequence | none |
 
-`changed_after=N` lists by change order instead: the objects created or updated after change sequence `N`, oldest change first. Every insert and update moves an object's sequence past all earlier ones, whatever its `created_at` and `updated_at` say, so an old object edited since `N` appears here and not under `after=<created_at>`. It cannot be combined with `sort`, `dir` or `offset` (400 `INVALID_PARAM` naming that parameter): the order is fixed and the position is the cursor. `status` and the other filters still apply; `status` defaults to `active`, so pass `status=all` to see an object that was discarded. `0` starts from the first change. Not accepted by `GET /objects/facets`.
+`changed_after=N` lists by change order instead: the objects created or updated after change sequence `N`, oldest change first. Every insert and update moves an object's sequence past all earlier ones, whatever its `created_at` and `updated_at` say, so an old object edited since `N` appears here and not under `since=<created_at>`. It cannot be combined with `sort`, `dir` or `offset` (400 `INVALID_PARAM` naming that parameter): the order is fixed and the position is the cursor. `status` and the other filters still apply, `tagged` among them: required and any-mode tags select, but a `tagged` that ranks by tags matched (two or more tags with none required, or a plain tag beside a required one) is 400 (`tagged`) because it would reorder the page; `status` defaults to `active`, so pass `status=all` to see an object that was discarded. `0` starts from the first change. Not accepted by `GET /objects/facets`.
 
 RSQL queries go to `GET /search?q=`; `q` is not a parameter here. `GET /search` accepts `profile` as the caller's focus profile, a lens: it never narrows the results, and what a caller sees is set by its viewer scope alone (ADR-080). The gRPC `Search` and `NodeAwareSearch` `profile_id` field works the same way.
 
@@ -619,12 +619,15 @@ dpkms embeds the query itself, with the default embedding model's provider as co
   "limit": 10,
   "profile": "work",
   "filter": {
+    "tagged": "+security,rotation",
+    "since": "2026-04-01",
+    "until": "2026-04-30T23:59:59Z",
     "meta_type": "task",
     "topic": "security",
     "person": "alice-chen",
     "source_type": "slack",
-    "since": "2026-04-01",
-    "until": "2026-04-30"
+    "mentioned_since": "2026-04-01",
+    "mentioned_until": "2026-04-30"
   },
   "search": {
     "rrf_k": 60,
@@ -648,7 +651,7 @@ dpkms embeds the query itself, with the default embedding model's provider as co
 - `mode` is `fts`, `vector` or `hybrid`. It defaults to `hybrid`.
 - `limit` defaults to 10.
 - `profile` is the caller's focus profile, a lens: it never filters. Both legs and the facet counts cover objects of every profile, and of none, whatever it says; what a caller sees is set by its viewer scope alone (ADR-080). The field is accepted and may be left out.
-- `filter` and each of its fields are optional. `since` and `until` are dates (`YYYY-MM-DD`), compared with an object's `dates_mentioned`.
+- `filter` and each of its fields are optional. `tagged` is the tag selection of `GET /objects` (`a,b` any, `+a,+b` all, `+a,b` a required, b optional). Results matching more of the listed tags rank first, then by relevance: a tier, not a score bonus, so `min_score` and `score_breakdown.total` are unchanged; the count is `score_breakdown.tags_matched`. `since` and `until` bound `created_at` (RFC 3339 or `YYYY-MM-DD`, midnight UTC). `mentioned_since` and `mentioned_until` are dates (`YYYY-MM-DD`), compared with an object's `dates_mentioned`.
 - In `search`, any knob you leave out takes the built-in default shown above, which is also ctxt's config default. `rrf_k` and the pools must be positive. The weights, `min_score` and the boosts must not be negative. `min_score` applies to hybrid results.
 - `explain` applies to `hybrid` mode only. Other modes ignore it.
 - `facets` counts metadata types over every object `filter` matches, whatever the `limit`.
@@ -753,7 +756,7 @@ Keys and relations are defined by the `ctxt.search-graph/v1` vocabulary ([workfl
 | `profile` | none | the caller's focus profile, a lens: it never narrows the objects |
 | `limit` | `10` | results the search returns; candidates past it stay in the graph as `cut_limit` |
 | `min_score` | `0` | results scoring below it stay in the graph as `cut_threshold` |
-| `meta_type`, `topic`, `person`, `source_type`, `since`, `until` | none | the filters of `POST /find`; `since` and `until` are `YYYY-MM-DD` |
+| `tagged`, `since`, `until`, `meta_type`, `topic`, `person`, `source_type`, `mentioned_since`, `mentioned_until` | none | the filters of `POST /find`; `mentioned_since` and `mentioned_until` are `YYYY-MM-DD` |
 | `max_nodes` | `250` | node cap, query node included; `1`–`1000` |
 | `max_edges` | `1500` | edge cap; `1`–`10000` |
 | `similar` | `false` | add `similar` edges from stored embeddings of the default model |

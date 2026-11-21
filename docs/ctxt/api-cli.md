@@ -299,14 +299,14 @@ Filters combine with AND.
 |------|-------------|
 | `--type <type>` | Knowledge object type |
 | `--subtype <name>` | Subtype |
-| `--tagged <tag>` | One tag. Match several with `--q "tag=in=(a,b)"` |
+| `--tagged <tags>` | Tags: `a,b` any, `+a,+b` every tag, `+a,b` a required and b optional; more matched tags rank first; comma list and/or repeated; a label may hold spaces, case-sensitive. See [tag and date filters](../manual/workflows/tag-and-date-filters.md) |
 | `--mention <@ns.slug>` | Mention (`@ns.slug` or `ctxt://` URI) |
 | `--pipeline <name>` | Pipeline |
 | `--status <s>` | `active` (default), `inbox`, `discarded`, `raw` or `all` |
-| `--after <date>` / `--before <date>` | Created on or after / on or before: `YYYY-MM-DD` (midnight UTC) or RFC 3339 |
+| `--since <date>` / `--until <date>` | Created at or after / before (half-open; a date `--until` takes its whole local day): `3d`, `42h`, `1w`, `30m` (minutes), `1M` or `1mo` (month), `1y`, `yesterday`, `today`, `YYYY-MM-DD`, local `YYYY-MM-DDTHH:MM:SS` or RFC 3339 |
 | `--meta-type <type>` | Metadata type (e.g. `observation`, `task`) |
 | `--topic <t>` / `--person <p>` / `--source-type <s>` | Metadata topic, person, source type |
-| `--since <date>` / `--until <date>` | A date mentioned in the content falls in the range: `YYYY-MM-DD` |
+| `--mentioned-since <date>` / `--mentioned-until <date>` | A date mentioned in the content falls in the range: same values as `--since`, resolved to a day |
 | `--q "<rsql>"` | RSQL query answered by the instance's search, instead of the filters |
 
 ### Options

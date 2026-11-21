@@ -51,7 +51,7 @@ ctxt job retry <job_id>
 Deterministic filter path:
 
 ```bash
-ctxt list --type url --after 2026-02-01 --limit 20
+ctxt list --type url --since 2026-02-01 --limit 20
 ctxt list --q "type==url;tag=in=(checkout,pricing)" --limit 20
 ```
 
@@ -70,8 +70,8 @@ ctxt open <object_id> --output json
 ### 4. Compose programmatic outputs
 
 ```bash
-ctxt make brief --tag checkout,funnel --since 2026-02-01 --output-file agent-brief.md
-ctxt make plan --mention @project.checkout-redesign --since 2026-02-01 --output-file agent-plan.md
+ctxt compose brief --tagged checkout,funnel --since 2026-02-01 --output-file agent-brief.md
+ctxt compose plan --mention @project.checkout-redesign --since 2026-02-01 --output-file agent-plan.md
 ```
 
 ### 5. Agent loop contract (recommended)
@@ -80,7 +80,7 @@ ctxt make plan --mention @project.checkout-redesign --since 2026-02-01 --output-
 2. Poll (`ctxt job status`)
 3. Deterministic retrieval (`ctxt list --q ...`)
 4. Semantic retrieval (`ctxt find ...`) if confidence is low
-5. Compose (`ctxt make ...`)
+5. Compose (`ctxt compose ...`)
 6. Save artifacts and source IDs for audit replay
 
 ## REST and gRPC Programmatic Surface (Current Docs)

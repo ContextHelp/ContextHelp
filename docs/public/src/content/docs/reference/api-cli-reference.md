@@ -33,7 +33,10 @@ ctxt find "<query>" --explain                     # per-signal score breakdown
 ctxt find "<query>" --graph [--no-browser]        # interactive search graph (see workflows/search-graph.md)
 ctxt find "<query>" --graph --format json|yaml    # search graph as JGF
 ctxt find "<query>" --graph -o <file>.html|.json|.yaml|.graphml|.gexf
-ctxt list [--type <type>] [--tagged <tag>] [--after <date>] [--q "<query>"]
+ctxt find "<query>" [--tagged <tags>] [--since <date>] [--until <date>] [--mentioned-since <date>] [--mentioned-until <date>]
+ctxt list [--type <type>] [--tagged <tags>] [--since <date>] [--until <date>] [--mentioned-since <date>] [--mentioned-until <date>] [--q "<query>"]
+# <tags>: a,b any | +a,+b all | +a,b a required, b optional; more matched tags rank first. <date>: 3d 42h 1w 30m 1M yesterday today YYYY-MM-DD RFC3339
+# see workflows/tag-and-date-filters.md
 ctxt show <object_id> [--raw] [--format json|yaml]
 ctxt export <object_id> [--format yaml]
 ```
@@ -41,7 +44,7 @@ ctxt export <object_id> [--format yaml]
 ### Composition
 
 ```bash
-ctxt compose brief|plan|summary|draft [--tagged <tag>] [--mention @entity.slug] [--since <date>] [--until <date>] [--output-file <file>]
+ctxt compose brief|plan|summary|draft [--tagged <tags>] [--mention @entity.slug] [--since <date>] [--until <date>] [--output-file <file>]
 ```
 
 ### Profiles and config

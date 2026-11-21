@@ -87,10 +87,10 @@ ctxt find "auth issues" --profile engineer
 ### Compose
 
 ```bash
-ctxt make brief --tag api --since 2026-01-01
-ctxt make plan --mention "@product.auth"
-ctxt make summary --profile founder
-ctxt make draft --output report.md
+ctxt compose brief --tagged api --since 2026-01-01
+ctxt compose plan --mention "@product.auth"
+ctxt compose summary --profile founder
+ctxt compose draft --output report.md
 ```
 
 ---
@@ -131,13 +131,13 @@ ctxt inbox discard <id>
 
 ```bash
 # By tag
-ctxt list --tag api,security
+ctxt list --tagged api,security
 
 # By mention
 ctxt list --mention "@product.auth"
 
 # By type + date window
-ctxt list --type url --after 2026-01-01 --before 2026-03-01
+ctxt list --type url --since 2026-01-01 --until 2026-03-01
 
 # AST query
 ctxt list --q "tag:api AND mention:@stripe.api"
@@ -181,7 +181,7 @@ ctxt registry info core
 | `ctxt open <id>` | Show object detail |
 | `ctxt edit --id <id>` | Edit object metadata |
 | `ctxt delete` | Remove objects |
-| `ctxt make <type>` | Generate compositions |
+| `ctxt compose <type>` | Generate compositions |
 | `ctxt profile list/view/create/rm/set/unset` | Focus profiles |
 | `ctxt config show/path/validate/edit` | Config ops |
 | `ctxt registry list/add/remove/info/sync` | Registry ops |
@@ -211,10 +211,10 @@ ctxt registry info core
 | Flag | Description |
 |------|-------------|
 | `--type <type>` | Filter by object type |
-| `--tag <t1,t2>` | Filter by tags |
+| `--tagged <t1,t2>` | Filter by tags |
 | `--hint <#h>` | Filter by hints |
 | `--mention <@slug>` | Filter by mention |
-| `--after / --before <ISO>` | Date window |
+| `--since / --until <ISO>` | Date window |
 | `--profile <name>` | Profile lens |
 | `--q "<query>"` | AST query |
 | `--limit <n>` | Max results |
@@ -327,7 +327,7 @@ ctxt open "$id" --json | jq '.mentions'
 ```bash
 # Find relevant objects, compose brief
 ctxt find "auth rate limiting" --limit 20 --json > /tmp/results.json
-ctxt make brief --tag auth --mention "@product.auth" --output /tmp/brief.md
+ctxt compose brief --tagged auth --mention "@product.auth" --output /tmp/brief.md
 ```
 
 ### Pattern: scripted batch capture
@@ -344,7 +344,7 @@ done < items.txt
 # All operations scoped to a profile
 export CTXT_PROFILE=research
 ctxt find "LLM memory approaches"
-ctxt make summary --since 2026-02-01
+ctxt compose summary --since 2026-02-01
 ```
 
 ---
@@ -356,5 +356,5 @@ ctxt make summary --since 2026-02-01
 - Never assume synchronous processing; use `--wait` or `ctxt job status`.
 - Never pass secrets on CLI: `dpkms secret set KEY` takes the value from stdin,
   `--from-file` or `--prompt`, never an argument.
-- Never filter with both `--tag` and `--q` containing tag filters simultaneously
+- Never filter with both `--tagged` and `--q` containing tag filters simultaneously
   (they compound; can produce unexpectedly narrow results).

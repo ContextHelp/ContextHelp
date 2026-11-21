@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "skipped-heading",
+        "value": "*",
+        "files": [
+          "test/testdata/importers/bookmarks.html"
+        ],
+        "createdAt": "2026-11-21T05:33:38.163Z",
+        "reason": "agent decided: Netscape bookmark export test fixture; H1 + DT/H3 folder headings are the file format, not page design"
+      }
+    ]
+  }
+}

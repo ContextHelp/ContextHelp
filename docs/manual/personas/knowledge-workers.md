@@ -84,7 +84,7 @@ Switch to object listing when you need filter control:
 
 ```bash
 ctxt list --type url --tagged signup
-ctxt list --after 2026-02-01 --before 2026-02-18
+ctxt list --since 2026-02-01 --until 2026-02-18
 ```
 
 Inspect a specific object in detail:
@@ -120,19 +120,19 @@ ctxt profile set <profile_name>
 Generate a brief from recent/tagged knowledge:
 
 ```bash
-ctxt make brief --tag signup,onboarding --since 2026-02-01
+ctxt compose brief --tagged signup,onboarding --since 2026-02-01
 ```
 
 Generate an action plan:
 
 ```bash
-ctxt make plan --mention @project.signup-redesign --since 2026-02-01
+ctxt compose plan --mention @project.signup-redesign --since 2026-02-01
 ```
 
 Save output to a file:
 
 ```bash
-ctxt make brief --tag signup,onboarding --since 2026-02-01 --output-file onboarding-brief.md
+ctxt compose brief --tagged signup,onboarding --since 2026-02-01 --output-file onboarding-brief.md
 ```
 
 ### Step 6: Validate provenance before sharing
@@ -164,7 +164,7 @@ ctxt make brief --tag signup,onboarding --since 2026-02-01 --output-file onboard
 ### Search feels irrelevant
 
 - Add profile context with `--profile`.
-- Narrow with `ctxt list` filters (`--tagged`, `--after`, `--type`).
+- Narrow with `ctxt list` filters (`--tagged`, `--since`, `--type`).
 - Reduce result count and iterate query phrasing.
 
 ### Results are missing after capture
@@ -175,7 +175,7 @@ ctxt make brief --tag signup,onboarding --since 2026-02-01 --output-file onboard
 
 ### Generated brief is too generic
 
-- Use stronger filters (`--tag`, `--mention`, `--since`).
+- Use stronger filters (`--tagged`, `--mention`, `--since`).
 - Split large topic into two focused briefs.
 - Validate source objects and rerun composition.
 

@@ -678,7 +678,7 @@ Provides **forgiving, accessible search interfaces**:
 ctxt find "authentication flow"
 
 # Filtered search
-ctxt find --type article --tag design --after 2024-01-01
+ctxt find --type article --tagged design --since 2024-01-01
 
 # Entity-aware search
 ctxt find mention:@ui.best-practice
@@ -690,7 +690,7 @@ ctxt find similar:"how to handle errors in forms"
 ctxt find related:<object-id>
 
 # Combined
-ctxt find "signup flow" --tag ux --mention:@stripe.api
+ctxt find "signup flow" --tagged ux --mention:@stripe.api
 ```
 
 **Search Features:**
@@ -746,8 +746,8 @@ ctxt open <id>
 ctxt graph <id>
 
 # Compose
-ctxt make brief --from <id>
-ctxt make plan --topic "project X"
+ctxt compose brief --from <id>
+ctxt compose plan --topic "project X"
 
 # Manage
 ctxt status
@@ -982,7 +982,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[User: ctxt make brief] --> B[ctxt: Template Selection]
+    A[User: ctxt compose brief] --> B[ctxt: Template Selection]
     B --> C[ctxt: Gather Context IDs]
     C --> D[dPKMS: Retrieve Objects + Graph]
     D --> E[ctxt: Assemble Atomic Nodes]
@@ -1250,7 +1250,7 @@ commit `5f884f2`.
 
 ## Persistent composition pages (US-0401)
 
-`ctxt make brief|plan|summary` outputs are now persisted as
+`ctxt compose brief|plan|summary` outputs are now persisted as
 composed pages with provenance edges back to source nodes.
 Templates live under `composition.templates` in the profile
 schema.

@@ -79,7 +79,7 @@ Start broad, then constrain:
 
 ```bash
 ctxt find "checkout conversion issues" --limit 10
-ctxt list --tagged checkout --after 2026-02-01 --limit 20
+ctxt list --tagged checkout --since 2026-02-01 --limit 20
 ctxt list --q "type==url;tag=in=(checkout,conversion)" --limit 20
 ```
 
@@ -131,8 +131,8 @@ ctxt list --q "tag=in=(checkout,decision)" --limit 20
 Then regenerate with tighter filters:
 
 ```bash
-ctxt make brief --tag checkout,decision --since 2026-02-01 --output-file checkout-brief.md
-ctxt make plan --mention @project.checkout-redesign --since 2026-02-01 --output-file checkout-plan.md
+ctxt compose brief --tagged checkout,decision --since 2026-02-01 --output-file checkout-brief.md
+ctxt compose plan --mention @project.checkout-redesign --since 2026-02-01 --output-file checkout-plan.md
 ```
 
 If still weak, inspect source objects and verify enrichment completeness.
