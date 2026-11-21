@@ -4,19 +4,22 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
+// boilerplatePage has its content in <main>; the cookie notice sits outside
+// it, so it is excluded by the main preference, not by any banner heuristic.
 const boilerplatePage = `<!DOCTYPE html>
 <html><head><title>  The Real
  Title </title><style>body{color:red}</style><script>var tracking = 1;</script></head>
 <body>
 <header>Site Header Brand</header>
 <nav><a href="/">Home</a> <a href="/about">About Us</a></nav>
-<div class="cookie-banner" role="dialog"><noscript>Enable JS please</noscript></div>
+<div class="cookie-banner" role="dialog">We use cookies to improve your visit</div>
 <aside>Related Sidebar Links</aside>
 <main><article><h1>Heading One</h1><p>First paragraph of the article.</p><p>Second paragraph.</p></article></main>
 <footer>Copyright Footer Text</footer>
@@ -33,9 +36,9 @@ func runCleaner(t *testing.T, content, ctype string) *storage.KnowledgeObject {
 	return got
 }
 
-func TestHTMLCleaner_StripsBoilerplate(t *testing.T) {
+func TestHTMLCleaner_StripsChromeOutsideMain(t *testing.T) {
 	got := runCleaner(t, boilerplatePage, "text/html")
-	for _, bad := range []string{"The Real", "Site Header", "Home", "About Us", "Sidebar", "Copyright", "Noscript", "Enable JS", "tracking", "color:red"} {
+	for _, bad := range []string{"The Real", "Site Header", "Home", "About Us", "Sidebar", "Copyright", "Noscript", "cookies", "tracking", "color:red"} {
 		if strings.Contains(got.RawContent, bad) {
 			t.Errorf("body still has %q: %q", bad, got.RawContent)
 		}
@@ -60,6 +63,7 @@ func TestHTMLCleaner_Table(t *testing.T) {
 		want    []string
 		notWant []string
 		exact   string
+		hasExac bool
 	}{
 		{name: "main wins over article",
 			in:      `<body><article>ArtOnly</article><main>MainText <article>InnerArt</article></main></body>`,
@@ -67,26 +71,29 @@ func TestHTMLCleaner_Table(t *testing.T) {
 			notWant: []string{"ArtOnly"}},
 		{name: "multiple articles concatenated in order",
 			in:      `<body><p>Outside</p><article>One</article><article>Two <article>Nested</article></article></body>`,
-			want:    []string{"One", "Two", "Nested"},
 			notWant: []string{"Outside"},
-			exact:   "One\n\nTwo\n\nNested"},
+			exact:   "One\n\nTwo\n\nNested", hasExac: true},
 		{name: "role based removal",
-			in:      `<body><div role="banner">B</div><div role="navigation">N</div><div role="contentinfo">C</div><div role="complementary">S</div><div role="main">Keep</div></body>`,
-			want:    []string{"Keep"},
-			notWant: []string{"B\n", "N\n", "C\n", "S\n"},
-			exact:   "Keep"},
+			in:      `<body><div role="banner">B</div><div role="navigation">N</div><div role="contentinfo">C</div><div role="complementary">S</div><p>Keep</p></body>`,
+			exact:   "Keep", hasExac: true},
 		{name: "role token list case insens",
 			in:    `<body><div role="Presentation NAVIGATION">gone</div><p>stay</p></body>`,
-			exact: "stay"},
+			exact: "stay", hasExac: true},
+		{name: "role main is main",
+			in:    `<body><div>outside</div><div role="main">inside <b>bold</b></div><div>after</div></body>`,
+			exact: "inside bold", hasExac: true},
 		{name: "entities",
 			in:    `<body><p>a&nbsp;b &amp; c &lt;d&gt; it&#39;s &#x41; &quot;q&quot; &copy;</p></body>`,
-			exact: `a b & c <d> it's A "q" ©`},
+			exact: `a b & c <d> it's A "q" ©`, hasExac: true},
 		{name: "inline tags do not glue words",
 			in:    `<body><p>one<b>two</b> <i>three</i><span>four</span></p><div>five</div><div>six</div>x<br>y</body>`,
-			exact: "onetwo threefour\n\nfive\nsix\nx\ny"},
+			exact: "onetwo threefour\n\nfive\nsix\nx\ny", hasExac: true},
 		{name: "block boundaries",
 			in:    `<body><ul><li>a</li><li>b</li></ul><table><tr><td>c</td></tr><tr><td>d</td></tr></table></body>`,
-			exact: "a\nb\n\nc\nd"},
+			exact: "a\nb\n\nc\nd", hasExac: true},
+		{name: "table cells separated",
+			in:    `<body><table><tr><td>a</td><td>b</td><td>c</td></tr><tr><th>d</th><th>e</th></tr></table></body>`,
+			exact: "a b c\nd e", hasExac: true},
 		{name: "malformed html",
 			in:   `<html><body><div><p>unclosed <b>bold <i>both</p><span>tail`,
 			want: []string{"unclosed", "bold", "both", "tail"}},
@@ -95,14 +102,50 @@ func TestHTMLCleaner_Table(t *testing.T) {
 			want: []string{"text"}},
 		{name: "no main page keeps body minus chrome",
 			in:      `<html><head><title>T</title></head><body><nav>menu</nav><h2>Head</h2><p>Body text</p><footer>foot</footer></body></html>`,
-			exact:   "Head\n\nBody text",
+			exact:   "Head\n\nBody text", hasExac: true,
 			notWant: []string{"T\n"}},
+		{name: "no class heuristics: cookie banner outside landmarks survives",
+			in:    `<body><div class="cookie-banner">We use cookies. Accept all</div><p>Real text</p></body>`,
+			want:  []string{"We use cookies. Accept all", "Real text"},
+			exact: "", hasExac: false},
 		{name: "empty main falls back to body",
 			in:    `<body><main>   </main><p>Fallback</p></body>`,
-			exact: "Fallback"},
-		{name: "form iframe svg template dropped",
-			in:    `<body><form>f</form><iframe>i</iframe><svg><title>svgt</title><text>s</text></svg><template>t</template><p>ok</p></body>`,
-			exact: "ok"},
+			exact: "Fallback", hasExac: true},
+		{name: "controls dropped, form text kept",
+			in:    `<body><form>formtext<input type="text" value="v"><button>btn</button><select><option>optA</option></select><textarea>ta</textarea></form><iframe>i</iframe><svg><title>svgt</title><text>s</text></svg><template>t</template><p>ok</p></body>`,
+			exact: "formtext\n\nok", hasExac: true},
+		{name: "aspnet form wrapping the page",
+			in: `<html><head><title>T</title></head><body><form id="aspnetForm" method="post"><input type="hidden" name="__VIEWSTATE" value="x"><div><h1>Heading</h1><p>Real content here</p><input type="submit" value="Go"></div></form></body></html>`,
+			exact: "Heading\n\nReal content here", hasExac: true},
+		{name: "hidden and aria-hidden dropped",
+			in:    `<body><p hidden>h</p><p aria-hidden="true">ah</p><div hidden><p>nested</p></div><p aria-hidden="false">shown</p><p>ok</p></body>`,
+			exact: "shown\n\nok", hasExac: true},
+		{name: "pre keeps line breaks",
+			in:    `<body><pre>line1
+line2
+
+
+line3</pre></body>`,
+			exact: "line1\nline2\n\nline3", hasExac: true},
+		{name: "header and footer inside article kept",
+			in: `<body><nav>menu</nav><header>site head</header><article><header><h1>Title H1</h1><p>By Author</p></header><p>Body</p><aside>Pull quote</aside><footer>Tags: x</footer></article><footer>site foot</footer></body>`,
+			want: []string{"Title H1", "By Author", "Body", "Pull quote", "Tags: x"},
+			notWant: []string{"menu", "site head", "site foot"}},
+		{name: "header and footer inside main kept",
+			in:      `<body><header>site head</header><main><header><h1>H</h1></header><p>x</p><footer>main foot</footer></main><footer>site foot</footer></body>`,
+			want:    []string{"H", "x", "main foot"},
+			notWant: []string{"site head", "site foot"}},
+		{name: "section header kept, body-level header dropped",
+			in:      `<body><header>site head</header><section><header>Sec head</header><p>text</p></section></body>`,
+			want:    []string{"Sec head", "text"},
+			notWant: []string{"site head"}},
+		{name: "everything in chrome: minimal fallback keeps text",
+			in:      `<body><script>bad()</script><header><p>Only content lives here</p></header><footer>and here</footer></body>`,
+			want:    []string{"Only content lives here", "and here"},
+			notWant: []string{"bad()"}},
+		{name: "far shorter than minimal pass falls back when no content root",
+			in:      `<body><nav>` + strings.Repeat("section links words ", 80) + `</nav><p>tiny</p></body>`,
+			want:    []string{"tiny", "section links words"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -117,12 +160,43 @@ func TestHTMLCleaner_Table(t *testing.T) {
 					t.Errorf("unexpected %q in %q", w, got)
 				}
 			}
-			if tc.exact != "" || (len(tc.want) == 0 && len(tc.notWant) == 0) {
-				if got != tc.exact {
-					t.Errorf("got %q, want %q", got, tc.exact)
-				}
+			if tc.hasExac && got != tc.exact {
+				t.Errorf("got %q, want %q", got, tc.exact)
 			}
 		})
+	}
+}
+
+func TestHTMLCleaner_ShortArticleBesideBigNavKeepsRootOnly(t *testing.T) {
+	in := `<body><nav>` + strings.Repeat("section links words ", 80) + `</nav><main><p>tiny</p></main></body>`
+	if got := runCleaner(t, in, "text/html").RawContent; got != "tiny" {
+		t.Errorf("got %q, want only main text", got)
+	}
+}
+
+func TestHTMLCleaner_DeepNestingFallsBackToTokenizer(t *testing.T) {
+	const depth = 600 // x/net/html rejects element nesting beyond 512
+	in := `<html><head><title>Deep &amp; Wide</title><script>bad()</script></head><body>` +
+		strings.Repeat("<div>", depth) +
+		`<nav>menu</nav><style>.x{}</style>Deep text &amp; more<p>para</p><template>tmpl</template>` +
+		strings.Repeat("</div>", depth) + `</body></html>`
+	d := &storage.KnowledgeObject{RawContent: in, ContentType: "text/html", Source: "https://example.com/deep"}
+	got, err := NewHTMLCleaner().Run(context.Background(), d)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	for _, want := range []string{"Deep text & more", "para"} {
+		if !strings.Contains(got.RawContent, want) {
+			t.Errorf("missing %q in %q", want, got.RawContent)
+		}
+	}
+	for _, bad := range []string{"<div", "</", "bad()", "menu", ".x{}", "tmpl", "Deep &"} {
+		if strings.Contains(got.RawContent, bad) {
+			t.Errorf("unexpected %q in %q", bad, got.RawContent)
+		}
+	}
+	if got.Metadata["title"] != "Deep & Wide" {
+		t.Errorf("title = %v", got.Metadata["title"])
 	}
 }
 
@@ -156,6 +230,43 @@ func TestHTMLCleaner_KeepsExistingTitle(t *testing.T) {
 	got, _ := NewHTMLCleaner().Run(context.Background(), d)
 	if got.Metadata["title"] != "Operator" {
 		t.Errorf("title overwritten: %v", got.Metadata["title"])
+	}
+}
+
+// Real GitHub pages, fetched once and saved as published. Issue and PR bodies
+// and comments are server-rendered, so they survive; page chrome does not.
+func TestHTMLCleaner_GitHubPages(t *testing.T) {
+	tests := []struct {
+		file      string
+		title     string
+		wantInTxt []string
+	}{
+		{"testdata/github/issue.html", "cmd/gc: optimize switch statements with string literal cases",
+			[]string{"Consider the following benchmark", "Started, but waiting for switch code cleanup before mailing to avoid churn."}},
+		{"testdata/github/pull.html", "Print ActiveHelp for bash along other completions",
+			[]string{"In the bash shell we used to print ActiveHelp messages on every tab-press."}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.file, func(t *testing.T) {
+			b, err := os.ReadFile(tc.file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := runCleaner(t, string(b), "text/html")
+			if title, _ := got.Metadata["title"].(string); !strings.Contains(title, tc.title) {
+				t.Errorf("title = %q, want it to contain %q", title, tc.title)
+			}
+			for _, w := range tc.wantInTxt {
+				if !strings.Contains(got.RawContent, w) {
+					t.Errorf("body lost %q", w)
+				}
+			}
+			for _, bad := range []string{"Skip to content", "Navigation Menu", "Terms", "Privacy", "<div", "<nav", "<script"} {
+				if strings.Contains(got.RawContent, bad) {
+					t.Errorf("chrome %q survived", bad)
+				}
+			}
+		})
 	}
 }
 
