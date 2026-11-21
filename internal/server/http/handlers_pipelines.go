@@ -200,7 +200,7 @@ func UnarchivePipeline(svc *service.Service) http.HandlerFunc {
 func Enqueue(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req service.AnalyzeRequest
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, service.MaxAnalyzeBodyBytes)).Decode(&req); err != nil {
+		if err := json.NewDecoder(analyzeRequestBody(w, r, svc)).Decode(&req); err != nil {
 			if tooLarge := (*http.MaxBytesError)(nil); errors.As(err, &tooLarge) {
 				WriteError(w, http.StatusRequestEntityTooLarge, "PAYLOAD_TOO_LARGE", "request body over the analyze limit")
 				return

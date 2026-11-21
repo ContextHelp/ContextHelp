@@ -342,6 +342,33 @@ func TestFederationMaxRequestBytes(t *testing.T) {
 	assert.Equal(t, int64(8<<20), FederationConfig{MaxRequestBytes: 8 << 20}.RequestLimit())
 }
 
+// server.max_analyze_bytes loads its default; 0 stays 0 (unlimited);
+// a negative value is refused.
+func TestServerMaxAnalyzeBytes(t *testing.T) {
+	cfg, err := Load("ctxt", "")
+	require.NoError(t, err)
+	assert.Equal(t, DefaultMaxAnalyzeBytes, cfg.Server.MaxAnalyzeBytes)
+	assert.Equal(t, int64(64<<20), DefaultMaxAnalyzeBytes)
+
+	path := filepath.Join(t.TempDir(), "c.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("server:\n  max_analyze_bytes: 0\n"), 0o600))
+	cfg, err = Load("ctxt", path)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), cfg.Server.MaxAnalyzeBytes, "0 means unlimited, not the default")
+
+	require.NoError(t, os.WriteFile(path, []byte("server:\n  max_analyze_bytes: 1048576\n"), 0o600))
+	cfg, err = Load("ctxt", path)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1<<20), cfg.Server.MaxAnalyzeBytes)
+
+	bad := &Config{Server: ServerConfig{MaxAnalyzeBytes: -1}}
+	var fields []string
+	for _, e := range Validate(bad) {
+		fields = append(fields, e.Field)
+	}
+	assert.Contains(t, fields, "server.max_analyze_bytes")
+}
+
 func TestValidateBlob(t *testing.T) {
 	cases := []struct {
 		name      string
