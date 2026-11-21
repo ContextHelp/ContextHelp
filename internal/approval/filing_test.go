@@ -81,7 +81,7 @@ func TestFile_Refusals(t *testing.T) {
 		mutate func(*approval.Filing)
 		code   string
 	}{
-		"owner":           {func(fl *approval.Filing) { fl.Requester = f.owner }, approval.CodeOwnerCannotFile},
+		"owner":           {func(fl *approval.Filing) { fl.Requester = f.owner }, approval.CodeOwnerCannotRequest},
 		"no requester":    {func(fl *approval.Filing) { fl.Requester = nil }, approval.CodeInvalid},
 		"unknown kind":    {func(fl *approval.Filing) { fl.Kind = "steward.grant" }, approval.CodeKindUnknown},
 		"unknown action":  {func(fl *approval.Filing) { fl.Action = "test.change.delete" }, approval.CodeInvalid},
@@ -153,13 +153,14 @@ func TestRegistry_Register(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// ByScope admits the owner and holders of the scope; OwnerOnly admits
-// the owner alone.
+// ByScope admits holders of the scope, the owner included only while it
+// holds it; OwnerOnly admits the owner holding the scope, nobody else.
 func TestEligibilityHelpers(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
+	narrowed := &auth.Principal{ID: storage.OwnerPrincipal, Kind: storage.PrincipalKindOwner, Scopes: []auth.Scope{auth.ScopeReadObjects, auth.ScopeWriteSelf}}
 	byScope := approval.ByScope(auth.ScopeApproveSteward)
-	for p, want := range map[*auth.Principal]bool{f.owner: true, f.alice: false, f.outsider: false} {
+	for p, want := range map[*auth.Principal]bool{f.owner: true, narrowed: false, f.alice: false, f.outsider: false} {
 		ok, err := byScope(ctx, nil, p)
 		require.NoError(t, err)
 		assert.Equal(t, want, ok, p.ID)
@@ -167,8 +168,9 @@ func TestEligibilityHelpers(t *testing.T) {
 	steward := &auth.Principal{ID: "prn_s", Kind: storage.PrincipalKindPerson, Scopes: []auth.Scope{auth.ScopeApproveSteward}}
 	ok, _ := byScope(ctx, nil, steward)
 	assert.True(t, ok)
-	for p, want := range map[*auth.Principal]bool{f.owner: true, f.alice: false, steward: false} {
-		ok, err := approval.OwnerOnly(ctx, nil, p)
+	ownerOnly := approval.OwnerOnly(auth.ScopeApproveSteward)
+	for p, want := range map[*auth.Principal]bool{f.owner: true, narrowed: false, f.alice: false, steward: false} {
+		ok, err := ownerOnly(ctx, nil, p)
 		require.NoError(t, err)
 		assert.Equal(t, want, ok, p.ID)
 	}

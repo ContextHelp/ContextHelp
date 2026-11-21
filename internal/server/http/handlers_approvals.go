@@ -110,12 +110,24 @@ func writeApprovalError(w http.ResponseWriter, r *http.Request, err error) {
 	}
 }
 
+// writeDecisionError is writeApprovalError for a decision on a stored
+// request: one of a kind this instance no longer registers is a
+// conflict with the request's state (409), not a malformed call (400,
+// which is what filing a kind that does not exist answers).
+func writeDecisionError(w http.ResponseWriter, r *http.Request, err error) {
+	if approval.CodeOf(err) == approval.CodeKindUnknown {
+		WriteError(w, http.StatusConflict, approval.CodeKindUnknown, err.Error())
+		return
+	}
+	writeApprovalError(w, r, err)
+}
+
 // approvalStatus maps a mechanism code to its HTTP status.
 func approvalStatus(code string) int {
 	switch code {
 	case approval.CodeInvalid, approval.CodeKindUnknown, approval.CodeReasonTooShort:
 		return http.StatusBadRequest
-	case approval.CodeOwnerCannotFile, approval.CodeRequesterCannotDecide, approval.CodeBeneficiaryCannotDecide,
+	case approval.CodeOwnerCannotRequest, approval.CodeRequesterCannotDecide, approval.CodeBeneficiaryCannotDecide,
 		approval.CodeNotEligible, approval.CodeNotRequester:
 		return http.StatusForbidden
 	case approval.CodeClosed, approval.CodeExpired, approval.CodeStale, approval.CodeAlreadyDecided, approval.CodeDigestMismatch:
@@ -237,7 +249,7 @@ func (a *approvalRoutes) Approve(w http.ResponseWriter, r *http.Request) {
 	}
 	d, err := a.svc.Approve(r.Context(), chi.URLParam(r, "id"), caller(r), req.PayloadDigest, req.Note)
 	if err != nil {
-		writeApprovalError(w, r, err)
+		writeDecisionError(w, r, err)
 		return
 	}
 	WriteJSON(w, http.StatusOK, decisionResponse{approvalRecord: recordOf(d.Request, d.State, false), Result: d.Reveal})
@@ -255,7 +267,7 @@ func (a *approvalRoutes) Reject(w http.ResponseWriter, r *http.Request) {
 	}
 	d, err := a.svc.Reject(r.Context(), chi.URLParam(r, "id"), caller(r), req.PayloadDigest, req.Note)
 	if err != nil {
-		writeApprovalError(w, r, err)
+		writeDecisionError(w, r, err)
 		return
 	}
 	WriteJSON(w, http.StatusOK, recordOf(d.Request, d.State, false))

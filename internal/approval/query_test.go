@@ -10,6 +10,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/approval"
 	"github.com/ideacrafterslabs/ctxt/internal/auth"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 func itemIDs(items []*approval.Item) []string {
@@ -103,4 +104,33 @@ func TestList_Filters(t *testing.T) {
 	require.Len(t, items, 1)
 	assert.Equal(t, approval.StateExpired, items[0].State)
 	assert.False(t, items[0].CanDecide)
+}
+
+// An owner key or session narrowed below the approval scopes keeps the
+// owner kind and nothing else: it lists nothing, and sees, decides and
+// withdraws nothing, each answered as not found.
+func TestNarrowedOwnerHasNoReachOverTheQueue(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	r := f.file("pending")
+	narrowed := &auth.Principal{ID: f.owner.ID, Kind: f.owner.Kind, Scopes: []auth.Scope{auth.ScopeReadObjects, auth.ScopeWriteSelf}}
+
+	items, err := f.svc.List(ctx, narrowed, approval.ListFilter{})
+	require.NoError(t, err)
+	assert.Empty(t, items)
+	_, err = f.svc.Get(ctx, r.ID, narrowed)
+	assert.ErrorIs(t, err, storage.ErrNotFound)
+	_, err = f.approve(r, narrowed)
+	assert.ErrorIs(t, err, storage.ErrNotFound)
+	_, err = f.reject(r, narrowed)
+	assert.ErrorIs(t, err, storage.ErrNotFound)
+	_, err = f.svc.Withdraw(ctx, r.ID, narrowed)
+	assert.ErrorIs(t, err, storage.ErrNotFound)
+	assert.Equal(t, storage.ApprovalRequested, f.stored(r.ID).Status, "nothing moved")
+
+	// The owner holding the scopes still reaches all of it.
+	_, err = f.svc.Get(ctx, r.ID, f.owner)
+	assert.NoError(t, err)
+	_, err = f.svc.Withdraw(ctx, r.ID, f.owner)
+	assert.NoError(t, err)
 }

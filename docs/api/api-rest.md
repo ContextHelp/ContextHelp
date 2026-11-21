@@ -1086,7 +1086,7 @@ Get registry details and capabilities.
 
 Some changes take effect only once someone other than the person who asked accepts them (ADR-083 §9). Each one is a request on the approval queue: who filed it, a reason, the operation frozen with a digest, how many approvals it needs and when it expires (`approvals.pending_ttl`, 72 hours by default). No kind of request is registered yet, so the queue stays empty until the features that file requests land.
 
-Every route below takes `write:self`, which every role and every browser session holds. Who may see or decide a request is the request's own rule: its requester, its subject, the eligible approvers of its kind, and the owner. A request you may not see answers `404`, the same as one that does not exist.
+Every route below takes `write:self`, which every role and every browser session holds. Who may see or decide a request is the request's own rule: its requester, its subject, the eligible approvers of its kind, and the owner, while the key or session it acts with holds an approval scope (an owner key narrowed below them sees and decides nothing). A request you may not see answers `404`, the same as one that does not exist.
 
 - `GET /approvals?kind=&state=&limit=`: the requests you filed, are the subject of, or may decide (the owner sees all of them), newest first. `state` is one of `requested`, `approved`, `rejected`, `withdrawn`, `stale` or `expired`; `limit` is 1 to 500. Each record carries `state`, `approvals`, `approvals_required`, `payload`, `payload_digest`, `decisions` and `can_decide`.
 - `GET /approvals/{id}`: one request.
@@ -1095,9 +1095,10 @@ Every route below takes `write:self`, which every role and every browser session
 
 | Status | Code | When |
 |---|---|---|
-| 400 | `INVALID_REQUEST`, `INVALID_PARAM` | No `payload_digest`, or a bad list parameter |
-| 403 | `REQUESTER_CANNOT_DECIDE`, `BENEFICIARY_CANNOT_DECIDE`, `APPROVER_NOT_ELIGIBLE`, `NOT_REQUESTER` | The caller may not take that action on this request |
-| 409 | `APPROVAL_CLOSED`, `APPROVAL_EXPIRED`, `APPROVAL_STALE`, `ALREADY_DECIDED`, `DIGEST_MISMATCH` | The request is no longer pending, or the decision does not match it |
+| 400 | `INVALID_REQUEST`, `INVALID_PARAM`, `APPROVAL_KIND_UNKNOWN` | No `payload_digest`, a bad list parameter, or (filing) a kind that is not registered |
+| 403 | `REQUESTER_CANNOT_DECIDE`, `BENEFICIARY_CANNOT_DECIDE`, `APPROVER_NOT_ELIGIBLE`, `NOT_REQUESTER`, `OWNER_CANNOT_REQUEST` | The caller may not take that action on this request; the owner files no request (its changes apply at once) |
+| 404 | `NOT_FOUND` | No such request, or one the caller may not see; also when the instance has no approval mechanism |
+| 409 | `APPROVAL_CLOSED`, `APPROVAL_EXPIRED`, `APPROVAL_STALE`, `ALREADY_DECIDED`, `DIGEST_MISMATCH`, `APPROVAL_KIND_UNKNOWN` | The request is no longer pending, the decision does not match it, or (deciding) its kind is no longer registered |
 
 ---
 
