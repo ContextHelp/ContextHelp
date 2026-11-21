@@ -102,6 +102,9 @@ var migration041 string
 //go:embed migrations/044_registry_pending_entities.sql
 var migration044 string
 
+//go:embed migrations/059_url_object_type.sql
+var migration059 string
+
 //go:embed migrations/056_event_outbox.sql
 var migration056 string
 
@@ -325,6 +328,9 @@ var migrations = []migration{
 	// (ADR-067). Column adds and IF NOT EXISTS only; the FTS input is
 	// unchanged.
 	{Version: 58, fn: migrate058AmbientSession},
+	// Migration 059: objects a url.* pipeline fetched from an http(s)
+	// source were stored as "text"; they are type "url".
+	{Version: 59, SQL: migration059},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,

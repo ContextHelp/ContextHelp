@@ -533,7 +533,7 @@ func TestCaptureHistory_SendShapeAndFocusProfile(t *testing.T) {
 	}
 	r := reqs[0]
 	if r.Auth != "Bearer "+tabsTestToken || r.Body.Content != a.URL || r.Body.Source != a.URL ||
-		r.Body.Type != "text" || r.Body.Pipeline != "" || r.Body.Profile != "research" {
+		r.Body.Type != "url" || r.Body.Pipeline != "" || r.Body.Profile != "research" {
 		t.Errorf("request = %+v", r)
 	}
 }

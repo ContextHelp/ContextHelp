@@ -26,6 +26,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
+	"github.com/ideacrafterslabs/ctxt/pkg/taxonomy"
 )
 
 // parseUserMentions converts caller-asserted @namespace.slug strings
@@ -188,6 +189,24 @@ func (p *WorkerPool) runSteps(ctx context.Context, pipe *pipeline.Pipeline, draf
 	return draft, nil
 }
 
+// jobObjectType is the object type an ingest job asks for, from its
+// "ingest:<type>[:nofanout]" type. Blank means the pipeline decides:
+// text and auto name no kind, and job kinds that are not object types
+// ("ingest:feed_item", "ingest:github_release") are not seeded.
+func jobObjectType(jobType string) string {
+	rest, ok := strings.CutPrefix(jobType, "ingest:")
+	if !ok {
+		return ""
+	}
+	t, _, _ := strings.Cut(rest, ":")
+	switch t {
+	case taxonomy.TypeURL, taxonomy.TypeImage, taxonomy.TypeAudio, taxonomy.TypeVideo,
+		taxonomy.TypeFeed, taxonomy.TypeDocument, taxonomy.TypeCode:
+		return t
+	}
+	return ""
+}
+
 // processWithHops runs the initial pipeline and follows any hop requests
 // (draft.Metadata["next_pipeline"]) up to maxHops total runs.
 func (p *WorkerPool) processWithHops(ctx context.Context, job *storage.Job) (*storage.KnowledgeObject, error) {
@@ -197,7 +216,11 @@ func (p *WorkerPool) processWithHops(ctx context.Context, job *storage.Job) (*st
 	}
 
 	draft := &storage.KnowledgeObject{
-		ID:         uuid.New().String(),
+		ID: uuid.New().String(),
+		// the input kind the submitter named ("ingest:url") is the
+		// object's type; steps may still refine it (a format detector,
+		// the repo mapper) and typedetector only fills a blank or text.
+		Type:       jobObjectType(job.Type),
 		RawContent: job.Payload,
 		Pipeline:   job.Pipeline,
 		Source:     job.Source,
