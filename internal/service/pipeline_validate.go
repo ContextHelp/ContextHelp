@@ -13,7 +13,7 @@ import (
 )
 
 // ErrProtectedPipeline is returned by CreatePipeline for a name a built-in
-// pipeline owns: an existing built-in, or the namespace of one (text.*).
+// pipeline owns: a registered pipeline's exact name, or anything in text.*.
 var ErrProtectedPipeline = errors.New("protected pipeline name")
 
 // ErrStepValidationUnavailable is returned by CreatePipeline when the
@@ -26,28 +26,18 @@ var ErrStepValidationUnavailable = errors.New("step validation unavailable: no b
 // own whether or not they are registered in this process.
 const builtinPipelineNamespace = "text"
 
-// protectedPipelineName reports whether name is a built-in pipeline or in
-// the namespace (the segment before the first dot) of one.
+// protectedPipelineName reports whether name is a registered pipeline or
+// in the text.* namespace the built-in text pipelines own. Other names in
+// a built-in's namespace (doc.legal beside doc.*) stay open to users.
 func (s *Service) protectedPipelineName(name string) bool {
+	if strings.HasPrefix(name, builtinPipelineNamespace+".") {
+		return true
+	}
 	if s.Pipes == nil {
 		return false
 	}
-	if _, err := s.Pipes.Get(name); err == nil {
-		return true
-	}
-	ns, _, dotted := strings.Cut(name, ".")
-	if !dotted {
-		return false
-	}
-	if ns == builtinPipelineNamespace {
-		return true
-	}
-	for _, registered := range s.Pipes.List() {
-		if rns, _, ok := strings.Cut(registered, "."); ok && rns == ns {
-			return true
-		}
-	}
-	return false
+	_, err := s.Pipes.Get(name)
+	return err == nil
 }
 
 // validatePipelineCreate checks a new pipeline before it is persisted:
@@ -59,7 +49,7 @@ func (s *Service) validatePipelineCreate(ctx context.Context, p *storage.Pipelin
 		return fmt.Errorf("%w: pipeline name is required", domain.ErrValidation)
 	}
 	if s.protectedPipelineName(p.Name) {
-		return fmt.Errorf("%w: pipeline names starting with %q or matching a built-in pipeline are protected: %q",
+		return fmt.Errorf("%w: names starting with %q and built-in pipeline names are protected: %q",
 			ErrProtectedPipeline, builtinPipelineNamespace+".", p.Name)
 	}
 	// Reserved is the built-in step predicate (WithReservedStepNames);
@@ -95,7 +85,7 @@ func validateSandbox(sb *storage.SandboxConfig) error {
 	default:
 		return fmt.Errorf("%w: sandbox.isolation_level %q: want process or container", domain.ErrValidation, sb.IsolationLevel)
 	}
-	if sb.Network {
+	if sb.Enabled && sb.Network {
 		return fmt.Errorf("%w: sandbox.network: network access is not allowed in a sandboxed pipeline", domain.ErrValidation)
 	}
 	if rl := sb.ResourceLimits; rl != nil {
