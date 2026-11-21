@@ -2,9 +2,9 @@ package service
 
 import (
 	"bytes"
-	"log/slog"
 	"context"
 	"errors"
+	"log/slog"
 	"testing"
 	"time"
 

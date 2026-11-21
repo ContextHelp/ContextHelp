@@ -16,115 +16,120 @@ import (
 // otherwise).
 func JobRetryConformance(t *testing.T, drv storage.StorageDriver) {
 	t.Helper()
-	ctx := context.Background()
-	jobs := drv.Jobs()
+	h := &jobRetryHarness{t: t, jobs: drv.Jobs()}
+	t.Run("retry refuses pending running completed cancelled", h.retryRefusesNonFailed)
+	t.Run("retry missing is not found", h.retryMissing)
+	t.Run("retry requeues failed until retries are used up", h.retryFailedUntilSpent)
+	t.Run("requeue only under the held claim", h.requeueUnderClaim)
+	t.Run("requeue out of retries", h.requeueSpent)
+}
+
+// jobRetryHarness holds the store and the small helpers the subtests share.
+type jobRetryHarness struct {
+	t    *testing.T
+	jobs storage.JobStore
+}
+
+func (h *jobRetryHarness) mk(id string, max int) {
+	h.t.Helper()
 	now := fixtureTime()
-	mk := func(id string, max int) {
-		t.Helper()
-		if err := jobs.Create(ctx, &storage.Job{
-			ID: id, Type: "ingest:text", Status: storage.JobPending, Payload: id,
-			Pipeline: "text.short", Source: "cli", MaxRetries: max, CreatedAt: now, UpdatedAt: now,
-		}); err != nil {
-			t.Fatalf("Create %s: %v", id, err)
-		}
+	if err := h.jobs.Create(context.Background(), &storage.Job{
+		ID: id, Type: "ingest:text", Status: storage.JobPending, Payload: id,
+		Pipeline: "text.short", Source: "cli", MaxRetries: max, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		h.t.Fatalf("Create %s: %v", id, err)
 	}
-	status := func(id string) storage.JobStatus {
-		t.Helper()
-		j, err := jobs.Get(ctx, id)
-		if err != nil {
-			t.Fatalf("Get %s: %v", id, err)
-		}
-		return j.Status
+}
+
+func (h *jobRetryHarness) status(id string) storage.JobStatus {
+	h.t.Helper()
+	j, err := h.jobs.Get(context.Background(), id)
+	if err != nil {
+		h.t.Fatalf("Get %s: %v", id, err)
 	}
-	acquire := func(want string) *storage.Job {
-		t.Helper()
-		j, err := jobs.AcquireNext(ctx)
-		if err != nil || j == nil || j.ID != want {
-			t.Fatalf("AcquireNext = %+v, %v; want %s", j, err, want)
-		}
-		return j
+	return j.Status
+}
+
+func (h *jobRetryHarness) acquire(want string) *storage.Job {
+	h.t.Helper()
+	j, err := h.jobs.AcquireNext(context.Background())
+	if err != nil || j == nil || j.ID != want {
+		h.t.Fatalf("AcquireNext = %+v, %v; want %s", j, err, want)
 	}
+	return j
+}
 
-	t.Run("retry refuses pending running completed cancelled", func(t *testing.T) {
-		mk("jr-pending", 3)
-		if err := jobs.Retry(ctx, "jr-pending"); !errors.Is(err, storage.ErrJobNotRetryable) {
-			t.Errorf("pending: %v, want ErrJobNotRetryable", err)
-		}
-		acquire("jr-pending")
-		if err := jobs.Retry(ctx, "jr-pending"); !errors.Is(err, storage.ErrJobNotRetryable) {
-			t.Errorf("running: %v, want ErrJobNotRetryable", err)
-		}
-		if got := status("jr-pending"); got != storage.JobRunning {
-			t.Errorf("running job moved to %q", got)
-		}
-		if err := jobs.Complete(ctx, "jr-pending", "res"); err != nil {
-			t.Fatal(err)
-		}
-		if err := jobs.Retry(ctx, "jr-pending"); !errors.Is(err, storage.ErrJobNotRetryable) {
-			t.Errorf("completed: %v, want ErrJobNotRetryable", err)
-		}
-		mk("jr-cancel", 3)
-		if err := jobs.Cancel(ctx, "jr-cancel"); err != nil {
-			t.Fatal(err)
-		}
-		if err := jobs.Retry(ctx, "jr-cancel"); !errors.Is(err, storage.ErrJobNotRetryable) {
-			t.Errorf("cancelled: %v, want ErrJobNotRetryable", err)
-		}
-	})
+func (h *jobRetryHarness) must(err error) {
+	h.t.Helper()
+	if err != nil {
+		h.t.Fatal(err)
+	}
+}
 
-	t.Run("retry missing is not found", func(t *testing.T) {
-		if err := jobs.Retry(ctx, "jr-nope"); !errors.Is(err, storage.ErrNotFound) {
-			t.Errorf("missing: %v, want ErrNotFound", err)
-		}
-	})
+func (h *jobRetryHarness) wantRetry(id, label string, want error) {
+	h.t.Helper()
+	if err := h.jobs.Retry(context.Background(), id); !errors.Is(err, want) {
+		h.t.Errorf("%s: %v, want %v", label, err, want)
+	}
+}
 
-	t.Run("retry requeues failed until retries are used up", func(t *testing.T) {
-		mk("jr-failed", 1)
-		acquire("jr-failed")
-		if err := jobs.Fail(ctx, "jr-failed", "boom"); err != nil {
-			t.Fatal(err)
-		}
-		if err := jobs.Retry(ctx, "jr-failed"); err != nil {
-			t.Fatalf("failed job: %v", err)
-		}
-		acquire("jr-failed")
-		if err := jobs.Fail(ctx, "jr-failed", "boom"); err != nil {
-			t.Fatal(err)
-		}
-		if err := jobs.Retry(ctx, "jr-failed"); !errors.Is(err, storage.ErrJobNotRetryable) {
-			t.Errorf("exhausted: %v, want ErrJobNotRetryable", err)
-		}
-	})
+func (h *jobRetryHarness) wantRequeue(id, claim, label string, want error) {
+	h.t.Helper()
+	if err := h.jobs.Requeue(context.Background(), id, claim); !errors.Is(err, want) {
+		h.t.Errorf("%s: %v, want %v", label, err, want)
+	}
+}
 
-	t.Run("requeue only under the held claim", func(t *testing.T) {
-		mk("jr-claim", 3)
-		held := acquire("jr-claim")
-		if err := jobs.Requeue(ctx, "jr-claim", "someone-else"); !errors.Is(err, storage.ErrClaimLost) {
-			t.Errorf("foreign claim: %v, want ErrClaimLost", err)
-		}
-		if got := status("jr-claim"); got != storage.JobRunning {
-			t.Errorf("foreign requeue moved job to %q", got)
-		}
-		if err := jobs.Requeue(ctx, "jr-claim", held.Claim); err != nil {
-			t.Fatalf("own claim: %v", err)
-		}
-		if got := status("jr-claim"); got != storage.JobPending {
-			t.Errorf("requeued job is %q, want pending", got)
-		}
-		// The claim is void once requeued: a stale worker cannot requeue again.
-		if err := jobs.Requeue(ctx, "jr-claim", held.Claim); !errors.Is(err, storage.ErrClaimLost) {
-			t.Errorf("stale claim: %v, want ErrClaimLost", err)
-		}
-		if err := jobs.Cancel(ctx, "jr-claim"); err != nil {
-			t.Fatal(err)
-		}
-	})
+func (h *jobRetryHarness) retryRefusesNonFailed(*testing.T) {
+	ctx := context.Background()
+	h.mk("jr-pending", 3)
+	h.wantRetry("jr-pending", "pending", storage.ErrJobNotRetryable)
+	h.acquire("jr-pending")
+	h.wantRetry("jr-pending", "running", storage.ErrJobNotRetryable)
+	if got := h.status("jr-pending"); got != storage.JobRunning {
+		h.t.Errorf("running job moved to %q", got)
+	}
+	h.must(h.jobs.Complete(ctx, "jr-pending", "res"))
+	h.wantRetry("jr-pending", "completed", storage.ErrJobNotRetryable)
+	h.mk("jr-cancel", 3)
+	h.must(h.jobs.Cancel(ctx, "jr-cancel"))
+	h.wantRetry("jr-cancel", "cancelled", storage.ErrJobNotRetryable)
+}
 
-	t.Run("requeue out of retries", func(t *testing.T) {
-		mk("jr-spent", 0)
-		held := acquire("jr-spent")
-		if err := jobs.Requeue(ctx, "jr-spent", held.Claim); !errors.Is(err, storage.ErrJobNotRetryable) {
-			t.Errorf("exhausted: %v, want ErrJobNotRetryable", err)
-		}
-	})
+func (h *jobRetryHarness) retryMissing(*testing.T) {
+	h.wantRetry("jr-nope", "missing", storage.ErrNotFound)
+}
+
+func (h *jobRetryHarness) retryFailedUntilSpent(*testing.T) {
+	ctx := context.Background()
+	h.mk("jr-failed", 1)
+	h.acquire("jr-failed")
+	h.must(h.jobs.Fail(ctx, "jr-failed", "boom"))
+	h.must(h.jobs.Retry(ctx, "jr-failed"))
+	h.acquire("jr-failed")
+	h.must(h.jobs.Fail(ctx, "jr-failed", "boom"))
+	h.wantRetry("jr-failed", "exhausted", storage.ErrJobNotRetryable)
+}
+
+func (h *jobRetryHarness) requeueUnderClaim(*testing.T) {
+	ctx := context.Background()
+	h.mk("jr-claim", 3)
+	held := h.acquire("jr-claim")
+	h.wantRequeue("jr-claim", "someone-else", "foreign claim", storage.ErrClaimLost)
+	if got := h.status("jr-claim"); got != storage.JobRunning {
+		h.t.Errorf("foreign requeue moved job to %q", got)
+	}
+	h.must(h.jobs.Requeue(ctx, "jr-claim", held.Claim))
+	if got := h.status("jr-claim"); got != storage.JobPending {
+		h.t.Errorf("requeued job is %q, want pending", got)
+	}
+	// The claim is void once requeued: a stale worker cannot requeue again.
+	h.wantRequeue("jr-claim", held.Claim, "stale claim", storage.ErrClaimLost)
+	h.must(h.jobs.Cancel(ctx, "jr-claim"))
+}
+
+func (h *jobRetryHarness) requeueSpent(*testing.T) {
+	h.mk("jr-spent", 0)
+	held := h.acquire("jr-spent")
+	h.wantRequeue("jr-spent", held.Claim, "exhausted", storage.ErrJobNotRetryable)
 }
