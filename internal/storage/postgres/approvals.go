@@ -105,6 +105,23 @@ func (s *approvalStore) List(ctx context.Context, f storage.ApprovalFilter) ([]*
 			where = append(where, fmt.Sprintf("%s = $%d", c.col, len(args)))
 		}
 	}
+	if !f.ExpiresAfter.IsZero() {
+		args = append(args, f.ExpiresAfter.UTC())
+		where = append(where, fmt.Sprintf("expires_at > $%d", len(args)))
+	}
+	if !f.ExpiresAtOrBefore.IsZero() {
+		args = append(args, f.ExpiresAtOrBefore.UTC())
+		where = append(where, fmt.Sprintf("expires_at <= $%d", len(args)))
+	}
+	if f.Involving != "" {
+		args = append(args, f.Involving)
+		or := []string{fmt.Sprintf("requested_by = $%d", len(args)), fmt.Sprintf("subject_id = $%d", len(args))}
+		if len(f.InvolvingKinds) > 0 {
+			args = append(args, pq.Array(f.InvolvingKinds))
+			or = append(or, fmt.Sprintf("kind = ANY($%d)", len(args)))
+		}
+		where = append(where, "("+strings.Join(or, " OR ")+")")
+	}
 	query := `SELECT ` + approvalColumns + ` FROM approval_requests`
 	if len(where) > 0 {
 		query += ` WHERE ` + strings.Join(where, " AND ")
@@ -113,6 +130,10 @@ func (s *approvalStore) List(ctx context.Context, f storage.ApprovalFilter) ([]*
 	if f.Limit > 0 {
 		args = append(args, f.Limit)
 		query += fmt.Sprintf(` LIMIT $%d`, len(args))
+	}
+	if f.Offset > 0 {
+		args = append(args, f.Offset)
+		query += fmt.Sprintf(` OFFSET $%d`, len(args))
 	}
 	q := conn(ctx, s.db)
 	rows, err := q.QueryContext(ctx, query, args...)
@@ -140,9 +161,25 @@ func (s *approvalStore) List(ctx context.Context, f storage.ApprovalFilter) ([]*
 	return out, nil
 }
 
+// decisionChunk bounds one decisions query to this many requests, so
+// the id list stays small whatever the page.
+const decisionChunk = 500
+
 // fillApprovalDecisions loads the decisions of reqs, oldest first per
-// request.
+// request, in chunks.
 func fillApprovalDecisions(ctx context.Context, q querier, reqs []*storage.ApprovalRequest) error {
+	for start := 0; start < len(reqs); start += decisionChunk {
+		end := min(start+decisionChunk, len(reqs))
+		if err := fillApprovalDecisionChunk(ctx, q, reqs[start:end]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// fillApprovalDecisionChunk loads the decisions of reqs, oldest first
+// per request.
+func fillApprovalDecisionChunk(ctx context.Context, q querier, reqs []*storage.ApprovalRequest) error {
 	if len(reqs) == 0 {
 		return nil
 	}

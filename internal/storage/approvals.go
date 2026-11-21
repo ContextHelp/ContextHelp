@@ -119,8 +119,23 @@ type ApprovalFilter struct {
 	Status      ApprovalStatus
 	RequestedBy string
 	SubjectID   string
-	// Limit caps the result; 0 means no cap.
-	Limit int
+	// ExpiresAfter keeps requests whose expiry is after it; zero keeps
+	// all. With Status requested it selects the pending requests that
+	// have not expired.
+	ExpiresAfter time.Time
+	// ExpiresAtOrBefore keeps requests whose expiry is at or before it;
+	// zero keeps all. With Status requested it selects the expired ones.
+	ExpiresAtOrBefore time.Time
+	// Involving, when set, keeps the requests that principal filed or is
+	// the subject of, and those of the kinds in InvolvingKinds (a
+	// superset the caller narrows: a kind's approvers are the caller's
+	// to tell).
+	Involving      string
+	InvolvingKinds []string
+	// Limit caps the result; 0 means no cap. Offset skips that many of
+	// the matches, newest first, to read them in pages.
+	Limit  int
+	Offset int
 }
 
 // ApprovalStore keeps approval requests and their decisions.

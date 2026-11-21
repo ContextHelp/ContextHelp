@@ -134,3 +134,43 @@ func TestNarrowedOwnerHasNoReachOverTheQueue(t *testing.T) {
 	_, err = f.svc.Withdraw(ctx, r.ID, f.owner)
 	assert.NoError(t, err)
 }
+
+// List pages through the store: more requests than one page, a limit
+// that stops it mid-way, and a state filter that the store applies, all
+// give the same answer as reading everything.
+func TestList_PagesThroughMoreThanOnePage(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	const n = 230
+	var want []string
+	for i := 0; i < n; i++ {
+		f.clock.advance(time.Millisecond)
+		r := f.file("p" + time.Duration(i).String())
+		want = append([]string{r.ID}, want...)
+	}
+	all, err := f.svc.List(ctx, f.alice, approval.ListFilter{})
+	require.NoError(t, err)
+	assert.Equal(t, want, itemIDs(all), "every request, newest first, across pages")
+	capped, err := f.svc.List(ctx, f.alice, approval.ListFilter{Limit: 150})
+	require.NoError(t, err)
+	assert.Equal(t, want[:150], itemIDs(capped))
+	owner, err := f.svc.List(ctx, f.owner, approval.ListFilter{Limit: 3})
+	require.NoError(t, err)
+	assert.Equal(t, want[:3], itemIDs(owner))
+	assert.Empty(t, itemsOf(t, f, f.outsider), "an outsider sees none of them")
+
+	f.clock.advance(72 * time.Hour)
+	expired, err := f.svc.List(ctx, f.alice, approval.ListFilter{State: approval.StateExpired})
+	require.NoError(t, err)
+	assert.Len(t, expired, n)
+	pending, err := f.svc.List(ctx, f.alice, approval.ListFilter{State: approval.StateRequested})
+	require.NoError(t, err)
+	assert.Empty(t, pending, "expired requests are not pending")
+}
+
+func itemsOf(t *testing.T, f *fixture, p *auth.Principal) []*approval.Item {
+	t.Helper()
+	items, err := f.svc.List(context.Background(), p, approval.ListFilter{})
+	require.NoError(t, err)
+	return items
+}
