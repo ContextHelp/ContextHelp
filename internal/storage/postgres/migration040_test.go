@@ -43,8 +43,8 @@ func TestPgMigration040_URLObjectType(t *testing.T) {
 			t.Fatalf("Migrate #%d: %v", i, err)
 		}
 		want := map[string]string{
-			"page": "url", "page-http": "url", "repo": "repo", "repo-as-text": "text",
-			"doc": "document", "note": "text", "pasted": "text",
+			"page": "url", "page-http": "url", "repo": "repo", "repo-as-text": "url",
+			"doc": "document", "note": "text", "pasted": "url",
 		}
 		for id, typ := range want {
 			var got string
@@ -55,5 +55,16 @@ func TestPgMigration040_URLObjectType(t *testing.T) {
 				t.Errorf("pass %d %s: type = %q, want %q", i, id, got, typ)
 			}
 		}
+	}
+
+	// Replay the statement itself (Migrate skips applied versions): no
+	// row matches any more.
+	res, err := db.Exec(`UPDATE objects SET type = 'url'
+		WHERE type = 'text' AND pipeline LIKE 'url.%'`)
+	if err != nil {
+		t.Fatalf("replay: %v", err)
+	}
+	if n, _ := res.RowsAffected(); n != 0 {
+		t.Errorf("replay changed %d rows, want 0", n)
 	}
 }

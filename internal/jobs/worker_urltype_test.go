@@ -38,7 +38,7 @@ func TestJobObjectType(t *testing.T) {
 
 // runIngest runs one job through a pipeline of the real fetcher and
 // type detector and returns the stored object.
-func runIngest(t *testing.T, jobType, payload string, srv *httptest.Server) *storage.KnowledgeObject {
+func runIngest(t *testing.T, jobType, payload, source string, srv *httptest.Server) *storage.KnowledgeObject {
 	t.Helper()
 	driver := storageutil.NewTestDriver(t)
 	q := NewQueue(driver.Jobs())
@@ -56,7 +56,7 @@ func runIngest(t *testing.T, jobType, payload string, srv *httptest.Server) *sto
 	job := makeJob("job-url")
 	job.Type = jobType
 	job.Payload = payload
-	job.Source = payload
+	job.Source = source
 	job.Pipeline = "url.test"
 	if err := q.Enqueue(ctx, job); err != nil {
 		t.Fatal(err)
@@ -93,24 +93,45 @@ func TestIngestURLJobStoresTypeURL(t *testing.T) {
 	defer srv.Close()
 
 	for _, jt := range []string{"ingest:url", "ingest:url:nofanout"} {
-		obj := runIngest(t, jt, srv.URL+"/page", srv)
+		obj := runIngest(t, jt, srv.URL+"/page", srv.URL+"/page", srv)
 		if obj.Type != "url" {
 			t.Errorf("%s: Type = %q, want url", jt, obj.Type)
 		}
 		if obj.Subtype != "short" {
-			t.Errorf("%s: Subtype = %q, want short (content kind stays in subtype)", jt, obj.Subtype)
+			t.Errorf("%s: Subtype = %q, want short (size class, not the input kind)", jt, obj.Subtype)
 		}
 	}
 }
 
-func TestIngestTextJobStillText(t *testing.T) {
+// Every object a url.* pipeline stores is a url, whatever the job type
+// or source label says: feed items and dependency children fetched by
+// url.*, text-typed bookmark imports, browser-history captures.
+func TestIngestURLPipelineStoresTypeURL(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("body"))
+		_, _ = w.Write([]byte("body of the page"))
 	}))
 	defer srv.Close()
-	// Fetcher replaces the payload with the body, so the detector sees
-	// plain text and a text job must stay text.
-	if obj := runIngest(t, "ingest:text", srv.URL+"/p", srv); obj.Type != "text" {
-		t.Errorf("Type = %q, want text", obj.Type)
+	for _, c := range []struct{ name, jobType, source string }{
+		{"feed_item child", "ingest:feed_item", srv.URL + "/c"},
+		{"text import", "ingest:text", "import:pinboard"},
+		{"browser history", "ingest:url", "import:chrome"},
+		{"text cli", "ingest:text", "cli"},
+	} {
+		if obj := runIngest(t, c.jobType, srv.URL+"/x", c.source, srv); obj.Type != "url" {
+			t.Errorf("%s: Type = %q, want url", c.name, obj.Type)
+		}
+	}
+}
+
+// A step that sets an explicit type still wins over the url.* default.
+func TestIngestURLPipelineExplicitTypeWins(t *testing.T) {
+	if got := seedType("ingest:text", "url.generic"); got != "url" {
+		t.Errorf("url.generic = %q", got)
+	}
+	if got := seedType("ingest:text", "text.short"); got != "" {
+		t.Errorf("text.short = %q, want blank", got)
+	}
+	if got := seedType("ingest:image", "url.generic"); got != "image" {
+		t.Errorf("explicit job type must win, got %q", got)
 	}
 }

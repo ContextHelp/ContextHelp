@@ -44,8 +44,8 @@ func TestMigration059_URLObjectType(t *testing.T) {
 	}
 	want := map[string]string{
 		"page": "url", "page-http": "url",
-		"repo": "repo", "repo-as-text": "text", "doc": "document",
-		"note": "text", "pasted": "text", "nopipe": "text",
+		"repo": "repo", "repo-as-text": "url", "doc": "document",
+		"note": "text", "pasted": "url", "nopipe": "text",
 	}
 	for id, typ := range want {
 		if got := type059(t, d, id); got != typ {
@@ -61,5 +61,15 @@ func TestMigration059_URLObjectType(t *testing.T) {
 		if got := type059(t, d, id); got != typ {
 			t.Errorf("after replay %s: type = %q, want %q", id, got, typ)
 		}
+	}
+
+	// Replay the SQL itself (migrateThrough skips applied versions): no
+	// row matches any more.
+	res, err := d.db.Exec(migration058)
+	if err != nil {
+		t.Fatalf("exec 058 again: %v", err)
+	}
+	if n, _ := res.RowsAffected(); n != 0 {
+		t.Errorf("second run of 058 changed %d rows, want 0", n)
 	}
 }

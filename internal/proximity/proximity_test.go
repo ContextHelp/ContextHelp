@@ -380,3 +380,34 @@ func TestOriginProximity_SameDomainRawContentFallback(t *testing.T) {
 		t.Errorf("different domain (raw content) = %f, want 0", got)
 	}
 }
+
+const htmlDoctype = `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1.dtd"><html><body>hi</body></html>`
+
+func TestOriginProximity_SameDomainIgnoresBodyURLs(t *testing.T) {
+	// Browser-history captures: source is a label, body is HTML that
+	// names www.w3.org; the pages are on different sites.
+	a := urlObj("import:chrome", htmlDoctype)
+	a.Metadata = map[string]any{"final_url": "https://one.example/a"}
+	b := urlObj("import:chrome", htmlDoctype)
+	b.Metadata = map[string]any{"final_url": "https://two.example/b"}
+	if got := proximity.OriginProximity(a, b); got != 0.4 {
+		// same source label 0.4 only; no domain boost
+		t.Errorf("different sites = %f, want 0.4 (source only)", got)
+	}
+	// Without any URL metadata the body is not scanned at all.
+	c := urlObj("import:chrome", htmlDoctype)
+	d := urlObj("import:chrome", htmlDoctype)
+	if got := proximity.OriginProximity(c, d); got != 0.4 {
+		t.Errorf("no url = %f, want 0.4 (no false w3.org boost)", got)
+	}
+}
+
+func TestOriginProximity_SameDomainMetadataAndCase(t *testing.T) {
+	a := urlObj("import:chrome", htmlDoctype)
+	a.Metadata = map[string]any{"final_url": "https://Example.COM/a"}
+	b := urlObj("import:chrome", htmlDoctype)
+	b.Metadata = map[string]any{"source_url": "https://example.com:8443/b"}
+	if got := proximity.OriginProximity(a, b); got < 0.499 || got > 0.501 {
+		t.Errorf("same host via metadata = %f, want 0.5", got)
+	}
+}
