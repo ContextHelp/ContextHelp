@@ -453,14 +453,14 @@ var pgMigrations = []pgMigration{
 			  AND pipeline LIKE 'url.%'`,
 	}},
 	// The owner principal holds the approval roles (steward-requester,
-	// steward-approver, share-approver) beside admin (ADR-082 §1),
+	// steward-approver, share-approver) beside admin (ADR-083 §1),
 	// mirroring SQLite migration 060: the admin bundle leaves their
 	// scopes out, and only a holder may assign them. One row update; a
 	// replay is a no-op.
 	{Version: 41, Name: "owner approval roles", Statements: []string{
 		`UPDATE principals SET roles = '["admin","steward-requester","steward-approver","share-approver"]' WHERE kind = 'owner'`,
 	}},
-	// The approval mechanism (ADR-082 §9), mirroring SQLite migration
+	// The approval mechanism (ADR-083 §9), mirroring SQLite migration
 	// 061: approval_requests, one row per request of any kind with its
 	// frozen payload (JSON in TEXT, as SQLite keeps it), and
 	// approval_decisions, one row per approver and request. New tables

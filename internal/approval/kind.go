@@ -1,4 +1,4 @@
-// Package approval is the shared approval mechanism of ADR-082 §9: one
+// Package approval is the shared approval mechanism of ADR-083 §9: one
 // state machine for every change that needs someone other than its
 // requester to accept it. A consumer (a steward grant, a widening
 // sharing change, a credential for another principal) registers a Kind;

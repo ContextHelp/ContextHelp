@@ -6,11 +6,11 @@ import (
 )
 
 // DefaultApprovalPendingTTL is how long an approval request waits for
-// its approvals when approvals.pending_ttl is unset (ADR-082 §9).
+// its approvals when approvals.pending_ttl is unset (ADR-083 §9).
 const DefaultApprovalPendingTTL = 72 * time.Hour
 
 // ApprovalsConfig is the `approvals:` section: the shared approval
-// mechanism (ADR-082 §9). Each kind's approver count lives with the
+// mechanism (ADR-083 §9). Each kind's approver count lives with the
 // kind's own settings (approvals.<kind>.required) when the kind lands.
 type ApprovalsConfig struct {
 	// PendingTTL is how long a request may wait for its approvals: past

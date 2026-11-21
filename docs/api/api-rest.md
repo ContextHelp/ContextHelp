@@ -1084,7 +1084,7 @@ Get registry details and capabilities.
 
 ## Approvals
 
-Some changes take effect only once someone other than the person who asked accepts them (ADR-082 §9). Each one is a request on the approval queue: who filed it, a reason, the operation frozen with a digest, how many approvals it needs and when it expires (`approvals.pending_ttl`, 72 hours by default). No kind of request is registered yet, so the queue stays empty until the features that file requests land.
+Some changes take effect only once someone other than the person who asked accepts them (ADR-083 §9). Each one is a request on the approval queue: who filed it, a reason, the operation frozen with a digest, how many approvals it needs and when it expires (`approvals.pending_ttl`, 72 hours by default). No kind of request is registered yet, so the queue stays empty until the features that file requests land.
 
 Every route below takes `write:self`, which every role and every browser session holds. Who may see or decide a request is the request's own rule: its requester, its subject, the eligible approvers of its kind, and the owner. A request you may not see answers `404`, the same as one that does not exist.
 

@@ -101,7 +101,7 @@ Every `/api/v1` route and gRPC method requires one scope. A role is a fixed bund
 | `steward-approver` | `approve:steward` |
 | `share-approver` | `approve:shares` |
 
-The three approval roles (`steward-requester`, `steward-approver`, `share-approver`) are held beside a verb role and grant one scope each, plus `write:self`. No other role holds their scopes, `admin` included. Administering an instance is not access to its data (ADR-082). Nothing yielded over the API holds more than the caller who asked for it, so only the owner, which holds `admin` and all three approval roles, can give a principal one.
+The three approval roles (`steward-requester`, `steward-approver`, `share-approver`) are held beside a verb role and grant one scope each, plus `write:self`. No other role holds their scopes, `admin` included. Administering an instance is not access to its data (ADR-083). Nothing yielded over the API holds more than the caller who asked for it, so only the owner, which holds `admin` and all three approval roles, can give a principal one.
 
 `read:ui` (mint a web UI sign-in link) is a read scope, so every role holds it; a browser session never does, so a session cannot mint another. `signout:ui` (end your own browser session) belongs to browser sessions only: no role holds it.
 

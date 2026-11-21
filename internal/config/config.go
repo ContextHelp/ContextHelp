@@ -131,7 +131,7 @@ type Config struct {
 
 	// GitHub configures the REST client behind the url.github.* pipelines.
 	GitHub GitHubConfig `mapstructure:"github" yaml:"github"`
-	// Approvals configures the shared approval mechanism (ADR-082 §9).
+	// Approvals configures the shared approval mechanism (ADR-083 §9).
 	Approvals ApprovalsConfig `mapstructure:"approvals" yaml:"approvals"`
 }
 
@@ -1022,7 +1022,7 @@ func (k AuthKeyConfig) ExpiresAt() (time.Time, error) {
 
 // AuthRoles are the roles a principal or a declared key may carry:
 // the verb roles, most to least privileged, then the approval roles
-// (ADR-082). The scope each one grants lives in internal/auth.
+// (ADR-083). The scope each one grants lives in internal/auth.
 var AuthRoles = []string{"admin", "writer", "reader", "steward-requester", "steward-approver", "share-approver"}
 
 // EffectiveMethods returns Methods, or DefaultAuthMethods when unset.

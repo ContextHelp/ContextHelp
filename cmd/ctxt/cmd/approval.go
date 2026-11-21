@@ -18,7 +18,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 )
 
-// ctxt approval: the approval queue of the instance (ADR-082 §9), over
+// ctxt approval: the approval queue of the instance (ADR-083 §9), over
 // /api/v1/approvals. Requests are filed by the commands whose changes
 // need a second person; these commands list, show and decide them.
 

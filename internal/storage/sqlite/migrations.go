@@ -333,10 +333,10 @@ var migrations = []migration{
 	{Version: 59, SQL: migration059},
 	// Migration 60: the owner principal holds the approval roles
 	// (steward-requester, steward-approver, share-approver) beside admin
-	// (ADR-082 §1): the admin bundle leaves their scopes out, and only
+	// (ADR-083 §1): the admin bundle leaves their scopes out, and only
 	// a holder may assign them. One row update; a replay is a no-op.
 	{Version: 60, fn: migrate060OwnerApprovalRoles},
-	// Migration 61: the approval mechanism (ADR-082 §9):
+	// Migration 61: the approval mechanism (ADR-083 §9):
 	// approval_requests, one row per request of any kind with its frozen
 	// payload, and approval_decisions, one row per approver and request.
 	// New tables only, nothing is an FTS input, so no re-projection

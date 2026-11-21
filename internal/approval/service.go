@@ -277,7 +277,7 @@ func (s *Service) openDecision(ctx context.Context, id string, approver *auth.Pr
 	return k, r, now, nil
 }
 
-// separate enforces ADR-082 §9's separation for approver on r: never the
+// separate enforces ADR-083 §9's separation for approver on r: never the
 // requester, never the subject (unless the kind admits it) or another
 // beneficiary, eligible by the kind's rule, one decision each.
 func (s *Service) separate(ctx context.Context, k *Kind, r *storage.ApprovalRequest, approver *auth.Principal) error {

@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// The approval mechanism's store (ADR-082 §9): one table of requests,
+// The approval mechanism's store (ADR-083 §9): one table of requests,
 // discriminated by kind, each a frozen payload that someone other than
 // its requester must accept, and one table of the decisions on them.
 // What an approval produces lives in its consumer's own tables; the

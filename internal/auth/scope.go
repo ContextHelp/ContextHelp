@@ -120,7 +120,7 @@ const (
 	// browser session holds it (UISessionScopes); no role bundle does.
 	ScopeSignoutUI Scope = "signout:ui"
 
-	// The approval scopes (ADR-082 §1, §10 B). Each belongs to one
+	// The approval scopes (ADR-083 §1, §10 B). Each belongs to one
 	// dedicated bundle and to no verb bundle: the admin bundle leaves
 	// them out by name (approvalScopes), and their verbs keep them out
 	// of reader and writer. Like the principal-registry scopes they land
@@ -166,7 +166,7 @@ var sessionOnlyScopes = []Scope{ScopeSignoutUI}
 // of any role manages its own credentials (ADR-079 §5).
 var selfScopes = []Scope{ScopeWriteSelf}
 
-// approvalScopes are left out of the admin bundle by name (ADR-082 §1):
+// approvalScopes are left out of the admin bundle by name (ADR-083 §1):
 // administering is not data access, so no admin, an IdP admin included,
 // holds a steward or approver scope by being admin. Each is held only
 // through its own approval role, which only a principal already
@@ -183,7 +183,7 @@ func IsApprovalScope(s Scope) bool { return slices.Contains(approvalScopes, s) }
 // job, manage its own credentials, sign out), the Sharing page
 // (admin:shares, ADR-080 §11: audiences, policies, grants, ceilings and
 // invites, which only an admin's session reaches), the approval scopes
-// (ADR-082: stewards and approvers act from a browser; a session holds
+// (ADR-083: stewards and approvers act from a browser; a session holds
 // one only when its principal does) and nothing else. No
 // MCP, pipelines, steps, watches, audit log, principal registry or
 // login codes (read:ui); no other write. A session's effective scopes
@@ -232,7 +232,7 @@ const (
 // Roles lists the verb roles, most to least privileged.
 var Roles = []string{RoleAdmin, RoleWriter, RoleReader}
 
-// The approval roles (ADR-082 §1, §10 B): each grants one approval
+// The approval roles (ADR-083 §1, §10 B): each grants one approval
 // scope and is held beside a verb role. The admin bundle never holds
 // their scopes, so only the owner, which does, can assign them.
 const (
@@ -260,7 +260,7 @@ func KnownRoles() []string { return append(slices.Clone(Roles), ApprovalRoles...
 
 // OwnerRoles are the roles of the owner principal (LocalPrincipal and
 // the registry's owner row): admin plus every approval role. The owner
-// holds every steward and approver scope explicitly (ADR-082 §1), which
+// holds every steward and approver scope explicitly (ADR-083 §1), which
 // makes it the one principal that can assign them; what the owner may
 // not do with them is the approval mechanism's to refuse (the owner
 // files no request).

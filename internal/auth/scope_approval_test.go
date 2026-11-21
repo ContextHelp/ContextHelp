@@ -5,11 +5,11 @@ import (
 	"testing"
 )
 
-// approvalScopeSet is the set ADR-082 §1 keeps out of admin: the steward
+// approvalScopeSet is the set ADR-083 §1 keeps out of admin: the steward
 // scopes and the sharing-change approver scope.
 var approvalScopeSet = []Scope{ScopeRequestSteward, ScopeApproveSteward, ScopeApproveShares}
 
-// ADR-082 §1 invariant: administering is not data access, so the admin
+// ADR-083 §1, §10 invariant: administering is not data access, so the admin
 // bundle, and every verb bundle, has an empty intersection with the
 // approval scopes, alone and in any combination.
 func TestApprovalScopes_NoVerbBundleHoldsThem(t *testing.T) {
@@ -52,7 +52,7 @@ func TestApprovalScopes_RoleBundles(t *testing.T) {
 		RoleShareApprover:    ScopeApproveShares,
 	}
 	if len(cases) != len(ApprovalRoles) {
-		t.Fatalf("ApprovalRoles = %v, want the three of ADR-082", ApprovalRoles)
+		t.Fatalf("ApprovalRoles = %v, want the three of ADR-083", ApprovalRoles)
 	}
 	for _, role := range ApprovalRoles {
 		got, ok := Bundle(role)

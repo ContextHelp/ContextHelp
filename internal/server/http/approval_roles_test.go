@@ -12,7 +12,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
-// ADR-082 §1: the approval roles are outside admin, so an admin, which
+// ADR-083 §1: the approval roles are outside admin, so an admin, which
 // cannot hold their scopes, cannot hand them out either (no route
 // yields more than the caller holds). Only the owner assigns them.
 func TestApprovalRoles_OnlyTheOwnerAssignsThem(t *testing.T) {

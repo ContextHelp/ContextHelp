@@ -156,7 +156,7 @@ type Stack struct {
 	// into; the gRPC server the caller builds takes it too. Shutdown
 	// flushes it.
 	Audit *sharing.AuditWriter
-	// Approvals is the shared approval mechanism (ADR-082 §9); its
+	// Approvals is the shared approval mechanism (ADR-083 §9); its
 	// queue is served on /api/v1/approvals.
 	Approvals *approval.Service
 	// Authority is the access state of an external authority; nil when the

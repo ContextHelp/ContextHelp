@@ -10,7 +10,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
-// Events the mechanism appends to the audit log (ADR-082 §9), each in
+// Events the mechanism appends to the audit log (ADR-083 §9), each in
 // the transaction of the transition it records, so an entry exists if
 // and only if its transition committed. Every entry names its actor,
 // the request, its kind and action and the payload digest; none carries
