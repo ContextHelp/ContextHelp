@@ -106,4 +106,6 @@ func TestUS0053_AggregatedSearchViaHTTP(t *testing.T) {
 	var body searchResponse
 	decodeJSON(t, resp.Body, &body)
 	assert.Equal(t, 2, body.Total, "aggregated search must return both profiles' articles")
+	assert.True(t, containsID(body.Data, "cp-http-a"), "profile p1 article")
+	assert.True(t, containsID(body.Data, "cp-http-b"), "profile p2 article")
 }

@@ -87,7 +87,7 @@ func TestUS0001_ObjectRetrievableByID(t *testing.T) {
 
 // The profile named on the request is persisted on the object. (The story
 // also names a project field; AnalyzeRequest has none, so it is not tested.)
-func TestUS0001_ProfileAndProjectPersistedInMetadata(t *testing.T) {
+func TestUS0001_ProfilePersisted(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 

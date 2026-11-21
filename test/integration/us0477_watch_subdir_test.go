@@ -39,7 +39,7 @@ func TestUS0477_WatchPicksUpFileInNewSubdir(t *testing.T) {
 	t.Cleanup(mgr.Stop)
 
 	cfg := &storage.WatchConfig{
-		ID:              "t0477",
+		ID:              "subdir-watch",
 		Path:            root,
 		Mode:            "generic",
 		IncludePatterns: []string{"**/*.md"},
@@ -50,18 +50,19 @@ func TestUS0477_WatchPicksUpFileInNewSubdir(t *testing.T) {
 	}
 	require.NoError(t, mgr.AddWatch(ownerCtx(), cfg))
 
-	// Allow fsnotify to register on the root.
-	time.Sleep(200 * time.Millisecond)
+	// Wait until the watcher is live: a probe file in the root must be
+	// ingested before the nested directory is created.
+	require.NoError(t, os.WriteFile(filepath.Join(root, "probe.md"), []byte("# Probe\n\nready\n"), 0o644))
+	waitForWatchJob(t, env.URL, "watch:generic:probe.md", 15*time.Second)
 
 	// Create a NEW nested subdirectory and a markdown file inside it.
-	// Mirrors the original Claude-Code Write-tool repro where
-	// clients/bgroup/wechalet/bankruptcy/ was created post-registration
-	// and never picked up by the watcher.
-	sub := filepath.Join(root, "bgroup", "wechalet", "bankruptcy")
+	// Regression: a subdirectory created after registration was never
+	// picked up by the watcher.
+	sub := filepath.Join(root, "bgroup", "acme", "renewal")
 	require.NoError(t, os.MkdirAll(sub, 0o755))
 
-	const needle = "wechalet-bankruptcy-marker-T0477"
-	relFile := filepath.Join("bgroup", "wechalet", "bankruptcy", "call-2026-05-04-jonathan-roy.md")
+	const needle = "acme-renewal-marker-subdir"
+	relFile := filepath.Join("bgroup", "acme", "renewal", "call-2026-05-04-jane-doe.md")
 	absFile := filepath.Join(root, relFile)
 	require.NoError(t, os.WriteFile(absFile, []byte("# Note\n\n"+needle+" body\n"), 0o644))
 

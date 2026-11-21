@@ -82,7 +82,7 @@ func TestT0191_REST_GetObject_GraphRoundTrip(t *testing.T) {
 	defer env.stop(t)
 
 	const (
-		objID   = "t0191-rest-get"
+		objID   = "agentgraph-rest-get"
 		objType = "article"
 		content = "graph round-trip content"
 	)
@@ -114,7 +114,7 @@ func TestT0191_REST_GetObject_NodeIDsStable(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	const objID = "t0191-nodeid"
+	const objID = "agentgraph-nodeid"
 	seedGraphKO(t, env, objID, "note", "stable id content")
 
 	resp, err := gohttp.Get(fmt.Sprintf("%s/api/v1/objects/%s", env.URL, objID))
@@ -143,7 +143,7 @@ func TestT0191_REST_GetObject_ProjectionConsistent(t *testing.T) {
 	defer env.stop(t)
 
 	const (
-		objID   = "t0191-proj"
+		objID   = "agentgraph-proj"
 		content = "projection consistency check"
 	)
 	seedGraphKO(t, env, objID, "text", content, "tag-x")
@@ -177,8 +177,8 @@ func TestT0191_REST_Search_GraphPreservedInResults(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	seedGraphKO(t, env, "t0191-search-1", "article", "graph search content alpha")
-	seedGraphKO(t, env, "t0191-search-2", "note", "graph search content beta")
+	seedGraphKO(t, env, "agentgraph-search-1", "article", "graph search content alpha")
+	seedGraphKO(t, env, "agentgraph-search-2", "note", "graph search content beta")
 
 	resp, err := gohttp.Get(env.URL + "/api/v1/search?q=type==article")
 	require.NoError(t, err)
@@ -194,7 +194,7 @@ func TestT0191_REST_Search_GraphPreservedInResults(t *testing.T) {
 	require.Len(t, body.Data, 1)
 
 	obj := body.Data[0]
-	assert.Equal(t, "t0191-search-1", obj.ID)
+	assert.Equal(t, "agentgraph-search-1", obj.ID)
 	require.NotNil(t, obj.Graph, "Graph must survive search round-trip")
 	assert.NotEmpty(t, obj.Graph.Nodes)
 }
@@ -206,7 +206,7 @@ func TestT0191_REST_Search_AllResultsHaveGraphs(t *testing.T) {
 	defer env.stop(t)
 
 	for i := 0; i < 3; i++ {
-		id := fmt.Sprintf("t0191-multi-%d", i)
+		id := fmt.Sprintf("agentgraph-multi-%d", i)
 		seedGraphKO(t, env, id, "memo", fmt.Sprintf("multi-graph content %d", i))
 	}
 
@@ -237,7 +237,7 @@ func TestT0191_GRPC_GetObject_GraphPresent(t *testing.T) {
 	defer env.stop(t)
 
 	const (
-		objID   = "t0191-grpc-get"
+		objID   = "agentgraph-grpc-get"
 		content = "grpc graph content"
 	)
 	seedGraphKO(t, env, objID, "article", content, "grpc-tag")
@@ -264,7 +264,7 @@ func TestT0191_GRPC_GetObject_NodeIDsStable(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	const objID = "t0191-grpc-nodeid"
+	const objID = "agentgraph-grpc-nodeid"
 	seedGraphKO(t, env, objID, "note", "stable node id via grpc")
 
 	conn := startGRPCTestServer(t, env.svc)
@@ -290,8 +290,8 @@ func TestT0191_GRPC_NodeAwareSearch_DocumentView(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	seedGraphKO(t, env, "t0191-nas-1", "post", "node aware search content alpha")
-	seedGraphKO(t, env, "t0191-nas-2", "draft", "node aware search content beta")
+	seedGraphKO(t, env, "agentgraph-nas-1", "post", "node aware search content alpha")
+	seedGraphKO(t, env, "agentgraph-nas-2", "draft", "node aware search content beta")
 
 	conn := startGRPCTestServer(t, env.svc)
 	c := pb.NewQueryServiceClient(conn)
@@ -306,7 +306,7 @@ func TestT0191_GRPC_NodeAwareSearch_DocumentView(t *testing.T) {
 
 	result := resp.Results[0]
 	require.NotNil(t, result.Object)
-	assert.Equal(t, "t0191-nas-1", result.Object.Id)
+	assert.Equal(t, "agentgraph-nas-1", result.Object.Id)
 
 	require.NotNil(t, result.DocumentView, "DocumentView must be non-nil")
 	assert.NotEmpty(t, result.DocumentView.Sections, "DocumentView.Sections must be non-empty")
@@ -318,7 +318,7 @@ func TestT0191_GRPC_NodeAwareSearch_NodeHits(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	const objID = "t0191-nhits"
+	const objID = "agentgraph-nhits"
 	seedGraphKO(t, env, objID, "insight", "node hit verification content")
 
 	conn := startGRPCTestServer(t, env.svc)
@@ -356,8 +356,8 @@ func TestT0191_GRPC_NodeAwareSearch_NodeTypeFilter(t *testing.T) {
 	defer env.stop(t)
 
 	// Same type; only one has a tag node.
-	seedGraphKO(t, env, "t0191-ntf-tagged", "spec", "tagged spec content", "my-tag")
-	seedGraphKO(t, env, "t0191-ntf-bare", "spec", "bare spec content")
+	seedGraphKO(t, env, "agentgraph-ntf-tagged", "spec", "tagged spec content", "my-tag")
+	seedGraphKO(t, env, "agentgraph-ntf-bare", "spec", "bare spec content")
 
 	conn := startGRPCTestServer(t, env.svc)
 	c := pb.NewQueryServiceClient(conn)
@@ -374,7 +374,7 @@ func TestT0191_GRPC_NodeAwareSearch_NodeTypeFilter(t *testing.T) {
 	// Only the tagged object should match the filter.
 	require.Equal(t, int32(1), resp.Total, "only tag-bearing object expected")
 	require.Len(t, resp.Results, 1)
-	assert.Equal(t, "t0191-ntf-tagged", resp.Results[0].Object.Id)
+	assert.Equal(t, "agentgraph-ntf-tagged", resp.Results[0].Object.Id)
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
