@@ -38,6 +38,7 @@ func TestUS0477_WatchPicksUpFileInNewSubdir(t *testing.T) {
 	mgr := watcher.NewManager(ws, watcher.StoreRecords(ws), stack.ServiceIngester(env.svc))
 	t.Cleanup(mgr.Stop)
 
+	n := 0
 	cfg := &storage.WatchConfig{
 		ID:              "subdir-watch",
 		Path:            root,
@@ -50,10 +51,18 @@ func TestUS0477_WatchPicksUpFileInNewSubdir(t *testing.T) {
 	}
 	require.NoError(t, mgr.AddWatch(ownerCtx(), cfg))
 
-	// Wait until the watcher is live: a probe file in the root must be
-	// ingested before the nested directory is created.
-	require.NoError(t, os.WriteFile(filepath.Join(root, "probe.md"), []byte("# Probe\n\nready\n"), 0o644))
-	waitForWatchJob(t, env.URL, "watch:generic:probe.md", 15*time.Second)
+	// Wait until the watcher is live. Registration with fsnotify happens
+	// on the watch goroutine after AddWatch returns, and a file written
+	// before that is never seen (no initial scan), so write a fresh probe
+	// file each round until one is ingested.
+	require.Eventually(t, func() bool {
+		n++
+		name := fmt.Sprintf("probe-%d.md", n)
+		if err := os.WriteFile(filepath.Join(root, name), []byte("# Probe\n\nready\n"), 0o644); err != nil {
+			return false
+		}
+		return watchJobExists(env.URL, "watch:generic:probe-", 500*time.Millisecond)
+	}, 20*time.Second, 50*time.Millisecond, "watcher never ingested a root-level probe file")
 
 	// Create a NEW nested subdirectory and a markdown file inside it.
 	// Regression: a subdirectory created after registration was never
@@ -109,4 +118,27 @@ func waitForWatchJob(t *testing.T, baseURL, sourceFragment string, within time.D
 	}
 	t.Fatalf("no job appeared with source containing %q within %s", sourceFragment, within)
 	return ""
+}
+
+// watchJobExists polls /api/v1/jobs for up to within, reporting whether a job
+// whose Source contains fragment appeared.
+func watchJobExists(baseURL, fragment string, within time.Duration) bool {
+	deadline := time.Now().Add(within)
+	for time.Now().Before(deadline) {
+		resp, err := gohttp.Get(baseURL + "/api/v1/jobs?limit=100")
+		if err == nil {
+			var payload struct {
+				Data []storage.Job `json:"data"`
+			}
+			_ = json.NewDecoder(resp.Body).Decode(&payload)
+			resp.Body.Close()
+			for _, j := range payload.Data {
+				if strings.Contains(j.Source, fragment) {
+					return true
+				}
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return false
 }

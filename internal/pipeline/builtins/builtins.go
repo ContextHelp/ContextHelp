@@ -150,7 +150,7 @@ var blobStepConstructors = map[string]func(storage.BlobStore, int64) pipeline.Pi
 
 // BuildOpts carries optional dependencies for registry construction.
 type BuildOpts struct {
-	Factory       *providers.Factory
+	Factory *providers.Factory
 	// OCR, when set, replaces the OCR provider ocr_extractor runs and
 	// counts as an available ocr capability. Tests use it to put a fake
 	// engine behind the builtin image.ocr pipeline.
