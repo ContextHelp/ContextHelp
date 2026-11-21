@@ -106,27 +106,6 @@ func TestUS0409_SchemaEvolution(t *testing.T) {
 		// "kubernetes" and "networking" seen 3x each → suggested.
 		require.Len(t, result.NewTopics, 2)
 	})
-
-	// -- Schema CRUD via config --
-
-	t.Run("schema_version_increments", func(t *testing.T) {
-		schema := config.ProfileSchema{}
-
-		schema.EntityTypes = append(schema.EntityTypes, "task")
-		schema.Version++
-
-		schema.TopicVocabulary = append(schema.TopicVocabulary, "deploy")
-		schema.Version++
-
-		schema.ClassificationRules = append(schema.ClassificationRules,
-			config.ClassificationRule{Pattern: "test", Type: "task"})
-		schema.Version++
-
-		assert.Equal(t, 3, schema.Version)
-		assert.Len(t, schema.EntityTypes, 1)
-		assert.Len(t, schema.TopicVocabulary, 1)
-		assert.Len(t, schema.ClassificationRules, 1)
-	})
 }
 
 type fakeLLM struct {

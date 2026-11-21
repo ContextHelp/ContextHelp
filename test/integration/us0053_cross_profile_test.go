@@ -39,10 +39,10 @@ func TestUS0053_GlobalSearchIncludesAllProfiles(t *testing.T) {
 	objs, _, err := env.svc.SearchObjects(ctx, "type==text", 50, 0)
 	require.NoError(t, err)
 
-	// Must include the global object; profile-scoped objects may or may not
-	// appear depending on implementation — but at minimum the global object must.
-	assert.True(t, containsIDPtr(objs, "cp-global"),
-		"global search must include objects without a profile_id")
+	// Aggregated search spans every profile plus the unscoped object.
+	for _, id := range []string{"cp-obj-a", "cp-obj-b", "cp-obj-c", "cp-global"} {
+		assert.True(t, containsIDPtr(objs, id), "global search must include %s", id)
+	}
 }
 
 // TestUS0053_PerProfileSearchSpansProfiles verifies that searches naming
@@ -105,8 +105,5 @@ func TestUS0053_AggregatedSearchViaHTTP(t *testing.T) {
 
 	var body searchResponse
 	decodeJSON(t, resp.Body, &body)
-	// The global search must surface at least the two profile-scoped articles
-	// (actual behaviour depends on whether the API returns profile objects in
-	// global mode, but the endpoint must not error).
-	assert.GreaterOrEqual(t, body.Total, 0)
+	assert.Equal(t, 2, body.Total, "aggregated search must return both profiles' articles")
 }

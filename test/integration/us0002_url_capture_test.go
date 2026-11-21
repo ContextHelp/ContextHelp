@@ -1,258 +1,121 @@
 package integration
 
+// US-0002: URL capture.
+//
+// Drives the real url.generic pipeline (url_fetcher, html_cleaner, ...)
+// against an httptest page server. Nothing but the remote site is faked.
+
 import (
-	"context"
-	"encoding/json"
 	"fmt"
 	gohttp "net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
-// ---------------------------------------------------------------------------
-// Mock pipeline steps for URL capture tests.
-// ---------------------------------------------------------------------------
+const (
+	us0002Title = "Understanding Distributed Systems"
+	us0002Body  = "Distributed systems require careful coordination between nodes."
+)
 
-// urlFetchStep simulates fetching and extracting content from a URL.
-type urlFetchStep struct {
-	pipeline.BaseContract
-	extractedTitle string
-	extractedBody  string
+// startPageServer serves one article and counts requests.
+func startPageServer(t *testing.T) (*httptest.Server, *atomic.Int64) {
+	t.Helper()
+	var hits atomic.Int64
+	srv := httptest.NewServer(gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
+		hits.Add(1)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprintf(w, `<html><head><title>%s</title><script>var tracker=1;</script></head>`+
+			`<body><article><h1>Heading</h1><p>%s</p></article></body></html>`, us0002Title, us0002Body)
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &hits
 }
 
-func (s *urlFetchStep) Name() string { return "test-url-fetch" }
-func (s *urlFetchStep) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
-	draft.Type = "url"
-	draft.TextContent = s.extractedBody
-	if draft.Metadata == nil {
-		draft.Metadata = make(map[string]any)
-	}
-	draft.Metadata["title"] = s.extractedTitle
-	draft.Metadata["extracted_body"] = s.extractedBody
-	return draft, nil
+func ingestURL(t *testing.T, env *testEnv, url string) (*storage.Job, storage.KnowledgeObject) {
+	t.Helper()
+	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
+		Content: url, Type: "url", Source: url,
+	})
+	require.NoError(t, err)
+	job := waitForJob(t, env.URL, jobID, storage.JobCompleted)
+	require.NotEmpty(t, job.ResultID)
+	return job, getObject(t, env.URL, job.ResultID)
 }
 
-// urlDedupStep simulates deduplication by recording a content hash.
-type urlDedupStep struct {
-	pipeline.BaseContract
-}
-
-func (s *urlDedupStep) Name() string { return "test-url-dedup" }
-func (s *urlDedupStep) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
-	if draft.Metadata == nil {
-		draft.Metadata = make(map[string]any)
-	}
-	// Simulated: record source_url as fingerprint for dedup checks.
-	draft.Metadata["source_url_fingerprint"] = draft.Source
-	return draft, nil
-}
-
-// ---------------------------------------------------------------------------
-// US-0002 Tests
-// ---------------------------------------------------------------------------
-
-// TestUS0002_URLIngestReturnsJobID verifies POST /analyze with URL source returns 202 + job_id.
+// POST /analyze with a URL returns 202 + job_id and the job is selected onto
+// the url.generic pipeline without the caller naming one.
 func TestUS0002_URLIngestReturnsJobID(t *testing.T) {
+	srv, _ := startPageServer(t)
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Upsert("url.article", &pipeline.Pipeline{
-		PipelineName: "url.article",
-		Steps: []pipeline.PipelineStep{
-			&urlFetchStep{
-				extractedTitle: "Test Article",
-				extractedBody:  "Article body text",
-			},
-		},
-	})
+	jobID := postForJobID(t, env.URL+"/api/v1/analyze", []byte(fmt.Sprintf(
+		`{"content":%q,"type":"url","source":%q}`, srv.URL+"/a", srv.URL+"/a")))
+	require.NotEmpty(t, jobID)
 
-	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
-		Content:  "https://example.com/article",
-		Type:     "url",
-		Pipeline: "url.article",
-		Source:   "https://example.com/article",
-	})
-	require.NoError(t, err)
-	assert.NotEmpty(t, jobID)
+	job := waitForJob(t, env.URL, jobID, storage.JobCompleted)
+	assert.Equal(t, "url.generic", job.Pipeline)
 }
 
-// TestUS0002_TitleAndBodyExtracted verifies title and body are extracted after URL ingestion.
+// The fetched page's title and body text land in the stored object and
+// script content does not.
 func TestUS0002_TitleAndBodyExtracted(t *testing.T) {
+	srv, hits := startPageServer(t)
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	const sourceURL = "https://example.com/article-title-body"
-	const wantTitle = "Understanding Distributed Systems"
-	const wantBody = "Distributed systems require careful coordination between nodes."
+	_, obj := ingestURL(t, env, srv.URL+"/a")
 
-	env.svc.Pipes.Upsert("url.article", &pipeline.Pipeline{
-		PipelineName: "url.article",
-		Steps: []pipeline.PipelineStep{
-			&urlFetchStep{
-				extractedTitle: wantTitle,
-				extractedBody:  wantBody,
-			},
-		},
-	})
-
-	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
-		Content:  sourceURL,
-		Type:     "url",
-		Pipeline: "url.article",
-		Source:   sourceURL,
-	})
-	require.NoError(t, err)
-
-	job := waitForJob(t, env.URL, jobID, storage.JobCompleted)
-	require.NotEmpty(t, job.ResultID)
-
-	resp, err := gohttp.Get(fmt.Sprintf("%s/api/v1/objects/%s", env.URL, job.ResultID))
-	require.NoError(t, err)
-	defer resp.Body.Close()
-	require.Equal(t, gohttp.StatusOK, resp.StatusCode)
-
-	var obj storage.KnowledgeObject
-	require.NoError(t, json.NewDecoder(resp.Body).Decode(&obj))
-
-	assert.Equal(t, wantTitle, obj.Metadata["title"], "title should be extracted")
-	assert.Equal(t, wantBody, obj.Metadata["extracted_body"], "body should be extracted")
+	assert.EqualValues(t, 1, hits.Load(), "page must be fetched exactly once")
+	assert.Contains(t, obj.TextContent, us0002Title)
+	assert.Contains(t, obj.TextContent, us0002Body)
+	assert.NotContains(t, obj.TextContent, "tracker", "script content must be stripped")
+	assert.Contains(t, obj.Metadata["content_type"], "text/html")
 }
 
-// TestUS0002_SourceURLStoredOnObject verifies original URL is stored as Source on the object.
+// The original URL is stored as the object's source.
 func TestUS0002_SourceURLStoredOnObject(t *testing.T) {
+	srv, _ := startPageServer(t)
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	const sourceURL = "https://example.com/source-url-test"
+	url := srv.URL + "/source-url-test"
+	_, obj := ingestURL(t, env, url)
 
-	env.svc.Pipes.Upsert("url.article", &pipeline.Pipeline{
-		PipelineName: "url.article",
-		Steps: []pipeline.PipelineStep{
-			&urlFetchStep{
-				extractedTitle: "Source URL Test",
-				extractedBody:  "Some content",
-			},
-		},
-	})
-
-	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
-		Content:  sourceURL,
-		Type:     "url",
-		Pipeline: "url.article",
-		Source:   sourceURL,
-	})
-	require.NoError(t, err)
-
-	job := waitForJob(t, env.URL, jobID, storage.JobCompleted)
-	require.NotEmpty(t, job.ResultID)
-
-	resp, err := gohttp.Get(fmt.Sprintf("%s/api/v1/objects/%s", env.URL, job.ResultID))
-	require.NoError(t, err)
-	defer resp.Body.Close()
-
-	var obj storage.KnowledgeObject
-	require.NoError(t, json.NewDecoder(resp.Body).Decode(&obj))
-
-	assert.Equal(t, sourceURL, obj.Source, "source_url must be stored on object")
+	assert.Equal(t, url, obj.Source)
+	assert.Equal(t, url, obj.Metadata["final_url"])
 }
 
-// TestUS0002_DedupOnReIngestSameURL verifies that re-ingesting the same URL produces
-// a stable content hash (dedup fingerprint) on both objects.
+// Re-ingesting an unchanged URL resolves to the same object (content-hash
+// dedup) instead of creating a duplicate.
 func TestUS0002_DedupOnReIngestSameURL(t *testing.T) {
+	srv, hits := startPageServer(t)
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	const sourceURL = "https://example.com/dedup-test"
+	url := srv.URL + "/dedup-test"
+	job1, obj1 := ingestURL(t, env, url)
+	job2, obj2 := ingestURL(t, env, url)
 
-	env.svc.Pipes.Upsert("url.article", &pipeline.Pipeline{
-		PipelineName: "url.article",
-		Steps: []pipeline.PipelineStep{
-			&urlFetchStep{
-				extractedTitle: "Dedup Article",
-				extractedBody:  "Stable content for dedup verification",
-			},
-			&urlDedupStep{},
-		},
-	})
-
-	// First ingest.
-	jobID1, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
-		Content:  sourceURL,
-		Type:     "url",
-		Pipeline: "url.article",
-		Source:   sourceURL,
-	})
-	require.NoError(t, err)
-	job1 := waitForJob(t, env.URL, jobID1, storage.JobCompleted)
-	require.NotEmpty(t, job1.ResultID)
-
-	// Second ingest of the same URL.
-	jobID2, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
-		Content:  sourceURL,
-		Type:     "url",
-		Pipeline: "url.article",
-		Source:   sourceURL,
-	})
-	require.NoError(t, err)
-	job2 := waitForJob(t, env.URL, jobID2, storage.JobCompleted)
-	require.NotEmpty(t, job2.ResultID)
-
-	// Both objects should have identical source_url_fingerprint.
-	getObj := func(id string) storage.KnowledgeObject {
-		resp, err := gohttp.Get(fmt.Sprintf("%s/api/v1/objects/%s", env.URL, id))
-		require.NoError(t, err)
-		defer resp.Body.Close()
-		var obj storage.KnowledgeObject
-		require.NoError(t, json.NewDecoder(resp.Body).Decode(&obj))
-		return obj
-	}
-
-	obj1 := getObj(job1.ResultID)
-	obj2 := getObj(job2.ResultID)
-
-	assert.Equal(t, obj1.Metadata["source_url_fingerprint"], obj2.Metadata["source_url_fingerprint"],
-		"same URL should produce identical dedup fingerprint on re-ingest")
-	assert.Equal(t, sourceURL, obj1.Source)
-	assert.Equal(t, sourceURL, obj2.Source)
+	assert.NotEqual(t, job1.ID, job2.ID)
+	assert.Equal(t, obj1.ID, obj2.ID, "unchanged page must not create a second object")
+	assert.Equal(t, obj1.ContentHash, obj2.ContentHash)
+	assert.EqualValues(t, 2, hits.Load(), "both runs fetch; dedup happens on content")
 }
 
-// TestUS0002_URLPipelineAssigned verifies the correct pipeline is recorded on the object.
+// The pipeline that produced the object is recorded on it.
 func TestUS0002_URLPipelineAssigned(t *testing.T) {
+	srv, _ := startPageServer(t)
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	env.svc.Pipes.Upsert("url.article", &pipeline.Pipeline{
-		PipelineName: "url.article",
-		Steps: []pipeline.PipelineStep{
-			&urlFetchStep{
-				extractedTitle: "Pipeline Test",
-				extractedBody:  "Content for pipeline check",
-			},
-		},
-	})
-
-	jobID, err := env.svc.Analyze(ownerCtx(), service.AnalyzeRequest{
-		Content:  "https://example.com/pipeline-test",
-		Type:     "url",
-		Pipeline: "url.article",
-		Source:   "https://example.com/pipeline-test",
-	})
-	require.NoError(t, err)
-
-	job := waitForJob(t, env.URL, jobID, storage.JobCompleted)
-	require.NotEmpty(t, job.ResultID)
-
-	resp, err := gohttp.Get(fmt.Sprintf("%s/api/v1/objects/%s", env.URL, job.ResultID))
-	require.NoError(t, err)
-	defer resp.Body.Close()
-
-	var obj storage.KnowledgeObject
-	require.NoError(t, json.NewDecoder(resp.Body).Decode(&obj))
-	assert.Equal(t, "url.article", obj.Pipeline, "pipeline should be url.article")
+	_, obj := ingestURL(t, env, srv.URL+"/pipeline-test")
+	assert.Equal(t, "url.generic", obj.Pipeline)
 }
