@@ -74,7 +74,8 @@ func TestUS0002_TitleAndBodyExtracted(t *testing.T) {
 	_, obj := ingestURL(t, env, srv.URL+"/a")
 
 	assert.EqualValues(t, 1, hits.Load(), "page must be fetched exactly once")
-	assert.Contains(t, obj.TextContent, us0002Title)
+	assert.Equal(t, us0002Title, obj.Metadata["title"], "page title goes to metadata")
+	assert.NotContains(t, obj.TextContent, us0002Title, "title is not repeated in the body")
 	assert.Contains(t, obj.TextContent, us0002Body)
 	assert.NotContains(t, obj.TextContent, "tracker", "script content must be stripped")
 	assert.Contains(t, obj.Metadata["content_type"], "text/html")
