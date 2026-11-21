@@ -258,6 +258,13 @@ func (p *WorkerPool) processWithHops(ctx context.Context, job *storage.Job) (*st
 func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 	start := time.Now()
 
+	// A job queued before its pipeline was archived must not run it:
+	// archived pipelines are retained but disabled.
+	if p.pipelineArchived(ctx, job.Pipeline) {
+		p.markFailed(ctx, job.ID, fmt.Sprintf("pipeline %q is archived", job.Pipeline))
+		return
+	}
+
 	draft, err := p.processWithHops(ctx, job)
 	if err != nil {
 		var perm *pipeline.PermanentError
@@ -544,6 +551,19 @@ func (p *WorkerPool) putVectors(ctx context.Context, objectID string, draft *sto
 	if err := p.store.Embeddings().Put(ctx, objectID, draft.Vectors); err != nil {
 		slog.Warn("jobs: embeddings not stored; ingest continues", "object", objectID, "err", err)
 	}
+}
+
+// pipelineArchived reports whether name is a stored pipeline that is
+// archived. A pipeline in the registry (built-in) is never archived.
+func (p *WorkerPool) pipelineArchived(ctx context.Context, name string) bool {
+	if name == "" || p.store == nil {
+		return false
+	}
+	if _, err := p.pipelines.Get(name); err == nil {
+		return false
+	}
+	pl, err := p.store.Pipelines().Get(ctx, name)
+	return err == nil && pl != nil && pl.Archived
 }
 
 // retryOrFail requeues a job after a transient error, failing it once
