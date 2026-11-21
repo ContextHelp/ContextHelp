@@ -169,3 +169,20 @@ func TestCreatePipelineValidation(t *testing.T) {
 		}
 	})
 }
+
+// A service without a built-in step predicate cannot tell a built-in from a
+// typo, so CreatePipeline refuses any pipeline that names steps rather than
+// accept unknown ones. Step-less pipelines need no predicate.
+func TestCreatePipelineFailsClosedWithoutStepPredicate(t *testing.T) {
+	svc := newTestService(t)
+	svc.Installer.Reserved = nil
+
+	_, err := svc.CreatePipeline(ownerCtx(), CreatePipelineRequest{Name: "p-closed", Steps: `[{"name":"definitely_not_a_step"}]`})
+	require.Error(t, err)
+	require.NotErrorIs(t, err, domain.ErrConflict)
+	_, getErr := svc.GetPipeline(ownerCtx(), "p-closed")
+	require.Error(t, getErr, "a refused pipeline must not be persisted")
+
+	_, err = svc.CreatePipeline(ownerCtx(), CreatePipelineRequest{Name: "p-empty", Steps: `[]`})
+	require.NoError(t, err)
+}
