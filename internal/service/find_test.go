@@ -235,3 +235,33 @@ func TestResolveFind_Filter(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 3, filter.Limit)
 }
+
+// Every executed find is persisted to search history with its profile,
+// mode and result count; repeats are separate entries (US-0055). A
+// trace run is not a typed query and records nothing.
+func TestFind_RecordsSearchHistory(t *testing.T) {
+	f := newSemanticFixture(t)
+	ctx := ownerCtx()
+
+	for i := 0; i < 2; i++ {
+		res, err := f.svc.Find(ctx, FindRequest{Query: semanticQuery, Mode: FindModeFTS, Profile: "growth"}, f.sem)
+		require.NoError(t, err)
+		require.NotEmpty(t, res.Objects)
+	}
+	_, err := f.svc.Find(ctx, FindRequest{Query: semanticQuery, Trace: true}, f.sem)
+	require.NoError(t, err)
+
+	got, err := f.svc.ListSearchHistory(ctx, storage.SearchHistoryFilter{ProfileID: "growth", Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, got, 2, "identical queries are not deduplicated; trace runs are not recorded")
+	assert.Equal(t, semanticQuery, got[0].Query)
+	assert.Equal(t, FindModeFTS, got[0].StrategiesUsed)
+	assert.Equal(t, 1, got[0].ResultCount)
+
+	// An invalid request never ran: nothing recorded.
+	_, err = f.svc.Find(ctx, FindRequest{Query: " ", Profile: "growth"}, f.sem)
+	require.Error(t, err)
+	got, err = f.svc.ListSearchHistory(ctx, storage.SearchHistoryFilter{ProfileID: "growth", Limit: 10})
+	require.NoError(t, err)
+	assert.Len(t, got, 2)
+}

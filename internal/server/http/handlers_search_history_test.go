@@ -81,3 +81,26 @@ func TestClearSearchHistory_MissingProfileID(t *testing.T) {
 	resp.Body.Close()
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
+
+// A search through /search is recorded and listable through /search-history.
+func TestSearch_RecordsHistory(t *testing.T) {
+	ts := newTestServerBundle(t)
+	defer ts.Close()
+
+	for i := 0; i < 2; i++ {
+		resp, err := http.Get(ts.URL + "/api/v1/search?q=type==article&profile=prof_rec")
+		require.NoError(t, err)
+		resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+	}
+
+	resp, err := http.Get(ts.URL + "/api/v1/search-history?profile_id=prof_rec")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	var out struct {
+		Data []*storage.SearchHistoryEntry `json:"data"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
+	require.Len(t, out.Data, 2, "repeated identical queries are separate entries")
+	assert.Equal(t, "type==article", out.Data[0].Query)
+}
