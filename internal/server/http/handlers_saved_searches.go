@@ -2,12 +2,25 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
+
+// writeSearchStateError answers a saved-search or search-history store
+// failure: 501 NOT_IMPLEMENTED when the backend has no such store (the
+// Postgres placeholders), 500 otherwise. what names the store for the
+// 501's message.
+func writeSearchStateError(w http.ResponseWriter, err error, what string) {
+	if errors.Is(err, storage.ErrNotImplemented) {
+		WriteError(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", what+" are not supported by this storage backend")
+		return
+	}
+	WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+}
 
 // CreateSavedSearch handles POST /api/v1/saved-searches
 func CreateSavedSearch(svc *service.Service) http.HandlerFunc {
@@ -39,7 +52,7 @@ func CreateSavedSearch(svc *service.Service) http.HandlerFunc {
 			Notify:    req.Notify,
 		})
 		if err != nil {
-			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+			writeSearchStateError(w, err, "saved searches")
 			return
 		}
 		WriteJSON(w, http.StatusCreated, ss)
@@ -57,7 +70,7 @@ func ListSavedSearches(svc *service.Service) http.HandlerFunc {
 		}
 		results, err := svc.ListSavedSearches(r.Context(), filter)
 		if err != nil {
-			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+			writeSearchStateError(w, err, "saved searches")
 			return
 		}
 		if results == nil {
@@ -73,7 +86,7 @@ func GetSavedSearch(svc *service.Service) http.HandlerFunc {
 		name := chi.URLParam(r, "name")
 		ss, err := svc.GetSavedSearch(r.Context(), name)
 		if err != nil {
-			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+			writeSearchStateError(w, err, "saved searches")
 			return
 		}
 		if ss == nil {
@@ -89,7 +102,7 @@ func DeleteSavedSearch(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		name := chi.URLParam(r, "name")
 		if err := svc.DeleteSavedSearch(r.Context(), name); err != nil {
-			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+			writeSearchStateError(w, err, "saved searches")
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
