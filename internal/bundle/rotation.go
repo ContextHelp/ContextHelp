@@ -91,13 +91,12 @@ func rotationMessage(oldFP, newFP, ts string) ([]byte, error) {
 type RotateResult struct {
 	OldFingerprint string
 	NewFingerprint string
-	// OldKeyArchive is the path of the archived old private-key backup file.
-	OldKeyArchive string
 }
 
 // RotateKeys generates a new Ed25519 keypair, creates a transition record
-// signed by both keys, appends it to the rotation log, and archives the old
-// private key. The new keypair is NOT persisted to the keychain — the caller
+// signed by both keys, and appends it to the rotation log. The outgoing
+// private key is never persisted: verifying old bundles needs only public
+// keys and the signed rotation chain. The new keypair is NOT persisted to the keychain — the caller
 // is responsible for calling StorePrivateKey(newKP.Private).
 func RotateKeys(keysDir string, oldPriv ed25519.PrivateKey) (KeyPair, RotateResult, error) {
 	oldPub := PublicFromPrivate(oldPriv)
@@ -137,19 +136,9 @@ func RotateKeys(keysDir string, oldPriv ed25519.PrivateKey) (KeyPair, RotateResu
 		return KeyPair{}, RotateResult{}, err
 	}
 
-	// Archive old private key as signing.key.bak.<timestamp-safe>.
-	archiveName := fmt.Sprintf("signing.key.bak.%s",
-		time.Now().UTC().Format("20060102T150405Z"))
-	archivePath := filepath.Join(keysDir, archiveName)
-	if err := os.WriteFile(archivePath,
-		[]byte(hex.EncodeToString(oldPriv)), 0600); err != nil {
-		return KeyPair{}, RotateResult{}, fmt.Errorf("bundle: rotate: archive old key: %w", err)
-	}
-
 	res := RotateResult{
 		OldFingerprint: oldFP,
 		NewFingerprint: newKP.Fingerprint,
-		OldKeyArchive:  archivePath,
 	}
 	return newKP, res, nil
 }
