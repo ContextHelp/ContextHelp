@@ -73,3 +73,17 @@ func TestDraftContentHash(t *testing.T) {
 		assert.NotEqual(t, DraftContentHash("a", "src", nil), DraftContentHash("b", "src", nil))
 	})
 }
+
+// Content that is not valid UTF-8 (a binary file) hashes over its exact
+// bytes: case folding would turn each invalid byte into U+FFFD, so a
+// corrupted copy and the original would share a hash.
+func TestContentHashBinaryIsByteExact(t *testing.T) {
+	orig := "\x89PNG\r\n\x1a\n\x00\xff\xfe"
+	corrupt := "\x89PNG\r\n\x1a\n\x00��"
+	assert.NotEqual(t, ContentHash(orig, "s"), ContentHash(corrupt, "s"), "original vs corrupted copy")
+	assert.NotEqual(t, ContentHash("\xff\xfe\x80", "s"), ContentHash("\xfe\xff\x80", "s"), "binaries differing only in invalid bytes")
+	assert.Equal(t, ContentHash(orig, "s"), ContentHash(orig, "s"))
+	assert.NotEqual(t, ContentHash(orig, "s"), ContentHash(orig, "t"), "source still part of the hash")
+	// Binary keeps its whitespace and case: no normalisation.
+	assert.NotEqual(t, ContentHash("A \xff", "s"), ContentHash("a  \xff", "s"))
+}
