@@ -6,6 +6,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
+
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 func TestCapturePage_MissingURL(t *testing.T) {
@@ -77,5 +80,29 @@ func TestListRecentCaptures(t *testing.T) {
 
 	if rr.Code != http.StatusOK {
 		t.Errorf("expected 200, got %d", rr.Code)
+	}
+}
+
+// A capture aimed at an archived pipeline is refused with 409.
+func TestCapturePage_ArchivedPipelineConflicts(t *testing.T) {
+	ts := newTestServerBundle(t)
+	defer ts.Close()
+	now := time.Now().Truncate(time.Second)
+	if err := ts.svc.Store(ownerCtx()).Pipelines().Create(ownerCtx(), &storage.Pipeline{
+		ID: "p-arch", Name: "user.archived", Archived: true, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	body, _ := json.Marshal(map[string]string{
+		"url": "https://example.com/a", "title": "t", "content": "body", "pipeline": "user.archived",
+	})
+	resp, err := http.Post(ts.URL+"/api/v1/capture/page", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("expected 409, got %d", resp.StatusCode)
 	}
 }
