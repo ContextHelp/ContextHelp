@@ -69,6 +69,9 @@ func (m *memObjectStore) CountBlobRefs(_ context.Context, _ string) (int, error)
 func (m *memObjectStore) ListBySQL(_ context.Context, _ string, _ []any, _ storage.ObjectFilter) ([]*storage.KnowledgeObject, int, error) {
 	return nil, 0, nil
 }
+func (*memObjectStore) MatchBySQL(_ context.Context, _ []string, _ []storage.SQLPredicate) (map[string][]bool, error) {
+	return nil, nil
+}
 
 func (m *memObjectStore) Reinforce(_ context.Context, _ string, _ *storage.KnowledgeObject) (string, error) {
 	return "", nil
