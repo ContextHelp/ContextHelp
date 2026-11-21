@@ -609,7 +609,7 @@ func safeAdvancePoint(visits []visitOutcome) (time.Time, bool) {
 // historySample picks the first allowed and the first denied visits, up
 // to historySampleSize each, in time order.
 func historySample(all []visitOutcome) []visitOutcome {
-	out := []visitOutcome{}
+	out := make([]visitOutcome, 0, min(len(all), 2*historySampleSize))
 	var allowed, denied int
 	for _, o := range all {
 		switch {

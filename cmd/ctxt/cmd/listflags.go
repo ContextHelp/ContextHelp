@@ -18,7 +18,7 @@ const (
 // splitListTokens splits every value on commas and whitespace, dropping
 // empties. Repeats, commas and spaces mix freely.
 func splitListTokens(vals []string) []string {
-	var out []string
+	out := make([]string, 0, len(vals))
 	for _, v := range vals {
 		out = append(out, strings.FieldsFunc(v, func(r rune) bool {
 			return r == ',' || r == ' ' || r == '\t' || r == '\n' || r == '\r'

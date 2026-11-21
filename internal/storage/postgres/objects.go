@@ -843,7 +843,7 @@ func (s *ObjectStore) nodeTypeObjectIDs(ctx context.Context, nodeTypes []string)
 	}
 	// Only objects that have ALL requested node types are returned.
 	placeholders := make([]string, len(nodeTypes))
-	args := make([]any, len(nodeTypes))
+	args := make([]any, len(nodeTypes), len(nodeTypes)+1)
 	for i, t := range nodeTypes {
 		placeholders[i] = fmt.Sprintf("$%d", i+1)
 		args[i] = t

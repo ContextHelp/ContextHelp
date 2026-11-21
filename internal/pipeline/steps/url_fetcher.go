@@ -24,6 +24,7 @@ type URLFetcher struct {
 type URLFetcherOption func(*URLFetcher)
 
 // WithURLHTTPClient sets a custom HTTP client for the fetcher.
+//
 // Deprecated: prefer WithURLClientBridge for full bridge configuration.
 // Kept for backward compatibility.
 func WithURLHTTPClient(c *http.Client) URLFetcherOption {
