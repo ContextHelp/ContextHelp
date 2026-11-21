@@ -40,6 +40,11 @@ type KnowledgeObject struct {
 	UpdatedAt          time.Time      `json:"updated_at"`
 	FTSIndexed         bool           `json:"fts_indexed"`
 	ProfileID          string         `json:"profile_id,omitempty"` // owning profile; empty = global
+	// SessionID groups objects captured in one work session (ADR-067): an
+	// opaque id the ambient daemon cuts client-side. Soft FK, no sessions
+	// row is required; empty for non-ambient captures. First capture wins
+	// on a content-hash dedup: a reinforcing re-capture never replaces it.
+	SessionID string `json:"session_id,omitempty"`
 	// Classes are the object's content classes (ADR-080 §3), sorted and
 	// unique: set by the class rules at ingest or by hand, read by share
 	// policies (exclude_classes) and principal ceilings (deny_classes).
@@ -389,6 +394,11 @@ type Job struct {
 	// as KnowledgeObject.SourceKey, so a later submission of the same key
 	// updates that object instead of creating another.
 	UserSourceKey string `json:"user_source_key,omitempty"`
+	// UserAmbient is the ambient-capture context the enqueue client sent
+	// (ADR-066/067): source, fingerprint, session id and free-form client
+	// metadata. The worker lands it on the draft. Stored as one JSON
+	// object in the user_ambient column; nil when none was sent.
+	UserAmbient *AmbientContext `json:"user_ambient,omitempty"`
 	// IdempotencyKey is the client-generated key for one logical
 	// submission. The enqueue surface dedupes on it: a replay carrying
 	// a key already present returns the existing job instead of minting
@@ -401,6 +411,20 @@ type Job struct {
 	// worker whose job was requeued and claimed again cannot renew or
 	// release the new owner's lease. Set only on AcquireNext's result.
 	Claim string `json:"-"`
+}
+
+// AmbientContext is the ambient-capture envelope that rides on a job from
+// the enqueue surface to the worker (ADR-066, ADR-067).
+type AmbientContext struct {
+	Source      string         `json:"source,omitempty"`
+	Fingerprint string         `json:"fingerprint,omitempty"`
+	SessionID   string         `json:"session_id,omitempty"`
+	Metadata    map[string]any `json:"metadata,omitempty"`
+}
+
+// Empty reports whether c carries nothing.
+func (c *AmbientContext) Empty() bool {
+	return c == nil || (c.Source == "" && c.Fingerprint == "" && c.SessionID == "" && len(c.Metadata) == 0)
 }
 
 // JobFilter specifies criteria for listing jobs.

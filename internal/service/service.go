@@ -397,7 +397,8 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 		UserNote:     req.Note,     // forwarded to draft.InboxNote in worker.
 		UserData:     req.Data,     // forwarded to draft.Metadata["data"] in worker.
 
-		UserSourceKey:  req.SourceKey, // forwarded to draft.SourceKey in worker.
+		UserSourceKey:  req.SourceKey,        // forwarded to draft.SourceKey in worker.
+		UserAmbient:    req.ambientContext(), // forwarded to draft metadata + SessionID in worker.
 		IdempotencyKey: req.IdempotencyKey,
 	}
 
@@ -441,6 +442,7 @@ func (s *Service) analyzeRaw(ctx context.Context, req AnalyzeRequest, detectedTy
 	if len(req.Data) > 0 {
 		obj.Metadata = map[string]any{storageutil.MetadataDataKey: req.Data}
 	}
+	storageutil.ApplyAmbient(obj, req.ambientContext())
 	// A raw submission under a stored source key updates that object.
 	if req.SourceKey != "" {
 		stored, err := s.Store(ctx).Objects().GetBySourceKey(ctx, req.SourceKey, req.Profile)
@@ -1017,6 +1019,7 @@ func (s *Service) Enqueue(ctx context.Context, req AnalyzeRequest) (string, erro
 		UserNote:      req.Note,
 		UserData:      req.Data,
 		UserSourceKey: req.SourceKey,
+		UserAmbient:   req.ambientContext(),
 	}
 
 	if err := s.Queue.Enqueue(ctx, job); err != nil {

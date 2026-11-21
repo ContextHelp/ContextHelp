@@ -183,3 +183,75 @@ func TestAnalyzeRawSourceKeyIsScopedToProfile(t *testing.T) {
 	assert.Equal(t, "bob", objB.ProfileID)
 	assert.Equal(t, "bob note", objB.InboxNote)
 }
+
+func TestAnalyzeCarriesAmbientFieldsOnJob(t *testing.T) {
+	svc := newTestService(t)
+	ctx := ownerCtx()
+
+	jobID, err := svc.Analyze(ctx, AnalyzeRequest{
+		Content: "ambient body", Type: "text", Pipeline: "text.short",
+		AmbientSource: "clipboard", Fingerprint: "sha256:f", SessionID: "sess_x",
+		Metadata: map[string]any{"app_name": "Terminal"},
+	})
+	require.NoError(t, err)
+	job, err := svc.store.Jobs().Get(ctx, jobID)
+	require.NoError(t, err)
+	assert.Equal(t, &storage.AmbientContext{
+		Source: "clipboard", Fingerprint: "sha256:f", SessionID: "sess_x",
+		Metadata: map[string]any{"app_name": "Terminal"},
+	}, job.UserAmbient)
+
+	jobID, err = svc.Enqueue(ctx, AnalyzeRequest{
+		Content: "ambient body 2", Type: "text", Pipeline: "text.short", SessionID: "sess_y",
+	})
+	require.NoError(t, err)
+	job, err = svc.store.Jobs().Get(ctx, jobID)
+	require.NoError(t, err)
+	require.NotNil(t, job.UserAmbient)
+	assert.Equal(t, "sess_y", job.UserAmbient.SessionID)
+
+	jobID, err = svc.Analyze(ctx, AnalyzeRequest{Content: "plain body", Type: "text", Pipeline: "text.short"})
+	require.NoError(t, err)
+	job, err = svc.store.Jobs().Get(ctx, jobID)
+	require.NoError(t, err)
+	assert.Nil(t, job.UserAmbient, "no ambient fields -> no ambient context")
+}
+
+func TestAnalyzeRawStoresAmbientFields(t *testing.T) {
+	svc := newTestService(t)
+	ctx := ownerCtx()
+
+	id, err := svc.Analyze(ctx, AnalyzeRequest{
+		Content: "raw ambient body about pangolins", Type: "text", Raw: true,
+		AmbientSource: "clipboard", Fingerprint: "sha256:r", SessionID: "sess_raw",
+		Metadata: map[string]any{"app_name": "Notes", "ambient_source": "spoof"},
+	})
+	require.NoError(t, err)
+	obj, err := svc.store.Objects().Get(ctx, id)
+	require.NoError(t, err)
+	assert.Equal(t, "sess_raw", obj.SessionID)
+	assert.Equal(t, "clipboard", obj.Metadata["ambient_source"])
+	assert.Equal(t, "sha256:r", obj.Metadata["fingerprint"])
+	assert.Equal(t, "Notes", obj.Metadata["app_name"])
+}
+
+func TestAnalyzeRejectsOversizedAmbientFields(t *testing.T) {
+	svc := newTestService(t)
+	ctx := ownerCtx()
+
+	_, err := svc.Analyze(ctx, AnalyzeRequest{Content: "x", Type: "text",
+		Metadata: map[string]any{"blob": strings.Repeat("m", MaxAnalyzeMetadataBytes)}})
+	assert.True(t, errors.Is(err, ErrInvalidSubmission), "metadata: %v", err)
+
+	for name, req := range map[string]AnalyzeRequest{
+		"ambient_source": {AmbientSource: strings.Repeat("s", MaxAnalyzeAmbientIDBytes+1)},
+		"fingerprint":    {Fingerprint: strings.Repeat("f", MaxAnalyzeAmbientIDBytes+1)},
+		"session_id":     {SessionID: strings.Repeat("i", MaxAnalyzeAmbientIDBytes+1)},
+	} {
+		req.Content, req.Type = "x", "text"
+		_, err := svc.Analyze(ctx, req)
+		assert.True(t, errors.Is(err, ErrInvalidSubmission), "%s: %v", name, err)
+		_, err = svc.Enqueue(ctx, req)
+		assert.True(t, errors.Is(err, ErrInvalidSubmission), "enqueue %s: %v", name, err)
+	}
+}
