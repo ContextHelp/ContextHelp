@@ -28,6 +28,9 @@ type RouterConfig struct {
 	// Watcher is optional (nil-safe); nil disables live watch management
 	// but keeps CRUD.
 	Watcher *watcher.Manager
+	// SSE tunes GET /api/v1/events; the zero value is the production
+	// setting.
+	SSE SSEConfig
 	// Probes injects runtime healthcheck signals into /healthz.
 	Probes HealthzProbes
 	// Auth guards the /api/v1 route table (MCP mount included) behind
