@@ -23,7 +23,26 @@ type StepContract struct {
 // SkipsBinary reports whether step must not run on draft: its content is
 // binary and the step does not declare Binary.
 func SkipsBinary(step PipelineStep, draft *storage.KnowledgeObject) bool {
-	return draft != nil && !step.Contract().Binary && blobref.NeedsBlob(draft.RawContent)
+	return draft != nil && !step.Contract().Binary && HoldsBinary(draft)
+}
+
+// HoldsBinary reports whether draft's content is binary: held in
+// RawContent, or externalized by an earlier step to a blob the draft
+// still carries (BlobContent), where RawContent is only its ref.
+func HoldsBinary(draft *storage.KnowledgeObject) bool {
+	return blobref.NeedsBlob(ContentBytes(draft))
+}
+
+// ContentBytes is draft's content: RawContent, or, when an earlier step
+// externalized it to a blob the draft still carries, those bytes rather
+// than the ref.
+func ContentBytes(draft *storage.KnowledgeObject) string {
+	if key, ok := blobref.Key(draft.RawContent); ok {
+		if content, held := draft.BlobContent[key]; held {
+			return content
+		}
+	}
+	return draft.RawContent
 }
 
 // BaseContract provides a default Contract() implementation for embedding in step structs.

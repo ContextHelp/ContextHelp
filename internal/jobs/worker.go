@@ -310,7 +310,9 @@ func (p *WorkerPool) processWithHops(ctx context.Context, job *storage.Job) (*st
 
 	// The dedup hash is over the content itself: analyze hashes the bytes,
 	// so hashing the blob ref ExternalizeBinary leaves would never match.
-	draft.ContentHash = storageutil.DraftContentHash(draft.RawContent, draft.Source, draft.Metadata)
+	// A pipeline that externalized mid-run left a ref in RawContent: the
+	// hash is over the bytes it stands for.
+	draft.ContentHash = storageutil.DraftContentHash(pipeline.ContentBytes(draft), draft.Source, draft.Metadata)
 
 	// Binary content cannot live in the row (a TEXT column), whether or
 	// not the pipeline externalizes: it goes to the blob store here.
