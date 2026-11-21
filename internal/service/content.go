@@ -95,7 +95,7 @@ func hasBlobRef(obj *storage.KnowledgeObject) bool {
 }
 
 // storable returns the row to write for obj: a copy whose content is
-// externalized again when it is above the threshold, and whose preview
+// externalized again when it is above the threshold or binary, and whose preview
 // (MetaContentTruncated) is replaced by the ref it was read from, so
 // writing back what a read returned never inlines or truncates content.
 // obj itself is left as the caller has it.
@@ -122,6 +122,16 @@ func (s *Service) storable(ctx context.Context, obj *storage.KnowledgeObject) (*
 		return &cp, nil
 	}
 	delete(cp.Metadata, MetaContentTruncated)
+
+	// Binary content cannot live in a text column at any size: it goes
+	// to the blob store whatever the threshold.
+	if blobref.NeedsBlob(cp.RawContent) {
+		out, err := psteps.ExternalizeBinary(ctx, s.Store(ctx).Blobs(), &cp)
+		if err != nil {
+			return nil, fmt.Errorf("object %s: %w", obj.ID, err)
+		}
+		return out, nil
+	}
 
 	threshold := s.Cfg.Storage.Blob.Threshold
 	if threshold <= 0 || s.Store(ctx).Blobs() == nil || blob.IsBlobRef(cp.RawContent) || int64(len(cp.RawContent)) <= threshold {

@@ -17,6 +17,7 @@ type AudioTranscriber struct {
 func NewAudioTranscriber(opts ...func(*AudioTranscriber)) *AudioTranscriber {
 	a := &AudioTranscriber{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
+			Binary:       true,
 			Requires:     []string{"Source", "ContentType"},
 			Produces:     []string{"RawContent", "Metadata"},
 			Capabilities: []string{"transcription"},

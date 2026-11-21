@@ -2,6 +2,9 @@ package pipeline
 
 import (
 	"strings"
+
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blobref"
 )
 
 // StepContract declares what a pipeline step requires and produces.
@@ -9,6 +12,18 @@ type StepContract struct {
 	Requires     []string // KnowledgeObject fields the step reads
 	Produces     []string // KnowledgeObject fields the step writes
 	Capabilities []string // subsystem requirements: "ocr", "vision", "llm", etc.
+	// Binary marks a step that works on binary content (blobref.NeedsBlob):
+	// it reads the bytes (OCR, a file reader) or the source, and emits
+	// nothing but text. Every other step treats RawContent as text and
+	// is skipped while the draft's content is binary, so no section,
+	// node, text or metadata is ever cut from bytes.
+	Binary bool
+}
+
+// SkipsBinary reports whether step must not run on draft: its content is
+// binary and the step does not declare Binary.
+func SkipsBinary(step PipelineStep, draft *storage.KnowledgeObject) bool {
+	return draft != nil && !step.Contract().Binary && blobref.NeedsBlob(draft.RawContent)
 }
 
 // BaseContract provides a default Contract() implementation for embedding in step structs.

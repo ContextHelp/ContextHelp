@@ -27,6 +27,7 @@ func WithDocumentProvider(p providers.DocumentProvider) PDFExtractorOption {
 func NewPDFExtractor(opts ...PDFExtractorOption) *PDFExtractor {
 	e := &PDFExtractor{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
+			Binary:   true,
 			Requires: []string{},
 			Produces: []string{"RawContent", "Sections"},
 		}),

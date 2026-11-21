@@ -23,6 +23,7 @@ func WithMaxFileSize(max int64) FileReaderOption {
 func NewFileReader(opts ...FileReaderOption) *FileReader {
 	fr := &FileReader{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
+			Binary:       true,
 			Requires:     []string{"Source"},
 			Produces:     []string{"RawContent", "Metadata"},
 			Capabilities: []string{"io"},

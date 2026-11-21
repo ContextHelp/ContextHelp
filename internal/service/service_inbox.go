@@ -13,6 +13,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/events"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blobref"
 	"github.com/ideacrafterslabs/ctxt/pkg/taxonomy"
 )
 
@@ -23,6 +24,12 @@ const inboxStatus = "inbox"
 
 // CaptureToInbox stores content as an inbox item without enqueuing a job.
 func (s *Service) CaptureToInbox(ctx context.Context, req InboxCaptureRequest) (*storage.KnowledgeObject, error) {
+	// The inbox row holds the content inline and the endpoint takes no
+	// content encoding: binary (invalid UTF-8, NUL) is refused, not
+	// stored as U+FFFD or rejected by the database.
+	if blobref.NeedsBlob(req.Content) {
+		return nil, fmt.Errorf("%w: inbox content must be text (valid UTF-8, no NUL); capture binary without the inbox", ErrInvalidSubmission)
+	}
 	now := time.Now().Truncate(time.Second)
 	id := uuid.New().String()
 
@@ -105,16 +112,18 @@ func (s *Service) TriageInbox(ctx context.Context, id string, req TriageRequest)
 		pipelineName = s.detectPipeline(obj.Source, "", obj.RawContent)
 	}
 
+	payload, encoding := jobPayload(obj.RawContent)
 	job := &storage.Job{
-		ID:         uuid.New().String(),
-		Type:       "ingest:" + obj.Type,
-		Status:     storage.JobPending,
-		Payload:    obj.RawContent,
-		Pipeline:   pipelineName,
-		Source:     obj.Source,
-		MaxRetries: 3,
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		ID:              uuid.New().String(),
+		Type:            "ingest:" + obj.Type,
+		Status:          storage.JobPending,
+		Payload:         payload,
+		PayloadEncoding: encoding,
+		Pipeline:        pipelineName,
+		Source:          obj.Source,
+		MaxRetries:      3,
+		CreatedAt:       now,
+		UpdatedAt:       now,
 		// forward caller-asserted hints to the worker so the
 		// auto-tagger merge preserves them as Tag{Source:"user"}.
 		UserHints: req.Hints,

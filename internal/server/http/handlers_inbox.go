@@ -53,6 +53,10 @@ func CaptureInbox(svc *service.Service) http.HandlerFunc {
 		}
 		obj, err := svc.CaptureToInbox(r.Context(), captureReq)
 		if err != nil {
+			if errors.Is(err, service.ErrInvalidSubmission) {
+				WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
+				return
+			}
 			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 			return
 		}

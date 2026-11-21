@@ -77,6 +77,7 @@ type FormatDetector struct {
 func NewFormatDetector() *FormatDetector {
 	return &FormatDetector{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
+			Binary:   true,
 			Requires: []string{"RawContent"},
 			Produces: []string{"ContentType", "Type", "Subtype", "Metadata"},
 		}),

@@ -17,6 +17,7 @@ type VisionAnalyzer struct {
 func NewVisionAnalyzer(opts ...func(*VisionAnalyzer)) *VisionAnalyzer {
 	v := &VisionAnalyzer{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
+			Binary:       true,
 			Requires:     []string{"RawContent", "ContentType"},
 			Produces:     []string{"Sections", "Metadata"},
 			Capabilities: []string{"vision"},

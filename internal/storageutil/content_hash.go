@@ -5,19 +5,21 @@ import (
 	"encoding/hex"
 	"regexp"
 	"strings"
-	"unicode/utf8"
+
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blobref"
 )
 
 var whitespaceRe = regexp.MustCompile(`\s+`)
 
 // ContentHash is the dedup hash of content from source. Text is
 // normalised (trimmed, lowercased, whitespace collapsed) so cosmetic
-// differences dedup; content that is not valid UTF-8 is binary and hashes
-// over its exact bytes, because lowercasing would turn every invalid byte
-// into U+FFFD and merge distinct binaries, a corrupted copy included.
+// differences dedup; binary content (blobref.NeedsBlob: invalid UTF-8 or
+// a NUL byte) hashes over its exact bytes, because normalising would turn
+// every invalid byte into U+FFFD and merge distinct binaries, a corrupted
+// copy included.
 func ContentHash(rawContent, source string) string {
 	normalized := rawContent
-	if utf8.ValidString(rawContent) {
+	if !blobref.NeedsBlob(rawContent) {
 		normalized = normalizeContent(rawContent)
 	}
 	payload := normalized + "\x00" + source

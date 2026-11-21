@@ -13,6 +13,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blobref"
 )
 
 // Reprocess: re-run one enrichment step on a stored object
@@ -120,6 +121,10 @@ func (r *Reprocessor) Handle(ctx context.Context, job *storage.Job) (string, err
 	}
 	if err != nil {
 		return "", fmt.Errorf("reprocess %s: get object: %w", p.ObjectID, err)
+	}
+	if blobref.NeedsBlob(obj.RawContent) {
+		// Every reprocess step reads text; binary has none to enrich.
+		return obj.ID, nil
 	}
 	out, err := s.Run(ctx, obj)
 	if err != nil {

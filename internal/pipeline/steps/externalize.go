@@ -27,6 +27,7 @@ type Externalizer struct {
 func NewExternalizer(store storage.BlobStore, threshold int64) *Externalizer {
 	return &Externalizer{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
+			Binary:       true,
 			Requires:     []string{"RawContent"},
 			Produces:     []string{"RawContent", "TextContent", "Metadata"},
 			Capabilities: []string{"blob-externalize"},

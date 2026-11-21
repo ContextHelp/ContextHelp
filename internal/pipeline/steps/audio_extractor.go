@@ -27,6 +27,7 @@ func WithVideoProvider(p providers.VideoProvider) AudioExtractorOption {
 func NewAudioExtractor(opts ...AudioExtractorOption) *AudioExtractor {
 	a := &AudioExtractor{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
+			Binary:   true,
 			Requires: []string{},
 			Produces: []string{},
 		}),
