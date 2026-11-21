@@ -22,7 +22,7 @@ import (
 )
 
 // approvalFixture is a router with the approval mechanism and the test
-// kind, over token-authenticated principals: the owner, a requester (an
+// kind, over token-authenticated person principals: the owner, a requester (an
 // admin), two approvers holding share-approver, the target the test
 // changes benefit (an approver too) and an outsider.
 type approvalFixture struct {
@@ -43,13 +43,17 @@ func newApprovalFixture(t *testing.T) *approvalFixture {
 	store := bundle.svc.Store(ownerCtx())
 	f := &approvalFixture{t: t, store: store, clock: &testClock{t: time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC)}, who: map[string]*authn.Principal{}}
 	approver := []string{authn.RoleReader, authn.RoleShareApprover}
-	entries := []authtest.Token{{Token: "owner", Principal: storage.OwnerPrincipal, Roles: authn.OwnerRoles}}
+	entries := []authtest.Token{
+		{Token: "owner", Principal: storage.OwnerPrincipal, Roles: authn.OwnerRoles},
+		// The owner's key narrowed to a verb role: owner kind, no approval scope.
+		{Token: "owner-narrow", Principal: storage.OwnerPrincipal, Roles: []string{authn.RoleReader}},
+	}
 	for name, roles := range map[string][]string{
 		"requester": {authn.RoleAdmin}, "alice": approver, "bob": approver, "target": approver, "outsider": {authn.RoleReader},
 	} {
 		id := "prn_" + name
-		require.NoError(t, store.Auth().Principals().Create(ownerCtx(), &storage.Principal{ID: id, Kind: storage.PrincipalKindDevice, DisplayName: name, Roles: roles}))
-		entries = append(entries, authtest.Token{Token: name, Principal: id, Kind: storage.PrincipalKindDevice, Roles: roles})
+		require.NoError(t, store.Auth().Principals().Create(ownerCtx(), &storage.Principal{ID: id, Kind: storage.PrincipalKindPerson, DisplayName: name, Roles: roles}))
+		entries = append(entries, authtest.Token{Token: name, Principal: id, Kind: storage.PrincipalKindPerson, Roles: roles})
 	}
 	for _, e := range entries {
 		kind := e.Kind
@@ -271,5 +275,44 @@ func TestApprovalRoutes_NotWired(t *testing.T) {
 		require.NoError(t, err)
 		resp.Body.Close()
 		assert.Equal(t, http.StatusNotFound, resp.StatusCode, c.path)
+	}
+}
+
+// An owner key narrowed below the approval scopes keeps the owner kind
+// and none of its reach: it lists nothing and sees, decides and
+// withdraws nothing, each a 404.
+func TestApprovalRoutes_NarrowedOwnerKeyHasNoReach(t *testing.T) {
+	f := newApprovalFixture(t)
+	r := f.file("narrowed")
+	assert.Empty(t, f.listIDs("owner-narrow", ""))
+	for _, c := range []struct{ method, path string }{
+		{http.MethodGet, "/approvals/" + r.ID},
+		{http.MethodDelete, "/approvals/" + r.ID},
+	} {
+		resp := f.call("owner-narrow", c.method, c.path, nil)
+		assert.Equal(t, http.StatusNotFound, resp.StatusCode, c.method)
+	}
+	for _, verb := range []string{"approve", "reject"} {
+		resp := f.decide("owner-narrow", verb, r, r.PayloadDigest)
+		assert.Equal(t, http.StatusNotFound, resp.StatusCode, verb)
+	}
+	assert.Equal(t, []string{r.ID}, f.listIDs("owner", ""), "the full-scope owner still sees it, still pending")
+}
+
+// Deciding a stored request whose kind this instance no longer
+// registers is a 409 APPROVAL_KIND_UNKNOWN: the request's state, not a
+// malformed call.
+func TestApprovalRoutes_DecideUnknownKindIs409(t *testing.T) {
+	f := newApprovalFixture(t)
+	r := &storage.ApprovalRequest{
+		Kind: "gone.kind", Action: "a", RequestedBy: "prn_requester", Payload: json.RawMessage(`{}`),
+		PayloadDigest: approval.Digest([]byte(`{}`)), Preconditions: json.RawMessage(`{}`), ApprovalsRequired: 1,
+		RequestedAt: f.clock.now(), ExpiresAt: f.clock.now().Add(time.Hour),
+	}
+	require.NoError(t, f.store.Approvals().Create(ownerCtx(), r))
+	for _, verb := range []string{"approve", "reject"} {
+		resp := f.decide("owner", verb, r, r.PayloadDigest)
+		require.Equal(t, http.StatusConflict, resp.StatusCode, verb)
+		assert.Equal(t, approval.CodeKindUnknown, errCode(t, resp))
 	}
 }

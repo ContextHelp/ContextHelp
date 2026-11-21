@@ -111,22 +111,37 @@ func (k *Kind) required() (int, error) {
 	return n, nil
 }
 
-// ByScope is the eligibility of a kind whose approvers hold scope, the
-// owner included (it holds every approval scope).
+// ByScope is the eligibility of a kind whose approvers hold scope. The
+// owner is no exception: it holds every approval scope, but a key or
+// session narrowed below one does not, and then decides nothing.
 func ByScope(scope auth.Scope) func(context.Context, *storage.ApprovalRequest, *auth.Principal) (bool, error) {
 	return func(_ context.Context, _ *storage.ApprovalRequest, p *auth.Principal) (bool, error) {
-		return isOwner(p) || p.HasScope(scope), nil
+		return p.HasScope(scope), nil
 	}
 }
 
-// OwnerOnly is the eligibility of a kind only the owner approves.
-func OwnerOnly(_ context.Context, _ *storage.ApprovalRequest, p *auth.Principal) (bool, error) {
-	return isOwner(p), nil
+// OwnerOnly is the eligibility of a kind only the owner approves, and
+// only while the owner holds the kind's approval scope: an owner key
+// narrowed below it is refused like any other holder.
+func OwnerOnly(scope auth.Scope) func(context.Context, *storage.ApprovalRequest, *auth.Principal) (bool, error) {
+	return func(_ context.Context, _ *storage.ApprovalRequest, p *auth.Principal) (bool, error) {
+		return isOwner(p) && p.HasScope(scope), nil
+	}
 }
 
-// isOwner reports whether p is the instance owner.
+// isOwner reports whether p is the instance owner by kind. Kind alone
+// never grants the owner's reach over the queue: a narrowed owner key
+// keeps the kind (ownerActs).
 func isOwner(p *auth.Principal) bool {
 	return p != nil && p.Kind == storage.PrincipalKindOwner
+}
+
+// ownerActs reports whether p is the owner holding an approval scope:
+// the owner's reach over the whole queue (seeing and withdrawing any
+// request) needs the scope as well as the kind, so a narrowed owner key
+// or session has none of it.
+func ownerActs(p *auth.Principal) bool {
+	return isOwner(p) && slices.ContainsFunc(p.Scopes, auth.IsApprovalScope)
 }
 
 // Registry holds the registered kinds.

@@ -116,7 +116,7 @@ func (s *Service) visible(ctx context.Context, k *Kind, r *storage.ApprovalReque
 	if viewer == nil || viewer.ID == "" {
 		return false, nil
 	}
-	if isOwner(viewer) || viewer.ID == r.RequestedBy || (r.SubjectID != "" && viewer.ID == r.SubjectID) {
+	if ownerActs(viewer) || viewer.ID == r.RequestedBy || (r.SubjectID != "" && viewer.ID == r.SubjectID) {
 		return true, nil
 	}
 	if k == nil {

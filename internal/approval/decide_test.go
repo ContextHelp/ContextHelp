@@ -224,6 +224,11 @@ func TestWithdraw(t *testing.T) {
 	requireCode(t, err, approval.CodeClosed)
 	_, err = f.svc.Withdraw(ctx, "apr_missing", f.owner)
 	assert.True(t, errors.Is(err, storage.ErrNotFound))
+
+	// The actor is checked before the state: someone who may not
+	// withdraw a request learns nothing of whether it is still pending.
+	_, err = f.svc.Withdraw(ctx, byOwner.ID, f.alice)
+	requireCode(t, err, approval.CodeNotRequester)
 }
 
 // Every transition writes its audit entry, naming the actor, the
@@ -278,4 +283,36 @@ func TestAudit_EntryPerTransition(t *testing.T) {
 	_, err = f.approve(rejected, f.bob)
 	requireCode(t, err, approval.CodeClosed)
 	assert.Len(t, f.events(rejected.ID), before)
+}
+
+// A refused decision on a request the decider can see leaves a security
+// row: the requester, the subject, an ineligible viewer and a wrong
+// digest. The request does not move, and an invisible request, which is
+// not found, leaves none.
+func TestDecide_RefusalsLeaveATrace(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	r := f.file("traced")
+	ineligible := f.principal("prn_ineligible", auth.RoleReader)
+	_, err := f.approve(r, f.requester)
+	requireCode(t, err, approval.CodeRequesterCannotDecide)
+	_, err = f.reject(r, f.target)
+	requireCode(t, err, approval.CodeBeneficiaryCannotDecide)
+	_, err = f.svc.Approve(ctx, r.ID, f.alice, "sha256:wrong", "")
+	requireCode(t, err, approval.CodeDigestMismatch)
+	_, err = f.approve(r, ineligible)
+	assert.True(t, errors.Is(err, storage.ErrNotFound), "an outsider does not see the request")
+
+	var codes, actors []string
+	for _, e := range f.events(r.ID) {
+		if e.EventType == approval.EventRefused {
+			codes = append(codes, e.Payload["code"].(string))
+			actors = append(actors, e.Actor)
+			assert.Equal(t, "security", e.Payload["event_class"])
+			assert.Equal(t, r.PayloadDigest, e.Payload["payload_digest"])
+		}
+	}
+	assert.Equal(t, []string{approval.CodeRequesterCannotDecide, approval.CodeBeneficiaryCannotDecide, approval.CodeDigestMismatch}, codes)
+	assert.Equal(t, []string{f.requester.ID, f.target.ID, f.alice.ID}, actors)
+	assert.Equal(t, storage.ApprovalRequested, f.stored(r.ID).Status)
 }

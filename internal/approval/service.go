@@ -108,7 +108,7 @@ func (s *Service) checkFiling(f Filing) (*Kind, error) {
 		return nil, refuse(CodeInvalid, "a filing needs an authenticated requester")
 	}
 	if isOwner(f.Requester) {
-		return nil, refuse(CodeOwnerCannotFile, "the owner's changes apply at once: the owner files no approval request")
+		return nil, refuse(CodeOwnerCannotRequest, "the owner's changes apply at once: the owner files no approval request")
 	}
 	k, ok := s.kinds.Lookup(f.Kind)
 	if !ok {
@@ -151,10 +151,12 @@ type Decided struct {
 // decision with it.
 func (s *Service) Approve(ctx context.Context, id string, approver *auth.Principal, digest, note string) (*Decided, error) {
 	var out *Decided
+	var refused *storage.ApprovalRequest
 	stale := false
 	err := s.store.InTx(ctx, func(ctx context.Context) error {
 		k, r, now, err := s.openDecision(ctx, id, approver, digest)
 		if err != nil {
+			refused = r
 			return err
 		}
 		if err := s.decide(ctx, r, approver, storage.ApprovalVerdictApprove, note, now); err != nil {
@@ -184,6 +186,7 @@ func (s *Service) Approve(ctx context.Context, id string, approver *auth.Princip
 		return nil
 	})
 	if err != nil {
+		s.recordRefusal(ctx, refused, approver, err)
 		return nil, err
 	}
 	if stale {
@@ -196,9 +199,11 @@ func (s *Service) Approve(ctx context.Context, id string, approver *auth.Princip
 // one rejection by an eligible approver rejects the request.
 func (s *Service) Reject(ctx context.Context, id string, approver *auth.Principal, digest, note string) (*Decided, error) {
 	var out *Decided
+	var refused *storage.ApprovalRequest
 	err := s.store.InTx(ctx, func(ctx context.Context) error {
 		_, r, now, err := s.openDecision(ctx, id, approver, digest)
 		if err != nil {
+			refused = r
 			return err
 		}
 		if err := s.decide(ctx, r, approver, storage.ApprovalVerdictReject, note, now); err != nil {
@@ -211,6 +216,7 @@ func (s *Service) Reject(ctx context.Context, id string, approver *auth.Principa
 		return nil
 	})
 	if err != nil {
+		s.recordRefusal(ctx, refused, approver, err)
 		return nil, err
 	}
 	return out, nil
@@ -228,12 +234,12 @@ func (s *Service) Withdraw(ctx context.Context, id string, actor *auth.Principal
 		if ok, err := s.visible(ctx, k, r, actor); err != nil || !ok {
 			return notVisible(id, err)
 		}
+		if actor.ID != r.RequestedBy && !ownerActs(actor) {
+			return refuse(CodeNotRequester, "only the requester or the owner withdraws approval request %s", id)
+		}
 		now := s.clock()
 		if err := requirePending(r, now); err != nil {
 			return err
-		}
-		if actor.ID != r.RequestedBy && !isOwner(actor) {
-			return refuse(CodeNotRequester, "only the requester or the owner withdraws approval request %s", id)
 		}
 		if err := s.close(ctx, r, StateWithdrawn, actor.ID, now, "", EventWithdrawn, nil); err != nil {
 			return err
@@ -248,7 +254,9 @@ func (s *Service) Withdraw(ctx context.Context, id string, actor *auth.Principal
 }
 
 // openDecision locks request id and checks approver may decide it now,
-// bound to digest: visible, pending, separated and eligible.
+// bound to digest: visible, pending, separated and eligible. A refusal
+// after the request was found and visible returns it beside the error,
+// so the refusal can be recorded (recordRefusal).
 func (s *Service) openDecision(ctx context.Context, id string, approver *auth.Principal, digest string) (*Kind, *storage.ApprovalRequest, time.Time, error) {
 	if approver == nil || approver.ID == "" {
 		return nil, nil, time.Time{}, refuse(CodeNotEligible, "a decision needs an authenticated approver")
@@ -269,10 +277,10 @@ func (s *Service) openDecision(ctx context.Context, id string, approver *auth.Pr
 		return nil, nil, time.Time{}, err
 	}
 	if err := s.separate(ctx, k, r, approver); err != nil {
-		return nil, nil, time.Time{}, err
+		return nil, r, time.Time{}, err
 	}
 	if digest != r.PayloadDigest {
-		return nil, nil, time.Time{}, refuse(CodeDigestMismatch, "the decision names digest %q; approval request %s is frozen at %s", digest, id, r.PayloadDigest)
+		return nil, r, time.Time{}, refuse(CodeDigestMismatch, "the decision names digest %q; approval request %s is frozen at %s", digest, id, r.PayloadDigest)
 	}
 	return k, r, now, nil
 }

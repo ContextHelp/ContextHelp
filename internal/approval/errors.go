@@ -17,9 +17,9 @@ const (
 	CodeKindUnknown = "APPROVAL_KIND_UNKNOWN"
 	// CodeReasonTooShort: the kind requires a longer reason (400).
 	CodeReasonTooShort = "APPROVAL_REASON_TOO_SHORT"
-	// CodeOwnerCannotFile: the owner's changes apply at once; it files
+	// CodeOwnerCannotRequest: the owner's changes apply at once; it files
 	// nothing on the mechanism (403).
-	CodeOwnerCannotFile = "OWNER_CANNOT_FILE"
+	CodeOwnerCannotRequest = "OWNER_CANNOT_REQUEST"
 	// CodeClosed: the request is no longer pending: approved, rejected,
 	// withdrawn or stale (409).
 	CodeClosed = "APPROVAL_CLOSED"
