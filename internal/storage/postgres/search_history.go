@@ -23,6 +23,6 @@ func (s *SearchHistoryStore) List(
 	return nil, fmt.Errorf("search_history: postgres backend: %w", storage.ErrNotImplemented)
 }
 
-func (s *SearchHistoryStore) ClearByProfile(_ context.Context, _ string) error {
+func (s *SearchHistoryStore) Clear(_ context.Context, _ storage.SearchHistoryFilter) error {
 	return fmt.Errorf("search_history: postgres backend: %w", storage.ErrNotImplemented)
 }

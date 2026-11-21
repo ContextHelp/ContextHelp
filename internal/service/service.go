@@ -2030,9 +2030,15 @@ func (s *Service) ListSearchHistory(ctx context.Context, filter storage.SearchHi
 	return s.Store(ctx).SearchHistory().List(ctx, filter)
 }
 
-// ClearSearchHistory removes all history entries for a profile.
+// ClearSearchHistory removes the caller's own search history: one
+// profile's entries, or with profileID empty all of them, those recorded
+// with no profile included. It never touches another principal's entries.
 func (s *Service) ClearSearchHistory(ctx context.Context, profileID string) error {
-	return s.Store(ctx).SearchHistory().ClearByProfile(ctx, profileID)
+	f := storage.SearchHistoryFilter{ProfileID: profileID}
+	if v := s.viewer(ctx); v != nil {
+		f.OwnerPrincipal = v.PrincipalID()
+	}
+	return s.Store(ctx).SearchHistory().Clear(ctx, f)
 }
 
 // --- Semantic search ---

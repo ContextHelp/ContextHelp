@@ -193,7 +193,7 @@ func (m *mockJobStore) ExtendLease(ctx context.Context, id, claim string, ttl ti
 	return false, nil
 }
 
-func (m *mockJobStore) Requeue(ctx context.Context, id, claim string) error { return nil }
+func (m *mockJobStore) Requeue(ctx context.Context, id, claim string) error      { return nil }
 func (m *mockJobStore) ReleaseLease(ctx context.Context, id, claim string) error { return nil }
 
 type mockPipelineStore struct{}
@@ -438,7 +438,7 @@ func (m *mockSearchHistoryStore) List(
 ) ([]*SearchHistoryEntry, error) {
 	return nil, nil
 }
-func (m *mockSearchHistoryStore) ClearByProfile(_ context.Context, _ string) error { return nil }
+func (m *mockSearchHistoryStore) Clear(_ context.Context, _ SearchHistoryFilter) error { return nil }
 
 func (m *mockObjectStore) CountByType(_ context.Context) (map[string]int, error) {
 	return map[string]int{}, nil

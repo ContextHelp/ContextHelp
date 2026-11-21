@@ -50,8 +50,12 @@ var volatile = []*regexp.Regexp{
 // dropped are removed outright: when a credential was last used is
 // this instance's history of requests, not a row, and the two
 // instances serve different cases before a given one.
+//
+// Search history rows are the same: each search a case runs records one,
+// so which rows an instance lists depends on the cases served before.
 var dropped = []*regexp.Regexp{
 	regexp.MustCompile(`,"last_used_at":"[^"]*"`),
+	regexp.MustCompile(`(\{"id":"sh_[0-9a-f]{8}"[^}]*\},?)+`),
 }
 
 func normalize(b []byte) string {

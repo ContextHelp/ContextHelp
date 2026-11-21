@@ -115,9 +115,8 @@ func (v restrictedSavedSearches) Delete(ctx context.Context, name string) error 
 }
 
 // restrictedSearchHistory is the SearchHistoryStore of a restricted
-// viewer: Append records as the viewer's principal, List is pinned to
-// it, and ClearByProfile, which clears every principal's history of a
-// profile, refuses. A viewer with no principal refuses.
+// viewer: Append records as the viewer's principal, List and Clear are
+// pinned to it. A viewer with no principal refuses.
 type restrictedSearchHistory struct {
 	inner     SearchHistoryStore
 	principal string
@@ -143,8 +142,12 @@ func (v restrictedSearchHistory) List(ctx context.Context, f SearchHistoryFilter
 	return v.inner.List(ctx, f)
 }
 
-func (v restrictedSearchHistory) ClearByProfile(_ context.Context, _ string) error {
-	return restrictedRead("SearchHistory", "ClearByProfile")
+func (v restrictedSearchHistory) Clear(ctx context.Context, f SearchHistoryFilter) error {
+	if v.principal == "" {
+		return principalRead("SearchHistory", "Clear", v.refuse)
+	}
+	f.OwnerPrincipal = v.principal
+	return v.inner.Clear(ctx, f)
 }
 
 // restrictedResurfacing is the ResurfacingQueueStore of a restricted
