@@ -82,7 +82,7 @@ linters:
     goconst:
       min-len: 3
       min-occurrences: 3
-      # 2.15 (goconst 1.9) counts strings in composite literals and struct
+      # 2.15 (goconst v1.11.0) counts strings in composite literals and struct
       # fields; 2.1.6 did not, and the cobra Use:/Short: fields and table
       # rows are not constants worth extracting. Pin the 2.1.6 coverage.
       exclude-types:
@@ -105,8 +105,10 @@ linters:
       # up to complexity 37) and stops reporting the other 53.
       min-complexity: 20
     staticcheck:
-      # 2.15 enables QF1012 (WriteString(fmt.Sprintf) -> Fprintf) through the
-      # default "all"; 2.1.6 did not report it. Keep the 2.1.6 default set.
+      # QF1012 (WriteString(fmt.Sprintf) -> Fprintf) is in the default "all"
+      # and 2.15 reports it far more widely than 2.1.6 did, so it is dropped
+      # here. That also drops the cases 2.1.6 did report; it is a hint-level
+      # style check, and that loss is accepted.
       checks:
         - all
         - -ST1000

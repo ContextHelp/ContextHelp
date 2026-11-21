@@ -19,8 +19,8 @@ enter = "scripts/motd.sh"
 #
 # golangci-lint uses the `go:` backend (compiled from source with the Go pinned
 # above) rather than the default aqua/asdf backend, which ships an upstream
-# PREBUILT binary. The v2.1.6 release binary is built with go1.24.2, and
-# golangci-lint refuses to load a config whose module targets a newer Go:
+# PREBUILT binary. A release binary is built with whichever Go its release
+# used (v2.1.6's was go1.24.2), and golangci-lint refuses to load a config whose module targets a newer Go:
 #   "the Go language version (go1.24) used to build golangci-lint is lower
 #    than the targeted Go version (1.26.1)"
 # so the prebuilt binary cannot lint this repo at all. Building from source
