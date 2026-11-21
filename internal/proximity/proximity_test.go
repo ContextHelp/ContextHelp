@@ -349,3 +349,34 @@ func TestSemanticProximity_DifferentModelsNotCompared(t *testing.T) {
 		t.Errorf("SemanticProximity on the shared model = %f, want ~1", got)
 	}
 }
+
+// --- same-domain boost ---
+
+func urlObj(source, raw string) *storage.KnowledgeObject {
+	return &storage.KnowledgeObject{Type: "url", Source: source, RawContent: raw}
+}
+
+func TestOriginProximity_SameDomainFetchedPages(t *testing.T) {
+	// A fetched page's RawContent is the body; the URL is the source.
+	a := urlObj("https://example.com/a", "page body one")
+	b := urlObj("https://example.com/b", "page body two")
+	c := urlObj("https://other.org/c", "page body three")
+	if got := proximity.OriginProximity(a, b); got < 0.099 || got > 0.101 {
+		t.Errorf("same domain = %f, want 0.1", got)
+	}
+	if got := proximity.OriginProximity(a, c); got != 0 {
+		t.Errorf("different domain = %f, want 0", got)
+	}
+}
+
+func TestOriginProximity_SameDomainRawContentFallback(t *testing.T) {
+	a := urlObj("", "https://example.com/a")
+	b := urlObj("", "https://example.com/b")
+	c := urlObj("", "https://other.org/c")
+	if got := proximity.OriginProximity(a, b); got < 0.099 || got > 0.101 {
+		t.Errorf("same domain (raw content) = %f, want 0.1", got)
+	}
+	if got := proximity.OriginProximity(a, c); got != 0 {
+		t.Errorf("different domain (raw content) = %f, want 0", got)
+	}
+}
