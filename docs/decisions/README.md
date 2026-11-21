@@ -531,6 +531,11 @@ Named share policies (RSQL data filter, class exclusions, field projection, reda
 - **Search.** Restricted viewers search a masked shadow index (FTS + masked vectors) plus `pii_terms` for revealed categories.
 - **Backstop.** A fail-closed check of every ID and every masked value in each response; a read audit of who saw what. Ingest-time masking (ADR-058 custom steps) stays the "never store" option.
 
+### **ADR-081 – Capture URL Hygiene: Canonicalization and Noise Presets (Proposed)**
+Client-side stages between the browser and enqueue for `ctxt capture tabs` and `history`: canonicalize URLs (tracking params, fragments, GitHub file URLs), then apply shipped opt-out category presets (webmail, calendar, finance, auth, checkout, admin consoles) as ordinary `urlfilter` rules.
+- **Dedup.** Canonical form feeds the existing exact-URL and server content-hash dedup.
+- **Visibility.** `--dry-run` shows rewrites, preset and category; decisions are still logged without the URL.
+
 ---
 
 ## Purpose of This Directory
