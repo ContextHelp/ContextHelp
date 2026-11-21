@@ -35,7 +35,7 @@ func TestSinkIngestsAndRetracts(t *testing.T) {
 	if err := s.Apply(ctx, event("upserted")); err != nil {
 		t.Fatal(err)
 	}
-	o, err := d.Objects().GetBySourceKey(ctx, addr)
+	o, err := d.Objects().GetBySourceKey(ctx, addr, "")
 	if err != nil || o == nil {
 		t.Fatalf("not stored: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestSinkIngestsAndRetracts(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if o2, _ := d.Objects().GetBySourceKey(ctx, addr); o2 == nil || o2.ID != o.ID {
+	if o2, _ := d.Objects().GetBySourceKey(ctx, addr, ""); o2 == nil || o2.ID != o.ID {
 		t.Fatal("a recheck or a hold changed the object")
 	}
 
@@ -73,7 +73,7 @@ func TestSinkRetractsWhenAccessIsLost(t *testing.T) {
 	if err := s.Apply(ctx, event("access_changed")); err != nil {
 		t.Fatal(err)
 	}
-	if o3, _ := d.Objects().GetBySourceKey(ctx, addr); o3 != nil {
+	if o3, _ := d.Objects().GetBySourceKey(ctx, addr, ""); o3 != nil {
 		t.Fatal("record still held after the principal lost access")
 	}
 
@@ -95,7 +95,7 @@ func TestSinkRetractsOnDeleteAndErase(t *testing.T) {
 		if err := s.Apply(ctx, event(ch)); err != nil {
 			t.Fatal(err)
 		}
-		if o4, _ := d.Objects().GetBySourceKey(ctx, addr); o4 != nil {
+		if o4, _ := d.Objects().GetBySourceKey(ctx, addr, ""); o4 != nil {
 			t.Fatalf("%s left the record held", ch)
 		}
 	}

@@ -269,13 +269,12 @@ func RunAnalyze(cmd *cobra.Command, args []string) error {
 		NoFanout:  noFanout,
 		Force:     noDedup,
 		SourceKey: sourceKey,
-		Profile:   activeProfileName(cmd),
-		Mentions:  userMentions,
-		Hints:     userHints,
-		Note:      note,
-		Data:      data,
 		// the active profile attributes what analyze submits.
-		Profile: activeProfileName(cmd),
+		Profile:  activeProfileName(cmd),
+		Mentions: userMentions,
+		Hints:    userHints,
+		Note:     note,
+		Data:     data,
 	}
 
 	ctx := cmd.Context()

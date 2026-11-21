@@ -120,20 +120,20 @@ func TestSinkOverTheServedCommands(t *testing.T) {
 	if err := s.Apply(ctx, ev(partyAddr, "upserted")); err != nil {
 		t.Fatal(err)
 	}
-	o, _ := d.Objects().GetBySourceKey(ctx, partyAddr)
+	o, _ := d.Objects().GetBySourceKey(ctx, partyAddr, "")
 	if o == nil || o.Source != "bos" || !strings.Contains(o.RawContent, "Acme Holdings") {
 		t.Fatalf("party not stored: %+v", o)
 	}
 	if err := s.Apply(ctx, ev(deniedAddr, "upserted")); err != nil {
 		t.Fatal(err)
 	}
-	if o, _ := d.Objects().GetBySourceKey(ctx, deniedAddr); o != nil {
+	if o, _ := d.Objects().GetBySourceKey(ctx, deniedAddr, ""); o != nil {
 		t.Fatal("a refused record was stored")
 	}
 	if err := s.Apply(ctx, ev(unknownAddr, "upserted")); err != nil {
 		t.Fatal(err)
 	}
-	if o, _ := d.Objects().GetBySourceKey(ctx, unknownAddr); o != nil {
+	if o, _ := d.Objects().GetBySourceKey(ctx, unknownAddr, ""); o != nil {
 		t.Fatal("an unmapped record was stored")
 	}
 	// a record held earlier that the credential can no longer read goes on
@@ -141,13 +141,13 @@ func TestSinkOverTheServedCommands(t *testing.T) {
 	if _, err := s.Runner.Run(ctx, held{key: deniedAddr}); err != nil {
 		t.Fatal(err)
 	}
-	if o, _ := d.Objects().GetBySourceKey(ctx, deniedAddr); o == nil {
+	if o, _ := d.Objects().GetBySourceKey(ctx, deniedAddr, ""); o == nil {
 		t.Fatal("setup: the held copy is missing")
 	}
 	if err := s.Apply(ctx, ev(deniedAddr, "access_changed")); err != nil {
 		t.Fatal(err)
 	}
-	if o, _ := d.Objects().GetBySourceKey(ctx, deniedAddr); o != nil {
+	if o, _ := d.Objects().GetBySourceKey(ctx, deniedAddr, ""); o != nil {
 		t.Fatal("a record the credential can no longer read is still held")
 	}
 }

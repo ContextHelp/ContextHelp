@@ -82,7 +82,7 @@ func (s *Sink) Apply(ctx context.Context, ev bosaccess.Event) error {
 
 // retract removes the object held for the address, when there is one.
 func (s *Sink) retract(ctx context.Context, address string) error {
-	o, err := s.Store.GetBySourceKey(ctx, address)
+	o, err := s.Store.GetBySourceKey(ctx, address, "")
 	if err != nil || o == nil {
 		return err
 	}
