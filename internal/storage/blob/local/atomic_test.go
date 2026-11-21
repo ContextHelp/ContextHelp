@@ -55,7 +55,7 @@ func TestPutMidCopyErrorLeavesNothing(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 	boom := errors.New("boom")
-	key := "abcd1234"
+	key := "abababababababababababababababababababababababababababababababab"
 
 	err := s.Put(ctx, key, &failingReader{data: bytes.Repeat([]byte("x"), 4096), err: boom}, storage.BlobMeta{})
 	if !errors.Is(err, boom) {
@@ -76,7 +76,7 @@ func TestPutMidCopyErrorLeavesNothing(t *testing.T) {
 func TestPutMidCopyErrorKeepsPreviousVersion(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
-	key := "abcd1234"
+	key := "abababababababababababababababababababababababababababababababab"
 	if err := s.Put(ctx, key, strings.NewReader("old"), storage.BlobMeta{}); err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestPutMidCopyErrorKeepsPreviousVersion(t *testing.T) {
 func TestPutHappyPathNoResidue(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
-	key := "abcd1234"
+	key := "abababababababababababababababababababababababababababababababab"
 	meta := storage.BlobMeta{ContentType: "text/plain", Size: 5, Filename: "a.txt"}
 	if err := s.Put(ctx, key, strings.NewReader("hello"), meta); err != nil {
 		t.Fatal(err)
@@ -136,7 +136,7 @@ func TestPutHappyPathNoResidue(t *testing.T) {
 func TestPutMetaWriteFailure(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
-	key := "abcd1234"
+	key := "abababababababababababababababababababababababababababababababab"
 	mp := s.metaPath(key)
 	if err := os.MkdirAll(filepath.Join(mp, "sub"), dirPerm); err != nil {
 		t.Fatal(err)
@@ -155,11 +155,11 @@ func TestPutMetaWriteFailure(t *testing.T) {
 func TestListIgnoresTempFiles(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
-	if err := s.Put(ctx, "abcd1234", strings.NewReader("hello"), storage.BlobMeta{}); err != nil {
+	if err := s.Put(ctx, "abababababababababababababababababababababababababababababababab", strings.NewReader("hello"), storage.BlobMeta{}); err != nil {
 		t.Fatal(err)
 	}
-	dir := filepath.Dir(s.blobPath("abcd1234"))
-	for _, n := range []string{".abcd1234.tmp-deadbeef", ".abcd1234.meta.json.tmp-deadbeef"} {
+	dir := filepath.Dir(s.blobPath("abababababababababababababababababababababababababababababababab"))
+	for _, n := range []string{".abababababababababababababababababababababababababababababababab.tmp-deadbeef", ".abababababababababababababababababababababababababababababababab.meta.json.tmp-deadbeef"} {
 		if err := os.WriteFile(filepath.Join(dir, n), []byte("junk"), filePerm); err != nil {
 			t.Fatal(err)
 		}
@@ -168,7 +168,7 @@ func TestListIgnoresTempFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(items) != 1 || items[0].Key != "abcd1234" {
+	if len(items) != 1 || items[0].Key != "abababababababababababababababababababababababababababababababab" {
 		t.Fatalf("List = %+v", items)
 	}
 }
@@ -176,7 +176,7 @@ func TestListIgnoresTempFiles(t *testing.T) {
 func TestPutConcurrentSameKey(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
-	key := "abcd1234"
+	key := "abababababababababababababababababababababababababababababababab"
 	const n = 16
 	var wg sync.WaitGroup
 	for i := range n {
