@@ -201,6 +201,7 @@ func TestFindSearch_Apply(t *testing.T) {
 		CandidatePool: config.CandidatePoolConfig{FTS: 11, Vector: 13},
 		MinScore:      0.2,
 		FallbackToFTS: false,
+		History:       base.History,
 		Reranker: config.RerankerConfig{
 			MentionBoostPerMention: 0.01, MaxMentionBoost: 0.5, DirectBacklinkBoost: 0.02, HopBacklinkBoost: 0.04,
 		},
@@ -264,4 +265,25 @@ func TestFind_RecordsSearchHistory(t *testing.T) {
 	got, err = f.svc.ListSearchHistory(ctx, storage.SearchHistoryFilter{ProfileID: "growth", Limit: 10})
 	require.NoError(t, err)
 	assert.Len(t, got, 2)
+}
+
+// search.history.enabled=false: Find records nothing.
+func TestFind_SearchHistoryDisabled(t *testing.T) {
+	f := newSemanticFixture(t)
+	ctx := ownerCtx()
+	f.svc.Cfg.Search.History.Enabled = false
+
+	res, err := f.svc.Find(ctx, FindRequest{Query: semanticQuery, Mode: FindModeFTS, Profile: "quiet"}, f.sem)
+	require.NoError(t, err)
+	require.NotEmpty(t, res.Objects, "the search itself still answers")
+
+	got, err := f.svc.ListSearchHistory(ctx, storage.SearchHistoryFilter{ProfileID: "quiet", Limit: 10})
+	require.NoError(t, err)
+	assert.Empty(t, got)
+}
+
+// A service built without a config keeps the built-in default: recording on.
+func TestRecordSearchHistory_DefaultOnWithoutConfig(t *testing.T) {
+	svc := newTestService(t)
+	require.True(t, svc.Cfg.Search.History.Enabled)
 }

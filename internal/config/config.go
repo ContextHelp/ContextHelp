@@ -521,6 +521,17 @@ type SearchConfig struct {
 
 	// Reranker controls signal weights applied after RRF merge.
 	Reranker RerankerConfig `mapstructure:"reranker" yaml:"reranker"`
+
+	// History controls recording of executed searches (dpkms side).
+	History SearchHistoryConfig `mapstructure:"history" yaml:"history"`
+}
+
+// SearchHistoryConfig controls search history recording.
+type SearchHistoryConfig struct {
+	// Enabled records every executed search (ctxt find, GET /search) in the
+	// searching principal's history. Default: true. When false, nothing is
+	// recorded; existing entries stay until cleared.
+	Enabled bool `mapstructure:"enabled" yaml:"enabled"`
 }
 
 // RerankerConfig holds pluggable weight constants for the default Reranker.
@@ -550,6 +561,7 @@ func DefaultSearchConfig() SearchConfig {
 		CandidatePool: CandidatePoolConfig{FTS: 50, Vector: 50},
 		MinScore:      0,
 		FallbackToFTS: true,
+		History:       SearchHistoryConfig{Enabled: true},
 		Reranker: RerankerConfig{
 			MentionBoostPerMention: 0.05,
 			MaxMentionBoost:        1.0,
@@ -1612,6 +1624,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("search.candidate_pool.vector", sd.CandidatePool.Vector)
 	v.SetDefault("search.min_score", sd.MinScore)
 	v.SetDefault("search.fallback_to_fts", sd.FallbackToFTS)
+	v.SetDefault("search.history.enabled", sd.History.Enabled)
 	v.SetDefault("search.reranker.mention_boost_per_mention", sd.Reranker.MentionBoostPerMention)
 	v.SetDefault("search.reranker.max_mention_boost", sd.Reranker.MaxMentionBoost)
 	v.SetDefault("search.reranker.direct_backlink_boost", sd.Reranker.DirectBacklinkBoost)

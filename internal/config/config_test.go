@@ -575,3 +575,17 @@ browser:
 	assert.Equal(t, "anthropic", cfg.Browser.AIProvider)
 	assert.Equal(t, "claude-sonnet-4-6", cfg.Browser.AIModel)
 }
+
+func TestSearchHistoryEnabledConfig(t *testing.T) {
+	cfg, err := loadFromYAML(t, ``)
+	require.NoError(t, err)
+	assert.True(t, cfg.Search.History.Enabled, "recording is on by default")
+
+	cfg, err = loadFromYAML(t, "search:\n  default_mode: fts\n")
+	require.NoError(t, err)
+	assert.True(t, cfg.Search.History.Enabled, "a search block without history keeps the default")
+
+	cfg, err = loadFromYAML(t, "search:\n  history:\n    enabled: false\n")
+	require.NoError(t, err)
+	assert.False(t, cfg.Search.History.Enabled)
+}

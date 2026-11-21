@@ -57,6 +57,9 @@ The other serve settings follow the same order (flag, env var, file, default):
 | Event outbox retention (how far a `Last-Event-ID` resume reaches) | | | `server.events_retention` | 168h (7 days) |
 | External steps directory | `--steps-path` | | `steps.path` | `~/.config/contexthelp/steps` |
 | Default focus profile | `--profile` | `CTXT_PROFILE` | `profile.default` | the only profile, if one is defined |
+| Search history recording | | | `search.history.enabled` | true |
+
+`search.history.enabled` is read by dpkms. When it is `false`, `ctxt find` and `GET /search` record nothing in search history; entries already stored stay until cleared (`DELETE /search-history`). Set it in `dpkms.yaml` or per run with `-c search.history.enabled=false`; there is no env var.
 
 ### Inbound auth, roles and scopes
 
