@@ -232,7 +232,7 @@ func TestAnalyzeRawStoresAmbientFields(t *testing.T) {
 	assert.Equal(t, "sess_raw", obj.SessionID)
 	assert.Equal(t, "clipboard", obj.Metadata["ambient_source"])
 	assert.Equal(t, "sha256:r", obj.Metadata["fingerprint"])
-	assert.Equal(t, "Notes", obj.Metadata["app_name"])
+	assert.Equal(t, map[string]any{"app_name": "Notes", "ambient_source": "spoof"}, obj.Metadata["client"])
 }
 
 func TestAnalyzeRejectsOversizedAmbientFields(t *testing.T) {
