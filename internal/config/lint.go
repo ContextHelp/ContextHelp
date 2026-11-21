@@ -41,7 +41,7 @@ func (f LintFinding) String() string {
 // configPath may be empty if the config was not loaded from a file
 // (e.g. defaults only), in which case permission checks are skipped.
 func LintConfig(cfg *Config, configPath string) []LintFinding {
-	var findings []LintFinding
+	findings := make([]LintFinding, 0, 4)
 
 	findings = append(findings, lintSchema(cfg)...)
 	findings = append(findings, lintSecrets(cfg)...)

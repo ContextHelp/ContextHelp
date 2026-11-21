@@ -127,7 +127,8 @@ func (m *Manager) Stop() error {
 	done := make(chan error, 1)
 	go func() { done <- m.cmd.Wait() }()
 	select {
-	case <-done:
+	case err := <-done:
+		_ = err // the wait is for the process to exit; its status is not needed
 	case <-time.After(5 * time.Second):
 		_ = m.cmd.Process.Kill()
 		_ = m.cmd.Wait() // reap zombie after forced kill

@@ -220,7 +220,8 @@ func (a *Adapter) Stop(ctx context.Context) error {
 	}
 	if serveErr != nil {
 		select {
-		case <-serveErr:
+		case err := <-serveErr:
+			_ = err // drain a buffered Serve error; Shutdown owns the result
 		default:
 		}
 	}

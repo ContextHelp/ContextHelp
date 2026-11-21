@@ -198,7 +198,7 @@ func TestGitleaksReportsKeysInDocsTestsAndExamples(t *testing.T) {
 	// The fixture token shape is allowlisted only in test files.
 	fixture := "tok-ops-fixture-0123456789abcdef0123456789"
 	files := map[string]func(name, key string) string{
-		"docs/setup.md":             func(n, k string) string { return fmt.Sprintf("Set the %s key: `%s`", n, k) },
+		"docs/setup.md":             func(n, k string) string { return fmt.Sprintf("Set the %s key: %#q", n, k) },
 		"README.md":                 func(n, k string) string { return fmt.Sprintf("    token: %s", k) },
 		"testdata/fixture.env":      func(n, k string) string { return fmt.Sprintf("TOKEN=%s", k) },
 		"internal/x/client_test.go": func(n, k string) string { return fmt.Sprintf("\ttoken := %q // %s", k, n) },

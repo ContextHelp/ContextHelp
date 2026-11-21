@@ -108,11 +108,11 @@ const (
 func (l locator) installPaths() []string {
 	switch l.goos {
 	case goosDarwin:
-		var out []string
 		roots := []string{"/Applications"}
 		if home := l.getenv("HOME"); home != "" {
 			roots = append(roots, filepath.Join(home, "Applications"))
 		}
+		out := make([]string, 0, 2*len(roots))
 		for _, root := range roots {
 			out = append(out,
 				root+"/Google Chrome.app/Contents/MacOS/Google Chrome",

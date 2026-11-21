@@ -1256,7 +1256,7 @@ func (s *ObjectStore) nodeTypeObjectIDs(ctx context.Context, nodeTypes []string)
 	// GROUP BY object_id HAVING COUNT(DISTINCT node_type) = N
 	// so only objects that have ALL requested node types are returned.
 	placeholders := make([]string, len(nodeTypes))
-	args := make([]any, len(nodeTypes))
+	args := make([]any, len(nodeTypes), len(nodeTypes)+1)
 	for i, t := range nodeTypes {
 		placeholders[i] = "?"
 		args[i] = t
@@ -1494,9 +1494,10 @@ func tagConditionsSQLite(f tagfilter.Filter, col string) ([]string, []any) {
 		return "EXISTS (SELECT 1 FROM json_each(" + col + ") WHERE json_each.value->>'label' IN (" + placeholdersSQLite(n) + "))"
 	}
 	if f.HasRequired() {
-		var conds []string
-		var args []any
-		for _, l := range f.Required() {
+		required := f.Required()
+		conds := make([]string, 0, len(required))
+		args := make([]any, 0, len(required))
+		for _, l := range required {
 			conds = append(conds, has(1))
 			args = append(args, l)
 		}

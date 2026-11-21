@@ -21,6 +21,7 @@ type FeedFetcher struct {
 type FeedFetcherOption func(*FeedFetcher)
 
 // WithHTTPClient sets a custom HTTP client for the fetcher.
+//
 // Deprecated: prefer WithFeedClientBridge for full bridge configuration.
 // Kept for backward compatibility.
 func WithHTTPClient(c *http.Client) FeedFetcherOption {
