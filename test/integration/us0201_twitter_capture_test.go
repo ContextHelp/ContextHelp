@@ -129,14 +129,16 @@ func twitterTweetHandler(tweet mockTweet, user mockTwitterUser) gohttp.HandlerFu
 }
 
 func twitterMainFixture() (mockTweet, mockTwitterUser) {
-	return mockTweet{
-			ID:        twitterTweetID,
-			Text:      twitterTweetText,
-			AuthorID:  "111",
-			CreatedAt: twitterTweetCreated,
-		}, mockTwitterUser{
-			ID: "111", Username: twitterAuthorHandle, Name: "Andrej Karpathy",
-		}
+	tweet := mockTweet{
+		ID:        twitterTweetID,
+		Text:      twitterTweetText,
+		AuthorID:  "111",
+		CreatedAt: twitterTweetCreated,
+	}
+	user := mockTwitterUser{
+		ID: "111", Username: twitterAuthorHandle, Name: "Andrej Karpathy",
+	}
+	return tweet, user
 }
 
 func twitterSourceFixture() (mockTweet, mockTwitterUser) {
