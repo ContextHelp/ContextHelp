@@ -54,6 +54,21 @@ func Decode(content, encoding string) (string, error) {
 		}
 		return string(b), nil
 	default:
-		return "", fmt.Errorf("%w %q (supported: base64)", ErrUnknown, encoding)
+		return "", fmt.Errorf("%w %q (supported: base64)", ErrUnknown, clip(encoding))
 	}
+}
+
+// maxEncodingEcho caps how much of a caller-supplied encoding an error
+// repeats back.
+const maxEncodingEcho = 32
+
+func clip(s string) string {
+	if len(s) <= maxEncodingEcho {
+		return s
+	}
+	cut := s[:maxEncodingEcho]
+	for !utf8.ValidString(cut) && len(cut) > 0 {
+		cut = cut[:len(cut)-1]
+	}
+	return cut + "..."
 }

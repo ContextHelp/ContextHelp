@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"strings"
+	"unicode/utf8"
 
 	"github.com/atotto/clipboard"
 )
@@ -41,7 +42,13 @@ func GetInput(args []string) (string, string, error) {
 		if err != nil {
 			return "", "", fmt.Errorf("failed to read stdin: %w", err)
 		}
-		if content := strings.TrimSpace(string(data)); content != "" {
+		// Text is trimmed; binary (not valid UTF-8, a piped PNG) is
+		// content as it came: trailing whitespace bytes belong to it.
+		content := string(data)
+		if utf8.ValidString(content) {
+			content = strings.TrimSpace(content)
+		}
+		if content != "" {
 			return content, SourceStdin, nil
 		}
 	}
