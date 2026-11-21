@@ -18,7 +18,7 @@ FROM golang:${GO_VERSION}-bookworm
 # golangci-lint version is pinned to the one the CI workflow installs.
 # Keep the two in step: a local run that passes against a different minor
 # is not evidence CI will pass.
-ARG GOLANGCI_LINT_VERSION=v2.1.6
+ARG GOLANGCI_LINT_VERSION=v2.15.0
 
 ENV DEBIAN_FRONTEND=noninteractive
 

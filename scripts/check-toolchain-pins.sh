@@ -40,7 +40,7 @@ err() {
 # ── mise.toml pins ───────────────────────────────────────────────────────────
 mise_go=$(sed -n 's/^go = "\(.*\)"$/\1/p' mise.toml)
 # golangci-lint is declared via the `go:` backend, so the key is quoted:
-#   "go:github.com/golangci/golangci-lint/v2/cmd/golangci-lint" = "2.1.6"
+#   "go:github.com/golangci/golangci-lint/v2/cmd/golangci-lint" = "2.15.0"
 mise_lint=$(sed -n 's/^"go:.*golangci-lint" = "\(.*\)"$/\1/p' mise.toml)
 mise_node=$(sed -n 's/^node = "\(.*\)"$/\1/p' mise.toml)
 mise_goreleaser=$(sed -n 's/^goreleaser = "\(.*\)"$/\1/p' mise.toml)
