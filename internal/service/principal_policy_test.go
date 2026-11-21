@@ -14,6 +14,7 @@ import (
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	ctxtpolicy "github.com/ideacrafterslabs/ctxt/internal/policy"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
@@ -55,7 +56,7 @@ func newPrincipalPolicyService(t *testing.T) (*Service, func()) {
 	require.NoError(t, err)
 
 	svc := NewWithOptions(driver, q, pipes, engine, "", nil,
-		[]Option{WithPolicyPublisher(pol.Publisher())},
+		[]Option{WithPolicyPublisher(pol.Publisher()), WithReservedStepNames(builtins.IsStepName)},
 	)
 	cleanup := func() {
 		pol.Close()

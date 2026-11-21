@@ -16,6 +16,12 @@ import (
 // pipeline owns: an existing built-in, or the namespace of one (text.*).
 var ErrProtectedPipeline = errors.New("protected pipeline name")
 
+// ErrStepValidationUnavailable is returned by CreatePipeline when the
+// pipeline names steps but the service has no built-in step predicate
+// (WithReservedStepNames), so it cannot tell a built-in from a typo.
+// Validation fails closed rather than accept unknown steps.
+var ErrStepValidationUnavailable = errors.New("step validation unavailable: no built-in step predicate configured")
+
 // builtinPipelineNamespace is the namespace the built-in text pipelines
 // own whether or not they are registered in this process.
 const builtinPipelineNamespace = "text"
@@ -56,11 +62,14 @@ func (s *Service) validatePipelineCreate(ctx context.Context, p *storage.Pipelin
 		return fmt.Errorf("%w: pipeline names starting with %q or matching a built-in pipeline are protected: %q",
 			ErrProtectedPipeline, builtinPipelineNamespace+".", p.Name)
 	}
+	// Reserved is the built-in step predicate (WithReservedStepNames);
+	// without it a built-in cannot be told from a typo, so refuse.
+	if len(p.Steps) > 0 && s.Installer.Reserved == nil {
+		return ErrStepValidationUnavailable
+	}
 	unknown := make([]string, 0, len(p.Steps))
 	for _, st := range p.Steps {
-		// Reserved is the built-in step predicate (WithReservedStepNames);
-		// a service built without it cannot tell a built-in from a typo.
-		if s.Installer.Reserved == nil || s.Installer.Reserved(st.Name) {
+		if s.Installer.Reserved(st.Name) {
 			continue
 		}
 		if rs, err := s.Store(ctx).Steps().Get(ctx, st.Name); err == nil && rs != nil {
