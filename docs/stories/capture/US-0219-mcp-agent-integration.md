@@ -1,9 +1,11 @@
 ---
-status: paper
+status: partial
 adr: ADR-068
 ---
 
 # US-0219: MCP Agent Integration (dpkms-side)
+
+> **Implementation status:** Built: MCP server (search, schema tools) mounted at `/mcp`. Not built: stdio `ctxt mcp serve`, `ctxt mcp install`, compose/entity/session tools, profile scoping, bus events.
 
 **System Types:** dpkms, ctxt
 **Personas:** [AI Agents](../../personas/agents-llms-tools.md), [Knowledge Workers](../../personas/knowledge-workers.md)

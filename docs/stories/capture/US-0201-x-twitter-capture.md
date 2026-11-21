@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: paper
 ---
 
 # US-0201: X/Twitter Profile and Thread Capture
+
+> **Implementation status:** Only X archive import exists; live profile/post/thread capture is not built.
 
 **System Types:** ctxt
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md), [Researchers & OSINT Analysts](../../personas/knowledge-workers.md)

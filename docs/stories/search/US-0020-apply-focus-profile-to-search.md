@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: paper
 ---
 
 # US-0020: Apply Focus Profile to Search
+
+> **Implementation status:** `--profile` is a global flag, but `ctxt find` only uses it to pick a search strategy and never narrows results; profile does not filter or boost search results (profile acts as a lens only); unknown profile is not a 400.
 
 **System Types:** ctxt
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md)

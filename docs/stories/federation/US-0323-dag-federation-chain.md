@@ -1,8 +1,10 @@
 ---
-status: paper
+status: partial
 ---
 
 # US-0323: DAG Federation Chain Push
+
+> **Implementation status:** Built: 2-hop forwarding via change sequence, self-loop cycle detection. Not built: multi-hop (A->B->A) cycle detection.
 
 **System Types:** dpkms (self-hosted)
 **Personas:** [Platform Integrators](../../personas/platform-integrators.md)
@@ -154,10 +156,10 @@ federation_watermarks:
 
 ## Related Stories
 
-- [US-0318](./US-0318-configure-federation.md) — configure federation topology
-- [US-0319](./US-0319-async-federation-push.md) — async push goroutine lifecycle
-- [US-0320](./US-0320-inline-federation-push.md) — inline push on ingest
-- [US-0321](./US-0321-federation-lifecycle.md) — serve startup / shutdown
+- [US-0318](./US-0318-configure-federation-targets.md) — configure federation topology
+- [US-0319](./US-0319-async-push-local-merged.md) — async push goroutine lifecycle
+- [US-0320](./US-0320-inline-push-during-ingest.md) — inline push on ingest
+- [US-0321](./US-0321-multi-instance-lifecycle.md) — serve startup / shutdown
 - [US-0322](./US-0322-backup-and-federation-rebuild.md) — backup + federation
   rebuild after restore
 

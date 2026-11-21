@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: partial
 ---
 
 # US-0210: Cross-Platform Entity Resolution
+
+> **Implementation status:** Built: in-graph `entity_resolver` step. Not built: `same_as` edges, confidence tiers, `entity candidates/merge/graph`.
 
 **System Types:** dpkms (self-hosted), dpkms cloud
 **Personas:** [Researchers & OSINT Analysts](../../personas/researchers-osint.md), [Agents/LLMs/Tools](../../personas/agents-llms-tools.md)

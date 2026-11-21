@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: paper
 ---
 
 # US-0060: Compose With Custom Template
+
+> **Implementation status:** No `/templates` endpoints or `ctxt template` command.
 
 **System Types:** ctxt
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md)

@@ -1240,7 +1240,7 @@ Where `<nodeType>` is one of: `section`, `tag`,
 This enables fine-grained citation and partial retrieval
 without loading whole objects.
 
-## Schema co-evolution per profile (US-0409)
+## Schema co-evolution per profile (US-0418)
 
 Each profile can evolve its own schema for metadata
 extraction. The c12n pipeline step (US-0407) drives metadata
@@ -1257,10 +1257,12 @@ schema.
 
 ## Multi-source syndication (US-0410)
 
-Ingestion can pull from multiple sources with dual filter
-ownership: source-defined filters (what the source emits) and
-profile-defined filters (what the profile wants). See commit
-`5c0d06b`.
+Status: not implemented (story is `paper`). `internal/federation/pull.go`
+is a stub returning `ErrPullNotImplemented`; no syndication config,
+watermark, or provenance storage exists. Design intent: pull from
+multiple sources with dual filter ownership (source-defined filters
+for what the source emits, profile-defined filters for what the
+profile wants).
 
 ## Concrete cross-project contracts
 
@@ -1298,14 +1300,13 @@ Registry subscriptions and entity resolution cover:
 
 ## Recent activity
 
-- US-0410 multi-source syndication (`5c0d06b`)
 - GitHub adapter with README + Context7 (`1f9bd22`)
 - Backup / restore + manifest v2 + auto-create dir (`9c1b5e1`...`a7ad19f`)
 - Worker / bus DrainCtx + env auth + cross-process hub (`0fe3534`...`b148986`)
 - Pipeline FTS in `text.short`/`text.long` + embedding step (`e51f793`...`2596dd7`)
 - Himalaya email + cardamum contacts adapters (`f2b056e`...`8053c96`)
 - US-0407 metadata faceted search + c12n pipeline step (`c68d00e`...`ebf81e1`)
-- US-0409 schema co-evolution per profile (`5f884f2`)
+- US-0418 schema co-evolution per profile (`5f884f2`)
 
 ## Open questions
 

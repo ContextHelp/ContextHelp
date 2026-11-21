@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: partial
 ---
 
 # Story: Agent Discovers Query Schema
+
+> **Implementation status:** Built: MCP `schema` tool returning the storage taxonomy (`internal/mcp/tools_schema.go`, wired in `internal/server/http/server.go`). Not built: `GET /api/v1/query-schema` (RSQL properties/operators/examples) and gRPC `GetQuerySchema`. Integration tests are gated behind `INTEGRATION=1`.
 
 **System Types:** dpkms (self-hosted), dpkms cloud
 **Personas:** [Agents/LLMs](../../personas/agents-llms-tools.md)
@@ -390,9 +392,9 @@ def get_schema_cached(api_url):
 
 ## Related Stories
 
-- [agent-constructs-rsql-query](./agent-constructs-rsql-query.md) — Using schema to build queries
-- [structured-rsql-query](../search/structured-rsql-query.md) — RSQL query execution
-- [natural-language-search](../search/natural-language-search.md) — NLQ as alternative to RSQL
+- [agent-constructs-rsql-query](./US-0038-agent-constructs-rsql-query.md) — Using schema to build queries
+- [structured-rsql-query](../search/US-0017-structured-rsql-query.md) — RSQL query execution
+- [natural-language-search](../search/US-0016-natural-language-search.md) — NLQ as alternative to RSQL
 
 ---
 

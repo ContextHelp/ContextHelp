@@ -1,8 +1,10 @@
 ---
-status: paper
+status: partial
 ---
 
 # US-0063: Unified Graph Extraction at Ingest
+
+> **Implementation status:** Built: single-pass graph extractor (summary, tag, decision, open_question, artifact nodes with `contains` edges), projections. Not built: section/task/code_block nodes, `references`/`resolves_to`/`derives_from` edges, `node_type` search.
 
 **System Types:** dpkms (self-hosted), dpkms cloud
 **Personas:** [Agents/LLMs](../../personas/agents-llms-tools.md),

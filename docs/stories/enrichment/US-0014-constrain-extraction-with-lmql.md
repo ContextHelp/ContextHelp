@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: paper
 ---
 
 # US-0014: Constrain Extraction with LMQL
+
+> **Implementation status:** No LMQL integration exists in code; no constrained-decoding provider is wired.
 
 **System Types:** dpkms (self-hosted)
 **Personas:** [Agents/LLMs](../../personas/agents-llms-tools.md), [Platform Integrators](../../personas/platform-integrators.md)

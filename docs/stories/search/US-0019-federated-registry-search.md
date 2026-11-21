@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: partial
 ---
 
 # US-0019: Federated Registry Search
+
+> **Implementation status:** Built: registry bookmark search (`SearchRemoteBookmarks`), per-registry failure tolerance. Not built: `--registries`/`--federated` flags, RRF merge with local results, merged-score dedup, server-side cache.
 
 **System Types:** dpkms (self-hosted), dpkms cloud
 **Personas:** [Agents/LLMs](../../personas/agents-llms-tools.md), [Knowledge Workers](../../personas/knowledge-workers.md)

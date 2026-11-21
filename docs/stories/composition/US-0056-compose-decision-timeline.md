@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: paper
 ---
 
 # US-0056: Compose Decision Timeline
+
+> **Implementation status:** No timeline composition type or `--entity`/`--from-date` filters.
 
 **System Types:** ctxt
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md)

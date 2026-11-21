@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: partial
 ---
 
 # US-0300: Importer Extension Interface
+
+> **Implementation status:** Built: per-source importers and `/importers/{dropbox,slack,discord}/run`. Not built: common Importer interface, registry, `GET /api/v1/importers`, checkpoints, error classification.
 
 **System Types:** dpkms (self-hosted), dpkms cloud, ctxt
 **Personas:** [Platform Integrators](../../personas/platform-integrators.md), [Maintainers](../../personas/maintainers.md)

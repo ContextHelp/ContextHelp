@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: paper
 ---
 
 # US-0205: Wikipedia and Reference Article Capture
+
+> **Implementation status:** No Wikipedia capture code exists.
 
 **System Types:** ctxt
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md), [Researchers & OSINT Analysts](../../personas/knowledge-workers.md), [Agents & LLMs](../../personas/agents-llms-tools.md)

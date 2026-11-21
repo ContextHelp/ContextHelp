@@ -1,8 +1,10 @@
 ---
-status: paper
+status: shipped-no-e2e
 ---
 
-# US-0321: Cardamum Contacts Ingestion Adapter
+# US-0415: Cardamum Contacts Ingestion Adapter
+
+> **Implementation status:** Implemented and unit-tested; no integration test against a real adapter run.
 
 **System Types:** ctxt
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md)
@@ -60,17 +62,17 @@ contact), and deduplicates by card UID.
 
 ## Related Stories
 
-- [US-0320](./US-0320-adapter-ingestion-interface.md) —
+- [US-0414](./US-0414-adapter-ingestion-interface.md) —
   generic adapter interface
 
 ---
 
 ## E2E Tests
 
-- planned: `test/integration/us0321_cardamum_contacts_test.go::TestCardamumContacts_ImportVCards`
-- planned: `test/integration/us0321_cardamum_contacts_test.go::TestCardamumContacts_DedupeByEmail`
-- planned: `test/integration/us0321_cardamum_contacts_test.go::TestCardamumContacts_LinksToObjects`
-- planned: `test/integration/us0321_cardamum_contacts_test.go::TestCardamumContacts_ScopeBoundary`
+- planned: `test/integration/us0415_cardamum_contacts_test.go::TestCardamumContacts_ImportVCards`
+- planned: `test/integration/us0415_cardamum_contacts_test.go::TestCardamumContacts_DedupeByEmail`
+- planned: `test/integration/us0415_cardamum_contacts_test.go::TestCardamumContacts_LinksToObjects`
+- planned: `test/integration/us0415_cardamum_contacts_test.go::TestCardamumContacts_ScopeBoundary`
 
 ## Personas
 

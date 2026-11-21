@@ -112,10 +112,10 @@ DFS from self; if any target.URL resolves to self → cycle error
 ## Related Stories
 
 - [US-0319](./US-0319-async-push-local-merged.md) — async push to local merged DB
-- [US-0320](./US-0320-inline-push-on-capture.md) — inline sync mode (Phase 2)
-- [US-0321](./US-0321-http-federation-push.md) — remote HTTP target push (Phase 2)
-- [US-0322](./US-0322-federation-topology-api.md) — topology API for cycle detection (Phase 2)
-- [US-0323](./US-0323-federation-status-monitoring.md) — federation push status monitoring
+- [US-0320](./US-0320-inline-push-during-ingest.md) — inline sync mode (Phase 2)
+- [US-0321](./US-0321-multi-instance-lifecycle.md) — remote HTTP target push (Phase 2)
+- [US-0322](./US-0322-backup-and-federation-rebuild.md) — topology API for cycle detection (Phase 2)
+- [US-0323](./US-0323-dag-federation-chain.md) — federation push status monitoring
 
 ---
 

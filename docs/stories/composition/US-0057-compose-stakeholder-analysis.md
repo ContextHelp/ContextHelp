@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: paper
 ---
 
 # US-0057: Compose Stakeholder Analysis
+
+> **Implementation status:** No stakeholder-analysis composition; compose emits a generic header and snippets.
 
 **System Types:** ctxt
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md)

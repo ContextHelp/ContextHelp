@@ -31,8 +31,8 @@ extraction) populates the facets.
 
 ## Acceptance Criteria
 
-- [ ] `ctxt find` accepts `--type`, `--topic`, `--person`,
-  `--since`, `--until`, `--source` as filter parameters
+- [ ] `ctxt find` accepts `--meta-type`, `--topic`, `--person`,
+  `--mentioned-since`, `--mentioned-until`, `--source-type` as filter parameters
 - [ ] Filters compose with semantic search (intersection)
 - [ ] Filters compose with each other (AND semantics)
 - [ ] `ctxt list` accepts same filter parameters for browsing
@@ -49,7 +49,7 @@ extraction) populates the facets.
 
 ```bash
 # Filter by type
-ctxt find "auth" --type decision
+ctxt find "auth" --meta-type decision
 
 # Filter by person
 ctxt find "redesign" --person alice-chen
@@ -58,10 +58,10 @@ ctxt find "redesign" --person alice-chen
 ctxt find "deployment" --mentioned-since 2026-04-01 --mentioned-until 2026-04-23
 
 # Filter by source
-ctxt list --source slack --type task
+ctxt list --source-type slack --meta-type task
 
 # Combined
-ctxt find "auth" --type decision --person alice-chen \
+ctxt find "auth" --meta-type decision --person alice-chen \
   --mentioned-since 2026-04-01
 
 # Facet counts
@@ -82,7 +82,7 @@ dates_mentioned=gt=2026-04-01
 
 ## E2E Test Checklist
 
-- [ ] `--type task` returns only task-typed objects
+- [ ] `--meta-type task` returns only task-typed objects
 - [ ] `--person alice-chen` returns only objects mentioning
   that person
 - [ ] `--mentioned-since` / `--mentioned-until` filter by dates_mentioned

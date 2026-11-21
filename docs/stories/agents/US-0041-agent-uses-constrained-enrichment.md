@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: paper
 ---
 
 # US-0041: Agent Uses Constrained Enrichment
+
+> **Implementation status:** `POST /enrich` does not exist; constraint tests validate test-local mock steps only.
 
 **System Types:** dpkms (self-hosted), dpkms cloud
 **Personas:** [Agents/LLMs](../../personas/agents-llms-tools.md), [Platform Integrators](../../personas/platform-integrators.md)

@@ -1,9 +1,11 @@
 ---
-status: paper
+status: partial
 adr: ADR-069
 ---
 
 # US-0217: Meeting Capture (Desktop, Audio + Video)
+
+> **Implementation status:** Built (library only, unit-tested): recorder interface, trigger, retention. Not built: per-OS recorders, hotkey, CLI, indicator/watchdog, S3 archive.
 
 **System Types:** ctxt
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md), [Researchers & OSINT Analysts](../../personas/researchers-osint.md)

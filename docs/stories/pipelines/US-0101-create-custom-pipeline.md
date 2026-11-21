@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: partial
 ---
 
 # US-0101: Create Custom Pipeline
+
+> **Implementation status:** Not enforced on create: step-name existence, protected `text.*` prefix, sandbox validation, `DUPLICATE_NAME` error code.
 
 **System Types:** dpkms (self-hosted), dpkms cloud
 **Personas:** [Platform Integrators](../../personas/README.md)

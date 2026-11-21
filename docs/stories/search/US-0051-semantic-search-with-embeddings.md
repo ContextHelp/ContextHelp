@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: partial
 ---
 
 # US-0051: Semantic Search with Embeddings
+
+> **Implementation status:** Built: `--semantic` vector search, `--min-score`. Not built: `--strategy vector`, `--embedding-model`, model-column reindex, 400/503 error contracts.
 
 **System Types:** dpkms (self-hosted), dpkms cloud
 **Personas:** [Agents/LLMs](../../personas/agents-llms-tools.md), [Knowledge Workers](../../personas/knowledge-workers.md)

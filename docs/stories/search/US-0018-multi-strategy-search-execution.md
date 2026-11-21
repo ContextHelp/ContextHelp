@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: partial
 ---
 
 # US-0018: Multi-Strategy Search Execution
+
+> **Implementation status:** Built: hybrid FTS+vector RRF merge, `--explain`. Not built: `--strategy`, intent auto-select, `strategies_used`, unknown-strategy 400.
 
 **System Types:** ctxt, dpkms (self-hosted), dpkms cloud
 **Personas:** [Agents/LLMs](../../personas/agents-llms-tools.md), [Knowledge Workers](../../personas/knowledge-workers.md)

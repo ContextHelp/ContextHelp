@@ -19,7 +19,7 @@ sovereignty preserved (registries influence selection, never receive user conten
 
 - `US-0030` set-up-focus-profiles
 - `US-0318` configure-federation-targets
-- `US-0319-fed` async-push-local-merged
+- `US-0319` async-push-local-merged
 - `US-0409` named-cursor (`ctxt list --cursor <name>`)
 
 ## Prerequisites
@@ -91,7 +91,7 @@ ctxt analyze "Acme PO #1742 invoice clearance"                \
   --type text --mentions "@client.acme" --hints "#billing"
 ```
 
-Capture stays local on founder's dpkms. Federation push (`US-0319-fed`) propagates to the
+Capture stays local on founder's dpkms. Federation push (`US-0319`) propagates to the
 shared dpkms. Each role's `--profile` filters which entries surface based on registry scope.
 
 ### Step 5: Employees query "what's new" with named cursor
@@ -143,7 +143,7 @@ Removing the registry subscription cuts the lens; cursor file can be deleted or 
 ### Capture not propagating to shared dpkms
 
 - Confirm `US-0318` federation target configured on founder's dpkms.
-- Inspect federation queue: `dpkms federation status` (pseudocode — see `US-0319-fed`).
+- Inspect federation queue: `dpkms federation status` (pseudocode — see `US-0319`).
 - Re-run capture with explicit `--profile founder` to ensure correct origin profile.
 
 ### Cursor drift across employees

@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: partial
 ---
 
 # US-0200: Browser Cookie Bridge
+
+> **Implementation status:** Built: localhost-only cookie bridge WebSocket with in-memory per-domain cache. Not built: browser extension, encrypted store, `ctxt cookie`, allow/blocklist.
 
 **System Types:** ctxt
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md), [Researchers & OSINT Analysts](../../personas/knowledge-workers.md)

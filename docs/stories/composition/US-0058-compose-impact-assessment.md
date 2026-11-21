@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: paper
 ---
 
 # US-0058: Compose Impact Assessment
+
+> **Implementation status:** No impact-assessment composition; compose emits a generic header and snippets.
 
 **System Types:** ctxt
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md)

@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: paper
 ---
 
 # US-0015: Batch Enrichment With Progress
+
+> **Implementation status:** No batch enrichment API, batch job ID, progress endpoint, or cancel exists; per-object jobs only.
 
 **System Types:** dpkms (self-hosted), dpkms cloud
 **Personas:** [Operations](../../personas/operations.md), [Maintainers](../../personas/maintainers.md)

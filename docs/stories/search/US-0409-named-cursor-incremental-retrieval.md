@@ -7,7 +7,6 @@ status: shipped-no-e2e
 **System Types:** ctxt
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md),
 [Agents/LLMs/Tools](../../personas/agents-llms-tools.md)
-**Status:** paper
 **Author:** $USER
 
 ---
@@ -29,7 +28,7 @@ Existing primitives are close but insufficient:
   remember when they last looked and pick a date manually.
 - `ctxt list --since <duration>` is relative → drifts on every call;
   no per-viewer state.
-- Resurface queue (US-0319) is profile-relevance scored, not chronological;
+- Resurface queue (US-0413) is profile-relevance scored, not chronological;
   wrong primitive for "feed since last read".
 - Saved search (US-0054) captures a query but no read position.
 
@@ -194,6 +193,6 @@ unit-only (covered by package tests, not e2e):
 
 - US-0016 — Natural-language search (composes via resolved RSQL)
 - US-0017 — Structured RSQL query (cursor adds time-gate predicate)
-- US-0319 — Resurface by profile relevance (scored, not chronological)
+- US-0413 — Resurface by profile relevance (scored, not chronological)
 - US-0054 — Saved search and alerts (future: advance on alert)
 - US-0055 — Search history and recommendations

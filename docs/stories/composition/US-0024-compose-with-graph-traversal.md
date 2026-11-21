@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: paper
 ---
 
 # US-0024: Compose With Graph Traversal
+
+> **Implementation status:** No graph composition: no `--from`/`--depth`/`--relation`/`--direction`/`--template`; compose does not traverse the graph.
 
 **System Types:** dpkms (self-hosted), dpkms cloud
 **Personas:** [Agents/LLMs](../../personas/agents-llms-tools.md)

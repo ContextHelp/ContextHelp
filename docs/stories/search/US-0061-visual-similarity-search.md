@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: paper
 ---
 
 # US-0061: Visual Similarity Search
+
+> **Implementation status:** No by-image search route, `--image` flag, visual embedding provider, or backfill.
 
 **System Types:** ctxt, dpkms
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md), [Agents & LLMs](../../personas/agents-llms-tools.md)

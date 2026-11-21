@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: partial
 ---
 
 # US-0105: Archive Pipeline
+
+> **Implementation status:** Built: archive/unarchive, default-list exclusion. Not built: enqueue against an archived pipeline returns 409 (no archived check in the enqueue handler); archiving built-ins is refused at storage but error mapping is unverified.
 
 **System Types:** dpkms (self-hosted), dpkms cloud
 **Personas:** [Platform Integrators](../../personas/README.md)
@@ -41,6 +43,7 @@ Archived pipelines cannot be:
 - **Archived pipelines cannot be selected**
 - `SelectPipeline()` skips archived pipelines by default
 - **Jobs requesting archived pipeline return error**
+- **Enqueue against an archived pipeline returns `409 CONFLICT`** ("Pipeline is archived and cannot be used") (moved from US-0113). Not yet enforced: the enqueue handler has no archived check; unknown pipelines return 404.
 
 - **Clear error messaging** explain why pipeline is unavailable
 

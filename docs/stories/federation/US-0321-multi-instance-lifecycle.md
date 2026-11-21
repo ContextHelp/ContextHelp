@@ -1,8 +1,10 @@
 ---
-status: paper
+status: partial
 ---
 
 # US-0321: Multi-Instance dpkms ps + Lifecycle
+
+> **Implementation status:** Built: `dpkms ps`, `stop`/`shutdown`, pidfile handling. Not built: `reboot` relaunch (SIGHUP only), per-instance isolation tests.
 
 **System Types:** dpkms (self-hosted)
 **Personas:** [Operations](../../personas/operations.md)
@@ -126,11 +128,11 @@ cmd serve --port P --config C:
 
 ## Related Stories
 
-- [US-0318](./US-0318-configure-federation-target.md) — configure federation target
-- [US-0319](./US-0319-async-push.md) — async background push
+- [US-0318](./US-0318-configure-federation-targets.md) — configure federation target
+- [US-0319](./US-0319-async-push-local-merged.md) — async background push
 - [US-0320](./US-0320-inline-push-during-ingest.md) — inline push during ingest
-- [US-0322](./US-0322-backup-and-rebuild.md) — backup/restore per instance
-- [US-0323](./US-0323-dag-chain.md) — DAG chain across instances
+- [US-0322](./US-0322-backup-and-federation-rebuild.md) — backup/restore per instance
+- [US-0323](./US-0323-dag-federation-chain.md) — DAG chain across instances
 
 ---
 

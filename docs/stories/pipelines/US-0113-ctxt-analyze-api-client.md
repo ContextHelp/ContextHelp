@@ -1,8 +1,11 @@
 ---
 status: shipped
+merged_into: US-0106
 ---
 
 # US-0113: ctxt Analyze API Client
+
+> **Merged into [US-0106](./US-0106-enqueue-content-via-dpkms.md).** Acceptance criteria were identical to US-0106; the `ctxt analyze` client criteria now live there and the archived-pipeline 409 case moved to [US-0105](./US-0105-archive-pipeline.md). Kept for ID stability; do not extend.
 
 **System Types:** dpkms (self-hosted), dpkms cloud
 **Personas:** [Platform Integrators](../../personas/README.md), [Knowledge Workers](../../personas/README.md)
@@ -89,7 +92,7 @@ Now, `dpkms pipeline enqueue` is:
 }
 ```
 
-**409 Conflict**
+**409 Conflict** (moved to US-0105; not yet enforced)
 ```json
 {
   "error": {

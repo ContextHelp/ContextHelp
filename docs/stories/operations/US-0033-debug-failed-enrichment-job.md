@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: partial
 ---
 
 # US-0033: Debug Failed Enrichment Job
+
+> **Implementation status:** Not built: `ctxt job log`, rejecting retry of non-failed jobs. Retry of an unknown job returns 400, not 404.
 
 **System Types:** dpkms (self-hosted), dpkms cloud
 **Personas:** [Operations](../../personas/operations.md), [Maintainers](../../personas/maintainers.md)

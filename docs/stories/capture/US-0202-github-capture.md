@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: partial
 ---
 
 # US-0202: GitHub Repository and PR Capture
+
+> **Implementation status:** Built: `url.github.repo` (API client, PAT, backoff). Not built: PR/issue/user capture, diff and review summaries, entity edges.
 
 **System Types:** ctxt
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md), [Platform Integrators](../../personas/platform-integrators.md), [Researchers & OSINT Analysts](../../personas/knowledge-workers.md)

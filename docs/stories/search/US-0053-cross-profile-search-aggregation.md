@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: paper
 ---
 
 # US-0053: Cross-Profile Search Aggregation
+
+> **Implementation status:** No `--profiles`/`--all-profiles`, cross-profile RRF merge, or `contributing_profiles`.
 
 **System Types:** ctxt
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md)

@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: partial
 ---
 
 # US-0112: Configure Sandbox per Pipeline
+
+> **Implementation status:** Built: sandbox config stored/returned with the pipeline. Not built: enforcement, validation of incompatible settings, Docker isolation.
 
 **System Types:** dpkms (self-hosted), dpkms cloud
 **Personas:** [Platform Integrators](../../personas/README.md), [Step Developers](../../personas/README.md), [Registry Operators](../../personas/README.md)

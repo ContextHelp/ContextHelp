@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: partial
 ---
 
 # US-0209: Authenticated Web Content Fetch
+
+> **Implementation status:** Built: `url.authenticated` pipeline via browser provider. Not built: cookie-age warning, unauthenticated fallback, scraper rules, per-domain config, robots.txt handling.
 
 **System Types:** ctxt, dpkms (self-hosted)
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md), [Researchers & OSINT Analysts](../../personas/researchers-osint.md)

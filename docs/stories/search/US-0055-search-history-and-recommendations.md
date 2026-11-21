@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: partial
 ---
 
 # US-0055: Search History and Recommendations
+
+> **Implementation status:** Built: history list/clear endpoints and storage. Not built: persisting searches to history (append is never called), `search recommend`.
 
 **System Types:** ctxt
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md)

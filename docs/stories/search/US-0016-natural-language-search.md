@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: partial
 ---
 
 # Story: Natural Language Search
+
+> **Implementation status:** Built: keyword/FTS and hybrid search. Not built: intent detection, strategy selection by intent, clarification, iterative refinement.
 
 **System Types:** ctxt
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md), [Agents/LLMs](../../personas/agents-llms-tools.md)

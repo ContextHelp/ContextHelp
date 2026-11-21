@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: partial
 ---
 
 # US-0111: Configure Registry Auto-Update
+
+> **Implementation status:** Not built: configurable update interval/scheduler (only the per-registry auto-update flag exists).
 
 **System Types:** dpkms (self-hosted), dpkms cloud
 **Personas:** [Platform Integrators](../../personas/README.md), [Registry Operators](../../personas/README.md), [Maintainers](../../personas/README.md)

@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: paper
 ---
 
 # US-0206: OSINT Entity Aggregation
+
+> **Implementation status:** No OSINT aggregation code exists.
 
 **System Types:** ctxt, dpkms (self-hosted)
 **Personas:** [Researchers & OSINT Analysts](../../personas/researchers-osint.md), [Agents/LLMs/Tools](../../personas/agents-llms-tools.md)

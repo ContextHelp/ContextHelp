@@ -120,8 +120,8 @@ new_object ingested
 
 - US-0400: Fan-out enrichment at ingest (triggers page updates)
 - US-0022: Generate brief from objects (ephemeral predecessor)
-- US-0406: Knowledge lint and health check
-- US-0402: Index-first retrieval
+- US-0402: Knowledge lint and health check
+- US-0408: Index-first retrieval
 
 ---
 

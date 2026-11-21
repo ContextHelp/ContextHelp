@@ -42,6 +42,9 @@ WARN (backfill is a separate task).
    - `shipped-no-e2e` — code present, e2e missing/broken/planned.
    - `partial` — code present, only some criteria met.
    - `paper` — story written, no impl.
+   - Optional `merged_into: US-NNNN` — the story duplicated another and was
+     folded into it; kept for ID stability, not to be extended. `status:`
+     still describes the code.
 8. **NEW**: Fixture-driven tests use `fixture:` prefix instead of
    `file::function`. Path points to a fixture directory or YAML file
    that the test runner consumes. See worked example below.
