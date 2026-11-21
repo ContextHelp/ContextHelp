@@ -79,10 +79,60 @@ func freshPostgres(t *testing.T) storage.StorageDriver {
 	return d
 }
 
+func TestAdminReadsEveryRouteSeesNothing_Postgres(t *testing.T) {
+	adminReadsEveryRouteSeesNothing(t, freshPostgres)
+}
+
+func TestAdminViewerMatchesNothing_Postgres(t *testing.T) {
+	adminViewerMatchesNothing(t, freshPostgres)
+}
+
+func TestAdminDirectFetchIs404_Postgres(t *testing.T) { adminDirectFetchIs404(t, freshPostgres) }
+
+func TestAdminListsAndCountsAreEmpty_Postgres(t *testing.T) {
+	adminListsAndCountsAreEmpty(t, freshPostgres)
+}
+
+func TestAdminClosedRoutesAreNotShared_Postgres(t *testing.T) {
+	adminClosedRoutesAreNotShared(t, freshPostgres)
+}
+
+func TestAdminRPCsSeeNothing_Postgres(t *testing.T) { adminRPCsSeeNothing(t, freshPostgres) }
+
+func TestAdminCannotViewAs_Postgres(t *testing.T) { adminCannotViewAs(t, freshPostgres) }
+
+func TestAdminSeesNoOneElsesSavedSearches_Postgres(t *testing.T) {
+	adminSeesNoOneElsesSavedSearches(t, freshPostgres)
+}
+
+func TestAdminCannotReadTheAccessLog_Postgres(t *testing.T) {
+	adminCannotReadTheAccessLog(t, freshPostgres)
+}
+
+func TestAdminFindEveryModeFindsNothing_Postgres(t *testing.T) {
+	adminFindEveryModeFindsNothing(t, freshPostgres)
+}
+
+func TestAdminDifferentialHiddenRowsChangeNothing_Postgres(t *testing.T) {
+	adminDifferentialHiddenRowsChangeNothing(t, freshPostgres)
+}
+
+func TestAdminSharingChangesAreAudited_Postgres(t *testing.T) {
+	adminSharingChangesAreAudited(t, freshPostgres)
+}
+
 func TestPerObjectRenderOnEveryReadPath_Postgres(t *testing.T) {
 	perObjectRenderOnEveryReadPath(t, freshPostgres)
 }
 
 func TestPerObjectCapabilityLimitsTheSurface_Postgres(t *testing.T) {
 	perObjectCapabilityLimitsTheSurface(t, freshPostgres)
+}
+
+func TestAdminCannotTakeAViewersCredential_Postgres(t *testing.T) {
+	adminCannotTakeAViewersCredential(t, freshPostgres)
+}
+
+func TestAdminEntityGateHoldsGrantedAdmins_Postgres(t *testing.T) {
+	adminEntityGateHoldsGrantedAdmins(t, freshPostgres)
 }

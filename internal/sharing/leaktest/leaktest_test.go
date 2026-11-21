@@ -107,6 +107,14 @@ func TestResultServerError(t *testing.T) {
 	assert.False(t, Result{Code: codes.DeadlineExceeded}.ServerError())
 	assert.True(t, Result{Code: codes.Internal}.ServerError())
 	assert.True(t, Result{Code: codes.Unknown}.ServerError())
+	// A backend without the store a route reads: no failure, nothing
+	// returned. A bare 501, or gRPC Unimplemented, is still a failure.
+	unsupported := Result{Status: http.StatusNotImplemented, Body: []byte(`{"error":{"code":"NOT_IMPLEMENTED","message":"saved searches are not supported by this storage backend"}}`)}
+	assert.True(t, unsupported.Unsupported())
+	assert.False(t, unsupported.ServerError())
+	assert.False(t, Result{Status: http.StatusNotImplemented}.Unsupported())
+	assert.True(t, Result{Status: http.StatusNotImplemented}.ServerError())
+	assert.True(t, Result{Code: codes.Unimplemented}.ServerError())
 }
 
 // The owner reaches every read route without a server error. Each
