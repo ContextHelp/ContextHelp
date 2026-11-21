@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/ideacrafterslabs/ctxt/internal/events"
+	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blobref"
 	"github.com/ideacrafterslabs/ctxt/pkg/taxonomy"
@@ -112,7 +113,7 @@ func (s *Service) TriageInbox(ctx context.Context, id string, req TriageRequest)
 		pipelineName = s.detectPipeline(obj.Source, "", obj.RawContent)
 	}
 
-	payload, encoding := jobPayload(obj.RawContent)
+	payload, encoding := jobs.Payload(obj.RawContent)
 	job := &storage.Job{
 		ID:              uuid.New().String(),
 		Type:            "ingest:" + obj.Type,

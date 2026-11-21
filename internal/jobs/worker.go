@@ -448,6 +448,14 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 
 	durationMs = time.Since(start).Milliseconds()
 	p.publishAfter(ctx, ingestEv)
+
+	// Fan out per-item jobs if the pipeline staged items for enqueueing.
+	// An item that could not be enqueued fails the container job: it
+	// must not complete with items silently missing.
+	if err := p.fanOutItems(ctx, draft); err != nil {
+		p.markFailed(ctx, job.ID, err.Error(), draft.ID)
+		return
+	}
 	p.markCompleted(ctx, job.ID, draft.ID, durationMs)
 
 	// Post-ingest fan-out enrichment (bidirectional edges, audit log).
@@ -456,9 +464,6 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 			slog.Warn("jobs: fan-out enrichment failed", "object", draft.ID, "err", err)
 		}
 	}
-
-	// Fan out per-item jobs if the pipeline staged items for enqueueing.
-	p.fanOutItems(ctx, draft)
 }
 
 // submission is what the job's caller attached to the capture.
@@ -679,18 +684,23 @@ func (p *WorkerPool) markFailed(ctx context.Context, jobID, reason string, objec
 }
 
 // fanOutItems enqueues per-item jobs from Metadata["items_to_enqueue"].
-func (p *WorkerPool) fanOutItems(ctx context.Context, draft *storage.KnowledgeObject) {
+// An item that cannot be enqueued is not dropped: the rest are still
+// enqueued, and the error says how many were lost so the caller fails
+// the job instead of completing it.
+func (p *WorkerPool) fanOutItems(ctx context.Context, draft *storage.KnowledgeObject) error {
 	if draft.Metadata == nil {
-		return
+		return nil
 	}
 	rawItems, ok := draft.Metadata["items_to_enqueue"]
 	if !ok {
-		return
+		return nil
 	}
 	items, ok := rawItems.([]map[string]any)
 	if !ok || len(items) == 0 {
-		return
+		return nil
 	}
+	var failed int
+	var firstErr error
 	now := time.Now().Truncate(time.Second)
 	for _, item := range items {
 		content, _ := item["content"].(string)
@@ -706,25 +716,35 @@ func (p *WorkerPool) fanOutItems(ctx context.Context, draft *storage.KnowledgeOb
 		if itemPipeline == "" {
 			itemPipeline = "feed.ingest"
 		}
+		payload, encoding := Payload(content)
 		job := &storage.Job{
-			ID:         uuid.New().String(),
-			Type:       "ingest:feed_item",
-			Status:     storage.JobPending,
-			Payload:    content,
-			Pipeline:   itemPipeline,
-			Source:     source,
-			MaxRetries: p.maxRetries,
-			CreatedAt:  now,
-			UpdatedAt:  now,
+			ID:              uuid.New().String(),
+			Type:            "ingest:feed_item",
+			Status:          storage.JobPending,
+			Payload:         payload,
+			PayloadEncoding: encoding,
+			Pipeline:        itemPipeline,
+			Source:          source,
+			MaxRetries:      p.maxRetries,
+			CreatedAt:       now,
+			UpdatedAt:       now,
 		}
 		if err := p.queue.Enqueue(ctx, job); err != nil {
-			slog.Warn("jobs: fanOut enqueue failed", "err", err)
+			slog.Warn("jobs: fanOut enqueue failed", "source", source, "err", err)
+			failed++
+			if firstErr == nil {
+				firstErr = err
+			}
 			continue
 		}
 		if p.bus != nil {
 			_ = p.bus.Publish(ctx, kitbus.NewEvent(TopicJobEnqueued, SourceWorkerPoolFanOut, job))
 		}
 	}
+	if failed > 0 {
+		return fmt.Errorf("fan-out: %d of %d item jobs not enqueued: %w", failed, len(items), firstErr)
+	}
+	return nil
 }
 
 func (p *WorkerPool) emitCompleted(ctx context.Context, jobID string, durationMs int64) {

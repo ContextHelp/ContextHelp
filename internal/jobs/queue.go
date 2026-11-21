@@ -2,12 +2,14 @@ package jobs
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blobref"
 )
 
 // ErrPipelineNotFound is returned when an enqueue request references an
@@ -102,20 +104,33 @@ func (q *Queue) ReleaseLease(ctx context.Context, id, claim string) error {
 	return q.store.ReleaseLease(ctx, id, claim)
 }
 
+// Payload is the job payload for content, and the encoding it travels
+// in: content that cannot live in a TEXT column (binary) travels as
+// base64, flagged by storage.PayloadBase64. Every job that carries
+// content takes its Payload and PayloadEncoding from here.
+func Payload(content string) (payload, encoding string) {
+	if blobref.NeedsBlob(content) {
+		return base64.StdEncoding.EncodeToString([]byte(content)), storage.PayloadBase64
+	}
+	return content, ""
+}
+
 // EnqueueIngestJob creates and enqueues an ingest job without requiring callers
 // to import internal/storage directly.
 func (q *Queue) EnqueueIngestJob(ctx context.Context, jobType, payload, pipeline, source string, maxRetries int) error {
 	now := time.Now().Truncate(time.Second)
+	payload, encoding := Payload(payload)
 	job := &storage.Job{
-		ID:         uuid.New().String(),
-		Type:       jobType,
-		Status:     storage.JobPending,
-		Payload:    payload,
-		Pipeline:   pipeline,
-		Source:     source,
-		MaxRetries: maxRetries,
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		ID:              uuid.New().String(),
+		Type:            jobType,
+		Status:          storage.JobPending,
+		Payload:         payload,
+		PayloadEncoding: encoding,
+		Pipeline:        pipeline,
+		Source:          source,
+		MaxRetries:      maxRetries,
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}
 	return q.Enqueue(ctx, job)
 }

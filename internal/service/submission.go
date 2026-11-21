@@ -1,7 +1,6 @@
 package service
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,7 +8,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/contentenc"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/internal/storage/blobref"
 )
 
 // Size limits on what a capture carries beside its content. A transcript
@@ -50,16 +48,6 @@ func decodeContent(req AnalyzeRequest) (AnalyzeRequest, error) {
 	}
 	req.Content, req.ContentEncoding = c, ""
 	return req, nil
-}
-
-// jobPayload is the job payload for content, and the encoding it travels
-// in: content that cannot live in a TEXT column (binary) travels as
-// base64, flagged by storage.PayloadBase64.
-func jobPayload(content string) (payload, encoding string) {
-	if blobref.NeedsBlob(content) {
-		return base64.StdEncoding.EncodeToString([]byte(content)), storage.PayloadBase64
-	}
-	return content, ""
 }
 
 // validateSubmission checks the note, data, metadata and ambient id limits.
