@@ -35,10 +35,12 @@ type shareRoutes struct {
 	sharing storage.SharingStore
 	reg     storage.AuthStore
 	keys    *authn.Keys
+	// changes records each change in the audit log.
+	changes changeLog
 }
 
 func newShareRoutes(rc RouterConfig) *shareRoutes {
-	return &shareRoutes{sharing: rc.Sharing, reg: rc.Registry, keys: rc.Keys}
+	return &shareRoutes{sharing: rc.Sharing, reg: rc.Registry, keys: rc.Keys, changes: changeLog{rc.AuditLog}}
 }
 
 // ready reports whether the sharing registry is wired, writing the
@@ -142,6 +144,7 @@ func (s *shareRoutes) CreateAudience(w http.ResponseWriter, r *http.Request) {
 		writeRegistryError(w, err, "audience")
 		return
 	}
+	s.changes.record(r, EventAudienceCreated, map[string]any{"audience_id": a.ID, "audience": a.Name})
 	WriteJSON(w, http.StatusCreated, audienceRecord{Audience: *a, Members: []*storage.AudienceMember{}})
 }
 
@@ -238,6 +241,9 @@ func (s *shareRoutes) AddMember(w http.ResponseWriter, r *http.Request) {
 		writeRegistryError(w, err, "add audience member")
 		return
 	}
+	s.changes.record(r, EventMemberAdded, map[string]any{
+		"audience_id": a.ID, "audience": a.Name, "principal_id": p.ID, "expires_at": m.ExpiresAt,
+	})
 	WriteJSON(w, http.StatusOK, m)
 }
 
@@ -255,5 +261,8 @@ func (s *shareRoutes) RemoveMember(w http.ResponseWriter, r *http.Request) {
 		writeRegistryError(w, err, "audience member")
 		return
 	}
+	s.changes.record(r, EventMemberRemoved, map[string]any{
+		"audience_id": a.ID, "audience": a.Name, "principal_id": strings.TrimSpace(chi.URLParam(r, "principal")),
+	})
 	w.WriteHeader(http.StatusNoContent)
 }
