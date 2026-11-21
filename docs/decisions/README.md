@@ -535,6 +535,7 @@ Named share policies (RSQL data filter, class exclusions, field projection, reda
 Client-side stages between the browser and enqueue for `ctxt capture tabs` and `history`: canonicalize URLs (tracking params, fragments, GitHub file URLs), then apply shipped opt-out category presets (webmail, calendar, finance, auth, checkout, admin consoles) as ordinary `urlfilter` rules.
 - **Dedup.** Canonical form feeds the existing exact-URL and server content-hash dedup.
 - **Visibility.** `--dry-run` shows rewrites, preset and category; decisions are still logged without the URL.
+- **Decisions.** Keep GitHub file URLs (strip anchors), `default` preset level on, drop fragments, browser capture only, release-bound lists, shared `internal/githuburl`, category disable user-config only. Open: strict-level credential-key heuristic.
 
 ---
 
