@@ -143,13 +143,13 @@ func twitterMainFixture() (mockTweet, mockTwitterUser) {
 
 func twitterSourceFixture() (mockTweet, mockTwitterUser) {
 	return mockTweet{
-			ID:        twitterSourceTweetID,
-			Text:      "A test tweet",
-			AuthorID:  "42",
-			CreatedAt: "2026-01-01T00:00:00.000Z",
-		}, mockTwitterUser{
-			ID: "42", Username: "testuser", Name: "Test User",
-		}
+		ID:        twitterSourceTweetID,
+		Text:      "A test tweet",
+		AuthorID:  "42",
+		CreatedAt: "2026-01-01T00:00:00.000Z",
+	}, mockTwitterUser{
+		ID: "42", Username: "testuser", Name: "Test User",
+	}
 }
 
 func twitterAsyncFixture() (mockTweet, mockTwitterUser) {
