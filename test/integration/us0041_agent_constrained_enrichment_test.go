@@ -8,7 +8,6 @@ package integration
 // The HTTP /enrich endpoint is NOT yet implemented. Tests exercise the service
 // layer (pipeline-based enrichment) and document the expected HTTP contract.
 //
-// Gate: INTEGRATION=1 env var required to run.
 
 import (
 	"bytes"
@@ -16,7 +15,6 @@ import (
 	"encoding/json"
 	"fmt"
 	gohttp "net/http"
-	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -91,9 +89,6 @@ func (s *constrainedTagStep) Run(_ context.Context, draft *storage.KnowledgeObje
 // TestUS0041_ConstrainedEntitiesConformToPattern verifies that the enrichment
 // pipeline only stores mentions matching @namespace.slug pattern.
 func TestUS0041_ConstrainedEntitiesConformToPattern(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -140,9 +135,6 @@ func TestUS0041_ConstrainedEntitiesConformToPattern(t *testing.T) {
 // TestUS0041_ConstrainedTagsAreSubsetOfAllowedList verifies only allowed_tags
 // values are stored; out-of-vocabulary tags are dropped.
 func TestUS0041_ConstrainedTagsAreSubsetOfAllowedList(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -194,9 +186,6 @@ func TestUS0041_ConstrainedTagsAreSubsetOfAllowedList(t *testing.T) {
 // TestUS0041_EnrichmentResultIsDurable verifies enriched object fields persist
 // across multiple GET /objects/{id} calls (no write-on-read mutation).
 func TestUS0041_EnrichmentResultIsDurable(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -244,9 +233,6 @@ func TestUS0041_EnrichmentResultIsDurable(t *testing.T) {
 // TestUS0041_EnrichmentUpdatesObjectViaHTTP verifies the object's mentions/tags
 // are visible via GET /api/v1/objects/{id} after enrichment pipeline runs.
 func TestUS0041_EnrichmentUpdatesObjectViaHTTP(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -291,9 +277,6 @@ func TestUS0041_EnrichmentUpdatesObjectViaHTTP(t *testing.T) {
 // TestUS0041_PipelineFieldReflectsEnrichmentPipeline verifies the pipeline field
 // on the stored object matches the enrichment pipeline used.
 func TestUS0041_PipelineFieldReflectsEnrichmentPipeline(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -331,9 +314,7 @@ func TestUS0041_PipelineFieldReflectsEnrichmentPipeline(t *testing.T) {
 //
 // MISSING ENDPOINT: Will fail until /api/v1/enrich is registered in server.go.
 func TestUS0041_HTTPEnrichEndpointExists(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
+	t.Skip("unbuilt: POST /api/v1/enrich is not registered in internal/server/http/routes.go")
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -362,9 +343,7 @@ func TestUS0041_HTTPEnrichEndpointExists(t *testing.T) {
 //
 // MISSING ENDPOINT: Will fail until /api/v1/enrich is implemented.
 func TestUS0041_HTTPEnrichNonexistentObjectReturns404(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
+	t.Skip("unbuilt: POST /api/v1/enrich is not registered in internal/server/http/routes.go")
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -387,9 +366,7 @@ func TestUS0041_HTTPEnrichNonexistentObjectReturns404(t *testing.T) {
 //
 // MISSING ENDPOINT: Will fail until /api/v1/enrich is implemented.
 func TestUS0041_HTTPEnrichUnsupportedExtractionTypeReturns400(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
+	t.Skip("unbuilt: POST /api/v1/enrich is not registered in internal/server/http/routes.go")
 	env := startTestEnv(t)
 	defer env.stop(t)
 

@@ -13,7 +13,6 @@ package integration
 // Re-record: XRR_MODE=record go test -count=1 ./test/integration/ \
 //   -run TestUS0204_RecordCassettes
 //
-// Gate: INTEGRATION=1 env var required.
 
 import (
 	"context"
@@ -21,7 +20,6 @@ import (
 	"fmt"
 	gohttp "net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -213,10 +211,6 @@ func TestUS0204_RecordCassettes(t *testing.T) {
 // TestUS0204_ProfileContentStoredWithAttribution verifies LinkedIn profile
 // content is stored with source attribution.
 func TestUS0204_ProfileContentStoredWithAttribution(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
-
 	const username = linkedInUsername
 	const sourceURL = linkedInProfileURL
 
@@ -268,10 +262,6 @@ func TestUS0204_ProfileContentStoredWithAttribution(t *testing.T) {
 // TestUS0204_PostContentStoredWithAttribution verifies LinkedIn post content
 // is stored with source attribution.
 func TestUS0204_PostContentStoredWithAttribution(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
-
 	const postID = linkedInPostID
 	const wantText = linkedInPostText
 	const sourceURL = linkedInPostSourceURL

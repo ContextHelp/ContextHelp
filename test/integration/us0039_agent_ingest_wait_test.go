@@ -9,14 +9,12 @@ package integration
 // Note: The analyze response currently returns {job_id} only (no object_id field).
 // Tests align to actual server contract and flag the missing object_id field.
 //
-// Gate: INTEGRATION=1 env var required to run.
 
 import (
 	"bytes"
 	"encoding/json"
 	"fmt"
 	gohttp "net/http"
-	"os"
 	"testing"
 	"time"
 
@@ -35,9 +33,6 @@ type analyzeResponse struct {
 
 // TestUS0039_PostAnalyzeReturns202 verifies POST /analyze returns HTTP 202.
 func TestUS0039_PostAnalyzeReturns202(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -56,9 +51,6 @@ func TestUS0039_PostAnalyzeReturns202(t *testing.T) {
 
 // TestUS0039_PostAnalyzeReturnsJobID verifies response body contains non-empty job_id.
 func TestUS0039_PostAnalyzeReturnsJobID(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -81,9 +73,6 @@ func TestUS0039_PostAnalyzeReturnsJobID(t *testing.T) {
 
 // TestUS0039_PostAnalyzeMissingContentReturns400 verifies missing content returns 400.
 func TestUS0039_PostAnalyzeMissingContentReturns400(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -100,9 +89,6 @@ func TestUS0039_PostAnalyzeMissingContentReturns400(t *testing.T) {
 // TestUS0039_JobExistsImmediatelyAfterPost verifies job record is retrievable right
 // after the POST /analyze response is received.
 func TestUS0039_JobExistsImmediatelyAfterPost(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -131,9 +117,6 @@ func TestUS0039_JobExistsImmediatelyAfterPost(t *testing.T) {
 
 // TestUS0039_JobStatusFieldPresent verifies GET /jobs/{id} response includes status field.
 func TestUS0039_JobStatusFieldPresent(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -152,9 +135,6 @@ func TestUS0039_JobStatusFieldPresent(t *testing.T) {
 
 // TestUS0039_JobTransitionsToCompleted verifies job status reaches "completed".
 func TestUS0039_JobTransitionsToCompleted(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -168,9 +148,6 @@ func TestUS0039_JobTransitionsToCompleted(t *testing.T) {
 // TestUS0039_ObjectRetrievableAfterJobCompletes verifies the stored object is
 // accessible via GET /objects/{id} after job reaches completed status.
 func TestUS0039_ObjectRetrievableAfterJobCompletes(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -196,9 +173,6 @@ func TestUS0039_ObjectRetrievableAfterJobCompletes(t *testing.T) {
 // (Per spec, POST /analyze should return object_id in 202 body; currently it
 // only returns job_id. result_id on the job record serves as the equivalent.)
 func TestUS0039_ObjectIDMatchesJobResultID(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -218,9 +192,6 @@ func TestUS0039_ObjectIDMatchesJobResultID(t *testing.T) {
 
 // TestUS0039_JobNotFoundReturns404 verifies GET /jobs/{unknown_id} returns 404.
 func TestUS0039_JobNotFoundReturns404(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -234,9 +205,6 @@ func TestUS0039_JobNotFoundReturns404(t *testing.T) {
 // TestUS0039_AgentPollPatternNoRace verifies polling completes without data race:
 // ingest → poll until completed → retrieve object. Runs with -race in CI.
 func TestUS0039_AgentPollPatternNoRace(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -290,9 +258,6 @@ func TestUS0039_AgentPollPatternNoRace(t *testing.T) {
 // TestUS0039_ConcurrentAgentIngests verifies multiple concurrent ingest+wait sequences
 // produce distinct objects (no ID collision, no cross-contamination).
 func TestUS0039_ConcurrentAgentIngests(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
 	env := startTestEnv(t)
 	defer env.stop(t)
 

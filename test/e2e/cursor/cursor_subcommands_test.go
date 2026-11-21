@@ -3,6 +3,7 @@
 package cursor
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -77,7 +78,16 @@ func TestCursor_DeleteRemovesEntry(t *testing.T) {
 	_, code := env.runBin("cursor", "set", "feed", "--to", "2026-04-01T00:00:00Z")
 	require.Equal(t, 0, code)
 
-	out, code := env.runBin("cursor", "delete", "feed")
+	// delete is destructive: the first run prints a confirm token and
+	// changes nothing.
+	prompt, code := env.runBin("cursor", "delete", "feed")
+	require.NotEqual(t, 0, code, "delete without token must refuse; out: %s", prompt)
+	_, still := env.runBin("cursor", "show", "feed")
+	require.Equal(t, 0, still, "entry must survive an unconfirmed delete")
+	m := regexp.MustCompile(`--confirm-token=([0-9a-f]+)`).FindStringSubmatch(prompt)
+	require.Len(t, m, 2, "prompt must name the token; out: %s", prompt)
+
+	out, code := env.runBin("cursor", "delete", "feed", "--confirm-token="+m[1])
 	require.Equal(t, 0, code, "out: %s", out)
 	assert.Contains(t, strings.ToLower(out), "deleted")
 

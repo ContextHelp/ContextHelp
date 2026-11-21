@@ -19,60 +19,51 @@ import (
 )
 
 func TestCutter_IdleHardCut(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: E2E harness — cutter is unit-tested with fakeClock " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: E2E harness — cutter is unit-tested with fakeClock " +
 		"in internal/ambient/session/cutter_test.go::TestCutter_HardCutOnIdleGap; " +
 		"E2E verifies real-clock idle cut + bus event emission to subscriber")
 }
 
 func TestCutter_SoftCutWithFrequentSwitchingException(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: E2E harness — frequent-switching exception is " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: E2E harness — frequent-switching exception is " +
 		"unit-tested; E2E with real foreground-source events")
 }
 
 func TestCutter_HardTimeout(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: E2E harness — fake-clock unit test passes; long-running " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: E2E harness — fake-clock unit test passes; long-running " +
 		"E2E (2h+) needs CI accommodation or a clock-skew helper")
 }
 
 func TestCutter_ForceEndOnShutdown(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: E2E harness — ForceEnd is unit-tested; E2E with real " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: E2E harness — ForceEnd is unit-tested; E2E with real " +
 		"ctxd shutdown signal (SIGTERM)")
 }
 
 func TestCutter_DailySafetyNet(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: daily-safety-net cron wiring in cmd/ctxd (not yet built); " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: daily-safety-net cron wiring in cmd/ctxd (not yet built); " +
 		"the cutter exposes ForceEnd(EndDailySafetyNet) which is unit-tested")
 }
 
 func TestSession_SoftFKReplay(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: dpkms-side schema migration (sessions table + " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: dpkms-side schema migration (sessions table + " +
 		"objects.session_id column with soft-FK semantics, per ADR-067 " +
 		"§Wire shape). Substrate enqueue path emits SessionID; dpkms " +
 		"acceptance is the missing piece")
 }
 
 func TestSession_PutIdempotent(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: dpkms-side /api/v1/sessions/{id} endpoint (PUT idempotent " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: dpkms-side /api/v1/sessions/{id} endpoint (PUT idempotent " +
 		"per ADR-067)")
 }
 
 func TestComposeBySession(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: dpkms-side ObjectFilter.SessionID field. CLI flag " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: dpkms-side ObjectFilter.SessionID field. CLI flag " +
 		"ctxt compose --session is plumbed as forward-compat no-op; " +
 		"activates when storage migration ships")
 }
 
 func TestSessionListAndShow(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: ctxt session list/show CLI commands (planned per US-0216 " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: ctxt session list/show CLI commands (planned per US-0216 " +
 		"acceptance; not yet built — the cutter is the substrate, the CLI is " +
 		"the user surface)")
 }

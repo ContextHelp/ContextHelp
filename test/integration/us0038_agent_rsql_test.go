@@ -6,12 +6,10 @@ package integration
 // Verifies deterministic, exact-match semantics; AND/OR operators; empty results;
 // and metadata presence on returned objects.
 //
-// Gate: INTEGRATION=1 env var required to run.
 
 import (
 	"fmt"
 	gohttp "net/http"
-	"os"
 	"testing"
 	"time"
 
@@ -23,9 +21,6 @@ import (
 
 // TestUS0038_AgentRSQLTypeEquality verifies type==value returns only matching objects.
 func TestUS0038_AgentRSQLTypeEquality(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -61,9 +56,6 @@ func TestUS0038_AgentRSQLTypeEquality(t *testing.T) {
 
 // TestUS0038_AgentRSQLAndOperator verifies semicolon AND combines type + source filters.
 func TestUS0038_AgentRSQLAndOperator(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -89,9 +81,6 @@ func TestUS0038_AgentRSQLAndOperator(t *testing.T) {
 
 // TestUS0038_AgentRSQLOrOperator verifies comma OR returns union across types.
 func TestUS0038_AgentRSQLOrOperator(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -128,9 +117,6 @@ func TestUS0038_AgentRSQLOrOperator(t *testing.T) {
 
 // TestUS0038_AgentRSQLInOperator verifies =in= membership operator.
 func TestUS0038_AgentRSQLInOperator(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -161,9 +147,6 @@ func TestUS0038_AgentRSQLInOperator(t *testing.T) {
 
 // TestUS0038_AgentRSQLEmptyResultsReturn200 verifies no-match query returns 200 + empty array.
 func TestUS0038_AgentRSQLEmptyResultsReturn200(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -181,9 +164,6 @@ func TestUS0038_AgentRSQLEmptyResultsReturn200(t *testing.T) {
 
 // TestUS0038_AgentRSQLInvalidExpressionReturns400 verifies malformed RSQL returns 400.
 func TestUS0038_AgentRSQLInvalidExpressionReturns400(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -196,9 +176,6 @@ func TestUS0038_AgentRSQLInvalidExpressionReturns400(t *testing.T) {
 
 // TestUS0038_AgentRSQLDeterministicOrdering verifies same RSQL returns same order on repeat calls.
 func TestUS0038_AgentRSQLDeterministicOrdering(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -236,9 +213,6 @@ func TestUS0038_AgentRSQLDeterministicOrdering(t *testing.T) {
 
 // TestUS0038_AgentRSQLObjectMetadataPresent verifies result objects carry id, type, source, created_at.
 func TestUS0038_AgentRSQLObjectMetadataPresent(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -282,9 +256,6 @@ func TestUS0038_AgentRSQLObjectMetadataPresent(t *testing.T) {
 // NOTE: query_mode parameter is not yet parsed by the server — this test verifies
 // the endpoint still returns 200 when the extra param is present (it is silently ignored).
 func TestUS0038_AgentRSQLViaHTTPQueryMode(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -306,9 +277,6 @@ func TestUS0038_AgentRSQLViaHTTPQueryMode(t *testing.T) {
 // TestUS0038_AgentRSQLObjectRetrievableByID verifies object from search result
 // is retrievable via GET /api/v1/objects/{id} (storage round-trip).
 func TestUS0038_AgentRSQLObjectRetrievableByID(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -344,9 +312,6 @@ func TestUS0038_AgentRSQLObjectRetrievableByID(t *testing.T) {
 
 // TestUS0038_AgentRSQLPerformanceLocal verifies local query round-trip < 500ms.
 func TestUS0038_AgentRSQLPerformanceLocal(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
 	env := startTestEnv(t)
 	defer env.stop(t)
 

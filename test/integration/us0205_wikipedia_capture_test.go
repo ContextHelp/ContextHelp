@@ -13,7 +13,6 @@ package integration
 // Re-record: XRR_MODE=record go test -count=1 ./test/integration/ \
 //   -run TestUS0205_RecordCassettes
 //
-// Gate: INTEGRATION=1 env var required.
 
 import (
 	"context"
@@ -21,7 +20,6 @@ import (
 	"fmt"
 	gohttp "net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -226,10 +224,6 @@ func TestUS0205_RecordCassettes(t *testing.T) {
 // TestUS0205_TitleSummaryStored verifies Wikipedia article title and summary
 // are stored on the captured KnowledgeObject.
 func TestUS0205_TitleSummaryStored(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
-
 	const pageTitle = wikiDistributedPage
 	const wantTitle = wikiDistributedTitle
 	const wantSummary = wikiDistributedSummary
@@ -281,10 +275,6 @@ func TestUS0205_TitleSummaryStored(t *testing.T) {
 // TestUS0205_InfoboxEntitiesExtracted verifies infobox key/value entities are
 // extracted and stored.
 func TestUS0205_InfoboxEntitiesExtracted(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
-
 	const pageTitle = wikiGoPage
 
 	srv := httptest.NewServer(wikipediaGoHandler())

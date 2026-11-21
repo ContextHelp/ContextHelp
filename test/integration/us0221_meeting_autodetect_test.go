@@ -19,55 +19,46 @@ import (
 )
 
 func TestAutoDetect_PromptOnZoom(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: daemon-driver wiring + per-OS prompt UI " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: daemon-driver wiring + per-OS prompt UI " +
 		"(UNUserNotification on macOS, Toast on Windows, notify-send on Linux)")
 }
 
 func TestAutoDetect_PromptTimeout(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: E2E harness — CheckPromptTimeout is unit-tested with " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: E2E harness — CheckPromptTimeout is unit-tested with " +
 		"fakeClock; E2E with real-clock + real notification dismiss flow")
 }
 
 func TestAutoDetect_HotkeyConfirm(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: global hotkey listener registration (per OS) + Confirm " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: global hotkey listener registration (per OS) + Confirm " +
 		"plumbing")
 }
 
 func TestAutoDetect_RememberAutoStart(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: kit/policy CEL rule generation + persistence " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: kit/policy CEL rule generation + persistence " +
 		"($XDG_CONFIG_HOME/contexthelp/policy.d/auto-record-*.cel files); the " +
 		"auto-start path through AutoDetect.OnForegroundChange is unit-tested")
 }
 
 func TestAutoDetect_RememberSkip(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: same as above — CEL rule generation for 'never' action")
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: same as above — CEL rule generation for 'never' action")
 }
 
 func TestAutoDetect_BrowserURLDetection(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: composition with browser-history source's last-recent-visit " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: composition with browser-history source's last-recent-visit " +
 		"(US-0221 acceptance: 'detect Google Meet in Chrome by checking " +
 		"recent browser-history visit'); both substrates exist; wiring not yet built")
 }
 
 func TestAutoDetect_DisabledByDefault(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: E2E harness — config-driven enabled flag is unit-tested " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: E2E harness — config-driven enabled flag is unit-tested " +
 		"in TestAutoDetect_DefaultsAreApplied")
 }
 
 func TestAutoDetect_VetoSuppressionInProfile(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: kit/policy CEL veto wiring at ctxt.ambient.meeting.auto_detected")
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: kit/policy CEL veto wiring at ctxt.ambient.meeting.auto_detected")
 }
 
 func TestAutoDetect_ExcludeBundlesTakesPrecedence(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: precedence rule (exclude_bundles overrides auto_detect.bundles) " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: precedence rule (exclude_bundles overrides auto_detect.bundles) " +
 		"needs cmd/ctxd config-merge logic that doesn't yet exist")
 }
