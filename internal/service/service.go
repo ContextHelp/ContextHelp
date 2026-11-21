@@ -2020,7 +2020,14 @@ func (s *Service) RecordSearchHistory(ctx context.Context, query, profileID, str
 	if !s.Cfg.Search.History.Enabled { // search.history.enabled: false
 		return
 	}
-	if err := s.AppendSearchHistory(ctx, query, profileID, strategies, resultCount); err != nil {
+	err := s.AppendSearchHistory(ctx, query, profileID, strategies, resultCount)
+	switch {
+	case err == nil:
+	case errors.Is(err, storage.ErrNotImplemented), errors.Is(err, storage.ErrNoViewer):
+		// A backend that keeps no history (postgres) or a caller with no
+		// principal: expected, and not worth a warning on every search.
+		slog.Debug("search history not recorded", "err", err)
+	default:
 		slog.Warn("search history not recorded", "err", err)
 	}
 }

@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -113,6 +114,7 @@ func TestSearch_RecordsHistory(t *testing.T) {
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
 	require.Len(t, out.Data, 2, "repeated identical queries are separate entries")
 	assert.Equal(t, "type==article", out.Data[0].Query)
+	assert.Equal(t, "rsql", out.Data[0].StrategiesUsed, "GET /search runs an RSQL query")
 }
 
 // search.history.enabled=false: GET /search answers and records nothing.
@@ -134,4 +136,21 @@ func TestSearch_HistoryDisabled(t *testing.T) {
 	}
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
 	assert.Empty(t, out.Data)
+}
+
+// POST /find is a person's search and is recorded, under the mode that ran.
+func TestFindHandler_RecordsHistory(t *testing.T) {
+	ts := newTestServerBundle(t)
+	defer ts.Close()
+
+	body := strings.NewReader(`{"query":"hello","mode":"fts","profile":"prof_find"}`)
+	resp, err := http.Post(ts.URL+"/api/v1/find", "application/json", body)
+	require.NoError(t, err)
+	resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	got, err := ts.svc.ListSearchHistory(ownerCtx(), storage.SearchHistoryFilter{ProfileID: "prof_find"})
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, "fts", got[0].StrategiesUsed)
 }
