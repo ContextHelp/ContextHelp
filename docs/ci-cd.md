@@ -79,13 +79,13 @@ targets.
 |---|---|---|
 | `toolchain` | read pins from `mise.toml`; `scripts/check-toolchain-pins.sh`; `scripts/check-ci-parity.sh`; `goreleaser check` of `.goreleaser.yaml` at the pin (deprecations are reported, an invalid config fails) | `make ci-toolchain` |
 | `secret-scan` | gitleaks release tarball (checksum-verified) over full history, minus `.gitleaksignore` | `make ci-secret-scan` |
-| `lint` | golangci-lint on findings new since the PR base (`HEAD~1` on a push); full scan, advisory; `gofmt -l .`; `go vet -tags fts5 ./...` | `make ci-lint` |
+| `lint` | golangci-lint on findings new since the PR base (`HEAD~1` on a push); full scan, advisory; `gofmt -l .`; `go vet -tags fts5 ./...`; `GOWORK=off` build and vet, and a tracked `go.work` may `use` only paths inside the repo (`make ci-gowork-off`) | `make ci-lint` |
 | `windows` | `go vet -tags fts5 ./...`, then `go build` of `ctxt` and `dpkms`, for windows/amd64 with CGO and mingw-w64, as GoReleaser builds them | `make ci-windows` (needs mingw-w64) |
 | `security` | gosec (medium+ severity and confidence, `-tags fts5`, SARIF upload); govulncheck `-tags fts5`; Trivy filesystem scan (SARIF upload, does not fail the job) | `make ci-security` (no Trivy) |
 | `test` | Ubuntu **and** macOS: `go test -v -short -race -tags fts5 ./...` with coverage (uploaded to Codecov from Ubuntu), then the e2e suites: `go test -v -count=1 -tags 'fts5 e2e' ./test/e2e/...` | `make ci-test` (your OS only) |
 | `viewer` | search-graph viewer JS tests; embedded viewer bundle is current | `make ci-viewer` |
 | `webui` | embedded web UI bundle is current | `make ci-webui` |
-| `integration` | Postgres service (`pgvector/pgvector:0.8.6-pg16-bookworm`); integration-tagged suites in `test/integration/`, `internal/storage/postgres/`, `internal/storageutil/`, `internal/embeddings/registry/`; then by name: job-queue claim and re-projection, HTTP handlers, embeddings journey and search-graph e2e, each on Postgres | `make ci-integration` (needs Postgres) |
+| `integration` | Postgres service (`pgvector/pgvector:0.8.6-pg16-bookworm`); every package with an `integration`-tagged test file (found by `scripts/ci/integration-pkgs.sh`: `test/integration/`, `internal/storage/postgres/`, `internal/storageutil/`, `internal/embeddings/registry/`, plus any suite added later, e.g. sharing or leaktest Postgres parity), except those below; then by name: job-queue claim and re-projection (`_Postgres$`), HTTP handlers, embeddings journey and search-graph e2e, each on Postgres | `make ci-integration` (needs Postgres) |
 | `build` | `go build -tags fts5` of `dpkms` and `ctxt`; uploads `bin/` as the `binaries` artifact (7 days) | `make ci-build` |
 
 Every Go build and test uses `-tags fts5` with `CGO_ENABLED=1`: the storage
