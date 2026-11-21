@@ -4,6 +4,8 @@ import (
 	"time"
 
 	uri "hop.top/cite/scheme"
+
+	"github.com/ideacrafterslabs/ctxt/internal/tagfilter"
 )
 
 // KnowledgeObject is the central data structure representing an ingested piece
@@ -232,18 +234,22 @@ type Edge struct {
 
 // ObjectFilter specifies criteria for listing knowledge objects.
 type ObjectFilter struct {
-	Type      string
-	Subtype   string
-	Tag       string
+	Type    string
+	Subtype string
+	// Tags selects by tag label (internal/tagfilter): one of, or every
+	// non-optional one of; the optional ones rank matches higher in List
+	// and the searches. The zero Filter selects all.
+	Tags      tagfilter.Filter
 	Mention   string
 	Pipeline  string
 	ProfileID string // non-empty → restrict to this profile; empty → no profile scope
-	After     *time.Time
-	Before    *time.Time
-	Limit     int
-	Offset    int
-	Sort      string // "created_at", "updated_at"
-	Dir       string // "asc", "desc"
+	// After and Before bound created_at half-open: After <= created < Before.
+	After  *time.Time
+	Before *time.Time
+	Limit  int
+	Offset int
+	Sort   string // "created_at", "updated_at"
+	Dir    string // "asc", "desc"
 	// Status selects one object status: "" means ObjectStatusActive,
 	// ObjectStatusAll lifts the filter. See StatusScope.
 	Status string // "" → default to "active"; "inbox"; "discarded"; "raw"; "all"

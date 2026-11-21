@@ -15,6 +15,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/tagfilter"
 )
 
 // CodeInvalidParam is the error code of a 400 caused by a query
@@ -25,9 +26,9 @@ const CodeInvalidParam = "INVALID_PARAM"
 // objectFilterParams select objects. GET /objects and GET
 // /objects/facets both take them.
 var objectFilterParams = []string{
-	"type", "subtype", "tag", "mention", "pipeline", "status",
-	"before", "after",
-	"meta_type", "topic", "person", "source_type", "since", "until",
+	"type", "subtype", "tagged", "mention", "pipeline", "status",
+	"since", "until",
+	"meta_type", "topic", "person", "source_type", "mentioned_since", "mentioned_until",
 }
 
 // objectPageParams order and page a list. Only GET /objects takes them.
@@ -67,8 +68,12 @@ func writeParamError(w http.ResponseWriter, e *paramError) {
 	}})
 }
 
+// repeatableParams may be given more than once; their values read as one
+// comma list.
+var repeatableParams = []string{"tagged"}
+
 // checkParams rejects a parameter outside allowed, and one that is
-// repeated or empty: every parameter here takes exactly one value.
+// repeated (outside repeatableParams) or empty.
 // Parameters are checked in sorted order so the error is deterministic.
 func checkParams(q url.Values, allowed ...[]string) *paramError {
 	names := make([]string, 0, len(q))
@@ -88,9 +93,9 @@ func checkParams(q url.Values, allowed ...[]string) *paramError {
 			return badParam(name, "unknown parameter %s", name)
 		}
 		switch vals := q[name]; {
-		case len(vals) > 1:
+		case len(vals) > 1 && !slices.Contains(repeatableParams, name):
 			return badParam(name, "parameter %s given %d times; want one value", name, len(vals))
-		case vals[0] == "":
+		case slices.Contains(vals, ""):
 			return badParam(name, "parameter %s is empty", name)
 		}
 	}
@@ -102,7 +107,6 @@ func parseObjectFilter(q url.Values) (storage.ObjectFilter, *paramError) {
 	f := storage.ObjectFilter{
 		Type:           q.Get("type"),
 		Subtype:        q.Get("subtype"),
-		Tag:            q.Get("tag"),
 		Mention:        q.Get("mention"),
 		Pipeline:       q.Get("pipeline"),
 		MetadataType:   q.Get("meta_type"),
@@ -117,16 +121,19 @@ func parseObjectFilter(q url.Values) (storage.ObjectFilter, *paramError) {
 		f.Status = s
 	}
 	var err *paramError
-	if f.After, err = instantParam(q, "after"); err != nil {
+	if f.Tags, err = tagsParam(q, "tagged"); err != nil {
 		return f, err
 	}
-	if f.Before, err = instantParam(q, "before"); err != nil {
+	if f.After, err = instantParam(q, "since", false); err != nil {
 		return f, err
 	}
-	if f.MetadataSince, err = dayParam(q, "since"); err != nil {
+	if f.Before, err = instantParam(q, "until", true); err != nil {
 		return f, err
 	}
-	if f.MetadataUntil, err = dayParam(q, "until"); err != nil {
+	if f.MetadataSince, err = dayParam(q, "mentioned_since"); err != nil {
+		return f, err
+	}
+	if f.MetadataUntil, err = dayParam(q, "mentioned_until"); err != nil {
 		return f, err
 	}
 	return f, nil
@@ -181,24 +188,60 @@ func changeSeqParam(q url.Values, name string) (*int64, *paramError) {
 	return &n, nil
 }
 
-// instantParam parses an RFC 3339 timestamp or a YYYY-MM-DD date
-// (midnight UTC), normalized to UTC.
-func instantParam(q url.Values, name string) (*time.Time, *paramError) {
+// rawTaggedQuery is the request's query with `tagged` read from the raw query
+// string. Form decoding turns "+" into a space, but "+" is the required
+// marker of the tag grammar, so each `tagged` value is decoded with
+// url.PathUnescape (a "+" stays; %2B and %20 decode as usual), the values
+// keep their order, and every other parameter keeps the standard decoding.
+func rawTaggedQuery(r *http.Request) (url.Values, *paramError) {
+	q := r.URL.Query()
+	q.Del("tagged")
+	for _, pair := range strings.Split(r.URL.RawQuery, "&") {
+		key, val, _ := strings.Cut(pair, "=")
+		if k, err := url.QueryUnescape(key); err != nil || k != "tagged" {
+			continue
+		}
+		v, err := url.PathUnescape(val)
+		if err != nil {
+			return nil, badParam("tagged", "tagged is not valid percent-encoding")
+		}
+		q.Add("tagged", v)
+	}
+	return q, nil
+}
+
+// tagsParam parses the tag selection of parameter name (internal/tagfilter
+// grammar: a,b any; +a,+b all; +a,b a required, b optional). The parameter
+// may repeat as well as hold a comma list. Absent selects all.
+func tagsParam(q url.Values, name string) (tagfilter.Filter, *paramError) {
+	vals := q[name]
+	if len(vals) == 0 || len(vals) == 1 && vals[0] == "" {
+		return tagfilter.Filter{}, nil
+	}
+	f, err := tagfilter.Parse(vals)
+	if err != nil {
+		return f, badParam(name, "%s: %v", name, err)
+	}
+	return f, nil
+}
+
+// instantParam parses an RFC 3339 timestamp or a YYYY-MM-DD date,
+// normalized to UTC. An upper bound that is a date is the start of the
+// next day (service.ParseInstant): bounds are half-open.
+func instantParam(q url.Values, name string, upper bool) (*time.Time, *paramError) {
 	v := q.Get(name)
 	if v == "" {
 		return nil, nil
 	}
-	for _, layout := range []string{time.RFC3339, time.DateOnly} {
-		if t, err := time.Parse(layout, v); err == nil {
-			t = t.UTC()
-			return &t, nil
-		}
+	t, err := service.ParseInstant(v, upper)
+	if err != nil {
+		return nil, badParam(name, "%s must be an RFC 3339 timestamp or YYYY-MM-DD", name)
 	}
-	return nil, badParam(name, "%s must be an RFC 3339 timestamp or YYYY-MM-DD", name)
+	return &t, nil
 }
 
-// dayParam parses a YYYY-MM-DD date. since and until compare against
-// metadata.dates_mentioned, which holds dates only.
+// dayParam parses a YYYY-MM-DD date. mentioned_since and mentioned_until
+// compare against metadata.dates_mentioned, which holds dates only.
 func dayParam(q url.Values, name string) (*time.Time, *paramError) {
 	v := q.Get(name)
 	if v == "" {
@@ -237,7 +280,11 @@ func intParam(q url.Values, name string, def, lo, hi int) (int, *paramError) {
 // matching the object filter, plus the total match count.
 func ListObjects(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query()
+		q, perr := rawTaggedQuery(r)
+		if perr != nil {
+			writeParamError(w, perr)
+			return
+		}
 		if err := checkParams(q, objectFilterParams, objectPageParams); err != nil {
 			writeParamError(w, err)
 			return
@@ -249,6 +296,11 @@ func ListObjects(svc *service.Service) http.HandlerFunc {
 		}
 		if perr := parseObjectPage(q, &filter); perr != nil {
 			writeParamError(w, perr)
+			return
+		}
+		// A change-ordered page cannot also rank by tags matched.
+		if filter.ChangedAfter != nil && filter.Tags.Ranks() {
+			writeParamError(w, badParam("tagged", "tagged cannot rank results with changed_after (two or more tags with none required, or a plain tag beside a required one): changes list in change order"))
 			return
 		}
 
@@ -284,7 +336,11 @@ func nextChangedAfter(objs []*storage.KnowledgeObject, after int64) int64 {
 // under "(none)".
 func ObjectFacets(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query()
+		q, perr := rawTaggedQuery(r)
+		if perr != nil {
+			writeParamError(w, perr)
+			return
+		}
 		if err := checkParams(q, objectFilterParams); err != nil {
 			writeParamError(w, err)
 			return

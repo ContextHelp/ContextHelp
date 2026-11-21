@@ -49,3 +49,26 @@ func TestFind_NoSemanticSource(t *testing.T) {
 		t.Fatalf("fallback off: status %d, envelope %+v, decode %v", resp.StatusCode, env, err)
 	}
 }
+
+// A present but empty filter.tagged is a 400 like an empty `tagged` on
+// GET /objects; an absent one selects every tag.
+func TestFind_EmptyTaggedIsInvalid(t *testing.T) {
+	ts := newTestServerBundle(t)
+	defer ts.Close()
+	for body, want := range map[string]int{
+		`{"query":"x","filter":{"tagged":""}}`:    http.StatusBadRequest,
+		`{"query":"x","filter":{"tagged":"  "}}`:  http.StatusBadRequest,
+		`{"query":"x","filter":{"tagged":"a,,"}}`: http.StatusBadRequest,
+		`{"query":"x","filter":{}}`:               http.StatusOK,
+		`{"query":"x","filter":{"tagged":"a"}}`:   http.StatusOK,
+	} {
+		resp, err := http.Post(ts.URL+"/api/v1/find", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != want {
+			t.Errorf("%s: status %d, want %d", body, resp.StatusCode, want)
+		}
+	}
+}

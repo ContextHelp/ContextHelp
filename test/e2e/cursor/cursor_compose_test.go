@@ -10,6 +10,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/cursor"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
+	"github.com/ideacrafterslabs/ctxt/internal/tagfilter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -61,7 +62,7 @@ func TestCursor_ComposesWithMention(t *testing.T) {
 	assert.Len(t, objs2, 2, "cursor time gate excludes the advanced-to head")
 }
 
-// TestCursor_ComposesWithTag: cursor+--tag.
+// TestCursor_ComposesWithTag: cursor+--tagged.
 func TestCursor_ComposesWithTag(t *testing.T) {
 	env := newCursorEnv(t)
 	driver := storageutil.NewTestDriver(t)
@@ -76,7 +77,7 @@ func TestCursor_ComposesWithTag(t *testing.T) {
 	}
 
 	objs, _, err := driver.Objects().List(ctx, storage.ObjectFilter{
-		Tag: "alpha", Limit: 100, Status: "all", Sort: "created_at", Dir: "asc",
+		Tags: tagfilter.One("alpha"), Limit: 100, Status: "all", Sort: "created_at", Dir: "asc",
 	})
 	require.NoError(t, err)
 	require.Len(t, objs, 2)
@@ -85,7 +86,7 @@ func TestCursor_ComposesWithTag(t *testing.T) {
 	require.NoError(t, err)
 
 	c, _, _ := env.mgr.GetOrInit("tagged")
-	filter := gateByCursor(storage.ObjectFilter{Tag: "alpha", Limit: 100, Status: "all"}, c)
+	filter := gateByCursor(storage.ObjectFilter{Tags: tagfilter.One("alpha"), Limit: 100, Status: "all"}, c)
 	objs2, _, err := driver.Objects().List(ctx, filter)
 	require.NoError(t, err)
 	assert.Len(t, objs2, 1)
@@ -123,8 +124,8 @@ func TestCursor_ComposesWithProfile(t *testing.T) {
 	assert.Len(t, objs2, 1)
 }
 
-// TestCursor_ComposesWithQAndAfter: cursor + --after compose; cursor's
-// last_seen_at takes precedence when stricter than --after.
+// TestCursor_ComposesWithQAndAfter: cursor + --since compose; cursor's
+// last_seen_at takes precedence when stricter than --since.
 func TestCursor_ComposesWithQAndAfter(t *testing.T) {
 	env := newCursorEnv(t)
 	driver := storageutil.NewTestDriver(t)
@@ -146,7 +147,7 @@ func TestCursor_ComposesWithQAndAfter(t *testing.T) {
 	_, err = env.mgr.Advance("comp", pivot.CreatedAt, pivot.ID, cursor.QuerySnapshot{})
 	require.NoError(t, err)
 
-	// Filter with both --after (looser) and cursor (stricter): cursor wins.
+	// Filter with both --since (looser) and cursor (stricter): cursor wins.
 	older := base.Add(-30 * time.Minute)
 	c, _, _ := env.mgr.GetOrInit("comp")
 	filter := gateByCursor(storage.ObjectFilter{

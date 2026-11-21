@@ -48,7 +48,8 @@ func TestSearchTool_PassesFiltersThrough(t *testing.T) {
 	var got SearchRequest
 	srv := New(recordingContext(&got))
 	resp := callSearch(t, srv, `{"query":"q","top_k":500,"mode":"hybrid","profile":"alpha","min_score":0.2,
-		"meta_type":"task","topic":"launch","person":"ada","source_type":"meeting","since":"2026-09-01","until":"2026-09-30"}`)
+		"meta_type":"task","topic":"launch","person":"ada","source_type":"meeting","since":"2026-09-01","until":"2026-09-30T12:00:00Z",
+		"mentioned_since":"2026-08-01","mentioned_until":"2026-08-31","tagged":["+a,b","c"]}`)
 	if resp.Error != nil {
 		t.Fatalf("unexpected error: %+v", resp.Error)
 	}
@@ -61,8 +62,44 @@ func TestSearchTool_PassesFiltersThrough(t *testing.T) {
 		t.Errorf("min_score = %v", got.MinScore)
 	case got.MetaType != "task" || got.Topic != "launch" || got.Person != "ada" || got.SourceType != "meeting":
 		t.Errorf("facets = %+v", got)
-	case got.Since != "2026-09-01" || got.Until != "2026-09-30":
+	case got.Since != "2026-09-01" || got.Until != "2026-09-30T12:00:00Z":
 		t.Errorf("since/until = %v/%v", got.Since, got.Until)
+	case got.MentionedSince != "2026-08-01" || got.MentionedUntil != "2026-08-31":
+		t.Errorf("mentioned_since/until = %v/%v", got.MentionedSince, got.MentionedUntil)
+	case got.Tagged != "+a,b,c":
+		t.Errorf("tagged = %q, want canonical +a,b,c", got.Tagged)
+	}
+}
+
+// tagged takes the grammar as a string too, in canonical form.
+func TestSearchTool_TaggedString(t *testing.T) {
+	var got SearchRequest
+	srv := New(recordingContext(&got))
+	if resp := callSearch(t, srv, `{"query":"q","tagged":"a, b,a"}`); resp.Error != nil {
+		t.Fatalf("unexpected error: %+v", resp.Error)
+	}
+	if got.Tagged != "a,b" {
+		t.Errorf("tagged = %q, want a,b?", got.Tagged)
+	}
+}
+
+// A label may hold spaces: only commas separate tags, in a string and in
+// an array alike.
+func TestSearchTool_TaggedSpacedLabel(t *testing.T) {
+	for name, args := range map[string]string{
+		"string": `{"query":"q","tagged":"+machine learning,ux"}`,
+		"array":  `{"query":"q","tagged":["+machine learning","ux"]}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			var got SearchRequest
+			srv := New(recordingContext(&got))
+			if resp := callSearch(t, srv, args); resp.Error != nil {
+				t.Fatalf("unexpected error: %+v", resp.Error)
+			}
+			if got.Tagged != "+machine learning,ux" {
+				t.Errorf("tagged = %q, want one label %q", got.Tagged, "machine learning")
+			}
+		})
 	}
 }
 
@@ -75,7 +112,17 @@ func TestSearchTool_BadArgumentsAreInvalidParams(t *testing.T) {
 		"mode not a string":    `{"query":"q","mode":3}`,
 		"min_score string":     `{"query":"q","min_score":"high"}`,
 		"bad since":            `{"query":"q","since":"yesterday"}`,
-		"timestamp until":      `{"query":"q","until":"2026-09-30T00:00:00Z"}`,
+		"relative until":       `{"query":"q","until":"3d"}`,
+		"bad mentioned_since":  `{"query":"q","mentioned_since":"2026-02-30"}`,
+		"timestamp mentioned":  `{"query":"q","mentioned_until":"2026-09-30T00:00:00Z"}`,
+		"tagged number":        `{"query":"q","tagged":3}`,
+		"tagged item number":   `{"query":"q","tagged":["a",3]}`,
+		"tagged empty tag":     `{"query":"q","tagged":"a,,b"}`,
+		"tagged empty string":  `{"query":"q","tagged":""}`,
+		"tagged bare plus":     `{"query":"q","tagged":"a,+"}`,
+		"tagged exclusion":     `{"query":"q","tagged":"a,-b"}`,
+		"tagged empty array":   `{"query":"q","tagged":[""]}`,
+		"tagged plus space":    `{"query":"q","tagged":["+ "]}`,
 		"min_score non-hybrid": `{"query":"q","mode":"fts","min_score":0.5}`,
 	} {
 		t.Run(name, func(t *testing.T) {

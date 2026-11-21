@@ -14,6 +14,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/mentions"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blobref"
+	"github.com/ideacrafterslabs/ctxt/internal/tagfilter"
 )
 
 // The restricted fixture: the viewer sees active notes; contacts, the
@@ -232,7 +233,7 @@ func restrictedConfObjects(t *testing.T, scoped storage.StorageDriver, dialect s
 func restrictedConfObjectLists(t *testing.T, objects storage.ObjectStore, dialect string, f *restrictedFixture) {
 	ctx := context.Background()
 	want := []string{f.visible.ID, f.visible2.ID}
-	for _, filter := range []storage.ObjectFilter{{}, {Status: storage.ObjectStatusAll}, {Tag: "restricted"}} {
+	for _, filter := range []storage.ObjectFilter{{}, {Status: storage.ObjectStatusAll}, {Tags: tagfilter.One("restricted")}} {
 		objs, total, err := objects.List(ctx, filter)
 		if err != nil {
 			t.Fatalf("List(%+v): %v", filter, err)

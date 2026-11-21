@@ -231,7 +231,7 @@ func cosineDistance(a, b []float32) float64 {
 // WithEmbeddings wraps drv so Embeddings() returns emb and
 // Objects().VectorSearch ranks through emb the way the drivers do: search the
 // model's index with over-fetch, hydrate each hit with Get, apply the
-// type/subtype/pipeline/profile filter, and set Metadata["score"] = 1 - distance.
+// type/subtype/pipeline/profile/tags/created filter, and set Metadata["score"] = 1 - distance.
 // Every other store is drv's own. DB() forwards to drv when it has one, so
 // registry.ForDriver works on the wrapper.
 func WithEmbeddings(drv storage.StorageDriver, emb storage.EmbeddingStore) storage.StorageDriver {
@@ -276,7 +276,6 @@ func (o *embeddingsObjects) VectorSearch(ctx context.Context, q storage.VectorQu
 	if err != nil {
 		return nil, err
 	}
-	status, statusScoped := filter.StatusScope()
 	out := make([]*storage.KnowledgeObject, 0, limit)
 	for _, h := range hits {
 		if len(out) >= limit {
@@ -286,11 +285,7 @@ func (o *embeddingsObjects) VectorSearch(ctx context.Context, q storage.VectorQu
 		if err != nil || obj == nil {
 			continue
 		}
-		if (statusScoped && obj.Status != status) ||
-			(filter.Type != "" && obj.Type != filter.Type) ||
-			(filter.Subtype != "" && obj.Subtype != filter.Subtype) ||
-			(filter.Pipeline != "" && obj.Pipeline != filter.Pipeline) ||
-			(filter.ProfileID != "" && obj.ProfileID != filter.ProfileID) {
+		if !memHitMatches(obj, filter) {
 			continue
 		}
 		if obj.Metadata == nil {
@@ -300,6 +295,25 @@ func (o *embeddingsObjects) VectorSearch(ctx context.Context, q storage.VectorQu
 		out = append(out, obj)
 	}
 	return out, nil
+}
+
+// memHitMatches reports whether a hydrated hit passes the filters the
+// in-memory vector search applies: status scope, type, subtype, pipeline,
+// profile, created bounds (half-open) and the tag selection.
+func memHitMatches(obj *storage.KnowledgeObject, filter storage.ObjectFilter) bool {
+	if status, scoped := filter.StatusScope(); scoped && obj.Status != status {
+		return false
+	}
+	switch {
+	case filter.Type != "" && obj.Type != filter.Type,
+		filter.Subtype != "" && obj.Subtype != filter.Subtype,
+		filter.Pipeline != "" && obj.Pipeline != filter.Pipeline,
+		filter.ProfileID != "" && obj.ProfileID != filter.ProfileID,
+		filter.After != nil && obj.CreatedAt.Before(*filter.After),
+		filter.Before != nil && !obj.CreatedAt.Before(*filter.Before):
+		return false
+	}
+	return filter.Tags.Match(tagLabelsOf(obj))
 }
 
 func (o *embeddingsObjects) VectorSearchNodeAware(ctx context.Context, q storage.VectorQuery, filter storage.ObjectFilter, naf storage.NodeAwareFilter) ([]*storage.NodeAwareResult, error) {
@@ -315,4 +329,12 @@ func (o *embeddingsObjects) VectorSearchNodeAware(ctx context.Context, q storage
 		out[i] = &storage.NodeAwareResult{Object: obj}
 	}
 	return out, nil
+}
+
+func tagLabelsOf(obj *storage.KnowledgeObject) []string {
+	labels := make([]string, len(obj.Tags))
+	for i, t := range obj.Tags {
+		labels[i] = t.Label
+	}
+	return labels
 }

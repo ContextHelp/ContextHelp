@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -164,6 +165,11 @@ func TestFind_Invalid(t *testing.T) {
 		"negative limit":    {Query: "q", Limit: -1},
 		"bad since":         {Query: "q", Filter: FindFilter{Since: "April 1"}},
 		"bad until":         {Query: "q", Filter: FindFilter{Until: "2026-13-01"}},
+		"bad mentioned":     {Query: "q", Filter: FindFilter{MentionedSince: "2026-05-01T00:00:00Z"}},
+		"relative since":    {Query: "q", Filter: FindFilter{Since: "3d"}},
+		"empty tag":         {Query: "q", Filter: FindFilter{Tagged: "a,,b"}},
+		"bare plus":         {Query: "q", Filter: FindFilter{Tagged: "a,+"}},
+		"exclusion":         {Query: "q", Filter: FindFilter{Tagged: "a,-b"}},
 		"zero rrf_k":        {Query: "q", Search: FindSearch{RRFK: ptr(0)}},
 		"negative pool":     {Query: "q", Search: FindSearch{VectorPool: ptr(-5)}},
 		"negative weight":   {Query: "q", Search: FindSearch{FTSWeight: ptr(-0.1)}},
@@ -205,7 +211,8 @@ func TestFindSearch_Apply(t *testing.T) {
 // YYYY-MM-DD.
 func TestResolveFind_Filter(t *testing.T) {
 	mode, filter, _, err := resolveFind(FindRequest{Query: "q", Filter: FindFilter{
-		MetaType: "task", Topic: "k8s", Person: "alice", SourceType: "slack", Since: "2026-04-01", Until: "2026-04-30",
+		MetaType: "task", Topic: "k8s", Person: "alice", SourceType: "slack", MentionedSince: "2026-04-01", MentionedUntil: "2026-04-30",
+		Tagged: "+a,b,c", Since: "2026-05-01", Until: "2026-05-31T12:00:00+02:00",
 	}})
 	require.NoError(t, err)
 	assert.Equal(t, FindModeHybrid, mode)
@@ -218,6 +225,11 @@ func TestResolveFind_Filter(t *testing.T) {
 	require.NotNil(t, filter.MetadataUntil)
 	assert.Equal(t, "2026-04-01", filter.MetadataSince.Format("2006-01-02"))
 	assert.Equal(t, "2026-04-30", filter.MetadataUntil.Format("2006-01-02"))
+	assert.Equal(t, "+a,b,c", filter.Tags.String())
+	require.NotNil(t, filter.After)
+	require.NotNil(t, filter.Before)
+	assert.Equal(t, "2026-05-01T00:00:00Z", filter.After.Format(time.RFC3339))
+	assert.Equal(t, "2026-05-31T10:00:00Z", filter.Before.Format(time.RFC3339), "created bounds normalize to UTC")
 
 	_, filter, _, err = resolveFind(FindRequest{Query: "q", Limit: 3})
 	require.NoError(t, err)

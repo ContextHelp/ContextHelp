@@ -200,6 +200,7 @@ type Score struct {
 	MentionBoost   float64 `json:"mention_boost"`
 	GraphRelevance float64 `json:"graph_relevance"`
 	WordOverlap    float64 `json:"word_overlap"`
+	TagsMatched    int     `json:"tags_matched,omitempty"`
 	Total          float64 `json:"total"`
 }
 

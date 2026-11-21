@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/tagfilter"
 	"github.com/ideacrafterslabs/ctxt/internal/tui/types"
 )
 
@@ -92,7 +93,7 @@ func (m *ComposeModal) Submit() tea.Cmd {
 
 		filter := storage.ObjectFilter{Limit: 20}
 		if tag != "" {
-			filter.Tag = tag
+			filter.Tags = tagfilter.One(tag)
 		}
 		objs, _, err := adapter.ListObjects(ctx, filter)
 		if err != nil {

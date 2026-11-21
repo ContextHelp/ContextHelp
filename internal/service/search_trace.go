@@ -221,6 +221,7 @@ func breakdownOf(r ranking.Result) ScoreBreakdown {
 		MentionBoost:   r.MentionBoost,
 		GraphRelevance: r.GraphRelevance,
 		WordOverlap:    r.WordOverlap,
+		TagsMatched:    r.TagsMatched,
 		Total:          r.Total,
 	}
 }

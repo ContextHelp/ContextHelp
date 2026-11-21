@@ -8,7 +8,9 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/retrieval"
@@ -66,7 +68,11 @@ func GateEntityVisibility(gate *registry.InboundGate) EntityVisibilityFunc {
 // entity visibility is the unmetered namespace check.
 func SearchGraph(svc *service.Service, sem retrieval.SemanticSource, visibility EntityVisibilityFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		params := r.URL.Query()
+		params, perr := rawTaggedQuery(r)
+		if perr != nil {
+			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", perr.msg)
+			return
+		}
 		q := params.Get("q")
 		if q == "" {
 			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "q parameter is required")
@@ -122,17 +128,23 @@ func parseSearchGraphRequest(params url.Values, q string) (service.FindRequest, 
 			return service.FindRequest{}, opts, fmt.Errorf("%s does not apply to the search graph: it is always the full hybrid trace", p)
 		}
 	}
+	if slices.ContainsFunc(params["tagged"], func(v string) bool { return strings.TrimSpace(v) == "" }) {
+		return service.FindRequest{}, opts, fmt.Errorf("tagged is empty: omit it to select every tag")
+	}
 	req := service.FindRequest{
 		Query:   q,
 		Mode:    service.FindModeHybrid,
 		Profile: params.Get("profile"),
 		Filter: service.FindFilter{
-			MetaType:   params.Get("meta_type"),
-			Topic:      params.Get("topic"),
-			Person:     params.Get("person"),
-			SourceType: params.Get("source_type"),
-			Since:      params.Get("since"),
-			Until:      params.Get("until"),
+			Tagged:         strings.Join(params["tagged"], ","),
+			Since:          params.Get("since"),
+			Until:          params.Get("until"),
+			MetaType:       params.Get("meta_type"),
+			Topic:          params.Get("topic"),
+			Person:         params.Get("person"),
+			SourceType:     params.Get("source_type"),
+			MentionedSince: params.Get("mentioned_since"),
+			MentionedUntil: params.Get("mentioned_until"),
 		},
 		Trace: true,
 	}

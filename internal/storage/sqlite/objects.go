@@ -15,6 +15,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/indexsig"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
+	"github.com/ideacrafterslabs/ctxt/internal/tagfilter"
 	uri "hop.top/cite/scheme"
 )
 
@@ -220,14 +221,14 @@ func (s *ObjectStore) GetBySourceKey(ctx context.Context, key, profileID string)
 }
 
 func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, int, error) {
-	countSQL, pageSQL, args := objectListSQL(filter, s.scope)
+	countSQL, pageSQL, args, pageArgs := objectListSQL(filter, s.scope)
 
 	var total int
 	if err := s.db.QueryRowContext(ctx, countSQL, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count objects: %w", err)
 	}
 
-	rows, err := s.db.QueryContext(ctx, pageSQL, args...)
+	rows, err := s.db.QueryContext(ctx, pageSQL, pageArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list objects: %w", err)
 	}
@@ -245,9 +246,11 @@ func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]
 // args in order. The count takes the predicates as they are; the page
 // takes them with the default status scope hinted (objectListConditions)
 // so the planner reaches the page through the sort column's index.
-func objectListSQL(filter storage.ObjectFilter, scope *storage.Scope) (countSQL, pageSQL string, args []any) {
+func objectListSQL(filter storage.ObjectFilter, scope *storage.Scope) (countSQL, pageSQL string, args, pageArgs []any) {
 	conditions, args := objectListConditions(filter, false, scope)
 	countSQL = "SELECT COUNT(*) FROM objects" + whereClause(conditions)
+	order, orderArgs := listOrderSQLite(filter)
+	pageArgs = append(append([]any(nil), args...), orderArgs...)
 
 	pageConditions, _ := objectListConditions(filter, true, scope)
 	// #nosec G201 -- whereClause joins objectListConditions' fixed predicates (values bound in args); the order is a ListOrder literal.
@@ -258,14 +261,14 @@ func objectListSQL(filter storage.ObjectFilter, scope *storage.Scope) (countSQL,
 		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
 		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq, classes
-	FROM objects%s ORDER BY %s`, whereClause(pageConditions), filter.ListOrder())
+	FROM objects%s ORDER BY %s`, whereClause(pageConditions), order)
 	if filter.Limit > 0 {
 		pageSQL += fmt.Sprintf(" LIMIT %d", filter.Limit)
 	}
 	if filter.Offset > 0 {
 		pageSQL += fmt.Sprintf(" OFFSET %d", filter.Offset)
 	}
-	return countSQL, pageSQL, args
+	return countSQL, pageSQL, args, pageArgs
 }
 
 // whereClause joins conditions into a WHERE clause, leading space
@@ -317,10 +320,9 @@ func objectListConditions(filter storage.ObjectFilter, page bool, scope *storage
 		conditions = append(conditions, "pipeline = ?")
 		args = append(args, filter.Pipeline)
 	}
-	if filter.Tag != "" {
-		conditions = append(conditions, "EXISTS (SELECT 1 FROM json_each(tags) WHERE json_each.value->>'label' = ?)")
-		args = append(args, filter.Tag)
-	}
+	tc, ta := tagConditionsSQLite(filter.Tags, "tags")
+	conditions = append(conditions, tc...)
+	args = append(args, ta...)
 	if filter.Mention != "" {
 		// mentions column stores a JSON array of canonical ctxt:// URI strings.
 		// Accept either input form (@ns.slug or ctxt://entity/...) by parsing
@@ -340,14 +342,9 @@ func objectListConditions(filter storage.ObjectFilter, page bool, scope *storage
 	// (the daemon stamps its local zone), so the bounds compare as
 	// instants: datetime() normalizes both sides to UTC. A plain text
 	// comparison is off by the offset difference.
-	if filter.After != nil {
-		conditions = append(conditions, "datetime(created_at) >= datetime(?)")
-		args = append(args, filter.After.Format(time.RFC3339))
-	}
-	if filter.Before != nil {
-		conditions = append(conditions, "datetime(created_at) <= datetime(?)")
-		args = append(args, filter.Before.Format(time.RFC3339))
-	}
+	cc, ca := createdConditionsSQLite(filter, "created_at")
+	conditions = append(conditions, cc...)
+	args = append(args, ca...)
 
 	if filter.ChangedAfter != nil {
 		conditions = append(conditions, "change_seq > ?")
@@ -680,6 +677,7 @@ func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, f
 	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM objects"+whereClause(conditions), args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count by sql: %w", err)
 	}
+	order, orderArgs := listOrderSQLite(filter)
 
 	// where is a compiled RSQL predicate (internal/search): literals are
 	// already bound as ? placeholders in args, only operators and column
@@ -695,8 +693,8 @@ func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, f
 		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
 		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq, classes
-	FROM objects` + whereClause(pageConditions) + " ORDER BY " + filter.ListOrder()
-	pageArgs := args
+	FROM objects` + whereClause(pageConditions) + " ORDER BY " + order
+	pageArgs := append(append([]any(nil), args...), orderArgs...)
 	if filter.Limit > 0 {
 		query += " LIMIT ?"
 		pageArgs = append(pageArgs, filter.Limit)
@@ -979,17 +977,9 @@ func (s *ObjectStore) VectorSearch(ctx context.Context, q storage.VectorQuery, f
 	if s.emb == nil {
 		return nil, fmt.Errorf("vector search: no embedding store")
 	}
-	// A restricted viewer ranks the masked variant over visible objects
-	// only, through the embedding store bound to its scope (ADR-080
-	// §7); Get below is scoped too, so a hit hidden between the two
-	// reads is skipped like a deleted one.
-	emb := s.emb
-	if s.scope != nil {
-		sc, ok := emb.(storage.EmbeddingScoper)
-		if !ok {
-			return nil, fmt.Errorf("vector search: embedding store %T: %w", emb, storage.ErrNoScopedReads)
-		}
-		emb = sc.Scoped(*s.scope)
+	emb, err := s.vectorEmbeddings()
+	if err != nil {
+		return nil, err
 	}
 
 	limit := filter.Limit
@@ -1000,27 +990,70 @@ func (s *ObjectStore) VectorSearch(ctx context.Context, q storage.VectorQuery, f
 		limit = 50
 	}
 
-	hits, err := emb.Search(ctx, storage.VectorQuery{
-		ModelID: q.ModelID,
-		Vector:  q.Vector,
-		TopK:    limit * vectorOverfetch,
-		Variant: q.Variant,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("vector search: %w", err)
+	// The filters run on hydrated hits, after the KNN. When the first
+	// over-fetch leaves the page short, widen the KNN until the page is
+	// full or the index has no neighbours left, so a rare tag or a narrow
+	// date window is found however far it ranks. topK grows by 4x per round
+	// and is capped at vec0KMax (4096), sqlite-vec's ceiling on k: past it
+	// the search stops with what the nearest vec0KMax neighbours hold, so a
+	// match ranked beyond the cap is not found and the page may stay short.
+	out := make([]*storage.KnowledgeObject, 0, limit)
+	var verdict map[string]*storage.KnowledgeObject // hydrated hit, nil when it does not match
+	for topK := limit * vectorOverfetch; ; topK *= 4 {
+		hits, err := emb.Search(ctx, storage.VectorQuery{
+			ModelID: q.ModelID,
+			Vector:  q.Vector,
+			TopK:    topK,
+			Variant: q.Variant,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("vector search: %w", err)
+		}
+		if verdict == nil {
+			verdict = make(map[string]*storage.KnowledgeObject, len(hits))
+		}
+		out = s.collectVectorHits(ctx, hits, filter, limit, verdict, out[:0])
+		// Done when full, when the index returned fewer neighbours than
+		// asked (nothing further out), or at the KNN ceiling.
+		if len(out) >= limit || len(hits) < topK || topK >= vec0KMax {
+			return out, nil
+		}
 	}
+}
 
-	out := make([]*storage.KnowledgeObject, 0, min(limit, len(hits)))
+// vectorEmbeddings is the embedding store VectorSearch ranks through. A
+// restricted viewer ranks the masked variant over visible objects only,
+// through the store bound to its scope (ADR-080 §7); Get is scoped too, so
+// a hit hidden between the two reads is skipped like a deleted one.
+func (s *ObjectStore) vectorEmbeddings() (storage.EmbeddingStore, error) {
+	if s.scope == nil {
+		return s.emb, nil
+	}
+	sc, ok := s.emb.(storage.EmbeddingScoper)
+	if !ok {
+		return nil, fmt.Errorf("vector search: embedding store %T: %w", s.emb, storage.ErrNoScopedReads)
+	}
+	return sc.Scoped(*s.scope), nil
+}
+
+// collectVectorHits appends to out, up to limit, the hits whose object
+// exists and passes filter, in KNN order, with Metadata["score"] set to 1 -
+// distance. verdict caches each hydrated hit (nil when it does not match)
+// across widening rounds.
+func (s *ObjectStore) collectVectorHits(ctx context.Context, hits []storage.EmbeddingHit, filter storage.ObjectFilter, limit int, verdict map[string]*storage.KnowledgeObject, out []*storage.KnowledgeObject) []*storage.KnowledgeObject {
 	for _, h := range hits {
 		if len(out) >= limit {
 			break
 		}
-		obj, err := s.Get(ctx, h.ObjectID)
-		if err != nil {
-			// Object may have been deleted between index and fetch; skip.
-			continue
+		obj, seen := verdict[h.ObjectID]
+		if !seen {
+			// An object may have been deleted between index and fetch: skip.
+			if o, err := s.Get(ctx, h.ObjectID); err == nil && vectorHitMatches(o, filter) {
+				obj = o
+			}
+			verdict[h.ObjectID] = obj
 		}
-		if !vectorHitMatches(obj, filter) {
+		if obj == nil {
 			continue
 		}
 		if obj.Metadata == nil {
@@ -1029,7 +1062,7 @@ func (s *ObjectStore) VectorSearch(ctx context.Context, q storage.VectorQuery, f
 		obj.Metadata["score"] = 1.0 - h.Distance
 		out = append(out, obj)
 	}
-	return out, nil
+	return out
 }
 
 // vectorHitMatches reports whether a hydrated KNN hit satisfies the
@@ -1049,6 +1082,18 @@ func vectorHitMatches(obj *storage.KnowledgeObject, filter storage.ObjectFilter)
 		return false
 	}
 	if filter.ProfileID != "" && obj.ProfileID != filter.ProfileID {
+		return false
+	}
+	if !filter.Tags.IsZero() && !filter.Tags.Match(tagLabels(obj)) {
+		return false
+	}
+	// created_at is stored, and List compares it, at second precision
+	// (createdConditionsSQLite): bounds read the same way here, so the
+	// vector leg and List never disagree on a sub-second bound.
+	if filter.After != nil && obj.CreatedAt.Before(filter.After.Truncate(time.Second)) {
+		return false
+	}
+	if filter.Before != nil && !obj.CreatedAt.Before(filter.Before.Truncate(time.Second)) {
 		return false
 	}
 	return matchesMetadataFacets(obj, filter)
@@ -1128,6 +1173,19 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 		q += " AND o.profile_id = ?"
 		args = append(args, filter.ProfileID)
 	}
+	tc, ta := tagConditionsSQLite(filter.Tags, "o.tags")
+	for _, c := range tc {
+		// #nosec G202 -- c is a fragment tagConditionsSQLite builds from
+		// literals; the labels are `?` bound into ta.
+		q += " AND " + c
+	}
+	args = append(args, ta...)
+	cc, ca := createdConditionsSQLite(filter, "o.created_at")
+	for _, c := range cc {
+		// #nosec G202 -- constant fragment; the instants are bound in ca.
+		q += " AND " + c
+	}
+	args = append(args, ca...)
 
 	// Metadata facet filters (US-0407). metadataFacetConditionsSQLite
 	// returns constant SQL fragments whose values are all `?` bound into
@@ -1143,6 +1201,8 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 	}
 	args = append(args, ma...)
 
+	// Relevance orders the pool: the tag selection only filters here, and
+	// the caller tiers by tags matched after reading the pool.
 	q += " ORDER BY score LIMIT ?"
 	args = append(args, limit)
 
@@ -1426,4 +1486,91 @@ func metadataHasDateLE(m map[string]any, key string, until *time.Time) bool {
 		}
 	}
 	return false
+}
+
+// tagLabels is the labels of obj's tags.
+func tagLabels(obj *storage.KnowledgeObject) []string {
+	labels := make([]string, len(obj.Tags))
+	for i, t := range obj.Tags {
+		labels[i] = t.Label
+	}
+	return labels
+}
+
+// tagConditionsSQLite is the WHERE predicates selecting f over col, the
+// JSON tags column: with no required tag one IN test, otherwise one test
+// per required tag. Labels are bound.
+func tagConditionsSQLite(f tagfilter.Filter, col string) ([]string, []any) {
+	has := func(n int) string {
+		return "EXISTS (SELECT 1 FROM json_each(" + col + ") WHERE json_each.value->>'label' IN (" + placeholdersSQLite(n) + "))"
+	}
+	if f.HasRequired() {
+		var conds []string
+		var args []any
+		for _, l := range f.Required() {
+			conds = append(conds, has(1))
+			args = append(args, l)
+		}
+		return conds, args
+	}
+	labels := f.Labels()
+	if len(labels) == 0 {
+		return nil, nil
+	}
+	return []string{has(len(labels))}, stringArgs(labels)
+}
+
+// tagMatchSQLite is the expression counting how many of f's selected
+// tags the row over col carries, with its bound labels; empty when the
+// count cannot reorder results (f.Ranks is false).
+func tagMatchSQLite(f tagfilter.Filter, col string) (string, []any) {
+	if !f.Ranks() {
+		return "", nil
+	}
+	labels := f.Labels()
+	return "(SELECT COUNT(DISTINCT json_each.value->>'label') FROM json_each(" + col +
+		") WHERE json_each.value->>'label' IN (" + placeholdersSQLite(len(labels)) + "))", stringArgs(labels)
+}
+
+// listOrderSQLite is List's ORDER BY: tags matched first when the count
+// can differ (more matches first), then the sort, then id so offset pages
+// are stable. A ChangedAfter page keeps change order: the count would
+// reorder it and break paging by the last ChangeSeq.
+func listOrderSQLite(filter storage.ObjectFilter) (string, []any) {
+	if filter.ChangedAfter != nil {
+		return filter.ListOrder(), nil
+	}
+	match, args := tagMatchSQLite(filter.Tags, "tags")
+	if match == "" {
+		return filter.ListOrder(), nil
+	}
+	return match + " DESC, " + filter.ListOrder() + ", id", args
+}
+
+// createdConditionsSQLite bounds col, an RFC 3339 text column, by
+// filter's After and Before as instants.
+func createdConditionsSQLite(filter storage.ObjectFilter, col string) ([]string, []any) {
+	var conds []string
+	var args []any
+	if filter.After != nil {
+		conds = append(conds, "datetime("+col+") >= datetime(?)")
+		args = append(args, filter.After.Format(time.RFC3339))
+	}
+	if filter.Before != nil {
+		conds = append(conds, "datetime("+col+") < datetime(?)")
+		args = append(args, filter.Before.Format(time.RFC3339))
+	}
+	return conds, args
+}
+
+func placeholdersSQLite(n int) string {
+	return strings.TrimSuffix(strings.Repeat("?,", n), ",")
+}
+
+func stringArgs(ss []string) []any {
+	out := make([]any, len(ss))
+	for i, s := range ss {
+		out[i] = s
+	}
+	return out
 }

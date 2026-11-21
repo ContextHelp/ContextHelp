@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/tagfilter"
 )
 
 // listTotalRow is one seeded object of ListTotalConformance and the
@@ -84,15 +85,15 @@ func ListTotalConformance(t *testing.T, drv storage.StorageDriver) {
 		{"discarded", storage.ObjectFilter{Status: discarded}, func(r listTotalRow) bool { return r.status == discarded }},
 		{"type", storage.ObjectFilter{Type: note}, func(r listTotalRow) bool { return isActive(r) && r.typ == note }},
 		{"profile", storage.ObjectFilter{ProfileID: p1}, func(r listTotalRow) bool { return isActive(r) && r.profile == p1 }},
-		{"tag", storage.ObjectFilter{Tag: work}, func(r listTotalRow) bool { return isActive(r) && r.tag == work }},
+		{"tag", storage.ObjectFilter{Tags: tagfilter.One(work)}, func(r listTotalRow) bool { return isActive(r) && r.tag == work }},
 		{"after", storage.ObjectFilter{After: at(base.Add(5 * time.Hour))}, func(r listTotalRow) bool {
 			return isActive(r) && !r.created.Before(base.Add(5*time.Hour))
 		}},
 		{"before", storage.ObjectFilter{Before: at(base.Add(6 * time.Hour))}, func(r listTotalRow) bool {
-			return isActive(r) && !r.created.After(base.Add(6*time.Hour))
+			return isActive(r) && r.created.Before(base.Add(6*time.Hour))
 		}},
 		{"between", storage.ObjectFilter{After: at(base.Add(3 * time.Hour)), Before: at(base.Add(9 * time.Hour))}, func(r listTotalRow) bool {
-			return isActive(r) && !r.created.Before(base.Add(3*time.Hour)) && !r.created.After(base.Add(9*time.Hour))
+			return isActive(r) && !r.created.Before(base.Add(3*time.Hour)) && r.created.Before(base.Add(9*time.Hour))
 		}},
 		{"type and profile, every status", storage.ObjectFilter{Status: storage.ObjectStatusAll, Type: note, ProfileID: p1}, func(r listTotalRow) bool {
 			return r.typ == note && r.profile == p1
@@ -100,7 +101,7 @@ func ListTotalConformance(t *testing.T, drv storage.StorageDriver) {
 		{"by updated_at", storage.ObjectFilter{Sort: "updated_at"}, isActive},
 		{"ascending", storage.ObjectFilter{Dir: "asc"}, isActive},
 		{"by updated_at ascending", storage.ObjectFilter{Sort: "updated_at", Dir: "asc"}, isActive},
-		{"tag by updated_at", storage.ObjectFilter{Tag: work, Sort: "updated_at"}, func(r listTotalRow) bool {
+		{"tag by updated_at", storage.ObjectFilter{Tags: tagfilter.One(work), Sort: "updated_at"}, func(r listTotalRow) bool {
 			return isActive(r) && r.tag == work
 		}},
 	}
