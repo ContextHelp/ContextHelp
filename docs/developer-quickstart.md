@@ -8,7 +8,7 @@ Get up and running with **dPKMS + `ctxt`** development in under 5 minutes.
 
 ### Required
 
-- **Go 1.26.1+** — [Download](https://go.dev/dl/)
+- **Go 1.27.4+** — [Download](https://go.dev/dl/)
 - **Git** — For version control
 - **make** — Build and task runner (`make help` lists targets)
 

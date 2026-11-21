@@ -13,7 +13,8 @@
 #      docker:// steps) runs; every other image those files pull and every
 #      Dockerfile base image names an exact release (X.Y.Z tag, dated tag or
 #      digest), never a floating tag
-#   2. go.mod `go` directive is satisfied by the mise go pin (pin >= directive)
+#   2. go.mod `go` directive is satisfied by the mise go pin (pin >= directive),
+#      and a tracked go.work directive is >= go.mod's and satisfied by the pin
 #   3. no workflow hardcodes a go-version literal instead of deriving it,
 #      nor a golangci-lint or goreleaser-action version
 #   4. node: mise pins an exact version; no workflow hardcodes node-version;
@@ -269,6 +270,26 @@ if [ -n "$gomod_go" ]; then
 		err "mise.toml pins go $mise_go but go.mod requires >= $gomod_go"
 	else
 		echo "ok: go.mod requires >= $gomod_go, pin $mise_go satisfies it"
+	fi
+fi
+
+# The tracked go.work carries its own `go` directive. Go refuses a workspace
+# whose go is older than a used module's, so every build outside GOWORK=off
+# fails when the two drift; it must also stay satisfiable by the pin.
+if [ -f go.work ]; then
+	gowork_go=$(awk '/^go /{print $2; exit}' go.work)
+	if [ -n "$gowork_go" ] && [ -n "$gomod_go" ]; then
+		lowest=$(printf '%s\n%s\n' "$gowork_go" "$gomod_go" | sort -V | head -1)
+		if [ "$lowest" != "$gomod_go" ]; then
+			err "go.work go $gowork_go is older than go.mod go $gomod_go"
+		else
+			lowest=$(printf '%s\n%s\n' "$mise_go" "$gowork_go" | sort -V | head -1)
+			if [ "$lowest" != "$gowork_go" ]; then
+				err "mise.toml pins go $mise_go but go.work requires >= $gowork_go"
+			else
+				echo "ok: go.work go $gowork_go covers go.mod $gomod_go, pin $mise_go satisfies it"
+			fi
+		fi
 	fi
 fi
 
