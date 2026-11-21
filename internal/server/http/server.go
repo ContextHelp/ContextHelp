@@ -97,9 +97,12 @@ type RouterConfig struct {
 	// (ADR-080 §9); nil logs nothing.
 	Audit *sharing.AuditWriter
 	// Access, when set, serves the routes an external authority calls to
-	// provision access (bos.access/v1) and its profile; AuditLog receives
-	// one entry per set applied or refused.
-	Access   AccessReceiver
+	// provision access (bos.access/v1) and its profile.
+	Access AccessReceiver
+	// AuditLog receives one entry per set applied or refused, and one per
+	// change made through the sharing routes (audiences, members,
+	// policies, grants, ceilings, key bindings, invites; ADR-080 §9); nil
+	// logs nothing.
 	AuditLog storage.AuditStore
 	// AccessPrincipal is the one principal (id) allowed to provision access
 	// and AccessScope the full scope address it provisions; both must be set

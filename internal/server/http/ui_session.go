@@ -117,12 +117,15 @@ type uiSessionRoutes struct {
 	reg       storage.AuthStore
 	// sharing resolves the audience an invite names (ADR-080 §11).
 	sharing storage.SharingStore
+	// changes records each invite minted in the audit log.
+	changes changeLog
 }
 
 func newUISessionRoutes(rc RouterConfig) *uiSessionRoutes {
 	return &uiSessionRoutes{
 		sessions: rc.Sessions, sec: rc.Security, cop: newSessionCOP(rc.DevCORS), warn: os.Stderr,
 		tickets: rc.Tickets, signIn: rc.SignIn, publicURL: rc.PublicURL, reg: rc.Registry, sharing: rc.Sharing,
+		changes: changeLog{rc.AuditLog},
 	}
 }
 

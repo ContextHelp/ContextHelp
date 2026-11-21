@@ -87,6 +87,7 @@ func (s *shareRoutes) storePolicy(w http.ResponseWriter, r *http.Request, p shar
 		writeRegistryError(w, err, "policy")
 		return
 	}
+	s.changes.record(r, EventPolicyCreated, map[string]any{"policy_id": row.ID, "policy": row.Name, "version": row.Version})
 	WriteJSON(w, http.StatusCreated, row)
 }
 
@@ -134,6 +135,7 @@ func (s *shareRoutes) UpdatePolicy(w http.ResponseWriter, r *http.Request) {
 		writeRegistryError(w, err, "policy")
 		return
 	}
+	s.changes.record(r, EventPolicyUpdated, map[string]any{"policy_id": updated.ID, "policy": updated.Name, "version": updated.Version})
 	WriteJSON(w, http.StatusOK, updated)
 }
 
@@ -237,6 +239,10 @@ func (s *shareRoutes) CreateGrant(w http.ResponseWriter, r *http.Request) {
 		writeRegistryError(w, err, "grant")
 		return
 	}
+	s.changes.record(r, EventGrantCreated, map[string]any{
+		"grant_id": g.ID, "audience_id": a.ID, "audience": a.Name,
+		"policy_id": p.ID, "policy": p.Name, "policy_version": p.Version, "expires_at": g.ExpiresAt,
+	})
 	WriteJSON(w, http.StatusCreated, grantRecord{ShareGrant: *g, Audience: a.Name, Policy: p.Name, PolicyVersion: p.Version})
 }
 
@@ -325,10 +331,12 @@ func (s *shareRoutes) RevokeGrant(w http.ResponseWriter, r *http.Request) {
 	if !s.ready(w) {
 		return
 	}
-	if err := s.sharing.Grants().Revoke(r.Context(), strings.TrimSpace(chi.URLParam(r, "grant")), time.Now().UTC()); err != nil {
+	grantID := strings.TrimSpace(chi.URLParam(r, "grant"))
+	if err := s.sharing.Grants().Revoke(r.Context(), grantID, time.Now().UTC()); err != nil {
 		writeRegistryError(w, err, "grant")
 		return
 	}
+	s.changes.record(r, EventGrantRevoked, map[string]any{"grant_id": grantID})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -386,6 +394,7 @@ func (s *shareRoutes) SetCeiling(w http.ResponseWriter, r *http.Request) {
 	if classes == nil {
 		classes = []string{}
 	}
+	s.changes.record(r, EventCeilingSet, map[string]any{"principal_id": id, "deny_classes": classes})
 	WriteJSON(w, http.StatusOK, ceilingRecord{PrincipalID: id, DenyClasses: classes})
 }
 
@@ -460,5 +469,8 @@ func (s *shareRoutes) bindKeyPolicy(w http.ResponseWriter, r *http.Request, keyI
 		writeRegistryError(w, err, "bind key policy")
 		return
 	}
+	s.changes.record(r, EventKeyPolicyBound, map[string]any{
+		"key_id": keyID, "identity_id": identityID, "policy_id": rec.PolicyID, "policy": rec.Policy,
+	})
 	WriteJSON(w, http.StatusOK, rec)
 }

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
@@ -152,6 +153,8 @@ func (u *uiSessionRoutes) mintInvite(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "could not mint an invite")
 		return
 	}
+	// The link carries the secret and stays out of the entry.
+	u.changes.record(r, EventInviteMinted, map[string]any{"audience_id": inv.AudienceID, "expires_at": issued.ExpiresAt})
 	WriteJSON(w, http.StatusCreated, u.link(InvitePath, issued))
 }
 
@@ -198,7 +201,37 @@ func (u *uiSessionRoutes) mintLink(w http.ResponseWriter, r *http.Request) {
 
 // redeemInvite handles POST /ui/invite/session.
 func (u *uiSessionRoutes) redeemInvite(w http.ResponseWriter, r *http.Request) {
-	u.redeem(w, r, config.AuthSignInInvite, u.tickets.RedeemInvite)
+	u.redeem(w, r, config.AuthSignInInvite, func(ctx context.Context, secret string, ci authn.ClientInfo) (*authn.Minted, error) {
+		m, err := u.tickets.RedeemInvite(ctx, secret, ci)
+		if err == nil {
+			u.recordInviteMembership(ctx, m.Principal.ID)
+		}
+		return m, err
+	})
+}
+
+// recordInviteMembership appends the share.member.added entry of the
+// audience a redeemed invite put its new person in: the membership is a
+// sharing change like any other, made on the invite minter's authority
+// (the actor) and naming the redeemer.
+func (u *uiSessionRoutes) recordInviteMembership(ctx context.Context, principalID string) {
+	if u.sharing == nil {
+		return
+	}
+	members, err := u.sharing.Audiences().ListMemberships(ctx, principalID, time.Now())
+	if err != nil {
+		slog.ErrorContext(ctx, "audit: invite membership not recorded", "principal", principalID, "err", err)
+		return
+	}
+	for _, m := range members {
+		name := ""
+		if a, err := u.sharing.Audiences().Get(ctx, m.AudienceID); err == nil && a != nil {
+			name = a.Name
+		}
+		u.changes.recordAs(ctx, m.AddedBy, EventMemberAdded, map[string]any{
+			"audience_id": m.AudienceID, "audience": name, "principal_id": m.PrincipalID, "expires_at": m.ExpiresAt, "via": "invite",
+		})
+	}
 }
 
 // redeemLink handles POST /ui/signin/session.

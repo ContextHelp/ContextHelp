@@ -160,6 +160,14 @@ The API behind it is `GET /api/v1/share/audit`, under `admin:audit`. It takes th
 
 Entries are buffered and written in batches by one goroutine, so a read never waits on the writer. Entries still in the buffer when the process dies are lost; everything written before them is safe. Object ids are kept for `sharing.audit.retention` (`2160h`, 90 days, by default) and pruned by `dpkms housekeeping run`; the entries and their counts stay.
 
+## Audit who changed what
+
+Every change to who can see what is written to the audit log, whoever makes it: audiences created, members added and removed, policies created and edited, grants made and revoked, ceilings set, key bindings and invites. Each entry names the principal that made the change and what it changed. An invite's link is not stored. Redeeming an invite that names an audience adds the new person to it: that is a `share.member.added` entry too, made by the principal that minted the invite, naming the new person and `via: invite`.
+
+Read the entries as the owner with `ctxt audit list --event-type share.grant.created`. The event types are `share.audience.created`, `share.member.added`, `share.member.removed`, `share.policy.created`, `share.policy.updated`, `share.grant.created`, `share.grant.revoked`, `share.ceiling.set`, `share.key_policy.bound` and `share.invite.minted`. Only the owner reads the audit log.
+
+`admin:shares` manages who sees what, and that includes the holder's own view. If you give it to anyone but yourself, review these entries.
+
 ## The backstop
 
 Before an answer leaves the instance, a last check walks the known id paths of the route's declared response shape and searches the body for the values the render layer withheld. Anything the request did not release is stripped, logged as `security.visibility_backstop` and counted. With `dpkms serve --strict-sharing` the request answers 500 instead. This is how every test instance runs: a hit is a bug in the scoped reads or the render layer, never normal operation. The check runs only for shared viewers; the owner pays nothing.

@@ -46,6 +46,7 @@ func (f *uiFixture) startCeremonies(signIn ...string) {
 		Registry:        store.Auth(),
 		Keys:            f.keys,
 		Sharing:         store.Sharing(),
+		AuditLog:        store.AuditLog(),
 		Tickets:         tickets,
 		SignIn:          signIn,
 		PublicURL:       publicURL,
