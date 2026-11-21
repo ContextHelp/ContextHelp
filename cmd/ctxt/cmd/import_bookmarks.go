@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/ideacrafterslabs/ctxt/internal/contentenc"
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	bookmarksimporter "github.com/ideacrafterslabs/ctxt/internal/importer/bookmarks"
 	"github.com/spf13/cobra"
@@ -135,10 +136,11 @@ const (
 const pipelineTextShort = "text.short"
 
 type enqueueRequest struct {
-	Content  string `json:"content"`
-	Type     string `json:"type"`
-	Pipeline string `json:"pipeline,omitempty"`
-	Source   string `json:"source,omitempty"`
+	Content         string `json:"content"`
+	ContentEncoding string `json:"content_encoding,omitempty"`
+	Type            string `json:"type"`
+	Pipeline        string `json:"pipeline,omitempty"`
+	Source          string `json:"source,omitempty"`
 }
 
 type enqueueResponse struct {
@@ -152,11 +154,13 @@ func enqueueBookmark(ctx context.Context, dc *dpkmsclient.Client, url, pipelineN
 // enqueueContent enqueues one item on the dpkms dc talks to and returns
 // its job ID.
 func enqueueContent(ctx context.Context, dc *dpkmsclient.Client, content, contentType, pipelineName, source string) (string, error) {
+	wire, encoding := contentenc.Encode(content)
 	payload := enqueueRequest{
-		Content:  content,
-		Type:     contentType,
-		Pipeline: pipelineName,
-		Source:   source,
+		Content:         wire,
+		ContentEncoding: encoding,
+		Type:            contentType,
+		Pipeline:        pipelineName,
+		Source:          source,
 	}
 	var out enqueueResponse
 	if err := dc.Post(ctx, "/api/v1/pipelines/enqueue", payload, &out); err != nil {
