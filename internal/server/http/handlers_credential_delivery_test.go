@@ -135,8 +135,7 @@ func TestCredentialDelivery_OnlyTheOwnerIssuesForAnother(t *testing.T) {
 				raw, err := io.ReadAll(resp.Body)
 				require.NoError(t, err)
 				want, status := authn.CodeCredentialForOtherPrincipal, http.StatusForbidden
-				switch {
-				case !c.holds(authn.ScopeAdminPrincipals):
+				if !c.holds(authn.ScopeAdminPrincipals) {
 					want = CodeInsufficientScope
 				}
 				assert.Equal(t, status, resp.StatusCode, "%s: %s", label, raw)

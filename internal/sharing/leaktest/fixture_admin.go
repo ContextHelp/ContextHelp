@@ -89,13 +89,15 @@ func (f *Fixture) seedAdmins(t testing.TB) {
 		t.Fatalf("leaktest: mint %s session: %v", NameAdminSession, err)
 	}
 	host := strings.TrimPrefix(f.Server.URL, "http://")
-	cookie := &http.Cookie{Name: httpserver.SessionCookieName(host), Value: minted.Secret}
+	// A request Cookie header carries name=value only; attributes belong
+	// to Set-Cookie.
+	cookie := httpserver.SessionCookieName(host) + "=" + minted.Secret
 	f.admins = append(f.admins, Principal{
 		Name: NameAdminSession, ID: AdminSessionID, HTTPOnly: true,
 		// The browser's own headers: a write from the UI's page is
 		// same-origin and carries the CSRF header.
 		Header: http.Header{
-			"Cookie":              {cookie.String()},
+			"Cookie":              {cookie},
 			"Sec-Fetch-Site":      {"same-origin"},
 			httpserver.HeaderCSRF: {"1"},
 		},
