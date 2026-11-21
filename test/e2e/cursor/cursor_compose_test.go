@@ -55,11 +55,17 @@ func TestCursor_ComposesWithMention(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"@client.acme"}, stored.Query.Mention)
 
-	// Time gate strictly excludes objs[0]; remaining 2 visible (storage
-	// ignores Mention but that's not cursor's contract).
+	// The seeded objects carry the mention only in body text, no mention
+	// edge, so the real mention filter matches none of them.
 	objs2, _, err := driver.Objects().List(ctx, filter)
 	require.NoError(t, err)
-	assert.Len(t, objs2, 2, "cursor time gate excludes the advanced-to head")
+	assert.Empty(t, objs2, "mention filter requires a mention edge; none seeded")
+
+	// Without the mention filter the time gate alone excludes the head.
+	filter.Mention = ""
+	objs3, _, err := driver.Objects().List(ctx, filter)
+	require.NoError(t, err)
+	assert.Len(t, objs3, 2, "cursor time gate excludes the advanced-to head")
 }
 
 // TestCursor_ComposesWithTag: cursor+--tagged.

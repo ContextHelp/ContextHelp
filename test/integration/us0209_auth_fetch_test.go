@@ -5,7 +5,6 @@ package integration
 // Verifies: configure credential for domain, fetch mock URL requiring auth,
 // auth header sent and content stored.
 // All external HTTP calls use httptest.NewServer — no real network.
-// Gate: INTEGRATION=1 env var required.
 
 import (
 	"context"
@@ -13,7 +12,6 @@ import (
 	"fmt"
 	gohttp "net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -85,10 +83,6 @@ func (s *authFetchStep) Run(_ context.Context, draft *storage.KnowledgeObject) (
 // TestUS0209_CookieAuthSentToServer verifies that a fetch with cookie auth
 // includes the Cookie header and stores content.
 func TestUS0209_CookieAuthSentToServer(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
-
 	const cookieValue = "test-session-xyz"
 	const wantContent = "Premium article body accessible with auth cookie."
 
@@ -148,10 +142,6 @@ func TestUS0209_CookieAuthSentToServer(t *testing.T) {
 
 // TestUS0209_APIKeyAuthSentToServer verifies API key auth sends the configured header.
 func TestUS0209_APIKeyAuthSentToServer(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
-
 	const apiKey = "super-secret-key-abc" // gitleaks:allow test vector
 	const headerName = "X-Api-Key"
 
@@ -204,10 +194,6 @@ func TestUS0209_APIKeyAuthSentToServer(t *testing.T) {
 
 // TestUS0209_AuthMethodStoredInMetadata verifies authentication method is recorded.
 func TestUS0209_AuthMethodStoredInMetadata(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
-
 	srv := httptest.NewServer(gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
 		bearer := r.Header.Get("Authorization")
 		w.Header().Set("Content-Type", "application/json")

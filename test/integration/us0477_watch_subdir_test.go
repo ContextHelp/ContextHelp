@@ -9,7 +9,6 @@ package integration
 // for the watcher's enqueued job to complete, and validates the resulting
 // KnowledgeObject contains the expected text body.
 //
-// Gate: INTEGRATION=1.
 
 import (
 	"encoding/json"
@@ -30,10 +29,6 @@ import (
 )
 
 func TestUS0477_WatchPicksUpFileInNewSubdir(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
-
 	root := t.TempDir()
 
 	env := startTestEnv(t)

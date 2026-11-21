@@ -13,7 +13,6 @@ package integration
 // Re-record: XRR_MODE=record go test -count=1 ./test/integration/ \
 //   -run TestUS0202_RecordCassettes
 //
-// Gate: INTEGRATION=1 env var required.
 
 import (
 	"context"
@@ -21,7 +20,6 @@ import (
 	"fmt"
 	gohttp "net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -278,10 +276,6 @@ func TestUS0202_RecordCassettes(t *testing.T) {
 // TestUS0202_RepoTitleDescriptionStored verifies repo full_name and description
 // are stored on the captured KnowledgeObject.
 func TestUS0202_RepoTitleDescriptionStored(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
-
 	const owner = githubOwner
 	const repo = githubRepoName
 	const wantDesc = githubRepoDesc
@@ -333,10 +327,6 @@ func TestUS0202_RepoTitleDescriptionStored(t *testing.T) {
 // TestUS0202_IssueTitleBodyLabelsStored verifies issue title, body, and labels
 // are stored on the captured KnowledgeObject.
 func TestUS0202_IssueTitleBodyLabelsStored(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
-
 	const owner = "golang"
 	const repo = "go"
 	const issueNum = githubIssueNum
@@ -394,10 +384,6 @@ func TestUS0202_IssueTitleBodyLabelsStored(t *testing.T) {
 
 // TestUS0202_PRTitleBodyStored verifies PR title and body are stored.
 func TestUS0202_PRTitleBodyStored(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
-
 	const owner = "golang"
 	const repo = "go"
 	const prNum = githubPRNum

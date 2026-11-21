@@ -16,7 +16,6 @@ package integration
 // Re-record: XRR_MODE=record go test -count=1 ./test/integration/ \
 //   -run TestUS0210_RecordCassettes
 //
-// Gate: INTEGRATION=1 env var required.
 
 import (
 	"context"
@@ -24,7 +23,6 @@ import (
 	"fmt"
 	gohttp "net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -278,10 +276,6 @@ func TestUS0210_RecordCassettes(t *testing.T) {
 // TestUS0210_SameEntityFromTwoPlatformsMerged verifies that two captures of the
 // same real-world person from different platforms produce a same_as link.
 func TestUS0210_SameEntityFromTwoPlatformsMerged(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
-
 	// Both fixtures link to entityCrossRefURL, which is what makes them
 	// resolve to one entity.
 	//
@@ -379,10 +373,6 @@ func TestUS0210_SameEntityFromTwoPlatformsMerged(t *testing.T) {
 // TestUS0210_LowConfidenceNotAutoLinked verifies that low confidence matches
 // are not auto-linked.
 func TestUS0210_LowConfidenceNotAutoLinked(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
-
 	// Existing entity: Jane Doe at AcmeCorp.
 	existingEntity := storage.KnowledgeObject{
 		Type: "entity.person",

@@ -19,45 +19,38 @@ import (
 )
 
 func TestBrowserHistory_PollsChromeSafely(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: ChromeBrowserClient implementation (per-OS SQLite-history " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: ChromeBrowserClient implementation (per-OS SQLite-history " +
 		"path resolution + copy-to-temp + visit-time column query). Reuses " +
 		"existing internal/importer/chrome parsing helpers")
 }
 
 func TestBrowserHistory_DetectsNewVisits(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: real BrowserClient impl + a real browser writing to its " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: real BrowserClient impl + a real browser writing to its " +
 		"SQLite. Substrate-level new-visit detection is unit-tested via fakeBrowser")
 }
 
 func TestBrowserHistory_RestartResumesFromBookmark(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: SetLastSeen / LastSeen accessors are implemented and " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: SetLastSeen / LastSeen accessors are implemented and " +
 		"unit-tested; full daemon-restart flow with on-disk last-seen state " +
 		"needs the ctxd lifecycle harness")
 }
 
 func TestBrowserHistory_DenylistFiltersURLs(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: E2E harness — URLFilter is unit-tested; E2E verifies " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: E2E harness — URLFilter is unit-tested; E2E verifies " +
 		"ctxt.ambient.event.filtered emits to a real subscriber")
 }
 
 func TestBrowserHistory_RoutesRepoURLs(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: E2E harness — routing is unit-tested in " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: E2E harness — routing is unit-tested in " +
 		"TestRoutePipeline; E2E asserts dpkms received the right pipeline name")
 }
 
 func TestBrowserHistory_HandlesBrowserLockContention(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: real BrowserClient (copy-to-temp must work while a real " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: real BrowserClient (copy-to-temp must work while a real " +
 		"browser holds the SQLite file's WAL lock)")
 }
 
 func TestBrowserHistory_MultiBrowserConcurrent(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: real BrowserClient impls for ≥2 browsers; substrate " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: real BrowserClient impls for ≥2 browsers; substrate " +
 		"concurrent-poll is unit-tested in TestSource_MultipleBrowsersConcurrent")
 }

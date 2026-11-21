@@ -7,7 +7,6 @@ package integration
 // svc.ComposeWithCitations directly (same service layer the future HTTP handler
 // will call) and document the expected HTTP contract with stub tests.
 //
-// Gate: INTEGRATION=1 env var required to run.
 
 import (
 	"bytes"
@@ -15,7 +14,6 @@ import (
 	"encoding/json"
 	"fmt"
 	gohttp "net/http"
-	"os"
 	"strings"
 	"testing"
 
@@ -93,9 +91,6 @@ func uniqueID() int {
 // TestUS0040_ComposeReturnsBriefWithObjectContent verifies Compose returns
 // markdown containing the ingested objects' summary content.
 func TestUS0040_ComposeReturnsBriefWithObjectContent(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -123,9 +118,6 @@ func TestUS0040_ComposeReturnsBriefWithObjectContent(t *testing.T) {
 
 // TestUS0040_ComposeBriefIsMarkdown verifies the brief output contains markdown structure.
 func TestUS0040_ComposeBriefIsMarkdown(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -147,9 +139,6 @@ func TestUS0040_ComposeBriefIsMarkdown(t *testing.T) {
 // TestUS0040_ComposeWithCitationsIncludesSourceIDs verifies ComposeWithCitations
 // returns a sources array listing all contributing object IDs.
 func TestUS0040_ComposeWithCitationsIncludesSourceIDs(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -171,9 +160,6 @@ func TestUS0040_ComposeWithCitationsIncludesSourceIDs(t *testing.T) {
 // result is a structured object (has Content, Citations, SourceIDs, Type) —
 // not a raw markdown string blob.
 func TestUS0040_ComposeWithCitationsStructuredNotMarkdownBlob(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -192,9 +178,6 @@ func TestUS0040_ComposeWithCitationsStructuredNotMarkdownBlob(t *testing.T) {
 
 // TestUS0040_ComposeQueryMatchTemplate verifies template value is preserved in the result type.
 func TestUS0040_ComposeQueryMatchTemplate(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -212,9 +195,6 @@ func TestUS0040_ComposeQueryMatchTemplate(t *testing.T) {
 // TestUS0040_ComposeEmptyObjectsReturnsEmptyBrief verifies composing from zero objects
 // produces an informative response, not a panic or silent empty string.
 func TestUS0040_ComposeEmptyObjectsReturnsEmptyBrief(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -229,9 +209,6 @@ func TestUS0040_ComposeEmptyObjectsReturnsEmptyBrief(t *testing.T) {
 // TestUS0040_ComposeObjectsQueryableAfterCompose verifies that composed-from objects
 // remain queryable via search after composition (no mutation side-effect).
 func TestUS0040_ComposeObjectsQueryableAfterCompose(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -262,9 +239,7 @@ func TestUS0040_ComposeObjectsQueryableAfterCompose(t *testing.T) {
 //
 // MISSING ENDPOINT: Will fail until /api/v1/compose is registered in server.go.
 func TestUS0040_HTTPComposeEndpointExists(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
+	t.Skip("unbuilt: POST /api/v1/compose is not registered in internal/server/http/routes.go")
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -288,9 +263,7 @@ func TestUS0040_HTTPComposeEndpointExists(t *testing.T) {
 //
 // MISSING ENDPOINT: Will fail until /api/v1/compose is implemented.
 func TestUS0040_HTTPComposeReturnsJobIDAndCompositionID(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
+	t.Skip("unbuilt: POST /api/v1/compose is not registered in internal/server/http/routes.go")
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -317,9 +290,7 @@ func TestUS0040_HTTPComposeReturnsJobIDAndCompositionID(t *testing.T) {
 //
 // MISSING ENDPOINT: Will fail until /api/v1/compose is implemented.
 func TestUS0040_HTTPComposeMissingTemplateReturns400(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
+	t.Skip("unbuilt: POST /api/v1/compose is not registered in internal/server/http/routes.go")
 	env := startTestEnv(t)
 	defer env.stop(t)
 

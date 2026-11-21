@@ -13,7 +13,6 @@ package integration
 // Re-record: XRR_MODE=record go test -count=1 ./test/integration/ \
 //   -run TestUS0201_RecordCassettes
 //
-// Gate: INTEGRATION=1 env var required.
 
 import (
 	"context"
@@ -21,7 +20,6 @@ import (
 	"fmt"
 	gohttp "net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -201,10 +199,6 @@ func TestUS0201_RecordCassettes(t *testing.T) {
 // TestUS0201_TweetTextAuthorTimestampStored verifies that tweet text, author,
 // and timestamp are stored on the resulting KnowledgeObject.
 func TestUS0201_TweetTextAuthorTimestampStored(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
-
 	const tweetID = twitterTweetID
 	const wantText = twitterTweetText
 	const wantAuthorUsername = twitterAuthorHandle
@@ -257,10 +251,6 @@ func TestUS0201_TweetTextAuthorTimestampStored(t *testing.T) {
 
 // TestUS0201_TweetSourceURLStored verifies the original tweet URL is persisted.
 func TestUS0201_TweetSourceURLStored(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
-
 	const tweetID = twitterSourceTweetID
 
 	srv := httptest.NewServer(twitterTweetHandler(twitterSourceFixture()))
@@ -304,10 +294,6 @@ func TestUS0201_TweetSourceURLStored(t *testing.T) {
 
 // TestUS0201_CaptureIsAsync verifies POST /analyze returns job_id immediately.
 func TestUS0201_CaptureIsAsync(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
-
 	srv := httptest.NewServer(twitterTweetHandler(twitterAsyncFixture()))
 	defer srv.Close()
 
