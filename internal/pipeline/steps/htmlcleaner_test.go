@@ -74,8 +74,8 @@ func TestHTMLCleaner_Table(t *testing.T) {
 			notWant: []string{"Outside"},
 			exact:   "One\n\nTwo\n\nNested", hasExac: true},
 		{name: "role based removal",
-			in:      `<body><div role="banner">B</div><div role="navigation">N</div><div role="contentinfo">C</div><div role="complementary">S</div><p>Keep</p></body>`,
-			exact:   "Keep", hasExac: true},
+			in:    `<body><div role="banner">B</div><div role="navigation">N</div><div role="contentinfo">C</div><div role="complementary">S</div><p>Keep</p></body>`,
+			exact: "Keep", hasExac: true},
 		{name: "role token list case insens",
 			in:    `<body><div role="Presentation NAVIGATION">gone</div><p>stay</p></body>`,
 			exact: "stay", hasExac: true},
@@ -101,8 +101,8 @@ func TestHTMLCleaner_Table(t *testing.T) {
 			in:   `<!doctype html><<>> <p <p>text</div></span>`,
 			want: []string{"text"}},
 		{name: "no main page keeps body minus chrome",
-			in:      `<html><head><title>T</title></head><body><nav>menu</nav><h2>Head</h2><p>Body text</p><footer>foot</footer></body></html>`,
-			exact:   "Head\n\nBody text", hasExac: true,
+			in:    `<html><head><title>T</title></head><body><nav>menu</nav><h2>Head</h2><p>Body text</p><footer>foot</footer></body></html>`,
+			exact: "Head\n\nBody text", hasExac: true,
 			notWant: []string{"T\n"}},
 		{name: "no class heuristics: cookie banner outside landmarks survives",
 			in:    `<body><div class="cookie-banner">We use cookies. Accept all</div><p>Real text</p></body>`,
@@ -115,21 +115,21 @@ func TestHTMLCleaner_Table(t *testing.T) {
 			in:    `<body><form>formtext<input type="text" value="v"><button>btn</button><select><option>optA</option></select><textarea>ta</textarea></form><iframe>i</iframe><svg><title>svgt</title><text>s</text></svg><template>t</template><p>ok</p></body>`,
 			exact: "formtext\n\nok", hasExac: true},
 		{name: "aspnet form wrapping the page",
-			in: `<html><head><title>T</title></head><body><form id="aspnetForm" method="post"><input type="hidden" name="__VIEWSTATE" value="x"><div><h1>Heading</h1><p>Real content here</p><input type="submit" value="Go"></div></form></body></html>`,
+			in:    `<html><head><title>T</title></head><body><form id="aspnetForm" method="post"><input type="hidden" name="__VIEWSTATE" value="x"><div><h1>Heading</h1><p>Real content here</p><input type="submit" value="Go"></div></form></body></html>`,
 			exact: "Heading\n\nReal content here", hasExac: true},
 		{name: "hidden and aria-hidden dropped",
 			in:    `<body><p hidden>h</p><p aria-hidden="true">ah</p><div hidden><p>nested</p></div><p aria-hidden="false">shown</p><p>ok</p></body>`,
 			exact: "shown\n\nok", hasExac: true},
 		{name: "pre keeps line breaks",
-			in:    `<body><pre>line1
+			in: `<body><pre>line1
 line2
 
 
 line3</pre></body>`,
 			exact: "line1\nline2\n\nline3", hasExac: true},
 		{name: "header and footer inside article kept",
-			in: `<body><nav>menu</nav><header>site head</header><article><header><h1>Title H1</h1><p>By Author</p></header><p>Body</p><aside>Pull quote</aside><footer>Tags: x</footer></article><footer>site foot</footer></body>`,
-			want: []string{"Title H1", "By Author", "Body", "Pull quote", "Tags: x"},
+			in:      `<body><nav>menu</nav><header>site head</header><article><header><h1>Title H1</h1><p>By Author</p></header><p>Body</p><aside>Pull quote</aside><footer>Tags: x</footer></article><footer>site foot</footer></body>`,
+			want:    []string{"Title H1", "By Author", "Body", "Pull quote", "Tags: x"},
 			notWant: []string{"menu", "site head", "site foot"}},
 		{name: "header and footer inside main kept",
 			in:      `<body><header>site head</header><main><header><h1>H</h1></header><p>x</p><footer>main foot</footer></main><footer>site foot</footer></body>`,
@@ -144,8 +144,8 @@ line3</pre></body>`,
 			want:    []string{"Only content lives here", "and here"},
 			notWant: []string{"bad()"}},
 		{name: "far shorter than minimal pass falls back when no content root",
-			in:      `<body><nav>` + strings.Repeat("section links words ", 80) + `</nav><p>tiny</p></body>`,
-			want:    []string{"tiny", "section links words"}},
+			in:   `<body><nav>` + strings.Repeat("section links words ", 80) + `</nav><p>tiny</p></body>`,
+			want: []string{"tiny", "section links words"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

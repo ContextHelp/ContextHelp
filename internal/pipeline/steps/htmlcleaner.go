@@ -329,6 +329,24 @@ func extractText(roots []*html.Node, minimal bool) string {
 	return normalizeText(sb.String())
 }
 
+// tokenizeSkipTags are the elements whose content tokenizeText drops.
+var tokenizeSkipTags = map[string]bool{
+	"head": true, "script": true, "style": true, "noscript": true,
+	"template": true, "nav": true, "header": true, "footer": true,
+	"aside": true, "iframe": true, "svg": true, "select": true,
+	"textarea": true, "button": true, "datalist": true,
+}
+
+// tokenState is the running state of tokenizeText.
+type tokenState struct {
+	text, title strings.Builder
+	pending     int    // newlines owed before the next text
+	skip        string // element whose content is being dropped
+	skipDepth   int
+	inTitle     bool
+	haveTitle   bool
+}
+
 // tokenizeText is the depth-unlimited fallback for documents the parser
 // rejects. It keeps the text outside script/style/head/noscript/template,
 // navigation, headers, footers, asides, iframes, svg and form controls, with
@@ -336,17 +354,7 @@ func extractText(roots []*html.Node, minimal bool) string {
 // not apply roles, hidden attributes or the sectioning exceptions, nor does
 // it prefer <main> or <article>.
 func tokenizeText(src string) (title, text string) {
-	skipTags := map[string]bool{
-		"head": true, "script": true, "style": true, "noscript": true,
-		"template": true, "nav": true, "header": true, "footer": true,
-		"aside": true, "iframe": true, "svg": true, "select": true,
-		"textarea": true, "button": true, "datalist": true,
-	}
-	var sb, tb strings.Builder
-	pending := 0
-	skip, skipDepth := "", 0
-	inTitle, haveTitle := false, false
-
+	var st tokenState
 	z := html.NewTokenizer(strings.NewReader(src))
 	for {
 		tt := z.Next()
@@ -354,69 +362,75 @@ func tokenizeText(src string) (title, text string) {
 			break
 		}
 		tok := z.Token()
-		name := tok.Data
 		switch tt {
 		case html.StartTagToken, html.SelfClosingTagToken:
-			if name == "title" && !haveTitle && (skip == "" || skip == "head") {
-				inTitle = tt == html.StartTagToken
-				continue
-			}
-			if skip != "" {
-				if tt == html.StartTagToken && name == skip {
-					skipDepth++
-				}
-				continue
-			}
-			if tt == html.StartTagToken && skipTags[name] {
-				skip, skipDepth = name, 1
-				continue
-			}
-			if a := atom.Lookup([]byte(name)); paragraphElements[a] {
-				pending = max(pending, 2)
-			} else if lineElements[a] {
-				pending = max(pending, 1)
-			}
+			st.startTag(tok.Data, tt == html.StartTagToken)
 		case html.EndTagToken:
-			if name == "title" && inTitle {
-				inTitle, haveTitle = false, true
-				continue
-			}
-			if skip != "" {
-				if name == skip {
-					skipDepth--
-					if skipDepth == 0 {
-						skip = ""
-					}
-				}
-				continue
-			}
-			if a := atom.Lookup([]byte(name)); paragraphElements[a] {
-				pending = max(pending, 2)
-			} else if lineElements[a] {
-				pending = max(pending, 1)
-			}
+			st.endTag(tok.Data)
 		case html.TextToken:
-			if inTitle {
-				tb.WriteString(tok.Data)
-				continue
-			}
-			if skip != "" {
-				continue
-			}
-			if strings.TrimSpace(strings.ReplaceAll(tok.Data, " ", " ")) == "" {
-				if tok.Data != "" && sb.Len() > 0 && pending == 0 {
-					sb.WriteString(" ")
-				}
-				continue
-			}
-			if sb.Len() > 0 {
-				sb.WriteString(strings.Repeat("\n", pending))
-			}
-			pending = 0
-			sb.WriteString(tok.Data)
+			st.textToken(tok.Data)
 		}
 	}
-	return tb.String(), normalizeText(sb.String())
+	return st.title.String(), normalizeText(st.text.String())
+}
+
+func (st *tokenState) startTag(name string, open bool) {
+	switch {
+	case name == "title" && !st.haveTitle && (st.skip == "" || st.skip == "head"):
+		st.inTitle = open
+	case st.skip != "":
+		if open && name == st.skip {
+			st.skipDepth++
+		}
+	case open && tokenizeSkipTags[name]:
+		st.skip, st.skipDepth = name, 1
+	default:
+		st.blockBreak(name)
+	}
+}
+
+func (st *tokenState) endTag(name string) {
+	switch {
+	case name == "title" && st.inTitle:
+		st.inTitle, st.haveTitle = false, true
+	case st.skip != "":
+		if name == st.skip {
+			if st.skipDepth--; st.skipDepth == 0 {
+				st.skip = ""
+			}
+		}
+	default:
+		st.blockBreak(name)
+	}
+}
+
+// blockBreak owes the newlines a block element puts around its content.
+func (st *tokenState) blockBreak(name string) {
+	a := atom.Lookup([]byte(name))
+	switch {
+	case paragraphElements[a]:
+		st.pending = max(st.pending, 2)
+	case lineElements[a]:
+		st.pending = max(st.pending, 1)
+	}
+}
+
+func (st *tokenState) textToken(data string) {
+	switch {
+	case st.inTitle:
+		st.title.WriteString(data)
+	case st.skip != "":
+	case strings.TrimSpace(strings.ReplaceAll(data, "\u00a0", " ")) == "":
+		if data != "" && st.text.Len() > 0 && st.pending == 0 {
+			st.text.WriteString(" ")
+		}
+	default:
+		if st.text.Len() > 0 {
+			st.text.WriteString(strings.Repeat("\n", st.pending))
+		}
+		st.pending = 0
+		st.text.WriteString(data)
+	}
 }
 
 // normalizeText collapses whitespace within lines (non-breaking spaces
