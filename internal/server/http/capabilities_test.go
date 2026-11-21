@@ -71,6 +71,13 @@ type capabilityEnv struct {
 
 func newCapabilityEnv(t *testing.T) *capabilityEnv {
 	t.Helper()
+	return newCapabilityEnvWith(t, RouterConfig{})
+}
+
+// newCapabilityEnvWith is newCapabilityEnv with rc as the router's
+// base config; its Auth is replaced by the env's token chain.
+func newCapabilityEnvWith(t *testing.T, rc RouterConfig) *capabilityEnv {
+	t.Helper()
 	ctx := ownerCtx()
 	driver := storageutil.NewTestDriver(t)
 	svc := service.New(driver, jobs.NewQueue(driver.Jobs()), builtins.Registry(), search.NewEngine(driver), "", nil)
@@ -108,12 +115,12 @@ func newCapabilityEnv(t *testing.T) *capabilityEnv {
 		authtest.Token{Token: capSourcerToken, Principal: capSourcer, Roles: []string{authn.RoleReader}},
 		authtest.Token{Token: capStrangerToken, Principal: capStranger, Roles: []string{authn.RoleReader}},
 	), revoked: map[string]bool{}}
-	chain := authn.NewChain(rev)
+	rc.Auth = authn.NewChain(rev)
 	return &capabilityEnv{
 		driver:       driver,
 		revoke:       rev.revokeToken,
 		sourcerGrant: sourcerGrant,
-		router:       NewRouterWithConfig(svc, RouterConfig{Auth: chain}),
+		router:       NewRouterWithConfig(svc, rc),
 		svc:          svc,
 		contact:      contact.ID,
 		note:         note.ID,

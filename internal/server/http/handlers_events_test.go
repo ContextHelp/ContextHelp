@@ -61,14 +61,22 @@ type sseEnv struct {
 
 func newSSEEnv(t *testing.T) *sseEnv {
 	t.Helper()
-	e := newCapabilityEnv(t)
+	return newSSEEnvWith(t, SSEConfig{})
+}
+
+// newSSEEnvWith is newSSEEnv with cfg applied to the env's router. A
+// zero RecheckTTL makes every event re-check the caller, so a change
+// shows at once.
+func newSSEEnvWith(t *testing.T, cfg SSEConfig) *sseEnv {
+	t.Helper()
+	if cfg.RecheckTTL == 0 {
+		// 1ns, not 0 (which means the default): effectively always re-check.
+		cfg.RecheckTTL = time.Nanosecond
+	}
+	e := newCapabilityEnvWith(t, RouterConfig{SSE: cfg})
 	cb := &countingBus{Bus: e.svc.Bus}
 	e.svc.Bus = cb
 	e.svc.Cfg.Server.EventsHeartbeat = 40 * time.Millisecond
-	// Every event re-checks the caller, so a change shows at once.
-	old := sseRecheckTTL
-	sseRecheckTTL = 0
-	t.Cleanup(func() { sseRecheckTTL = old })
 	srv := httptest.NewServer(e.router)
 	t.Cleanup(srv.Close)
 	return &sseEnv{capabilityEnv: e, srv: srv, bus: cb}
@@ -194,22 +202,35 @@ func (e *sseEnv) waitSubscribed(t *testing.T, n int64) {
 // outbox row's seq, 0 for a bus-only event.
 func (e *sseEnv) publish(t *testing.T, topic bus.Topic, source string, payload any) int64 {
 	t.Helper()
+	seq, err := e.tryPublish(topic, source, payload)
+	require.NoError(t, err)
+	return seq
+}
+
+// tryPublish is publish returning its error instead of failing the
+// test, for callers off the test goroutine.
+func (e *sseEnv) tryPublish(topic bus.Topic, source string, payload any) (int64, error) {
 	ctx := context.Background()
 	if !events.OutboxTopics[topic] {
-		require.NoError(t, e.svc.Bus.Publish(ctx, bus.NewEvent(topic, source, payload)))
-		return 0
+		return 0, e.svc.Bus.Publish(ctx, bus.NewEvent(topic, source, payload))
 	}
 	ev := &storage.OutboxEvent{Topic: string(topic), Source: source, Origin: events.OriginAPI, Payload: payload, OccurredAt: time.Now().UTC()}
 	raw, err := json.Marshal(payload)
-	require.NoError(t, err)
+	if err != nil {
+		return 0, err
+	}
 	var ids struct {
 		ObjectID string `json:"object_id"`
 	}
 	_ = json.Unmarshal(raw, &ids)
 	ev.ObjectID = ids.ObjectID
-	require.NoError(t, e.svc.Outbox().Append(ctx, ev))
-	require.NoError(t, events.Publish(ctx, e.svc.Bus, ev))
-	return ev.Seq
+	if err := e.svc.Outbox().Append(ctx, ev); err != nil {
+		return 0, err
+	}
+	if err := events.Publish(ctx, e.svc.Bus, ev); err != nil {
+		return 0, err
+	}
+	return ev.Seq, nil
 }
 
 // Every connection's bus subscription ends with the connection: N
@@ -424,13 +445,15 @@ func TestSSERevokedKeyClosesTheStream(t *testing.T) {
 		{"owner, on a heartbeat", capOwnerToken, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			e := newSSEEnv(t)
+			var cfg SSEConfig
+			if !tc.event {
+				// No cached check may do the tick's job.
+				cfg.RecheckTTL = time.Hour
+			}
+			e := newSSEEnvWith(t, cfg)
 			if tc.event {
 				// No tick may do the event's job.
 				e.svc.Cfg.Server.EventsHeartbeat = time.Hour
-			} else {
-				// No cached check may do the tick's job.
-				sseRecheckTTL = time.Hour
 			}
 			s := e.open(t, tc.token)
 			e.waitSubscribed(t, 1)
@@ -451,8 +474,7 @@ func TestSSERevokedKeyClosesTheStream(t *testing.T) {
 
 // The re-check is bounded by a TTL: a change inside it waits for it.
 func TestSSERecheckIsCachedForTheTTL(t *testing.T) {
-	e := newSSEEnv(t)
-	sseRecheckTTL = time.Hour
+	e := newSSEEnvWith(t, SSEConfig{RecheckTTL: time.Hour})
 	s := e.open(t, capSourcerToken)
 	e.waitSubscribed(t, 1)
 	ingested := events.ObjectIngestedPayload{ObjectID: capSourced, Type: "note"}

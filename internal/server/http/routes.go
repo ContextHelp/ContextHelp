@@ -179,7 +179,7 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		{Method: post, Pattern: "/inbox/{id}/discard", Scope: authn.ScopeProcessInbox, Handler: DiscardInbox(svc)},
 
 		// SSE event stream (real-time updates)
-		{Method: get, Pattern: "/events", Scope: authn.ScopeReadObjects, Handler: HandleSSE(svc)},
+		{Method: get, Pattern: "/events", Scope: authn.ScopeReadObjects, Handler: HandleSSE(svc, rc.SSE)},
 
 		// Aliases (core alias store)
 		{Method: post, Pattern: "/aliases", Scope: authn.ScopeWriteObjects, Handler: CreateAlias(svc)},

@@ -34,13 +34,45 @@ const CodeEventIDExpired = "EVENT_ID_EXPIRED"
 // Last-Event-ID (or last_event_id) answers.
 const CodeInvalidEventID = "INVALID_EVENT_ID"
 
-// sseReplayPage is how many outbox rows one read returns. A package
-// variable so tests can make a replay span pages.
-var sseReplayPage = 200
+// Defaults for SSEConfig's zero fields.
+const (
+	defaultSSEReplayPage = 200
+	defaultSSERecheckTTL = 2 * time.Second
+)
 
-// sseAfterPage, when set by a test, runs after each page of rows has
-// been written to the stream.
-var sseAfterPage func()
+// SSEConfig tunes GET /api/v1/events per router. The zero value is the
+// production setting; tests set fields to make a replay span pages or
+// every event re-check the caller, without touching shared state.
+type SSEConfig struct {
+	// ReplayPage is how many outbox rows one read returns. <= 0 uses
+	// the default (200).
+	ReplayPage int
+	// RecheckTTL is how long the stream trusts the caller's last check:
+	// each event re-authenticates the credential and re-resolves the
+	// viewer unless the last check is younger than this. A revoked key
+	// or grant therefore takes effect within this long (and at the next
+	// heartbeat at the latest). The check is a few indexed reads and a
+	// cache lookup, so the TTL only bounds the cost of an event burst.
+	// <= 0 uses the default (2s).
+	RecheckTTL time.Duration
+	// AfterPage, when set, runs after each page of rows has been
+	// written to the stream.
+	AfterPage func()
+}
+
+func (c SSEConfig) replayPage() int {
+	if c.ReplayPage > 0 {
+		return c.ReplayPage
+	}
+	return defaultSSEReplayPage
+}
+
+func (c SSEConfig) recheckTTL() time.Duration {
+	if c.RecheckTTL > 0 {
+		return c.RecheckTTL
+	}
+	return defaultSSERecheckTTL
+}
 
 // HandleSSE streams events as Server-Sent Events to the client. Each
 // event is a CloudEvents JSON envelope in the SSE `data:` field.
@@ -65,13 +97,13 @@ var sseAfterPage func()
 // idle the handler writes an SSE comment every server.events_heartbeat.
 //
 // The stream follows the caller: each event (at most every
-// sseRecheckTTL) and each heartbeat authenticates the credential again
+// SSEConfig.RecheckTTL) and each heartbeat authenticates the credential again
 // and resolves the viewer as it is now, so a revoked grant applies to
 // the next event, and a revoked or expired key ends the stream with a
 // final comment.
 //
 // Route: GET /api/v1/events
-func HandleSSE(svc *service.Service) http.HandlerFunc {
+func HandleSSE(svc *service.Service, cfg SSEConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Verify the client supports streaming.
 		flusher, ok := w.(http.Flusher)
@@ -93,11 +125,13 @@ func HandleSSE(svc *service.Service) http.HandlerFunc {
 			flusher:    flusher,
 			ctx:        r.Context(),
 			outbox:     svc.Outbox(),
-			callerView: newCallerView(r.Context(), viewer),
+			callerView: newCallerView(r.Context(), viewer, cfg.recheckTTL()),
 			filter:     newViewerEvents(svc),
 			wake:       make(chan struct{}, 1),
 			ch:         make(chan bus.Event, sseBuffer),
 			cursor:     after,
+			pageSize:   cfg.replayPage(),
+			afterPage:  cfg.AfterPage,
 		}
 		// The owner's stream subscribes to everything. Anyone else
 		// subscribes to object events only, and always, even with no
@@ -137,6 +171,10 @@ type sseStream struct {
 	// cursor is the seq of the last outbox row read; only this
 	// connection's goroutine moves it.
 	cursor int64
+	// pageSize is how many outbox rows one read returns; afterPage, when
+	// set, runs after each page is written.
+	pageSize  int
+	afterPage func()
 }
 
 // onBus is the bus handler: an outbox topic only wakes the stream, any
@@ -203,7 +241,7 @@ func (st *sseStream) position(resume bool) ([]storage.OutboxRow, error) {
 	if st.cursor > head {
 		return nil, &errEventIDGone{msg: "the event id is ahead of the newest event this instance wrote", head: head}
 	}
-	rows, err := st.outbox.Since(st.ctx, st.cursor, sseReplayPage)
+	rows, err := st.outbox.Since(st.ctx, st.cursor, st.pageSize)
 	var exp *storage.OutboxExpiredError
 	if errors.As(err, &exp) {
 		return nil, &errEventIDGone{msg: "the event id is older than the retained events", oldest: exp.Oldest, head: head}
@@ -321,8 +359,8 @@ func (st *sseStream) page(rows []storage.OutboxRow) bool {
 			return false
 		}
 	}
-	if sseAfterPage != nil {
-		sseAfterPage()
+	if len(rows) > 0 && st.afterPage != nil {
+		st.afterPage()
 	}
 	return true
 }
@@ -335,7 +373,7 @@ func (st *sseStream) drain() bool {
 		return true
 	}
 	for {
-		rows, err := st.outbox.Since(st.ctx, st.cursor, sseReplayPage)
+		rows, err := st.outbox.Since(st.ctx, st.cursor, st.pageSize)
 		if err != nil {
 			if st.ctx.Err() == nil {
 				slog.Warn("events: outbox read", "err", err)
@@ -347,7 +385,7 @@ func (st *sseStream) drain() bool {
 		if !st.page(rows) {
 			return false
 		}
-		if len(rows) < sseReplayPage {
+		if len(rows) < st.pageSize {
 			return true
 		}
 	}
@@ -396,15 +434,6 @@ func sseHeartbeat(cfg config.Config) time.Duration {
 	return config.DefaultEventsHeartbeat
 }
 
-// sseRecheckTTL is how long the stream trusts the caller's last check:
-// each event re-authenticates the credential and re-resolves the viewer
-// unless the last check is younger than this. A revoked key or grant
-// therefore takes effect within this long (and at the next heartbeat at
-// the latest). The check is a few indexed reads and a cache lookup, so
-// the TTL only bounds the cost of an event burst. A package variable so
-// tests can make every event check.
-var sseRecheckTTL = 2 * time.Second
-
 // closeStream ends a stream whose caller no longer authenticates, with a
 // final comment line so the client sees why. An EventSource reconnects
 // and is then answered 401.
@@ -419,14 +448,15 @@ type callerView struct {
 	recheck Recheck
 	v       sharing.Viewer
 	at      time.Time
+	ttl     time.Duration // how long a check is trusted
 }
 
-func newCallerView(ctx context.Context, v sharing.Viewer) *callerView {
-	return &callerView{ctx: ctx, recheck: recheckFrom(ctx), v: v, at: time.Now()}
+func newCallerView(ctx context.Context, v sharing.Viewer, ttl time.Duration) *callerView {
+	return &callerView{ctx: ctx, recheck: recheckFrom(ctx), v: v, at: time.Now(), ttl: ttl}
 }
 
 // current returns the caller's viewer, checking again when force is set
-// or the last check is older than sseRecheckTTL. false means the caller
+// or the last check is older than its TTL. false means the caller
 // no longer authenticates, or its viewer cannot be resolved (fail
 // closed): the stream must end. With no Recheck (a private instance)
 // the viewer never changes.
@@ -434,7 +464,7 @@ func (c *callerView) current(force bool) (sharing.Viewer, bool) {
 	if c.recheck == nil {
 		return c.v, true
 	}
-	if !force && time.Since(c.at) < sseRecheckTTL {
+	if !force && time.Since(c.at) < c.ttl {
 		return c.v, true
 	}
 	v, err := c.recheck(c.ctx)

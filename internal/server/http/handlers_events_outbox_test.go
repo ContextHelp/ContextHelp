@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -230,41 +232,78 @@ func TestSSEReplayDeleteRule(t *testing.T) {
 // Rows written while the replay runs arrive once, in order, between the
 // replay and the live tail: no gap and no duplicate at the switch.
 func TestSSEReplayToLiveSwitchHasNoGapOrDuplicate(t *testing.T) {
-	e := newSSEEnv(t)
-	oldPage := sseReplayPage
-	sseReplayPage = 3
-	t.Cleanup(func() {
-		// Close the server first: Close returns once every handler
-		// goroutine has finished, so none still reads the hooks. Cleanups
-		// run last-in first-out, so newSSEEnv's own Close would run after.
-		e.srv.Close()
-		sseReplayPage = oldPage
-		sseAfterPage = nil
-	})
-
-	var want []int64
-	for i := 0; i < 8; i++ {
-		want = append(want, e.updated(t, e.note))
-	}
+	t.Parallel()
+	var (
+		e     *sseEnv
+		mu    sync.Mutex // the hook runs on the handler's goroutine
+		want  []int64
+		errs  []error // hook failures, asserted on the test goroutine
+		pages int
+	)
 	// During the replay, after each of its first three pages, another
 	// row is written (and its bus wake-up published).
-	pages := 0
-	sseAfterPage = func() {
+	e = newSSEEnvWith(t, SSEConfig{ReplayPage: 3, AfterPage: func() {
+		mu.Lock()
+		defer mu.Unlock()
 		pages++
 		if pages <= 3 {
-			want = append(want, e.updated(t, e.contact))
+			seq, err := e.tryPublish(events.TopicObjectUpdated, "worker.pool", events.ObjectUpdatedPayload{ObjectID: e.contact, Type: "note", Fields: []string{"tags"}})
+			if err != nil {
+				errs = append(errs, err)
+				return
+			}
+			want = append(want, seq)
 		}
-	}
+	}})
 
+	for i := 0; i < 8; i++ {
+		mu.Lock()
+		want = append(want, e.updated(t, e.note))
+		mu.Unlock()
+	}
 	s := e.openAt(t, capOwnerToken, "0", "")
 	require.Equal(t, http.StatusOK, s.status)
 	total := 8 + 3
 	got := s.seqs(t, total)
-	assert.Equal(t, want, got, "every row once, in seq order")
+	mu.Lock()
+	wantNow := append([]int64(nil), want...)
+	hookErrs := append([]error(nil), errs...)
+	mu.Unlock()
+	require.Empty(t, hookErrs, "the after-page hook failed to publish")
+	assert.Equal(t, wantNow, got, "every row once, in seq order")
 	// ... and the tail is live from there.
 	live := e.updated(t, e.note)
 	assert.Equal(t, []int64{live}, s.seqs(t, 1))
 	assert.Empty(t, s.quiet(200*time.Millisecond), "nothing delivered twice")
+}
+
+// The replay page size and the after-page hook belong to one router:
+// servers with different settings run side by side without sharing
+// them.
+func TestSSEReplayConfigIsPerRouter(t *testing.T) {
+	t.Parallel()
+	const rows = 12
+	for _, size := range []int{2, 4, 6} {
+		t.Run(strconv.Itoa(size), func(t *testing.T) {
+			t.Parallel()
+			var calls atomic.Int32
+			e := newSSEEnvWith(t, SSEConfig{ReplayPage: size, AfterPage: func() { calls.Add(1) }})
+			// No heartbeat may drain again and add a hook call.
+			e.svc.Cfg.Server.EventsHeartbeat = time.Hour
+			for i := 0; i < rows; i++ {
+				e.updated(t, e.note)
+			}
+			s := e.openAt(t, capOwnerToken, "0", "")
+			require.Equal(t, http.StatusOK, s.status)
+			assert.Len(t, s.seqs(t, rows), rows)
+			// The hook runs once per page that returned rows, so rows
+			// in pages of size make exactly rows/size calls. It runs
+			// after the page is flushed: wait for the last one.
+			want := int32(rows / size)
+			require.Eventually(t, func() bool { return calls.Load() >= want }, 3*time.Second, 5*time.Millisecond, "page size %d not applied", size)
+			assert.Equal(t, want, calls.Load(), "page size %d", size)
+		})
+	}
 }
 
 // Rows written between the 410 check and the first read are not lost:
