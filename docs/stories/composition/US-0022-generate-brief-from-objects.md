@@ -4,6 +4,8 @@ status: partial
 
 # Story: Generate Brief from Objects
 
+> **Implementation status:** Built: `ctxt compose brief` markdown with per-object snippets and `[ref:]` citations. Not built: templates, summary/key-points/timeline sections, PDF/HTML/plain export, profile awareness, persistence.
+
 **System Types:** ctxt
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md)
 

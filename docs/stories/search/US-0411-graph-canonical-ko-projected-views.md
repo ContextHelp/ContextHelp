@@ -300,9 +300,9 @@ Projections invoked by storage Get/List (never persisted in graph_json):
 - [US-0017](./US-0017-structured-rsql-query.md) — RSQL structured query can filter by node type
 - [US-0052](./US-0052-graph-based-entity-search.md) — graph entity search complemented by
   intra-object node traversal
-- [US-0037](../agents/US-0037-agent-ingests-structured-content.md) — agent ingest path that
+- [US-0037](../agents/US-0039-agent-ingests-content-and-waits.md) — agent ingest path that
   writes graph-canonical nodes
-- [US-0038](../agents/US-0038-agent-queries-knowledge-base.md) — agent queries using stable
+- [US-0038](../agents/US-0038-agent-constructs-rsql-query.md) — agent queries using stable
   node URIs as citations
 
 ---

@@ -1,5 +1,5 @@
 ---
-status: shipped
+status: shipped-no-e2e
 ---
 
 # US-0414: Generic Adapter Ingestion Interface
@@ -69,10 +69,10 @@ The adapter contract:
 
 ## E2E Tests
 
-- planned: `test/integration/us0320_adapter_ingestion_test.go::TestAdapterIngest_RegistersAdapter`
-- planned: `test/integration/us0320_adapter_ingestion_test.go::TestAdapterIngest_RoutesObjectByMime`
-- planned: `test/integration/us0320_adapter_ingestion_test.go::TestAdapterIngest_ProvenanceRecorded`
-- planned: `test/integration/us0320_adapter_ingestion_test.go::TestAdapterIngest_AdapterFailureBackoff`
+- planned: `test/integration/us0414_adapter_ingestion_test.go::TestAdapterIngest_RegistersAdapter`
+- planned: `test/integration/us0414_adapter_ingestion_test.go::TestAdapterIngest_RoutesObjectByMime`
+- planned: `test/integration/us0414_adapter_ingestion_test.go::TestAdapterIngest_ProvenanceRecorded`
+- planned: `test/integration/us0414_adapter_ingestion_test.go::TestAdapterIngest_AdapterFailureBackoff`
 
 ## Personas
 

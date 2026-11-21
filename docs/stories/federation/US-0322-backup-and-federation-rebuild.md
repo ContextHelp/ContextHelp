@@ -129,10 +129,10 @@ federations:
 
 ## Related Stories
 
-- [US-0318](./US-0318-configure-federation.md) — configure federation topology
-- [US-0319](./US-0319-async-federation-push.md) — async push goroutine lifecycle
-- [US-0320](./US-0320-inline-federation-push.md) — inline push on ingest
-- [US-0321](./US-0321-federation-lifecycle.md) — serve startup / shutdown
+- [US-0318](./US-0318-configure-federation-targets.md) — configure federation topology
+- [US-0319](./US-0319-async-push-local-merged.md) — async push goroutine lifecycle
+- [US-0320](./US-0320-inline-push-during-ingest.md) — inline push on ingest
+- [US-0321](./US-0321-multi-instance-lifecycle.md) — serve startup / shutdown
 - [US-0323](./US-0323-dag-federation-chain.md) — DAG chain push
 - [US-0034](../operations/US-0034-export-and-backup-all-knowledge.md) — general
   export/backup story

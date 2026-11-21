@@ -1,8 +1,10 @@
 ---
-status: paper
+status: partial
 ---
 
 # Story: Agent Constructs RSQL Query
+
+> **Implementation status:** Built: RSQL search via `GET /api/v1/search?q=` (`internal/server/http/handlers_search.go`). Not built: `GET /api/v1/query-schema`, so no schema-driven query construction; no agent-side retry/caching. Integration tests are gated behind `INTEGRATION=1`.
 
 **System Types:** dpkms (self-hosted), dpkms cloud
 **Personas:** [Agents/LLMs](../../personas/agents-llms-tools.md)
@@ -309,10 +311,10 @@ def execute_with_retry(query, max_attempts=3):
 
 ## Related Stories
 
-- [agent-discovers-query-schema](./agent-discovers-query-schema.md) — Fetch query schema on startup
-- [natural-language-search](../search/natural-language-search.md) — NLQ alternative for comparison
-- [structured-rsql-query](../search/structured-rsql-query.md) — RSQL syntax and operators
-- [multi-strategy-search-execution](../search/multi-strategy-search-execution.md) — Query execution details
+- [agent-discovers-query-schema](./US-0037-agent-discovers-query-schema.md) — Fetch query schema on startup
+- [natural-language-search](../search/US-0016-natural-language-search.md) — NLQ alternative for comparison
+- [structured-rsql-query](../search/US-0017-structured-rsql-query.md) — RSQL syntax and operators
+- [multi-strategy-search-execution](../search/US-0018-multi-strategy-search-execution.md) — Query execution details
 
 ---
 

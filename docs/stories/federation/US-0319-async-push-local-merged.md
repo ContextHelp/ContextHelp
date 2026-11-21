@@ -116,10 +116,10 @@ for target in cfg.Federation.Targets:
 ## Related Stories
 
 - [US-0318](./US-0318-configure-federation-targets.md) — configure federation targets
-- [US-0320](./US-0320-inline-push-on-capture.md) — inline sync mode (Phase 2)
-- [US-0321](./US-0321-http-federation-push.md) — remote HTTP target push (Phase 2)
-- [US-0322](./US-0322-federation-topology-api.md) — topology API (Phase 2)
-- [US-0323](./US-0323-federation-status-monitoring.md) — federation push status monitoring
+- [US-0320](./US-0320-inline-push-during-ingest.md) — inline push during ingest
+- [US-0321](./US-0321-multi-instance-lifecycle.md) — multi-instance lifecycle
+- [US-0322](./US-0322-backup-and-federation-rebuild.md) — backup and federation rebuild
+- [US-0323](./US-0323-dag-federation-chain.md) — DAG federation chain
 
 ---
 

@@ -69,10 +69,10 @@ contact), and deduplicates by card UID.
 
 ## E2E Tests
 
-- planned: `test/integration/us0321_cardamum_contacts_test.go::TestCardamumContacts_ImportVCards`
-- planned: `test/integration/us0321_cardamum_contacts_test.go::TestCardamumContacts_DedupeByEmail`
-- planned: `test/integration/us0321_cardamum_contacts_test.go::TestCardamumContacts_LinksToObjects`
-- planned: `test/integration/us0321_cardamum_contacts_test.go::TestCardamumContacts_ScopeBoundary`
+- planned: `test/integration/us0415_cardamum_contacts_test.go::TestCardamumContacts_ImportVCards`
+- planned: `test/integration/us0415_cardamum_contacts_test.go::TestCardamumContacts_DedupeByEmail`
+- planned: `test/integration/us0415_cardamum_contacts_test.go::TestCardamumContacts_LinksToObjects`
+- planned: `test/integration/us0415_cardamum_contacts_test.go::TestCardamumContacts_ScopeBoundary`
 
 ## Personas
 

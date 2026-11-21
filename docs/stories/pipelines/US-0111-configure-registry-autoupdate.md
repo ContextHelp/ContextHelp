@@ -1,5 +1,5 @@
 ---
-status: shipped
+status: partial
 ---
 
 # US-0111: Configure Registry Auto-Update

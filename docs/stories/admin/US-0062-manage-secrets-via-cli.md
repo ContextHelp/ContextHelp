@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: partial
 ---
 
 # US-0062: Manage Secrets via CLI
+
+> **Implementation status:** `dpkms secret get/set/list` built; `list --output json` returns backend config, not key names; most CLI-level behaviors (get exit codes, json output, set errors per backend) have no CLI test, only store-level tests.
 
 **System Types:** ctxt
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md),
@@ -12,7 +14,7 @@ status: shipped
 
 ## User Goal
 
-As a user, I want to set, retrieve, and list secrets through the `ctxt secret` command
+As a user, I want to set, retrieve, and list secrets through the `dpkms secret` command
 so I can manage API keys without editing config files or typing raw credentials into a
 shell export.
 
@@ -35,21 +37,22 @@ The active backend is determined by `secrets.backend` in the config file.
 
 ## Acceptance Criteria
 
-- [x] `ctxt secret set KEY VALUE` stores the secret in the active backend
-- [ ] `ctxt secret set KEY` (no value) prompts for the value interactively (hidden input) — **deferred**
-- [x] `ctxt secret get KEY` prints the value for KEY to stdout
-- [x] `ctxt secret list` shows the active backend and its config metadata
-- [x] `ctxt secret set` with the `env` backend returns a clear error (env is read-only)
-- [x] `ctxt secret set` with the `age-file` backend returns a clear error (age-file is read-only)
-- [x] `ctxt secret set` with the `1password` backend returns a clear error (read-only via CLI)
-- [x] `ctxt secret get KEY` exits non-zero and prints an error if the key is not found
-- [x] `--output json` on `ctxt secret get` outputs `{"key": "KEY", "value": "VALUE"}`
-- [ ] `ctxt secret list` with `--output json` outputs a JSON array of key names — **partial**: outputs backend config object, not key names (most backends don't support enumeration)
+- [x] `dpkms secret set <key>` stores the secret in the active backend, reading the value from stdin (default when piped) or `--from-file <path>`
+- [x] `dpkms secret set <key> --prompt` reads the value from a hidden interactive prompt (requires a TTY)
+- [x] `dpkms secret set <key> <value>` is refused: positional values would leak via shell history, ps output and CI logs
+- [x] `dpkms secret get KEY` prints the value for KEY to stdout
+- [x] `dpkms secret list` shows the active backend and its config metadata
+- [x] `dpkms secret set` with the `env` backend returns a clear error (env is read-only)
+- [x] `dpkms secret set` with the `age-file` backend returns a clear error (age-file is read-only)
+- [x] `dpkms secret set` with the `1password` backend returns a clear error (read-only via CLI)
+- [x] `dpkms secret get KEY` exits non-zero and prints an error if the key is not found
+- [x] `--output json` on `dpkms secret get` outputs `{"key": "KEY", "value": "VALUE"}`
+- [ ] `dpkms secret list` with `--output json` outputs a JSON array of key names — **partial**: outputs backend config object, not key names (most backends don't support enumeration)
 
 ### Implementation Notes (as built)
 
 - `ctxt secret list` shows backend config metadata (type, service name, vault, etc.) rather than enumerating stored keys. Key enumeration is not possible for `env`, `keychain`, or `1password` backends; `age-file` and `gh-secrets` could enumerate but this is not yet implemented.
-- Interactive `set KEY` (no value argument) is deferred. The current implementation requires `KEY VALUE` as two positional args. Interactive hidden-input prompt can be added later using `charmbracelet/huh`.
+- `set <key>` takes the value from stdin, `--from-file`, or `--prompt` (hidden input via `term.ReadPassword`). A positional value is rejected.
 
 ---
 
@@ -59,12 +62,12 @@ The active backend is determined by `secrets.backend` in the config file.
 
 ```
 ctxt secret
-├── set KEY [VALUE]   # store a secret; prompts if VALUE omitted
+├── set KEY           # store a secret; value from stdin, --from-file, or --prompt
 ├── get KEY           # retrieve and print a secret value
 └── list              # list known secret names
 ```
 
-### File: `cmd/ctxt/cmd/secret.go`
+### File: `cmd/dpkms/cmd/secret.go`
 
 ```go
 var secretCmd = &cobra.Command{
@@ -73,8 +76,8 @@ var secretCmd = &cobra.Command{
 }
 
 var secretSetCmd = &cobra.Command{
-    Use:   "set KEY [VALUE]",
-    Short: "Store a secret in the active backend",
+    Use:   "set <key>",
+    Short: "Set a secret value (read from stdin, --from-file, or --prompt)",
     RunE:  runSecretSet,
 }
 
@@ -91,9 +94,9 @@ var secretListCmd = &cobra.Command{
 }
 ```
 
-### Interactive Input
+### Value Input
 
-When `ctxt secret set KEY` is called without a value, use `huh.NewInput().EchoMode(huh.EchoModePassword)` (charmbracelet/huh, already in go.mod) to prompt for the value securely.
+`set` reads the value from stdin (default when stdin is not a TTY), `--from-file <path>` (`-` for stdin), or `--prompt` (hidden input, TTY required). `--from-file` and `--prompt` are mutually exclusive.
 
 ### Store Construction
 
@@ -143,16 +146,16 @@ Not all backends support enumeration. Return a static informational message for 
 - [ ] `1password` Get via real `op` CLI (deferred; needs CI vault)
 
 ### CLI behaviour (subprocess `dpkms secret …`)
-- [ ] `dpkms secret set MYKEY value` with `env` backend → exits non-zero with ErrNotSupported
-- [ ] `dpkms secret set MYKEY value` with `keychain` backend → key readable via `security find-generic-password`
+- [ ] `dpkms secret set MYKEY` (value on stdin) with `env` backend → exits non-zero with ErrNotSupported
+- [ ] `dpkms secret set MYKEY` (value on stdin) with `keychain` backend → key readable via `security find-generic-password`
 - [ ] `dpkms secret get MISSING` → exits non-zero, error contains key name
 - [ ] `dpkms secret get KEY --output json` → `{"key":"KEY","value":"..."}` on stdout
 - [ ] `dpkms secret list` with `age-file` → lists all keys from decrypted YAML
 - [ ] `dpkms secret list` with `gh-secrets` → output includes names from `gh secret list`
-- [ ] `dpkms secret set MYKEY` (no value) → interactive prompt without echo (deferred)
+- [ ] `dpkms secret set MYKEY --prompt` → interactive prompt without echo
 
 ### Security
-- [ ] Interactive input prompt does not echo characters to terminal (deferred)
+- [ ] `--prompt` input does not echo characters to terminal
 - [x] Secret value is never logged or printed except by explicit `dpkms secret get`
 - [x] `dpkms secret get` output is the bare value with a trailing newline
   (suitable for `$(dpkms secret get KEY)`)

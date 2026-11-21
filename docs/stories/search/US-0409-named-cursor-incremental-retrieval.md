@@ -7,7 +7,6 @@ status: shipped-no-e2e
 **System Types:** ctxt
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md),
 [Agents/LLMs/Tools](../../personas/agents-llms-tools.md)
-**Status:** paper
 **Author:** $USER
 
 ---

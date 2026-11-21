@@ -1,5 +1,5 @@
 ---
-status: shipped
+status: partial
 ---
 
 # US-0036: Scale Worker Pool for Load

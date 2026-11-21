@@ -1,5 +1,5 @@
 ---
-status: shipped
+status: partial
 ---
 
 # US-0418: Schema Co-Evolution per Profile

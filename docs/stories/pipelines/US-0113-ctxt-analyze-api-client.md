@@ -92,7 +92,7 @@ Now, `dpkms pipeline enqueue` is:
 }
 ```
 
-**409 Conflict**
+**409 Conflict** (moved to US-0105; not yet enforced)
 ```json
 {
   "error": {

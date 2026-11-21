@@ -8,7 +8,6 @@ status: shipped-no-e2e
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md),
 [Agents/LLMs](../../personas/agents-llms-tools.md)
 
-**Status:** paper
 **Author:** $USER
 
 ---
