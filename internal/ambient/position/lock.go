@@ -13,7 +13,9 @@ import (
 // file, and unlinking would race waiters holding their own handle (same
 // rule as internal/cursor and internal/dblock).
 func lock(path string) (release func(), err error) {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, filePerm) // #nosec G304 -- derived from the configured state path
+	// #nosec G703 -- path is the state file's fixed ".lock" sibling (see
+	// Store.lockPath), derived from the operator-configured state file.
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, filePerm)
 	if err != nil {
 		return nil, fmt.Errorf("position: open lock %s: %w", path, err)
 	}

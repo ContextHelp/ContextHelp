@@ -116,12 +116,26 @@ func (k Key) valid() bool { return k.Instance != "" && k.Source != "" }
 // Store is a file-backed position store. The zero value is unusable; use
 // New. A Store holds no open handles and is safe for concurrent use.
 type Store struct {
-	path string
+	// path is the state file, resolved once in New; dir and lockPath are
+	// derived from it with fixed child names, so every file operation
+	// (read, lock, temp, rename) names one location and none re-resolves.
+	path     string
+	dir      string
+	lockPath string
 }
 
-// New returns a Store backed by path. Nothing is created until the first
-// mutation.
-func New(path string) *Store { return &Store{path: path} }
+// New returns a Store backed by path. The path is made absolute and
+// cleaned once, here, so a relative path or one with ".." names the same
+// file for the Store's whole life whatever the working directory does
+// later. Nothing is created until the first mutation.
+func New(path string) *Store {
+	if abs, err := filepath.Abs(path); err == nil {
+		path = abs
+	} else {
+		path = filepath.Clean(path)
+	}
+	return &Store{path: path, dir: filepath.Dir(path), lockPath: path + ".lock"}
+}
 
 // Path returns the backing file path.
 func (s *Store) Path() string { return s.path }
@@ -200,6 +214,8 @@ func (s *Store) corrupt(detail error) error {
 
 // load reads the file; a missing file is an empty map.
 func (s *Store) load() (map[Key]time.Time, error) {
+	// #nosec G703 -- s.path is the operator-configured state file (env or
+	// XDG state dir), resolved once in New; never request data.
 	data, err := os.ReadFile(s.path)
 	if errors.Is(err, os.ErrNotExist) {
 		return map[Key]time.Time{}, nil
@@ -230,11 +246,12 @@ func (s *Store) load() (map[Key]time.Time, error) {
 // update runs op on the current positions under the file lock and writes
 // the result back when op reports a change.
 func (s *Store) update(op func(map[Key]time.Time) bool) error {
-	dir := filepath.Dir(s.path)
-	if err := os.MkdirAll(dir, dirPerm); err != nil {
-		return fmt.Errorf("position: create %s: %w", dir, err)
+	// #nosec G703 -- s.dir is the parent of the operator-configured state
+	// file, resolved once in New; never request data.
+	if err := os.MkdirAll(s.dir, dirPerm); err != nil {
+		return fmt.Errorf("position: create %s: %w", s.dir, err)
 	}
-	release, err := lock(s.path + ".lock")
+	release, err := lock(s.lockPath)
 	if err != nil {
 		return err
 	}
@@ -266,11 +283,14 @@ func (s *Store) write(m map[Key]time.Time) error {
 	}
 	data = append(data, '\n')
 
-	tmp, err := os.CreateTemp(filepath.Dir(s.path), filepath.Base(s.path)+".*.tmp")
+	tmp, err := os.CreateTemp(s.dir, filepath.Base(s.path)+".*.tmp")
 	if err != nil {
 		return fmt.Errorf("position: create temp: %w", err)
 	}
 	tmpName := tmp.Name()
+	// #nosec G703 -- tmpName is os.CreateTemp's own name for a child of
+	// s.dir (the operator-configured state dir); fixed prefix, random
+	// suffix, no caller input.
 	cleanup := func() { _ = os.Remove(tmpName) }
 	if err := tmp.Chmod(filePerm); err != nil {
 		_ = tmp.Close()
@@ -291,6 +311,8 @@ func (s *Store) write(m map[Key]time.Time) error {
 		cleanup()
 		return fmt.Errorf("position: close temp: %w", err)
 	}
+	// #nosec G703 -- tmpName and s.path are both children of s.dir, the
+	// operator-configured state dir; rename within one directory.
 	if err := os.Rename(tmpName, s.path); err != nil {
 		cleanup()
 		return fmt.Errorf("position: replace %s: %w", s.path, err)
