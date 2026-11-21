@@ -74,11 +74,10 @@ func TestWorkerBinaryDoesNotReinforceCorruptCopy(t *testing.T) {
 	driver := storageutil.NewTestDriver(t)
 	ctx := context.Background()
 	bin := []byte{0x89, 'P', 'N', 'G', 0x00, 0xff, 0xfe, 0x80}
-	corrupt := "\x89PNG\x00���"
 	const source = "/tmp/x.png"
 	// The corrupt stored copy's hash is what dedup would match.
 	// "\x89" is itself invalid, so use the bytes a lossy JSON round trip leaves.
-	corrupt = "�PNG\x00���"
+	corrupt := "�PNG\x00���"
 	require.NoError(t, driver.Objects().Create(ctx, &storage.KnowledgeObject{
 		ID: "corrupt", Type: "text", Source: source, RawContent: corrupt,
 		ContentHash: storageutil.DraftContentHash(corrupt, source, nil), ReinforcementCount: 1,
