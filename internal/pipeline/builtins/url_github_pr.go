@@ -3,7 +3,7 @@ package builtins
 import "regexp"
 
 // githubPRPattern matches GitHub pull request URLs.
-var githubPRPattern = regexp.MustCompile(`(?i)^https?://github\.com/[^/]+/[^/]+/pull/\d+`)
+var githubPRPattern = regexp.MustCompile(`(?i)^https?://(www\.)?github\.com/[^/]+/[^/]+/pull/\d+`)
 
 func init() {
 	MustRegister("url.github.pr", Def{
