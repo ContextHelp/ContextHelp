@@ -296,3 +296,40 @@ func TestDedupStepRegistered(t *testing.T) {
 		t.Errorf("name: got %q, want dedup", s.Name())
 	}
 }
+
+// TestSelectPipelineGitHubScheme: every github.* URL pattern tolerates an
+// http scheme and any scheme/host case, and still outranks url.repo and
+// url.generic.
+func TestSelectPipelineGitHubScheme(t *testing.T) {
+	r := Registry()
+	paths := []struct {
+		path string
+		want string
+	}{
+		{"torvalds", "url.github.profile"},
+		{"torvalds/", "url.github.profile"},
+		{"torvalds?tab=repositories", "url.github.profile"},
+		{"torvalds/linux", "url.github.repo"},
+		{"torvalds/linux/", "url.github.repo"},
+		{"torvalds/linux/issues/42", "url.github.issue"},
+		{"torvalds/linux/pull/1234", "url.github.pr"},
+		{"cli/cli/releases", "url.github.release"},
+		{"cli/cli/releases/tag/v2.0.0", "url.github.release"},
+	}
+	prefixes := []string{
+		"https://github.com/",
+		"http://github.com/",
+		"HTTP://GitHub.com/",
+		"HTTPS://GITHUB.COM/",
+	}
+	for _, p := range prefixes {
+		for _, tt := range paths {
+			src := p + tt.path
+			t.Run(src, func(t *testing.T) {
+				if got := r.SelectPipeline(src, ""); got != tt.want {
+					t.Errorf("SelectPipeline(%q) = %q, want %q", src, got, tt.want)
+				}
+			})
+		}
+	}
+}

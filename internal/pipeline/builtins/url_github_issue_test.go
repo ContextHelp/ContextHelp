@@ -47,13 +47,13 @@ func TestURLGitHubIssuePatternDirectly(t *testing.T) {
 	matches := []string{
 		"https://github.com/foo/bar/issues/42",
 		"https://github.com/org-name/repo-name/issues/1234",
+		"http://github.com/foo/bar/issues/42",
 	}
 	noMatches := []string{
 		"https://github.com/foo/bar/pull/42",
 		"https://github.com/foo/bar",
 		"https://github.com/foo/bar/issues",
 		"https://github.com/foo/bar/issues/",
-		"http://github.com/foo/bar/issues/42", // http, not https
 	}
 
 	for _, u := range matches {

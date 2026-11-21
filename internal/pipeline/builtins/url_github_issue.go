@@ -3,7 +3,7 @@ package builtins
 import "regexp"
 
 // githubIssuePattern matches GitHub issue URLs.
-var githubIssuePattern = regexp.MustCompile(`^https://github\.com/[^/]+/[^/]+/issues/\d+`)
+var githubIssuePattern = regexp.MustCompile(`(?i)^https?://github\.com/[^/]+/[^/]+/issues/\d+`)
 
 func init() {
 	MustRegister("url.github.issue", Def{
