@@ -383,28 +383,28 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 		}
 	}
 
-	payload, b64 := jobPayload(req.Content)
+	payload, encoding := jobPayload(req.Content)
 	jobType := "ingest:" + detectedType
 	if req.NoFanout {
 		jobType += ":nofanout"
 	}
-	jobType += b64
 
 	job := &storage.Job{
-		ID:           uuid.New().String(),
-		Type:         jobType,
-		Status:       storage.JobPending,
-		Payload:      payload,
-		Pipeline:     pipelineName,
-		Source:       jobSource,
-		MaxRetries:   3,
-		CreatedAt:    now,
-		UpdatedAt:    now,
-		UserMentions: req.Mentions, // forwarded to draft.Mentions in worker.
-		UserHints:    req.Hints,    // forwarded to draft.Tags (Source:"user") in worker.
-		UserProfile:  req.Profile,  // forwarded to draft.ProfileID in worker.
-		UserNote:     req.Note,     // forwarded to draft.InboxNote in worker.
-		UserData:     req.Data,     // forwarded to draft.Metadata["data"] in worker.
+		ID:              uuid.New().String(),
+		Type:            jobType,
+		Status:          storage.JobPending,
+		Payload:         payload,
+		PayloadEncoding: encoding,
+		Pipeline:        pipelineName,
+		Source:          jobSource,
+		MaxRetries:      3,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+		UserMentions:    req.Mentions, // forwarded to draft.Mentions in worker.
+		UserHints:       req.Hints,    // forwarded to draft.Tags (Source:"user") in worker.
+		UserProfile:     req.Profile,  // forwarded to draft.ProfileID in worker.
+		UserNote:        req.Note,     // forwarded to draft.InboxNote in worker.
+		UserData:        req.Data,     // forwarded to draft.Metadata["data"] in worker.
 
 		UserSourceKey:  req.SourceKey,        // forwarded to draft.SourceKey in worker.
 		UserAmbient:    req.ambientContext(), // forwarded to draft metadata + SessionID in worker.
@@ -1022,18 +1022,19 @@ func (s *Service) Enqueue(ctx context.Context, req AnalyzeRequest) (string, erro
 		return "", fmt.Errorf("enqueue: %w: pipeline=%q", ErrPipelineArchived, pipelineName)
 	}
 
-	payload, b64 := jobPayload(req.Content)
+	payload, encoding := jobPayload(req.Content)
 	job := &storage.Job{
-		ID:             uuid.New().String(),
-		Type:           "ingest:" + req.Type + b64,
-		Status:         storage.JobPending,
-		Payload:        payload,
-		Pipeline:       pipelineName,
-		Source:         req.Source,
-		MaxRetries:     3,
-		CreatedAt:      now,
-		UpdatedAt:      now,
-		IdempotencyKey: req.IdempotencyKey,
+		ID:              uuid.New().String(),
+		Type:            "ingest:" + req.Type,
+		Status:          storage.JobPending,
+		Payload:         payload,
+		PayloadEncoding: encoding,
+		Pipeline:        pipelineName,
+		Source:          req.Source,
+		MaxRetries:      3,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+		IdempotencyKey:  req.IdempotencyKey,
 		// The same caller-supplied fields Analyze forwards.
 		UserMentions:  req.Mentions,
 		UserHints:     req.Hints,

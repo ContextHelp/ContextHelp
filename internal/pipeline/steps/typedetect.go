@@ -16,6 +16,7 @@ type TypeDetector struct {
 func NewTypeDetector() *TypeDetector {
 	return &TypeDetector{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
+			Binary:   true,
 			Requires: []string{"RawContent"},
 			Produces: []string{"Type", "Subtype"},
 		}),

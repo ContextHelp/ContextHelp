@@ -18,6 +18,7 @@ type SceneDetector struct {
 func NewSceneDetector() *SceneDetector {
 	return &SceneDetector{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
+			Binary:   true,
 			Requires: []string{},
 			Produces: []string{},
 		}),

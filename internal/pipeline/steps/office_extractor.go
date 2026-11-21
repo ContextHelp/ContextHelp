@@ -27,6 +27,7 @@ func WithOfficeDocumentProvider(p providers.DocumentProvider) OfficeExtractorOpt
 func NewOfficeExtractor(opts ...OfficeExtractorOption) *OfficeExtractor {
 	e := &OfficeExtractor{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
+			Binary:   true,
 			Requires: []string{},
 			Produces: []string{"RawContent", "Sections"},
 		}),

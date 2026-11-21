@@ -33,6 +33,7 @@ func WithFrameCount(n int) FrameSamplerOption {
 func NewFrameSampler(opts ...FrameSamplerOption) *FrameSampler {
 	s := &FrameSampler{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
+			Binary:   true,
 			Requires: []string{},
 			Produces: []string{},
 		}),

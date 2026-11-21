@@ -493,6 +493,10 @@ var pgMigrations = []pgMigration{
 			decided_at     TIMESTAMPTZ NOT NULL,
 			PRIMARY KEY (request_id, approver_id)
 		)`,
+	// jobs.payload_encoding, mirroring SQLite migration 062: how a
+	// job's payload encodes its content ('' = the content, 'base64').
+	{Version: 43, Name: "jobs.payload_encoding", Statements: []string{
+		`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS payload_encoding TEXT NOT NULL DEFAULT ''`,
 	}},
 }
 

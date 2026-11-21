@@ -120,6 +120,9 @@ func (s *Service) ReanalyzeObject(ctx context.Context, id string) (newPipelineVe
 	}
 
 	for _, step := range pipe.Steps {
+		if pipeline.SkipsBinary(step, draft) {
+			continue
+		}
 		out, runErr := step.Run(ctx, draft)
 		if runErr != nil {
 			if errors.Is(runErr, pipeline.ErrDelegate) {

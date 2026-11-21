@@ -37,6 +37,20 @@ func TestContentHash(t *testing.T) {
 		assert.Equal(t, h1, h2)
 	})
 
+	// Binary is content blobref.NeedsBlob names, NUL included: it hashes over
+	// its exact bytes, so binaries differing only in case or whitespace
+	// stay apart, and a lossy copy never merges with the original.
+	t.Run("binary_hashes_exact_bytes", func(t *testing.T) {
+		for name, pair := range map[string][2]string{
+			"NUL, case":       {"AB\x00cd", "ab\x00CD"},
+			"NUL, whitespace": {"a\x00b  c", "a\x00b c"},
+			"invalid UTF-8":   {"a\xffB", "a\xffb"},
+		} {
+			assert.NotEqual(t, ContentHash(pair[0], "s"), ContentHash(pair[1], "s"), name)
+		}
+		assert.Equal(t, ContentHash("a\x00b", "s"), ContentHash("a\x00b", "s"))
+	})
+
 	t.Run("empty_source", func(t *testing.T) {
 		h1 := ContentHash("Content", "")
 		h2 := ContentHash("Content", "")

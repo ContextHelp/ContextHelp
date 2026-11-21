@@ -342,6 +342,11 @@ var migrations = []migration{
 	// New tables only, nothing is an FTS input, so no re-projection
 	// follows.
 	{Version: 61, fn: migrate061Approvals},
+	// Migration 062: jobs.payload_encoding names how a job's payload
+	// encodes its content ("" for the content itself, "base64").
+	{Version: 62, fn: func(ctx context.Context, d *Driver) error {
+		return addJobsColumnIfMissing(ctx, d, "payload_encoding", "TEXT NOT NULL DEFAULT ''")
+	}},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,

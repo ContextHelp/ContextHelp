@@ -28,6 +28,7 @@ func WithOCRConfidenceThreshold(t float64) OCRExtractorOption {
 func NewOCRExtractor(opts ...OCRExtractorOption) *OCRExtractor {
 	o := &OCRExtractor{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
+			Binary:       true,
 			Requires:     []string{"RawContent", "ContentType"},
 			Produces:     []string{"RawContent", "Sections", "Metadata"},
 			Capabilities: []string{"ocr"},

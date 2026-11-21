@@ -52,12 +52,12 @@ func decodeContent(req AnalyzeRequest) (AnalyzeRequest, error) {
 	return req, nil
 }
 
-// jobPayload is the job payload for content, and the suffix its job type
-// takes: content that cannot live in a TEXT column (binary) travels as
-// base64, flagged by storage.JobTypeBase64.
-func jobPayload(content string) (payload, typeSuffix string) {
+// jobPayload is the job payload for content, and the encoding it travels
+// in: content that cannot live in a TEXT column (binary) travels as
+// base64, flagged by storage.PayloadBase64.
+func jobPayload(content string) (payload, encoding string) {
 	if blobref.NeedsBlob(content) {
-		return base64.StdEncoding.EncodeToString([]byte(content)), storage.JobTypeBase64
+		return base64.StdEncoding.EncodeToString([]byte(content)), storage.PayloadBase64
 	}
 	return content, ""
 }

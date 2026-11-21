@@ -340,28 +340,31 @@ const (
 	JobCancelled JobStatus = "cancelled"
 )
 
-// JobTypeBase64 is the last suffix of an ingest job type whose payload is
-// base64 of the content. The payload is a TEXT column, which holds neither
-// invalid UTF-8 nor NUL, so content that is binary (blobref.NeedsBlob)
-// travels encoded; the worker decodes it.
-const JobTypeBase64 = ":b64"
+// PayloadBase64 is the Job.PayloadEncoding of a payload that is base64 of
+// the content. The payload is a TEXT column, which holds neither invalid
+// UTF-8 nor NUL, so content that is binary (blobref.NeedsBlob) travels
+// encoded; the worker decodes it. The empty encoding is the content itself.
+const PayloadBase64 = "base64"
 
 // Job represents an ingestion job.
 type Job struct {
-	ID          string     `json:"id"`
-	Type        string     `json:"type"`
-	Status      JobStatus  `json:"status"`
-	Payload     string     `json:"payload"`
-	Pipeline    string     `json:"pipeline"`
-	Source      string     `json:"source"`
-	ResultID    string     `json:"result_id"`
-	Error       string     `json:"error"`
-	RetryCount  int        `json:"retry_count"`
-	MaxRetries  int        `json:"max_retries"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
-	StartedAt   *time.Time `json:"started_at,omitempty"`
-	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	ID      string    `json:"id"`
+	Type    string    `json:"type"`
+	Status  JobStatus `json:"status"`
+	Payload string    `json:"payload"`
+	// PayloadEncoding says how Payload encodes the content: "" for the
+	// content itself, PayloadBase64 for base64 of binary content.
+	PayloadEncoding string     `json:"payload_encoding,omitempty"`
+	Pipeline        string     `json:"pipeline"`
+	Source          string     `json:"source"`
+	ResultID        string     `json:"result_id"`
+	Error           string     `json:"error"`
+	RetryCount      int        `json:"retry_count"`
+	MaxRetries      int        `json:"max_retries"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+	StartedAt       *time.Time `json:"started_at,omitempty"`
+	CompletedAt     *time.Time `json:"completed_at,omitempty"`
 	// UserMentions are caller-asserted @namespace.slug mentions passed
 	// alongside the analyze request (e.g. `ctxt analyze --mentions
 	// "@client.acme"`). The pipeline merges these with auto-extracted

@@ -28,6 +28,7 @@ func WithFrameOCRProvider(p providers.OCRProvider) FrameOCROption {
 func NewFrameOCR(opts ...FrameOCROption) *FrameOCR {
 	f := &FrameOCR{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
+			Binary:   true,
 			Requires: []string{},
 			Produces: []string{},
 		}),

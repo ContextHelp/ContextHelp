@@ -179,6 +179,12 @@ func (p *WorkerPool) workerLoop(acquireCtx, jobCtx context.Context) error {
 func (p *WorkerPool) runSteps(ctx context.Context, pipe *pipeline.Pipeline, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
 	var err error
 	for _, step := range pipe.Steps {
+		// A step that reads content as text never sees binary: it would
+		// copy bytes into sections, nodes or metadata.
+		if pipeline.SkipsBinary(step, draft) {
+			slog.Debug("jobs: binary content, step skipped", "step", step.Name())
+			continue
+		}
 		draft, err = step.Run(ctx, draft)
 		if err != nil {
 			if errors.Is(err, pipeline.ErrDelegate) {
@@ -302,16 +308,24 @@ func (p *WorkerPool) processWithHops(ctx context.Context, job *storage.Job) (*st
 	// storageutil.ApplyAmbient).
 	storageutil.ApplyAmbient(draft, job.UserAmbient)
 
+	// The dedup hash is over the content itself: analyze hashes the bytes,
+	// so hashing the blob ref ExternalizeBinary leaves would never match.
+	draft.ContentHash = storageutil.DraftContentHash(draft.RawContent, draft.Source, draft.Metadata)
+
 	// Binary content cannot live in the row (a TEXT column), whether or
 	// not the pipeline externalizes: it goes to the blob store here.
 	return steps.ExternalizeBinary(ctx, p.store.Blobs(), draft)
 }
 
-// jobContent is the content job carries: its payload, base64-decoded when
-// the job type says it travels encoded.
+// jobContent is the content job carries: its payload, decoded under the
+// job's payload encoding.
 func jobContent(job *storage.Job) (string, error) {
-	if !strings.HasSuffix(job.Type, storage.JobTypeBase64) {
+	switch job.PayloadEncoding {
+	case "":
 		return job.Payload, nil
+	case storage.PayloadBase64:
+	default:
+		return "", fmt.Errorf("job payload encoding %q is not supported", job.PayloadEncoding)
 	}
 	b, err := base64.StdEncoding.DecodeString(job.Payload)
 	if err != nil {
@@ -343,7 +357,6 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 	}
 
 	draft.UpdatedAt = time.Now()
-	draft.ContentHash = storageutil.DraftContentHash(draft.RawContent, draft.Source, draft.Metadata)
 
 	durationMs := time.Since(start).Milliseconds()
 
@@ -438,7 +451,7 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 	p.markCompleted(ctx, job.ID, draft.ID, durationMs)
 
 	// Post-ingest fan-out enrichment (bidirectional edges, audit log).
-	if p.fanOut != nil && !strings.HasSuffix(strings.TrimSuffix(job.Type, storage.JobTypeBase64), ":nofanout") {
+	if p.fanOut != nil && !strings.HasSuffix(job.Type, ":nofanout") {
 		if err := p.fanOut(ctx, draft.ID); err != nil {
 			slog.Warn("jobs: fan-out enrichment failed", "object", draft.ID, "err", err)
 		}

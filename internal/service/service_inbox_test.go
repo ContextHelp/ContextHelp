@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"testing"
@@ -179,4 +180,39 @@ func TestTriageInboxCarriesProfile(t *testing.T) {
 	job, err := driver.Jobs().Get(ctx, jobID)
 	require.NoError(t, err)
 	assert.Equal(t, "growth", job.UserProfile, "triage job must carry the item's profile")
+}
+
+// An inbox item holds its content inline in a text column and the
+// endpoint takes no content encoding: binary is refused, a NUL spelled in
+// JSON ("\u0000") included.
+func TestCaptureToInboxRefusesBinary(t *testing.T) {
+	svc := newTestService(t)
+	for name, content := range map[string]string{"NUL": "a\x00b", "invalid UTF-8": "a\xffb"} {
+		_, err := svc.CaptureToInbox(ownerCtx(), InboxCaptureRequest{Content: content, Type: "text"})
+		require.ErrorIs(t, err, ErrInvalidSubmission, name)
+	}
+	_, total, err := svc.Store(ownerCtx()).Objects().List(ownerCtx(), storage.ObjectFilter{})
+	require.NoError(t, err)
+	require.Zero(t, total, "a refused capture stored an object")
+}
+
+// Triage hands content to the job through the same guard as analyze: a
+// binary item (stored before the guard, say) travels base64, flagged.
+func TestTriageInboxEncodesBinaryPayload(t *testing.T) {
+	svc := newTestService(t)
+	ctx := ownerCtx()
+	now := time.Now().Truncate(time.Second)
+	require.NoError(t, svc.Store(ctx).Objects().Create(ctx, &storage.KnowledgeObject{
+		ID: "inbox-bin", Type: "text", RawContent: "a\x00\xffb", Status: inboxStatus,
+		CreatedAt: now, UpdatedAt: now,
+	}))
+	jobID, err := svc.TriageInbox(ctx, "inbox-bin", TriageRequest{Pipeline: "text.short"})
+	require.NoError(t, err)
+	job, err := svc.Store(ctx).Jobs().Get(ctx, jobID)
+	require.NoError(t, err)
+	require.Equal(t, storage.PayloadBase64, job.PayloadEncoding)
+	require.Equal(t, "ingest:text", job.Type)
+	b, err := base64.StdEncoding.DecodeString(job.Payload)
+	require.NoError(t, err)
+	require.Equal(t, "a\x00\xffb", string(b))
 }
