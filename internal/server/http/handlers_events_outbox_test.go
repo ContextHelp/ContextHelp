@@ -233,7 +233,14 @@ func TestSSEReplayToLiveSwitchHasNoGapOrDuplicate(t *testing.T) {
 	e := newSSEEnv(t)
 	oldPage := sseReplayPage
 	sseReplayPage = 3
-	t.Cleanup(func() { sseReplayPage = oldPage; sseAfterPage = nil })
+	t.Cleanup(func() {
+		// Close the server first: Close returns once every handler
+		// goroutine has finished, so none still reads the hooks. Cleanups
+		// run last-in first-out, so newSSEEnv's own Close would run after.
+		e.srv.Close()
+		sseReplayPage = oldPage
+		sseAfterPage = nil
+	})
 
 	var want []int64
 	for i := 0; i < 8; i++ {
