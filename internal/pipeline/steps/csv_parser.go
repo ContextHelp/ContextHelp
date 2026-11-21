@@ -31,6 +31,7 @@ func WithDelimiter(d rune) CSVParserOption {
 func NewCSVParser(opts ...CSVParserOption) *CSVParser {
 	p := &CSVParser{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
+			Binary:   true,
 			Requires: []string{"RawContent"},
 			Produces: []string{"Metadata"},
 		}),
@@ -48,7 +49,11 @@ func (s *CSVParser) Run(_ context.Context, draft *storage.KnowledgeObject) (*sto
 		draft.Metadata = make(map[string]any)
 	}
 
-	r := csv.NewReader(strings.NewReader(draft.RawContent))
+	text, err := textInput("csv_parser", draft)
+	if err != nil {
+		return nil, err
+	}
+	r := csv.NewReader(strings.NewReader(text))
 	r.Comma = s.delimiter
 	if r.Comma == 0 {
 		r.Comma = ','

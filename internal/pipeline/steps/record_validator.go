@@ -19,6 +19,7 @@ type RecordValidator struct {
 func NewRecordValidator() *RecordValidator {
 	return &RecordValidator{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
+			Binary:   true,
 			Requires: []string{"Metadata"},
 			Produces: []string{"Metadata"},
 		}),

@@ -39,6 +39,7 @@ func WithDefaultEmailPipeline(name string) EmailEnqueuerOption {
 func NewEmailEnqueuer(opts ...EmailEnqueuerOption) *EmailEnqueuer {
 	e := &EmailEnqueuer{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
+			Binary:   true,
 			Requires: []string{"Metadata"},
 			Produces: []string{"Sections", "Metadata"},
 		}),
