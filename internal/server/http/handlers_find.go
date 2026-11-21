@@ -50,6 +50,7 @@ func Find(svc *service.Service, sem retrieval.SemanticSource) http.HandlerFunc {
 			return
 		}
 
+		req.RecordHistory = true // a person's search; the MCP tool does not set it
 		res, err := svc.Find(r.Context(), req, sem)
 		var unavailable *service.SemanticUnavailableError
 		switch {
