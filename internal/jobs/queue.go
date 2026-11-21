@@ -71,9 +71,15 @@ func (q *Queue) Retry(ctx context.Context, id string) error {
 		return err
 	}
 	if job.RetryCount >= job.MaxRetries {
-		return fmt.Errorf("job %s: max retries (%d) exceeded", id, job.MaxRetries)
+		return fmt.Errorf("job %s: max retries (%d) exceeded: %w", id, job.MaxRetries, storage.ErrJobNotRetryable)
 	}
 	return q.store.Retry(ctx, id)
+}
+
+// Requeue is the worker's retry of the job it holds under claim. It
+// returns storage.ErrClaimLost when the job is no longer the caller's.
+func (q *Queue) Requeue(ctx context.Context, id, claim string) error {
+	return q.store.Requeue(ctx, id, claim)
 }
 
 func (q *Queue) Get(ctx context.Context, id string) (*storage.Job, error) {

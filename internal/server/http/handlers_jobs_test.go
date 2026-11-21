@@ -140,11 +140,11 @@ func TestRetryJobNotFound(t *testing.T) {
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
-	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 
 	var env ErrorEnvelope
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&env))
-	assert.Equal(t, "INVALID_REQUEST", env.Error.Code)
+	assert.Equal(t, CodeNotFound, env.Error.Code)
 	assert.Contains(t, env.Error.Message, "not found")
 }
 
@@ -172,11 +172,11 @@ func TestRetryJobMaxRetriesExceeded(t *testing.T) {
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
-	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	assert.Equal(t, http.StatusConflict, resp.StatusCode)
 
 	var env ErrorEnvelope
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&env))
-	assert.Equal(t, "INVALID_REQUEST", env.Error.Code)
+	assert.Equal(t, "CONFLICT", env.Error.Code)
 	assert.Contains(t, env.Error.Message, "max retries")
 }
 
@@ -290,9 +290,32 @@ func TestRetryJobPendingRefused(t *testing.T) {
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
-	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	assert.Equal(t, http.StatusConflict, resp.StatusCode)
 
 	job, err := ts.svc.GetJob(ownerCtx(), "job-pend")
 	require.NoError(t, err)
+	assert.Equal(t, 0, job.RetryCount)
+}
+
+// A running job is held by its worker: the operator endpoint refuses it
+// (409) and leaves it running, so no second worker can claim it.
+func TestRetryJobRunningRefused(t *testing.T) {
+	ts := newTestServerBundle(t)
+	defer ts.Close()
+
+	seedJob(t, ts, "job-run")
+	_, err := ts.svc.Store(ownerCtx()).Jobs().AcquireNext(ownerCtx())
+	require.NoError(t, err)
+
+	req, err := http.NewRequest(http.MethodPost, ts.URL+"/api/v1/jobs/job-run/retry", nil)
+	require.NoError(t, err)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusConflict, resp.StatusCode)
+
+	job, err := ts.svc.GetJob(ownerCtx(), "job-run")
+	require.NoError(t, err)
+	assert.Equal(t, storage.JobRunning, job.Status)
 	assert.Equal(t, 0, job.RetryCount)
 }
