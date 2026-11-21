@@ -79,13 +79,13 @@ dpkms job retry <job_id>
 
 ```bash
 ctxt find "daily health retrieval check" --limit 5
-ctxt list --after 2026-02-01 --limit 10
+ctxt list --since 2026-02-01 --limit 10
 ```
 
 ### 3. Composition path smoke checks
 
 ```bash
-ctxt make summary --since 2026-02-01 --output-file ops-daily-summary.md
+ctxt compose summary --since 2026-02-01 --output-file ops-daily-summary.md
 ```
 
 ### 4. Registry checks

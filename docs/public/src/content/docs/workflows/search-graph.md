@@ -189,7 +189,7 @@ ctxt find "deployment" --graph --format json | jq -r '
 
 ## Tune the graph
 
-`--limit`, `--min-score` and the metadata filters (`--topic`, `--since`, `--source-type`, ...) apply as usual; they change which candidates are returned or cut, and the graph shows the result.
+`--limit`, `--min-score` and the metadata filters (`--tagged`, `--topic`, `--since`, `--source-type`, ...) apply as usual; they change which candidates are returned or cut, and the graph shows the result.
 
 | Flag | Default | Effect |
 |---|---|---|
@@ -239,7 +239,7 @@ ctxt find "deployment" --graph --graph-max-nodes 50 --graph-similar -o deploymen
 
 ### The graph shows only the query
 
-- The search found no candidates (`metadata.counts.candidates` is `0`). Try broader words, or drop filters such as `--source-type` or `--since`.
+- The search found no candidates (`metadata.counts.candidates` is `0`). Try broader words, or drop filters such as `--tagged`, `--source-type` or `--since`.
 
 ### Every candidate says `legs fts`
 

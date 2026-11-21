@@ -44,32 +44,32 @@ ctxt open <object_id>
 Brief:
 
 ```bash
-ctxt make brief --tag checkout,pricing --since 2026-02-01
+ctxt compose brief --tagged checkout,pricing --since 2026-02-01
 ```
 
 Plan:
 
 ```bash
-ctxt make plan --mention @project.checkout-redesign --since 2026-02-01
+ctxt compose plan --mention @project.checkout-redesign --since 2026-02-01
 ```
 
 Summary:
 
 ```bash
-ctxt make summary --tag onboarding --since 2026-02-01
+ctxt compose summary --tagged onboarding --since 2026-02-01
 ```
 
 Draft:
 
 ```bash
-ctxt make draft --tag launch --since 2026-02-01
+ctxt compose draft --tagged launch --since 2026-02-01
 ```
 
 ### Step 3: Write output to artifacts
 
 ```bash
-ctxt make brief --tag checkout,pricing --since 2026-02-01 --output-file checkout-brief.md
-ctxt make plan --mention @project.checkout-redesign --since 2026-02-01 --output-file checkout-plan.md
+ctxt compose brief --tagged checkout,pricing --since 2026-02-01 --output-file checkout-brief.md
+ctxt compose plan --mention @project.checkout-redesign --since 2026-02-01 --output-file checkout-plan.md
 ```
 
 ### Step 4: Validate provenance and coverage
@@ -92,7 +92,7 @@ pandoc checkout-brief.md -o checkout-brief.pdf
 
 1. Compose from broad scope.
 2. Review and identify weak sections.
-3. Tighten source filters (`--tag`, `--mention`, `--since`).
+3. Tighten source filters (`--tagged`, `--mention`, `--since`).
 4. Regenerate and compare.
 
 ## Outputs to validate

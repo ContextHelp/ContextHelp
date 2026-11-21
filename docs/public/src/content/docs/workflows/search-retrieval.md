@@ -53,15 +53,19 @@ ctxt find "pricing rollout risks" --profile growth --limit 10
 Type/date/tag filters:
 
 ```bash
-ctxt list --type url --after 2026-02-01 --limit 20
+ctxt list --type url --since 2026-02-01 --limit 20
 ctxt list --tagged checkout --limit 20
+ctxt list --tagged checkout,pricing --since 1w
+ctxt list --tagged +checkout,pricing --since 30d
 ```
+
+`--tagged` takes several tags, requires a tag with a leading `+`, and ranks results matching more of the listed tags first; `--since`/`--until` take `3d`, `1w`, `1M`, `yesterday`, dates and timestamps. See [`tag-and-date-filters.md`](./tag-and-date-filters.md).
 
 Query-language filters:
 
 ```bash
 ctxt list --q "type==url;tag=in=(checkout,pricing)" --limit 20
-ctxt list --mention @project.checkout-redesign --after 2026-02-01 --limit 20
+ctxt list --mention @project.checkout-redesign --since 2026-02-01 --limit 20
 ```
 
 ### Step 3: Validate top results
@@ -96,7 +100,7 @@ Details: [`search-graph.md`](./search-graph.md)
 
 ### Step 5: Prepare retrieval for downstream composition
 
-Use structured filters to produce a bounded input set before running `ctxt make`.
+Use structured filters to produce a bounded input set before running `ctxt compose`.
 
 ## Outputs to validate
 
@@ -115,7 +119,7 @@ Use structured filters to produce a bounded input set before running `ctxt make`
 ### Too many irrelevant semantic matches
 
 - Add profile context and reduce limit.
-- Switch to structured filters (`--type`, `--tag`, `--after`, `--q`).
+- Switch to structured filters (`--type`, `--tagged`, `--since`, `--q`).
 
 ### Structured query returns nothing
 
@@ -130,6 +134,7 @@ Use structured filters to produce a bounded input set before running `ctxt make`
 
 ## Related references
 
+- [`tag-and-date-filters.md`](./tag-and-date-filters.md)
 - [`semantic-search.md`](./semantic-search.md)
 - [`search-graph.md`](./search-graph.md)
 - [`../reference/query-language-and-ranking.md`](../reference/query-language-and-ranking.md)

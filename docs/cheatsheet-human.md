@@ -127,6 +127,7 @@ No work sessions and no `ctxt session` command. Compose over a creation-time ran
 ```bash
 ctxt compose summary --since 2026-10-14
 ctxt compose brief --since 2026-10-01 --until 2026-10-07 --tagged launch
+ctxt compose brief --tagged +launch,docs --since 30d   # launch required, docs ranks
 ```
 
 ---
@@ -203,7 +204,7 @@ States: `pending` → `running` → `completed` / `failed` / `cancelled`
 
 ```bash
 ctxt list                            # all recent objects
-ctxt list --type url --after 2026-02-01 --limit 20
+ctxt list --type url --since 2026-02-01 --limit 20
 ctxt list --tagged checkout          # one tag
 ctxt show <object_id>                # human-readable view
 ctxt show <object_id> --format json  # full structured view

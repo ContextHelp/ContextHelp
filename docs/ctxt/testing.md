@@ -327,7 +327,7 @@ ctxt add --stdin < input.txt
 ```bash
 # Test search variations
 ctxt find "keyword"
-ctxt find --type article --tag design
+ctxt find --type article --tagged design
 ctxt find mention:@stripe.api
 ctxt find similar:"error handling patterns"
 ```

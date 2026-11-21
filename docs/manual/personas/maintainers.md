@@ -36,7 +36,7 @@ Inspect critical command groups:
 ```bash
 ctxt analyze --help
 ctxt find --help
-ctxt make --help
+ctxt compose --help
 dpkms pipeline --help
 dpkms pipeline step --help
 ```

@@ -19,6 +19,7 @@ Use this section when you want task-oriented execution, regardless of persona.
 | Verify and improve extraction quality | [`enrichment-processing.md`](./enrichment-processing.md) |
 | Build auto-refreshing profiles for entities or organizations | [`entity-auto-enrichment.md`](./entity-auto-enrichment.md) |
 | Retrieve relevant context fast | [`search-retrieval.md`](./search-retrieval.md) |
+| Select by several tags and a time window (`--tagged`, `--since`) | [`tag-and-date-filters.md`](./tag-and-date-filters.md) |
 | Make `find` search by meaning, or point one run at a remote embedding endpoint | [`semantic-search.md`](./semantic-search.md) |
 | See what a search considered, and why results were cut | [`search-graph.md`](./search-graph.md) |
 | Open the web UI of a protected or public instance in a browser | [`web-ui-sign-in.md`](./web-ui-sign-in.md) |

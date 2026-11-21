@@ -408,13 +408,13 @@ echo "Authentication pattern from competitor" | ./bin/ctxt analyze \
 
 ```bash
 # List recent additions
-./bin/ctxt list --after $(date -u -d '1 day ago' +%Y-%m-%d) --sort recent
+./bin/ctxt list --since 1d --sort recent
 
 # Search for specific topics
 ./bin/ctxt find "decisions made today"
 
 # Generate daily summary
-./bin/ctxt compose summary --since $(date -u +%Y-%m-%d)
+./bin/ctxt compose summary --since today
 ```
 
 ## Database Maintenance

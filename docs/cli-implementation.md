@@ -190,7 +190,7 @@ dpkms job status job_12345678
 dpkms job retry job_12345678
 
 # Query knowledge
-ctxt list --tag ux,onboarding --limit 10
+ctxt list --tagged ux,onboarding --limit 10
 ctxt find "authentication best practices"
 ctxt open obj_12345678
 
@@ -200,8 +200,8 @@ ctxt profile view founder
 ctxt profile create myproject --config profile.yaml
 
 # Compositions
-ctxt make brief --tag ux,onboarding
-ctxt make plan --mention @project.signup-redesign
+ctxt compose brief --tagged ux,onboarding
+ctxt compose plan --mention @project.signup-redesign
 
 # Configuration
 ctxt config show

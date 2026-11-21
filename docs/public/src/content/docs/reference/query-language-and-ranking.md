@@ -18,7 +18,7 @@ ctxt find "checkout conversion risks"
 2. Structured retrieval (deterministic filtering):
 
 ```bash
-ctxt list --type url --after 2026-02-01 --tag checkout,pricing
+ctxt list --type url --since 2026-02-01 --tagged checkout,pricing
 ctxt list --q "type==url;tag=in=(checkout,pricing)"
 ```
 
@@ -48,7 +48,7 @@ ctxt list --q "related==@arch.decision"
 ### Time-bounded retrieval
 
 ```bash
-ctxt list --after 2026-02-01 --before 2026-02-18
+ctxt list --since 2026-02-01 --until 2026-02-18
 ```
 
 ## Ranking behavior (practical view)

@@ -47,7 +47,7 @@ echo "Checkout drop-off increased after pricing change" | ctxt analyze --type te
 ctxt analyze https://example.com/pricing-analysis --type url
 ctxt job list
 ctxt find "pricing and checkout decisions" --limit 5
-ctxt make brief --tag pricing,checkout --since 2026-02-01 --output-file first-brief.md
+ctxt compose brief --tagged pricing,checkout --since 2026-02-01 --output-file first-brief.md
 ```
 
 If ingestion is still running, inspect:
@@ -92,7 +92,7 @@ Reference: [`workflows/README.md`](./workflows/README.md)
 - `dpkms serve` starts cleanly.
 - At least one analyze job reaches `completed`.
 - `ctxt find` returns relevant results.
-- `ctxt make brief` produces a reusable artifact.
+- `ctxt compose brief` produces a reusable artifact.
 - You know which persona and workflow chapter you will use next.
 
 Story anchors:

@@ -55,14 +55,14 @@ ctxt find "auth" --type decision
 ctxt find "redesign" --person alice-chen
 
 # Filter by date range
-ctxt find "deployment" --since 2026-04-01 --until 2026-04-23
+ctxt find "deployment" --mentioned-since 2026-04-01 --mentioned-until 2026-04-23
 
 # Filter by source
 ctxt list --source slack --type task
 
 # Combined
 ctxt find "auth" --type decision --person alice-chen \
-  --since 2026-04-01
+  --mentioned-since 2026-04-01
 
 # Facet counts
 ctxt find "auth" --facets
@@ -85,7 +85,7 @@ dates_mentioned=gt=2026-04-01
 - [ ] `--type task` returns only task-typed objects
 - [ ] `--person alice-chen` returns only objects mentioning
   that person
-- [ ] `--since` / `--until` filter by dates_mentioned
+- [ ] `--mentioned-since` / `--mentioned-until` filter by dates_mentioned
 - [ ] Combined filters intersect correctly
 - [ ] Semantic search + filters work together
 - [ ] `--facets` returns count breakdown by type

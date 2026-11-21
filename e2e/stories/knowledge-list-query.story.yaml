@@ -16,7 +16,7 @@ steps:
     capture: [exit_code, stdout]
   - id: by_type_and_date
     intent: Restrict to captured URLs created inside a window.
-    invoke: ["ctxt", "list", "--type", "url", "--after", "2026-01-01", "--before", "2026-01-31", "--format", "json"]
+    invoke: ["ctxt", "list", "--type", "url", "--since", "2026-01-01", "--until", "2026-01-31", "--format", "json"]
     capture: [exit_code, stdout]
   - id: facets
     intent: Ask for the metadata-type breakdown of the current filter.

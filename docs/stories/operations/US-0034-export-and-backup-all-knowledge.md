@@ -134,7 +134,7 @@ prune:    SELECT * FROM objects WHERE created_at < $before  (confirm)
 - [ ] After `compact`: file size is equal or smaller than before compaction
 - [ ] `prune --before 2025-01-01` output shows the count of matching objects
   before deletion (e.g., "Found 42 objects before 2025-01-01")
-- [ ] After confirming prune, `GET /api/v1/objects?before=2025-01-01` returns
+- [ ] After confirming prune, `GET /api/v1/objects?until=2025-01-01` returns
   zero results for objects created before that date
 - [ ] Objects created after the cutoff are unaffected by prune
 

@@ -33,7 +33,7 @@ dpkms reboot                         # SIGHUP drain+exit (caller must re-launch)
 2. Poll        →  ctxt job status <id> / GET /jobs/{id}  (gate on "completed")
 3. Retrieve    →  ctxt list --q "<rsql>" / GET /objects?q=  (deterministic first)
 4. Fallback    →  ctxt find "<nlq>" / GET /objects  (hybrid FTS+vector; --fts or --semantic for single-mode)
-5. Compose     →  ctxt make ... / POST /compose
+5. Compose     →  ctxt compose ... / POST /compose
 ```
 
 **DO:** poll before compose. **DON'T:** compose immediately after ingest.
@@ -193,8 +193,8 @@ GET /entities/{slug}/related
 ## Compose
 
 ```bash
-ctxt make brief --tag checkout,funnel --since 2026-02-01 --output-file agent-brief.md
-ctxt make plan  --mention @project.checkout-redesign --since 2026-02-01
+ctxt compose brief --tagged checkout,funnel --since 2026-02-01 --output-file agent-brief.md
+ctxt compose plan  --mention @project.checkout-redesign --since 2026-02-01
 
 POST /compose
 Content-Type: application/json

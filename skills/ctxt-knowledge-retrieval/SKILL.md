@@ -39,7 +39,7 @@ Run this loop in order for reliable retrieval:
 3. Retrieve with deterministic filters first (`ctxt list`, `ctxt list --q`).
 4. Use semantic search only as fallback (`ctxt find`).
 5. Inspect top objects (`ctxt open`) before composing.
-6. Compose outputs (`ctxt make ...`) and keep source IDs.
+6. Compose outputs (`ctxt compose ...`) and keep source IDs.
 7. Write back new memory from task outcomes.
 
 ## Command Playbook
@@ -57,9 +57,9 @@ ctxt job retry <job_id>
 ### Deterministic retrieval first
 
 ```bash
-ctxt list --type url --after 2026-02-01 --limit 20
+ctxt list --type url --since 2026-02-01 --limit 20
 ctxt list --q "type==url;tag=in=(checkout,pricing)" --limit 20
-ctxt list --mention @project.checkout-redesign --after 2026-02-01 --limit 20
+ctxt list --mention @project.checkout-redesign --since 2026-02-01 --limit 20
 ```
 
 ### Semantic fallback second
@@ -72,8 +72,8 @@ ctxt find "recent checkout architecture decisions" --limit 10
 
 ```bash
 ctxt open <object_id> --output json
-ctxt make brief --tag checkout,funnel --since 2026-02-01 --output-file agent-brief.md
-ctxt make plan --mention @project.checkout-redesign --since 2026-02-01 --output-file agent-plan.md
+ctxt compose brief --tagged checkout,funnel --since 2026-02-01 --output-file agent-brief.md
+ctxt compose plan --mention @project.checkout-redesign --since 2026-02-01 --output-file agent-plan.md
 ```
 
 ## Shared Memory Contract (Insights + Trial-and-Error)
@@ -115,9 +115,9 @@ Next Reuse Hint: reuse for incident reports and recurring summaries"
 Retrieve shared memory later:
 
 ```bash
-ctxt list --q "type==text;tag=in=(insight,trial,error,decision,lesson)" --after 2026-02-01 --limit 50
+ctxt list --q "type==text;tag=in=(insight,trial,error,decision,lesson)" --since 2026-02-01 --limit 50
 ctxt find "lessons learned from failed retrieval attempts" --limit 10
-ctxt make brief --tag insight,trial,error,decision --since 2026-02-01 --output-file agent-memory-brief.md
+ctxt compose brief --tagged insight,trial,error,decision --since 2026-02-01 --output-file agent-memory-brief.md
 ```
 
 ## Quality Gates
