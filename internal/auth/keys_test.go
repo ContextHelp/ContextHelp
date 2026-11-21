@@ -41,10 +41,10 @@ func TestKeysMint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Mint: %v", err)
 	}
-	admin, _ := Bundle(RoleAdmin)
-	if issued.PrincipalID != storage.OwnerPrincipal || issued.Name != "laptop" || !slices.Equal(issued.Scopes, admin) ||
+	owner := ScopesForRoles(OwnerRoles)
+	if issued.PrincipalID != storage.OwnerPrincipal || issued.Name != "laptop" || !slices.Equal(issued.Scopes, owner) ||
 		!issued.CreatedAt.Equal(f.clock.t) || !issued.ExpiresAt.IsZero() || issued.IdentityID == "" {
-		t.Errorf("issued = %+v, want the owner's admin scopes, no expiry", issued)
+		t.Errorf("issued = %+v, want the owner's scopes (admin and the approval roles), no expiry", issued)
 	}
 	idn, err := f.auth.Identities().Find(ctx, storage.IdentityMethodAPIKey, "", issued.ID)
 	if err != nil {
@@ -62,14 +62,14 @@ func TestKeysVerify(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Mint: %v", err)
 	}
-	admin, _ := Bundle(RoleAdmin)
+	owner := ScopesForRoles(OwnerRoles)
 	f.clock.advance(time.Minute)
 	p, idn, err := f.keys.Verify(ctx, secret)
 	if err != nil {
 		t.Fatalf("Verify: %v", err)
 	}
 	if p.ID != storage.OwnerPrincipal || p.Provider != MethodAPIKey || p.Name == "" || !p.HasRole(RoleAdmin) ||
-		!slices.Equal(p.Scopes, admin) || p.Meta[MetaKeyID] != issued.ID || p.Meta[MetaIdentityID] != issued.IdentityID {
+		!slices.Equal(p.Scopes, owner) || p.Meta[MetaKeyID] != issued.ID || p.Meta[MetaIdentityID] != issued.IdentityID {
 		t.Errorf("principal = %+v", p)
 	}
 	if idn.ID != issued.IdentityID || idn.Name != "laptop" {
@@ -348,7 +348,7 @@ func TestAPIKeyMethodConfigKeyRefusals(t *testing.T) {
 	future := NewAPIKeyMethod(f.keys, configKeysFor(t, ownerKey, storage.OwnerPrincipal, nil, f.clock.t.Add(time.Hour).Format(time.RFC3339)))
 	if p, ok, err := future.Authenticate(ctx, Credential{Scheme: SchemeBearer, Token: ownerKey}); err != nil || !ok {
 		t.Errorf("unexpired config key: %v, %v, %v", p, ok, err)
-	} else if want, _ := Bundle(RoleAdmin); !slices.Equal(p.Scopes, want) {
+	} else if want := ScopesForRoles(OwnerRoles); !slices.Equal(p.Scopes, want) {
 		t.Errorf("no roles means the principal's: %v", p.Scopes)
 	}
 

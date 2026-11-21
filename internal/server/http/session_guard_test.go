@@ -155,8 +155,7 @@ func TestWhoami_TokenSessionAndPrivate(t *testing.T) {
 
 	tok := decodeBody[whoamiResponse](t, f.do(http.MethodGet, "/api/v1/whoami", nil, withBearer(f.ops)))
 	assert.Equal(t, viaToken, tok.Via)
-	admin, _ := authn.Bundle(authn.RoleAdmin)
-	assert.Equal(t, admin, tok.Scopes)
+	assert.Equal(t, authn.ScopesForRoles(authn.OwnerRoles), tok.Scopes, "the owner's key holds admin and the approval roles")
 	assert.Nil(t, tok.Session)
 
 	resp := f.do(http.MethodGet, "/api/v1/whoami", nil, withCookie(c), fromUI)
@@ -164,7 +163,7 @@ func TestWhoami_TokenSessionAndPrivate(t *testing.T) {
 	sess := decodeBody[whoamiResponse](t, resp)
 	assert.Equal(t, viaSession, sess.Via)
 	assert.Equal(t, storage.OwnerPrincipal, sess.Principal)
-	assert.Equal(t, []string{authn.RoleAdmin}, sess.Roles)
+	assert.Equal(t, authn.OwnerRoles, sess.Roles)
 	assert.Equal(t, authn.UISessionScopes, sess.Scopes)
 	require.NotNil(t, sess.Session)
 	assert.Equal(t, authn.SessionKindUI, sess.Session.Kind)

@@ -2,6 +2,7 @@ package auth_test
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -95,7 +96,7 @@ func TestSessions_ExchangeActsAsMintingPrincipal(t *testing.T) {
 	assert.Equal(t, storage.OwnerPrincipal, m.Principal.ID)
 	assert.Equal(t, storage.PrincipalKindOwner, m.Principal.Kind)
 	assert.Equal(t, auth.MethodSession, m.Principal.Provider)
-	assert.Equal(t, []string{auth.RoleAdmin}, m.Principal.Roles)
+	assert.Equal(t, auth.OwnerRoles, m.Principal.Roles)
 	assert.True(t, m.Principal.IsSession())
 	assert.Equal(t, auth.SessionKindUI, m.Principal.SessionKind())
 	assert.Equal(t, auth.UISessionScopes, m.Principal.Scopes, "an admin key's session holds the ui set, no more")
@@ -307,7 +308,7 @@ func TestSessions_NonKeyIdentity(t *testing.T) {
 
 // A session's effective scopes are the minting key's intersected with
 // the ui set: a reader's session reads only, a writer's may also retry
-// jobs, an admin's holds exactly the ui set, and a key narrowed below
+// jobs, an admin's holds the ui set but the approval scopes, and a key narrowed below
 // its role narrows its session with it. None may mint login codes.
 func TestSessions_ScopesIntersectKeyAndUISet(t *testing.T) {
 	uiRead := []auth.Scope{
@@ -320,7 +321,7 @@ func TestSessions_ScopesIntersectKeyAndUISet(t *testing.T) {
 			auth.ScopeReadObjects, auth.ScopeReadInbox, auth.ScopeReadFeeds, auth.ScopeReadJobs, auth.ScopeWriteJobs,
 			auth.ScopeReadRegistries, auth.ScopeReadSystem, auth.ScopeWriteSelf, auth.ScopeSignoutUI,
 		},
-		auth.RoleAdmin: auth.UISessionScopes,
+		auth.RoleAdmin: slices.DeleteFunc(slices.Clone(auth.UISessionScopes), auth.IsApprovalScope),
 	}
 	for role, want := range cases {
 		t.Run(role, func(t *testing.T) {

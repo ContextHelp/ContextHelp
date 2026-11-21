@@ -53,6 +53,7 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 	ui := newUISessionRoutes(rc)
 	reg := newRegistryRoutes(rc)
 	sh := newShareRoutes(rc)
+	apr := newApprovalRoutes(rc)
 	get, post, put, patch, del := http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete
 	return []apiRoute{
 		// Identity
@@ -275,5 +276,15 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		// A key narrows its principal to a share policy (ADR-080 §2);
 		// the caller binds its own keys here.
 		{Method: put, Pattern: "/self/keys/{key}/policy", Scope: authn.ScopeWriteSelf, Handler: http.HandlerFunc(sh.BindOwnKeyPolicy)},
+
+		// The approval queue (ADR-082 §9) under write:self, which every
+		// principal holds: the request's own rule (requester, subject,
+		// the kind's eligible approvers, the owner) decides who sees and
+		// decides it, checked in the decision's transaction.
+		{Method: get, Pattern: "/approvals", Scope: authn.ScopeWriteSelf, Handler: http.HandlerFunc(apr.List)},
+		{Method: get, Pattern: "/approvals/{id}", Scope: authn.ScopeWriteSelf, Handler: http.HandlerFunc(apr.Get)},
+		{Method: post, Pattern: "/approvals/{id}/approve", Scope: authn.ScopeWriteSelf, Handler: http.HandlerFunc(apr.Approve)},
+		{Method: post, Pattern: "/approvals/{id}/reject", Scope: authn.ScopeWriteSelf, Handler: http.HandlerFunc(apr.Reject)},
+		{Method: del, Pattern: "/approvals/{id}", Scope: authn.ScopeWriteSelf, Handler: http.HandlerFunc(apr.Withdraw)},
 	}
 }

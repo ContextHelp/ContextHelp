@@ -18,7 +18,8 @@ func TestMain(m *testing.M) {
 // The bundles are pinned scope by scope: a new scope must land in the
 // bundle its verb implies, and nowhere else. read:ui (mint a login code)
 // is a read, so every role holds it; signout:ui is session-only, so no
-// role does, admin included.
+// role does, admin included; the approval scopes belong to their own
+// roles (ADR-082 §1), never to admin.
 func TestRoleBundles(t *testing.T) {
 	cases := map[string][]Scope{
 		RoleReader: {
@@ -37,7 +38,9 @@ func TestRoleBundles(t *testing.T) {
 			ScopeReadPipelines, ScopeReadWatches,
 			ScopeReadUI,
 		},
-		RoleAdmin: slices.DeleteFunc(slices.Clone(AllScopes), func(s Scope) bool { return s == ScopeSignoutUI }),
+		RoleAdmin: slices.DeleteFunc(slices.Clone(AllScopes), func(s Scope) bool {
+			return s == ScopeSignoutUI || s == ScopeRequestSteward || s == ScopeApproveSteward || s == ScopeApproveShares
+		}),
 	}
 	for role, want := range cases {
 		got, ok := Bundle(role)
@@ -96,9 +99,10 @@ func TestUIScopesPlacement(t *testing.T) {
 
 // The web UI session set is pinned: the reads the web UI makes, its own
 // writes (delete an object, retry a job, sign out) and the Sharing page
-// (admin:shares, ADR-080 §11), nothing else. admin:shares is the one
-// admin scope a session may hold: the role bundles keep it admin-only,
-// so only an admin's session reaches the sharing routes.
+// (admin:shares, ADR-080 §11) and the approval scopes (ADR-082), nothing
+// else. admin:shares is the one admin scope a session may hold: the role
+// bundles keep it admin-only, so only an admin's session reaches the
+// sharing routes.
 func TestUISessionScopesPinned(t *testing.T) {
 	want := []Scope{
 		ScopeReadObjects, ScopeDeleteObjects,
@@ -108,6 +112,7 @@ func TestUISessionScopesPinned(t *testing.T) {
 		ScopeWriteSelf,
 		ScopeAdminShares,
 		ScopeSignoutUI,
+		ScopeRequestSteward, ScopeApproveSteward, ScopeApproveShares,
 	}
 	if !slices.Equal(UISessionScopes, want) {
 		t.Errorf("UISessionScopes =\n  %v\nwant\n  %v", UISessionScopes, want)
@@ -272,8 +277,8 @@ func TestSelfAndAdminScopes(t *testing.T) {
 // config validates role names without importing this package; the two
 // lists must agree.
 func TestConfigAuthRolesMatchRoles(t *testing.T) {
-	if !slices.Equal(config.AuthRoles, Roles) {
-		t.Errorf("config.AuthRoles = %v, auth.Roles = %v", config.AuthRoles, Roles)
+	if !slices.Equal(config.AuthRoles, KnownRoles()) {
+		t.Errorf("config.AuthRoles = %v, auth.KnownRoles() = %v", config.AuthRoles, KnownRoles())
 	}
 }
 

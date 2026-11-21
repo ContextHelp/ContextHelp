@@ -5,6 +5,7 @@ package postgres_test
 import (
 	"context"
 	"database/sql"
+	"slices"
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -35,9 +36,12 @@ func assertAuthRegistry(t *testing.T, drv *pgdrv.Driver) {
 	if err != nil {
 		t.Fatalf("Get(owner): %v", err)
 	}
+	// Migration 41 gives the seeded owner the approval roles beside
+	// admin.
+	want := []string{"admin", "steward-requester", "steward-approver", "share-approver"}
 	if owner.Kind != storage.PrincipalKindOwner || owner.Status != storage.PrincipalActive ||
-		owner.DisplayName != "Owner" || len(owner.Roles) != 1 || owner.Roles[0] != "admin" {
-		t.Errorf("owner = %+v, want kind owner, active, display name Owner, roles [admin]", owner)
+		owner.DisplayName != "Owner" || !slices.Equal(owner.Roles, want) {
+		t.Errorf("owner = %+v, want kind owner, active, display name Owner, roles %v", owner, want)
 	}
 }
 

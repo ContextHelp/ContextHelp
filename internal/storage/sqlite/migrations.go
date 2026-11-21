@@ -331,6 +331,17 @@ var migrations = []migration{
 	// Migration 059: objects a url.* pipeline fetched from an http(s)
 	// source were stored as "text"; they are type "url".
 	{Version: 59, SQL: migration059},
+	// Migration 60: the owner principal holds the approval roles
+	// (steward-requester, steward-approver, share-approver) beside admin
+	// (ADR-082 §1): the admin bundle leaves their scopes out, and only
+	// a holder may assign them. One row update; a replay is a no-op.
+	{Version: 60, fn: migrate060OwnerApprovalRoles},
+	// Migration 61: the approval mechanism (ADR-082 §9):
+	// approval_requests, one row per request of any kind with its frozen
+	// payload, and approval_decisions, one row per approver and request.
+	// New tables only, nothing is an FTS input, so no re-projection
+	// follows.
+	{Version: 61, fn: migrate061Approvals},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,

@@ -452,6 +452,48 @@ var pgMigrations = []pgMigration{
 			WHERE type = 'text'
 			  AND pipeline LIKE 'url.%'`,
 	}},
+	// The owner principal holds the approval roles (steward-requester,
+	// steward-approver, share-approver) beside admin (ADR-082 §1),
+	// mirroring SQLite migration 060: the admin bundle leaves their
+	// scopes out, and only a holder may assign them. One row update; a
+	// replay is a no-op.
+	{Version: 41, Name: "owner approval roles", Statements: []string{
+		`UPDATE principals SET roles = '["admin","steward-requester","steward-approver","share-approver"]' WHERE kind = 'owner'`,
+	}},
+	// The approval mechanism (ADR-082 §9), mirroring SQLite migration
+	// 061: approval_requests, one row per request of any kind with its
+	// frozen payload (JSON in TEXT, as SQLite keeps it), and
+	// approval_decisions, one row per approver and request. New tables
+	// and an index only; IF NOT EXISTS makes a replay a no-op.
+	{Version: 42, Name: "approval requests and decisions", Statements: []string{
+		`CREATE TABLE IF NOT EXISTS approval_requests (
+			id                 TEXT PRIMARY KEY,
+			kind               TEXT NOT NULL,
+			action             TEXT NOT NULL,
+			requested_by       TEXT NOT NULL REFERENCES principals(id),
+			subject_id         TEXT REFERENCES principals(id),
+			reason             TEXT NOT NULL DEFAULT '',
+			payload            TEXT NOT NULL,
+			payload_digest     TEXT NOT NULL,
+			preconditions      TEXT NOT NULL DEFAULT '{}',
+			approvals_required INTEGER NOT NULL CHECK (approvals_required >= 1),
+			status             TEXT NOT NULL CHECK (status IN ('requested', 'approved', 'rejected', 'withdrawn', 'stale')),
+			requested_at       TIMESTAMPTZ NOT NULL,
+			expires_at         TIMESTAMPTZ NOT NULL,
+			decided_at         TIMESTAMPTZ,
+			result_ref         TEXT NOT NULL DEFAULT ''
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_approval_requests_kind_status ON approval_requests (kind, status, expires_at)`,
+		`CREATE TABLE IF NOT EXISTS approval_decisions (
+			request_id     TEXT NOT NULL REFERENCES approval_requests(id),
+			approver_id    TEXT NOT NULL REFERENCES principals(id),
+			decision       TEXT NOT NULL CHECK (decision IN ('approve', 'reject')),
+			payload_digest TEXT NOT NULL,
+			note           TEXT NOT NULL DEFAULT '',
+			decided_at     TIMESTAMPTZ NOT NULL,
+			PRIMARY KEY (request_id, approver_id)
+		)`,
+	}},
 }
 
 // sharingRegistryStatements create the sharing registry and add the

@@ -26,6 +26,7 @@ import (
 	kitbus "hop.top/kit/go/runtime/bus"
 	"hop.top/kit/go/storage/secret"
 
+	"github.com/ideacrafterslabs/ctxt/internal/approval"
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/bosaccess"
 	"github.com/ideacrafterslabs/ctxt/internal/bosfeed"
@@ -155,6 +156,9 @@ type Stack struct {
 	// into; the gRPC server the caller builds takes it too. Shutdown
 	// flushes it.
 	Audit *sharing.AuditWriter
+	// Approvals is the shared approval mechanism (ADR-082 §9); its
+	// queue is served on /api/v1/approvals.
+	Approvals *approval.Service
 	// Authority is the access state of an external authority; nil when the
 	// instance takes none.
 	Authority *bosaccess.Peer
@@ -542,6 +546,11 @@ func Build(in Inputs) (*Stack, error) {
 	// off the request path.
 	s.Audit = sharing.NewAuditWriter(in.Driver.Sharing().AccessLog(), sharing.AuditOptions{})
 
+	if err := s.wireApprovals(in, cfg); err != nil {
+		s.Close()
+		return nil, err
+	}
+
 	rcfg := httpserver.RouterConfig{
 		Semantic:     QuerySemantic(in.Driver, resolver, in.Warnings),
 		DevCORS:      in.DevCORS,
@@ -567,6 +576,7 @@ func Build(in Inputs) (*Stack, error) {
 		StrictSharing:        in.StrictSharing,
 		Audit:                s.Audit,
 		AuditLog:             in.Driver.AuditLog(),
+		Approvals:            s.Approvals,
 	}
 	applyAuthorityRoutes(&rcfg, s.Authority, cfg.Sharing.Authority)
 	s.Router = httpserver.NewRouterWithConfig(s.Service, rcfg)

@@ -285,6 +285,12 @@ var scopedAccessors = map[string]accessorKind{
 	// exists, and a restricted viewer lists its own audiences and
 	// policies (ADR-080 §8), so it passes through for every viewer.
 	"Sharing": accessorPassthrough,
+	// Approvals is the approval mechanism: the caller's relation to a
+	// request (requester, subject, eligible approver) governs it, not
+	// share policies, and a request names principals and registry
+	// changes, never a knowledge object, so it passes through for every
+	// viewer.
+	"Approvals": accessorPassthrough,
 
 	"Objects":         accessorScoped,
 	"Entities":        accessorScoped,

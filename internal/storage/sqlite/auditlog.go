@@ -14,12 +14,15 @@ import (
 
 type auditStore struct{ db *sql.DB }
 
+// Append writes in the transaction ctx carries, when an
+// ApprovalStore.InTx put one there, so an entry commits or rolls back
+// with the change it records.
 func (s *auditStore) Append(ctx context.Context, e *storage.AuditEntry) error {
 	payload, err := json.Marshal(e.Payload)
 	if err != nil {
 		return fmt.Errorf("audit append: marshal payload: %w", err)
 	}
-	_, err = s.db.ExecContext(ctx,
+	_, err = conn(ctx, s.db).ExecContext(ctx,
 		`INSERT INTO audit_log (id, event_type, object_id, actor, payload, created_at)
          VALUES (?, ?, ?, ?, ?, ?)`,
 		e.ID, e.EventType, e.ObjectID, e.Actor,
