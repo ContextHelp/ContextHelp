@@ -77,6 +77,9 @@ func CapabilitiesFromOpts(opts BuildOpts) pipeline.CapabilitySet {
 	if opts.Factory == nil {
 		probeToolCapabilities(caps)
 	}
+	if opts.OCR != nil {
+		caps["ocr"] = true
+	}
 	if opts.BlobStore != nil {
 		caps["blob-externalize"] = true
 	}

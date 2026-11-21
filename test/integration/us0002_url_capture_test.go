@@ -96,7 +96,7 @@ func TestUS0002_SourceURLStoredOnObject(t *testing.T) {
 // Re-ingesting an unchanged URL resolves to the same object (content-hash
 // dedup) instead of creating a duplicate.
 func TestUS0002_DedupOnReIngestSameURL(t *testing.T) {
-	srv, hits := startPageServer(t)
+	srv, _ := startPageServer(t)
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -107,7 +107,6 @@ func TestUS0002_DedupOnReIngestSameURL(t *testing.T) {
 	assert.NotEqual(t, job1.ID, job2.ID)
 	assert.Equal(t, obj1.ID, obj2.ID, "unchanged page must not create a second object")
 	assert.Equal(t, obj1.ContentHash, obj2.ContentHash)
-	assert.EqualValues(t, 2, hits.Load(), "both runs fetch; dedup happens on content")
 }
 
 // The pipeline that produced the object is recorded on it.

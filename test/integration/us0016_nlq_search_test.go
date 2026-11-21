@@ -5,10 +5,14 @@ package integration
 // include expected object IDs.
 
 import (
+	"bytes"
+	"encoding/json"
+	gohttp "net/http"
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/retrieval"
+	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -78,7 +82,6 @@ func TestUS0016_NLQSearchReturnsMatchingObjects(t *testing.T) {
 // TestUS0016_NLQSearchViaHTTPReturnsResults verifies the REST endpoint
 // responds with matching objects for an NLQ-style text query.
 func TestUS0016_NLQSearchViaHTTPReturnsResults(t *testing.T) {
-	t.Skip("unbuilt: no HTTP route accepts a natural-language query; GET /api/v1/search is RSQL-only (HybridSearch is not routed)")
 	env := startTestEnv(t)
 	defer env.stop(t)
 
@@ -96,15 +99,20 @@ func TestUS0016_NLQSearchViaHTTPReturnsResults(t *testing.T) {
 	require.NoError(t, env.driver.Objects().Create(ctx, obj))
 	rebuildFTSIntegration(t, env)
 
-	// REST search via RSQL (type filter) — NLQ intent is a superset; verifying
-	// the HTTP path returns the ingested object.
-	resp := doGet(t, env.URL+"/api/v1/search?q=type==text")
+	body, err := json.Marshal(map[string]string{"query": "circuit breaker", "mode": "hybrid"})
+	require.NoError(t, err)
+	resp, err := gohttp.Post(env.URL+"/api/v1/find", "application/json", bytes.NewReader(body))
+	require.NoError(t, err)
 	defer resp.Body.Close()
+	require.Equal(t, gohttp.StatusOK, resp.StatusCode)
 
-	var body searchResponse
-	decodeJSON(t, resp.Body, &body)
-	assert.GreaterOrEqual(t, body.Total, 1)
-	assert.True(t, containsID(body.Data, "nlq-http-01"), "ingested object must appear in results")
+	var out service.FindResult
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
+	var ids []string
+	for _, o := range out.Objects {
+		ids = append(ids, o.ID)
+	}
+	assert.Contains(t, ids, "nlq-http-01", "find must surface the ingested object")
 }
 
 // TestUS0016_NLQNoResults verifies that a query with no matches returns an

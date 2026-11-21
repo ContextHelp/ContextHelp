@@ -15,8 +15,8 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
-// TestUS0409_SchemaEvolution verifies per-profile schema co-evolution.
-func TestUS0409_SchemaEvolution(t *testing.T) {
+// TestUS0418_SchemaEvolution verifies per-profile schema co-evolution.
+func TestUS0418_SchemaEvolution(t *testing.T) {
 	dir := t.TempDir()
 	driver, err := sqlite.New(dir+"/test.db", storageutil.NewTestBlobStore(t))
 	require.NoError(t, err)
