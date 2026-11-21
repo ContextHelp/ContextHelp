@@ -65,7 +65,7 @@ func TestMigration059_URLObjectType(t *testing.T) {
 
 	// Replay the SQL itself (migrateThrough skips applied versions): no
 	// row matches any more.
-	res, err := d.db.Exec(migration058)
+	res, err := d.db.Exec(migration059)
 	if err != nil {
 		t.Fatalf("exec 058 again: %v", err)
 	}
