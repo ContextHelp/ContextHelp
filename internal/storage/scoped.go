@@ -371,7 +371,7 @@ var restrictedWrites = map[string][]string{
 	"Entitlements": {"Upsert", "Delete"},
 	"FeedItems":    {"Create"},
 	"Feeds":        {"Create", "Update", "Delete"},
-	"Jobs":         {"Create", "AcquireNext", "Complete", "Fail", "Retry", "Cancel", "RecoverStale", "ExtendLease", "ReleaseLease"},
+	"Jobs":         {"Create", "AcquireNext", "Complete", "Fail", "Retry", "Requeue", "Cancel", "RecoverStale", "ExtendLease", "ReleaseLease"},
 	"Metering":     {"Record", "RecordCapped"},
 	"Pipelines":    {"Create", "Update", "Delete", "Archive", "Unarchive"},
 	"Registries":   {"CacheManifest", "UpdateETag", "Delete"},

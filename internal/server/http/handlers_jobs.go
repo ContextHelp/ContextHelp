@@ -1,6 +1,7 @@
 package http
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -47,12 +48,20 @@ func GetJob(svc *service.Service) http.HandlerFunc {
 	}
 }
 
-// RetryJob retries a failed job.
+// RetryJob retries a failed job. An unknown job is 404; one that is not
+// failed, or is out of retries, is 409.
 func RetryJob(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
 		if err := svc.RetryJob(r.Context(), id); err != nil {
-			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
+			switch {
+			case errors.Is(err, storage.ErrNotFound):
+				WriteError(w, http.StatusNotFound, CodeNotFound, err.Error())
+			case errors.Is(err, storage.ErrJobNotRetryable):
+				WriteError(w, http.StatusConflict, "CONFLICT", err.Error())
+			default:
+				WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+			}
 			return
 		}
 

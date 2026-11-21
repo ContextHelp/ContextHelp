@@ -132,7 +132,7 @@ func (p *WorkerPool) runTask(acquireCtx context.Context, job *storage.Job, h Tas
 
 	held, err := p.queue.ExtendLease(settle, job.ID, job.Claim, p.leaseTTL)
 	if err != nil {
-		p.retryOrFail(settle, job.ID, fmt.Sprintf("lease: %s", err))
+		p.retryOrFail(settle, job.ID, claim.get(), fmt.Sprintf("lease: %s", err))
 		return
 	}
 	if !held {
@@ -174,7 +174,7 @@ func (p *WorkerPool) runTask(acquireCtx context.Context, job *storage.Job, h Tas
 		}
 		p.emitFailed(settle, job.ID, err.Error())
 	default:
-		p.retryOrFail(settle, job.ID, err.Error())
+		p.retryOrFail(settle, job.ID, claim.get(), err.Error())
 	}
 }
 

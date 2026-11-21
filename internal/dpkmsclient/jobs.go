@@ -55,8 +55,9 @@ func (c *Client) GetJob(ctx context.Context, id string) (*storage.Job, error) {
 	return &job, nil
 }
 
-// RetryJob puts job id back in the queue and returns it. A job past its
-// retry budget, or an unknown one, is USAGE (exit 2). Needs write:jobs.
+// RetryJob puts failed job id back in the queue and returns it. An
+// unknown job is NOT_FOUND (exit 3); a job that is not failed, or is past
+// its retry budget, is CONFLICT (exit 4). Needs write:jobs.
 func (c *Client) RetryJob(ctx context.Context, id string) (*storage.Job, error) {
 	var job storage.Job
 	if err := c.Post(ctx, jobPath(id)+"/retry", nil, &job); err != nil {

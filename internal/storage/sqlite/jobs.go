@@ -267,13 +267,30 @@ func (s *JobStore) Retry(ctx context.Context, id string) error {
 		status = 'pending', error = '', started_at = NULL, completed_at = NULL,
 		claim_token = '', lease_expires_at = NULL,
 		retry_count = retry_count + 1, updated_at = ?
-	WHERE id = ? AND status IN ('failed', 'running') AND retry_count < max_retries`, now, id)
+	WHERE id = ? AND status = 'failed' AND retry_count < max_retries`, now, id)
 	if err != nil {
 		return fmt.Errorf("retry job: %w", err)
 	}
 	n, _ := result.RowsAffected()
 	if n == 0 {
 		return s.retryRefusal(ctx, id)
+	}
+	return nil
+}
+
+func (s *JobStore) Requeue(ctx context.Context, id, claim string) error {
+	now := time.Now().Format(time.RFC3339)
+	result, err := s.db.ExecContext(ctx, `UPDATE jobs SET
+		status = 'pending', error = '', started_at = NULL, completed_at = NULL,
+		claim_token = '', lease_expires_at = NULL,
+		retry_count = retry_count + 1, updated_at = ?
+	WHERE id = ? AND status = 'running' AND claim_token = ? AND retry_count < max_retries`, now, id, claim)
+	if err != nil {
+		return fmt.Errorf("requeue job: %w", err)
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return s.requeueRefusal(ctx, id, claim)
 	}
 	return nil
 }
@@ -476,17 +493,30 @@ func (s *JobStore) GetByIdempotencyKey(ctx context.Context, key string) (*storag
 	return j, nil
 }
 
-// retryRefusal explains why Retry updated no row: the job is unknown, is
-// in a state a retry does not apply to, or is out of retries. A failed
-// job is retried by the operator; a running job by the worker on a
-// transient error. Pending, completed and cancelled jobs are refused.
+// retryRefusal explains why Retry updated no row: the job is unknown
+// (storage.ErrNotFound), is not failed, or is out of retries (both
+// storage.ErrJobNotRetryable).
 func (s *JobStore) retryRefusal(ctx context.Context, id string) error {
 	j, err := s.Get(ctx, id)
 	if err != nil || j == nil {
-		return fmt.Errorf("job %s not found", id)
+		return fmt.Errorf("job %s: %w", id, storage.ErrNotFound)
 	}
-	if j.Status != storage.JobFailed && j.Status != storage.JobRunning {
-		return fmt.Errorf("job %s is %s: only failed jobs can be retried", id, j.Status)
+	if j.Status != storage.JobFailed {
+		return fmt.Errorf("job %s is %s: only failed jobs can be retried: %w", id, j.Status, storage.ErrJobNotRetryable)
 	}
-	return fmt.Errorf("job %s: max retries exceeded", id)
+	return fmt.Errorf("job %s: max retries exceeded: %w", id, storage.ErrJobNotRetryable)
+}
+
+// requeueRefusal explains why Requeue updated no row: the job is gone,
+// settled or claimed by another worker (storage.ErrClaimLost), or out of
+// retries (storage.ErrJobNotRetryable).
+func (s *JobStore) requeueRefusal(ctx context.Context, id, claim string) error {
+	var status, held string
+	var retries, max int
+	err := s.db.QueryRowContext(ctx, "SELECT status, claim_token, retry_count, max_retries FROM jobs WHERE id = ?", id).
+		Scan(&status, &held, &retries, &max)
+	if err != nil || status != string(storage.JobRunning) || held != claim {
+		return fmt.Errorf("job %s: %w", id, storage.ErrClaimLost)
+	}
+	return fmt.Errorf("job %s: max retries exceeded: %w", id, storage.ErrJobNotRetryable)
 }

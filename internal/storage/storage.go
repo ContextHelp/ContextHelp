@@ -33,6 +33,16 @@ var ErrCapabilityMissing = errors.New("storage capability missing")
 // the driver and unequal between drivers.
 var ErrNotFound = errors.New("not found")
 
+// ErrJobNotRetryable is returned by JobStore.Retry and Requeue for a job
+// that exists but cannot be retried: it is not failed (Retry), or its
+// retries are used up.
+var ErrJobNotRetryable = errors.New("job not retryable")
+
+// ErrClaimLost is returned by JobStore.Requeue when the job is no longer
+// running under the caller's claim (settled, cancelled, or requeued and
+// claimed by another worker). The caller must leave the job alone.
+var ErrClaimLost = errors.New("job claim lost")
+
 // ErrBlobNotFound is the cross-backend sentinel for "the blob store
 // holds no blob under this key". BlobStore.Get returns an error wrapping
 // it for a missing key, and only then: a store it cannot reach (network,
@@ -324,7 +334,16 @@ type JobStore interface {
 	AcquireNext(ctx context.Context) (*Job, error)
 	Complete(ctx context.Context, id string, resultID string) error
 	Fail(ctx context.Context, id string, errMsg string) error
+	// Retry is the operator retry: it requeues a failed job. A missing job
+	// is ErrNotFound; any other status, or no retries left, is
+	// ErrJobNotRetryable. A running job is never retried here: its worker
+	// still holds it.
 	Retry(ctx context.Context, id string) error
+	// Requeue is the worker's retry of the running job it claimed: it
+	// requeues job id only while it is running under claim. A job running
+	// under another claim (or settled) is ErrClaimLost; no retries left is
+	// ErrJobNotRetryable.
+	Requeue(ctx context.Context, id, claim string) error
 	Cancel(ctx context.Context, id string) error
 	// RecoverStale requeues running jobs that are no longer being run:
 	// a leased job once its lease has expired, an unleased job once its

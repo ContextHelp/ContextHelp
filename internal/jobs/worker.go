@@ -266,7 +266,7 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 			p.markFailed(ctx, job.ID, err.Error())
 			return
 		}
-		p.retryOrFail(ctx, job.ID, err.Error())
+		p.retryOrFail(ctx, job.ID, job.Claim, err.Error())
 		return
 	}
 
@@ -291,7 +291,7 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 		if err != nil {
 			// Reinforce errors are storage contention (SQLITE_BUSY) or a row
 			// deleted since the lookup; both can succeed on a later attempt.
-			p.retryOrFail(ctx, job.ID, fmt.Sprintf("reinforce: %s", err), existingID)
+			p.retryOrFail(ctx, job.ID, job.Claim, fmt.Sprintf("reinforce: %s", err), existingID)
 			return
 		}
 		p.putVectors(ctx, existingID, draft)
@@ -338,7 +338,7 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 	// the externalize step put before this row landed: put it back. If
 	// that fails, the retry runs the pipeline again, which puts it.
 	if err := blob.Ensure(ctx, p.store.Blobs(), draft); err != nil {
-		p.retryOrFail(ctx, job.ID, fmt.Sprintf("store: %s", err), draft.ID)
+		p.retryOrFail(ctx, job.ID, job.Claim, fmt.Sprintf("store: %s", err), draft.ID)
 		return
 	}
 	p.putVectors(ctx, draft.ID, draft)
@@ -395,7 +395,7 @@ func (p *WorkerPool) updateBySourceKey(ctx context.Context, job *storage.Job, ke
 	}
 	stored, err := p.store.Objects().GetBySourceKey(ctx, key, profileID)
 	if err != nil {
-		p.retryOrFail(ctx, job.ID, fmt.Sprintf("source key lookup: %s", err))
+		p.retryOrFail(ctx, job.ID, job.Claim, fmt.Sprintf("source key lookup: %s", err))
 		return true
 	}
 	if stored == nil {
@@ -417,7 +417,7 @@ func (p *WorkerPool) updateStored(ctx context.Context, job *storage.Job, stored 
 	stored.UpdatedAt = now
 	uctx, upEv := p.announceUpdated(ctx, stored, fields)
 	if err := p.store.Objects().Update(uctx, stored); err != nil {
-		p.retryOrFail(ctx, job.ID, fmt.Sprintf("update by source key: %s", err), stored.ID)
+		p.retryOrFail(ctx, job.ID, job.Claim, fmt.Sprintf("update by source key: %s", err), stored.ID)
 		return
 	}
 	p.writeSubmissionEdges(ctx, stored, job)
@@ -548,8 +548,15 @@ func (p *WorkerPool) putVectors(ctx context.Context, objectID string, draft *sto
 
 // retryOrFail requeues a job after a transient error, failing it once
 // its retries are exhausted.
-func (p *WorkerPool) retryOrFail(ctx context.Context, jobID, msg string, resultIDs ...string) {
-	if err := p.queue.Retry(ctx, jobID); err != nil {
+func (p *WorkerPool) retryOrFail(ctx context.Context, jobID, claim, msg string, resultIDs ...string) {
+	err := p.queue.Requeue(ctx, jobID, claim)
+	switch {
+	case err == nil:
+	case errors.Is(err, storage.ErrClaimLost):
+		// Cancelled, or requeued and claimed by another worker (lease
+		// expired): the job is not this worker's to settle.
+		slog.Warn("jobs: not requeueing a job this worker no longer holds", "job", jobID)
+	default:
 		p.markFailed(ctx, jobID, msg, resultIDs...)
 	}
 }

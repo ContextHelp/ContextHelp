@@ -193,6 +193,7 @@ func (m *mockJobStore) ExtendLease(ctx context.Context, id, claim string, ttl ti
 	return false, nil
 }
 
+func (m *mockJobStore) Requeue(ctx context.Context, id, claim string) error { return nil }
 func (m *mockJobStore) ReleaseLease(ctx context.Context, id, claim string) error { return nil }
 
 type mockPipelineStore struct{}
