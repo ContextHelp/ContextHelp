@@ -266,6 +266,25 @@ func (s *Service) viewer(ctx context.Context) storage.Viewer {
 // the operator. Failing loudly at enqueue time keeps the queue honest.
 var ErrPipelineNotFound = errors.New("pipeline not found")
 
+// ErrPipelineArchived is returned by Analyze/Enqueue when the resolved
+// pipeline exists but is archived. Archived pipelines are retained but
+// disabled (US-0105); callers surface this as 409 Conflict.
+var ErrPipelineArchived = errors.New("pipeline is archived")
+
+// pipelineArchived reports whether name resolves to an archived
+// store-backed pipeline. Registry built-ins are never archived, so a
+// registry hit short-circuits to false.
+func (s *Service) pipelineArchived(ctx context.Context, name string) bool {
+	if name == "" || s.store == nil {
+		return false
+	}
+	if _, err := s.Pipes.Get(name); err == nil {
+		return false
+	}
+	p, err := s.Store(ctx).Pipelines().Get(ctx, name)
+	return err == nil && p != nil && p.Archived
+}
+
 // pipelineExists reports whether a pipeline name resolves. Pipelines live
 // in two places: the in-memory registry (built-ins, registered at
 // startup) and the pipelines store (user-created via CreatePipeline,
@@ -338,6 +357,9 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 	if !s.pipelineExists(ctx, pipelineName) {
 		return "", fmt.Errorf("analyze: %w: type=%q pipeline=%q (no pipeline registered for this content type)",
 			ErrPipelineNotFound, req.Type, pipelineName)
+	}
+	if s.pipelineArchived(ctx, pipelineName) {
+		return "", fmt.Errorf("analyze: %w: pipeline=%q", ErrPipelineArchived, pipelineName)
 	}
 
 	// Duplicate detection (exact match only at analyze time; embeddings not yet computed).
@@ -965,6 +987,9 @@ func (s *Service) Enqueue(ctx context.Context, req AnalyzeRequest) (string, erro
 	if !s.pipelineExists(ctx, pipelineName) {
 		return "", fmt.Errorf("enqueue: %w: type=%q pipeline=%q (no pipeline registered for this content type)",
 			ErrPipelineNotFound, req.Type, pipelineName)
+	}
+	if s.pipelineArchived(ctx, pipelineName) {
+		return "", fmt.Errorf("enqueue: %w: pipeline=%q", ErrPipelineArchived, pipelineName)
 	}
 
 	job := &storage.Job{

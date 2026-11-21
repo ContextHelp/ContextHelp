@@ -213,6 +213,10 @@ func Enqueue(svc *service.Service) http.HandlerFunc {
 				WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
 				return
 			}
+			if errors.Is(err, service.ErrPipelineArchived) {
+				WriteError(w, http.StatusConflict, "CONFLICT", err.Error())
+				return
+			}
 			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 			return
 		}
