@@ -181,7 +181,7 @@ func cloneRedacted(v reflect.Value) reflect.Value {
 		c.Set(v)
 		redactStruct(c)
 		return c
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if v.IsNil() {
 			return v
 		}
@@ -244,7 +244,7 @@ func mapStrings(v reflect.Value, fn func(string) string) reflect.Value {
 // collectSecrets walks v and records each credential under its config
 // path. tag is the `secret` tag of the field v came from.
 func collectSecrets(v reflect.Value, path, tag string, out map[string]string) {
-	for v.Kind() == reflect.Ptr || v.Kind() == reflect.Interface {
+	for v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
 		if v.IsNil() {
 			return
 		}

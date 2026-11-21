@@ -296,7 +296,7 @@ func normalizeEmpty(v any) any {
 			}
 			return out
 		}
-	case reflect.Ptr, reflect.Interface:
+	case reflect.Pointer, reflect.Interface:
 		if rv.IsNil() {
 			return map[string]any{}
 		}

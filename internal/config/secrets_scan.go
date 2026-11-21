@@ -73,7 +73,7 @@ func ScanSecrets(cfg *Config) []SecretWarning {
 // their index: server.urls[0].token.
 func walkStrings(v reflect.Value, path string, fn func(path, val string)) {
 	// Dereference pointers.
-	for v.Kind() == reflect.Ptr {
+	for v.Kind() == reflect.Pointer {
 		if v.IsNil() {
 			return
 		}
