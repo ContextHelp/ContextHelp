@@ -36,6 +36,11 @@ type AnalyzeRequest struct {
 	Note           string `json:"note,omitempty"`
 	// Data is structured JSON stored on the object as metadata["data"].
 	Data map[string]any `json:"data,omitempty"`
+	// Ambient capture fields (ADR-066, ADR-067): see service.AnalyzeRequest.
+	AmbientSource string         `json:"ambient_source,omitempty"`
+	Fingerprint   string         `json:"fingerprint,omitempty"`
+	SessionID     string         `json:"session_id,omitempty"`
+	Metadata      map[string]any `json:"metadata,omitempty"`
 }
 
 // Analyze enqueues content with POST /api/v1/analyze and returns the job
