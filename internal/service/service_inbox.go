@@ -13,6 +13,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/events"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/pkg/taxonomy"
 )
 
 // inboxStatus is the status that makes an object an inbox item: capture
@@ -30,7 +31,7 @@ func (s *Service) CaptureToInbox(ctx context.Context, req InboxCaptureRequest) (
 
 	objType := req.Type
 	if objType == "" {
-		objType = "text"
+		objType = taxonomy.TypeText
 	}
 
 	obj := &storage.KnowledgeObject{
