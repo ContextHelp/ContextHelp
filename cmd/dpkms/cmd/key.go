@@ -48,9 +48,10 @@ Steps performed:
   1. Generate a new Ed25519 keypair.
   2. Create a transition record signed by both old and new key.
   3. Append the record to ~/.config/contexthelp/keys/rotation_log.json.
-  4. Archive the old private key to signing.key.bak.<timestamp>.
-  5. Store the new private key in the OS keychain.
-  6. Save the new public key file.
+  4. Store the new private key in the OS keychain.
+  5. Save the new public key file.
+
+The old private key is not archived; it is discarded.
 
 Import verification honours the rotation chain: bundles signed by a previously
 valid key are still accepted as long as the chain is intact.
@@ -68,9 +69,9 @@ func init() {
 	// key init creates a keypair; with --force it overwrites the existing
 	// private key in the OS keychain, which is unrecoverable. Destructive.
 	cliconv.WithSideEffect(keyInitCmd, cliconv.SideEffectDestructive)
-	// key rotate archives the old private key and appends a transition
-	// record. Archived material can be lost if the backup is pruned, and
-	// the rotation log has no inverse. Destructive.
+	// key rotate replaces the private key in the OS keychain (the old one is
+	// discarded, unrecoverable) and appends a transition record that has no
+	// inverse. Destructive.
 	cliconv.WithSideEffect(keyRotateCmd, cliconv.SideEffectDestructive)
 }
 
@@ -149,7 +150,6 @@ func runKeyRotate(cmd *cobra.Command, _ []string) error {
 		return outputJSON(cmd.OutOrStdout(), map[string]string{
 			"old_fingerprint": res.OldFingerprint,
 			"new_fingerprint": res.NewFingerprint,
-			"archive":         res.OldKeyArchive,
 			"rotation_log":    rotLogPath,
 			"new_public_key":  newPubPath,
 		})
@@ -158,7 +158,6 @@ func runKeyRotate(cmd *cobra.Command, _ []string) error {
 	fmt.Fprintf(cmd.OutOrStdout(), "Key rotation complete\n")
 	fmt.Fprintf(cmd.OutOrStdout(), "  old fingerprint:  %s\n", res.OldFingerprint)
 	fmt.Fprintf(cmd.OutOrStdout(), "  new fingerprint:  %s\n", res.NewFingerprint)
-	fmt.Fprintf(cmd.OutOrStdout(), "  old key archived: %s\n", res.OldKeyArchive)
 	fmt.Fprintf(cmd.OutOrStdout(), "  rotation log:     %s\n", rotLogPath)
 	fmt.Fprintf(cmd.OutOrStdout(), "  new public key:   %s\n", newPubPath)
 	fmt.Fprintf(cmd.OutOrStdout(),
