@@ -14,6 +14,13 @@ ctxt import pinboard [--token <token>] [--file <pinboard.json>] [--since <RFC333
 ctxt import raindrop --collection-id <id>|--all [--token <token>] [--since <RFC3339|YYYY-MM-DD>] [--tag <tag>] [--query <text>] [--max-items N] [--dry-run]
 # Story-target importer surface (US-0300 to US-0317):
 # ctxt import <source> [source-specific flags]
+ctxt capture [<url>|<file>|<text>] [--stdin] [--source <label>] [--pipeline <name>] [--inbox] [--every <dur>] [--wait] [--hint <t>]... [--mention @e.slug]... [--note <t>] [--raw] [--no-fanout] [--no-dedup] [--source-key <k>]
+ctxt capture browsers [--browser <b>] [--browser-profile <p>]
+ctxt capture tabs [--browser <b>] [--browser-profile <p>] [--dry-run]
+ctxt capture history [--browser <b>] [--browser-profile <p>] [--since <t>] [--until <t>] [--range FROM..TO]... [--tz <zone>] [--reset-position] [--dry-run]
+ctxt capture schedule install|uninstall|list [--browser <b>] [--browser-profile <p>] [--no-tabs] [--no-history] [--history-every <dur>] [--tabs-every <dur>]   # macOS
+ctxt watch start|stop|status
+ctxt watch enable|disable clipboard
 ctxt job list [--state pending|running|completed|failed|cancelled] [--limit N] [--offset N]
 ctxt job status <job_id>
 ctxt job retry <job_id>

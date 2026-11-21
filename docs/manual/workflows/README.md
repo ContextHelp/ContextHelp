@@ -7,9 +7,11 @@ Use this section when you want task-oriented execution, regardless of persona.
 | If your goal is to... | Start here |
 |---|---|
 | Bring new content into the system | [`ingestion-capture.md`](./ingestion-capture.md) |
-| Watch the clipboard and directories while you work | `ctxt watch --help` |
+| Capture one URL, file, stdin or clipboard, and see how the server picks the pipeline | [`capture-content.md`](./capture-content.md) |
+| Watch the clipboard and directories while you work | [`watch.md`](./watch.md) |
 | Send the tabs open in a browser profile | [`browser-tab-capture.md`](./browser-tab-capture.md) |
 | Send a browser profile's history, or backfill a time range | [`browser-history-capture.md`](./browser-history-capture.md) |
+| Keep sites out of browser capture; browser and platform support | [`browser-capture-filter.md`](./browser-capture-filter.md) |
 | Capture browser tabs and history on a timer (macOS) | [`browser-capture-schedule.md`](./browser-capture-schedule.md) |
 | Record video calls + transcribe + frame-OCR | [`meeting-capture.md`](./meeting-capture.md) |
 | Expose the graph to AI agents | [`mcp-agents.md`](./mcp-agents.md) |

@@ -187,5 +187,6 @@ The listing shows each failed URL with the server's reply. Check the server, the
 
 - [`ingestion-capture.md`](./ingestion-capture.md)
 - [`browser-history-capture.md`](./browser-history-capture.md) (browser history and backfill)
+- [`browser-capture-filter.md`](./browser-capture-filter.md) (rules, allow-only, platform support)
 - [`docs/ambient.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/ambient.md) (full filter rules)
 - [`docs/stories/capture/US-0207-web-tab-capture.md`](https://github.com/ContextHelp/ContextHelp/blob/next/docs/stories/capture/US-0207-web-tab-capture.md)
