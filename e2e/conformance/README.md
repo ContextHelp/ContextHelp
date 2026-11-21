@@ -176,6 +176,9 @@ endpoint JSON — from measurements only: the story and leak leaves over
 `e2e/stories/` supply F1, F2, F9, F10, F12, and the tier-3 verdicts in
 `verdicts/` supply F3–F8 and F11. A factor with no measurement stays
 `skip`; an ungradable verdict aborts rather than being guessed at.
+A verify leaf that exits 66 (kit's findings code) turns its factors
+`fail`; any other non-zero exit aborts, since it means the leaf itself
+did not run.
 
 ```sh
 KIT_BIN=/path/to/kit scripts/12fcc-record.sh        # re-record ctxt

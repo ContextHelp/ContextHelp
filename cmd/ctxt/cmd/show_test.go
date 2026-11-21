@@ -121,6 +121,13 @@ func TestShowTextMarkdown(t *testing.T) {
 			seedShowMarkdown(t, db)
 			withShowTerminal(t, tc.tty)
 			t.Setenv("NO_COLOR", tc.env)
+			// kit styles only when stdout supports color; a test's
+			// stdout is a pipe, so the styled case forces it.
+			force := ""
+			if tc.ansi {
+				force = "1"
+			}
+			t.Setenv("CLICOLOR_FORCE", force)
 
 			out, err := db.exec(append([]string{"show", "obj_markdown"}, tc.args...)...)
 			if err != nil {

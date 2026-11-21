@@ -62,7 +62,11 @@ func init() {
 
 	// batch status flags
 
+	// batch runs on its own as well as holding status: it imports like
+	// every other `ctxt import <source>` leaf, so it declares the same tier.
 	cliconv.WithSideEffect(importBatchCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(importBatchCmd, cliconv.IdempotencyConditional)
+
 	cliconv.WithSideEffect(importBatchStatusCmd, cliconv.SideEffectRead)
 	cliconv.WithIdempotency(importBatchStatusCmd, cliconv.IdempotencyYes)
 

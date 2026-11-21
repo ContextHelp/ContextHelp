@@ -17,6 +17,6 @@ steps:
     invoke: ["ctxt", "export", "obj_12345678", "--format", "json"]
     capture: [exit_code, stdout]
   - id: yaml
-    intent: Export the same object as YAML.
+    intent: Export the same object once more, now as YAML.
     invoke: ["ctxt", "export", "obj_12345678", "--format", "yaml"]
     capture: [exit_code, stdout]
