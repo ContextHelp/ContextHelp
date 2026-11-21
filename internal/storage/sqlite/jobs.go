@@ -267,13 +267,13 @@ func (s *JobStore) Retry(ctx context.Context, id string) error {
 		status = 'pending', error = '', started_at = NULL, completed_at = NULL,
 		claim_token = '', lease_expires_at = NULL,
 		retry_count = retry_count + 1, updated_at = ?
-	WHERE id = ? AND retry_count < max_retries`, now, id)
+	WHERE id = ? AND status IN ('failed', 'running') AND retry_count < max_retries`, now, id)
 	if err != nil {
 		return fmt.Errorf("retry job: %w", err)
 	}
 	n, _ := result.RowsAffected()
 	if n == 0 {
-		return fmt.Errorf("job %s not found or max retries exceeded", id)
+		return s.retryRefusal(ctx, id)
 	}
 	return nil
 }
@@ -474,4 +474,19 @@ func (s *JobStore) GetByIdempotencyKey(ctx context.Context, key string) (*storag
 		return nil, fmt.Errorf("get job by idempotency key: %w", err)
 	}
 	return j, nil
+}
+
+// retryRefusal explains why Retry updated no row: the job is unknown, is
+// in a state a retry does not apply to, or is out of retries. A failed
+// job is retried by the operator; a running job by the worker on a
+// transient error. Pending, completed and cancelled jobs are refused.
+func (s *JobStore) retryRefusal(ctx context.Context, id string) error {
+	j, err := s.Get(ctx, id)
+	if err != nil || j == nil {
+		return fmt.Errorf("job %s not found", id)
+	}
+	if j.Status != storage.JobFailed && j.Status != storage.JobRunning {
+		return fmt.Errorf("job %s is %s: only failed jobs can be retried", id, j.Status)
+	}
+	return fmt.Errorf("job %s: max retries exceeded", id)
 }

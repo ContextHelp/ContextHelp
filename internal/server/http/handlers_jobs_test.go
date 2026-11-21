@@ -277,3 +277,22 @@ func TestCancelJobNotFound(t *testing.T) {
 	require.NoError(t, json.Unmarshal(body, &env))
 	assert.Equal(t, "NOT_FOUND", env.Error.Code)
 }
+
+// A pending job is not retryable: the endpoint refuses it and the job
+// keeps its retry count.
+func TestRetryJobPendingRefused(t *testing.T) {
+	ts := newTestServerBundle(t)
+	defer ts.Close()
+
+	seedJob(t, ts, "job-pend")
+	req, err := http.NewRequest(http.MethodPost, ts.URL+"/api/v1/jobs/job-pend/retry", nil)
+	require.NoError(t, err)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+
+	job, err := ts.svc.GetJob(ownerCtx(), "job-pend")
+	require.NoError(t, err)
+	assert.Equal(t, 0, job.RetryCount)
+}
