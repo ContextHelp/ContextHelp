@@ -141,8 +141,22 @@ watch:
 		t.Logf("ctxt watch log:\n%s", watchLog.String())
 	})
 
-	// Give the watcher time to register on watchedDir.
-	time.Sleep(500 * time.Millisecond)
+	// Wait until the watcher is live. ctxt does no initial scan, so a file
+	// written before fsnotify registers is never seen: write a fresh
+	// root-level probe each round until `ctxt find` returns one.
+	probes := 0
+	require.Eventually(t, func() bool {
+		probes++
+		probe := fmt.Sprintf("watchprobe%dready", probes)
+		if err := os.WriteFile(filepath.Join(watchedDir, probe+".md"),
+			[]byte("# Probe\n\n"+probe+"\n"), 0o644); err != nil {
+			return false
+		}
+		find := exec.Command(ctxtBin, "find", probe)
+		find.Env = ctxtEnv
+		out, _ := find.CombinedOutput()
+		return strings.Contains(string(out), probe)
+	}, 30*time.Second, 500*time.Millisecond, "watcher never ingested a root-level probe file")
 
 	// THE REPRO: create a subdir AFTER the watcher started and drop a file in.
 	sub := filepath.Join(watchedDir, "bgroup", "acme", "renewal")
