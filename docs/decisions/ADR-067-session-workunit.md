@@ -291,7 +291,11 @@ Ticker + safety-net mirror OC's `run_check_cuts` and `run_daily_safety_net`.
 
 ### Dedup across sessions
 
-Content-hash dedup is **first wins**. When a capture's content hash matches a stored object, the capture reinforces that object and the stored `session_id`, `ambient_source` and `fingerprint` metadata stay as first written; the later capture's session id is not recorded and is not an error. The same rule holds when the service drops an exact duplicate before the job runs. Consequence: a session lists the objects it first captured, not content it re-copied from an earlier session. The ambient fields on `/api/v1/analyze` are `ambient_source` and `fingerprint` (object metadata keys of the same names), `session_id` (`objects.session_id`) and `metadata` (client keys merged into object metadata; server-set and pipeline-control keys win, client keys only add). Fingerprint dedup stays client-side (ADR-066).
+Content-hash dedup is **first wins**. When a capture's content hash matches a stored object, the capture reinforces that object and the stored `session_id`, `ambient_source` and `fingerprint` metadata stay as first written; the later capture's session id is not recorded and is not an error. The same rule holds when the service drops an exact duplicate before the job runs. Consequence: a session lists the objects it first captured, not content it re-copied from an earlier session. The ambient fields on `/api/v1/analyze` are `ambient_source` and `fingerprint` (object metadata keys of the same names), `session_id` (`objects.session_id`) and `metadata` (stored whole as a map under the object metadata key `client`; never flat-merged, so client input cannot reach a key the server or a pipeline step reads). Fingerprint dedup stays client-side (ADR-066).
+
+### Follow-up
+
+`objects.session_id` has no reader yet: no list filter, no query parameter, no `/api/v1/sessions`. Session-scoped reads (list by session, compose by session) land with the sessions table and endpoint.
 
 ### Replay semantics
 
