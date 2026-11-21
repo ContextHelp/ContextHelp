@@ -486,3 +486,36 @@ func (contentRewriter) Run(_ context.Context, d *storage.KnowledgeObject) (*stor
 	d.TextContent = ""
 	return d, nil
 }
+
+// Binary text (text_content, sections, summaries) has no blob to go to
+// and no TEXT column to live in: the write is refused as an invalid
+// submission, and nothing is stored.
+func TestUpdateObjectRejectsBinaryTextFields(t *testing.T) {
+	svc := blobTestService(t)
+	ctx := ownerCtx()
+	body := bigBody(500)
+	seedBlobObject(t, svc, "obj-text", body)
+	bin := string([]byte{0x89, 'P', 'N', 'G', 0x00, 0xff, 0xfe})
+
+	cases := map[string]func(o *storage.KnowledgeObject){
+		"text_content": func(o *storage.KnowledgeObject) { o.TextContent = bin },
+		"summaries":    func(o *storage.KnowledgeObject) { o.Summaries = []string{"ok", bin} },
+		"sections": func(o *storage.KnowledgeObject) {
+			o.Sections = []storage.Section{{Title: "t", Content: bin}}
+		},
+	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			obj, err := svc.GetObject(ctx, "obj-text")
+			require.NoError(t, err)
+			mutate(obj)
+			err = svc.UpdateObject(ctx, obj)
+			require.ErrorIs(t, err, ErrInvalidSubmission)
+
+			got, err := svc.GetObject(ctx, "obj-text")
+			require.NoError(t, err)
+			require.Equal(t, body, got.RawContent)
+			require.Empty(t, got.Sections)
+		})
+	}
+}

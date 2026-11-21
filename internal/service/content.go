@@ -94,12 +94,39 @@ func hasBlobRef(obj *storage.KnowledgeObject) bool {
 	return blob.IsBlobRef(obj.RawContent) || blob.IsBlobRef(obj.TextContent)
 }
 
+// rejectBinaryText refuses an object whose text columns hold binary
+// (invalid UTF-8 or NUL): only content has a blob to go to, so text
+// content, sections and summaries must be text. A binary object's own
+// text_content is left to ExternalizeBinary, which empties it.
+func rejectBinaryText(obj *storage.KnowledgeObject) error {
+	bad := func(field string) error {
+		return fmt.Errorf("%w: object %s: %s must be text (valid UTF-8, no NUL)", ErrInvalidSubmission, obj.ID, field)
+	}
+	if !blobref.NeedsBlob(obj.RawContent) && blobref.NeedsBlob(obj.TextContent) {
+		return bad("text_content")
+	}
+	for i, s := range obj.Summaries {
+		if blobref.NeedsBlob(s) {
+			return bad(fmt.Sprintf("summaries[%d]", i))
+		}
+	}
+	for i, sec := range obj.Sections {
+		if blobref.NeedsBlob(sec.Title) || blobref.NeedsBlob(sec.Content) {
+			return bad(fmt.Sprintf("sections[%d]", i))
+		}
+	}
+	return nil
+}
+
 // storable returns the row to write for obj: a copy whose content is
 // externalized again when it is above the threshold or binary, and whose preview
 // (MetaContentTruncated) is replaced by the ref it was read from, so
 // writing back what a read returned never inlines or truncates content.
 // obj itself is left as the caller has it.
 func (s *Service) storable(ctx context.Context, obj *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
+	if err := rejectBinaryText(obj); err != nil {
+		return nil, err
+	}
 	cp := *obj
 	cp.Metadata = maps.Clone(obj.Metadata)
 	cp.BlobContent = maps.Clone(obj.BlobContent)
