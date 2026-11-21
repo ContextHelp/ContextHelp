@@ -64,14 +64,17 @@ type Input struct {
 }
 
 // GrantPlan is one grant's share of the render plan: what the grant
-// shows of an object its data filter matched.
+// shows of an object it covers. A grant covers an object when the
+// object matches its data filter and carries none of its excluded
+// classes; the scoped driver asks the database which grants cover each
+// row a read released (ObjectPlan), with the same compiled predicates
+// the viewer's own predicate is built from.
 type GrantPlan struct {
 	ID       string
 	Audience string
 	Policy   string
 	Version  int
-	// Data is the grant's data filter, so the render layer can tell
-	// which grants match a given object.
+	// Data is the grant's data filter.
 	Data           search.Node
 	ExcludeClasses []string
 	Fields         map[string][]string
@@ -80,30 +83,37 @@ type GrantPlan struct {
 }
 
 // RenderPlan is what the render layer (ADR-080 §5) applies to the rows
-// the predicate let through.
+// the predicate let through. Viewer.Plan is the plan over every
+// applying grant; an object renders under ObjectPlan, the plan over
+// the grants that cover it alone, so a grant shows its fields only of
+// the objects it covers.
 type RenderPlan struct {
-	// Grants are the applying grants, oldest first.
+	// Grants are the applying grants, ordered by id.
 	Grants []GrantPlan
-	// Fields is the union, per type, of the fields the grants render,
-	// narrowed to what the key policy renders when one is bound. A type
-	// with no entry falls back to "*"; a type with neither shows only
-	// what is always kept (IDs, type, created_at).
+	// Fields is, per type, the union of the fields the grants the plan
+	// is over render for that type (each grant's own entry, else its "*"
+	// entry), narrowed to what the key policy renders when one is
+	// bound. A type with no entry falls back to "*"; a type with neither
+	// shows only what is always kept (IDs, type, created_at). Viewer.Plan
+	// holds the union over every grant: the most any one object renders.
 	Fields map[string][]string
 	// DenyClasses is the ceiling, applied to parts in the render layer.
 	DenyClasses []string
-	// Capabilities is the union across grants, ANDed with the key
-	// policy's.
+	// Capabilities is the union across every applying grant, ANDed with
+	// the key policy's: the request-level gate that opens a surface. A
+	// surface a capability opens answers only the objects a grant
+	// holding it covers (Viewer.ForCapability).
 	Capabilities Capabilities
-	// Masked lists the categories every applying grant masks (a category
-	// stays masked only if every matching grant masks it). Inert until
-	// span masking lands.
+	// Masked lists the categories every grant the plan is over masks (a
+	// category stays masked only if every covering grant masks it).
+	// Inert until span masking lands.
 	Masked []string
 	// PartExclusions are the classes the render layer drops parts
-	// (graph nodes, classed fields) for: the ceiling, every grant's
-	// exclusions and the key policy's. Exclusions apply per grant at the
-	// row level, where the predicate knows which grant matched; a part
-	// cannot tell, so the union is applied and a class any applying
-	// policy excludes is withheld (fail closed).
+	// (graph nodes, classed fields) for: the ceiling, every applying
+	// grant's exclusions and the key policy's, whichever grants cover
+	// the object. Exclusions decide rows per grant (a grant covers no
+	// object of a class it excludes); a part of an object is withheld
+	// when any applying policy excludes its class (fail closed).
 	PartExclusions []string
 }
 
@@ -138,6 +148,16 @@ type view struct {
 	sql        map[search.Dialect]predicate
 	unnumbered map[search.Dialect]predicate
 	plan       RenderPlan
+	// grants are the applying grants in plan order; grantNodes each
+	// one's (data AND NOT excluded); grantSQL the same per dialect with
+	// ? placeholders, the predicates ObjectPlan's attribution runs.
+	grants     []Grant
+	grantNodes []search.Node
+	grantSQL   map[search.Dialect][]storage.SQLPredicate
+	// keyPolicy and keyNode are the bound key policy and its predicate,
+	// nil when none is bound.
+	keyPolicy *Policy
+	keyNode   search.Node
 }
 
 type predicate struct {
@@ -148,8 +168,9 @@ type predicate struct {
 // Compile builds a principal's viewer from in (ADR-080 §2): the union
 // over grants of (data AND NOT excluded), ANDed with NOT denied for the
 // ceiling, ANDed with the key policy's own (data AND NOT excluded); the
-// render plan as the union of the grants' fields and capabilities
-// narrowed by the key policy; and the cache key over every policy
+// render plan over every grant, narrowed by the key policy, and each
+// grant's own predicate, which attributes a released object to the
+// grants covering it (ObjectPlan); and the cache key over every policy
 // version. No grants compiles to a viewer that matches nothing.
 func Compile(in Input) (Viewer, error) {
 	if in.PrincipalID == "" {
@@ -158,9 +179,11 @@ func Compile(in Input) (Viewer, error) {
 	v := &view{
 		principal: in.PrincipalID, identity: in.IdentityID,
 		sql: map[search.Dialect]predicate{}, unnumbered: map[search.Dialect]predicate{},
+		grantSQL: map[search.Dialect][]storage.SQLPredicate{},
 	}
 	grants := withRecordGrant(in)
 	sort.SliceStable(grants, func(i, j int) bool { return grants[i].ID < grants[j].ID })
+	v.grants = grants
 
 	union := make([]search.Node, 0, len(grants))
 	for _, g := range grants {
@@ -168,13 +191,22 @@ func Compile(in Input) (Viewer, error) {
 		if err != nil {
 			return Viewer{}, fmt.Errorf("compile viewer: grant %s: policy %s: %w", g.ID, g.Policy.Name, err)
 		}
-		union = append(union, andNot(node, g.Policy.ExcludeClasses))
+		covers := andNot(node, g.Policy.ExcludeClasses)
+		union = append(union, covers)
+		for _, d := range dialects {
+			sql, args, err := search.CompileUnnumbered(d, covers, nil)
+			if err != nil {
+				return Viewer{}, fmt.Errorf("compile viewer: grant %s: %w", g.ID, err)
+			}
+			v.grantSQL[d] = append(v.grantSQL[d], storage.SQLPredicate{SQL: sql, Args: args})
+		}
 		v.plan.Grants = append(v.plan.Grants, GrantPlan{
 			ID: g.ID, Audience: g.Audience, Policy: g.Policy.Name, Version: g.Policy.Version,
 			Data: node, ExcludeClasses: storage.NormalizeClasses(g.Policy.ExcludeClasses),
 			Fields: g.Policy.Fields, Mask: g.Policy.Redact.Mask, Capabilities: g.Policy.Capabilities,
 		})
 	}
+	v.grantNodes = union
 	v.plan.DenyClasses = storage.NormalizeClasses(in.DenyClasses)
 	v.plan.Fields, v.plan.Capabilities, v.plan.Masked = unionPlan(grants)
 	exclusions := slices.Clone(in.DenyClasses)
@@ -182,36 +214,52 @@ func Compile(in Input) (Viewer, error) {
 		exclusions = append(exclusions, g.Policy.ExcludeClasses...)
 	}
 
-	var keyNode search.Node
 	if in.KeyPolicy != nil {
 		node, err := in.KeyPolicy.DataNode()
 		if err != nil {
 			return Viewer{}, fmt.Errorf("compile viewer: key policy %s: %w", in.KeyPolicy.Name, err)
 		}
-		keyNode = andNot(node, in.KeyPolicy.ExcludeClasses)
+		key := *in.KeyPolicy
+		v.keyPolicy, v.keyNode = &key, andNot(node, in.KeyPolicy.ExcludeClasses)
 		v.plan.Fields = intersectFields(v.plan.Fields, *in.KeyPolicy)
 		v.plan.Capabilities = intersectCapabilities(v.plan.Capabilities, in.KeyPolicy.Capabilities)
 		exclusions = append(exclusions, in.KeyPolicy.ExcludeClasses...)
 	}
 	v.plan.PartExclusions = storage.NormalizeClasses(exclusions)
 
-	if len(union) > 0 {
-		v.node = buildPredicate(union, v.plan.DenyClasses, keyNode)
-		for _, d := range []search.Dialect{search.DialectSQLite, search.DialectPostgres} {
-			sql, args, err := search.CompileFor(d, v.node)
-			if err != nil {
-				return Viewer{}, fmt.Errorf("compile viewer: %w", err)
-			}
-			v.sql[d] = predicate{sql: sql, args: args}
-			unnumbered, uargs, err := search.CompileUnnumbered(d, v.node, nil)
-			if err != nil {
-				return Viewer{}, fmt.Errorf("compile viewer: %w", err)
-			}
-			v.unnumbered[d] = predicate{sql: unnumbered, args: uargs}
-		}
+	if err := v.compilePredicate(union); err != nil {
+		return Viewer{}, err
 	}
 	v.key = policyKey(in, grants)
 	return Viewer{view: v}, nil
+}
+
+// dialects are the SQL dialects a viewer's predicates are compiled for.
+var dialects = []search.Dialect{search.DialectSQLite, search.DialectPostgres}
+
+// compilePredicate sets v's predicate to the union of grant nodes,
+// ANDed with the ceiling and the key policy, in every dialect; no node
+// leaves v matching nothing.
+func (v *view) compilePredicate(union []search.Node) error {
+	v.node = nil
+	v.sql, v.unnumbered = map[search.Dialect]predicate{}, map[search.Dialect]predicate{}
+	if len(union) == 0 {
+		return nil
+	}
+	v.node = buildPredicate(union, v.plan.DenyClasses, v.keyNode)
+	for _, d := range dialects {
+		sql, args, err := search.CompileFor(d, v.node)
+		if err != nil {
+			return fmt.Errorf("compile viewer: %w", err)
+		}
+		v.sql[d] = predicate{sql: sql, args: args}
+		unnumbered, uargs, err := search.CompileUnnumbered(d, v.node, nil)
+		if err != nil {
+			return fmt.Errorf("compile viewer: %w", err)
+		}
+		v.unnumbered[d] = predicate{sql: unnumbered, args: uargs}
+	}
+	return nil
 }
 
 // buildPredicate ANDs the grant union with the ceiling and the key
@@ -249,24 +297,12 @@ func classOut(classes []string) search.Node {
 	return search.ComparisonNode{Field: "class", Operator: search.OpOut, Value: classes}
 }
 
-// unionPlan unions the grants' fields per type, their capabilities and
-// intersects their mask lists. A type one grant projects every field
-// of (FieldAll) is every field in the union.
+// unionPlan unions grants' fields per type (mergeFields) and their
+// capabilities, and intersects their mask lists.
 func unionPlan(grants []Grant) (map[string][]string, Capabilities, []string) {
-	fields := map[string][]string{}
 	var caps Capabilities
 	var masked []string
 	for i, g := range grants {
-		for typ, fs := range g.Policy.Fields {
-			for _, f := range fs {
-				if !slices.Contains(fields[typ], f) {
-					fields[typ] = append(fields[typ], f)
-				}
-			}
-			if slices.Contains(fs, FieldAll) {
-				fields[typ] = []string{FieldAll}
-			}
-		}
 		caps = unionCapabilities(caps, g.Policy.Capabilities)
 		if i == 0 {
 			masked = slices.Clone(g.Policy.Redact.Mask)
@@ -274,10 +310,45 @@ func unionPlan(grants []Grant) (map[string][]string, Capabilities, []string) {
 			masked = intersect(masked, g.Policy.Redact.Mask)
 		}
 	}
-	if len(fields) == 0 {
-		fields = nil
+	return mergeFields(grants), caps, storage.NormalizeClasses(masked)
+}
+
+// mergeFields unions, for every type any of grants names (the "*"
+// entry included), the fields each grant renders for that type: its own
+// entry, else its "*" entry, as Policy.FieldsFor resolves it. A grant
+// that names only "*" thus adds its fields to a type another grant
+// names. A type one grant projects every field of (FieldAll) is every
+// field in the union; nil when no grant renders anything.
+func mergeFields(grants []Grant) map[string][]string {
+	fields := map[string][]string{}
+	for _, g := range grants {
+		for typ := range g.Policy.Fields {
+			if _, done := fields[typ]; done {
+				continue
+			}
+			var fs []string
+			for _, h := range grants {
+				for _, f := range h.Policy.FieldsFor(typ) {
+					if !slices.Contains(fs, f) {
+						fs = append(fs, f)
+					}
+				}
+			}
+			if slices.Contains(fs, FieldAll) {
+				fs = []string{FieldAll}
+			}
+			fields[typ] = fs
+		}
 	}
-	return fields, caps, storage.NormalizeClasses(masked)
+	for typ, fs := range fields {
+		if len(fs) == 0 {
+			delete(fields, typ)
+		}
+	}
+	if len(fields) == 0 {
+		return nil
+	}
+	return fields
 }
 
 // intersectFields keeps, per type of fields, the fields key renders for

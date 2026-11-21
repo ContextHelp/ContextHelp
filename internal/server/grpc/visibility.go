@@ -52,7 +52,8 @@ func visibilityUnaryInterceptor(cfg visibilityConfig) grpc.UnaryServerIntercepto
 		if err != nil {
 			return nil, err
 		}
-		if err := authorizeCapability(ctx, info.FullMethod); err != nil {
+		ctx, err = authorizeCapability(ctx, info.FullMethod)
+		if err != nil {
 			return nil, err
 		}
 		if ok && v.IsUnrestricted() {
@@ -87,7 +88,8 @@ func visibilityStreamInterceptor(cfg visibilityConfig) grpc.StreamServerIntercep
 		if err != nil {
 			return err
 		}
-		if err := authorizeCapability(ctx, info.FullMethod); err != nil {
+		ctx, err = authorizeCapability(ctx, info.FullMethod)
+		if err != nil {
 			return err
 		}
 		if ok && v.IsUnrestricted() {

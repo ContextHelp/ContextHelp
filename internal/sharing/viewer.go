@@ -9,8 +9,6 @@ package sharing
 
 import (
 	"context"
-	"slices"
-	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -128,21 +126,7 @@ func (v Viewer) Allows(c string) bool {
 	if v.view == nil {
 		return false
 	}
-	caps := v.view.plan.Capabilities
-	if mode, ok := strings.CutPrefix(c, storage.CapabilitySearchPrefix); ok {
-		return slices.Contains(caps.Search, mode)
-	}
-	switch c {
-	case storage.CapabilityEntities:
-		return caps.Entities
-	case storage.CapabilityExport:
-		return caps.Export
-	case storage.CapabilityMCP:
-		return caps.MCP
-	case storage.CapabilityEvents:
-		return caps.Events
-	}
-	return false
+	return v.view.plan.Capabilities.Has(c)
 }
 
 // PredicateNode returns the predicate's AST, for callers that compile

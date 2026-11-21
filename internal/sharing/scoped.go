@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
+	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -21,7 +22,10 @@ import (
 // an unrendered object: there is no accessor that returns one. A
 // context no transport attached a viewer to gets a driver whose every
 // read refuses. prov supplies the step contracts the render layer
-// applies the derived rule with.
+// applies the derived rule with. Each object renders through the grants
+// that cover it: after a read, one attribution query per page asks the
+// database which of the viewer's grants cover each row it released
+// (renderDriver.attribute); a viewer with one grant skips it.
 func Scoped(ctx context.Context, d storage.StorageDriver, prov Provenance) storage.StorageDriver {
 	v, ok := FromContext(ctx)
 	if !ok {
@@ -35,7 +39,10 @@ func Scoped(ctx context.Context, d storage.StorageDriver, prov Provenance) stora
 		l = NewLedger()
 	}
 	l.MarkScoped()
-	return renderDriver{StorageDriver: storage.ScopedDriver(v, d), v: v, ledger: l, prov: prov}
+	return renderDriver{
+		StorageDriver: storage.ScopedDriver(v, d), v: v, ledger: l, prov: prov,
+		preds: v.grantPredicates(search.DialectFor(d)),
+	}
 }
 
 // renderDriver is a restricted viewer's driver: the scoped driver with
@@ -45,6 +52,9 @@ type renderDriver struct {
 	v      Viewer
 	ledger *Ledger
 	prov   Provenance
+	// preds are the viewer's grants' predicates in the driver's
+	// dialect, in plan order: what attribute runs.
+	preds []storage.SQLPredicate
 }
 
 func (d renderDriver) Objects() storage.ObjectStore {
@@ -99,43 +109,73 @@ func (d renderDriver) releaseEndpoint(ctx context.Context, typ, id string) {
 	d.releaseObject(ctx, id)
 }
 
-// render renders one object and records it.
-func (d renderDriver) render(obj *storage.KnowledgeObject) *storage.KnowledgeObject {
-	if obj == nil {
-		return nil
-	}
-	r := Render(d.v, obj, d.prov)
+// renderOne renders one object under its coverage and records it.
+func (d renderDriver) renderOne(obj *storage.KnowledgeObject, covering []bool) *storage.KnowledgeObject {
+	r := Render(d.v, obj, covering, d.prov)
 	d.ledger.AddObject(r.Object.ID)
 	d.ledger.AddWithheld(r.Withheld)
 	return r.Object
 }
 
-func (d renderDriver) renderAll(objs []*storage.KnowledgeObject) []*storage.KnowledgeObject {
+// render attributes and renders one object.
+func (d renderDriver) render(ctx context.Context, obj *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
+	if obj == nil {
+		return nil, nil
+	}
+	a, err := d.attribute(ctx, []string{obj.ID})
+	if err != nil {
+		return nil, err
+	}
+	return d.renderOne(obj, a.of(obj.ID)), nil
+}
+
+// renderAll attributes a page of objects in one query and renders each.
+func (d renderDriver) renderAll(ctx context.Context, objs []*storage.KnowledgeObject) ([]*storage.KnowledgeObject, error) {
 	if objs == nil {
-		return nil
+		return nil, nil
+	}
+	ids := make([]string, 0, len(objs))
+	for _, o := range objs {
+		if o != nil {
+			ids = append(ids, o.ID)
+		}
+	}
+	a, err := d.attribute(ctx, ids)
+	if err != nil {
+		return nil, err
 	}
 	out := make([]*storage.KnowledgeObject, 0, len(objs))
 	for _, o := range objs {
 		if o != nil {
-			out = append(out, d.render(o))
+			out = append(out, d.renderOne(o, a.of(o.ID)))
 		}
 	}
-	return out
+	return out, nil
 }
 
 // renderNodeAware renders each result's object and keeps only the node
 // hits that point at a node the rendered graph still holds; the
 // document view is rebuilt from the rendered object.
-func (d renderDriver) renderNodeAware(res []*storage.NodeAwareResult) []*storage.NodeAwareResult {
+func (d renderDriver) renderNodeAware(ctx context.Context, res []*storage.NodeAwareResult) ([]*storage.NodeAwareResult, error) {
 	if res == nil {
-		return nil
+		return nil, nil
+	}
+	ids := make([]string, 0, len(res))
+	for _, r := range res {
+		if r != nil && r.Object != nil {
+			ids = append(ids, r.Object.ID)
+		}
+	}
+	a, err := d.attribute(ctx, ids)
+	if err != nil {
+		return nil, err
 	}
 	out := make([]*storage.NodeAwareResult, 0, len(res))
 	for _, r := range res {
 		if r == nil || r.Object == nil {
 			continue
 		}
-		obj := d.render(r.Object)
+		obj := d.renderOne(r.Object, a.of(r.Object.ID))
 		nr := &storage.NodeAwareResult{Object: obj}
 		if r.DocumentView != nil {
 			dv := projection.ProjectDocument(obj)
@@ -148,7 +188,7 @@ func (d renderDriver) renderNodeAware(res []*storage.NodeAwareResult) []*storage
 		}
 		out = append(out, nr)
 	}
-	return out
+	return out, nil
 }
 
 // nodeIDOfRef turns a node URI (ctxt:node/<object>/<type>/<n>) into
@@ -182,7 +222,7 @@ func (s renderObjects) Get(ctx context.Context, id string) (*storage.KnowledgeOb
 	if err != nil {
 		return nil, err
 	}
-	return s.d.render(o), nil
+	return s.d.render(ctx, o)
 }
 
 func (s renderObjects) GetByContentHash(ctx context.Context, hash, profileID string) (*storage.KnowledgeObject, error) {
@@ -190,7 +230,7 @@ func (s renderObjects) GetByContentHash(ctx context.Context, hash, profileID str
 	if err != nil {
 		return nil, err
 	}
-	return s.d.render(o), nil
+	return s.d.render(ctx, o)
 }
 
 func (s renderObjects) GetBySourceKey(ctx context.Context, key, profileID string) (*storage.KnowledgeObject, error) {
@@ -198,7 +238,7 @@ func (s renderObjects) GetBySourceKey(ctx context.Context, key, profileID string
 	if err != nil {
 		return nil, err
 	}
-	return s.d.render(o), nil
+	return s.d.render(ctx, o)
 }
 
 func (s renderObjects) List(ctx context.Context, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, int, error) {
@@ -206,7 +246,11 @@ func (s renderObjects) List(ctx context.Context, filter storage.ObjectFilter) ([
 	if err != nil {
 		return nil, 0, err
 	}
-	return s.d.renderAll(objs), total, nil
+	out, err := s.d.renderAll(ctx, objs)
+	if err != nil {
+		return nil, 0, err
+	}
+	return out, total, nil
 }
 
 func (s renderObjects) ListBySQL(ctx context.Context, where string, args []any, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, int, error) {
@@ -214,7 +258,11 @@ func (s renderObjects) ListBySQL(ctx context.Context, where string, args []any, 
 	if err != nil {
 		return nil, 0, err
 	}
-	return s.d.renderAll(objs), total, nil
+	out, err := s.d.renderAll(ctx, objs)
+	if err != nil {
+		return nil, 0, err
+	}
+	return out, total, nil
 }
 
 func (s renderObjects) VectorSearch(ctx context.Context, q storage.VectorQuery, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
@@ -222,7 +270,7 @@ func (s renderObjects) VectorSearch(ctx context.Context, q storage.VectorQuery, 
 	if err != nil {
 		return nil, err
 	}
-	return s.d.renderAll(objs), nil
+	return s.d.renderAll(ctx, objs)
 }
 
 func (s renderObjects) FTSSearch(ctx context.Context, query string, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
@@ -230,7 +278,7 @@ func (s renderObjects) FTSSearch(ctx context.Context, query string, filter stora
 	if err != nil {
 		return nil, err
 	}
-	return s.d.renderAll(objs), nil
+	return s.d.renderAll(ctx, objs)
 }
 
 func (s renderObjects) FTSSearchNodeAware(ctx context.Context, query string, filter storage.ObjectFilter, naf storage.NodeAwareFilter) ([]*storage.NodeAwareResult, error) {
@@ -238,7 +286,7 @@ func (s renderObjects) FTSSearchNodeAware(ctx context.Context, query string, fil
 	if err != nil {
 		return nil, err
 	}
-	return s.d.renderNodeAware(res), nil
+	return s.d.renderNodeAware(ctx, res)
 }
 
 func (s renderObjects) VectorSearchNodeAware(ctx context.Context, q storage.VectorQuery, filter storage.ObjectFilter, naf storage.NodeAwareFilter) ([]*storage.NodeAwareResult, error) {
@@ -246,7 +294,7 @@ func (s renderObjects) VectorSearchNodeAware(ctx context.Context, q storage.Vect
 	if err != nil {
 		return nil, err
 	}
-	return s.d.renderNodeAware(res), nil
+	return s.d.renderNodeAware(ctx, res)
 }
 
 func (s renderObjects) ListDueReminders(ctx context.Context, now time.Time) ([]*storage.KnowledgeObject, error) {
@@ -254,7 +302,7 @@ func (s renderObjects) ListDueReminders(ctx context.Context, now time.Time) ([]*
 	if err != nil {
 		return nil, err
 	}
-	return s.d.renderAll(objs), nil
+	return s.d.renderAll(ctx, objs)
 }
 
 func (s renderObjects) ListPendingReminders(ctx context.Context) ([]*storage.KnowledgeObject, error) {
@@ -262,16 +310,23 @@ func (s renderObjects) ListPendingReminders(ctx context.Context) ([]*storage.Kno
 	if err != nil {
 		return nil, err
 	}
-	return s.d.renderAll(objs), nil
+	return s.d.renderAll(ctx, objs)
 }
 
 // Update refuses to write back an object the viewer sees rendered: the
 // stored row holds what the view withheld, and the copy a handler
-// edited is the projection. Only a policy that projects every field of
-// the type reads the row whole and may write it.
+// edited is the projection. Only when the grants covering the object
+// project every field of its type is the row read whole, and may it be
+// written.
 func (s renderObjects) Update(ctx context.Context, obj *storage.KnowledgeObject) error {
-	if obj != nil && !newFieldSet(s.d.v.Plan().FieldsFor(obj.Type)).all {
-		return fmt.Errorf("update object %s: the viewer sees it rendered, a write back would erase withheld fields: %w", obj.ID, storage.ErrRestrictedViewer)
+	if obj != nil {
+		a, err := s.d.attribute(ctx, []string{obj.ID})
+		if err != nil {
+			return fmt.Errorf("update object %s: %w", obj.ID, err)
+		}
+		if !newFieldSet(s.d.v.ObjectPlan(a.of(obj.ID)).FieldsFor(obj.Type)).all {
+			return fmt.Errorf("update object %s: the viewer sees it rendered, a write back would erase withheld fields: %w", obj.ID, storage.ErrRestrictedViewer)
+		}
 	}
 	return s.ObjectStore.Update(ctx, obj)
 }
