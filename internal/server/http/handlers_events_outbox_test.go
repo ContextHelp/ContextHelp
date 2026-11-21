@@ -46,7 +46,6 @@ func TestSSEFramesCarryOutboxIDs(t *testing.T) {
 	own := e.open(t, capOwnerToken)
 	s1 := e.updated(t, e.note)
 	s2 := e.updated(t, e.contact)
-	e.publish(t, events.TopicJobCompleted, "worker.pool", events.JobCompletedPayload{JobID: "j"})
 
 	ev1, id1 := own.nextID(t)
 	ev2, id2 := own.nextID(t)
@@ -58,6 +57,10 @@ func TestSSEFramesCarryOutboxIDs(t *testing.T) {
 	require.Len(t, rows, 2)
 	assert.Equal(t, rows[0].ID, ev1.ID, "envelope id is the row's id")
 	assert.Equal(t, rows[1].ID, ev2.ID)
+	// Published only once both rows are out: a bus-only event is handed
+	// to the loop directly, so it is not ordered against outbox rows
+	// still waiting on the wake-up.
+	e.publish(t, events.TopicJobCompleted, "worker.pool", events.JobCompletedPayload{JobID: "j"})
 	job, jid := own.nextID(t)
 	assert.Equal(t, string(events.TopicJobCompleted), job.Type)
 	assert.Empty(t, jid, "a bus-only event has no id")
