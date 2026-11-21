@@ -73,17 +73,16 @@ Examples:
 var approvalApproveCmd = &cobra.Command{
 	Use:   "approve <id>",
 	Short: "Approve a request",
-	Long: `Approve a request. Your approval binds to the payload digest. Use
---digest to pin the digest you reviewed with 'ctxt approval show'.
-Without it, the command reads the request first and approves the digest
-it finds. The last approval a request needs applies the change at once.
+	Long: `Approve a request. Your approval binds to the payload digest, which
+--digest requires: read the request with 'ctxt approval show <id>',
+which prints the digest, and pass the one you reviewed. The last
+approval a request needs applies the change at once.
 If what the request was filed against changed since, the request ends
 stale, nothing is applied, and the requester files it again. When the
 change produces a credential, this command prints it once; nothing shows
 it again.
 
 Examples:
-  ctxt approval approve apr_01J...
   ctxt approval approve apr_01J... --digest v1:sha256:... --note "matches the ticket"`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error { return runApprovalDecide(cmd, args[0], "approve") },
@@ -94,10 +93,11 @@ var approvalRejectCmd = &cobra.Command{
 	Short: "Reject a request",
 	Long: `Reject a request. One rejection by an eligible approver rejects it,
 whatever approvals it already has. The rejection binds to the payload
-digest like an approval does, and --note is kept with it.
+digest like an approval does (--digest is required, as for approve), and
+--note is kept with it.
 
 Examples:
-  ctxt approval reject apr_01J... --note "wrong audience"`,
+  ctxt approval reject apr_01J... --digest v1:sha256:... --note "wrong audience"`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error { return runApprovalDecide(cmd, args[0], "reject") },
 }
@@ -122,7 +122,7 @@ func init() {
 	approvalListCmd.Flags().Int("limit", 0, "show at most this many requests")
 	for _, c := range []*cobra.Command{approvalApproveCmd, approvalRejectCmd} {
 		c.Flags().String("note", "", "a note kept with your decision")
-		c.Flags().String("digest", "", "the payload digest you reviewed; read from the request when unset")
+		c.Flags().String("digest", "", "the payload digest you reviewed, as printed by `ctxt approval show <id>` (required)")
 	}
 
 	cliconv.WithSideEffect(approvalListCmd, cliconv.SideEffectRead)
@@ -229,7 +229,7 @@ type approvalRow struct {
 
 func renderApprovals(cmd *cobra.Command, w io.Writer, list []approvalReply) error {
 	if isJSONOutput() {
-		return outputJSON(w, map[string]any{"approvals": list, "total": len(list)})
+		return outputJSON(w, map[string]any{"data": list, "total": len(list)})
 	}
 	rows := make([]approvalRow, 0, len(list))
 	for _, a := range list {
@@ -327,21 +327,19 @@ func printApproval(w io.Writer, a approvalReply) {
 }
 
 // runApprovalDecide approves or rejects request id (verb approve or
-// reject), bound to --digest or to the digest the request holds now.
+// reject), bound to the --digest the approver reviewed. The command
+// never reads the digest for it: binding to whatever the request holds
+// now would approve a payload the approver never saw.
 func runApprovalDecide(cmd *cobra.Command, id, verb string) error {
 	note, _ := cmd.Flags().GetString("note")
 	digest, _ := cmd.Flags().GetString("digest")
 	digest = strings.TrimSpace(digest)
+	if digest == "" {
+		return output.UsageError(fmt.Sprintf("--digest is required: review the request with `ctxt approval show %s`, which prints its digest, then pass it", id))
+	}
 	client, err := newDpkmsClient(cmd, dpkmsclient.DefaultTimeout)
 	if err != nil {
 		return err
-	}
-	if digest == "" {
-		var a approvalReply
-		if err := client.Get(cmdContext(cmd), approvalPath(id), nil, &a); err != nil {
-			return err
-		}
-		digest = a.PayloadDigest
 	}
 	if kitcli.IsDryRun(cmd) {
 		fmt.Fprintf(cmd.OutOrStdout(), "Would %s approval request %s at digest %s on %s\n", verb, id, digest, client.URL())

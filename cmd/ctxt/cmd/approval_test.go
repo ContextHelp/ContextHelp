@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -30,10 +31,10 @@ func TestApprovalCommands_EmptyQueue(t *testing.T) {
 		t.Fatalf("list json: %v\n%s", err, out)
 	}
 	var listed struct {
-		Approvals []approvalReply `json:"approvals"`
-		Total     int             `json:"total"`
+		Data  []approvalReply `json:"data"`
+		Total int             `json:"total"`
 	}
-	if err := json.Unmarshal([]byte(out), &listed); err != nil || listed.Total != 0 || listed.Approvals == nil {
+	if err := json.Unmarshal([]byte(out), &listed); err != nil || listed.Total != 0 || listed.Data == nil {
 		t.Errorf("list json = %q (%v), want an empty list", out, err)
 	}
 	if _, err := db.exec("approval", "show", "apr_missing"); exitOf(err) != output.ExitNotFound {
@@ -116,16 +117,27 @@ func (f *fakeApprovals) sent() ([]string, []map[string]string) {
 	return append([]string(nil), f.calls...), append([]map[string]string(nil), f.bodies...)
 }
 
-// approve reads the request for its digest unless --digest pins one,
-// sends it with the note, and prints the once-only result alone on
-// stdout; reject, withdraw and list call their routes.
+// approve and reject refuse to run without --digest, send the digest
+// with the note, and print the once-only result alone on stdout;
+// withdraw and list call their routes.
 func TestApprovalCommands_DecideOverTheAPI(t *testing.T) {
 	db := setupTestDB(t, dpkmstest.WithKeys())
 	fake := &fakeApprovals{}
 	ts := httptest.NewServer(fake)
 	t.Cleanup(ts.Close)
 
-	out, err := db.exec("approval", "approve", "apr_1", "--note", "looks right", "--server", ts.URL)
+	// Without --digest nothing is sent, not even a read.
+	for _, verb := range []string{"approve", "reject"} {
+		out, err := db.exec("approval", verb, "apr_1", "--note", "looks right", "--server", ts.URL)
+		if exitOf(err) != output.ExitUsage || !strings.Contains(out+fmt.Sprint(err), "ctxt approval show apr_1") {
+			t.Errorf("%s without --digest: exit %d (%v)\n%s, want a usage error pointing at show", verb, exitOf(err), err, out)
+		}
+	}
+	if calls, _ := fake.sent(); len(calls) != 0 {
+		t.Fatalf("a decision without --digest called the server: %v", calls)
+	}
+
+	out, err := db.exec("approval", "approve", "apr_1", "--digest", fakeDigest, "--note", "looks right", "--server", ts.URL)
 	if err != nil {
 		t.Fatalf("approve: %v\n%s", err, out)
 	}
@@ -133,11 +145,11 @@ func TestApprovalCommands_DecideOverTheAPI(t *testing.T) {
 		t.Errorf("first approve printed %q", out)
 	}
 	calls, bodies := fake.sent()
-	if len(calls) != 2 || calls[0] != "GET /api/v1/approvals/apr_1?" || calls[1] != "POST /api/v1/approvals/apr_1/approve?" {
-		t.Fatalf("calls = %v, want the read then the decision", calls)
+	if len(calls) != 1 || calls[0] != "POST /api/v1/approvals/apr_1/approve?" {
+		t.Fatalf("calls = %v, want the decision alone", calls)
 	}
-	if bodies[1]["payload_digest"] != fakeDigest || bodies[1]["note"] != "looks right" {
-		t.Errorf("decision body = %v", bodies[1])
+	if bodies[0]["payload_digest"] != fakeDigest || bodies[0]["note"] != "looks right" {
+		t.Errorf("decision body = %v", bodies[0])
 	}
 
 	out, err = db.exec("approval", "approve", "apr_1", "--digest", fakeDigest, "--server", ts.URL)
@@ -147,8 +159,8 @@ func TestApprovalCommands_DecideOverTheAPI(t *testing.T) {
 	if !strings.Contains(out, "the-secret") || !strings.Contains(out, "shown once") {
 		t.Errorf("final approve printed %q, want the result once", out)
 	}
-	if calls, _ = fake.sent(); len(calls) != 3 {
-		t.Errorf("--digest still read the request: %v", calls)
+	if calls, _ = fake.sent(); len(calls) != 2 {
+		t.Errorf("the decision read the request: %v", calls)
 	}
 	if _, err := db.exec("approval", "approve", "apr_1", "--digest", "v1:sha256:other", "--server", ts.URL); err == nil {
 		t.Error("a mismatched digest was not reported")
