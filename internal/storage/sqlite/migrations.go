@@ -320,6 +320,11 @@ var migrations = []migration{
 	// backfill as allowed. Columns and an index only; a replay is a
 	// no-op.
 	{Version: 57, fn: migrate057AccessReceipt},
+	// Migration 058: jobs.user_ambient (the ambient-capture envelope an
+	// enqueue client sends) and objects.session_id with a partial index
+	// (ADR-067). Column adds and IF NOT EXISTS only; the FTS input is
+	// unchanged.
+	{Version: 58, fn: migrate058AmbientSession},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
@@ -758,6 +763,29 @@ func migrate055SourceKeyPerProfile(ctx context.Context, d *Driver) error {
 		if _, err := d.db.ExecContext(ctx, stmt); err != nil {
 			return fmt.Errorf("source key per profile: %w", err)
 		}
+	}
+	return nil
+}
+
+// migrate058AmbientSession adds jobs.user_ambient (JSON text) and the
+// nullable objects.session_id soft FK with a partial index over grouped
+// objects (ADR-067). Idempotent per column.
+func migrate058AmbientSession(ctx context.Context, d *Driver) error {
+	if err := addJobsColumnIfMissing(ctx, d, "user_ambient", "TEXT DEFAULT ''"); err != nil {
+		return err
+	}
+	has, err := tableHasColumn(ctx, d, "objects", "session_id")
+	if err != nil {
+		return err
+	}
+	if !has {
+		if _, err := d.db.ExecContext(ctx, `ALTER TABLE objects ADD COLUMN session_id TEXT`); err != nil {
+			return fmt.Errorf("add objects.session_id: %w", err)
+		}
+	}
+	if _, err := d.db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_objects_session
+		ON objects(session_id) WHERE session_id IS NOT NULL`); err != nil {
+		return fmt.Errorf("index objects.session_id: %w", err)
 	}
 	return nil
 }

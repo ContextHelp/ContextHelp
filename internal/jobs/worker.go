@@ -252,6 +252,12 @@ func (p *WorkerPool) processWithHops(ctx context.Context, job *storage.Job) (*st
 		}
 	}
 
+	// ambient context (source, fingerprint, session, client metadata) lands
+	// after the steps, so a step that replaces the metadata map cannot drop
+	// it; server-owned keys win over client metadata (see
+	// storageutil.ApplyAmbient).
+	storageutil.ApplyAmbient(draft, job.UserAmbient)
+
 	return draft, nil
 }
 
