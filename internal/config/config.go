@@ -745,6 +745,9 @@ const (
 	// (server.events_retention): the window a Last-Event-ID resume can
 	// reach back over.
 	DefaultEventsRetention = 7 * 24 * time.Hour
+
+	// DefaultMaxAnalyzeBytes is server.max_analyze_bytes: 64 MiB of content.
+	DefaultMaxAnalyzeBytes int64 = 64 << 20
 )
 
 // ServerConfig represents server configuration
@@ -776,6 +779,12 @@ type ServerConfig struct {
 	// or "public". Empty means unset; EffectiveAccess resolves the
 	// default and the legacy server.public shorthand.
 	Access string `mapstructure:"access" yaml:"access"`
+	// MaxAnalyzeBytes caps the content of one POST /analyze or
+	// /pipelines/enqueue request on a protected or public instance; the
+	// body limit is this plus room for the note, data and metadata. A
+	// larger body is refused with 413. 0 = unlimited. A private
+	// (loopback-only) instance never caps the body.
+	MaxAnalyzeBytes int64 `mapstructure:"max_analyze_bytes" yaml:"max_analyze_bytes"`
 	// PublicURL is the URL people open the instance at: the base of
 	// every invite and sign-in link (ADR-079 §4). Required on a
 	// protected or public instance whose server.auth.sign_in lists a
@@ -1549,6 +1558,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("server.reminder_interval", DefaultReminderInterval)
 	v.SetDefault("server.events_heartbeat", DefaultEventsHeartbeat)
 	v.SetDefault("server.events_retention", DefaultEventsRetention)
+	v.SetDefault("server.max_analyze_bytes", DefaultMaxAnalyzeBytes)
 
 	// Federation receive-side defaults
 	v.SetDefault("federation.max_request_bytes", DefaultFederationMaxRequestBytes)

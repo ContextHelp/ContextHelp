@@ -3,16 +3,26 @@ package http
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 )
 
+// analyzeRequestBody is the request body bounded by the instance's analyze
+// limit (service.AnalyzeBodyLimit); unbounded when there is none.
+func analyzeRequestBody(w http.ResponseWriter, r *http.Request, svc *service.Service) io.Reader {
+	if limit := svc.AnalyzeBodyLimit(); limit > 0 {
+		return http.MaxBytesReader(w, r.Body, limit)
+	}
+	return r.Body
+}
+
 // Analyze handles content analysis requests.
 func Analyze(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req service.AnalyzeRequest
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, service.MaxAnalyzeBodyBytes)).Decode(&req); err != nil {
+		if err := json.NewDecoder(analyzeRequestBody(w, r, svc)).Decode(&req); err != nil {
 			if tooLarge := (*http.MaxBytesError)(nil); errors.As(err, &tooLarge) {
 				WriteError(w, http.StatusRequestEntityTooLarge, "PAYLOAD_TOO_LARGE", "request body over the analyze limit")
 				return

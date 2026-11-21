@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -14,10 +15,9 @@ import (
 const (
 	MaxAnalyzeNoteBytes = 2 << 20   // 2 MiB
 	MaxAnalyzeDataBytes = 256 << 10 // 256 KiB encoded
-	// MaxAnalyzeBodyBytes bounds one analyze or enqueue request body:
-	// content (up to 64 MiB, the cap the access-set body already uses),
-	// the note, and the data and metadata objects, plus JSON framing.
-	MaxAnalyzeBodyBytes = 64<<20 + MaxAnalyzeNoteBytes + MaxAnalyzeDataBytes + MaxAnalyzeMetadataBytes + 64<<10
+	// analyzeBodyHeadroom is what a request body may carry beside the
+	// content: the note, the data and metadata objects, JSON framing.
+	analyzeBodyHeadroom = MaxAnalyzeNoteBytes + MaxAnalyzeDataBytes + MaxAnalyzeMetadataBytes + 64<<10
 	// MaxAnalyzeMetadataBytes bounds the client metadata, like the data.
 	MaxAnalyzeMetadataBytes = MaxAnalyzeDataBytes
 	// MaxAnalyzeAmbientIDBytes bounds ambient_source, fingerprint and
@@ -82,4 +82,17 @@ func (r AnalyzeRequest) ambientContext() *storage.AmbientContext {
 // names a source key or carries a note or data to apply.
 func (r AnalyzeRequest) updatesStored() bool {
 	return r.SourceKey != "" || r.Note != "" || len(r.Data) > 0
+}
+
+// AnalyzeBodyLimit is the largest analyze or enqueue request body the
+// server reads, 0 for no limit. A private (loopback-only) instance has
+// none; a protected or public one allows server.max_analyze_bytes of
+// content plus room for the note, data and metadata, and none when that
+// is 0.
+func (s *Service) AnalyzeBodyLimit() int64 {
+	srv := s.Cfg.Server
+	if srv.EffectiveAccess() == config.AccessPrivate || srv.MaxAnalyzeBytes <= 0 {
+		return 0
+	}
+	return srv.MaxAnalyzeBytes + analyzeBodyHeadroom
 }
