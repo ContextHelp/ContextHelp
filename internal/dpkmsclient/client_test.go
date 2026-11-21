@@ -155,6 +155,24 @@ func TestAuthRejectionIsFinal(t *testing.T) {
 	}
 }
 
+// TestCredentialForOtherPrincipalNamesTheOwner: a refused credential
+// delivery keeps its 403 class but its fix names the owner and the
+// caller's own key, not the token, which is genuine.
+func TestCredentialForOtherPrincipalNamesTheOwner(t *testing.T) {
+	srv, _ := countingServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		dpkmsError(w, http.StatusForbidden, "CREDENTIAL_FOR_OTHER_PRINCIPAL", "only the owner issues a credential for another principal")
+	})
+	c := newClient(t, dpkmsclient.Endpoint{URL: srv.URL, Token: "t"})
+	_, err := c.Analyze(context.Background(), dpkmsclient.AnalyzeRequest{Content: "x"})
+	e := envelope(t, err)
+	if e.ExitCode != output.ExitUnauthorized {
+		t.Errorf("exit %d, want %d", e.ExitCode, output.ExitUnauthorized)
+	}
+	if !strings.Contains(e.SuggestedFix, "owner") || !strings.Contains(e.SuggestedFix, "ctxt auth key create") || strings.Contains(e.SuggestedFix, "check the token") {
+		t.Errorf("fix = %q, want the owner named", e.SuggestedFix)
+	}
+}
+
 // TestUnreachable: nothing answering at the endpoint is PREREQUISITE (70),
 // however the dial fails.
 func TestUnreachable(t *testing.T) {

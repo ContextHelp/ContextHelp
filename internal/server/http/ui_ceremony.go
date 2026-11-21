@@ -20,7 +20,7 @@ import (
 
 // Invite and sign-in links (ADR-079 §2), the two ticket ceremonies:
 //
-//   - POST /api/v1/share/invites (admin:shares) mints an invite and
+//   - POST /api/v1/share/invites (admin:shares, the owner) mints an invite and
 //     answers the link https://<public_url>/ui/invite#t=<secret>. The
 //     page POSTs the secret to /ui/invite/session, which creates a
 //     person principal, binds a link identity to it and sets the
@@ -102,10 +102,12 @@ type inviteRequest struct {
 	Audience string `json:"audience"`
 }
 
-// mintInvite handles POST /api/v1/share/invites, behind admin:shares.
+// mintInvite handles POST /api/v1/share/invites, behind admin:shares
+// and, as a credential for a principal yet to exist, the owner's alone
+// (guardInviteDelivery).
 func (u *uiSessionRoutes) mintInvite(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	if !u.ceremonyOn(w, config.AuthSignInInvite) {
+	if !u.ceremonyOn(w, config.AuthSignInInvite) || !guardInviteDelivery(w, r) {
 		return
 	}
 	var req inviteRequest
@@ -161,7 +163,7 @@ func (u *uiSessionRoutes) mintLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := chi.URLParam(r, "id")
-	if !ownerGuard(w, r, id) {
+	if !ownerGuard(w, r, id) || !guardCredentialDelivery(w, r, id) {
 		return
 	}
 	// A link signs the browser in as the principal: minting one for a

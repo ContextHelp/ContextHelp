@@ -55,7 +55,9 @@ after '#', so it never reaches a server log or a proxy. Hand it over on
 a channel you trust. Accepting it creates the person principal and signs
 their browser in. With --audience the person joins that audience as
 they accept, so the audience's grants apply from their first request;
-without it they see nothing until something is shared with them.
+without it they see nothing until something is shared with them. Only
+the owner can mint an invite. For now, any other admin is refused with
+403 CREDENTIAL_FOR_OTHER_PRINCIPAL.
 
 Examples:
   ctxt share invite --name "Dana Partner" --audience partners

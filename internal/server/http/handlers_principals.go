@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -23,7 +24,7 @@ import (
 // directly, never through the viewer-scoped driver: scopes govern it,
 // not share policies.
 //
-// Two rules hold on every route that yields a credential, a principal,
+// Three rules hold on every route that yields a credential, a principal,
 // an identity, a key or a sign-in link:
 //
 //   - Nothing widens. Whatever a route yields holds at most the
@@ -36,6 +37,10 @@ import (
 //     credentials over the API; another admin is refused. The host's
 //     dpkms auth key create --principal owner stays the bootstrap and
 //     recovery path.
+//   - Administering is not data access. A key, a sign-in link or an
+//     identity for a principal other than the caller is the owner's to
+//     issue (guardCredentialDelivery); an admin keeps removing,
+//     revoking, suspending and reading metadata.
 
 // Error codes of the registry routes.
 const (
@@ -101,7 +106,8 @@ func (g *registryRoutes) ready(w http.ResponseWriter) bool {
 // ownerGuard refuses a caller other than the owner acting on the owner
 // principal's credentials, writing the refusal.
 func ownerGuard(w http.ResponseWriter, r *http.Request, principalID string) bool {
-	if principalID == storage.OwnerPrincipal && !caller(r).IsSelf(storage.OwnerPrincipal) {
+	if principalID == storage.OwnerPrincipal && !caller(r).IsOwner() {
+		sharing.ReceiptFrom(r.Context()).Refuse(sharing.CheckRouteAccess, sharing.ReasonOwnerProtected)
 		WriteError(w, http.StatusForbidden, CodeOwnerProtected,
 			"only the owner manages the owner principal's credentials over the API; on the host, dpkms auth key create --principal owner --maintenance-override (dpkms stopped)")
 		return false
@@ -345,6 +351,10 @@ func (g *registryRoutes) AddIdentity(w http.ResponseWriter, r *http.Request) {
 	if !g.ready(w) {
 		return
 	}
+	id := chi.URLParam(r, "id")
+	if !ownerGuard(w, r, id) || !guardCredentialDelivery(w, r, id) {
+		return
+	}
 	var req addIdentityRequest
 	if !decodeRegistryBody(w, r, &req) {
 		return
@@ -356,10 +366,6 @@ func (g *registryRoutes) AddIdentity(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.TrimSpace(req.Subject) == "" {
 		WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "subject is required")
-		return
-	}
-	id := chi.URLParam(r, "id")
-	if !ownerGuard(w, r, id) {
 		return
 	}
 	p, err := g.reg.Principals().Get(r.Context(), id)
@@ -460,23 +466,24 @@ func (req createKeyRequest) expiry(now time.Time) (time.Time, error) {
 	return expiryOf(req.ExpiresIn, req.ExpiresAt, now)
 }
 
-// CreatePrincipalKey handles POST /api/v1/principals/{id}/keys: an
-// admin mints a key for a principal. Without scopes the key asks for
-// the principal's whole role bundle, which the caller must hold in
-// full; a narrowed admin names the scopes it can grant.
+// CreatePrincipalKey handles POST /api/v1/principals/{id}/keys: the
+// owner mints a key for a principal (guardCredentialDelivery). Without
+// scopes the key asks for the principal's whole role bundle. A caller
+// naming its own id gets the /self/keys form: its own ceiling by
+// default.
 func (g *registryRoutes) CreatePrincipalKey(w http.ResponseWriter, r *http.Request) {
 	if !g.ready(w) {
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if !ownerGuard(w, r, id) || !guardCredentialDelivery(w, r, id) {
 		return
 	}
 	var req createKeyRequest
 	if !decodeRegistryBody(w, r, &req) {
 		return
 	}
-	id := chi.URLParam(r, "id")
-	if !ownerGuard(w, r, id) {
-		return
-	}
-	g.mintKey(w, r, id, req, false)
+	g.mintKey(w, r, id, req, caller(r).IsSelf(id))
 }
 
 // mintKey mints a key for principalID from req, narrowed twice: to

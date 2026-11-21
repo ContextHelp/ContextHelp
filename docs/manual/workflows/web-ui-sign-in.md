@@ -101,7 +101,7 @@ ctxt auth session list --all
 ctxt auth session end uis_3f2a…
 ```
 
-A key never holds more than the key or session that created it. An agent's key narrowed to `read:objects` cannot mint a wider one, and a signed-in browser can create keys for its principal limited to what the session holds. Another principal's credential answers 403 `NOT_SELF`; the owner's admin key reaches those through `ctxt auth key create --principal <id>` and `ctxt principal`.
+A key never holds more than the key or session that created it. An agent's key narrowed to `read:objects` cannot mint a wider one, and a signed-in browser can create keys for its principal limited to what the session holds. Another principal's credential answers 403 `NOT_SELF`. The owner's key reaches those through `ctxt auth key create --principal <id>` and `ctxt principal`. Only the owner can create a key, a sign-in link, an invite or an identity for another principal; for now any other admin is refused with 403 `CREDENTIAL_FOR_OTHER_PRINCIPAL`.
 
 ## What the browser session can do
 
@@ -110,7 +110,7 @@ The session acts as your key's principal, so entitlements and quotas apply as fo
 | Allowed, if your key has it | Refused (`403 INSUFFICIENT_SCOPE`) |
 |---|---|
 | Reading and searching objects, entities, jobs, inbox, feeds, aliases, saved searches, search history, reminders, import runs, and the step registry list (every role) | Pipelines, steps, registry changes, watches, the audit log, federation, the MCP mount |
-| Retrying a job (`writer`, `admin`); deleting an object (`admin`); the Sharing page: audiences, share policies, grants, ceilings and invites (`admin`) | Every other write (capture, analyze, inbox triage, feed and alias changes, …) |
+| Retrying a job (`writer`, `admin`); deleting an object (`admin`); the Sharing page: audiences, share policies, grants and ceilings (`admin`), invites (the owner) | Every other write (capture, analyze, inbox triage, feed and alias changes, …) |
 | The live event stream (every role); managing your own keys and sessions; signing out (every session) | Minting new sign-in links |
 
 A session signed in with a reader's key only reads. An admin's session also holds `admin:shares`, so the owner manages sharing from the web UI's Sharing page. A reader's or writer's session never holds it. To see what your session holds, open `/api/v1/whoami` in the signed-in browser: it lists the session's `scopes` and its expiry.

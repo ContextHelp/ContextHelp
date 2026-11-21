@@ -283,6 +283,18 @@ func (p *Principal) IsSelf(principalID string) bool {
 	return p != nil && principalID != "" && p.ID == principalID
 }
 
+// IsOwner reports whether the principal is the instance owner: the one
+// principal of kind owner. The registry makes that kind and the id
+// storage.OwnerPrincipal one and the same principal (neither can be
+// created, PrepareNewPrincipal), and the sharing resolver makes that
+// kind, and no role, the only unrestricted viewer. Every owner-only
+// decision (credential delivery, the entity-gate bypass, the owner's
+// credentials) asks this one question: a principal holding the admin
+// role is not the owner.
+func (p *Principal) IsOwner() bool {
+	return p != nil && p.Kind == storage.PrincipalKindOwner
+}
+
 // BypassesEntityGate reports whether the principal skips the inbound
 // entitlement and metering gate on entity reads. The gate exists for
 // third-party consumers; an admin principal is the instance owner.
