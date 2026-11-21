@@ -408,6 +408,17 @@ func runDelete(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	// A dry run never deletes. PreRunE answers it with a plan and sets
+	// previewRendered, so this is the backstop for a run that reaches here
+	// without that answer: no DELETE is sent on a dry run.
+	//
+	// The REPL runs commands with kit/side-effect left at read for the
+	// declined-inspection path (see suspendGatesForAnsweredInspection);
+	// that tier is restored above, and a dry run there ends here too.
+	if kitcli.IsDryRun(cmd) {
+		return nil
+	}
+
 	sel := deleteSelection(cmd)
 	if sel.empty() {
 		return errNoDeleteSelector()
