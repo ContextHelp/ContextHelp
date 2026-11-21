@@ -92,7 +92,7 @@ ctxt reminders --output json
 
 ## Related Stories
 
-- US-0319 — Resurface knowledge objects by profile relevance
+- US-0413 — Resurface knowledge objects by profile relevance
 - US-0054 — Saved search and alerts
 - US-0020 — Apply focus profile to search
 

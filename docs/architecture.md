@@ -1240,7 +1240,7 @@ Where `<nodeType>` is one of: `section`, `tag`,
 This enables fine-grained citation and partial retrieval
 without loading whole objects.
 
-## Schema co-evolution per profile (US-0409)
+## Schema co-evolution per profile (US-0418)
 
 Each profile can evolve its own schema for metadata
 extraction. The c12n pipeline step (US-0407) drives metadata
@@ -1306,7 +1306,7 @@ Registry subscriptions and entity resolution cover:
 - Pipeline FTS in `text.short`/`text.long` + embedding step (`e51f793`...`2596dd7`)
 - Himalaya email + cardamum contacts adapters (`f2b056e`...`8053c96`)
 - US-0407 metadata faceted search + c12n pipeline step (`c68d00e`...`ebf81e1`)
-- US-0409 schema co-evolution per profile (`5f884f2`)
+- US-0418 schema co-evolution per profile (`5f884f2`)
 
 ## Open questions
 

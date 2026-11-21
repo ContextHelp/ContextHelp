@@ -232,7 +232,23 @@ Each story can be implemented on one or more of these deployment models:
 | **US-0406** | [associative-object-links](./knowledge-graph/US-0406-associative-object-links.md) | dpkms (self-hosted), dpkms cloud | Knowledge Workers, Agents/LLMs |
 | **US-0407** | [metadata-facet-search](./search/US-0407-metadata-facet-search.md) | dpkms (self-hosted), dpkms cloud, ctxt | Knowledge Workers, Agents/LLMs |
 | **US-0408** | [index-first-retrieval](./search/US-0408-index-first-retrieval.md) | dpkms (self-hosted), dpkms cloud, ctxt | Knowledge Workers, Agents/LLMs |
-| **US-0409** | [schema-co-evolution](./enrichment/US-0409-schema-co-evolution.md) | dpkms (self-hosted), dpkms cloud | Maintainers, Knowledge Workers |
+| **US-0409** | [named-cursor-incremental-retrieval](./search/US-0409-named-cursor-incremental-retrieval.md) | dpkms (self-hosted), dpkms cloud, ctxt | Knowledge Workers, Agents/LLMs |
+
+
+### Renumbered Stories (US-0411 to US-0418)
+
+These stories previously shared an ID with another story; IDs 0411+ were assigned on renumbering.
+
+| ID | Story | System Types | Personas |
+|----|-------|-------------|----------|
+| **US-0411** | [graph-canonical-ko-projected-views](./search/US-0411-graph-canonical-ko-projected-views.md) | dpkms (self-hosted), ctxt | Maintainers, Agents/LLMs |
+| **US-0412** | [set-reminder-on-object](./search/US-0412-set-reminder-on-object.md) | ctxt | Knowledge Workers |
+| **US-0413** | [resurface-by-profile-relevance](./search/US-0413-resurface-by-profile-relevance.md) | ctxt | Knowledge Workers |
+| **US-0414** | [adapter-ingestion-interface](./ingestion/US-0414-adapter-ingestion-interface.md) | ctxt | Platform Integrators |
+| **US-0415** | [cardamum-contacts-ingestion](./ingestion/US-0415-cardamum-contacts-ingestion.md) | ctxt | Knowledge Workers |
+| **US-0416** | [typed-entity-schema](./knowledge-graph/US-0416-typed-entity-schema.md) | dpkms (self-hosted), ctxt | Maintainers, Knowledge Workers |
+| **US-0417** | [meeting-entity-schema](./knowledge-graph/US-0417-meeting-entity-schema.md) | ctxt | Knowledge Workers |
+| **US-0418** | [schema-co-evolution](./enrichment/US-0418-schema-co-evolution.md) | dpkms (self-hosted), dpkms cloud | Maintainers, Knowledge Workers |
 
 ---
 
@@ -283,7 +299,8 @@ Links to related stories
 - **US-0200 to US-0210** — Platform Capture (cookie bridge, social media, academic, OSINT, temporal watch)
 - **US-0300 to US-0317** — Importer Interface and Source Importers
 - **US-0318 to US-0323** — Federation
-- **US-0400 to US-0409** — Knowledge Compiler (fan-out, persistent pages, lint, dedup, links, facets, index)
+- **US-0400 to US-0409** — Knowledge Compiler (fan-out, persistent pages, lint, dedup, links, facets, index, cursors)
+- **US-0411 to US-0418** — Renumbered stories (previously duplicate IDs)
 
 ---
 
@@ -320,7 +337,7 @@ Knowledge Compiler (US-0400-0409):
   US-0400 → US-0405 (changelog) ← US-0402 (lint)
   US-0400 → US-0406 (associative links) → US-0402 (lint)
   US-0401 → US-0408 (index-first retrieval)
-  US-0409 (schema co-evolution) → US-0403 (metadata extraction)
+  US-0418 (schema co-evolution) → US-0403 (metadata extraction)
 ```
 
 ---

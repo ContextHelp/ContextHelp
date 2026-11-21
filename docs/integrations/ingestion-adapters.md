@@ -72,7 +72,7 @@ Transforms vCard fields:
 - `NOTE` → content notes
 - `UID` → object ID
 
-Stories: US-0320, US-0321
+Stories: US-0414, US-0415
 
 ### himalaya (email)
 

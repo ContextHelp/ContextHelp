@@ -98,7 +98,7 @@ ctxt resurface --output json
 
 ## Related Stories
 
-- US-0318 — Set reminder on knowledge object
+- US-0412 — Set reminder on knowledge object
 - US-0020 — Apply focus profile to search
 - US-0055 — Search history and recommendations
 

@@ -2,7 +2,7 @@
 status: paper
 ---
 
-# US-0408: @meeting.<date-slug> Entity Schema
+# US-0417: @meeting.<date-slug> Entity Schema
 
 **System Types:** ctxt
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md),
@@ -23,12 +23,12 @@ capture so summaries + follow-ups extract reliably.
 
 ## Context
 
-Application of [US-0407](US-0407-typed-entity-schema.md). Does NOT
+Application of [US-0416](US-0416-typed-entity-schema.md). Does NOT
 redefine registry, validation, or typed-payload storage — those are
-US-0407. Specifies `@meeting.*` schema instance + drop-script
+US-0416. Specifies `@meeting.*` schema instance + drop-script
 contract.
 
-**Non-goals:** redefining US-0407; summary/followups extraction
+**Non-goals:** redefining US-0416; summary/followups extraction
 (pipeline-side, future); meeting UI; auto-recording.
 
 ---
@@ -36,7 +36,7 @@ contract.
 ## Acceptance Criteria
 
 - [ ] `ctxt entity register meeting --schema ./meeting-schema.yaml`
-  via US-0407 verbatim
+  via US-0416 verbatim
 - [ ] Required: `title`, `datetime`, `participants`,
   `artifact_type`, `dropped_at`, `dropped_by`
 - [ ] Optional: `location`, `context_hints`
@@ -45,7 +45,7 @@ contract.
 - [ ] `participants[]`: each entry is `@person.<slug>` OR free-form
   string — both valid in same array
 - [ ] `context_hints[]`: mention strings; empty OK
-- [ ] Invalid payload rejected with field-level error per US-0407
+- [ ] Invalid payload rejected with field-level error per US-0416
 - [ ] `ctxt list --type entity --entity-type meeting` filters
 - [ ] `ctxt list --mention @meeting.<slug>` returns typed object
 - [ ] Mention graph composes: meeting mentioning
@@ -56,7 +56,7 @@ contract.
 - [ ] Drop script auto-sets `dropped_at`, `dropped_by`,
   `artifact_type` — never user-supplied
 - [ ] Schema at `~/.config/contexthelp/entity-schemas/meeting.yaml`
-- [ ] `schema_version: 0.1`; bumps follow US-0407
+- [ ] `schema_version: 0.1`; bumps follow US-0416
 
 ---
 
@@ -97,7 +97,7 @@ properties:
 ### Slug shape
 
 `@meeting.<YYYY-MM-DD>-<short-title-slug>` — date-prefix sorts
-naturally; collisions append `-<n>`. Pure US-0407 mention syntax.
+naturally; collisions append `-<n>`. Pure US-0416 mention syntax.
 
 ### Drop script contract (pseudocode)
 
@@ -113,7 +113,7 @@ drop-meeting <file> [--title T] [--participants P,Q]
 
 ### Storage
 
-Reuses US-0407 columns: `bookmarks.payload`,
+Reuses US-0416 columns: `bookmarks.payload`,
 `bookmarks.entity_type='meeting'`, `bookmarks.payload_schema_version`.
 No new tables.
 
@@ -143,7 +143,7 @@ Path: `tests/e2e/typed_entity/meeting_test.go`
 
 ## Related Stories
 
-- [US-0407](US-0407-typed-entity-schema.md) — schema mechanism
+- [US-0416](US-0416-typed-entity-schema.md) — schema mechanism
 - [US-0001](../ingestion/US-0001-text-capture-minimal-friction.md) —
   capture entry point
 - [US-0009](../enrichment/US-0009-extract-entities-and-mentions.md)
