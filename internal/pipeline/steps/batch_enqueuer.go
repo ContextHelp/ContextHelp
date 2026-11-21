@@ -26,6 +26,7 @@ type BatchEnqueuer struct {
 func NewBatchEnqueuer() *BatchEnqueuer {
 	return &BatchEnqueuer{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
+			Binary:   true,
 			Requires: []string{"Metadata"},
 			Produces: []string{"Sections", "Metadata"},
 		}),

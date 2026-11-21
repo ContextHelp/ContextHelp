@@ -76,6 +76,7 @@ type EmailFilter struct {
 func NewEmailFilter(rs FilterRuleset) (*EmailFilter, error) {
 	f := &EmailFilter{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
+			Binary:   true,
 			Requires: []string{"Metadata"},
 			Produces: []string{"Metadata"},
 		}),

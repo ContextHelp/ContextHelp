@@ -20,6 +20,7 @@ type JSONLParser struct {
 func NewJSONLParser() *JSONLParser {
 	return &JSONLParser{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
+			Binary:   true,
 			Requires: []string{"RawContent"},
 			Produces: []string{"Metadata"},
 		}),
@@ -33,8 +34,12 @@ func (s *JSONLParser) Run(_ context.Context, draft *storage.KnowledgeObject) (*s
 		draft.Metadata = make(map[string]any)
 	}
 
+	text, err := textInput("jsonl_parser", draft)
+	if err != nil {
+		return nil, err
+	}
 	records := make([]map[string]any, 0)
-	scanner := bufio.NewScanner(strings.NewReader(draft.RawContent))
+	scanner := bufio.NewScanner(strings.NewReader(text))
 	lineNum := 0
 	for scanner.Scan() {
 		lineNum++

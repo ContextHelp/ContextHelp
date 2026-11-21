@@ -204,9 +204,10 @@ func runContainer(t *testing.T, driver storage.StorageDriver, name string, tc fa
 	})
 	q := jobs.NewQueue(driver.Jobs())
 	now := time.Now().Truncate(time.Second)
+	payload, encoding := jobs.Payload(tc.payload)
 	container := &storage.Job{
 		ID: "container", Type: "ingest:" + name, Status: storage.JobPending,
-		Payload: tc.payload, Pipeline: name, Source: tc.source,
+		Payload: payload, PayloadEncoding: encoding, Pipeline: name, Source: tc.source,
 		MaxRetries: 1, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := q.Enqueue(ctx, container); err != nil {
