@@ -207,6 +207,20 @@ func jobObjectType(jobType string) string {
 	return ""
 }
 
+// seedType is the type a job's draft starts with: the job's own kind,
+// else url for any url.* pipeline (everything it stores was fetched
+// from a URL, whatever label the job or its source carries). Steps
+// that set an explicit type, such as the repo mapper, still override.
+func seedType(jobType, pipelineName string) string {
+	if t := jobObjectType(jobType); t != "" {
+		return t
+	}
+	if strings.HasPrefix(pipelineName, "url.") {
+		return taxonomy.TypeURL
+	}
+	return ""
+}
+
 // processWithHops runs the initial pipeline and follows any hop requests
 // (draft.Metadata["next_pipeline"]) up to maxHops total runs.
 func (p *WorkerPool) processWithHops(ctx context.Context, job *storage.Job) (*storage.KnowledgeObject, error) {
@@ -217,10 +231,11 @@ func (p *WorkerPool) processWithHops(ctx context.Context, job *storage.Job) (*st
 
 	draft := &storage.KnowledgeObject{
 		ID: uuid.New().String(),
-		// the input kind the submitter named ("ingest:url") is the
-		// object's type; steps may still refine it (a format detector,
-		// the repo mapper) and typedetector only fills a blank or text.
-		Type:       jobObjectType(job.Type),
+		// the input kind the job names ("ingest:url"), or the url.*
+		// pipeline itself, is the object's type; steps may still refine
+		// it (format detector, repo mapper) and typedetector only fills
+		// a blank or text.
+		Type:       seedType(job.Type, job.Pipeline),
 		RawContent: job.Payload,
 		Pipeline:   job.Pipeline,
 		Source:     job.Source,

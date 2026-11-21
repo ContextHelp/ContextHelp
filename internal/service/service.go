@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"slices"
 	"sort"
@@ -326,7 +327,7 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 
 	// Auto-detect type if it's "text" but content looks like a URL.
 	detectedType := req.Type
-	if detectedType == taxonomy.TypeText && strings.HasPrefix(strings.TrimSpace(req.Content), "http") {
+	if detectedType == taxonomy.TypeText && isHTTPURL(req.Content) {
 		detectedType = "url"
 	}
 
@@ -2582,4 +2583,11 @@ func (s *Service) ftsTiered(ctx context.Context, query string, filter storage.Ob
 		objs = objs[:filter.Limit]
 	}
 	return objs, nil
+}
+
+// isHTTPURL reports whether s is, after trimming, an http:// or
+// https:// URL with a host. Prose that merely starts with "http" is not.
+func isHTTPURL(s string) bool {
+	u, err := url.Parse(strings.TrimSpace(s))
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
 }
