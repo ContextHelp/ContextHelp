@@ -128,6 +128,9 @@ type ContentTypeRouter struct {
 func NewContentTypeRouter() *ContentTypeRouter {
 	return &ContentTypeRouter{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
+			// It reads the fetched Content-Type from Metadata, never the
+			// content, so it runs on a fetched image or PDF.
+			Binary:   true,
 			Requires: []string{"Metadata"},
 			Produces: []string{"ContentType", "Subtype"},
 		}),
