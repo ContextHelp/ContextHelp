@@ -110,7 +110,7 @@ fi
 # govulncheck (security scanner)
 if ! command_exists govulncheck; then
     info "Installing govulncheck..."
-    go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+    go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
     success "govulncheck installed"
 else
     success "govulncheck already installed"

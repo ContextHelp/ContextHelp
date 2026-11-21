@@ -38,8 +38,8 @@ PNPM := $(CI_TOOLS) node,pnpm -- pnpm
 GORELEASER := $(CI_TOOLS) goreleaser -- goreleaser
 # Tools mise.toml does not pin; `go run pkg@version` builds exactly this
 # release with the pinned Go, here and in CI.
-GOSEC_VERSION := v2.29.0
-GOVULNCHECK_VERSION := v1.8.0
+GOSEC_VERSION := v2.30.0
+GOVULNCHECK_VERSION := v1.9.0
 
 # Build flags
 LDFLAGS := -ldflags "\
