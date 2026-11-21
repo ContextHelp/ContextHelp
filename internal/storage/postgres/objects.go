@@ -65,7 +65,7 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
 		remind_at, reminded_at, graph_json, source_key, projected_fts_body,
-		projection_version, profile_id, classes, projected_fts_body_masked
+		projection_version, profile_id, classes, projected_fts_body_masked, session_id
 	) VALUES (
 		$1, $2, $3, $4, $5, $6,
 		$7, $8, $9, $10, $11,
@@ -73,7 +73,7 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		$16, $17, $18, $19,
 		$20, $21, $22, $23, $24,
 		$25, $26, $27, $28, $29,
-		$30, $31, $32, $33
+		$30, $31, $32, $33, $34
 	)`,
 		obj.ID, obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
@@ -81,7 +81,7 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		f.influences, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.CreatedAt.UTC(), obj.UpdatedAt.UTC(), obj.FTSIndexed, obj.Status, obj.InboxNote,
 		f.remindAt, f.remindedAt, graphJSON, obj.SourceKey, projectedFTSBody,
-		indexsig.ProjectionVersion, obj.ProfileID, f.classes, index.MaskedFTSBody,
+		indexsig.ProjectionVersion, obj.ProfileID, f.classes, index.MaskedFTSBody, nullSessionID(obj.SessionID),
 	)
 	if err != nil {
 		if errors.Is(constraintErr(err), storage.ErrAlreadyExists) {
@@ -305,8 +305,8 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		reinforcement_count=$17, last_reinforced_at=$18,
 		updated_at=$19, fts_indexed=$20, status=$21, inbox_note=$22,
 		remind_at=$23, reminded_at=$24, graph_json=$25, projected_fts_body=$26,
-		projection_version=$27, profile_id=$28, classes=$29, projected_fts_body_masked=$30
-	WHERE id=$31`,
+		projection_version=$27, profile_id=$28, classes=$29, projected_fts_body_masked=$30, session_id=$31
+	WHERE id=$32`,
 		obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
 		f.decisions, f.tasks, obj.Pipeline, obj.Source,
@@ -314,7 +314,7 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.UpdatedAt.UTC(), obj.FTSIndexed, obj.Status, obj.InboxNote,
 		f.remindAt, f.remindedAt, graphJSON, projectedFTSBody,
-		indexsig.ProjectionVersion, obj.ProfileID, f.classes, index.MaskedFTSBody, obj.ID,
+		indexsig.ProjectionVersion, obj.ProfileID, f.classes, index.MaskedFTSBody, nullSessionID(obj.SessionID), obj.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("update object: %w", err)
@@ -980,7 +980,7 @@ const objectSelectCols = `SELECT
 	decisions, tasks, pipeline, source,
 	registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 	created_at, updated_at, fts_indexed, status, inbox_note,
-	remind_at, reminded_at, graph_json, source_key, profile_id, change_seq, classes`
+	remind_at, reminded_at, graph_json, source_key, profile_id, change_seq, classes, session_id`
 
 func scanObjectRow(row *sql.Row) (*storage.KnowledgeObject, error) {
 	obj, err := scanObjectColumns(row, nil)
@@ -1022,7 +1022,7 @@ func scanObjectColumns(row interface{ Scan(...any) error }, score *float64) (*st
 		influencesJSON, classesJSON                         []byte
 		lastReinforcedAt, remindAt, remindedAt              sql.NullTime
 		graphJSON                                           []byte
-		sourceKey                                           sql.NullString
+		sourceKey, sessionID                                sql.NullString
 	)
 	dest := []any{
 		&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType, &obj.TextContent,
@@ -1030,7 +1030,7 @@ func scanObjectColumns(row interface{ Scan(...any) error }, score *float64) (*st
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.Status, &obj.InboxNote,
-		&remindAt, &remindedAt, &graphJSON, &sourceKey, &obj.ProfileID, &obj.ChangeSeq, &classesJSON,
+		&remindAt, &remindedAt, &graphJSON, &sourceKey, &obj.ProfileID, &obj.ChangeSeq, &classesJSON, &sessionID,
 	}
 	if score != nil {
 		dest = append(dest, score)
@@ -1057,7 +1057,19 @@ func scanObjectColumns(row interface{ Scan(...any) error }, score *float64) (*st
 	if sourceKey.Valid {
 		obj.SourceKey = sourceKey.String
 	}
+	if sessionID.Valid {
+		obj.SessionID = sessionID.String
+	}
 	return &obj, nil
+}
+
+// nullSessionID stores an empty session id as NULL, so the partial index
+// on objects.session_id covers only grouped objects.
+func nullSessionID(id string) any {
+	if id == "" {
+		return nil
+	}
+	return id
 }
 
 func unmarshalObjectFields(obj *storage.KnowledgeObject,

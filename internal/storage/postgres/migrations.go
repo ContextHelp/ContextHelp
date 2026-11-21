@@ -436,6 +436,13 @@ var pgMigrations = []pgMigration{
 		`ALTER TABLE access_log ADD COLUMN IF NOT EXISTS operation_digest TEXT NOT NULL DEFAULT ''`,
 		`CREATE INDEX IF NOT EXISTS idx_access_log_decision ON access_log (decision, at)`,
 	}},
+	// jobs.user_ambient and objects.session_id + partial index, mirroring
+	// SQLite migration 058 (ADR-067). Nullable soft FK, no backfill.
+	{Version: 39, Name: "jobs.user_ambient, objects.session_id", Statements: []string{
+		`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS user_ambient TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE objects ADD COLUMN IF NOT EXISTS session_id TEXT`,
+		`CREATE INDEX IF NOT EXISTS idx_objects_session ON objects (session_id) WHERE session_id IS NOT NULL`,
+	}},
 }
 
 // sharingRegistryStatements create the sharing registry and add the
