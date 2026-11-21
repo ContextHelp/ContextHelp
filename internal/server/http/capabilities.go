@@ -295,7 +295,10 @@ func routeRefusal(v sharing.Viewer, haveViewer bool, access routeAccess, known b
 // unrestricted viewer always; a restricted one when the route is open,
 // or needs a capability it holds. An owner-only route, a capability
 // the viewer lacks, an unclassified route and a request with no viewer
-// are answered 403 NOT_SHARED. It never names a row.
+// are answered 403 NOT_SHARED. It never names a row. A route a
+// capability opens runs as the viewer narrowed to the grants holding
+// it (sharing.Viewer.ForCapability): any one grant opens the surface,
+// and the surface answers only the objects such a grant covers.
 func RequireCapability(method, pattern string) func(http.Handler) http.Handler {
 	access, known := routeAccessTable[routeKey(method, pattern)]
 	return func(next http.Handler) http.Handler {
@@ -313,6 +316,9 @@ func RequireCapability(method, pattern string) func(http.Handler) http.Handler {
 			}
 			if access.capability != "" {
 				rcpt.Pass(sharing.CheckRouteAccess, sharing.ReasonCapabilityHeld)
+				// The route answers only the objects a grant holding the
+				// capability covers.
+				r = r.WithContext(sharing.WithViewer(r.Context(), v.ForCapability(access.capability)))
 			} else {
 				rcpt.Pass(sharing.CheckRouteAccess, sharing.ReasonRouteOpen)
 			}

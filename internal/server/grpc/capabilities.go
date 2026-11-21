@@ -86,22 +86,24 @@ func methodRefusal(v sharing.Viewer, haveViewer bool, access methodAccess, known
 // unrestricted viewer always; a restricted one when the method is open
 // or needs a capability it holds. Anything else, a missing viewer and
 // an unclassified method included, is PermissionDenied NOT_SHARED,
-// which names no row.
-func authorizeCapability(ctx context.Context, fullMethod string) error {
+// which names no row. A method a capability opens runs as the viewer
+// narrowed to the grants holding it (sharing.Viewer.ForCapability): the
+// returned context carries that viewer.
+func authorizeCapability(ctx context.Context, fullMethod string) (context.Context, error) {
 	v, ok := sharing.FromContext(ctx)
 	if ok && v.IsUnrestricted() {
-		return nil
+		return ctx, nil
 	}
 	rcpt := sharing.ReceiptFrom(ctx)
 	access, known := methodAccessTable[fullMethod]
 	if reason := methodRefusal(v, ok, access, known); reason != "" {
 		rcpt.Refuse(sharing.CheckRouteAccess, reason)
-		return status.Error(codes.PermissionDenied, "NOT_SHARED: not shared with this principal")
+		return ctx, status.Error(codes.PermissionDenied, "NOT_SHARED: not shared with this principal")
 	}
 	if access.capability != "" {
 		rcpt.Pass(sharing.CheckRouteAccess, sharing.ReasonCapabilityHeld)
-	} else {
-		rcpt.Pass(sharing.CheckRouteAccess, sharing.ReasonRouteOpen)
+		return sharing.WithViewer(ctx, v.ForCapability(access.capability)), nil
 	}
-	return nil
+	rcpt.Pass(sharing.CheckRouteAccess, sharing.ReasonRouteOpen)
+	return ctx, nil
 }

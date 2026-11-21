@@ -45,6 +45,10 @@ func sarah() *storage.KnowledgeObject {
 	return o
 }
 
+// oneGrant is the coverage of an object under a viewerFor viewer: its
+// one grant covers it.
+var oneGrant = []bool{true}
+
 // viewerFor compiles a viewer over one grant of p, with ceiling deny.
 func viewerFor(t *testing.T, p sharing.Policy, deny ...string) sharing.Viewer {
 	t.Helper()
@@ -66,14 +70,14 @@ func withheldValues(r sharing.Rendered) []string {
 
 func TestRenderUnrestrictedIsTheStoredObject(t *testing.T) {
 	obj := sarah()
-	r := sharing.Render(sharing.Unrestricted, obj, nil)
+	r := sharing.Render(sharing.Unrestricted, obj, nil, nil)
 	assert.Same(t, obj, r.Object)
 	assert.Empty(t, r.Withheld)
 }
 
 func TestRenderZeroViewerKeepsOnlyIdentity(t *testing.T) {
 	obj := sarah()
-	r := sharing.Render(sharing.Viewer{}, obj, nil)
+	r := sharing.Render(sharing.Viewer{}, obj, oneGrant, nil)
 	require.NotNil(t, r.Object)
 	assert.Equal(t, obj.ID, r.Object.ID)
 	assert.Equal(t, obj.Type, r.Object.Type)
@@ -93,7 +97,7 @@ func TestRenderContactForColleague(t *testing.T) {
 	tpl, _ := sharing.Template(sharing.TemplateColleagues)
 	v := viewerFor(t, tpl)
 	obj := sarah()
-	r := sharing.Render(v, obj, nil)
+	r := sharing.Render(v, obj, oneGrant, nil)
 	out := r.Object
 
 	assert.Equal(t, "Sarah Lee | Head of Ops @ Acme\nBoston\nTags: work", out.RawContent)
@@ -135,7 +139,7 @@ func TestRenderContactForColleague(t *testing.T) {
 // The partner sees email and phone but no address and no note.
 func TestRenderContactForPartner(t *testing.T) {
 	tpl, _ := sharing.Template(sharing.TemplatePartners)
-	r := sharing.Render(viewerFor(t, tpl), sarah(), nil)
+	r := sharing.Render(viewerFor(t, tpl), sarah(), oneGrant, nil)
 	out := r.Object
 	assert.Equal(t, "Sarah Lee | Head of Ops @ Acme\nBoston\nEmail: "+renderEmail+"\nPhone: "+renderPhone+"\nTags: work", out.RawContent)
 	assert.Equal(t, renderEmail, out.Metadata["email"])
@@ -155,12 +159,12 @@ func TestRenderContactNoteUnderCeiling(t *testing.T) {
 		Fields:       map[string][]string{"contact": {"title", "note"}},
 		Capabilities: sharing.Capabilities{Search: []string{sharing.SearchFTS}},
 	}
-	shown := sharing.Render(viewerFor(t, open), sarah(), nil)
+	shown := sharing.Render(viewerFor(t, open), sarah(), oneGrant, nil)
 	assert.Equal(t, "Sarah Lee\n"+renderNote, shown.Object.RawContent)
 	require.NotNil(t, shown.Object.Graph)
 	assert.Len(t, shown.Object.Graph.Nodes, 2)
 
-	denied := sharing.Render(viewerFor(t, open, storage.ClassPersonal), sarah(), nil)
+	denied := sharing.Render(viewerFor(t, open, storage.ClassPersonal), sarah(), oneGrant, nil)
 	assert.Equal(t, "Sarah Lee", denied.Object.RawContent)
 	require.NotNil(t, denied.Object.Graph)
 	assert.Len(t, denied.Object.Graph.Nodes, 1)
@@ -172,7 +176,7 @@ func TestRenderShortValuesAreNotCanaries(t *testing.T) {
 	narrow := sharing.Policy{Name: "narrow", Data: "type==contact", Fields: map[string][]string{"contact": {"title", "org"}}}
 	obj := sarah()
 	obj.Metadata["city"] = "Lee"
-	r := sharing.Render(viewerFor(t, narrow), obj, nil)
+	r := sharing.Render(viewerFor(t, narrow), obj, oneGrant, nil)
 	assert.Equal(t, "Sarah Lee @ Acme", r.Object.RawContent)
 	assert.NotContains(t, withheldValues(r), "Lee")
 	assert.Contains(t, withheldValues(r), "Head of Ops")
@@ -219,7 +223,7 @@ func textShort(name string) ([]sharing.StepContract, bool) {
 // A summary, sections and tags derived from hidden content are
 // withheld; with the content projected they show.
 func TestRenderDerivedFieldsFollowTheirInputs(t *testing.T) {
-	hidden := sharing.Render(viewerFor(t, notePolicy("title", "summary", "tags", "sections", "created_at")), noteObject(), textShort)
+	hidden := sharing.Render(viewerFor(t, notePolicy("title", "summary", "tags", "sections", "created_at")), noteObject(), oneGrant, textShort)
 	assert.Empty(t, hidden.Object.RawContent)
 	assert.Empty(t, hidden.Object.Summaries, "the summary derives from the hidden content")
 	assert.Empty(t, hidden.Object.Sections)
@@ -230,7 +234,7 @@ func TestRenderDerivedFieldsFollowTheirInputs(t *testing.T) {
 	assert.Contains(t, vals, "Plan to hire two engineers by December")
 	assert.NotContains(t, vals, "hiring", "metadata labels are not canaries")
 
-	shown := sharing.Render(viewerFor(t, notePolicy("title", "summary", "tags", "sections", "content")), noteObject(), textShort)
+	shown := sharing.Render(viewerFor(t, notePolicy("title", "summary", "tags", "sections", "content")), noteObject(), oneGrant, textShort)
 	assert.Equal(t, "quarterly planning: hire two engineers before December", shown.Object.RawContent)
 	assert.Equal(t, []string{"Plan to hire two engineers by December"}, shown.Object.Summaries)
 	assert.Len(t, shown.Object.Sections, 1)
@@ -245,7 +249,7 @@ func TestRenderDerivedFieldsFollowTheirInputs(t *testing.T) {
 func TestRenderUnknownProvenanceWithholdsDerivedOnly(t *testing.T) {
 	obj := noteObject()
 	obj.Pipeline = ""
-	r := sharing.Render(viewerFor(t, notePolicy("summary", "tags", "content")), obj, textShort)
+	r := sharing.Render(viewerFor(t, notePolicy("summary", "tags", "content")), obj, oneGrant, textShort)
 	assert.Empty(t, r.Object.Summaries)
 	assert.Len(t, r.Object.Tags, 1)
 	assert.Equal(t, obj.RawContent, r.Object.RawContent)
@@ -259,7 +263,7 @@ func TestRenderGraphDropsExcludedParts(t *testing.T) {
 	obj.Graph.Edges = []storage.GraphEdge{{ID: "e1", FromID: "obj-note/summary/0", ToID: "obj-note/section/1", EdgeType: "contains"}}
 	p := notePolicy("content", "graph")
 	p.ExcludeClasses = []string{"financial"}
-	r := sharing.Render(viewerFor(t, p), obj, textShort)
+	r := sharing.Render(viewerFor(t, p), obj, oneGrant, textShort)
 	require.NotNil(t, r.Object.Graph)
 	require.Len(t, r.Object.Graph.Nodes, 1)
 	assert.Equal(t, "obj-note/summary/0", r.Object.Graph.Nodes[0].ID)
@@ -273,7 +277,7 @@ func TestRenderMetadataIsCoarse(t *testing.T) {
 	dedup := func(string) ([]sharing.StepContract, bool) {
 		return []sharing.StepContract{{Name: "dedup", Requires: []string{"Vectors"}, Produces: []string{"Metadata"}}}, true
 	}
-	r := sharing.Render(viewerFor(t, notePolicy("title", "metadata", "content")), noteObject(), dedup)
+	r := sharing.Render(viewerFor(t, notePolicy("title", "metadata", "content")), noteObject(), oneGrant, dedup)
 	assert.Empty(t, r.Object.Metadata)
 	assert.Contains(t, withheldValues(r), "Quarterly planning")
 }
@@ -282,7 +286,7 @@ func TestRenderMetadataIsCoarse(t *testing.T) {
 // withholds nothing, whatever the provenance.
 func TestRenderEveryFieldWithholdsNothing(t *testing.T) {
 	obj := noteObject()
-	r := sharing.Render(viewerFor(t, notePolicy(sharing.FieldAll)), obj, nil)
+	r := sharing.Render(viewerFor(t, notePolicy(sharing.FieldAll)), obj, oneGrant, nil)
 	assert.Equal(t, obj.RawContent, r.Object.RawContent)
 	assert.Equal(t, obj.Summaries, r.Object.Summaries)
 	assert.Equal(t, obj.Metadata, r.Object.Metadata)
@@ -294,7 +298,7 @@ func TestRenderEveryFieldWithholdsNothing(t *testing.T) {
 
 // The ceiling applies to parts whatever the policy says.
 func TestRenderCeilingDropsParts(t *testing.T) {
-	r := sharing.Render(viewerFor(t, notePolicy(sharing.FieldAll), "financial"), noteObject(), nil)
+	r := sharing.Render(viewerFor(t, notePolicy(sharing.FieldAll), "financial"), noteObject(), oneGrant, nil)
 	require.NotNil(t, r.Object.Graph)
 	assert.Len(t, r.Object.Graph.Nodes, 1)
 	assert.Contains(t, withheldValues(r), "salary band is confidential")
@@ -318,13 +322,13 @@ func TestRenderSourceKeyFollowsSource(t *testing.T) {
 	withSource := sharing.Policy{Name: "with-source", Data: "type!=__none__", Fields: map[string][]string{"*": {sharing.FieldSource}}}
 	noSource := sharing.Policy{Name: "no-source", Data: "type!=__none__", Fields: map[string][]string{"*": {sharing.FieldTitle}}}
 
-	out := sharing.Render(viewerFor(t, withSource), obj, nil).Object
+	out := sharing.Render(viewerFor(t, withSource), obj, oneGrant, nil).Object
 	assert.Equal(t, "gh-stars", out.Source)
 	assert.Equal(t, "gh:repo:42", out.SourceKey)
 
-	out = sharing.Render(viewerFor(t, noSource), obj, nil).Object
+	out = sharing.Render(viewerFor(t, noSource), obj, oneGrant, nil).Object
 	assert.Empty(t, out.Source)
 	assert.Empty(t, out.SourceKey)
 
-	assert.Equal(t, "gh:repo:42", sharing.Render(sharing.Unrestricted, obj, nil).Object.SourceKey)
+	assert.Equal(t, "gh:repo:42", sharing.Render(sharing.Unrestricted, obj, nil, nil).Object.SourceKey)
 }

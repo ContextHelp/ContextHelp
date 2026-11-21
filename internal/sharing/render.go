@@ -67,21 +67,25 @@ var structuredRenderers = map[string]structuredRenderer{
 	projection.TypeContact: renderContact,
 }
 
-// Render returns obj as viewer v sees it (ADR-080 §5): field
-// projection with IDs, type and created_at always kept, structured
-// types rebuilt from their visible fields, class-excluded parts
-// dropped, and derived fields dropped unless every input of the step
-// that produced them is projected. obj is never modified; an
-// unrestricted viewer gets obj itself. prov supplies the step
-// contracts of obj's pipeline; nil withholds every derived-only field.
-func Render(v Viewer, obj *storage.KnowledgeObject, prov Provenance) Rendered {
+// Render returns obj as viewer v sees it (ADR-080 §5) through the
+// grants that cover it: covering[i] reports whether v's i-th grant
+// (Plan().Grants[i]) covers obj, and obj renders under ObjectPlan, so
+// a grant that does not cover obj adds none of its fields. Field
+// projection keeps IDs, type and created_at always, structured types
+// are rebuilt from their visible fields, class-excluded parts dropped,
+// and derived fields dropped unless every input of the step that
+// produced them is projected. A covering that names no grant renders
+// only what is always kept. obj is never modified; an unrestricted
+// viewer gets obj itself. prov supplies the step contracts of obj's
+// pipeline; nil withholds every derived-only field.
+func Render(v Viewer, obj *storage.KnowledgeObject, covering []bool, prov Provenance) Rendered {
 	if obj == nil {
 		return Rendered{}
 	}
 	if v.IsUnrestricted() {
 		return Rendered{Object: obj}
 	}
-	plan := v.Plan()
+	plan := v.ObjectPlan(covering)
 	fs := newFieldSet(plan.FieldsFor(obj.Type))
 	var steps []StepContract
 	if prov != nil && obj.Pipeline != "" {
