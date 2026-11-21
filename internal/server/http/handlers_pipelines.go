@@ -220,6 +220,10 @@ func Enqueue(svc *service.Service) http.HandlerFunc {
 
 		jobID, err := svc.Enqueue(r.Context(), req)
 		if err != nil {
+			if errors.Is(err, service.ErrInvalidContentEncoding) {
+				WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+				return
+			}
 			// An unknown pipeline can surface from two layers with two
 			// distinct sentinels: the service's own pre-flight registry
 			// check, and the queue's validator deeper in Enqueue. Match

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/base64"
 	"errors"
 	"strings"
 	"testing"
@@ -253,5 +254,59 @@ func TestAnalyzeRejectsOversizedAmbientFields(t *testing.T) {
 		assert.True(t, errors.Is(err, ErrInvalidSubmission), "%s: %v", name, err)
 		_, err = svc.Enqueue(ctx, req)
 		assert.True(t, errors.Is(err, ErrInvalidSubmission), "enqueue %s: %v", name, err)
+	}
+}
+
+// Dedup hashes the decoded bytes: a base64 submission of bytes already
+// stored resolves to the stored object, and the job payload is decoded.
+func TestAnalyzeBase64DedupsOnDecodedBytes(t *testing.T) {
+	svc := newTestService(t)
+	ctx := ownerCtx()
+	bin := []byte{0x89, 'P', 'N', 'G', 0xff, 0xfe, 0x00, 0x80}
+	const source = "blob-a"
+	svc.Cfg.Duplicates = config.DuplicatesConfig{Policy: "drop", CheckExact: true}
+
+	// The object a first capture of these bytes left behind.
+	const first = "obj-bin-1"
+	require.NoError(t, svc.Store(ctx).Objects().Create(ctx, &storage.KnowledgeObject{
+		ID: first, Type: "text", Source: source, RawContent: string(bin),
+		ContentHash: storageutil.ContentHash(string(bin), source),
+		CreatedAt:   time.Now(), UpdatedAt: time.Now(),
+	}))
+
+	again, err := svc.Analyze(ctx, AnalyzeRequest{
+		Content: base64.StdEncoding.EncodeToString(bin), ContentEncoding: "base64",
+		Type: "text", Source: source,
+	})
+	require.NoError(t, err)
+	require.Equal(t, first, again, "same file twice is one object")
+	_, total, err := svc.Store(ctx).Objects().List(ctx, storage.ObjectFilter{})
+	require.NoError(t, err)
+	require.Equal(t, 1, total)
+}
+
+func TestEnqueueBase64PayloadDecoded(t *testing.T) {
+	svc := newTestService(t)
+	ctx := ownerCtx()
+	bin := []byte{0xff, 0xfe, 0x00, 0x80}
+	id, err := svc.Enqueue(ctx, AnalyzeRequest{
+		Content: base64.StdEncoding.EncodeToString(bin), ContentEncoding: "base64", Type: "text",
+	})
+	require.NoError(t, err)
+	job, err := svc.Store(ctx).Jobs().Get(ctx, id)
+	require.NoError(t, err)
+	require.Equal(t, bin, []byte(job.Payload))
+}
+
+func TestAnalyzeRefusesBadContentEncoding(t *testing.T) {
+	svc := newTestService(t)
+	for _, req := range []AnalyzeRequest{
+		{Content: "***", ContentEncoding: "base64", Type: "text"},
+		{Content: "x", ContentEncoding: "hex", Type: "text"},
+	} {
+		_, err := svc.Analyze(ownerCtx(), req)
+		require.ErrorIs(t, err, ErrInvalidContentEncoding)
+		_, err = svc.Enqueue(ownerCtx(), req)
+		require.ErrorIs(t, err, ErrInvalidContentEncoding)
 	}
 }

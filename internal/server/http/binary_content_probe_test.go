@@ -1,7 +1,13 @@
 package http
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -13,7 +19,6 @@ import (
 // JSON content string. This drives the real client (dpkmsclient.Analyze)
 // against the real handler, raw path, and compares the stored bytes.
 func TestCaptureBinaryFileRoundTripsByteForByte(t *testing.T) {
-	t.Skip("known bug: file bytes travel as a JSON string, so invalid UTF-8 becomes U+FFFD (capture, analyze --file, watcher)")
 	ts := newTestServerBundle(t)
 	defer ts.Close()
 
@@ -30,4 +35,67 @@ func TestCaptureBinaryFileRoundTripsByteForByte(t *testing.T) {
 	obj, err := ts.svc.Store(ownerCtx()).Objects().Get(ownerCtx(), id)
 	require.NoError(t, err)
 	require.Equal(t, bin, []byte(obj.RawContent), "stored bytes differ from the file's")
+}
+
+func postAnalyzeBody(t *testing.T, url, path string, body map[string]any) (int, ErrorEnvelope) {
+	t.Helper()
+	b, err := json.Marshal(body)
+	require.NoError(t, err)
+	resp, err := http.Post(url+path, "application/json", bytes.NewReader(b))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	var env ErrorEnvelope
+	_ = json.Unmarshal(raw, &env)
+	return resp.StatusCode, env
+}
+
+// A wire body naming base64 is decoded before the object is stored.
+func TestAnalyzeBase64ContentStoredDecoded(t *testing.T) {
+	ts := newTestServerBundle(t)
+	defer ts.Close()
+	bin := []byte{0xff, 0xfe, 0x00, 0x80, 'a'}
+	c, err := dpkmsclient.New(dpkmsclient.Endpoint{URL: ts.URL})
+	require.NoError(t, err)
+	id, err := c.Analyze(context.Background(), dpkmsclient.AnalyzeRequest{
+		Content: base64.StdEncoding.EncodeToString(bin), ContentEncoding: "base64", Type: "text", Raw: true,
+	})
+	require.NoError(t, err)
+	obj, err := ts.svc.Store(ownerCtx()).Objects().Get(ownerCtx(), id)
+	require.NoError(t, err)
+	require.Equal(t, bin, []byte(obj.RawContent))
+}
+
+func TestAnalyzeRejectsBadContentEncoding(t *testing.T) {
+	ts := newTestServerBundle(t)
+	defer ts.Close()
+	for _, path := range []string{"/api/v1/analyze", "/api/v1/pipelines/enqueue"} {
+		for name, body := range map[string]map[string]any{
+			"invalid base64":   {"content": "***", "content_encoding": "base64", "type": "text", "raw": true},
+			"unknown encoding": {"content": "abc", "content_encoding": "rot13", "type": "text", "raw": true},
+		} {
+			status, env := postAnalyzeBody(t, ts.URL, path, body)
+			require.Equal(t, http.StatusBadRequest, status, path+" "+name)
+			require.Equal(t, "VALIDATION_ERROR", env.Error.Code, path+" "+name)
+		}
+	}
+}
+
+// Text is sent as it always was: no content_encoding on the wire.
+func TestAnalyzeTextHasNoContentEncodingOnWire(t *testing.T) {
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"job_id":"j"}`))
+	}))
+	defer srv.Close()
+	c, err := dpkmsclient.New(dpkmsclient.Endpoint{URL: srv.URL})
+	require.NoError(t, err)
+	_, err = c.Analyze(context.Background(), dpkmsclient.AnalyzeRequest{Content: "héllo", Type: "text"})
+	require.NoError(t, err)
+	require.Equal(t, "héllo", got["content"])
+	_, present := got["content_encoding"]
+	require.False(t, present, "valid UTF-8 must not carry content_encoding")
 }

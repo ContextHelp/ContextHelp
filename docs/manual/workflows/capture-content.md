@@ -32,6 +32,8 @@ Send one thing to your ctxt server with `ctxt capture`, let the server pick the 
 
 An argument counts as a URL when it parses with an `http` or `https` scheme. Otherwise, if it names an existing file, the file is read. Anything else is sent as literal text. `--stdin` cannot be combined with a positional source. With no source, no `--stdin` and an empty or unavailable clipboard, the command fails and tells you to pass one of them; `CTXT_NO_CLIPBOARD=1` turns the clipboard fallback off.
 
+A binary file (an image, a PDF) or binary stdin is sent base64-encoded and stored as the file's exact bytes; text is sent as it is. Base64 adds about a third to the request, which counts against `server.max_analyze_bytes` on a protected or public instance.
+
 To label content that arrives on stdin, pass `--source <path-or-url>`. The server treats that value like the source of a positional capture, so `--source ./notes/plan.md` makes piped text route as a Markdown file.
 
 ### Step 2: Capture

@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/ideacrafterslabs/ctxt/internal/contentenc"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -15,20 +16,23 @@ import (
 // holds the two in step. The client keeps its own copy so ctxt does not
 // link the service layer and, through it, the storage drivers.
 type AnalyzeRequest struct {
-	Content     string   `json:"content"`
-	Type        string   `json:"type"`
-	Pipeline    string   `json:"pipeline,omitempty"`
-	Source      string   `json:"source,omitempty"`
-	KnownHash   string   `json:"known_hash,omitempty"`
-	SourceTitle string   `json:"source_title,omitempty"`
-	AuthState   string   `json:"auth_state,omitempty"`
-	Raw         bool     `json:"raw,omitempty"`
-	NoFanout    bool     `json:"no_fanout,omitempty"`
-	SourceKey   string   `json:"source_key,omitempty"`
-	Force       bool     `json:"force,omitempty"`
-	Mentions    []string `json:"mentions,omitempty"`
-	Hints       []string `json:"hints,omitempty"`
-	Profile     string   `json:"profile,omitempty"`
+	Content string `json:"content"`
+	// ContentEncoding is "" (UTF-8 text) or "base64". Analyze sets it
+	// itself when Content is not valid UTF-8; callers leave it empty.
+	ContentEncoding string   `json:"content_encoding,omitempty"`
+	Type            string   `json:"type"`
+	Pipeline        string   `json:"pipeline,omitempty"`
+	Source          string   `json:"source,omitempty"`
+	KnownHash       string   `json:"known_hash,omitempty"`
+	SourceTitle     string   `json:"source_title,omitempty"`
+	AuthState       string   `json:"auth_state,omitempty"`
+	Raw             bool     `json:"raw,omitempty"`
+	NoFanout        bool     `json:"no_fanout,omitempty"`
+	SourceKey       string   `json:"source_key,omitempty"`
+	Force           bool     `json:"force,omitempty"`
+	Mentions        []string `json:"mentions,omitempty"`
+	Hints           []string `json:"hints,omitempty"`
+	Profile         string   `json:"profile,omitempty"`
 	// IdempotencyKey identifies one logical submission. dpkms answers a
 	// replayed key with the job it already created. Analyze mints one
 	// when it is empty.
@@ -50,6 +54,9 @@ type AnalyzeRequest struct {
 func (c *Client) Analyze(ctx context.Context, req AnalyzeRequest) (string, error) {
 	if req.IdempotencyKey == "" {
 		req.IdempotencyKey = uuid.NewString()
+	}
+	if req.ContentEncoding == "" {
+		req.Content, req.ContentEncoding = contentenc.Encode(req.Content)
 	}
 	var out struct {
 		JobID string `json:"job_id"`

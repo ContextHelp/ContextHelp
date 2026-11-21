@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/ambient"
+	"github.com/ideacrafterslabs/ctxt/internal/contentenc"
 )
 
 // receivedRequest captures the shape of a request the capturingHandler
@@ -214,3 +215,29 @@ func TestEnqueue_RespectsContextCancel(t *testing.T) {
 
 // Compile-time assertion: HTTPClient satisfies ambient.Enqueuer.
 var _ ambient.Enqueuer = (*HTTPClient)(nil)
+
+// Payload bytes that are not valid UTF-8 travel base64-encoded; text
+// carries no content_encoding.
+func TestEnqueue_BinaryPayloadIsBase64(t *testing.T) {
+	t.Parallel()
+	srv, h := newCapturingHandler(http.StatusOK, `{"id":"o"}`)
+	defer srv.Close()
+	c, _ := New(srv.URL)
+
+	bin := []byte{0xff, 0xfe, 0x00, 0x80}
+	if err := c.Enqueue(context.Background(), ambient.RawEvent{Source: "s", Kind: ambient.KindURL, Payload: bin}); err != nil {
+		t.Fatal(err)
+	}
+	b := h.Last().Body
+	dec, err := contentenc.Decode(b["content"].(string), b["content_encoding"].(string))
+	if err != nil || string(bin) != dec {
+		t.Fatalf("content %v enc %v: %q %v", b["content"], b["content_encoding"], dec, err)
+	}
+
+	if err := c.Enqueue(context.Background(), ambient.RawEvent{Source: "s", Kind: ambient.KindURL, Payload: []byte("text")}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := h.Last().Body["content_encoding"]; ok {
+		t.Error("text payload carried content_encoding")
+	}
+}

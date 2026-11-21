@@ -15,6 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/contentenc"
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/steps"
@@ -383,10 +384,12 @@ func runPipelineEnqueue(cmd *cobra.Command, args []string) error {
 		content = string(b)
 	}
 
+	wire, encoding := contentenc.Encode(content)
 	req := service.AnalyzeRequest{
-		Content:  content,
-		Type:     pipelineType,
-		Pipeline: pipelinePipeline,
+		Content:         wire,
+		ContentEncoding: encoding,
+		Type:            pipelineType,
+		Pipeline:        pipelinePipeline,
 	}
 
 	jobID, err := apiClient.Enqueue(cmd.Context(), req)

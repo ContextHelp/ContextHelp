@@ -28,6 +28,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/contentenc"
+
 	"github.com/ideacrafterslabs/ctxt/internal/ambient"
 )
 
@@ -87,13 +89,14 @@ func (c *HTTPClient) Endpoint() string {
 // payload is the body shape dpkms's /api/v1/analyze accepts. Mirrors the
 // new optional fields per ADR-066 §Decision "Enqueue path".
 type payload struct {
-	Content       string         `json:"content"`
-	Type          string         `json:"type,omitempty"`
-	Pipeline      string         `json:"pipeline,omitempty"`
-	AmbientSource string         `json:"ambient_source,omitempty"`
-	Fingerprint   string         `json:"fingerprint,omitempty"`
-	SessionID     string         `json:"session_id,omitempty"`
-	Metadata      map[string]any `json:"metadata,omitempty"`
+	Content         string         `json:"content"`
+	ContentEncoding string         `json:"content_encoding,omitempty"`
+	Type            string         `json:"type,omitempty"`
+	Pipeline        string         `json:"pipeline,omitempty"`
+	AmbientSource   string         `json:"ambient_source,omitempty"`
+	Fingerprint     string         `json:"fingerprint,omitempty"`
+	SessionID       string         `json:"session_id,omitempty"`
+	Metadata        map[string]any `json:"metadata,omitempty"`
 }
 
 // Enqueue POSTs ev to dpkms's /api/v1/analyze. Returns nil on 2xx; an error
@@ -110,14 +113,16 @@ type payload struct {
 //	SessionID        → session_id (per ADR-067)
 //	Metadata         → metadata
 func (c *HTTPClient) Enqueue(ctx context.Context, ev ambient.RawEvent) error {
+	content, encoding := contentenc.EncodeBytes(ev.Payload)
 	body := payload{
-		Content:       string(ev.Payload),
-		Type:          string(ev.Kind),
-		Pipeline:      ev.SuggestedPipeline,
-		AmbientSource: ev.Source,
-		Fingerprint:   ev.Fingerprint,
-		SessionID:     ev.SessionID,
-		Metadata:      ev.Metadata,
+		Content:         content,
+		ContentEncoding: encoding,
+		Type:            string(ev.Kind),
+		Pipeline:        ev.SuggestedPipeline,
+		AmbientSource:   ev.Source,
+		Fingerprint:     ev.Fingerprint,
+		SessionID:       ev.SessionID,
+		Metadata:        ev.Metadata,
 	}
 	jsonBody, err := json.Marshal(body)
 	if err != nil {

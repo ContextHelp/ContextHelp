@@ -42,6 +42,10 @@ func Analyze(svc *service.Service) http.HandlerFunc {
 
 		jobID, err := svc.Analyze(r.Context(), req)
 		if err != nil {
+			if errors.Is(err, service.ErrInvalidContentEncoding) {
+				WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+				return
+			}
 			// surface unsupported types as 422 so callers see a
 			// clear, actionable error instead of a generic 500. Previously
 			// this path silently enqueued a job referencing a non-existent
