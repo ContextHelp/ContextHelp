@@ -32,7 +32,7 @@ extraction) populates the facets.
 ## Acceptance Criteria
 
 - [ ] `ctxt find` accepts `--meta-type`, `--topic`, `--person`,
-  `--since`, `--until`, `--source-type` as filter parameters
+  `--mentioned-since`, `--mentioned-until`, `--source-type` as filter parameters
 - [ ] Filters compose with semantic search (intersection)
 - [ ] Filters compose with each other (AND semantics)
 - [ ] `ctxt list` accepts same filter parameters for browsing

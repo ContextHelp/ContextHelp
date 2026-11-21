@@ -1,5 +1,5 @@
 ---
-status: shipped
+status: partial
 ---
 
 # US-0101: Create Custom Pipeline

@@ -164,6 +164,7 @@ Each story can be implemented on one or more of these deployment models:
 | **US-0029** | [install-steps-from-registry](./admin/US-0029-install-steps-from-registry.md) | dpkms (self-hosted), dpkms cloud | Platform Integrators, Operations |
 | **US-0030** | [set-up-focus-profiles](./admin/US-0030-set-up-focus-profiles.md) | ctxt | Knowledge Workers, Maintainers |
 | **US-0031** | [configure-encryption-and-secrets](./admin/US-0031-configure-encryption-and-secrets.md) | dpkms (self-hosted), dpkms cloud | Operations, Maintainers |
+| **US-0062** | [manage-secrets-via-cli](./admin/US-0062-manage-secrets-via-cli.md) | ctxt, dpkms (self-hosted) | Knowledge Workers, Operations |
 
 ---
 
@@ -233,6 +234,7 @@ Each story can be implemented on one or more of these deployment models:
 | **US-0407** | [metadata-facet-search](./search/US-0407-metadata-facet-search.md) | dpkms (self-hosted), dpkms cloud, ctxt | Knowledge Workers, Agents/LLMs |
 | **US-0408** | [index-first-retrieval](./search/US-0408-index-first-retrieval.md) | dpkms (self-hosted), dpkms cloud, ctxt | Knowledge Workers, Agents/LLMs |
 | **US-0409** | [named-cursor-incremental-retrieval](./search/US-0409-named-cursor-incremental-retrieval.md) | dpkms (self-hosted), dpkms cloud, ctxt | Knowledge Workers, Agents/LLMs |
+| **US-0410** | [multi-source-syndication-aggregation](./federation/US-0410-multi-source-syndication-aggregation.md) | dpkms (self-hosted) | Platform Integrators |
 
 
 ### Renumbered Stories (US-0411 to US-0418)
@@ -299,7 +301,7 @@ Links to related stories
 - **US-0200 to US-0210** — Platform Capture (cookie bridge, social media, academic, OSINT, temporal watch)
 - **US-0300 to US-0317** — Importer Interface and Source Importers
 - **US-0318 to US-0323** — Federation
-- **US-0400 to US-0409** — Knowledge Compiler (fan-out, persistent pages, lint, dedup, links, facets, index, cursors)
+- **US-0400 to US-0410** — Knowledge Compiler (fan-out, persistent pages, lint, dedup, links, facets, index, cursors)
 - **US-0411 to US-0418** — Renumbered stories (previously duplicate IDs)
 
 ---

@@ -144,7 +144,7 @@ Content-Type: application/json
 ## Related Stories
 
 - [US-0001](../ingestion/US-0001-text-capture-minimal-friction.md) — `--profile` flag at capture
-- [US-0016](../search/US-0016-basic-keyword-search.md) — profile applied at search time
+- [US-0016](../search/US-0016-natural-language-search.md) — profile applied at search time
 - [US-0027](US-0027-configure-ai-provider.md) — provider config may be profile-scoped
 
 ---

@@ -28,15 +28,15 @@ it when `dpkms serve` is running. Natural-language time expressions (`in 2h`,
 
 ## Acceptance Criteria
 
-- [ ] `ctxt remind <id> <time-expression>` sets a reminder on the object
+- [ ] `ctxt remind set <id> <time-expression>` sets a reminder on the object
 - [ ] Time expressions accepted: `in Xh`, `in Xm`, `in XhYm`, `today HH:mm`,
       `tomorrow HH:mm`, `<weekday> HH:mm`, `YYYY-MM-DD`, `YYYY-MM-DD HH:mm`
 - [ ] Confirmation printed: `Reminder set for <id> at <timestamp>`
-- [ ] `ctxt remind --clear <id>` removes the reminder; prints confirmation
-- [ ] `ctxt reminders` lists all objects with pending reminders (table: ID, title,
+- [ ] `ctxt remind clear <id>` removes the reminder; prints confirmation
+- [ ] `ctxt remind list` lists all objects with pending reminders (table: ID, title,
       remind-at, status)
 - [ ] Status values: `pending`, `overdue`, `notified`
-- [ ] `ctxt reminders --output json` returns structured JSON
+- [ ] `ctxt remind list --output json` returns structured JSON
 - [ ] Setting a reminder on a non-existent object returns a clear error
 - [ ] Invalid time expression returns a parse error with examples
 
@@ -55,10 +55,10 @@ complement to the proactive surfacing described in
 ### CLI surface
 
 ```
-ctxt remind <id> <time-expression>   # set
-ctxt remind --clear <id>             # clear
-ctxt reminders                       # list pending
-ctxt reminders --output json
+ctxt remind set <id> <time-expression>   # set
+ctxt remind clear <id>                   # clear
+ctxt remind list                         # list scheduled
+ctxt remind list --output json
 ```
 
 ### Time parsing (`internal/remind`)
@@ -82,11 +82,11 @@ ctxt reminders --output json
 
 ## E2E Checklist
 
-- [ ] `ctxt remind <id> "in 1h"` → confirm message with timestamp
-- [ ] `ctxt reminders` shows the object with status `pending`
-- [ ] `ctxt remind --clear <id>` → confirm cleared
-- [ ] `ctxt reminders` no longer shows the object
-- [ ] Invalid expr (`ctxt remind <id> "next fortnight"`) → parse error
+- [ ] `ctxt remind set <id> "in 1h"` → confirm message with timestamp
+- [ ] `ctxt remind list` shows the object with status `pending`
+- [ ] `ctxt remind clear <id>` → confirm cleared
+- [ ] `ctxt remind list` no longer shows the object
+- [ ] Invalid expr (`ctxt remind set <id> "next fortnight"`) → parse error
 
 ---
 
@@ -100,7 +100,7 @@ ctxt reminders --output json
 
 ## E2E Tests
 
-- planned: `test/integration/us0318_set_reminder_test.go::TestReminder_CreateOnObject`
-- planned: `test/integration/us0318_set_reminder_test.go::TestReminder_FiresAtScheduledTime`
-- planned: `test/integration/us0318_set_reminder_test.go::TestReminder_ListUpcoming`
-- planned: `test/integration/us0318_set_reminder_test.go::TestReminder_CancelReminder`
+- planned: `test/integration/us0412_set_reminder_test.go::TestReminder_CreateOnObject`
+- planned: `test/integration/us0412_set_reminder_test.go::TestReminder_FiresAtScheduledTime`
+- planned: `test/integration/us0412_set_reminder_test.go::TestReminder_ListUpcoming`
+- planned: `test/integration/us0412_set_reminder_test.go::TestReminder_CancelReminder`

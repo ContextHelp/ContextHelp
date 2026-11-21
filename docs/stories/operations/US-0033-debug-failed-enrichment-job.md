@@ -1,5 +1,5 @@
 ---
-status: shipped
+status: partial
 ---
 
 # US-0033: Debug Failed Enrichment Job

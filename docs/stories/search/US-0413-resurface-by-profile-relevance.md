@@ -106,7 +106,7 @@ ctxt resurface --output json
 
 ## E2E Tests
 
-- planned: `test/integration/us0319_resurface_test.go::TestResurface_ScoredByProfile`
-- planned: `test/integration/us0319_resurface_test.go::TestResurface_RespectsRecencyDecay`
-- planned: `test/integration/us0319_resurface_test.go::TestResurface_DedupesAcrossDays`
-- planned: `test/integration/us0319_resurface_test.go::TestResurface_FilterByTag`
+- planned: `test/integration/us0413_resurface_test.go::TestResurface_ScoredByProfile`
+- planned: `test/integration/us0413_resurface_test.go::TestResurface_RespectsRecencyDecay`
+- planned: `test/integration/us0413_resurface_test.go::TestResurface_DedupesAcrossDays`
+- planned: `test/integration/us0413_resurface_test.go::TestResurface_FilterByTag`

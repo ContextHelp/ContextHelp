@@ -4,6 +4,8 @@ status: partial
 
 # Story: Configure AI Provider
 
+> **Implementation status:** Built: backend/model/endpoint config (incl. ollama), secret-backed API keys. Not built: lmql/instructor/outlines providers, hot reload, fallback provider, cost tracking, health checks.
+
 **System Types:** dpkms (self-hosted), dpkms cloud
 **Personas:** [Maintainers](../../personas/maintainers.md), [Operations](../../personas/operations.md)
 
