@@ -41,6 +41,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/ideacrafterslabs/ctxt/internal/tagfilter"
+	"github.com/ideacrafterslabs/ctxt/pkg/taxonomy"
 )
 
 // Service coordinates all business operations.
@@ -325,7 +326,7 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 
 	// Auto-detect type if it's "text" but content looks like a URL.
 	detectedType := req.Type
-	if detectedType == "text" && strings.HasPrefix(strings.TrimSpace(req.Content), "http") {
+	if detectedType == taxonomy.TypeText && strings.HasPrefix(strings.TrimSpace(req.Content), "http") {
 		detectedType = "url"
 	}
 
