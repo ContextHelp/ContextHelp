@@ -19,9 +19,9 @@ func gatePrincipal(r *http.Request) string {
 }
 
 // entityGate returns the inbound gate that applies to this request:
-// nil (no entitlement filter, no metering) for a principal that
-// bypasses it, the admin owner of the instance; gate otherwise. The
-// gate exists for third-party consumers, not the owner.
+// nil (no entitlement filter, no metering) for the principal that
+// bypasses it, the instance owner; gate otherwise, non-owner
+// administrators included (ADR-082 §10, ADR-083 §10).
 func entityGate(r *http.Request, gate *registry.InboundGate) *registry.InboundGate {
 	if p, ok := authn.FromContext(r.Context()); ok && p.BypassesEntityGate() {
 		return nil

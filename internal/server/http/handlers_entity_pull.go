@@ -17,8 +17,7 @@ import (
 //
 // A wired inbound gate charges the access as a metered content_pull
 // against the principal's namespace entitlement and quota before the
-// definition fetch runs. Admin principals are neither gated nor
-// metered.
+// definition fetch runs. The owner is neither gated nor metered.
 func PullEntity(svc *service.Service, gate *registry.InboundGate) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		slug := chi.URLParam(r, "slug")

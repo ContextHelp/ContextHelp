@@ -13,7 +13,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
-// Instance admin is not owner (ADR-079 §5, ADR-081 §10): a principal
+// Instance admin is not owner (ADR-079 §5, ADR-082 §10, ADR-083 §10): a principal
 // holding the admin bundle administers principals and shares, and the
 // owner stays out of its reach. The tests here call the registry as the
 // two kinds of administrator an instance has: a device presenting a

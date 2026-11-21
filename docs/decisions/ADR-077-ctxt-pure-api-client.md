@@ -6,7 +6,7 @@
 > **Applies to:** ctxt CLI (every command), dPKMS HTTP and gRPC surface, client endpoint configuration
 > **Supersedes:** None
 > **Amends:** ADR-075 §2 "Hook hosts" (the CLI stops being a host; see Consequences)
-> **Amended by:** ADR-082 §10 (2026-10-16): only the local owner bypasses the inbound entitlement and metering gate; the `admin` role does not (future work; `next` still bypasses on the `admin` role)
+> **Amended by:** ADR-082 §10 (2026-10-16): only the local owner bypasses the inbound entitlement and metering gate; the `admin` role does not
 > **Amended by:** ADR-082 §9 (2026-10-16): the PACT holder key is not a token and never comes from config or the environment (future work, gated on the PACT library's published tag); *amended 2026-10-20:* it is a 0600 file under `$XDG_STATE_HOME/ctxt/pact/`, and holder refusals have exit classes (§2)
 > **References:** ADR-023 (authentication and authorization), ADR-056 (unified enqueue API), ADR-066 (ambient capture substrate), ADR-070 (pipeline and index versioning), ADR-071 (embedding index versioning), ADR-074 (same-owner device sync), ADR-075 (external hook surface)
 > **Plan:** [`docs/plans/2026-09-27-ctxt-remote-client.md`](../plans/2026-09-27-ctxt-remote-client.md) holds the per-command audit, the endpoint map, the missing endpoints and the phased tasks.
@@ -101,7 +101,7 @@ This follows ADR-023's capability model:
   - `reader` holds every `read:*` scope.
 - A principal without the scope gets 403. A route with no declared scope fails a test, so every new route has to choose one.
 - **Private instances** (no auth provider, loopback only) grant every scope, as today.
-- **Admin principals bypass the inbound entitlement and metering gate** on entity reads. That gate exists for third-party consumers, not the owner. *Amended 2026-10-16 by ADR-082 §10 (future work):* administering an instance is not access to its data, so the bypass is to belong to the local owner (principal kind `owner`) alone. A principal holding the `admin` role, IdP-mapped or not, is then gated and metered like any other consumer. On `next` the gate is still skipped for the `admin` role (`BypassesEntityGate`).
+- **Admin principals bypass the inbound entitlement and metering gate** on entity reads. That gate exists for third-party consumers, not the owner. *Amended 2026-10-16 by ADR-082 §10:* administering an instance is not access to its data, so the bypass belongs to the local owner (principal kind `owner`) alone (`BypassesEntityGate`). A principal holding the `admin` role, IdP-mapped or not, is gated and metered like any other consumer.
 - **`GET /api/v1/whoami`** returns the principal ID and its effective scopes, so `ctxt status` and `ctxt instance current` can show who the client is.
 
 ### 5. Where each operator command lives

@@ -146,7 +146,7 @@ Its grant is empty or past its expiry. Run `dpkms entitlement list` and check th
 
 Two causes:
 
-1. The principal is the instance owner (admin role). The owner bypasses the gate. Granting to it does nothing.
+1. The principal is the instance owner. The owner bypasses the gate, so a grant to it does nothing. A principal holding the `admin` role is not the owner; the gate applies to it like to any other principal.
 2. The name passed to `grant` does not match what the caller authenticates as. The `principal` field in `server.auth.static.tokens` is case-sensitive. Run `dpkms entitlement list` and compare the row name against the token config exactly.
 
 ### ungate refused

@@ -26,7 +26,8 @@ A principal with no grant is unrestricted. A grant opts the principal
 into namespace gating: it may then read only entities whose namespace
 matches one of its globs ("ai.*", "devops.k8s", "*"). A grant with no
 namespaces left, or one past its expiry, denies every gated read. The
-instance owner (admin role) bypasses the gate.
+instance owner bypasses the gate. A principal holding the admin role
+does not.
 
 These commands manage inbound grants only. Entitlements this instance
 holds on remote registries are listed by 'ctxt registry entitlements'.

@@ -296,10 +296,12 @@ func (p *Principal) IsOwner() bool {
 }
 
 // BypassesEntityGate reports whether the principal skips the inbound
-// entitlement and metering gate on entity reads. The gate exists for
-// third-party consumers; an admin principal is the instance owner.
+// entitlement and metering gate on entity reads: the owner only (IsOwner),
+// whatever its credential's roles. Administering an
+// instance is not access to its data (ADR-082 §10, ADR-083 §10): a principal holding
+// the admin role, IdP-mapped or not, is gated like any other consumer.
 func (p *Principal) BypassesEntityGate() bool {
-	return p.HasRole(RoleAdmin)
+	return p.IsOwner()
 }
 
 // LocalPrincipal is the identity a private instance (no auth chain,

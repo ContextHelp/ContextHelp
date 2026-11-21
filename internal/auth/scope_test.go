@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/testguard"
 )
 
@@ -188,11 +189,29 @@ func TestScopesForRolesUnion(t *testing.T) {
 	}
 }
 
-func TestBypassesEntityGateOnlyForAdmin(t *testing.T) {
-	for role, want := range map[string]bool{RoleAdmin: true, RoleWriter: false, RoleReader: false} {
-		p := &Principal{ID: "x", Roles: []string{role}}
-		if got := p.BypassesEntityGate(); got != want {
-			t.Errorf("%s bypass = %v, want %v", role, got, want)
+// Administering an instance is not access to its data (ADR-082 §10, ADR-083 §10):
+// the local owner is the only principal past the entity gate. A
+// principal holding the admin role, of any other kind, is gated.
+func TestBypassesEntityGateOnlyForOwner(t *testing.T) {
+	cases := []struct {
+		name string
+		p    *Principal
+		want bool
+	}{
+		{"owner", &Principal{ID: storage.OwnerPrincipal, Kind: storage.PrincipalKindOwner, Roles: []string{RoleAdmin}}, true},
+		{"owner under a narrowed key", &Principal{ID: storage.OwnerPrincipal, Kind: storage.PrincipalKindOwner, Roles: []string{RoleReader}}, true},
+		{"local principal", LocalPrincipal(), true},
+		{"admin person", &Principal{ID: "prn_admin", Kind: storage.PrincipalKindPerson, Roles: []string{RoleAdmin}}, false},
+		{"admin device", &Principal{ID: "prn_admin", Kind: storage.PrincipalKindDevice, Roles: []string{RoleAdmin}}, false},
+		{"admin peer", &Principal{ID: "prn_admin", Kind: storage.PrincipalKindPeer, Roles: []string{RoleAdmin}}, false},
+		{"admin without a kind", &Principal{ID: "prn_admin", Roles: []string{RoleAdmin}, Scopes: slices.Clone(AllScopes)}, false},
+		{"admin named owner, not of kind owner", &Principal{ID: storage.OwnerPrincipal, Kind: storage.PrincipalKindPerson, Roles: []string{RoleAdmin}}, false},
+		{"writer", &Principal{ID: "prn_w", Kind: storage.PrincipalKindPerson, Roles: []string{RoleWriter}}, false},
+		{"reader", &Principal{ID: "prn_r", Kind: storage.PrincipalKindDevice, Roles: []string{RoleReader}}, false},
+	}
+	for _, c := range cases {
+		if got := c.p.BypassesEntityGate(); got != c.want {
+			t.Errorf("%s: bypass = %v, want %v", c.name, got, c.want)
 		}
 	}
 	var none *Principal

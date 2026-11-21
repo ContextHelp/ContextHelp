@@ -55,8 +55,9 @@ type Principal struct {
 	// instance.
 	Provider string
 	// Roles carries the role grants (RoleAdmin, RoleWriter,
-	// RoleReader). Only the entity-gate bypass reads them; route
-	// authorization reads Scopes.
+	// RoleReader). Routes are authorized on Scopes and the entity-gate
+	// bypass on Kind, never on Roles; Attach hands the first role to
+	// the kit policy principal.
 	Roles []string
 	// Scopes is the effective scope set every route and RPC is checked
 	// against: the principal's role scopes, narrowed by the key or the

@@ -40,9 +40,9 @@ func TestGRPCAnalyzeScopes(t *testing.T) {
 	}
 }
 
-// The admin owner skips the entity gate over gRPC too: no entitlement
-// filter, no metering, no quota. The reader stays gated and metered.
-func TestGRPCAdminBypassesEntityGate(t *testing.T) {
+// The owner skips the entity gate over gRPC too: no entitlement filter,
+// no metering, no quota. The reader stays gated and metered.
+func TestGRPCOwnerBypassesEntityGate(t *testing.T) {
 	h := startGatedGRPC(t)
 	h.gate.SetQuota("owner", storage.MeteringEventEntityResolve, storage.QuotaConfig{Limit: 1})
 	client := pb.NewEntityServiceClient(h.conn)
@@ -50,18 +50,18 @@ func TestGRPCAdminBypassesEntityGate(t *testing.T) {
 
 	for i := 0; i < 2; i++ {
 		if _, err := client.GetEntity(admin, &pb.GetEntityRequest{Slug: "med.claims"}, grpc.WaitForReady(true)); err != nil {
-			t.Fatalf("admin GetEntity %d: %v", i+1, err)
+			t.Fatalf("owner GetEntity %d: %v", i+1, err)
 		}
 	}
 	list, err := client.ListEntities(admin, &pb.ListEntitiesRequest{}, grpc.WaitForReady(true))
 	if err != nil {
-		t.Fatalf("admin ListEntities: %v", err)
+		t.Fatalf("owner ListEntities: %v", err)
 	}
 	if len(list.Entities) != 2 {
-		t.Errorf("admin listing has %d entities, want 2", len(list.Entities))
+		t.Errorf("owner listing has %d entities, want 2", len(list.Entities))
 	}
 	if _, err := client.GetEntityBacklinks(admin, &pb.GetEntityBacklinksRequest{Slug: "med.claims"}, grpc.WaitForReady(true)); err != nil {
-		t.Errorf("admin backlinks: %v", err)
+		t.Errorf("owner backlinks: %v", err)
 	}
 
 	events, err := h.driver.Metering().List(context.Background(), storage.MeteringFilter{RegistryName: "owner"})
@@ -69,7 +69,7 @@ func TestGRPCAdminBypassesEntityGate(t *testing.T) {
 		t.Fatalf("metering list: %v", err)
 	}
 	if len(events) != 0 {
-		t.Errorf("admin reads recorded %d metering events, want 0", len(events))
+		t.Errorf("owner reads recorded %d metering events, want 0", len(events))
 	}
 
 	if _, err := client.GetEntity(opsCtx(), &pb.GetEntityRequest{Slug: "ai.bert"}, grpc.WaitForReady(true)); err != nil {

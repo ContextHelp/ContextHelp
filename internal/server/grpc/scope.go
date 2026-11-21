@@ -83,8 +83,8 @@ func authorizeMethod(ctx context.Context, fullMethod string, sec *security.Emitt
 }
 
 // entityGateFor returns the inbound gate that applies to ctx's
-// principal: nil for an admin principal (the instance owner), gate
-// otherwise. Mirrors the HTTP entityGate.
+// principal: nil for the instance owner, gate otherwise, non-owner
+// administrators included (ADR-082 §10, ADR-083 §10). Mirrors the HTTP entityGate.
 func entityGateFor(ctx context.Context, gate *registry.InboundGate) *registry.InboundGate {
 	if p, ok := authn.FromContext(ctx); ok && p.BypassesEntityGate() {
 		return nil

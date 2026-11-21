@@ -31,7 +31,7 @@ func newEntityHandler(svc *service.Service, gate *registry.InboundGate, sec *sec
 // namespaces the authenticated principal is entitled to — an index
 // browse, so no metering charge. The filter runs in the store ahead of
 // limit and offset, so a page holds only entitled entities and is never
-// short while more remain. Admin principals see every entity. Mirrors
+// short while more remain. The owner sees every entity. Mirrors
 // the HTTP handler exactly.
 func (h *entityHandler) ListEntities(ctx context.Context, req *pb.ListEntitiesRequest) (*pb.ListEntitiesResponse, error) {
 	limit := int(req.Limit)
@@ -66,7 +66,7 @@ func (h *entityHandler) ListEntities(ctx context.Context, req *pb.ListEntitiesRe
 // GetEntity returns a single entity by slug. A wired inbound gate
 // charges the access as a metered entity_resolve against the
 // principal's namespace entitlement and quota, exactly like the HTTP
-// surface. Admin principals are neither gated nor metered.
+// surface. The owner is neither gated nor metered.
 func (h *entityHandler) GetEntity(ctx context.Context, req *pb.GetEntityRequest) (*pb.Entity, error) {
 	if req.Slug == "" {
 		return nil, status.Error(codes.InvalidArgument, "slug is required")
@@ -92,8 +92,8 @@ func (h *entityHandler) GetEntity(ctx context.Context, req *pb.GetEntityRequest)
 // GetEntityBacklinks returns objects that mention the given entity. The
 // gate check is unmetered — backlinks ride on the entity's namespace
 // entitlement without a quota charge. An entity the store cannot
-// resolve fails CLOSED: the gate is never skipped. Admin principals
-// skip the gate.
+// resolve fails CLOSED: the gate is never skipped. The owner skips the
+// gate.
 func (h *entityHandler) GetEntityBacklinks(
 	ctx context.Context,
 	req *pb.GetEntityBacklinksRequest,
