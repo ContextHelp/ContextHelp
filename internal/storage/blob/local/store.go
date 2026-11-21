@@ -3,6 +3,7 @@
 package local
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -11,6 +12,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -47,30 +49,80 @@ func (s *Store) metaPath(key string) string {
 	return s.blobPath(key) + ".meta.json"
 }
 
+// Put writes data under key atomically: the bytes are staged in a
+// dot-prefixed sibling file (os.CreateTemp, so the rename stays on one
+// filesystem and concurrent Puts of a key never share a staging file),
+// synced, renamed over the blob, and the directory synced. A reader
+// never sees a partial blob and a failed write leaves the previous one
+// (or none) in place. The meta sidecar is written the same way.
 func (s *Store) Put(_ context.Context, key string, data io.Reader, meta storage.BlobMeta) error {
 	path := s.blobPath(key)
 	if err := os.MkdirAll(filepath.Dir(path), dirPerm); err != nil {
 		return fmt.Errorf("blob local put: mkdir: %w", err)
 	}
-
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, filePerm) // #nosec G304 -- key-derived path under root
-	if err != nil {
-		return fmt.Errorf("blob local put: create: %w", err)
-	}
-	defer f.Close()
-
-	if _, err := io.Copy(f, data); err != nil {
-		return fmt.Errorf("blob local put: write: %w", err)
+	if err := writeAtomic(path, data); err != nil {
+		return fmt.Errorf("blob local put: %w", err)
 	}
 
 	metaBytes, err := json.Marshal(meta)
 	if err != nil {
 		return fmt.Errorf("blob local put: marshal meta: %w", err)
 	}
-	if err := os.WriteFile(s.metaPath(key), metaBytes, filePerm); err != nil {
-		return fmt.Errorf("blob local put: write meta: %w", err)
+	if err := writeAtomic(s.metaPath(key), bytes.NewReader(metaBytes)); err != nil {
+		return fmt.Errorf("blob local put: meta: %w", err)
 	}
 
+	return nil
+}
+
+// writeAtomic stages data in a dot-prefixed file beside path, syncs it,
+// renames it over path and syncs the directory. On any failure before
+// the rename the staging file is removed and path is left as it was.
+func writeAtomic(path string, data io.Reader) (err error) {
+	dir := filepath.Dir(path)
+	f, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*") // 0600
+	if err != nil {
+		return fmt.Errorf("stage: %w", err)
+	}
+	staged := f.Name()
+	defer func() {
+		if err != nil {
+			_ = f.Close()
+			_ = os.Remove(staged)
+		}
+	}()
+	if _, err = io.Copy(f, data); err != nil {
+		return fmt.Errorf("write: %w", err)
+	}
+	if err = f.Sync(); err != nil {
+		return fmt.Errorf("sync: %w", err)
+	}
+	if err = f.Close(); err != nil {
+		return fmt.Errorf("close: %w", err)
+	}
+	if err = os.Rename(staged, path); err != nil {
+		return fmt.Errorf("rename: %w", err)
+	}
+	return syncDir(dir)
+}
+
+// syncDir makes a rename in dir durable. Not supported on Windows,
+// where directories cannot be opened for sync; there it is a no-op.
+func syncDir(dir string) error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	d, err := os.Open(dir) // #nosec G304 -- key-derived path under root
+	if err != nil {
+		return fmt.Errorf("sync dir: %w", err)
+	}
+	err = d.Sync()
+	if cerr := d.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return fmt.Errorf("sync dir: %w", err)
+	}
 	return nil
 }
 
@@ -128,7 +180,7 @@ func (s *Store) List(_ context.Context, prefix string) ([]storage.BlobInfo, erro
 		if err != nil {
 			return err
 		}
-		if info.IsDir() || strings.HasSuffix(path, ".meta.json") {
+		if info.IsDir() || strings.HasSuffix(path, ".meta.json") || strings.HasPrefix(info.Name(), ".") {
 			return nil
 		}
 		key := info.Name()
