@@ -8,7 +8,7 @@ enter = "scripts/motd.sh"
 # mise cannot reach (Dockerfile base images, the go.mod directive) agree.
 # Bump here first, never in a workflow or Dockerfile.
 #
-# go: must satisfy the `go` directive in go.mod (a MINIMUM, currently 1.26.1).
+# go: must satisfy the `go` directive in go.mod (a MINIMUM, currently 1.27.4).
 #     CI previously floated on `go-version: '1.26'`, which silently tracks the
 #     newest 1.26 patch.
 # golangci-lint: lint rules drift between versions, so local output is only
@@ -22,7 +22,7 @@ enter = "scripts/motd.sh"
 # PREBUILT binary. A release binary is built with whichever Go its release
 # used (v2.1.6's was go1.24.2), and golangci-lint refuses to load a config whose module targets a newer Go:
 #   "the Go language version (go1.24) used to build golangci-lint is lower
-#    than the targeted Go version (1.26.1)"
+#    than the targeted Go version (1.27.4)"
 # so the prebuilt binary cannot lint this repo at all. Building from source
 # reproduces exactly what CI's `go install ...@v2.15.0` produces.
 #
@@ -32,7 +32,7 @@ enter = "scripts/motd.sh"
 # derives the versions from this file via each workflow's `toolchain` job.
 # The versions are identical either way, so local == CI without the cache loss.
 [tools]
-go = "1.26.11"
+go = "1.27.4"
 "go:github.com/golangci/golangci-lint/v2/cmd/golangci-lint" = "2.15.0"
 node = "22.23.3"
 # gitleaks: default rules and allowlists change between releases, so the

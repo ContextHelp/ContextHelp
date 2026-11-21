@@ -402,6 +402,44 @@ func TestCheckToolchainPins_NodePinRequired(t *testing.T) {
 	}
 }
 
+// A tracked go.work older than go.mod breaks every build outside
+// GOWORK=off; the gate must name it.
+func TestCheckToolchainPins_GoWork(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not on PATH")
+	}
+	mise := readMise(t)
+	pin := misePin(t, mise)
+	cases := map[string]struct {
+		work string
+		fail bool
+	}{
+		"matches go.mod":    {work: "go " + pin + "\n\nuse .\n"},
+		"older than go.mod": {work: "go 1.20.0\n\nuse .\n", fail: true},
+		"above the pin":     {work: "go 99.0.0\n\nuse .\n", fail: true},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			repo := pinsRepo(t, mise)
+			writePinsFile(t, filepath.Join(repo, "go.mod"), "module example.com/pins\n\ngo "+pin+"\n")
+			writePinsFile(t, filepath.Join(repo, "go.work"), tc.work)
+			out, err := exec.Command("bash", filepath.Join(repo, "scripts", "check-toolchain-pins.sh")).CombinedOutput()
+			if !tc.fail {
+				if err != nil {
+					t.Fatalf("matching go.work failed the gate: %v\n%s", err, out)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("go.work %q passed the gate\n%s", tc.work, out)
+			}
+			if !strings.Contains(string(out), "go.work") {
+				t.Errorf("failure does not name go.work:\n%s", out)
+			}
+		})
+	}
+}
+
 func miseNodePin(t *testing.T, mise []byte) string {
 	t.Helper()
 	m := regexp.MustCompile(`(?m)^node = "(.+)"$`).FindSubmatch(mise)
