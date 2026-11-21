@@ -10,10 +10,10 @@ Get up and running with **dPKMS + `ctxt`** development in under 5 minutes.
 
 - **Go 1.26.1+** — [Download](https://go.dev/dl/)
 - **Git** — For version control
+- **make** — Build and task runner (`make help` lists targets)
 
 ### Optional (but recommended)
 
-- **Task** — Modern task runner ([Install](https://taskfile.dev/installation/))
 - **golangci-lint** — Fast linter ([Install](https://golangci-lint.run/usage/install/))
 - **Docker** — For the optional Postgres service
 
@@ -131,7 +131,7 @@ cd ctxt
 ./scripts/dev-setup.sh
 
 # Build both binaries
-task build
+make build
 
 # Verify installation
 ./bin/ctxt version
@@ -165,8 +165,8 @@ go mod verify
 ### 3. Build Binaries
 
 ```bash
-# Using Task
-task build
+# Using make
+make build
 
 # Or manually
 go build -o bin/ctxt ./cmd/ctxt
@@ -176,21 +176,18 @@ go build -o bin/dpkms ./cmd/dpkms
 ### 4. Install Development Tools (Optional)
 
 ```bash
-# Install all dev tools at once
-task install:tools
-
-# Or individually
-go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6
-go install github.com/go-task/task/v3/cmd/task@v3.53.1
-go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
-go install github.com/securego/gosec/v2/cmd/gosec@v2.29.0
+# Toolchain (Go, golangci-lint, pnpm) at the mise.toml pins
+mise trust && mise install
 ```
+
+`make lint`, `make gosec` and `make govulncheck` run their tools at the
+pinned versions; no separate install step.
 
 ### 5. Environment Overrides (Optional)
 
 The defaults work for local development, so this step is optional.
-Nothing loads a `.env` file automatically: not `ctxt`, `dpkms`, `task`,
-`make` nor the compose files. To keep overrides in one, copy the template
+Nothing loads a `.env` file automatically: not `ctxt`, `dpkms`, `make`
+nor the compose files. To keep overrides in one, copy the template
 and export it into your shell:
 
 ```bash
@@ -216,7 +213,7 @@ set -a; . ./.env; set +a   # export it into the current shell
 ### Run Tests
 
 ```bash
-task test
+make test
 
 # Or directly
 go test -v ./...
@@ -225,9 +222,7 @@ go test -v ./...
 ### Start Development Server
 
 ```bash
-task run:dpkms
-
-# Or manually
+make build-dpkms
 ./bin/dpkms serve
 ```
 
@@ -239,26 +234,20 @@ The dPKMS server will start on:
 
 ## Development Workflow
 
-### Using `task` (Recommended)
+### Using `make`
 
 ```bash
-# List all available tasks
-task --list
+# List all targets
+make help
 
-# Run tests in watch mode
-task test:watch
-
-# Run linters
-task lint
+# Run linters (golangci-lint + gosec)
+make lint
 
 # Format code
-task fmt
+make fmt
 
-# Run security scans
-task security
-
-# Build and run
-task dev
+# Scan dependencies for vulnerabilities
+make vuln-scan
 ```
 
 ## Project Structure
@@ -281,8 +270,7 @@ ctxt/
 │   └── testutil/
 ├── docs/           # Documentation
 ├── .env.example    # Environment configuration template
-├── Makefile        # Legacy compatibility targets
-├── Taskfile.yml    # Primary task runner configuration
+├── Makefile        # Build, test, lint and CI targets
 └── go.mod          # Go module definition
 ```
 
@@ -327,13 +315,10 @@ For advanced development, start optional services:
 
 ```bash
 # Start Postgres via Docker Compose
-task services:up
+make services-up
 
-# View logs
-task services:logs
-
-# Stop services
-task services:down
+# Stop services (services-clean also drops volumes)
+make services-down
 ```
 
 Services:
@@ -353,29 +338,29 @@ dpkms or ctxt opens the database. To add one, see
 
 ```bash
 # Run linters
-task lint
+make lint
 
-# Auto-fix linter issues
-task lint:fix
+# Lint only what changed since the merge base
+make lint-new
 
 # Format code
-task fmt
+make fmt
 
 # Run go vet
-task vet
+make ci-vet
 ```
 
 ### Run CI Checks Locally
 
 ```bash
-# Run all CI checks (lint, security, test, build)
-task ci
+# Run every CI job locally, in ci.yml order
+make ci
 
 # Or individually
-task ci:lint
-task ci:security
-task ci:test
-task ci:build
+make ci-lint
+make ci-security
+make ci-test
+make ci-build
 ```
 
 ---
@@ -395,10 +380,10 @@ go mod tidy
 
 ```bash
 # Clean build artifacts
-task clean
+make clean
 
 # Rebuild from scratch
-task build
+make build
 ```
 
 ### Database Locked
@@ -453,29 +438,28 @@ CH_SERVER_PORT=8081 CH_GRPC_PORT=9091 dpkms serve
 
 ```bash
 # Build
-task build              # Build both binaries
-task build:prod         # Production binaries with version info
+make build              # Build both binaries
 
 # Test
-task test               # Run all tests
-task test:smoke         # Binary smoke tests
-task test:coverage      # With coverage report
+make test               # Run CI's test jobs
+make test-smoke         # Binary smoke tests
+make test-cover         # With coverage report
 
 # Run
 ./bin/dpkms serve       # Start dPKMS server
 ./bin/ctxt analyze ...  # Capture knowledge
 
 # Quality
-task check              # Primary local gate
-task lint               # Lint code
-task security           # Security scan
+make check              # Primary local gate
+make lint               # Lint code
+make vuln-scan          # Dependency vulnerability scan
 
 # Clean
-task clean              # Remove build artifacts
+make clean              # Remove build artifacts
 
 # Services
-task services:up        # Start Docker services
-task services:down      # Stop Docker services
+make services-up        # Start Docker services
+make services-down      # Stop Docker services
 ```
 
 ---

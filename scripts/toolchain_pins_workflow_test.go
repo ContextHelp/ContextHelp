@@ -211,7 +211,7 @@ func TestCheckToolchainPins_RepoReleaseRunsCI(t *testing.T) {
 	}
 }
 
-// make vuln-scan, task install:tools and scripts/dev-setup.sh install the
+// make vuln-scan and scripts/dev-setup.sh install the
 // same tools CI does. @latest there hands each developer whatever was
 // newest the day they ran it, so a local scan or lint run stops being
 // evidence about CI. golangci-lint must also be the mise.toml pin on the
@@ -234,16 +234,15 @@ func TestCheckToolchainPins_DevToolInstalls(t *testing.T) {
 		{"comment", "Makefile", "# go install golang.org/x/vuln/cmd/govulncheck@latest\n", ""},
 		{"prose without a package", "Makefile", "lint:\n\techo \"go install @latest drifts\"\n", ""},
 		{"test fixture", "scripts/x_test.go", "package scripts\n\nconst s = \"go install a.b/c@latest\"\n", ""},
-		{"lint pin", "Taskfile.yml", "      - go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v" + lint + "\n", ""},
+		{"lint pin", "scripts/dev-setup.sh", "go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v" + lint + "\n", ""},
 		{"lint derived", "scripts/dev-setup.sh", "go install \"github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v${v}\"\n", ""},
 		{"makefile latest", "Makefile", "vuln:\n\tgo install golang.org/x/vuln/cmd/govulncheck@latest; \\\n", "Makefile:2: go install golang.org/x/vuln/cmd/govulncheck@latest"},
-		{"taskfile latest", "Taskfile.yml", "      - go install github.com/go-task/task/v3/cmd/task@latest\n", "Taskfile.yml:1: "},
 		{"script latest", "scripts/dev-setup.sh", "if true; then\n    go install golang.org/x/vuln/cmd/govulncheck@latest\nfi\n", "scripts/dev-setup.sh:2: "},
 		{"script branch", "scripts/install.ps1", "go install example.com/tool@main && ok\n", "scripts/install.ps1:1: "},
 		{"nested script", "scripts/hooks/pre-commit", "go run example.com/tool@latest ./...\n", "scripts/hooks/pre-commit:1: "},
 		{"go get latest", "Makefile", "deps:\n\tgo get example.com/lib@latest\n", "Makefile:2: "},
-		{"lint other version", "Taskfile.yml", "      - go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.0.0\n", "but mise.toml pins golangci-lint " + lint},
-		{"lint v1 module", "Taskfile.yml", "      - go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8\n", "the v1 module"},
+		{"lint other version", "scripts/dev-setup.sh", "go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.0.0\n", "but mise.toml pins golangci-lint " + lint},
+		{"lint v1 module", "scripts/dev-setup.sh", "go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8\n", "the v1 module"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

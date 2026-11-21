@@ -5,7 +5,7 @@ This guide will help you get started with the ContextHelp CLI implementation.
 ## Prerequisites
 
 - Go version compatible with `go.mod`
-- `task` (preferred; if it is not on `PATH`, use `mise exec -- task ...`)
+- `make`
 
 ## Installation
 
@@ -17,14 +17,14 @@ git clone https://github.com/ideacrafterslabs/ctxt.git
 cd ctxt
 
 # Build both binaries
-task build
+make build
 
 # Or build individually
-task build:ctxt
-task build:dpkms
+make build-ctxt
+make build-dpkms
 
 # Install to $GOPATH/bin
-task install
+make install
 ```
 
 ### Manual Build
@@ -516,19 +516,19 @@ For developers working on the CLI:
 
 ```bash
 # Build with version info
-task build
+make build
 
 # Run tests
-task test
+make test
 
 # Lint code
-task lint
+make lint
 
 # Format code
-task fmt
+make fmt
 
 # Clean build artifacts
-task clean
+make clean
 ```
 
 See [CLI Implementation Guide](./cli-implementation.md) for detailed implementation notes.

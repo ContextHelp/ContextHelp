@@ -85,24 +85,21 @@ This document provides an overview of the development infrastructure for Context
 
 ---
 
-### 2. Taskfile (`Taskfile.yml`)
+### 2. Makefile (`Makefile`)
 
-**Purpose:** Unified task runner for all development operations
+**Purpose:** The one task runner for build, test, lint and CI
 
-**Task Categories:**
-- **Development:** dev, run, build
-- **Testing:** test, test:unit, test:integration, test:e2e, test:coverage
-- **Quality:** lint, fmt, vet, security
-- **CI:** ci, ci:lint, ci:test, ci:security
-- **Docker:** services:up, services:down, services:logs
-- **Dependencies:** deps, deps:update
-- **Release:** release:prepare, release:build
+**Target Groups:**
+- **Build/run:** build, build-ctxt, build-dpkms, run-ctxt, run-dpkms, install
+- **Testing:** test, test-unit, test-integration, test-e2e, test-smoke, test-cover
+- **Quality:** lint, lint-new, fmt, gosec, govulncheck, vuln-scan
+- **CI:** ci, ci-<job> (one per `ci.yml` job, checked by `make ci-parity-check`)
+- **Services:** services-up, services-down, services-clean
+- **Docker:** docker-dev, docker-prod, docker-down, docker-logs
 
 **Benefits:**
-- Consistent commands across team
-- Matches CI pipeline exactly
-- Self-documenting with descriptions
-- Cross-platform compatibility
+- `ci-<job>` targets run what CI runs, in CI's order
+- Self-documenting: `make help` lists `## target:` descriptions
 
 ---
 
@@ -228,7 +225,6 @@ run from their embedded migrations.
 
 **Tools Installed:**
 - golangci-lint
-- Task (task runner)
 - govulncheck
 
 **Features:**
@@ -287,7 +283,7 @@ run from their embedded migrations.
 
 ### 5. Developer Experience
 
-- **Taskfile:** Unified commands (`task <command>`)
+- **Makefile:** Unified commands (`make <target>`)
 - **Documentation:** Step-by-step guides
 - **Troubleshooting:** Common issues covered
 - **Quick start:** 5-minute onboarding
@@ -302,12 +298,12 @@ run from their embedded migrations.
 ```bash
 # Morning: Update and verify
 git pull origin main
-task deps
-task test
+go mod download
+make test
 
 # Work: Edit code
 # (Edit files)
-task test:watch  # Auto-run tests
+make test-unit
 
 # Commit: Quality checks run automatically
 git add .
@@ -321,33 +317,29 @@ git push origin feature-branch
 
 ```bash
 # Quick check
-task test:unit
+make test-unit
 
 # Full verification
-task test
+make test
 
 # Coverage analysis
-task test:coverage
+make test-cover
 
 # Integration testing
-task services:up
-task test:integration
-task services:down
+make services-up
+make test-integration
+make services-down
 ```
 
 ### Quality Assurance Flow
 
 ```bash
 # Before commit
-task lint
-task fmt
-task security
+make fmt
+make lint
 
 # Match CI exactly
-task ci
-
-# Fix issues
-task lint:fix
+make ci
 ```
 
 ---
@@ -382,24 +374,22 @@ task lint:fix
 ### Updating Dependencies
 
 ```bash
-# Check for updates
-task deps:update
+# Update dependencies
+go get -u ./...
+make tidy
 
 # Verify tests still pass
-task test
-
-# Update go.mod
-go mod tidy
+make test
 ```
 
 ### Updating Tools
 
 ```bash
-# Reinstall development tools
-task install:tools
+# Install the mise.toml pins
+mise install
 
-# Verify installation
-task verify
+# Verify pins match CI
+make toolchain-check
 ```
 
 ### Database Migrations
@@ -501,7 +491,7 @@ For developers new to the project:
 
 1. **Read:** [developer-quickstart.md](developer-quickstart.md)
 2. **Setup:** Run `./scripts/dev-setup.sh`
-3. **Explore:** Run `task --list`
+3. **Explore:** Run `make help`
 4. **Contribute:** Follow [development.md](development.md)
 
 For questions or issues, see [development.md](development.md#troubleshooting) or open a GitHub Issue.

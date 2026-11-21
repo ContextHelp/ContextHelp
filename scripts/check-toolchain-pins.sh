@@ -25,7 +25,7 @@
 #   6. release.yml runs ci.yml as a reusable workflow ahead of every other
 #      job, and ci.yml has nothing that skips a job in that called run (a
 #      release gates on at least what a merge gates on)
-#   7. Makefile, Taskfile and scripts/ install no go tool at @latest (or a
+#   7. Makefile and scripts/ install no go tool at @latest (or a
 #      branch), and any golangci-lint they install is the v2 mise.toml pin
 set -euo pipefail
 
@@ -554,16 +554,14 @@ if [ -f "$ci_wf" ] && [ -f "$rel_wf" ]; then
 		echo "ok: $rel_wf runs $ci_wf (job $caller) before every other job"
 fi
 
-# ── 7. go tool installs in the Makefile, Taskfile and scripts ────────────────
-# `make vuln-scan`, `task install:tools` and scripts/dev-setup.sh install
+# ── 7. go tool installs in the Makefile and scripts ──────────────────────────
+# `make vuln-scan` and scripts/dev-setup.sh install
 # the same tools CI does. @latest (or a branch) gives each developer
 # whatever was newest the day they ran it, so local scans and lint stop
 # being evidence about CI. golangci-lint must also be the mise.toml pin on
 # the v2 module path. Comments are ignored; *_test.go fixtures are skipped.
 dev_files=()
-for f in Makefile Taskfile.yml Taskfile.yaml; do
-	[ -f "$f" ] && dev_files+=("$f")
-done
+[ -f Makefile ] && dev_files+=(Makefile)
 while IFS= read -r f; do
 	dev_files+=("$f")
 done < <(find scripts -type f ! -name '*_test.go' ! -path '*/testdata/*' 2>/dev/null | sort)

@@ -66,7 +66,7 @@ docker compose --env-file docker/.env.dev --profile dev up
 
 **Build from source:**
 ```bash
-task build
+make build
 ./bin/dpkms serve
 ```
 
