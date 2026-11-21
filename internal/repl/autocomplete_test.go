@@ -73,7 +73,7 @@ func TestCompleter_ListTagPrefix(t *testing.T) {
 		state:   &SessionState{},
 		service: &mockAdapter{tags: []string{"auth", "checkout", "ux"}},
 	}
-	got := c.Complete("list --tag ")
+	got := c.Complete("list --tagged ")
 	assert.Contains(t, got, "auth")
 	assert.Contains(t, got, "checkout")
 	assert.Contains(t, got, "ux")

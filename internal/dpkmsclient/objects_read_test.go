@@ -15,6 +15,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmstest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
+	"github.com/ideacrafterslabs/ctxt/internal/tagfilter"
 )
 
 // captureQuery answers every request with an empty list (or empty
@@ -37,11 +38,11 @@ func captureQuery(t *testing.T) (*dpkmsclient.Client, *url.Values) {
 
 // fullFilter sets every ObjectFilter field to a distinct value.
 var fullFilter = dpkmsclient.ObjectFilter{
-	Type: "url", Subtype: "article", Tag: "ux", Mention: "@ui.best-practice",
+	Type: "url", Subtype: "article", Tagged: tagfilter.One("ux"), Mention: "@ui.best-practice",
 	Pipeline: "url.article", Status: "all",
-	After: "2026-01-01", Before: "2026-02-01T10:00:00-04:00",
+	Since: "2026-01-01", Until: "2026-02-01T10:00:00-04:00",
 	MetaType: "observation", Topic: "auth", Person: "alice-chen", SourceType: "slack",
-	Since: "2026-04-01", Until: "2026-04-23",
+	MentionedSince: "2026-04-01", MentionedUntil: "2026-04-23",
 	Limit: 7, Offset: 3, Sort: "updated_at", Dir: "asc",
 }
 
@@ -49,11 +50,11 @@ var fullFilter = dpkmsclient.ObjectFilter{
 // field on GET /objects and GET /objects/facets.
 func TestObjectFilterQuery(t *testing.T) {
 	filterParams := url.Values{
-		"type": {"url"}, "subtype": {"article"}, "tag": {"ux"}, "mention": {"@ui.best-practice"},
+		"type": {"url"}, "subtype": {"article"}, "tagged": {"ux"}, "mention": {"@ui.best-practice"},
 		"pipeline": {"url.article"}, "status": {"all"},
-		"after": {"2026-01-01"}, "before": {"2026-02-01T10:00:00-04:00"},
+		"since": {"2026-01-01"}, "until": {"2026-02-01T10:00:00-04:00"},
 		"meta_type": {"observation"}, "topic": {"auth"}, "person": {"alice-chen"}, "source_type": {"slack"},
-		"since": {"2026-04-01"}, "until": {"2026-04-23"},
+		"mentioned_since": {"2026-04-01"}, "mentioned_until": {"2026-04-23"},
 	}
 	c, got := captureQuery(t)
 	ctx := context.Background()
@@ -232,10 +233,11 @@ func TestObjects_FilterAndFacets(t *testing.T) {
 		f    dpkmsclient.ObjectFilter
 		want []string
 	}{
-		"meta_type": {dpkmsclient.ObjectFilter{MetaType: "observation"}, []string{"f-1", "f-2"}},
-		"topic":     {dpkmsclient.ObjectFilter{Topic: "auth"}, []string{"f-1", "f-3"}},
-		"after":     {dpkmsclient.ObjectFilter{After: "2026-03-02"}, []string{"f-2", "f-3"}},
-		"before":    {dpkmsclient.ObjectFilter{Before: "2026-03-02T12:00:00Z"}, []string{"f-1", "f-2"}},
+		"meta_type":          {dpkmsclient.ObjectFilter{MetaType: "observation"}, []string{"f-1", "f-2"}},
+		"topic":              {dpkmsclient.ObjectFilter{Topic: "auth"}, []string{"f-1", "f-3"}},
+		"since":              {dpkmsclient.ObjectFilter{Since: "2026-03-02"}, []string{"f-2", "f-3"}},
+		"until":              {dpkmsclient.ObjectFilter{Until: "2026-03-02T12:00:01Z"}, []string{"f-1", "f-2"}},
+		"until is exclusive": {dpkmsclient.ObjectFilter{Until: "2026-03-02T12:00:00Z"}, []string{"f-1"}},
 	} {
 		if got := ids(tc.f); !slices.Equal(got, tc.want) {
 			t.Errorf("%s: %v, want %v", name, got, tc.want)
@@ -279,5 +281,42 @@ func TestObjects_RelatedObjects(t *testing.T) {
 	_, err = c.RelatedObjects(ctx, "o-1", 9, 5)
 	if e := envelope(t, err); e.ExitCode != 2 {
 		t.Fatalf("depth 9: exit %d, want 2", e.ExitCode)
+	}
+}
+
+// TestTaggedWireRoundTrip: the server reads `tagged` raw, where a "+" is the
+// required marker and a space is %20, so the client must send "+" as %2B and
+// spaces as %20 and the value must decode, PathUnescape-style, to exactly
+// what was sent.
+func TestTaggedWireRoundTrip(t *testing.T) {
+	var raw string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw = r.URL.RawQuery
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[],"total":0}`))
+	}))
+	t.Cleanup(srv.Close)
+	c := newClient(t, dpkmsclient.Endpoint{URL: srv.URL})
+	for _, spec := range []string{"+a,b,+c", "machine learning,+c++", "+a b,c"} {
+		f, err := tagfilter.Parse([]string{spec})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := c.ListObjects(context.Background(), dpkmsclient.ObjectFilter{Tagged: f}); err != nil {
+			t.Fatal(err)
+		}
+		var val string
+		for _, pair := range strings.Split(raw, "&") {
+			if k, v, _ := strings.Cut(pair, "="); k == "tagged" {
+				val = v
+			}
+		}
+		if strings.ContainsAny(val, "+ ") && strings.Contains(strings.ReplaceAll(val, "%2B", ""), "+") {
+			t.Errorf("%q: raw tagged %q carries a bare +", spec, val)
+		}
+		got, err := url.PathUnescape(val)
+		if err != nil || got != spec {
+			t.Errorf("%q: raw tagged %q decodes to %q (%v)", spec, val, got, err)
+		}
 	}
 }

@@ -22,7 +22,12 @@ var composeCmd = &cobra.Command{
 Compositions are rendered locally from knowledge objects read from the
 dpkms instance ctxt resolves (--server, --instance, CTXT_INSTANCE,
 ctxt instance use, then config): the 100 most recently created objects
-the filters select.
+the filters select (objects matching more of the listed tags come first).
+
+--tagged takes a comma list, a repeated flag, or both; any listed tag
+matches. A leading + requires a tag (+a,+b,+c needs all three; +a,b,+c
+needs a and c, and b only ranks). Objects matching more of the listed
+tags come first. Quote a tag that holds spaces.
 
 Types:
   brief   - Generate executive brief
@@ -34,13 +39,20 @@ Examples:
   # Generate a brief with inline citations (default)
   ctxt compose brief --tagged ux
 
+  # Brief of the last 30 days: a and c required, b optional (ranks first)
+  ctxt compose brief --tagged +a,b,+c --since 30d
+
+  # Several tags, any match
+  ctxt compose summary --tagged ux --tagged design --since 1w
+
   # Generate a plan with specific mentions
   ctxt compose plan --mention @project.signup-redesign
 
   # Generate summary of objects created since a date
   ctxt compose summary --since 2025-01-01
 
-  # Generate summary across a creation-time range (YYYY-MM-DD or RFC 3339)
+  # Generate summary across a creation-time range: 3d, 42h, 1w, 30m (minutes), 1M or 1mo (month),
+  # yesterday, today, YYYY-MM-DD or RFC 3339
   ctxt compose summary --since 2025-01-01 --until 2025-01-31T18:00:00Z
 
   # Generate draft and save to file
@@ -60,6 +72,7 @@ func init() {
 	cliconv.WithSideEffect(composeCmd, cliconv.SideEffectWrite)
 	cliconv.WithExamples(composeCmd, []cliconv.Example{
 		{Title: "Generate a brief from tagged knowledge", Command: "ctxt compose brief --tagged ux"},
+		{Title: "Brief of the last 30 days: a and c required, b ranks first", Command: "ctxt compose brief --tagged +a,b,+c --since 30d"},
 		{Title: "Generate a plan scoped to a mention", Command: "ctxt compose plan --mention @project.signup-redesign"},
 		{Title: "Write a draft to a file as JSON", Command: "ctxt compose draft --tagged launch --output-file launch.md --export json"},
 	})
@@ -74,9 +87,9 @@ func init() {
 
 	// Filter flags
 	composeCmd.Flags().String("mention", "", "focus on one mention (@ns.slug or ctxt:// URI)")
-	composeCmd.Flags().String("tagged", "", "focus on one tag")
-	composeCmd.Flags().String("since", "", "objects created on or after (YYYY-MM-DD or RFC 3339)")
-	composeCmd.Flags().String("until", "", "objects created on or before (YYYY-MM-DD or RFC 3339)")
+	addTaggedFlag(composeCmd)
+	composeCmd.Flags().String("since", "", sinceFlagUsage)
+	composeCmd.Flags().String("until", "", untilFlagUsage)
 
 	// Output flags. -o shorthand is reserved by kit/cli's --output (write
 	// path), so --output-file is long-name only. A follow-up should drop
@@ -108,7 +121,7 @@ func runCompose(cmd *cobra.Command, args []string) error {
 		return output.UsageError(fmt.Sprintf("unknown export format: %s (expected markdown or json)", exportFormat))
 	}
 
-	filter, err := composeFilter()
+	filter, err := composeFilter(cmd)
 	if err != nil {
 		return err
 	}
@@ -163,29 +176,19 @@ func runCompose(cmd *cobra.Command, args []string) error {
 
 // composeFilter selects the 100 most recently created objects the
 // compose flags name. --since and --until bound created_at; a malformed
-// date or several tags are usage errors naming the flag.
-func composeFilter() (dpkmsclient.ObjectFilter, error) {
-	tag, err := oneTag(viper.GetString("compose.tagged"))
+// tag list or date is a usage error naming the flag.
+func composeFilter(cmd *cobra.Command) (dpkmsclient.ObjectFilter, error) {
+	tags, err := parseTaggedFlag(cmd)
 	if err != nil {
 		return dpkmsclient.ObjectFilter{}, err
 	}
 	f := dpkmsclient.ObjectFilter{
-		Tag:     tag,
+		Tagged:  tags,
 		Mention: viper.GetString("compose.mention"),
 		Limit:   100,
 	}
-	for _, d := range []struct {
-		flag string
-		dst  *string
-	}{{"since", &f.After}, {"until", &f.Before}} {
-		v := viper.GetString("compose." + d.flag)
-		if v == "" {
-			continue
-		}
-		if _, err := parseDateFlag(d.flag, v, false); err != nil {
-			return dpkmsclient.ObjectFilter{}, err
-		}
-		*d.dst = v
+	if f.Since, f.Until, err = dateRange(viper.GetString("compose.since"), viper.GetString("compose.until")); err != nil {
+		return dpkmsclient.ObjectFilter{}, err
 	}
 	return f, nil
 }

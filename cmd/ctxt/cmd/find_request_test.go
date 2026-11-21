@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"hop.top/kit/go/console/output"
 
@@ -138,10 +139,13 @@ func TestFindSendsResolvedRequest(t *testing.T) {
 	db := setupTestDB(t, dpkmstest.WithKeys())
 	writeFindProfileConfig(t, db, "search:\n  reranker:\n    hop_backlink_boost: 0.07\n")
 	rec := recordFind(t, db, dpkmstest.RoleReader)
+	withClock(t, time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC))
 
 	if _, stderr, err := execFindAs(t, db, "growth", "find", "deploy", "--limit", "4",
 		"--meta-type", "task", "--topic", "k8s", "--person", "alice", "--source-type", "slack",
-		"--since", "2026-01-02", "--until", "2026-02-03", "--format", "json"); err != nil {
+		"--tagged", "+a,b", "--tagged", "c",
+		"--since", "2026-01-02", "--until", "3d",
+		"--mentioned-since", "2026-01-01", "--mentioned-until", "1w", "--format", "json"); err != nil {
 		t.Fatalf("find: %v\n%s", err, stderr)
 	}
 	body := rec.last(t)
@@ -153,7 +157,8 @@ func TestFindSendsResolvedRequest(t *testing.T) {
 	}
 	wantFilter := map[string]any{
 		"meta_type": "task", "topic": "k8s", "person": "alice", "source_type": "slack",
-		"since": "2026-01-02", "until": "2026-02-03",
+		"tagged": "+a,b,c", "since": "2026-01-02T00:00:00Z", "until": "2026-03-12T12:00:00Z",
+		"mentioned_since": "2026-01-01", "mentioned_until": "2026-03-08",
 	}
 	filter, _ := body["filter"].(map[string]any)
 	for k, v := range wantFilter {

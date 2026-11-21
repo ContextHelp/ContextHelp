@@ -14,6 +14,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
+	"github.com/ideacrafterslabs/ctxt/internal/tagfilter"
 )
 
 // startObjects serves a protected in-process dpkms with three objects:
@@ -53,7 +54,7 @@ func TestObjects_GetAndList(t *testing.T) {
 		t.Fatalf("missing object: exit %d, want 3 (%v)", e.ExitCode, err)
 	}
 
-	objs, total, err := c.ListObjects(ctx, dpkmsclient.ObjectFilter{Tag: "tmp"})
+	objs, total, err := c.ListObjects(ctx, dpkmsclient.ObjectFilter{Tagged: tagfilter.One("tmp")})
 	if err != nil {
 		t.Fatal(err)
 	}

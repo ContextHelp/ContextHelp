@@ -196,7 +196,7 @@ func TestFindGraph_HonorsFilters(t *testing.T) {
 	for _, tc := range explainFilterCases {
 		t.Run(tc.name, func(t *testing.T) {
 			db := setupGraphTestDB(t)
-			seedExplainFilterPair(t, db, tc.match, tc.miss)
+			seedExplainFilterPair(t, db, tc)
 
 			args := append([]string{"--format", "json", "find", "deployment", "--graph"}, tc.flags...)
 			out, _, err := execFind(t, db, args...)

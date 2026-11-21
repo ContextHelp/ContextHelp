@@ -19,6 +19,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/searchgraph"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/tagfilter"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"hop.top/kit/go/console/output"
@@ -70,8 +71,17 @@ Examples:
   # Filter by topic and person
   ctxt find "deployment" --topic kubernetes --person alice-chen
 
-  # Filter by source and date range
+  # Filter by source and creation date (3d, 1w, 1M, yesterday, YYYY-MM-DD...)
   ctxt find "standup" --source-type slack --since 2026-04-01
+
+  # Filter by tags: any of several, or a leading + to require a tag
+  # (+a,+b all; +a,b,+c a and c required, b only ranks); results matching
+  # more of the listed tags rank first, then by relevance
+  ctxt find "auth" --tagged ux,design --since 1w
+  ctxt find "auth" --tagged +a,b,+c --since 30d
+
+  # Filter by dates mentioned in the content
+  ctxt find "launch" --mentioned-since 2026-04-01 --mentioned-until 2026-04-30
 
   # Show facet breakdown with results
   ctxt find "architecture" --facets
@@ -107,6 +117,7 @@ func init() {
 		{Title: "Hybrid search (default)", Command: "ctxt find \"authentication best practices\""},
 		{Title: "FTS-only search", Command: "ctxt find \"checkout flow\" --fts"},
 		{Title: "Vector-only search with limit", Command: "ctxt find \"signup conversion\" --semantic --limit 10"},
+		{Title: "Search tagged knowledge of the last 30 days", Command: "ctxt find \"auth\" --tagged +a,b,+c --since 30d"},
 	})
 
 	findCmd.Flags().Int("limit", 10, "maximum results")
@@ -127,8 +138,11 @@ func init() {
 	findCmd.Flags().String("meta-type", "", "filter by metadata type (e.g. observation, task)")
 	findCmd.Flags().String("topic", "", "filter by topic in metadata")
 	findCmd.Flags().String("person", "", "filter by person in metadata")
-	findCmd.Flags().String("since", "", "filter by dates_mentioned >= (ISO date)")
-	findCmd.Flags().String("until", "", "filter by dates_mentioned <= (ISO date)")
+	findCmd.Flags().String("mentioned-since", "", mentionedSinceUsage)
+	findCmd.Flags().String("mentioned-until", "", mentionedUntilUsage)
+	addTaggedFlag(findCmd)
+	findCmd.Flags().String("since", "", sinceFlagUsage)
+	findCmd.Flags().String("until", "", untilFlagUsage)
 	findCmd.Flags().String("source-type", "", "filter by source_type")
 	findCmd.Flags().Bool("facets", false, "show metadata type count breakdown")
 
@@ -194,7 +208,11 @@ func runFind(cmd *cobra.Command, args []string) error {
 
 	// --graph always runs the traced hybrid search, whatever the mode.
 	if graph {
-		return runFindGraphLocal(asOwner(ctx), cmd, findGraphQuery{text: query, filter: buildFindFilter(cmd, limit), search: searchCfg}, graphOpts, graphTo)
+		graphFilter, err := buildFindFilter(cmd, limit)
+		if err != nil {
+			return err
+		}
+		return runFindGraphLocal(asOwner(ctx), cmd, findGraphQuery{text: query, filter: graphFilter, search: searchCfg}, graphOpts, graphTo)
 	}
 
 	mode := findMode(searchCfg)
@@ -205,6 +223,10 @@ func runFind(cmd *cobra.Command, args []string) error {
 	explain = explain && mode == service.FindModeHybrid
 	facets = facets && !explain
 
+	filter, err := findFilter(cmd)
+	if err != nil {
+		return err
+	}
 	client, err := newDpkmsClient(cmd, dpkmsclient.DefaultTimeout)
 	if err != nil {
 		return err
@@ -214,7 +236,7 @@ func runFind(cmd *cobra.Command, args []string) error {
 		Mode:    mode,
 		Limit:   limit,
 		Profile: explicitProfileName(cmd),
-		Filter:  findFilter(cmd),
+		Filter:  filter,
 		Search:  findSearchKnobs(searchCfg),
 		Explain: explain,
 		Facets:  facets,
@@ -321,17 +343,31 @@ func findSearchKnobs(sc config.SearchConfig) dpkmsclient.FindSearch {
 	}
 }
 
-// findFilter is the request's metadata facet filter from find's flags.
-// dpkms validates the dates.
-func findFilter(cmd *cobra.Command) dpkmsclient.FindFilter {
+// findFilter is the request's filter from find's flags: tags, creation
+// bounds and metadata facets. A malformed tag list or date is a usage
+// error naming the flag; dpkms validates the rest.
+func findFilter(cmd *cobra.Command) (dpkmsclient.FindFilter, error) {
 	var f dpkmsclient.FindFilter
+	tags, err := parseTaggedFlag(cmd)
+	if err != nil {
+		return f, err
+	}
+	f.Tagged = tags.String()
+	since, _ := cmd.Flags().GetString("since")
+	until, _ := cmd.Flags().GetString("until")
+	if f.Since, f.Until, err = dateRange(since, until); err != nil {
+		return f, err
+	}
+	mSince, _ := cmd.Flags().GetString("mentioned-since")
+	mUntil, _ := cmd.Flags().GetString("mentioned-until")
+	if f.MentionedSince, f.MentionedUntil, err = mentionedRange(mSince, mUntil); err != nil {
+		return f, err
+	}
 	f.MetaType, _ = cmd.Flags().GetString("meta-type")
 	f.Topic, _ = cmd.Flags().GetString("topic")
 	f.Person, _ = cmd.Flags().GetString("person")
 	f.SourceType, _ = cmd.Flags().GetString("source-type")
-	f.Since, _ = cmd.Flags().GetString("since")
-	f.Until, _ = cmd.Flags().GetString("until")
-	return f
+	return f, nil
 }
 
 // renderFind prints a find response: the objects, and the facet
@@ -521,25 +557,33 @@ func printSemanticNotice(cmd *cobra.Command, d service.SearchDiagnostics) {
 	fmt.Fprintf(cmd.ErrOrStderr(), "notice: %s\n", d.Semantic.Notice)
 }
 
-// buildFindFilter constructs --graph's ObjectFilter from find's metadata
-// facet flags.
-func buildFindFilter(cmd *cobra.Command, limit int) storage.ObjectFilter {
+// buildFindFilter constructs --graph's ObjectFilter from find's flags.
+func buildFindFilter(cmd *cobra.Command, limit int) (storage.ObjectFilter, error) {
 	f := storage.ObjectFilter{Limit: limit}
-
-	f.MetadataType, _ = cmd.Flags().GetString("meta-type")
-	f.MetadataTopic, _ = cmd.Flags().GetString("topic")
-	f.MetadataPerson, _ = cmd.Flags().GetString("person")
-	f.SourceType, _ = cmd.Flags().GetString("source-type")
-
-	if since, _ := cmd.Flags().GetString("since"); since != "" {
-		if t, err := time.Parse("2006-01-02", since); err == nil {
-			f.MetadataSince = &t
+	ff, err := findFilter(cmd)
+	if err != nil {
+		return f, err
+	}
+	f.MetadataType, f.MetadataTopic, f.MetadataPerson, f.SourceType = ff.MetaType, ff.Topic, ff.Person, ff.SourceType
+	if ff.Tagged != "" {
+		if f.Tags, err = tagfilter.Parse([]string{ff.Tagged}); err != nil {
+			return f, err
 		}
 	}
-	if until, _ := cmd.Flags().GetString("until"); until != "" {
-		if t, err := time.Parse("2006-01-02", until); err == nil {
-			f.MetadataUntil = &t
+	for _, d := range []struct {
+		v      string
+		layout string
+		dst    **time.Time
+	}{
+		{ff.Since, time.RFC3339, &f.After}, {ff.Until, time.RFC3339, &f.Before},
+		{ff.MentionedSince, time.DateOnly, &f.MetadataSince}, {ff.MentionedUntil, time.DateOnly, &f.MetadataUntil},
+	} {
+		if d.v == "" {
+			continue
+		}
+		if t, err := time.Parse(d.layout, d.v); err == nil {
+			*d.dst = &t
 		}
 	}
-	return f
+	return f, nil
 }

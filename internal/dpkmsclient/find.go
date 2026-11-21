@@ -39,15 +39,25 @@ type FindRequest struct {
 	Facets bool `json:"facets,omitempty"`
 }
 
-// FindFilter is find's metadata facet filter. Since and Until are dates
-// as YYYY-MM-DD.
+// FindFilter is find's filter: tag selection, creation bounds and
+// metadata facets.
 type FindFilter struct {
+	// Tagged selects by tag in the internal/tagfilter grammar: "a,b" any,
+	// "+a,+b" all, "+a,b" a required, b optional.
+	Tagged string `json:"tagged,omitempty"`
+	// Since and Until bound created_at, half-open (since <= created <
+	// until): an RFC 3339 timestamp or a YYYY-MM-DD date, a UTC day; a date
+	// Until is the start of the next day.
+	Since      string `json:"since,omitempty"`
+	Until      string `json:"until,omitempty"`
 	MetaType   string `json:"meta_type,omitempty"`
 	Topic      string `json:"topic,omitempty"`
 	Person     string `json:"person,omitempty"`
 	SourceType string `json:"source_type,omitempty"`
-	Since      string `json:"since,omitempty"`
-	Until      string `json:"until,omitempty"`
+	// MentionedSince and MentionedUntil are dates as YYYY-MM-DD compared
+	// with an object's dates_mentioned.
+	MentionedSince string `json:"mentioned_since,omitempty"`
+	MentionedUntil string `json:"mentioned_until,omitempty"`
 }
 
 // FindSearch is the resolved search strategy. Nil fields take dpkms's
@@ -126,6 +136,7 @@ type FindScoreBreakdown struct {
 	MentionBoost   float64 `json:"mention_boost"`
 	GraphRelevance float64 `json:"graph_relevance"`
 	WordOverlap    float64 `json:"word_overlap"`
+	TagsMatched    int     `json:"tags_matched,omitempty"`
 	Total          float64 `json:"total"`
 }
 

@@ -25,9 +25,18 @@ var listCmd = &cobra.Command{
 	Long: `Query the knowledge objects of the dpkms instance ctxt resolves
 (--server, --instance, CTXT_INSTANCE, ctxt instance use, then config).
 
-Filters combine with AND: type, subtype, one tag, mention, pipeline,
-status, creation dates, and metadata facets (type, topic, person,
-source type, dates mentioned). --q runs an RSQL query instead.
+Filters combine with AND: type, subtype, tags, mention, pipeline,
+status, creation dates (--since, --until), and metadata facets (type,
+topic, person, source type, dates mentioned: --mentioned-since,
+--mentioned-until). --q runs an RSQL query instead.
+
+--tagged takes a comma list, a repeated flag, or both. A plain tag is
+optional: with no + tag, one listed tag must match. A leading + requires a
+tag: +a,+b,+c needs all three; +a,b,+c needs a and c, and b only ranks.
+Results matching more of the listed tags rank first, then the sort;
+--cursor and --changed-after need a fixed order and refuse a list that
+ranks (two or more tags with no + tag, or a plain tag beside a + tag).
+Quote a tag that holds spaces.
 
 Examples:
   # List the most recently created objects
@@ -36,14 +45,23 @@ Examples:
   # Filter by type
   ctxt list --type url
 
-  # Filter by one tag
-  ctxt list --tagged ux
+  # Filter by tag: any of several (comma list or repeated flag)
+  ctxt list --tagged ux,design
+  ctxt list --tagged ux --tagged design --since 1w
+
+  # Every tag required: a leading +
+  ctxt list --tagged +ux,+design
+
+  # a and c required; b optional; matches carrying b rank first
+  ctxt list --tagged +a,b,+c
 
   # Filter by mentions
   ctxt list --mention @ui.best-practice
 
-  # Filter by creation date (YYYY-MM-DD or RFC 3339)
-  ctxt list --after 2025-01-01 --before 2025-01-31
+  # Filter by creation date: 3d, 42h, 1w, 30m (minutes), 1M or 1mo (month), yesterday, today,
+  # YYYY-MM-DD or RFC 3339
+  ctxt list --since 2025-01-01 --until 2025-01-31
+  ctxt list --since 3d
 
   # Filter by metadata type
   ctxt list --meta-type observation
@@ -55,7 +73,7 @@ Examples:
   ctxt list --person alice-chen
 
   # Filter by dates mentioned in content
-  ctxt list --since 2026-04-01 --until 2026-04-23
+  ctxt list --mentioned-since 2026-04-01 --mentioned-until 2026-04-23
 
   # Most recently updated first
   ctxt list --sort updated
@@ -86,17 +104,19 @@ func init() {
 	cliconv.WithExamples(listCmd, []cliconv.Example{
 		{Title: "List all objects", Command: "ctxt list"},
 		{Title: "Filter by tag", Command: "ctxt list --tagged ux"},
+		{Title: "Several tags in the last week", Command: "ctxt list --tagged a --tagged b --since 1w"},
+		{Title: "Require a and c, rank by b", Command: "ctxt list --tagged +a,b,+c"},
 		{Title: "Use the query language", Command: "ctxt list --q \"type==url;tag=in=(ux,design)\""},
 	})
 
 	// Filter flags
 	listCmd.Flags().String("type", "", "filter by knowledge object type")
-	listCmd.Flags().String("tagged", "", "filter by one tag")
+	addTaggedFlag(listCmd)
 	listCmd.Flags().String("mention", "", "filter by mention (@ns.slug or ctxt:// URI)")
 	listCmd.Flags().String("pipeline", "", "filter by pipeline")
 	listCmd.Flags().String("subtype", "", "filter by subtype")
-	listCmd.Flags().String("before", "", "created on or before (YYYY-MM-DD or RFC 3339)")
-	listCmd.Flags().String("after", "", "created on or after (YYYY-MM-DD or RFC 3339)")
+	listCmd.Flags().String("since", "", sinceFlagUsage)
+	listCmd.Flags().String("until", "", untilFlagUsage)
 	listCmd.Flags().String("q", "", "RSQL query, answered by the instance's search")
 	listCmd.Flags().String("status", "", "filter by status (active|inbox|discarded|raw|all)")
 
@@ -104,8 +124,8 @@ func init() {
 	listCmd.Flags().String("meta-type", "", "filter by metadata type (e.g. observation, task)")
 	listCmd.Flags().String("topic", "", "filter by topic in metadata")
 	listCmd.Flags().String("person", "", "filter by person in metadata")
-	listCmd.Flags().String("since", "", "filter by dates_mentioned >= (YYYY-MM-DD)")
-	listCmd.Flags().String("until", "", "filter by dates_mentioned <= (YYYY-MM-DD)")
+	listCmd.Flags().String("mentioned-since", "", mentionedSinceUsage)
+	listCmd.Flags().String("mentioned-until", "", mentionedUntilUsage)
 	listCmd.Flags().String("source-type", "", "filter by source_type")
 	listCmd.Flags().Bool("facets", false, "show metadata type count breakdown")
 
@@ -126,8 +146,8 @@ func init() {
 
 	// Bind flags to viper
 	for _, name := range []string{
-		"type", "tagged", "mention", "pipeline", "subtype", "before", "after", "q", "status",
-		"meta-type", "topic", "person", "since", "until", "source-type", "facets",
+		"type", "tagged", "mention", "pipeline", "subtype", "since", "until", "q", "status",
+		"meta-type", "topic", "person", "mentioned-since", "mentioned-until", "source-type", "facets",
 		"limit", "start", "sort", "dir", "changed-after", "cursor", "advance",
 	} {
 		_ = viper.BindPFlag("list."+name, listCmd.Flags().Lookup(name))
@@ -172,7 +192,7 @@ func runList(cmd *cobra.Command, args []string) error {
 		return printObjectResults(cmd, objects, total)
 	}
 
-	filter, err := listFilter()
+	filter, err := listFilter(cmd)
 	if err != nil {
 		return err
 	}
@@ -237,8 +257,11 @@ func runListChanges(ctx context.Context, cmd *cobra.Command) error {
 			return e
 		}
 	}
-	filter, err := listFilter()
+	filter, err := listFilter(cmd)
 	if err != nil {
+		return err
+	}
+	if err := refuseTagRanking("--changed-after", "change", filter.Tagged); err != nil {
 		return err
 	}
 	filter.Sort, filter.Dir, filter.Offset = "", "", 0
@@ -263,11 +286,11 @@ func runListChanges(ctx context.Context, cmd *cobra.Command) error {
 	return printObjectResults(cmd, page.Objects, page.Total)
 }
 
-// listFilter reads the list flags into the API filter. It rejects what
-// the instance cannot select by (several tags, an unknown sort) and
-// malformed dates as usage errors naming the flag.
-func listFilter() (dpkmsclient.ObjectFilter, error) {
-	tag, err := oneTag(viper.GetString("list.tagged"))
+// listFilter reads the list flags into the API filter. It rejects a
+// malformed tag list, an unknown sort and malformed dates as usage errors
+// naming the flag.
+func listFilter(cmd *cobra.Command) (dpkmsclient.ObjectFilter, error) {
+	tags, err := parseTaggedFlag(cmd)
 	if err != nil {
 		return dpkmsclient.ObjectFilter{}, err
 	}
@@ -285,7 +308,7 @@ func listFilter() (dpkmsclient.ObjectFilter, error) {
 	f := dpkmsclient.ObjectFilter{
 		Type:       viper.GetString("list.type"),
 		Subtype:    viper.GetString("list.subtype"),
-		Tag:        tag,
+		Tagged:     tags,
 		Mention:    viper.GetString("list.mention"),
 		Pipeline:   viper.GetString("list.pipeline"),
 		Status:     viper.GetString("list.status"),
@@ -298,52 +321,13 @@ func listFilter() (dpkmsclient.ObjectFilter, error) {
 		Sort:       apiSort,
 		Dir:        dir,
 	}
-	for _, d := range []struct {
-		flag string
-		dst  *string
-		day  bool
-	}{
-		{"after", &f.After, false}, {"before", &f.Before, false},
-		{"since", &f.Since, true}, {"until", &f.Until, true},
-	} {
-		v := viper.GetString("list." + d.flag)
-		if v == "" {
-			continue
-		}
-		if _, err := parseDateFlag(d.flag, v, d.day); err != nil {
-			return dpkmsclient.ObjectFilter{}, err
-		}
-		*d.dst = v
+	if f.Since, f.Until, err = dateRange(viper.GetString("list.since"), viper.GetString("list.until")); err != nil {
+		return dpkmsclient.ObjectFilter{}, err
+	}
+	if f.MentionedSince, f.MentionedUntil, err = mentionedRange(viper.GetString("list.mentioned-since"), viper.GetString("list.mentioned-until")); err != nil {
+		return dpkmsclient.ObjectFilter{}, err
 	}
 	return f, nil
-}
-
-// oneTag returns v when it names at most one tag. The instance filters
-// by a single tag label; several go through --q.
-func oneTag(v string) (string, error) {
-	v = strings.TrimSpace(v)
-	if strings.Contains(v, ",") {
-		e := output.UsageError(fmt.Sprintf("--tagged %q: takes one tag", v))
-		e.SuggestedFix = "filter by one tag, or match several with --q \"tag=in=(a,b)\""
-		return "", e
-	}
-	return v, nil
-}
-
-// parseDateFlag parses a date flag: YYYY-MM-DD, or also an RFC 3339
-// timestamp unless dayOnly. A malformed value is a usage error naming
-// the flag.
-func parseDateFlag(flag, v string, dayOnly bool) (time.Time, error) {
-	if t, err := time.Parse(time.DateOnly, v); err == nil {
-		return t, nil
-	}
-	if !dayOnly {
-		if t, err := time.Parse(time.RFC3339, v); err == nil {
-			return t, nil
-		}
-		return time.Time{}, output.UsageError(fmt.Sprintf("--%s %q: want YYYY-MM-DD or an RFC 3339 timestamp", flag, v))
-	}
-	return time.Time{}, output.UsageError(fmt.Sprintf("--%s %q: want YYYY-MM-DD", flag, v))
 }
 
 func printObjectResults(cmd *cobra.Command, objects []*storage.KnowledgeObject, total int) error {
@@ -420,14 +404,18 @@ func objectRows(objects []*storage.KnowledgeObject) []objectRow {
 }
 
 // currentSnapshot reads list flags into a QuerySnapshot for drift compare.
-func currentSnapshot() cursor.QuerySnapshot {
+func currentSnapshot(filter dpkmsclient.ObjectFilter) cursor.QuerySnapshot {
+	var tag []string
+	if s := filter.Tagged.String(); s != "" {
+		tag = []string{s}
+	}
 	return cursor.QuerySnapshot{
 		Mention: splitNonEmpty(viper.GetString("list.mention")),
-		Tag:     splitNonEmpty(viper.GetString("list.tagged")),
+		Tag:     tag,
 		Profile: viper.GetString("profile"),
 		Q:       viper.GetString("list.q"),
 		Type:    viper.GetString("list.type"),
-		After:   viper.GetString("list.after"),
+		After:   viper.GetString("list.since"),
 	}
 }
 
@@ -455,6 +443,11 @@ func splitNonEmpty(s string) []string {
 //   - drift: warn to stderr, continue
 //   - JSON output: {cursor: ..., items: ..., advanced: bool}
 func runListWithCursor(ctx context.Context, cmd *cobra.Command, client *dpkmsclient.Client, filter dpkmsclient.ObjectFilter, name string, advance bool) error {
+	// A cursor walks created_at order; ranking by tags matched would
+	// reorder the page and break the position it saves.
+	if err := refuseTagRanking("--cursor", "creation", filter.Tagged); err != nil {
+		return err
+	}
 	if err := cursor.ValidateName(name); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(2)
@@ -475,7 +468,7 @@ func runListWithCursor(ctx context.Context, cmd *cobra.Command, client *dpkmscli
 	}
 
 	// Drift detection — compare current flags to stored snapshot.
-	snap := currentSnapshot()
+	snap := currentSnapshot(filter)
 	if !fresh && !c.Query.Equal(snap) {
 		fmt.Fprintf(os.Stderr,
 			"warning: cursor %q query snapshot differs from current flags; results may not match prior listings\n", name)
@@ -484,12 +477,12 @@ func runListWithCursor(ctx context.Context, cmd *cobra.Command, client *dpkmscli
 	// The cursor gates created_at > last_seen_at. The API's after bound
 	// is inclusive at second precision, so the gate is one second past
 	// the tail: items sharing the tail's second were in the prior
-	// listing. It replaces --after when later.
+	// listing. It replaces --since when later.
 	if !c.LastSeenAt.IsZero() {
 		gate := c.LastSeenAt.Add(time.Second)
-		after, _ := parseDateFlag("after", filter.After, false) // validated by listFilter
-		if filter.After == "" || gate.After(after) {
-			filter.After = gate.Format(time.RFC3339)
+		since, _ := time.Parse(time.RFC3339, filter.Since) // resolved by listFilter
+		if filter.Since == "" || gate.After(since) {
+			filter.Since = gate.Format(time.RFC3339)
 		}
 	}
 	filter.Sort = "created_at"

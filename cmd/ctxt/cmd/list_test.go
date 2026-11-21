@@ -85,7 +85,7 @@ func TestListHelp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list --help should succeed: %v", err)
 	}
-	for _, flag := range []string{"--type", "--tagged", "--mention", "--pipeline", "--subtype", "--before", "--after", "--q", "--status", "--meta-type", "--topic", "--person", "--source-type", "--since", "--until", "--facets", "--limit", "--start", "--sort", "--dir", "--changed-after", "--cursor", "--advance"} {
+	for _, flag := range []string{"--type", "--tagged", "--mention", "--pipeline", "--subtype", "--q", "--status", "--meta-type", "--topic", "--person", "--source-type", "--since", "--until", "--mentioned-since", "--mentioned-until", "--facets", "--limit", "--start", "--sort", "--dir", "--changed-after", "--cursor", "--advance"} {
 		if !strings.Contains(out, flag) {
 			t.Errorf("list help should list flag %s", flag)
 		}
@@ -144,6 +144,23 @@ func TestListChangedAfter(t *testing.T) {
 	if len(next.Objects) != 1 || next.Objects[0].ID != "chg_001" {
 		t.Fatalf("after the update = %+v, want [chg_001]", next.Objects)
 	}
+
+	// The change page composes with a tag selection.
+	out, err = db.exec("list", "--changed-after", "0", "--tagged", "edited", "--format", "json")
+	if err != nil {
+		t.Fatalf("list --changed-after --tagged: %v\n%s", err, out)
+	}
+	var tagged struct {
+		Objects []struct {
+			ID string `json:"id"`
+		} `json:"objects"`
+	}
+	if err := json.Unmarshal([]byte(out), &tagged); err != nil {
+		t.Fatalf("decode %q: %v", out, err)
+	}
+	if len(tagged.Objects) != 1 || tagged.Objects[0].ID != "chg_001" {
+		t.Fatalf("changes tagged edited = %+v, want [chg_001]", tagged.Objects)
+	}
 }
 
 func TestListChangedAfterUsage(t *testing.T) {
@@ -156,9 +173,32 @@ func TestListChangedAfterUsage(t *testing.T) {
 		{"list", "--changed-after", "0", "--cursor", "c", "--advance"},
 		{"list", "--changed-after", "0", "--q", "type==url"},
 		{"list", "--changed-after", "0", "--facets"},
+		// Tags that rank (2+ tags with none required, a plain tag beside a
+		// required one) reorder the page.
+		{"list", "--changed-after", "0", "--tagged", "a,b"},
+		{"list", "--changed-after", "0", "--tagged", "+a,b"},
+		{"list", "--changed-after", "0", "--tagged", "+a,b,+c"},
+		{"list", "--cursor", "c", "--advance", "--tagged", "a,b"},
+		{"list", "--cursor", "c", "--advance", "--tagged", "+a,b"},
 	} {
 		if _, err := db.exec(args...); err == nil {
 			t.Errorf("%v: want a usage error", args)
+		}
+	}
+}
+
+// A fixed-order listing takes a tag selection whose count cannot reorder:
+// one tag, or required tags only.
+func TestListFixedOrderAcceptsNonRankingTags(t *testing.T) {
+	db := setupTestDB(t)
+	for _, args := range [][]string{
+		{"list", "--changed-after", "0", "--tagged", "a"},
+		{"list", "--changed-after", "0", "--tagged", "+a,+b"},
+		{"list", "--cursor", "c", "--advance", "--tagged", "a"},
+		{"list", "--cursor", "c2", "--advance", "--tagged", "+a,+b"},
+	} {
+		if out, err := db.exec(args...); err != nil {
+			t.Errorf("%v: %v\n%s", args, err, out)
 		}
 	}
 }

@@ -51,7 +51,7 @@ func TestE2EFindExitCodes(t *testing.T) {
 		{"no token", nil, "none", []string{"find", "authentication"}, 5, ""},
 		{"nothing answering", down, dpkmstest.RoleReader, []string{"find", "authentication"}, 70, ""},
 		{"search uri, nothing answering", down, dpkmstest.RoleReader, []string{"ctxt://search/authentication"}, 70, ""},
-		{"bad date", nil, dpkmstest.RoleReader, []string{"find", "authentication", "--since", "2026-13-45"}, 2, "filter.since"},
+		{"bad date", nil, dpkmstest.RoleReader, []string{"find", "authentication", "--since", "2026-13-45"}, 2, "--since"},
 		{"fallback off, no default model", strict, dpkmstest.RoleAdmin, []string{"find", "authentication"}, 2, "SEMANTIC_UNAVAILABLE"},
 		{"embedding flag without graph", nil, dpkmstest.RoleReader, []string{"find", "authentication", "--embedding-model", "m"}, 2, "--embedding-model only applies to --graph"},
 	}

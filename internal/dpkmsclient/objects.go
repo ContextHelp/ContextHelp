@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/tagfilter"
 )
 
 // objectPath is /api/v1/objects/{id}, with id escaped.
@@ -29,26 +30,30 @@ func (c *Client) GetObject(ctx context.Context, id string) (*storage.KnowledgeOb
 type ObjectFilter struct {
 	Type    string
 	Subtype string
-	// Tag is one tag label.
-	Tag      string
+	// Tagged selects by tag (internal/tagfilter): one of, or every
+	// required one; optional tags rank higher. The zero value selects
+	// all.
+	Tagged   tagfilter.Filter
 	Mention  string
 	Pipeline string
 	// Status is active (the API's default when empty), inbox, discarded,
 	// raw or all.
 	Status string
-	// After and Before bound created_at, both inclusive: an RFC 3339
-	// timestamp or a YYYY-MM-DD date (midnight UTC).
-	After  string
-	Before string
+	// Since and Until bound created_at, half-open (since <= created <
+	// until): an RFC 3339 timestamp or a YYYY-MM-DD date, a UTC day; a date
+	// Until is the start of the next day.
+	Since string
+	Until string
 	// MetaType, Topic, Person and SourceType match the object's
 	// metadata type, topics, people and source_type.
 	MetaType   string
 	Topic      string
 	Person     string
 	SourceType string
-	// Since and Until bound metadata.dates_mentioned: YYYY-MM-DD dates.
-	Since string
-	Until string
+	// MentionedSince and MentionedUntil bound metadata.dates_mentioned:
+	// YYYY-MM-DD dates.
+	MentionedSince string
+	MentionedUntil string
 	// Limit caps the page; 0 returns every match. ListObjects only.
 	Limit  int
 	Offset int
@@ -69,10 +74,10 @@ type ObjectFilter struct {
 func (f ObjectFilter) filterQuery() url.Values {
 	q := url.Values{}
 	for k, v := range map[string]string{
-		"type": f.Type, "subtype": f.Subtype, "tag": f.Tag, "mention": f.Mention,
-		"pipeline": f.Pipeline, "status": f.Status, "after": f.After, "before": f.Before,
+		"type": f.Type, "subtype": f.Subtype, "tagged": f.Tagged.String(), "mention": f.Mention,
+		"pipeline": f.Pipeline, "status": f.Status, "since": f.Since, "until": f.Until,
 		"meta_type": f.MetaType, "topic": f.Topic, "person": f.Person, "source_type": f.SourceType,
-		"since": f.Since, "until": f.Until,
+		"mentioned_since": f.MentionedSince, "mentioned_until": f.MentionedUntil,
 	} {
 		if v != "" {
 			q.Set(k, v)

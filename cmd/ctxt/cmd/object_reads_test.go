@@ -28,8 +28,8 @@ var readAt = time.Date(2026, 3, 10, 9, 0, 0, 0, edt)
 //
 //	r-url     url/article, tag ux, mentions @ui.best-practice, pipeline url.article,
 //	          metadata observation/auth/alice/slack, dates_mentioned 2026-04-10
-//	r-note    note, tag ux, metadata task/auth, updated last
-//	r-idea    note, tag design, metadata observation/billing
+//	r-note    note, tags ux and urgent, metadata task/auth, updated last
+//	r-idea    note, tags design and urgent, metadata observation/billing
 //	r-inbox   note, tag ux, status inbox
 //	r-plain   note, no tag
 func seedReadCorpus(t *testing.T, db *testDB) {
@@ -48,11 +48,11 @@ func seedReadCorpus(t *testing.T, db *testDB) {
 		},
 		{
 			ID: "r-note", Type: "note", Status: "active", Summaries: []string{"Rotate the auth keys"},
-			Tags: []storage.Tag{{Label: "ux"}}, Metadata: map[string]any{"type": "task", "topics": []any{"auth"}},
+			Tags: []storage.Tag{{Label: "ux"}, {Label: "urgent"}}, Metadata: map[string]any{"type": "task", "topics": []any{"auth"}},
 		},
 		{
 			ID: "r-idea", Type: "note", Status: "active", Summaries: []string{"Usage-based billing"},
-			Tags: []storage.Tag{{Label: "design"}}, Metadata: map[string]any{"type": "observation", "topics": []any{"billing"}},
+			Tags: []storage.Tag{{Label: "design"}, {Label: "urgent"}, {Label: "machine learning"}}, Metadata: map[string]any{"type": "observation", "topics": []any{"billing"}},
 		},
 		{ID: "r-inbox", Type: "note", Status: "inbox", Tags: []storage.Tag{{Label: "ux"}}},
 		{ID: "r-plain", Type: "note", Status: "active"},
@@ -131,14 +131,125 @@ func TestListFiltersOverAPI(t *testing.T) {
 		{[]string{"--pipeline", "url.article"}, []string{"r-url"}},
 		{[]string{"--status", "inbox"}, []string{"r-inbox"}},
 		{[]string{"--status", "all", "--tagged", "ux"}, []string{"r-inbox", "r-note", "r-url"}},
-		{[]string{"--after", "2026-03-11"}, []string{"r-idea", "r-note", "r-plain"}},
-		{[]string{"--before", "2026-03-12"}, []string{"r-note", "r-url"}},
+		{[]string{"--since", "2026-03-11"}, []string{"r-idea", "r-note", "r-plain"}},
+		{[]string{"--until", "2026-03-12"}, []string{"r-idea", "r-note", "r-url"}},
 		{[]string{"--meta-type", "observation"}, []string{"r-idea", "r-url"}},
 		{[]string{"--topic", "auth"}, []string{"r-note", "r-url"}},
 		{[]string{"--person", "alice-chen"}, []string{"r-url"}},
 		{[]string{"--source-type", "slack"}, []string{"r-url"}},
-		{[]string{"--since", "2026-04-01", "--until", "2026-04-30"}, []string{"r-url"}},
-		{[]string{"--since", "2026-05-01"}, nil},
+		{[]string{"--mentioned-since", "2026-04-01", "--mentioned-until", "2026-04-30"}, []string{"r-url"}},
+		{[]string{"--mentioned-since", "2026-05-01"}, nil},
+	}
+	withClock(t, time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC))
+	for _, tc := range cases {
+		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
+			if got := sorted(listIDs(t, db, tc.args...)); !slices.Equal(got, tc.want) {
+				t.Errorf("list %v = %v, want %v", tc.args, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestListTaggedOverAPI: --tagged takes a comma list, repeats or both
+// (any tag matches); a leading ! requires every tag; a ? tag is optional
+// and ranks matches higher. Totals and pages follow the selection.
+func TestListTaggedOverAPI(t *testing.T) {
+	db := setupTestDB(t)
+	seedReadCorpus(t, db)
+	cases := []struct {
+		name string
+		args []string
+		want []string // in list order
+	}{
+		{"one", []string{"--tagged", "ux"}, []string{"r-note", "r-url"}},
+		{"comma list is any", []string{"--tagged", "ux,design"}, []string{"r-idea", "r-note", "r-url"}},
+		{"repeat is any", []string{"--tagged", "ux", "--tagged", "design"}, []string{"r-idea", "r-note", "r-url"}},
+		{"comma and repeat mix", []string{"--tagged", "ux,design", "--tagged", "urgent"}, []string{"r-idea", "r-note", "r-url"}},
+		{"duplicates collapse", []string{"--tagged", "ux,ux", "--tagged", "ux"}, []string{"r-note", "r-url"}},
+		{"all", []string{"--tagged", "+ux,+urgent"}, []string{"r-note"}},
+		{"all via repeat", []string{"--tagged", "+ux", "--tagged", "+urgent"}, []string{"r-note"}},
+		{"all none match", []string{"--tagged", "+ux,+design"}, nil},
+		{"all with an optional tag", []string{"--tagged", "+ux,urgent"}, []string{"r-note", "r-url"}},
+		{"all with an unknown optional tag", []string{"--tagged", "+ux,nope"}, []string{"r-note", "r-url"}},
+		{"more matched tags lead", []string{"--tagged", "ux,urgent", "--dir", "asc"}, []string{"r-note", "r-url", "r-idea"}},
+		{"required and plain tags count alike", []string{"--tagged", "+ux,urgent", "--dir", "asc"}, []string{"r-note", "r-url"}},
+		{"3 above 2 above 1, whichever tags", []string{"--tagged", "ux,design,urgent,machine learning"}, []string{"r-idea", "r-note", "r-url"}},
+		{"ties fall back to created", []string{"--tagged", "ux,design"}, []string{"r-idea", "r-note", "r-url"}},
+		{"label with a space", []string{"--tagged", "machine learning"}, []string{"r-idea"}},
+		{"spaced label is not its words", []string{"--tagged", "machine"}, nil},
+		{"spaced label in a list", []string{"--tagged", "ux,machine learning"}, []string{"r-idea", "r-note", "r-url"}},
+		{"spaced label required", []string{"--tagged", "+design,+machine learning"}, []string{"r-idea"}},
+		{"spaced label counts", []string{"--tagged", "ux,urgent,machine learning", "--dir", "asc"}, []string{"r-note", "r-idea", "r-url"}},
+		{"unknown tag is empty, not an error", []string{"--tagged", "nope"}, nil},
+		{"unknown required tag", []string{"--tagged", "+ux,+nope"}, nil},
+		{"tags and a status", []string{"--status", "all", "--tagged", "ux,design"}, []string{"r-inbox", "r-idea", "r-note", "r-url"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := listIDs(t, db, tc.args...); !slices.Equal(got, tc.want) {
+				t.Errorf("list %v = %v, want %v", tc.args, got, tc.want)
+			}
+		})
+	}
+
+	// Pages slice the selection in order; the total is the whole count.
+	for _, page := range []struct {
+		args  []string
+		want  []string
+		total int
+	}{
+		{[]string{"--tagged", "ux,design", "--limit", "2"}, []string{"r-idea", "r-note"}, 3},
+		{[]string{"--tagged", "ux,design", "--limit", "2", "--start", "2"}, []string{"r-url"}, 3},
+		{[]string{"--tagged", "ux,urgent", "--dir", "asc", "--limit", "1", "--start", "1"}, []string{"r-url"}, 3},
+		{[]string{"--tagged", "ux,urgent", "--dir", "asc", "--limit", "1", "--start", "2"}, []string{"r-idea"}, 3},
+		{[]string{"--tagged", "+ux,urgent", "--limit", "1"}, []string{"r-note"}, 2},
+	} {
+		out, err := db.exec(append([]string{"list", "--format", "json"}, page.args...)...)
+		if err != nil {
+			t.Fatalf("list %v: %v\n%s", page.args, err, out)
+		}
+		var doc listDoc
+		decodeFirstJSON(t, out, &doc)
+		if got := doc.ids(); !slices.Equal(got, page.want) || doc.Total != page.total {
+			t.Errorf("list %v = %v (total %d), want %v (total %d)", page.args, got, doc.Total, page.want, page.total)
+		}
+	}
+}
+
+// TestListDatesOverAPI: --since and --until bound the created date in
+// every form: relative spans, yesterday/today, a day, an RFC 3339
+// timestamp; the dates-mentioned filter has its own flags.
+func TestListDatesOverAPI(t *testing.T) {
+	db := setupTestDB(t)
+	seedReadCorpus(t, db)
+	// Created (UTC): url 03-10 13:00, note 03-11, idea 03-12, plain 03-14.
+	withClock(t, time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC))
+	cases := []struct {
+		args []string
+		want []string
+	}{
+		{[]string{"--since", "3d"}, []string{"r-idea", "r-plain"}},
+		{[]string{"--since", "42h"}, []string{"r-plain"}},
+		{[]string{"--since", "1w"}, []string{"r-idea", "r-note", "r-plain", "r-url"}},
+		{[]string{"--since", "1M"}, []string{"r-idea", "r-note", "r-plain", "r-url"}},
+		{[]string{"--until", "1M"}, nil},
+		{[]string{"--until", "3d"}, []string{"r-note", "r-url"}},
+		{[]string{"--until", "4d"}, []string{"r-url"}},
+		{[]string{"--since", "yesterday"}, []string{"r-plain"}},
+		{[]string{"--since", "today"}, nil},
+		{[]string{"--until", "yesterday"}, []string{"r-idea", "r-note", "r-plain", "r-url"}},
+		{[]string{"--until", "today"}, []string{"r-idea", "r-note", "r-plain", "r-url"}},
+		{[]string{"--since", "2026-03-11"}, []string{"r-idea", "r-note", "r-plain"}},
+		{[]string{"--until", "2026-03-11"}, []string{"r-note", "r-url"}},
+		{[]string{"--since", "2026-03-11", "--until", "2026-03-12"}, []string{"r-idea", "r-note"}},
+		{[]string{"--since", "2026-03-11T13:00:01Z"}, []string{"r-idea", "r-plain"}},
+		{[]string{"--until", "2026-03-11T13:00:01Z"}, []string{"r-note", "r-url"}},
+		{[]string{"--until", "2026-03-11T13:00:00Z"}, []string{"r-url"}},
+		{[]string{"--mentioned-since", "1M"}, []string{"r-url"}},
+		{[]string{"--mentioned-until", "1w"}, nil},
+		{[]string{"--mentioned-since", "2026-04-10", "--mentioned-until", "2026-04-10"}, []string{"r-url"}},
+		{[]string{"--tagged", "ux", "--since", "3d"}, nil},
+		{[]string{"--tagged", "ux,design", "--since", "1w", "--until", "2026-03-11"}, []string{"r-note", "r-url"}},
 	}
 	for _, tc := range cases {
 		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
@@ -175,15 +286,18 @@ func TestListSortOverAPI(t *testing.T) {
 	}
 }
 
-// TestListRejectsWhatStorageCannotDo: sort keys and multi-tag filters
-// storage has no support for are usage errors, not silent no-ops.
+// TestListRejectsWhatStorageCannotDo: sort keys storage has no support
+// for, malformed tag lists and malformed dates are usage errors, not
+// silent no-ops.
 func TestListRejectsWhatStorageCannotDo(t *testing.T) {
 	db := setupTestDB(t)
 	for _, args := range [][]string{
 		{"--sort", "view"}, {"--sort", "match"}, {"--sort", "weight"}, {"--sort", "score"},
 		{"--sort", "created_at"}, {"--dir", "up"},
-		{"--tagged", "ux,design"},
-		{"--after", "yesterday"}, {"--before", "03/01/2026"}, {"--since", "2026-4-1"}, {"--until", "now"},
+		{"--tagged", "a,,b"}, {"--tagged", "+"}, {"--tagged", "a,+"}, {"--tagged", "-a"}, {"--tagged", "a,-b"}, {"--tagged", ""},
+		{"--since", "03/01/2026"}, {"--since", "2026-4-1"}, {"--until", "now"}, {"--since", "0d"}, {"--since", "3 days"},
+		{"--mentioned-since", "soon"}, {"--mentioned-until", "2026-02-30"},
+		{"--mentioned-since", "2026-05-01", "--mentioned-until", "2026-04-01"},
 		{"--status", "archived"},
 	} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
@@ -193,7 +307,7 @@ func TestListRejectsWhatStorageCannotDo(t *testing.T) {
 			}
 		})
 	}
-	for _, flag := range []string{"--hint", "--orig-lang", "--no-track"} {
+	for _, flag := range []string{"--hint", "--orig-lang", "--no-track", "--after", "--before"} {
 		if _, err := db.exec("list", flag, "x"); err == nil {
 			t.Errorf("list %s was accepted; the flag is removed", flag)
 		}
@@ -445,6 +559,7 @@ func TestComposeOverAPI(t *testing.T) {
 	db := setupTestDB(t)
 	seedReadCorpus(t, db)
 
+	withClock(t, time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC))
 	out, err := db.exec("compose", "brief", "--tagged", "ux", "--since", "2026-03-11")
 	if err != nil {
 		t.Fatalf("compose: %v\n%s", err, out)
@@ -466,9 +581,36 @@ func TestComposeOverAPI(t *testing.T) {
 		t.Errorf("source_ids = %v", res.SourceIDs)
 	}
 
-	for _, args := range [][]string{{"--since", "yesterday"}, {"--until", "now"}, {"--tagged", "ux,design"}} {
+	for _, args := range [][]string{{"--since", "soon"}, {"--until", "now"}, {"--tagged", "a,,b"}, {"--tagged", "+"}, {"--tagged", "-a"}} {
 		if _, err := db.exec(append([]string{"compose", "brief"}, args...)...); exitOf(err) != output.ExitUsage {
 			t.Errorf("compose %v: exit %d (%v); want 2", args, exitOf(err), err)
+		}
+	}
+	// Several tags, a required one, a boost and a relative date.
+	for _, tc := range []struct {
+		args    []string
+		want    []string
+		missing []string
+	}{
+		{[]string{"--tagged", "ux,design", "--since", "1w"}, []string{"## r-note", "## r-idea", "## r-url"}, nil},
+		{[]string{"--tagged", "+ux,+urgent"}, []string{"## r-note"}, []string{"## r-url", "## r-idea"}},
+		{[]string{"--tagged", "+ux,urgent", "--since", "3d"}, nil, []string{"## r-note", "## r-url", "## r-idea"}},
+		{[]string{"--tagged", "ux", "--tagged", "design", "--since", "4d"}, []string{"## r-note", "## r-idea"}, []string{"## r-url"}},
+	} {
+		out, err := db.exec(append([]string{"compose", "brief"}, tc.args...)...)
+		if err != nil {
+			t.Errorf("compose %v: %v\n%s", tc.args, err, out)
+			continue
+		}
+		for _, w := range tc.want {
+			if !strings.Contains(out, w) {
+				t.Errorf("compose %v: output lacks %q\n%s", tc.args, w, out)
+			}
+		}
+		for _, w := range tc.missing {
+			if strings.Contains(out, w) {
+				t.Errorf("compose %v: output has %q\n%s", tc.args, w, out)
+			}
 		}
 	}
 	if _, err := db.exec("compose", "brief", "--session", "sess_1"); err == nil {

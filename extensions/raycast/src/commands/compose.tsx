@@ -29,9 +29,9 @@ interface FormValues {
 }
 
 function buildArgs(values: FormValues): string[] {
-  const args: string[] = ["make", values.type];
+  const args: string[] = ["compose", values.type];
   if (values.tag) {
-    args.push("--tag", values.tag);
+    args.push("--tagged", values.tag);
   }
   if (values.mention) {
     args.push("--mention", values.mention);
