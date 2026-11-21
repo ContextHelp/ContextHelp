@@ -276,3 +276,23 @@ func TestStepAdminScopeName(t *testing.T) {
 		}
 	}
 }
+
+// IsOwner is the one owner question: kind owner, whatever the roles.
+func TestIsOwner(t *testing.T) {
+	var none *Principal
+	for name, c := range map[string]struct {
+		p    *Principal
+		want bool
+	}{
+		"owner":              {&Principal{ID: storage.OwnerPrincipal, Kind: storage.PrincipalKindOwner, Roles: []string{RoleReader}}, true},
+		"local principal":    {LocalPrincipal(), true},
+		"admin person":       {&Principal{ID: "prn_a", Kind: storage.PrincipalKindPerson, Roles: []string{RoleAdmin}}, false},
+		"admin device":       {&Principal{ID: "prn_a", Kind: storage.PrincipalKindDevice, Roles: []string{RoleAdmin}}, false},
+		"person named owner": {&Principal{ID: storage.OwnerPrincipal, Kind: storage.PrincipalKindPerson, Roles: []string{RoleAdmin}}, false},
+		"nil":                {none, false},
+	} {
+		if got := c.p.IsOwner(); got != c.want {
+			t.Errorf("%s: IsOwner = %v, want %v", name, got, c.want)
+		}
+	}
+}

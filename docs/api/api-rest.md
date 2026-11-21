@@ -84,6 +84,7 @@ Common error codes:
 - `NOT_FOUND`
 - `UNAUTHORIZED` (401)
 - `INSUFFICIENT_SCOPE` (403)
+- `CREDENTIAL_FOR_OTHER_PRINCIPAL` (403: a key, sign-in link, invite or identity for another principal, asked for by anyone but the owner)
 - `INTERNAL_ERROR`
 
 ## Conventions

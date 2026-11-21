@@ -34,8 +34,10 @@ Every command calls the instance (--server, --instance, CTXT_INSTANCE,
 the current instance, or the first server.urls entry) with
 its configured API key. What you may manage is your own: the keys,
 identities and browser sessions of the principal your key acts for.
-An admin key manages other principals' keys with --principal on the
-key commands, and the rest of a principal with 'ctxt principal'.
+An admin key lists and revokes other principals' keys with --principal
+on the key commands, and manages the rest of a principal with 'ctxt
+principal'. Only the owner's key can create a key for another
+principal.
 
 Examples:
   # Who the configured key acts for, with its scopes
@@ -67,9 +69,10 @@ var authKeyCmd = &cobra.Command{
 	Long: `Create, list and revoke API keys.
 
 Without --principal the commands manage your own keys. With --principal
-they manage another principal's, which takes an admin key
-(admin:principals). A key never holds more than the principal's roles
-grant, nor more than the key that created it holds.`,
+they list and revoke another principal's, which takes an admin key
+(admin:principals). Only the owner's key can create a key for another
+principal. A key never holds more than the principal's roles grant, nor
+more than the key that created it holds.`,
 }
 
 var authKeyCreateCmd = &cobra.Command{
@@ -84,9 +87,10 @@ revoked and replaced, never recovered.
 The key holds your key's scopes, or fewer with --scope. It never expires
 unless --expires gives a duration (720h, 30d) or a date (2026-12-31, or
 RFC 3339; a date expires at the end of that day, UTC). With --principal
-an admin creates a key for another principal, holding that principal's
+the owner creates a key for another principal, holding that principal's
 role scopes unless --scope narrows them: this is how a federation peer
-or a capture device gets its key.
+or a capture device gets its key. For now another admin asking for one
+is refused with 403 CREDENTIAL_FOR_OTHER_PRINCIPAL.
 
 Examples:
   # A key for an agent, reads only, gone in a week

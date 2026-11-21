@@ -38,8 +38,12 @@ identities and sessions.
 
 Every command calls the instance (--server, --instance, CTXT_INSTANCE,
 the current instance, or the first server.urls entry) with
-its configured API key, which must hold admin:principals: the owner's.
-Keys for a principal come from 'ctxt auth key create --principal <id>'.
+its configured API key, which must hold admin:principals. Only the owner
+can mint a sign-in link or a key, or bind an identity, for another
+principal. Any other admin creates, suspends and revokes principals and
+removes their keys and identities; for now, asking for a credential is
+refused with 403 CREDENTIAL_FOR_OTHER_PRINCIPAL. Keys for a principal
+come from the owner, with 'ctxt auth key create --principal <id>'.
 
 Examples:
   # A federation peer and its push key
@@ -129,7 +133,9 @@ var principalLinkCmd = &cobra.Command{
 opens the web UI signed in as that principal; it works once, within 10
 minutes, and is refused for a suspended or revoked principal. The
 secret rides after '#', so it never reaches a server log or a proxy.
-Hand it over on a channel you trust.
+Hand it over on a channel you trust. Only the owner can mint a link for
+another principal. For now any other admin is refused with 403
+CREDENTIAL_FOR_OTHER_PRINCIPAL.
 
 Examples:
   ctxt principal link prn_01J...`,
@@ -150,7 +156,9 @@ var principalIdentityAddCmd = &cobra.Command{
 	Long: `Bind an identity to a principal by hand: --method proxy for a login a
 trusted proxy will assert (--issuer names the preset, tailscale or
 forward_auth), or --method oidc for an issuer and subject. The
-principal must be active.
+principal must be active. Only the owner can bind an identity to another
+principal. For now any other admin is refused with 403
+CREDENTIAL_FOR_OTHER_PRINCIPAL.
 
 Examples:
   ctxt principal identity add prn_01J... --method proxy --issuer tailscale --subject alice@example.com

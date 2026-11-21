@@ -77,33 +77,48 @@ func TestOwnerGuard_OtherAdminsNeverTouchTheOwner(t *testing.T) {
 	assert.Equal(t, CodeOwnerProtected, errCode(t, resp))
 }
 
-// Keys narrow, never widen, for an admin too: a key minted for another
-// principal holds at most that principal's role scopes and at most
-// what the minting admin holds itself.
+// Keys narrow, never widen, for an admin too: a key holds at most the
+// principal's role scopes and at most what the minting key holds. An
+// admin mints keys for itself only (only the owner issues a credential
+// for another principal), so its ceiling is tested on its own keys,
+// through the admin route and /self alike.
 func TestKeyCeiling_AdminNeverMintsMoreThanItHolds(t *testing.T) {
 	f := newCeremonyFixture(t)
 	// An admin whose own key is narrowed to reader-level reads plus the
 	// scope that reaches the registry.
-	_, narrow := f.adminKey("Narrow", authn.ScopeAdminPrincipals, authn.ScopeReadObjects, authn.ScopeReadSystem)
+	held := []authn.Scope{authn.ScopeAdminPrincipals, authn.ScopeReadObjects, authn.ScopeReadSystem, authn.ScopeWriteSelf}
+	narrowID, narrow := f.adminKey("Narrow", held...)
 	resp := f.createPrincipal(f.ops, storage.PrincipalKindDevice, "Phone")
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	device := decodeBody[storage.Principal](t, resp)
 	keysPath := "/api/v1/principals/" + device.ID + "/keys"
+	ownPath := "/api/v1/principals/" + narrowID + "/keys"
 
-	// The device's whole writer bundle by default: more than the admin holds.
-	resp = f.do(http.MethodPost, keysPath, map[string]any{"name": "default"}, withBearer(narrow))
-	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
-	assert.Equal(t, CodeScopeNotHeld, errCode(t, resp))
+	// Another principal's key is the owner's to mint, whatever is asked.
+	for _, body := range []map[string]any{
+		{"name": "default"},
+		{"scopes": []authn.Scope{authn.ScopeWriteObjects}},
+		{"scopes": []authn.Scope{authn.ScopeReadObjects}},
+	} {
+		resp = f.do(http.MethodPost, keysPath, body, withBearer(narrow))
+		assert.Equal(t, http.StatusForbidden, resp.StatusCode, "%v", body)
+		assert.Equal(t, CodeCredentialForOtherPrincipal, errCode(t, resp), "%v", body)
+	}
 
-	// A writer scope the device's roles grant but the admin lacks.
-	resp = f.do(http.MethodPost, keysPath, map[string]any{"scopes": []authn.Scope{authn.ScopeWriteObjects}}, withBearer(narrow))
-	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
-	assert.Equal(t, CodeScopeNotHeld, errCode(t, resp))
+	// Its own key through the admin route is the /self form: without
+	// scopes it holds what the narrowed key holds, never the bundle.
+	resp = f.do(http.MethodPost, ownPath, map[string]any{"name": "default"}, withBearer(narrow))
+	require.Equal(t, http.StatusCreated, resp.StatusCode, errBody(t, resp))
+	assert.ElementsMatch(t, held, decodeBody[createdKey](t, resp).Scopes)
 
-	// A read the device's roles grant but the admin lacks.
-	resp = f.do(http.MethodPost, keysPath, map[string]any{"scopes": []authn.Scope{authn.ScopeReadJobs}}, withBearer(narrow))
-	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
-	assert.Equal(t, CodeScopeNotHeld, errCode(t, resp))
+	// A scope its roles grant but its key lacks, on either route.
+	for _, path := range []string{ownPath, "/api/v1/self/keys"} {
+		for _, s := range []authn.Scope{authn.ScopeWriteObjects, authn.ScopeReadJobs} {
+			resp = f.do(http.MethodPost, path, map[string]any{"scopes": []authn.Scope{s}}, withBearer(narrow))
+			assert.Equal(t, http.StatusForbidden, resp.StatusCode, "%s %s", path, s)
+			assert.Equal(t, CodeScopeNotHeld, errCode(t, resp), "%s %s", path, s)
+		}
+	}
 
 	// A scope the device's roles do not grant at all is a bad request,
 	// whoever asks.
@@ -114,15 +129,19 @@ func TestKeyCeiling_AdminNeverMintsMoreThanItHolds(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	assert.Equal(t, CodeInvalidScope, errCode(t, resp))
 
-	// What both hold goes through, and the key holds exactly that.
+	// What it holds goes through, and the key holds exactly that.
 	asked := []authn.Scope{authn.ScopeReadObjects, authn.ScopeReadSystem}
-	resp = f.do(http.MethodPost, keysPath, map[string]any{"scopes": asked}, withBearer(narrow))
+	resp = f.do(http.MethodPost, ownPath, map[string]any{"scopes": asked}, withBearer(narrow))
 	require.Equal(t, http.StatusCreated, resp.StatusCode, errBody(t, resp))
 	created := decodeBody[createdKey](t, resp)
 	assert.Equal(t, asked, created.Scopes)
 	resp = f.do(http.MethodGet, "/api/v1/whoami", nil, withBearer(created.Key))
 	require.Equal(t, http.StatusOK, resp.StatusCode, errBody(t, resp))
 	assert.Equal(t, asked, decodeBody[whoamiResponse](t, resp).Scopes)
+	// /self without scopes: the key's own scopes, never the bundle.
+	resp = f.do(http.MethodPost, "/api/v1/self/keys", map[string]any{"name": "same"}, withBearer(narrow))
+	require.Equal(t, http.StatusCreated, resp.StatusCode, errBody(t, resp))
+	assert.ElementsMatch(t, held, decodeBody[createdKey](t, resp).Scopes)
 
 	// The owner holds everything: the default bundle goes through.
 	resp = f.do(http.MethodPost, keysPath, map[string]any{"name": "full"}, withBearer(f.ops))
@@ -141,10 +160,12 @@ func TestKeyCeiling_AdminNeverMintsMoreThanItHolds(t *testing.T) {
 
 // Every credential-producing route sits under one ceiling: a principal
 // created, an identity bound, a sign-in link or a key minted never
-// holds more than the caller. Callers: the owner, an admin-role person
-// with a full key, an admin-role person with a reader-level key, a
-// reader-role person. Targets: a writer-level device and a reader-level
-// person.
+// holds more than the caller. On top of it, an identity, a link or a
+// key for another principal is the owner's alone: an admin, full key
+// or narrowed, is refused 403 CREDENTIAL_FOR_OTHER_PRINCIPAL whatever
+// it holds. Callers: the owner, an admin with a full key, an admin
+// with a reader-level key, a reader. Targets: a writer-level device
+// and a reader-level person.
 func TestCeiling_EveryCredentialPath(t *testing.T) {
 	f := newCeremonyFixture(t)
 	_, full := f.adminKey("Full")
@@ -211,14 +232,20 @@ func TestCeiling_EveryCredentialPath(t *testing.T) {
 			for _, a := range actions {
 				resp := a.call()
 				label := fmt.Sprintf("%s: %s on a %s-level target", c.name, a.name, tg.name)
+				want, code := tg.want, c.code
+				if a.name != "create" && c.key != f.ops && c.code != CodeInsufficientScope {
+					// Only the owner delivers a credential for another
+					// principal; the refusal comes before the ceiling.
+					want, code = http.StatusForbidden, CodeCredentialForOtherPrincipal
+				}
 				// The body is read once: as the failure message, or as
 				// the error code of an expected refusal.
-				if resp.StatusCode != tg.want {
-					t.Errorf("%s: status %d, want %d: %s", label, resp.StatusCode, tg.want, errBody(t, resp))
+				if resp.StatusCode != want {
+					t.Errorf("%s: status %d, want %d: %s", label, resp.StatusCode, want, errBody(t, resp))
 					continue
 				}
-				if tg.want == http.StatusForbidden {
-					assert.Equal(t, c.code, errCode(t, resp), label)
+				if want == http.StatusForbidden {
+					assert.Equal(t, code, errCode(t, resp), label)
 				}
 			}
 		}

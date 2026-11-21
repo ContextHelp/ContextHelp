@@ -66,6 +66,13 @@ const (
 	ReasonAuthorityMatched      = "authority_matched"
 	ReasonNotAuthority          = "not_authority"
 	ReasonAuthorityUnconfigured = "authority_unconfigured"
+	// The owner-only guard on credential delivery (CheckRouteAccess): a
+	// key, sign-in link, invite or identity for a principal other than
+	// the caller, asked for by a caller that is not the owner.
+	ReasonCredentialOwnerOnly = "credential_owner_only"
+	// The owner guard on the owner principal's own credentials
+	// (CheckRouteAccess): an administrator acting on the owner.
+	ReasonOwnerProtected = "owner_protected"
 	// View-as refusals (CheckViewAs): the route writes, the target is
 	// neither a principal nor a share policy, the target failed to
 	// resolve.

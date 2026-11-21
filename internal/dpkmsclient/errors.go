@@ -13,8 +13,15 @@ import (
 
 	"hop.top/kit/go/console/output"
 
+	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 )
+
+// credentialForOtherFix is the suggested fix of a refused credential
+// delivery: an admin other than the owner asking for a key, a sign-in
+// link, an invite or an identity for another principal.
+const credentialForOtherFix = "Only the owner can issue a key, a sign-in link, an invite or an identity for another principal. " +
+	"Ask the owner to run this command, or create a key for yourself with 'ctxt auth key create' without --principal."
 
 // maxErrorBody caps how much of a non-2xx body is read and kept.
 const maxErrorBody = 64 << 10
@@ -96,7 +103,11 @@ func (c *Client) statusError(status int, body []byte) error {
 	}
 	code, exit := statusClass(status)
 	e := output.WrapError(re, code, exit)
-	if code == output.CodeUnauthorized {
+	switch {
+	case re.Code == authn.CodeCredentialForOtherPrincipal:
+		// The key is genuine; only the owner may ask for this.
+		e.SuggestedFix = credentialForOtherFix
+	case code == output.CodeUnauthorized:
 		e.SuggestedFix = "check the token configured for " + c.shown +
 			" (server.token, or the token of its server.urls entry), and that it grants this operation"
 	}

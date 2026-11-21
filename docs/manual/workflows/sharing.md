@@ -114,6 +114,8 @@ ctxt share invite --name "Dana Partner" --audience partners
 
 The link works once and expires after 7 days unless `--expires` says otherwise. Accepting it creates the person, puts them in the audience (added by you, with no expiry) and signs their browser in. An invite minted without `--audience` creates a person who sees nothing until you add them somewhere. If the audience is gone by the time the link is opened, the link is spent and nobody is created: mint a new one.
 
+Only the owner can mint an invite: whoever opens it becomes a new principal, in the audience it names. For now any other admin gets 403 `CREDENTIAL_FOR_OTHER_PRINCIPAL`.
+
 ## The web UI
 
 An admin's browser session holds `admin:shares`, so the owner sees a **Sharing** page with the same operations: audiences with their members, policies with their version, grants with their expiry, and a template to install. The page is hidden from everyone else.
