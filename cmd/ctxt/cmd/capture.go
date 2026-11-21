@@ -258,6 +258,11 @@ func captureOnce(ctx context.Context, cmd *cobra.Command, args []string) error {
 	}
 
 	if inbox {
+		// The inbox endpoint takes no content_encoding: binary would
+		// reach it as U+FFFD. Refuse rather than store a corrupt copy.
+		if contentEncoding != "" {
+			return fmt.Errorf("binary content is not supported with --inbox; capture it without --inbox")
+		}
 		return postInboxCapture(ctx, client, content, source, contentType, hints, mentions, cmd)
 	}
 
