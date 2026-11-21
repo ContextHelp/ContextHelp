@@ -27,7 +27,7 @@ Webmail, calendar, banking, login/SSO, checkout and internal admin consoles are 
 
 **3. Bookmark import bypasses `url_filter` (finding).**
 
-Bookmarks are not under `capture`. `ctxt import chrome|edge|firefox|safari` (`cmd/ctxt/cmd/import_bookmarks.go`, `import_chrome.go`, `import_edge.go`, `import_firefox.go`, `import_safari.go`) parses a bookmarks HTML export and enqueues every URL through `enqueueBookmark` (`import_bookmarks.go:148`). None of the `import_*` files reference `internal/urlfilter`, so bookmarks ignore even the user's own `capture.url_filter` deny and `allow_only` rules and the builtin loopback/scheme gate. This is a gap regardless of presets. Its dry-run prints only a parsed count (`import_bookmarks.go:73`).
+Bookmarks are not under `capture`. `ctxt import chrome|edge|firefox|safari` (`cmd/ctxt/cmd/import_bookmarks.go`, `import_chrome.go`, `import_edge.go`, `import_firefox.go`, `import_safari.go`) parses a bookmarks HTML export and enqueues every URL through `enqueueBookmark` (`import_bookmarks.go:148`). None of the `import_*` files reference `internal/urlfilter`, so bookmarks ignore even the user's own `capture.url_filter` deny and `allow_only` rules and the builtin loopback/scheme gate. This is a gap regardless of presets. Its dry-run prints the parsed count and a preview of the first 20 URLs (`import_bookmarks.go:73`), with no per-URL status.
 
 ### What exists and must be reused
 
@@ -73,7 +73,7 @@ Browser URLs enter through four commands. Today three use `urlfilter` and bookma
 | Tabs | `ctxt capture tabs` (`capture_tabs.go`) | on | on (today) | on at `default` | per-tab status, reason, canonical form, counters |
 | History, CLI | `ctxt capture history` (`capture_history.go`) | on | on (today) | on at `default` | per-visit outcome, canonical form, counters |
 | History, ambient | `browserhistory` source (`internal/ambient/browserhistory/browserhistory.go:211`) | on | on (today) | on at `default` | no terminal output: events carry rule scope and counts, never the URL |
-| Bookmarks | `ctxt import chrome\|edge\|firefox\|safari` | on (recommended) | on (recommended; closes the bypass) | **off by default** (recommended: a bookmark is a deliberate save); enabled per source with `capture.url_filter.hygiene.sources.bookmarks.preset` | needs per-URL status and counters in `--dry-run` (today a count only) |
+| Bookmarks | `ctxt import chrome\|edge\|firefox\|safari` | on (recommended) | on (recommended; closes the bypass) | **off by default** (recommended: a bookmark is a deliberate save); enabled per source with `capture.url_filter.hygiene.sources.bookmarks.preset` | needs per-URL status and counters in `--dry-run` (today a count and a 20-URL preview) |
 
 A per-source `preset` under `sources.<tabs|history|ambient|bookmarks>` follows the Layer rule: setting a source below its shipped default is a lowering knob and user-layer-only. Raising bookmarks to `default` is a raising knob and honored from any layer.
 
