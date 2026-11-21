@@ -6,6 +6,7 @@ package proximity
 
 import (
 	"math"
+	"strings"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
@@ -186,8 +187,9 @@ func OriginProximity(a, b *storage.KnowledgeObject) float64 {
 
 	// Same URL domain (for URL objects)
 	if a.Type == "url" && b.Type == "url" {
-		domainA := extractDomain(a.RawContent)
-		domainB := extractDomain(b.RawContent)
+		// A fetched page's RawContent is its body; the URL is the source.
+		domainA := extractDomain(urlOf(a))
+		domainB := extractDomain(urlOf(b))
 		if domainA != "" && domainA == domainB {
 			score += 0.1
 		}
@@ -234,6 +236,15 @@ func ComputeProximity(a, b *storage.KnowledgeObject) *storage.ProximityScore {
 
 // extractDomain parses a raw URL string and returns just the host component.
 // Returns empty string on failure.
+// urlOf is the URL a url object stands for: its source when that is a
+// URL, else its raw content (an unfetched capture is just the link).
+func urlOf(o *storage.KnowledgeObject) string {
+	if strings.Contains(o.Source, "://") {
+		return o.Source
+	}
+	return o.RawContent
+}
+
 func extractDomain(rawURL string) string {
 	// Find "://" separator
 	for i := 0; i < len(rawURL)-2; i++ {
