@@ -2,6 +2,7 @@ package steps
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 
 	"golang.org/x/net/html"
@@ -66,8 +67,10 @@ func (s *HTMLCleaner) Run(_ context.Context, draft *storage.KnowledgeObject) (*s
 
 	doc, err := html.Parse(strings.NewReader(draft.RawContent))
 	if err != nil {
-		// The parser tolerates malformed markup; a read error on an
-		// in-memory string is not expected. Never fail the job over it.
+		// The parser tolerates malformed markup, so this is not expected
+		// for an in-memory string. Malformed input must never fail the
+		// job: keep the content as fetched and record why.
+		slog.Warn("html_cleaner: parse failed; content left uncleaned", "err", err)
 		return draft, nil
 	}
 
