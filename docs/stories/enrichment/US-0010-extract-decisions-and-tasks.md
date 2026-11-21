@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: partial
 ---
 
 # US-0010: Extract Decisions And Tasks
+
+> **Implementation status:** Built: decision/open-question nodes via the graph extractor. Not built: `/enrich/*` API, enum-constrained decoding (LMQL/instructor), task assignee extraction.
 
 **System Types:** dpkms (self-hosted), dpkms cloud
 **Personas:** [Agents/LLMs](../../personas/agents-llms-tools.md), [Knowledge Workers](../../personas/knowledge-workers.md)

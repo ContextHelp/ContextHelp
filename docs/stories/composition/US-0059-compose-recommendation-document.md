@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: paper
 ---
 
 # US-0059: Compose Recommendation Document
+
+> **Implementation status:** No recommendation-document composition; compose emits a generic header and snippets.
 
 **System Types:** ctxt
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md)

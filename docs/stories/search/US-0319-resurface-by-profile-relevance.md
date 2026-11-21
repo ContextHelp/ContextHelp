@@ -1,5 +1,5 @@
 ---
-status: paper
+status: shipped-no-e2e
 ---
 
 # Story: Resurface Knowledge Objects by Profile Relevance

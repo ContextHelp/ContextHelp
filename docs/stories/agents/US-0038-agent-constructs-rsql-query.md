@@ -1,5 +1,5 @@
 ---
-status: shipped
+status: paper
 ---
 
 # Story: Agent Constructs RSQL Query

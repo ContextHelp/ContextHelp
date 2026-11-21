@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: partial
 ---
 
 # US-0012: Generate Summaries And Sections
+
+> **Implementation status:** Built: summary/section nodes and document projection. Not built: `/enrich/*` API, provider/max-sections request options.
 
 **System Types:** dpkms (self-hosted), dpkms cloud
 **Personas:** [Agents/LLMs](../../personas/agents-llms-tools.md), [Knowledge Workers](../../personas/knowledge-workers.md)

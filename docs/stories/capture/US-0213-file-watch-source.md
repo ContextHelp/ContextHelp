@@ -1,9 +1,11 @@
 ---
-status: paper
+status: partial
 adr: ADR-066
 ---
 
 # US-0213: File-Watch / Drop-Folder Source
+
+> **Implementation status:** Built (library only, unit-tested): file-watch source, routing, size limit, move-to-processed. Not built: runner wiring, default inbox config, retry on enqueue failure.
 
 **System Types:** ctxt
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md), [Researchers & OSINT Analysts](../../personas/researchers-osint.md), [Maintainers](../../personas/maintainers.md)

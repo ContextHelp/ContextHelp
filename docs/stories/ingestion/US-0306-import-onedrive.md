@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: partial
 ---
 
 # US-0306: Import OneDrive and SharePoint
+
+> **Implementation status:** Built: file/token input, parsing, enqueue via `ctxt import`. Not built: incremental checkpoints, external-ID/import-timestamp provenance, importer-level dedup, scanned/imported/skipped/failed counts, `error_type` classification, OAuth flows.
 
 **System Types:** ctxt, dpkms (self-hosted), dpkms cloud
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md), [Operations](../../personas/operations.md), [Maintainers](../../personas/maintainers.md)

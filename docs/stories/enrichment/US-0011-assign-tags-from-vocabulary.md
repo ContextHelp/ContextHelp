@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: partial
 ---
 
 # US-0011: Assign Tags From Vocabulary
+
+> **Implementation status:** Built: deterministic tagger. Not built: vocabulary-constrained tagging, custom vocabulary file, `/enrich/*` API, LMQL/instructor.
 
 **System Types:** dpkms (self-hosted), dpkms cloud
 **Personas:** [Agents/LLMs](../../personas/agents-llms-tools.md), [Knowledge Workers](../../personas/knowledge-workers.md)

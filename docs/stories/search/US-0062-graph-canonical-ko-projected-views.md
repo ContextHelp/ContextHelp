@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: partial
 ---
 
 # US-0062: Graph-Canonical KO with Projected Document Views
+
+> **Implementation status:** Built: graph-canonical storage, stable node URIs, document/index projections (gRPC), node-aware search (gRPC). Not built: REST `document` field, `ctxt open`, `ctxt find --node-type`, `GET /objects/{id}/nodes`, `GET /nodes/<uri>`, REST `node_type` search.
 
 **System Types:** ctxt, dpkms
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md),

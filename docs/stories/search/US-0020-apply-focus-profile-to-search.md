@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: paper
 ---
 
 # US-0020: Apply Focus Profile to Search
+
+> **Implementation status:** No `--profile` on `find`; profile does not filter or boost search results (profile acts as a lens only); unknown profile is not a 400.
 
 **System Types:** ctxt
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md)

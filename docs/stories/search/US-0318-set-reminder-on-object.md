@@ -1,5 +1,5 @@
 ---
-status: paper
+status: shipped-no-e2e
 ---
 
 # Story: Set Reminder on Knowledge Object

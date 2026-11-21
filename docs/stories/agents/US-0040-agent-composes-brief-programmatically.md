@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: paper
 ---
 
 # US-0040: Agent Composes Brief Programmatically
+
+> **Implementation status:** `POST /compose` and `GET /compositions/{id}` do not exist; zero objects yields an empty brief, not an error.
 
 **System Types:** dpkms (self-hosted), dpkms cloud
 **Personas:** [Agents/LLMs](../../personas/agents-llms-tools.md)

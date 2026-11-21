@@ -1,9 +1,11 @@
 ---
-status: paper
+status: partial
 adr: ADR-069
 ---
 
 # US-0218: Meeting Redact + Export
+
+> **Implementation status:** Built (library only, unit-tested): transcript export (md/srt/vtt), segment redaction, time-range parsing. Not built: CLI, supersede chain, media redaction, audit log.
 
 **System Types:** ctxt, dpkms
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md), [Researchers & OSINT Analysts](../../personas/researchers-osint.md)

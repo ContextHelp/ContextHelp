@@ -4,6 +4,8 @@ status: shipped
 
 # US-0409: Schema Co-Evolution per Profile
 
+> **Implementation status:** Not built: `profile schema evolve --apply` (evolve is read-only).
+
 **System Types:** dpkms (self-hosted), dpkms cloud
 **Personas:** [Maintainers](../../personas/maintainers.md),
 [Knowledge Workers](../../personas/knowledge-workers.md)

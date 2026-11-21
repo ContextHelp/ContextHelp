@@ -1,8 +1,10 @@
 ---
-status: paper
+status: shipped-no-e2e
 ---
 
 # US-0321: Cardamum Contacts Ingestion Adapter
+
+> **Implementation status:** Implemented and unit-tested; no integration test against a real adapter run.
 
 **System Types:** ctxt
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md)

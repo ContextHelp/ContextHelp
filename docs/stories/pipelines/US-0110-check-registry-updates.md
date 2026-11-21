@@ -38,6 +38,8 @@ Auto-update defaults to **disabled**:
   - Scheduled check (e.g., nightly cron, hourly)
   - Notification on successful fetch
 
+> **Overlap:** the auto-update policy and update-reminder criteria are restated in [US-0111](./US-0111-configure-registry-autoupdate.md). Kept separate; US-0110 owns checking and reminder creation, US-0111 owns the auto-update setting.
+
 ## Acceptance Criteria
 
 - **Check returns available step versions for all configured registries**

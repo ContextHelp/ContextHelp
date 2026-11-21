@@ -4,6 +4,8 @@ status: shipped
 
 # US-0403: Structured Metadata Extraction at Ingest
 
+> **Implementation status:** Not built: LMQL/instructor, new-topic proposal.
+
 **System Types:** dpkms (self-hosted), dpkms cloud
 **Personas:** [Agents/LLMs](../../personas/agents-llms-tools.md),
 [Knowledge Workers](../../personas/knowledge-workers.md)

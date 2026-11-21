@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: partial
 ---
 
 # US-0402: Knowledge Lint and Health Check
+
+> **Implementation status:** Built: orphans, missing-metadata, duplicates, stale checks (surfaced via `ctxt doctor`). Not built: contradictions, `--fix`, `--profile`, scheduling, lint report objects.
 
 **System Types:** dpkms (self-hosted), dpkms cloud, ctxt
 **Personas:** [Maintainers](../../personas/maintainers.md),

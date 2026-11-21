@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: partial
 ---
 
 # US-0025: Export Brief To Markdown PDF
+
+> **Implementation status:** Built: `ctxt compose --export markdown|json`, `--output-file`. Not built: brief persistence/ID lookup, PDF/HTML/plain formats.
 
 **System Types:** ctxt
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md)

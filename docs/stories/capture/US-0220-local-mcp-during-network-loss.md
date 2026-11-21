@@ -1,9 +1,11 @@
 ---
-status: paper
+status: partial
 adr: ADR-068, ADR-066
 ---
 
 # US-0220: Local MCP During Network Loss (ctxd-side)
+
+> **Implementation status:** Built: ambient local MCP server package. Not built: server mount/port, stdio mode, discovery file, install registration, bus events.
 
 **System Types:** ctxt
 **Personas:** [AI Agents](../../personas/agents-llms-tools.md), [Knowledge Workers](../../personas/knowledge-workers.md), [Researchers & OSINT Analysts](../../personas/researchers-osint.md)

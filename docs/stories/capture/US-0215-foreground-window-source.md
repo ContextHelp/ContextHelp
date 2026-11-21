@@ -1,9 +1,11 @@
 ---
-status: paper
+status: partial
 adr: ADR-066, ADR-067
 ---
 
 # US-0215: Foreground Window / App Source
+
+> **Implementation status:** Built (library only, unit-tested): foreground-window source, debounce, exclusions. Not built: macOS accessibility reader, permission flow, runner wiring.
 
 **System Types:** ctxt
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md), [Researchers & OSINT Analysts](../../personas/researchers-osint.md)

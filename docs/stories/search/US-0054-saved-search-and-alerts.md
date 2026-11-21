@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: partial
 ---
 
 # US-0054: Saved Search and Alerts
+
+> **Implementation status:** Built: `/saved-searches` create/list/get/delete and storage. Not built: `ctxt search save/run` CLI, `/run` route, alert firing/notification, duplicate-name 409.
 
 **System Types:** ctxt
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md)
