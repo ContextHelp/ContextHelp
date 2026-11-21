@@ -5,12 +5,21 @@ import (
 	"encoding/hex"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 var whitespaceRe = regexp.MustCompile(`\s+`)
 
+// ContentHash is the dedup hash of content from source. Text is
+// normalised (trimmed, lowercased, whitespace collapsed) so cosmetic
+// differences dedup; content that is not valid UTF-8 is binary and hashes
+// over its exact bytes, because lowercasing would turn every invalid byte
+// into U+FFFD and merge distinct binaries, a corrupted copy included.
 func ContentHash(rawContent, source string) string {
-	normalized := normalizeContent(rawContent)
+	normalized := rawContent
+	if utf8.ValidString(rawContent) {
+		normalized = normalizeContent(rawContent)
+	}
 	payload := normalized + "\x00" + source
 	h := sha256.Sum256([]byte(payload))
 	return hex.EncodeToString(h[:])
