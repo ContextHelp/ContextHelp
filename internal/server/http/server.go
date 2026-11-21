@@ -110,7 +110,7 @@ type RouterConfig struct {
 	// or the routes refuse every call.
 	AccessPrincipal string
 	AccessScope     string
-	// Approvals is the shared approval mechanism (ADR-082 §9) the
+	// Approvals is the shared approval mechanism (ADR-083 §9) the
 	// /approvals routes serve. nil = those routes answer 404.
 	Approvals *approval.Service
 }

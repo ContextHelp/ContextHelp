@@ -10,7 +10,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
-// The state machine of ADR-082 §9, pair by pair: requested moves to each
+// The state machine of ADR-083 §9, pair by pair: requested moves to each
 // terminal state by its one trigger, and every other move, every move
 // out of a terminal state and every self-loop included, is illegal.
 func TestStateMachine_EveryPair(t *testing.T) {

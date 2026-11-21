@@ -8,7 +8,7 @@ import (
 
 // State is a request's state as the mechanism reports it: the stored
 // status, or expired, which is computed from the clock and never
-// written (ADR-082 §9).
+// written (ADR-083 §9).
 type State string
 
 // The states.
@@ -41,7 +41,7 @@ const (
 	TriggerClock Trigger = "clock"
 )
 
-// transitions is the state machine (ADR-082 §9): every allowed move and
+// transitions is the state machine (ADR-083 §9): every allowed move and
 // who triggers it. Every state but requested is terminal.
 var transitions = map[State]map[State]Trigger{
 	StateRequested: {

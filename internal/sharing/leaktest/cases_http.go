@@ -149,7 +149,7 @@ func httpCases() []Case {
 		get("/self/identities"),
 		get("/self/sessions"),
 
-		// The approval queue (ADR-082 §9): no kind is registered, so the
+		// The approval queue (ADR-083 §9): no kind is registered, so the
 		// fixture holds no request; the listing is empty and a keyed
 		// request answers its not-found path.
 		get("/approvals"),

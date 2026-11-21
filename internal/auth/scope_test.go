@@ -19,7 +19,7 @@ func TestMain(m *testing.M) {
 // bundle its verb implies, and nowhere else. read:ui (mint a login code)
 // is a read, so every role holds it; signout:ui is session-only, so no
 // role does, admin included; the approval scopes belong to their own
-// roles (ADR-082 §1), never to admin.
+// roles (ADR-083 §1), never to admin.
 func TestRoleBundles(t *testing.T) {
 	cases := map[string][]Scope{
 		RoleReader: {
@@ -99,7 +99,7 @@ func TestUIScopesPlacement(t *testing.T) {
 
 // The web UI session set is pinned: the reads the web UI makes, its own
 // writes (delete an object, retry a job, sign out) and the Sharing page
-// (admin:shares, ADR-080 §11) and the approval scopes (ADR-082), nothing
+// (admin:shares, ADR-080 §11) and the approval scopes (ADR-083), nothing
 // else. admin:shares is the one admin scope a session may hold: the role
 // bundles keep it admin-only, so only an admin's session reaches the
 // sharing routes.

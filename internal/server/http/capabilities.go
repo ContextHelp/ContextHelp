@@ -233,7 +233,7 @@ var routeAccessTable = map[string]routeAccess{
 	// The approval queue is governed by each request's own rule
 	// (requester, subject, eligible approvers), not by share policies:
 	// a request names principals and registry changes, never a
-	// knowledge object (ADR-082 §9).
+	// knowledge object (ADR-083 §9).
 	"GET /approvals":               routeNone,
 	"GET /approvals/{id}":          routeNone,
 	"POST /approvals/{id}/approve": routeNone,

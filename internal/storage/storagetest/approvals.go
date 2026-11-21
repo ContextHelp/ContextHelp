@@ -19,7 +19,7 @@ var approvalT0 = time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC)
 const approvalNobody = "prn_nobody"
 
 // ApprovalsConformance pins the approval store contract every driver
-// implements (ADR-082 §9): requests with a frozen payload and N, the
+// implements (ADR-083 §9): requests with a frozen payload and N, the
 // one-decision-per-approver rule, transitions out of requested only,
 // the newest-first listing, and transactions that the store and the
 // audit log join and roll back together.

@@ -15,7 +15,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
-// The approval queue over the API (ADR-082 §9): the requests the caller
+// The approval queue over the API (ADR-083 §9): the requests the caller
 // filed, is the subject of or may decide, and the decisions on them.
 // Requests are filed by the routes of their kinds, never here. Every
 // route is under write:self, which every role and every browser session

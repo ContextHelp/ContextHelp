@@ -6,7 +6,7 @@ import (
 )
 
 // approvalDDL creates the approval mechanism's tables (migration 061,
-// ADR-082 §9). Times are Unix milliseconds (UTC) like the principal
+// ADR-083 §9). Times are Unix milliseconds (UTC) like the principal
 // registry; the payload and preconditions are JSON in TEXT, typed by
 // the kind that filed them, not by the schema. IF NOT EXISTS makes
 // every statement re-runnable.

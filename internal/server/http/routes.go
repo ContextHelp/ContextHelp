@@ -277,7 +277,7 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		// the caller binds its own keys here.
 		{Method: put, Pattern: "/self/keys/{key}/policy", Scope: authn.ScopeWriteSelf, Handler: http.HandlerFunc(sh.BindOwnKeyPolicy)},
 
-		// The approval queue (ADR-082 §9) under write:self, which every
+		// The approval queue (ADR-083 §9) under write:self, which every
 		// principal holds: the request's own rule (requester, subject,
 		// the kind's eligible approvers, the owner) decides who sees and
 		// decides it, checked in the decision's transaction.

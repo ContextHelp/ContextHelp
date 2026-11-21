@@ -11,7 +11,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
-// A built stack serves the approval queue (ADR-082 §9): an empty one,
+// A built stack serves the approval queue (ADR-083 §9): an empty one,
 // since no kind is registered; approvals.pending_ttl validates through
 // the config.
 func TestBuildServesTheApprovalQueue(t *testing.T) {
