@@ -221,7 +221,7 @@ func Enqueue(svc *service.Service) http.HandlerFunc {
 		jobID, err := svc.Enqueue(r.Context(), req)
 		if err != nil {
 			if errors.Is(err, service.ErrInvalidContentEncoding) {
-				WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+				WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
 				return
 			}
 			// An unknown pipeline can surface from two layers with two

@@ -85,7 +85,7 @@ func TestAnalyzeRejectsBadContentEncoding(t *testing.T) {
 		} {
 			status, env := postAnalyzeBody(t, ts.URL, path, body)
 			require.Equal(t, http.StatusBadRequest, status, path+" "+name)
-			require.Equal(t, "VALIDATION_ERROR", env.Error.Code, path+" "+name)
+			require.Equal(t, "INVALID_REQUEST", env.Error.Code, path+" "+name)
 		}
 	}
 }

@@ -43,7 +43,7 @@ func Analyze(svc *service.Service) http.HandlerFunc {
 		jobID, err := svc.Analyze(r.Context(), req)
 		if err != nil {
 			if errors.Is(err, service.ErrInvalidContentEncoding) {
-				WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+				WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
 				return
 			}
 			// surface unsupported types as 422 so callers see a

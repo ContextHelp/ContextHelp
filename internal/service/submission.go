@@ -34,7 +34,7 @@ var ErrInvalidSubmission = errors.New("invalid submission")
 
 // ErrInvalidContentEncoding marks a request whose content_encoding is
 // unknown or whose content does not decode under it. Surfaces map it to
-// a client error (HTTP 400 VALIDATION_ERROR).
+// a client error (HTTP 400 INVALID_REQUEST).
 var ErrInvalidContentEncoding = errors.New("invalid content encoding")
 
 // decodeContent returns req with Content decoded under its

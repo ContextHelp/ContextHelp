@@ -2,7 +2,9 @@ package contentenc
 
 import (
 	"errors"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/require"
 )
@@ -37,4 +39,15 @@ func TestDecodeErrors(t *testing.T) {
 	got, err := Decode("hi", "")
 	require.NoError(t, err)
 	require.Equal(t, "hi", got)
+}
+
+// A caller-supplied encoding is echoed back truncated, not whole.
+func TestDecodeUnknownEncodingEchoIsBounded(t *testing.T) {
+	long := strings.Repeat("é", 500)
+	_, err := Decode("x", long)
+	require.ErrorIs(t, err, ErrUnknown)
+	require.Less(t, len(err.Error()), 150, err.Error())
+	require.True(t, utf8.ValidString(err.Error()), "cut on a rune boundary")
+	_, err = Decode("x", "rot13")
+	require.Contains(t, err.Error(), `"rot13"`)
 }
