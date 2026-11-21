@@ -98,6 +98,9 @@ func (m *mockObjectStore2) CountBlobRefs(_ context.Context, _ string) (int, erro
 func (m *mockObjectStore2) ListBySQL(_ context.Context, _ string, _ []any, _ storage.ObjectFilter) ([]*storage.KnowledgeObject, int, error) {
 	return nil, 0, nil
 }
+func (*mockObjectStore2) MatchBySQL(_ context.Context, _ []string, _ []storage.SQLPredicate) (map[string][]bool, error) {
+	return nil, nil
+}
 func (m *mockObjectStore2) Reinforce(_ context.Context, _ string, _ *storage.KnowledgeObject) (string, error) {
 	return "", nil
 }

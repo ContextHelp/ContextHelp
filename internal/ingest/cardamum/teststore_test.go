@@ -52,6 +52,9 @@ func (m *testStore) CountBlobRefs(_ context.Context, _ string) (int, error) { re
 func (m *testStore) ListBySQL(_ context.Context, _ string, _ []any, _ storage.ObjectFilter) ([]*storage.KnowledgeObject, int, error) {
 	return nil, 0, nil
 }
+func (*testStore) MatchBySQL(_ context.Context, _ []string, _ []storage.SQLPredicate) (map[string][]bool, error) {
+	return nil, nil
+}
 
 func (m *testStore) Reinforce(_ context.Context, _ string, _ *storage.KnowledgeObject) (string, error) {
 	return "", nil

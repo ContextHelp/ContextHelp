@@ -235,6 +235,15 @@ type ObjectStore interface {
 	// profile, paging and order come from filter exactly as for List, so
 	// a query-language search never reaches an object a List would not.
 	ListBySQL(ctx context.Context, where string, args []any, filter ObjectFilter) ([]*KnowledgeObject, int, error)
+	// MatchBySQL reports, in one statement, which of preds each object
+	// of ids satisfies: one entry per id the store selects, holding one
+	// bool per predicate in preds' order. An id the store does not hold,
+	// or a scoped store does not select, has no entry; a predicate that
+	// is NULL on a row is false there. Each predicate is over one
+	// objects row in the driver's dialect with ? placeholders whatever
+	// the dialect (SQLPredicate). The render layer attributes the rows
+	// a read released to the share grants that cover them with it.
+	MatchBySQL(ctx context.Context, ids []string, preds []SQLPredicate) (map[string][]bool, error)
 	// Reinforce merges mergeData's tags and mentions into the object of
 	// mergeData.ProfileID whose content hash is hash, bumps its
 	// reinforcement count and returns its ID. It never replaces the
