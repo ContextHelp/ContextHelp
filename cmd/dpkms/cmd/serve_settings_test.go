@@ -3,6 +3,7 @@ package cmd
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -156,5 +157,24 @@ func TestResolveDefaultProfile(t *testing.T) {
 				t.Errorf("cfg.Profile.Default = %q, want %q", cfg.Profile.Default, tc.want)
 			}
 		})
+	}
+}
+
+// TestServeSettingsRejectNonPositiveWorkers: workers 0 or negative, from the
+// flag, env var or config file, is refused with a clear error.
+func TestServeSettingsRejectNonPositiveWorkers(t *testing.T) {
+	for _, n := range []string{"0", "-1"} {
+		c := loadServeConfig(t, "", map[string]string{config.EnvDPKMSWorkers: n})
+		err := serveSettingsFor(t, c).validate()
+		if err == nil || !strings.Contains(err.Error(), "must be at least 1") {
+			t.Errorf("env %s: got %v", n, err)
+		}
+		err = serveSettingsFor(t, loadServeConfig(t, "", nil), "--workers", n).validate()
+		if err == nil || !strings.Contains(err.Error(), "must be at least 1") {
+			t.Errorf("flag %s: got %v", n, err)
+		}
+	}
+	if err := serveSettingsFor(t, loadServeConfig(t, "", nil), "--workers", "1").validate(); err != nil {
+		t.Errorf("workers 1: %v", err)
 	}
 }

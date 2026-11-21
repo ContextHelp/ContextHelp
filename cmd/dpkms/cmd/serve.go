@@ -132,6 +132,9 @@ func runServe(cmd *cobra.Command, args []string) error {
 	resolveDefaultProfile(cmd)
 
 	settings := resolveServeSettings(cmd.Flags(), cfg)
+	if err := settings.validate(); err != nil {
+		return err
+	}
 	workers := settings.workers
 	public, _ := cmd.Flags().GetBool("public")
 	strictSharing, _ := cmd.Flags().GetBool("strict-sharing")
@@ -572,6 +575,16 @@ type serveSettings struct {
 	dev              bool
 	reminderInterval time.Duration
 	stepsPath        string
+}
+
+// validate rejects settings the server cannot run with. A pool of zero
+// or fewer workers accepts jobs it never runs.
+func (s serveSettings) validate() error {
+	if s.workers < 1 {
+		return fmt.Errorf("invalid worker count %d: server.workers (--workers, %s) must be at least 1",
+			s.workers, config.EnvDPKMSWorkers)
+	}
+	return nil
 }
 
 // resolveServeSettings returns c's serve settings (env var over config
