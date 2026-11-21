@@ -14,6 +14,9 @@ type Candidate struct {
 	Object   *storage.KnowledgeObject
 	FTSScore float64 // RRF contribution from full-text leg
 	VecScore float64 // RRF contribution from vector leg
+	// TagsMatched is how many of the caller's selected tags the object
+	// carries. A tier key for the caller, never added to the score.
+	TagsMatched int
 }
 
 // Result is a reranked candidate with full score breakdown.
@@ -24,6 +27,7 @@ type Result struct {
 	MentionBoost   float64 // outbound mention count bonus
 	GraphRelevance float64 // inbound backlink bonus
 	WordOverlap    float64 // post-retrieval word overlap signal
+	TagsMatched    int     // selected tags carried (Candidate.TagsMatched); not part of Total
 	Total          float64 // sum of all signals
 	// DocumentView is pre-computed via ProjectDocument for display surfaces.
 	DocumentView storage.DocumentProjection
@@ -171,6 +175,7 @@ func (r *DefaultReranker) Rerank(ctx context.Context, query string, candidates m
 			MentionBoost:   mentionScores[id],
 			GraphRelevance: graphScores[id],
 			WordOverlap:    overlapScores[id],
+			TagsMatched:    c.TagsMatched,
 			Total:          total,
 			DocumentView:   projection.ProjectDocument(c.Object),
 		})

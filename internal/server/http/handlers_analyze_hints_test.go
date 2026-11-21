@@ -15,6 +15,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/tagfilter"
 )
 
 // postAnalyze posts a JSON body to /api/v1/analyze and returns the job_id
@@ -114,7 +115,7 @@ func TestAnalyzeRawHintsStoredAsUserTagsAndFTSIndexed(t *testing.T) {
 	assert.Empty(t, hidden, "a raw object is not a search hit unless its status is asked for")
 
 	// tag=="a" scoping must work: the tag filter on List sees the user hint.
-	objs, _, err := ts.svc.Store(ownerCtx()).Objects().List(ctx, storage.ObjectFilter{Tag: "a", Status: "raw"})
+	objs, _, err := ts.svc.Store(ownerCtx()).Objects().List(ctx, storage.ObjectFilter{Tags: tagfilter.One("a"), Status: "raw"})
 	require.NoError(t, err)
 	require.Len(t, objs, 1)
 	assert.Equal(t, objID, objs[0].ID)
@@ -152,7 +153,7 @@ func TestAnalyzePipelineHintsSurviveWorkerAndFTSIndexed(t *testing.T) {
 	require.Len(t, results, 1)
 	assert.Equal(t, obj.ID, results[0].ID)
 
-	objs, _, err := ts.svc.Store(ownerCtx()).Objects().List(ctx, storage.ObjectFilter{Tag: "a"})
+	objs, _, err := ts.svc.Store(ownerCtx()).Objects().List(ctx, storage.ObjectFilter{Tags: tagfilter.One("a")})
 	require.NoError(t, err)
 	require.Len(t, objs, 1)
 	assert.Equal(t, obj.ID, objs[0].ID)

@@ -1,9 +1,12 @@
 package http
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
+	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/retrieval"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
@@ -24,10 +27,26 @@ const maxFindBody = 1 << 20
 func Find(svc *service.Service, sem retrieval.SemanticSource) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req service.FindRequest
-		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxFindBody))
+		raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxFindBody))
+		if err != nil {
+			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid JSON body: "+err.Error())
+			return
+		}
+		dec := json.NewDecoder(bytes.NewReader(raw))
 		dec.DisallowUnknownFields()
 		if err := dec.Decode(&req); err != nil {
 			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid JSON body: "+err.Error())
+			return
+		}
+		// A present but empty filter.tagged is an error, as on GET /objects
+		// and in MCP; the decoded string cannot tell it from an absent key.
+		var probe struct {
+			Filter struct {
+				Tagged *string `json:"tagged"`
+			} `json:"filter"`
+		}
+		if json.Unmarshal(raw, &probe) == nil && probe.Filter.Tagged != nil && strings.TrimSpace(*probe.Filter.Tagged) == "" {
+			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "filter.tagged is empty: omit it to select every tag")
 			return
 		}
 

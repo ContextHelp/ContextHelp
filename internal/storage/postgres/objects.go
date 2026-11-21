@@ -15,6 +15,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/indexsig"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
+	"github.com/ideacrafterslabs/ctxt/internal/tagfilter"
 	uri "hop.top/cite/scheme"
 )
 
@@ -166,8 +167,10 @@ func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]
 		return nil, 0, fmt.Errorf("count objects: %w", err)
 	}
 
-	// ListOrder resolves Sort/Dir through a closed allowlist of literals.
-	order := filter.ListOrder()
+	// ListOrder resolves Sort/Dir through a closed allowlist of literals;
+	// the tags-matched count tier, whenever f.Ranks(), leads with bound labels.
+	order, orderArgs := listOrderPG(filter, &idx)
+	args = append(args, orderArgs...)
 
 	// #nosec G202 -- order is one of ListOrder's allowlisted literals, not
 	// caller-controlled text; `where` holds only $N placeholders.
@@ -227,11 +230,9 @@ func objectListConditionsPG(filter storage.ObjectFilter, start int, scope *stora
 		args = append(args, filter.Pipeline)
 		idx++
 	}
-	if filter.Tag != "" {
-		conditions = append(conditions, fmt.Sprintf(`EXISTS (SELECT 1 FROM jsonb_array_elements(tags) AS t WHERE t->>'label' = $%d)`, idx))
-		args = append(args, filter.Tag)
-		idx++
-	}
+	tc, ta := tagConditionsPG(filter.Tags, &idx)
+	conditions = append(conditions, tc...)
+	args = append(args, ta...)
 	if filter.Mention != "" {
 		// mentions column stores a JSONB array of canonical ctxt:// URI strings.
 		// Parse input to canonical URI to accept either @ns.slug or ctxt:// form.
@@ -249,16 +250,9 @@ func objectListConditionsPG(filter storage.ObjectFilter, start int, scope *stora
 		args = append(args, filter.ProfileID)
 		idx++
 	}
-	if filter.After != nil {
-		conditions = append(conditions, fmt.Sprintf("created_at >= $%d", idx))
-		args = append(args, filter.After.UTC())
-		idx++
-	}
-	if filter.Before != nil {
-		conditions = append(conditions, fmt.Sprintf("created_at <= $%d", idx))
-		args = append(args, filter.Before.UTC())
-		idx++
-	}
+	cc, ca := createdConditionsPG(filter, &idx)
+	conditions = append(conditions, cc...)
+	args = append(args, ca...)
 
 	if filter.ChangedAfter != nil {
 		conditions = append(conditions, fmt.Sprintf("change_seq > $%d", idx))
@@ -554,8 +548,9 @@ func listBySQLQueries(where string, args []any, filter storage.ObjectFilter, sco
 	// fragments (values in args), order is a ListOrder literal, and
 	// LIMIT/OFFSET are bound below rather than formatted in.
 	// #nosec G202 -- see above; caller values travel in args, not the string.
-	page := objectSelectCols + ` FROM objects` + clause + " ORDER BY " + filter.ListOrder()
-	pageArgs := args
+	order, orderArgs := listOrderPG(filter, &idx)
+	page := objectSelectCols + ` FROM objects` + clause + " ORDER BY " + order
+	pageArgs := append(append([]any(nil), args...), orderArgs...)
 	if filter.Limit > 0 {
 		// #nosec G202 -- appends a generated "$N" placeholder; value in args.
 		page += fmt.Sprintf(" LIMIT $%d", idx)
@@ -630,6 +625,12 @@ func (s *ObjectStore) VectorSearch(ctx context.Context, q storage.VectorQuery, f
 		args = append(args, filter.ProfileID)
 		idx++
 	}
+	tc, ta := tagConditionsPG(filter.Tags, &idx)
+	conditions = append(conditions, tc...)
+	args = append(args, ta...)
+	cc, ca := createdConditionsPG(filter, &idx)
+	conditions = append(conditions, cc...)
+	args = append(args, ca...)
 
 	// Metadata facet filters (US-0407).
 	mc, ma := metadataFacetConditionsPG(filter, &idx)
@@ -785,6 +786,12 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 		args = append(args, filter.ProfileID)
 		idx++
 	}
+	tc, ta := tagConditionsPG(filter.Tags, &idx)
+	conditions = append(conditions, tc...)
+	args = append(args, ta...)
+	cc, ca := createdConditionsPG(filter, &idx)
+	conditions = append(conditions, cc...)
+	args = append(args, ca...)
 
 	// Metadata facet filters (US-0407).
 	mc, ma := metadataFacetConditionsPG(filter, &idx)
@@ -796,6 +803,8 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 		args = append(args, sargs...)
 	}
 
+	// Relevance orders the pool: the tag selection only filters here, and
+	// the caller tiers by tags matched after reading the pool.
 	// #nosec G202 -- no user data reaches the SQL text. Every caller
 	// value travels as a $N placeholder; the interpolated items are the
 	// compile-time const ftsRegconfig, one of two literal column names,
@@ -1356,4 +1365,84 @@ func isZeroVector(v []float32) bool {
 		}
 	}
 	return true
+}
+
+// tagConditionsPG is the WHERE predicates selecting f over the JSONB tags
+// column, numbering placeholders from *idx: with no required tag one IN test,
+// otherwise one test per required tag. Labels are bound.
+func tagConditionsPG(f tagfilter.Filter, idx *int) ([]string, []any) {
+	has := func(labels []string) (string, []any) {
+		ph := make([]string, len(labels))
+		args := make([]any, len(labels))
+		for i, l := range labels {
+			ph[i] = fmt.Sprintf("$%d", *idx)
+			args[i] = l
+			*idx++
+		}
+		return "EXISTS (SELECT 1 FROM jsonb_array_elements(tags) AS t WHERE t->>'label' IN (" + strings.Join(ph, ", ") + "))", args
+	}
+	var conds []string
+	var args []any
+	if f.HasRequired() {
+		for _, l := range f.Required() {
+			c, a := has([]string{l})
+			conds, args = append(conds, c), append(args, a...)
+		}
+		return conds, args
+	}
+	if labels := f.Labels(); len(labels) > 0 {
+		c, a := has(labels)
+		return []string{c}, a
+	}
+	return nil, nil
+}
+
+// tagMatchPG is the expression counting how many of f's selected tags the
+// row's tags column carries, numbering its bound labels from *idx; empty when the
+// count cannot reorder results (f.Ranks is false).
+func tagMatchPG(f tagfilter.Filter, idx *int) (string, []any) {
+	if !f.Ranks() {
+		return "", nil
+	}
+	opt := f.Labels()
+	ph := make([]string, len(opt))
+	args := make([]any, len(opt))
+	for i, l := range opt {
+		ph[i] = fmt.Sprintf("$%d", *idx)
+		args[i] = l
+		*idx++
+	}
+	return "(SELECT COUNT(DISTINCT t->>'label') FROM jsonb_array_elements(tags) AS t WHERE t->>'label' IN (" + strings.Join(ph, ", ") + "))", args
+}
+
+// listOrderPG is List's ORDER BY: tags matched first when the count can
+// differ (more matches first), then the sort, then id so offset pages are
+// stable. Placeholders number from *idx. A ChangedAfter page keeps change
+// order: the count would reorder it and break paging by the last ChangeSeq.
+func listOrderPG(filter storage.ObjectFilter, idx *int) (string, []any) {
+	if filter.ChangedAfter != nil {
+		return filter.ListOrder(), nil
+	}
+	match, args := tagMatchPG(filter.Tags, idx)
+	if match == "" {
+		return filter.ListOrder(), nil
+	}
+	return match + " DESC, " + filter.ListOrder() + ", id", args
+}
+
+// createdConditionsPG bounds created_at by filter's After and Before.
+func createdConditionsPG(filter storage.ObjectFilter, idx *int) ([]string, []any) {
+	var conds []string
+	var args []any
+	if filter.After != nil {
+		conds = append(conds, fmt.Sprintf("created_at >= $%d", *idx))
+		args = append(args, filter.After.UTC())
+		*idx++
+	}
+	if filter.Before != nil {
+		conds = append(conds, fmt.Sprintf("created_at < $%d", *idx))
+		args = append(args, filter.Before.UTC())
+		*idx++
+	}
+	return conds, args
 }

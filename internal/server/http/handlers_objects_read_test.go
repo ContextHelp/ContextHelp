@@ -50,8 +50,8 @@ func mentionURIs(t *testing.T, ms ...string) []uri.URI {
 // seedObjectReadCorpus writes six objects and their mention edges.
 //
 //	id   type     status     created     updated     tag     mention      pipeline  metadata
-//	o-a  article  active     01-10       06-01       ux      acme.api     p-web     observation, go, ada, web, 03-10
-//	o-b  note     active     02-10       02-11       design  acme.api     p-mail    task, rust, bob, email, 05-01
+//	o-a  article  active     01-10       06-01       ux,api  acme.api     p-web     observation, go, ada, web, 03-10
+//	o-b  note     active     02-10       02-11       design,api acme.api     p-mail    task, rust, bob, email, 05-01
 //	o-c  note     active     03-10       03-10       ux      other.x      p-web     -
 //	o-i  note     inbox      04-10
 //	o-d  article  discarded  05-10
@@ -65,7 +65,7 @@ func seedObjectReadCorpus(t *testing.T, driver storage.StorageDriver) {
 	objs := []*storage.KnowledgeObject{
 		{
 			ID: "o-a", Type: "article", Subtype: "article.long", Status: "active", Pipeline: "p-web",
-			Tags:     []storage.Tag{{Label: "ux"}},
+			Tags:     []storage.Tag{{Label: "ux"}, {Label: "api"}},
 			Mentions: mentionURIs(t, "@acme.api"),
 			Metadata: map[string]any{
 				"type": "observation", "topics": []any{"go"}, "people": []any{"ada"},
@@ -75,7 +75,7 @@ func seedObjectReadCorpus(t *testing.T, driver storage.StorageDriver) {
 		},
 		{
 			ID: "o-b", Type: "note", Subtype: "note.short", Status: "active", Pipeline: "p-mail",
-			Tags:     []storage.Tag{{Label: "design"}},
+			Tags:     []storage.Tag{{Label: "design"}, {Label: "api"}},
 			Mentions: mentionURIs(t, "@acme.api"),
 			Metadata: map[string]any{
 				"type": "task", "topics": []any{"rust"}, "people": []any{"bob"},
@@ -85,7 +85,7 @@ func seedObjectReadCorpus(t *testing.T, driver storage.StorageDriver) {
 		},
 		{
 			ID: "o-c", Type: "note", Status: "active", Pipeline: "p-web",
-			Tags:      []storage.Tag{{Label: "ux"}},
+			Tags:      []storage.Tag{{Label: "ux"}, {Label: "machine learning"}},
 			Mentions:  mentionURIs(t, "@other.x"),
 			CreatedAt: day("2026-03-10T09:00:00Z"), UpdatedAt: day("2026-03-10T09:00:00Z"),
 		},
@@ -193,7 +193,35 @@ func testListFilters(t *testing.T, env objectReadEnv) {
 		{"", []string{"o-a", "o-b", "o-c"}},
 		{"type=article", []string{"o-a"}},
 		{"subtype=note.short", []string{"o-b"}},
-		{"tag=ux", []string{"o-a", "o-c"}},
+		{"tagged=ux", []string{"o-a", "o-c"}},
+		{"tagged=" + url.PathEscape("ux,design"), []string{"o-a", "o-b", "o-c"}},
+		{"tagged=" + url.PathEscape("api"), []string{"o-a", "o-b"}},
+		{"tagged=" + url.PathEscape("+ux,+api"), []string{"o-a"}},
+		{"tagged=" + url.PathEscape("+ux,+api,+design"), nil},
+		{"tagged=" + url.PathEscape("+ux,api"), []string{"o-a", "o-c"}},
+		{"tagged=" + url.PathEscape("design,api"), []string{"o-a", "o-b"}},
+		{"tagged=nope", nil},
+		// A label may hold spaces; only commas separate tags.
+		{"tagged=" + url.PathEscape("machine learning"), []string{"o-c"}},
+		{"tagged=" + url.PathEscape("machine"), nil},
+		{"tagged=" + url.PathEscape("+ux,+machine learning"), []string{"o-c"}},
+		{"tagged=" + url.PathEscape("design,machine learning"), []string{"o-b", "o-c"}},
+		// A repeated parameter reads as a comma list.
+		{"tagged=design&tagged=" + url.PathEscape("machine learning"), []string{"o-b", "o-c"}},
+		{"tagged=+ux&tagged=%2Bapi", []string{"o-a"}},
+		{"tagged=+ux&tagged=+api", []string{"o-a"}},
+		{"tagged=+ux&tagged=api", []string{"o-a", "o-c"}},
+		// "+" is the required marker: a raw "+" and %2B both keep it, and a
+		// space in a label is %20 (a raw "+" inside a label stays a plus).
+		{"tagged=+ux,api", []string{"o-a", "o-c"}},
+		{"tagged=%2Bux,api", []string{"o-a", "o-c"}},
+		{"tagged=%2Bux,%2Bapi", []string{"o-a"}},
+		{"tagged=machine%20learning", []string{"o-c"}},
+		{"tagged=%2Bmachine%20learning,ux", []string{"o-c"}},
+		{"tagged=+machine%20learning,ux", []string{"o-c"}},
+		{"tagged=machine+learning", nil},
+		{"tagged=" + url.PathEscape("+ux,+nope"), nil},
+		{"tagged=" + url.PathEscape("+ux,nope"), []string{"o-a", "o-c"}},
 		{"mention=" + url.QueryEscape("@acme.api"), []string{"o-a", "o-b"}},
 		{"mention=" + url.QueryEscape("ctxt://entity/acme/api"), []string{"o-a", "o-b"}},
 		{"pipeline=p-web", []string{"o-a", "o-c"}},
@@ -202,17 +230,23 @@ func testListFilters(t *testing.T, env objectReadEnv) {
 		{"status=discarded", []string{"o-d"}},
 		{"status=raw", []string{"o-r"}},
 		{"status=all", []string{"o-a", "o-b", "o-c", "o-i", "o-d", "o-r"}},
-		{"after=2026-02-01", []string{"o-b", "o-c"}},
-		{"before=2026-02-01", []string{"o-a"}},
-		{"after=" + url.QueryEscape("2026-02-10T09:00:01Z"), []string{"o-c"}},
-		{"before=" + url.QueryEscape("2026-02-10T08:30:00-00:30"), []string{"o-a", "o-b"}},
+		{"since=2026-02-01", []string{"o-b", "o-c"}},
+		{"until=2026-02-01", []string{"o-a"}},
+		{"since=" + url.QueryEscape("2026-02-10T09:00:01Z"), []string{"o-c"}},
+		{"until=" + url.QueryEscape("2026-02-10T08:30:01-00:30"), []string{"o-a", "o-b"}},
+		// An instant bound is exclusive; a date bound takes its whole UTC day.
+		{"until=" + url.QueryEscape("2026-02-10T09:00:00Z"), []string{"o-a"}},
+		{"until=2026-02-09", []string{"o-a"}},
+		{"until=2026-02-10", []string{"o-a", "o-b"}},
+		{"since=2026-02-10&until=2026-02-10", []string{"o-b"}},
+		{"since=2026-01-15&until=2026-03-01&tagged=api", []string{"o-b"}},
 		{"meta_type=task", []string{"o-b"}},
 		{"topic=go", []string{"o-a"}},
 		{"person=bob", []string{"o-b"}},
 		{"source_type=web", []string{"o-a"}},
-		{"since=2026-04-01", []string{"o-b"}},
-		{"until=2026-04-01", []string{"o-a"}},
-		{"type=note&tag=ux", []string{"o-c"}},
+		{"mentioned_since=2026-04-01", []string{"o-b"}},
+		{"mentioned_until=2026-04-01", []string{"o-a"}},
+		{"type=note&tagged=ux", []string{"o-c"}},
 		{"status=all&type=article", []string{"o-a", "o-d"}},
 	}
 	for _, tc := range cases {
@@ -236,6 +270,19 @@ func testListOrderAndPaging(t *testing.T, env objectReadEnv) {
 		{"sort=created_at&dir=asc&limit=1&offset=1", []string{"o-b"}, 3},
 		{"status=all&limit=2", []string{"o-r", "o-d"}, 6},
 		{"status=all&limit=0", []string{"o-r", "o-d", "o-i", "o-c", "o-b", "o-a"}, 6},
+		// Results matching more of the listed tags come first (a: ux,api;
+		// b: design,api; c: ux), then the sort, then id; totals ignore the
+		// page and offset pages are stable.
+		{"tagged=" + url.PathEscape("ux,api"), []string{"o-a", "o-c", "o-b"}, 3},
+		{"tagged=" + url.PathEscape("ux,api") + "&dir=asc", []string{"o-a", "o-b", "o-c"}, 3},
+		{"tagged=" + url.PathEscape("ux,api") + "&limit=1", []string{"o-a"}, 3},
+		{"tagged=" + url.PathEscape("ux,api") + "&limit=1&offset=1", []string{"o-c"}, 3},
+		{"tagged=" + url.PathEscape("ux,api") + "&limit=1&offset=2", []string{"o-b"}, 3},
+		{"tagged=" + url.PathEscape("+ux,api"), []string{"o-a", "o-c"}, 2},
+		{"tagged=" + url.PathEscape("ux,api,design"), []string{"o-b", "o-a", "o-c"}, 3},
+		{"tagged=" + url.PathEscape("ux,api,design") + "&sort=updated_at&dir=asc", []string{"o-b", "o-a", "o-c"}, 3},
+		{"tagged=" + url.PathEscape("ux,design"), []string{"o-c", "o-b", "o-a"}, 3},
+		{"tagged=" + url.PathEscape("+ux,+api"), []string{"o-a"}, 1},
 	}
 	for _, tc := range cases {
 		got := env.list(t, tc.query)
@@ -246,10 +293,13 @@ func testListOrderAndPaging(t *testing.T, env objectReadEnv) {
 
 func testListRejectsBadParams(t *testing.T, env objectReadEnv) {
 	cases := []struct{ query, param string }{
-		{"before=yesterday", "before"},
-		{"after=2026-13-01", "after"},
-		{"since=2026-02-30", "since"},
-		{"until=" + url.QueryEscape("2026-04-01T00:00:00Z"), "until"},
+		{"until=yesterday", "until"},
+		{"since=2026-13-01", "since"},
+		{"mentioned_since=2026-02-30", "mentioned_since"},
+		{"mentioned_until=" + url.QueryEscape("2026-04-01T00:00:00Z"), "mentioned_until"},
+		{"before=2026-01-01", "before"},
+		{"after=2026-01-01", "after"},
+		{"tag=ux", "tag"},
 		{"limit=abc", "limit"},
 		{"limit=-1", "limit"},
 		{"offset=-1", "offset"},
@@ -259,7 +309,16 @@ func testListRejectsBadParams(t *testing.T, env objectReadEnv) {
 		{"status=bogus", "status"},
 		{"foo=1", "foo"},
 		{"q=" + url.QueryEscape("type==note"), "q"},
-		{"tag=ux&tag=design", "tag"},
+		{"tagged=ux&tagged=" + url.PathEscape("a,,b"), "tagged"},
+		{"tagged=" + url.PathEscape("a,,b"), "tagged"},
+		{"tagged=" + url.PathEscape("a,"), "tagged"},
+		{"tagged=+", "tagged"},
+		{"tagged=%2B", "tagged"},
+		{"tagged=" + url.PathEscape("a,+"), "tagged"},
+		{"tagged=-a", "tagged"},
+		{"tagged=" + url.PathEscape("a,-b"), "tagged"},
+		{"tagged=" + url.PathEscape("+-a"), "tagged"},
+		{"tagged=%zz", "tagged"},
 		{"type=", "type"},
 		{"changed_after=-1", "changed_after"},
 		{"changed_after=abc", "changed_after"},
@@ -338,13 +397,26 @@ func testListChangedAfter(t *testing.T, newDriver func(*testing.T) storage.Stora
 	changed, _ := env.changes(t, fmt.Sprintf("changed_after=%d&status=all", before))
 	assert.Equal(t, []string{"o-a"}, ids(changed.Data))
 	assert.Greater(t, *changed.Next, before)
-	byCreated := env.list(t, "status=all&after="+url.QueryEscape(o.CreatedAt.Add(time.Second).Format(time.RFC3339)))
+	byCreated := env.list(t, "status=all&since="+url.QueryEscape(o.CreatedAt.Add(time.Second).Format(time.RFC3339)))
 	assert.NotContains(t, ids(byCreated.Data), "o-a", "created_at does not see the update")
 
 	// Nothing since: empty page, same cursor, total 0.
 	none, _ := env.changes(t, fmt.Sprintf("changed_after=%d&status=all", *changed.Next))
 	assert.Empty(t, none.Data)
 	assert.Equal(t, *changed.Next, *none.Next)
+
+	// changed_after composes with a tag selection that cannot reorder
+	// (one tag, or required tags only), in change order; a list that ranks
+	// by tags matched (two or more tags with none required, or a plain tag
+	// beside a required one) is refused.
+	tagged, _ := env.changes(t, "changed_after=0&status=all&tagged=ux")
+	assert.Equal(t, []string{"o-c", "o-a"}, ids(tagged.Data), "o-a was updated last")
+	allTags, _ := env.changes(t, "changed_after=0&status=all&tagged="+url.PathEscape("+ux,+api"))
+	assert.Equal(t, []string{"o-a"}, ids(allTags.Data))
+	for _, q := range []string{"ux,design", "ux,api", "+ux,api", "ux,api,design"} {
+		code, body := env.get(t, "/api/v1/objects?changed_after=0&tagged="+url.PathEscape(q), dpkmstest.RoleAdmin)
+		assertInvalidParam(t, code, body, "tagged")
+	}
 
 	// Without the parameter the response has no cursor.
 	_, plain := env.get(t, "/api/v1/objects", dpkmstest.RoleAdmin)
@@ -368,10 +440,11 @@ func testFacets(t *testing.T, env objectReadEnv) {
 		want  map[string]int
 	}{
 		{"", map[string]int{"observation": 1, "task": 1, "(none)": 1}},
-		{"tag=ux", map[string]int{"observation": 1, "(none)": 1}},
+		{"tagged=ux", map[string]int{"observation": 1, "(none)": 1}},
+		{"tagged=" + url.PathEscape("+ux,+api"), map[string]int{"observation": 1}},
 		{"type=note", map[string]int{"task": 1, "(none)": 1}},
 		{"status=all", map[string]int{"observation": 1, "task": 1, "(none)": 4}},
-		{"status=all&after=2026-04-01", map[string]int{"(none)": 3}},
+		{"status=all&since=2026-04-01", map[string]int{"(none)": 3}},
 		{"meta_type=observation", map[string]int{"observation": 1}},
 		{"status=inbox&type=article", map[string]int{}},
 	}
@@ -387,7 +460,7 @@ func testFacetsRejectsBadParams(t *testing.T, env objectReadEnv) {
 		{"sort=created_at", "sort"},
 		{"dir=asc", "dir"},
 		{"changed_after=0", "changed_after"},
-		{"after=bad", "after"},
+		{"since=bad", "since"},
 		{"status=nope", "status"},
 		{"foo=1", "foo"},
 	}
@@ -442,8 +515,8 @@ func testRelatedRejectsBadParams(t *testing.T, env objectReadEnv) {
 // Every role reads; a request without a token is refused.
 func testObjectReadRoles(t *testing.T, env objectReadEnv) {
 	paths := []string{
-		"/api/v1/objects?tag=ux",
-		"/api/v1/objects/facets?tag=ux",
+		"/api/v1/objects?tagged=ux",
+		"/api/v1/objects/facets?tagged=ux",
 		"/api/v1/objects/o-a/related?depth=2",
 	}
 	for _, p := range paths {

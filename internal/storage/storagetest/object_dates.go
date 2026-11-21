@@ -40,7 +40,8 @@ func ObjectDateFilterConformance(t *testing.T, drv storage.StorageDriver) {
 		{"after in the stored zone", storage.ObjectFilter{After: at(early.Add(time.Second))}, []string{"od-late"}},
 		{"after in a zone ahead of UTC", storage.ObjectFilter{After: at(early.Add(time.Second).In(time.FixedZone("CEST", 2*3600)))}, []string{"od-late"}},
 		{"before in UTC between the two", storage.ObjectFilter{Before: at(late.Add(-time.Second).UTC())}, []string{"od-early"}},
-		{"before in UTC at the last", storage.ObjectFilter{Before: at(late.UTC())}, []string{"od-early", "od-late"}},
+		{"before in UTC at the last is exclusive", storage.ObjectFilter{Before: at(late.UTC())}, []string{"od-early"}},
+		{"before in UTC just past the last", storage.ObjectFilter{Before: at(late.Add(time.Second).UTC())}, []string{"od-early", "od-late"}},
 		{"after in UTC past both", storage.ObjectFilter{After: at(late.Add(time.Second).UTC())}, nil},
 	}
 	for _, tc := range cases {

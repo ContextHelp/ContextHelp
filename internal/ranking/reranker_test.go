@@ -282,3 +282,28 @@ func TestRerank_DocumentViewFromGraph(t *testing.T) {
 	assert.NotEmpty(t, results[0].DocumentView.Sections)
 	assert.Equal(t, "section content from graph", results[0].DocumentView.Sections[0].Content)
 }
+
+// TagsMatched is carried and reported, never added to the score: the
+// reranker order stays the relevance order.
+func TestRerank_TagsMatchedIsReportedNotScored(t *testing.T) {
+	r := ranking.New(&stubEdges{}, ranking.WeightConfig{})
+	got, err := r.Rerank(context.Background(), "q", map[string]ranking.Candidate{
+		"a": {Object: makeObj("a"), FTSScore: 0.020},
+		"b": {Object: makeObj("b"), FTSScore: 0.010, TagsMatched: 3},
+		"c": {Object: makeObj("c"), FTSScore: 0.015, TagsMatched: 2},
+	}, 0)
+	require.NoError(t, err)
+	require.Len(t, got, 3)
+	assert.Equal(t, []string{"a", "c", "b"}, []string{got[0].Object.ID, got[1].Object.ID, got[2].Object.ID})
+	assert.InDelta(t, 0.015, got[1].Total, 1e-9, "tags matched is not part of Total")
+	assert.Equal(t, 2, got[1].TagsMatched)
+	assert.Equal(t, 3, got[2].TagsMatched)
+	assert.Zero(t, got[0].TagsMatched)
+
+	// MinScore still reads relevance: a high tag count does not lift b.
+	got, err = r.Rerank(context.Background(), "q", map[string]ranking.Candidate{
+		"b": {Object: makeObj("b"), FTSScore: 0.010, TagsMatched: 9},
+	}, 0.012)
+	require.NoError(t, err)
+	assert.Empty(t, got)
+}

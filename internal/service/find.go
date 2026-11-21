@@ -10,6 +10,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/retrieval"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/tagfilter"
 )
 
 // Find modes.
@@ -24,6 +25,23 @@ const DefaultFindLimit = 10
 
 // findDateLayout is the layout of FindFilter's Since and Until.
 const findDateLayout = "2006-01-02"
+
+// ParseInstant reads an RFC 3339 timestamp or a YYYY-MM-DD date,
+// normalized to UTC. A date names a whole UTC day: a lower bound is its
+// first instant, an upper bound (upper) the first instant of the next day,
+// so created bounds are half-open: since <= created < until.
+func ParseInstant(v string, upper bool) (time.Time, error) {
+	if t, err := time.Parse(time.RFC3339, v); err == nil {
+		return t.UTC(), nil
+	}
+	if t, err := time.Parse(findDateLayout, v); err == nil {
+		if upper {
+			t = t.AddDate(0, 0, 1)
+		}
+		return t.UTC(), nil
+	}
+	return time.Time{}, fmt.Errorf("unparseable instant %q", v)
+}
 
 // ErrInvalidFind marks a find request dpkms refuses as malformed. The
 // wrapping error says which field is wrong.
@@ -72,15 +90,26 @@ type FindRequest struct {
 	Trace bool `json:"-"`
 }
 
-// FindFilter is find's metadata facet filter. Since and Until are dates
-// (YYYY-MM-DD) compared with an object's dates_mentioned.
+// FindFilter is find's filter: tag selection, creation bounds and metadata
+// facets.
 type FindFilter struct {
+	// Tagged selects by tag in the internal/tagfilter grammar: "a,b" any,
+	// "+a,+b" all, "+a,b" a required, b optional; results matching more of the listed
+	// tags rank first.
+	Tagged string `json:"tagged,omitempty"`
+	// Since and Until bound created_at, half-open (since <= created <
+	// until): an RFC 3339 timestamp or a YYYY-MM-DD date, a UTC day; a date
+	// Until is the start of the next day.
+	Since      string `json:"since,omitempty"`
+	Until      string `json:"until,omitempty"`
 	MetaType   string `json:"meta_type,omitempty"`
 	Topic      string `json:"topic,omitempty"`
 	Person     string `json:"person,omitempty"`
 	SourceType string `json:"source_type,omitempty"`
-	Since      string `json:"since,omitempty"`
-	Until      string `json:"until,omitempty"`
+	// MentionedSince and MentionedUntil are dates (YYYY-MM-DD) compared
+	// with an object's dates_mentioned.
+	MentionedSince string `json:"mentioned_since,omitempty"`
+	MentionedUntil string `json:"mentioned_until,omitempty"`
 }
 
 // FindSearch is the resolved search strategy a find request carries. Nil
@@ -227,16 +256,37 @@ func resolveFind(req FindRequest) (string, storage.ObjectFilter, config.SearchCo
 	if filter.Limit == 0 {
 		filter.Limit = DefaultFindLimit
 	}
+	if req.Filter.Tagged != "" {
+		tags, err := tagfilter.Parse([]string{req.Filter.Tagged})
+		if err != nil {
+			return invalid("filter.tagged: %v", err)
+		}
+		filter.Tags = tags
+	}
 	for _, d := range []struct {
 		name, value string
 		dest        **time.Time
-	}{{"filter.since", req.Filter.Since, &filter.MetadataSince}, {"filter.until", req.Filter.Until, &filter.MetadataUntil}} {
+	}{{"filter.mentioned_since", req.Filter.MentionedSince, &filter.MetadataSince}, {"filter.mentioned_until", req.Filter.MentionedUntil, &filter.MetadataUntil}} {
 		if d.value == "" {
 			continue
 		}
 		t, err := time.Parse(findDateLayout, d.value)
 		if err != nil {
 			return invalid("%s %q: want a date as YYYY-MM-DD", d.name, d.value)
+		}
+		*d.dest = &t
+	}
+	for _, d := range []struct {
+		name, value string
+		dest        **time.Time
+		upper       bool
+	}{{"filter.since", req.Filter.Since, &filter.After, false}, {"filter.until", req.Filter.Until, &filter.Before, true}} {
+		if d.value == "" {
+			continue
+		}
+		t, err := ParseInstant(d.value, d.upper)
+		if err != nil {
+			return invalid("%s %q: want an RFC 3339 timestamp or YYYY-MM-DD", d.name, d.value)
 		}
 		*d.dest = &t
 	}

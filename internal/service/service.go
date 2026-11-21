@@ -40,6 +40,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
+	"github.com/ideacrafterslabs/ctxt/internal/tagfilter"
 )
 
 // Service coordinates all business operations.
@@ -1264,7 +1265,7 @@ func (s *Service) FindByText(ctx context.Context, query string, limit int) ([]*s
 // each driver applies its own dialect's FTS quoting at the boundary
 // (search.SanitizeFTSQueryFor), so no dialect's rules are baked in here.
 func (s *Service) FindByTextFiltered(ctx context.Context, query string, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
-	objs, err := s.Store(ctx).Objects().FTSSearch(ctx, query, filter)
+	objs, err := s.ftsTiered(ctx, query, filter)
 	if err != nil {
 		return nil, err
 	}
@@ -1997,12 +1998,22 @@ func (s *Service) ClearSearchHistory(ctx context.Context, profileID string) erro
 // cfg.FallbackToFTS is set and fails otherwise; either way the reason is in
 // the returned diagnostics' Semantic report, so the degradation is visible.
 func (s *Service) SemanticSearchFiltered(ctx context.Context, query string, filter storage.ObjectFilter, sem retrieval.SemanticSource, cfg config.SearchConfig) ([]*storage.KnowledgeObject, SearchDiagnostics, error) {
-	objs, rep, err := sem.Search(ctx, s.Store(ctx), search.DecomposeQuery(query, 2), filter)
+	// Tags matched reorder hits, so the search reads a candidate pool
+	// wide enough for a better-matching hit below the limit to surface.
+	searchFilter := filter
+	if filter.Tags.Ranks() && filter.Limit > 0 {
+		searchFilter.Limit = max(filter.Limit, vectorPool(cfg))
+	}
+	objs, rep, err := sem.Search(ctx, s.Store(ctx), search.DecomposeQuery(query, 2), searchFilter)
 	if err != nil {
 		return nil, SearchDiagnostics{}, fmt.Errorf("semantic search: %w", err)
 	}
 	diagnostics := SearchDiagnostics{Semantic: &rep}
 	if rep.OK() {
+		tierByTags(objs, filter.Tags)
+		if filter.Limit > 0 && len(objs) > filter.Limit {
+			objs = objs[:filter.Limit]
+		}
 		diagnostics.CandidateCount = len(objs)
 		if err := s.previewContent(ctx, objs); err != nil {
 			return nil, diagnostics, err
@@ -2012,7 +2023,7 @@ func (s *Service) SemanticSearchFiltered(ctx context.Context, query string, filt
 	if !cfg.FallbackToFTS {
 		return nil, diagnostics, &SemanticUnavailableError{Report: rep}
 	}
-	objs, err = s.Store(ctx).Objects().FTSSearch(ctx, query, filter)
+	objs, err = s.ftsTiered(ctx, query, filter)
 	if err != nil {
 		return nil, diagnostics, fmt.Errorf("semantic search fts fallback: %w", err)
 	}
@@ -2121,6 +2132,9 @@ func (s *Service) hybridSearch(ctx context.Context, query string, filter storage
 	}
 
 	// Build per-leg filters: inherit metadata facets but override pool size.
+	// The legs only filter by tags and read their pool in relevance order;
+	// tiering by tags matched happens after fusion, so a pool cut never
+	// drops a relevant hit for carrying fewer tags.
 	ftsFilter := filter
 	ftsFilter.Limit = ftsPool
 
@@ -2175,9 +2189,10 @@ func (s *Service) hybridSearch(ctx context.Context, query string, filter storage
 	candidates := make(map[string]ranking.Candidate, len(byID))
 	for id, obj := range byID {
 		candidates[id] = ranking.Candidate{
-			Object:   obj,
-			FTSScore: ftsScores[id],
-			VecScore: vecScores[id],
+			Object:      obj,
+			FTSScore:    ftsScores[id],
+			VecScore:    vecScores[id],
+			TagsMatched: tagsMatched(filter.Tags, obj),
 		}
 	}
 
@@ -2202,6 +2217,13 @@ func (s *Service) hybridSearch(ctx context.Context, query string, filter storage
 		return nil, fmt.Errorf("hybrid search rerank: %w", err)
 	}
 
+	// Tier by tags matched: the tier decides order, ties keeping the
+	// relevance order. One slice feeds the results and the trace, so both
+	// agree on what is returned and what the limit cuts. MinScore reads
+	// relevance alone and is applied per result below.
+	if filter.Tags.Ranks() {
+		slices.SortStableFunc(scored, func(a, b ranking.Result) int { return b.TagsMatched - a.TagsMatched })
+	}
 	threshold := cfg.MinScore
 	ranked, diagnostics := partitionByThreshold(scored, threshold)
 	diagnostics.CandidateCount = len(candidates)
@@ -2449,4 +2471,52 @@ func (s *Service) parsePipelineSteps(stepsJSON string) ([]storage.StepRef, error
 	}
 
 	return result, nil
+}
+
+// tagRankPool is how many full-text hits are read before tiering by tags
+// matched, when the caller's limit is smaller: a hit that matches more of
+// the listed tags must surface even if relevance alone ranks it lower.
+const tagRankPool = 200
+
+// tagsMatched counts the selected tags of f obj carries.
+func tagsMatched(f tagfilter.Filter, obj *storage.KnowledgeObject) int {
+	labels := make([]string, len(obj.Tags))
+	for i, t := range obj.Tags {
+		labels[i] = t.Label
+	}
+	return f.Matched(labels)
+}
+
+// tierByTags orders objs by tags matched, most first, keeping the
+// incoming (relevance) order within a count. It is a tier key, not a score
+// bonus: relevance scores stay as they are. A no-op unless the count can
+// differ (f.Ranks).
+func tierByTags(objs []*storage.KnowledgeObject, f tagfilter.Filter) {
+	if !f.Ranks() {
+		return
+	}
+	n := make(map[string]int, len(objs))
+	for _, o := range objs {
+		n[o.ID] = tagsMatched(f, o)
+	}
+	slices.SortStableFunc(objs, func(a, b *storage.KnowledgeObject) int { return n[b.ID] - n[a.ID] })
+}
+
+// ftsTiered runs FTSSearch for filter and tiers the hits by tags matched:
+// the pool is read in relevance order, widened past the limit when the
+// count can reorder it, then cut to the limit.
+func (s *Service) ftsTiered(ctx context.Context, query string, filter storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
+	search := filter
+	if filter.Tags.Ranks() && filter.Limit > 0 {
+		search.Limit = max(filter.Limit, tagRankPool)
+	}
+	objs, err := s.Store(ctx).Objects().FTSSearch(ctx, query, search)
+	if err != nil {
+		return nil, err
+	}
+	tierByTags(objs, filter.Tags)
+	if filter.Limit > 0 && len(objs) > filter.Limit {
+		objs = objs[:filter.Limit]
+	}
+	return objs, nil
 }

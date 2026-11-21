@@ -127,6 +127,10 @@ type ScoreBreakdown struct {
 	GraphRelevance float64 `json:"graph_relevance"`
 	// WordOverlap is the additive bonus from projection-aware word overlap scoring.
 	WordOverlap float64 `json:"word_overlap"`
+	// TagsMatched is how many of the tags of the request's tagged filter
+	// the result carries. Results order by it first (more first), then by
+	// Total; it is not part of Total.
+	TagsMatched int `json:"tags_matched,omitempty"`
 	// Total is the sum of all signal contributions.
 	Total float64 `json:"total"`
 }

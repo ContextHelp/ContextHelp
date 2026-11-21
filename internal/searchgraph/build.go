@@ -511,6 +511,7 @@ func objectNode(c *service.TraceCandidate) Node {
 			MentionBoost:   bd.MentionBoost,
 			GraphRelevance: bd.GraphRelevance,
 			WordOverlap:    bd.WordOverlap,
+			TagsMatched:    bd.TagsMatched,
 			Total:          bd.Total,
 		},
 	}

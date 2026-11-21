@@ -7,6 +7,8 @@ import (
 	"math"
 	"slices"
 	"time"
+
+	"github.com/ideacrafterslabs/ctxt/internal/tagfilter"
 )
 
 // SearchTool searches the user's knowledge objects. The default mode is
@@ -35,9 +37,16 @@ type SearchRequest struct {
 	Profile string
 	// MinScore sets the hybrid threshold when set; hybrid only.
 	MinScore *float64
-	// Metadata facet filters. Since and Until are YYYY-MM-DD dates.
+	// Tagged is the tag selection in the internal/tagfilter grammar,
+	// canonical form: "a,b" any, "+a,+b" all, "+a,b" a required, b optional.
+	Tagged string
+	// Since and Until bound the created time: an RFC 3339 timestamp or a
+	// YYYY-MM-DD date.
+	Since, Until string
+	// Metadata facet filters. MentionedSince and MentionedUntil are
+	// YYYY-MM-DD dates compared with dates mentioned in the content.
 	MetaType, Topic, Person, SourceType string
-	Since, Until                        string
+	MentionedSince, MentionedUntil      string
 }
 
 // SearchResult is what a SearchHandler returns.
@@ -69,6 +78,9 @@ func (t *SearchTool) InputSchema() map[string]any {
 	date := func(desc string) map[string]any {
 		return map[string]any{"type": "string", "format": "date", "description": desc + " YYYY-MM-DD."}
 	}
+	instant := func(desc string) map[string]any {
+		return map[string]any{"type": "string", "description": desc + " RFC 3339 timestamp or YYYY-MM-DD."}
+	}
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -92,12 +104,25 @@ func (t *SearchTool) InputSchema() map[string]any {
 				"minimum":     0,
 				"description": "hybrid only: drop results scoring below this. Default: 0.",
 			},
-			"meta_type":   str("Only objects whose metadata type matches (e.g. task, observation)."),
-			"topic":       str("Only objects tagged with this topic."),
-			"person":      str("Only objects mentioning this person."),
-			"source_type": str("Only objects from this source type."),
-			"since":       date("Only objects mentioning a date on or after this."),
-			"until":       date("Only objects mentioning a date on or before this."),
+			"tagged": map[string]any{
+				"description": "Only objects with these tags. A comma-separated string or an array of strings, " +
+					"combined in order. Plain tags are optional: with no + tag one listed tag must match; " +
+					"a leading + requires a tag (\"+a,+b,+c\" needs all three; \"+a,b,+c\" needs a and c, b only ranks). Results matching " +
+					"more of the listed tags rank first, then by relevance. Tags may hold spaces, " +
+					"commas separate them, case matters. An unknown tag matches nothing.",
+				"oneOf": []any{
+					map[string]any{"type": "string"},
+					map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+				},
+			},
+			"since":           instant("Only objects created at or after this; a date is the start of that UTC day."),
+			"until":           instant("Only objects created before this; a date takes that whole UTC day."),
+			"meta_type":       str("Only objects whose metadata type matches (e.g. task, observation)."),
+			"topic":           str("Only objects tagged with this topic."),
+			"person":          str("Only objects mentioning this person."),
+			"source_type":     str("Only objects from this source type."),
+			"mentioned_since": date("Only objects mentioning a date on or after this."),
+			"mentioned_until": date("Only objects mentioning a date on or before this."),
 		},
 		"required": []string{"query"},
 	}
@@ -173,13 +198,63 @@ func parseSearchArgs(args map[string]any) (SearchRequest, error) {
 		}
 		req.MinScore = &n
 	}
-	if req.Since, err = dateArg(args, "since"); err != nil {
+	if req.Tagged, err = taggedArg(args); err != nil {
 		return req, err
 	}
-	if req.Until, err = dateArg(args, "until"); err != nil {
+	if req.Since, err = instantArg(args, "since"); err != nil {
+		return req, err
+	}
+	if req.Until, err = instantArg(args, "until"); err != nil {
+		return req, err
+	}
+	if req.MentionedSince, err = dateArg(args, "mentioned_since"); err != nil {
+		return req, err
+	}
+	if req.MentionedUntil, err = dateArg(args, "mentioned_until"); err != nil {
 		return req, err
 	}
 	return req, nil
+}
+
+// taggedArg reads the tagged argument, a string or an array of strings in
+// the tagfilter grammar, and returns it in canonical form.
+func taggedArg(args map[string]any) (string, error) {
+	var vals []string
+	switch v := args["tagged"].(type) {
+	case nil:
+		return "", nil
+	case string:
+		vals = []string{v}
+	case []any:
+		for _, e := range v {
+			s, ok := e.(string)
+			if !ok {
+				return "", fmt.Errorf("'tagged' items must be strings, got %T", e)
+			}
+			vals = append(vals, s)
+		}
+	default:
+		return "", fmt.Errorf("'tagged' must be a string or an array of strings, got %T", v)
+	}
+	f, err := tagfilter.Parse(vals)
+	if err != nil {
+		return "", fmt.Errorf("'tagged': %w", err)
+	}
+	return f.String(), nil
+}
+
+// instantArg reads an RFC 3339 timestamp or YYYY-MM-DD date argument.
+func instantArg(args map[string]any, name string) (string, error) {
+	s, err := stringArg(args, name, "")
+	if err != nil || s == "" {
+		return "", err
+	}
+	if _, err := time.Parse(time.RFC3339, s); err != nil {
+		if _, err := time.Parse(time.DateOnly, s); err != nil {
+			return "", fmt.Errorf("'%s' must be an RFC 3339 timestamp or YYYY-MM-DD, got %q", name, s)
+		}
+	}
+	return s, nil
 }
 
 func stringArg(args map[string]any, name, def string) (string, error) {
