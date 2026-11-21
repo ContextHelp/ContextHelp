@@ -140,11 +140,6 @@ func TestCheckCIParity_Drift(t *testing.T) {
 			want:  "is a provisioning step but runs a check (go vet)",
 		},
 		{
-			name:  "unpinned golangci-lint in the Taskfile",
-			extra: map[string]string{"Taskfile.yml": "tasks:\n  lint:\n    cmds:\n      - golangci-lint run --timeout=5m\n"},
-			want:  "Taskfile.yml:4: - golangci-lint run --timeout=5m runs golangci-lint without scripts/ci/tools.sh",
-		},
-		{
 			name:  "unpinned golangci-lint in a hook",
 			extra: map[string]string{"scripts/hooks/lint.sh": "#!/bin/sh\n[ -n \"$1\" ] && golangci-lint run; true\n"},
 			want:  "scripts/hooks/lint.sh:2: ",
@@ -159,8 +154,8 @@ func TestCheckCIParity_Drift(t *testing.T) {
 			want:  "installs github.com/securego/gosec/v2/cmd/gosec@v2.0.0 but Makefile pins",
 		},
 		{
-			name:  "govulncheck version differs in the Taskfile",
-			extra: map[string]string{"Taskfile.yml": "tasks:\n  t:\n    cmds:\n      - go install golang.org/x/vuln/cmd/govulncheck@v1.0.0\n"},
+			name:  "govulncheck version differs in a script",
+			extra: map[string]string{"scripts/install-tools.sh": "#!/bin/sh\ngo install golang.org/x/vuln/cmd/govulncheck@v1.0.0\n"},
 			want:  "installs golang.org/x/vuln/cmd/govulncheck@v1.0.0 but Makefile pins",
 		},
 	}

@@ -6,7 +6,7 @@ This guide covers installing the ContextHelp CLI tools.
 
 - Go version compatible with `go.mod` (use `mise install` if you follow the repo toolchain)
 - Git (for cloning the repository)
-- `task` (preferred task runner; if it is not on `PATH`, use `mise exec -- task ...`)
+- `make`
 
 ## Installation Methods
 
@@ -18,7 +18,7 @@ git clone https://github.com/ideacrafterslabs/ctxt.git
 cd ctxt
 
 # Build both binaries
-task build
+make build
 
 # Binaries will be in bin/ctxt and bin/dpkms
 ```
@@ -31,7 +31,7 @@ git clone https://github.com/ideacrafterslabs/ctxt.git
 cd ctxt
 
 # Install to $GOPATH/bin
-task install
+make install
 
 # Make sure $GOPATH/bin is in your PATH
 export PATH="$PATH:$(go env GOPATH)/bin"
@@ -45,7 +45,7 @@ git clone https://github.com/ideacrafterslabs/ctxt.git
 cd ctxt
 
 # Build binaries
-task build
+make build
 
 # Copy to a directory in your PATH
 sudo cp bin/ctxt /usr/local/bin/
@@ -226,8 +226,8 @@ export OPENAI_API_KEY="your-api-key-here"
 ```bash
 cd ctxt
 git pull origin main
-task clean
-task build
+make clean
+make build
 ```
 
 ### Installed Version
@@ -235,7 +235,7 @@ task build
 ```bash
 cd ctxt
 git pull origin main
-task install
+make install
 ```
 
 ## Uninstallation
@@ -243,7 +243,7 @@ task install
 ### Remove Binaries
 
 ```bash
-# If installed with task install
+# If installed with make install
 rm $(go env GOPATH)/bin/ctxt
 rm $(go env GOPATH)/bin/dpkms
 
@@ -314,9 +314,9 @@ If build fails:
 
 ```bash
 # Clean and rebuild
-task clean
+make clean
 go mod tidy
-task build
+make build
 ```
 
 ### Configuration Not Found
@@ -387,10 +387,10 @@ go build -gcflags="all=-N -l" -o bin/ctxt cmd/ctxt/main.go
 go build -gcflags="all=-N -l" -o bin/dpkms cmd/dpkms/main.go
 
 # Run tests
-task test
+make test
 
 # Run linter
-task lint
+make lint
 ```
 
 ## Next Steps

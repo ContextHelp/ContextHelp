@@ -107,19 +107,6 @@ else
     success "golangci-lint already installed"
 fi
 
-# Task (Go task runner)
-if ! command_exists task; then
-    info "Installing Task..."
-    if [ "$OS" = "macos" ]; then
-        brew install go-task/tap/go-task || go install github.com/go-task/task/v3/cmd/task@v3.53.1
-    else
-        go install github.com/go-task/task/v3/cmd/task@v3.53.1
-    fi
-    success "Task installed"
-else
-    success "Task already installed"
-fi
-
 # govulncheck (security scanner)
 if ! command_exists govulncheck; then
     info "Installing govulncheck..."
@@ -204,7 +191,6 @@ echo ""
 
 echo "=== Tools Check ==="
 command_exists golangci-lint && echo "golangci-lint:   $(golangci-lint --version | head -n1)" || echo "golangci-lint:   NOT FOUND"
-command_exists task && echo "task:            $(task --version)" || echo "task:            NOT FOUND"
 command_exists govulncheck && echo "govulncheck:     installed" || echo "govulncheck:     NOT FOUND"
 echo ""
 
@@ -213,13 +199,13 @@ success "Development environment setup complete!"
 echo ""
 echo "=== Next Steps ==="
 echo "1. Review .env, then export it: set -a; . ./.env; set +a (nothing loads it automatically)"
-echo "2. Run 'task --list' to see available commands"
-echo "3. Run 'task test' to verify everything works"
-echo "4. Run 'task build' to build binaries"
+echo "2. Run 'make help' to see available targets"
+echo "3. Run 'make test' to verify everything works"
+echo "4. Run 'make build' to build binaries"
 echo "5. Check docs/development.md for detailed workflows"
 echo ""
 echo "=== Optional Services ==="
 echo "To start Postgres:"
-echo "  docker-compose -f docker-compose.dev.yml up -d"
+echo "  make services-up"
 echo ""
 echo "Happy coding!"

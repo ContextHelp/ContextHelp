@@ -130,27 +130,27 @@ viper.BindPFlag("analyze.type", analyzeCmd.Flags().Lookup("type"))
 
 ## Building
 
-### Using Task
+### Using make
 
 ```bash
 # Build both binaries
-task build
+make build
 
 # Build individual binaries
-task build:ctxt
-task build:dpkms
+make build-ctxt
+make build-dpkms
 
 # Install to $GOPATH/bin
-task install
+make install
 
 # Clean build artifacts
-task clean
+make clean
 
 # Run tests
-task test
+make test
 
 # Format code
-task fmt
+make fmt
 ```
 
 ### Using Go directly

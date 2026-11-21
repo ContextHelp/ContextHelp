@@ -2,58 +2,58 @@
 
 Operator-facing gate order for publishing an early-access pre-alpha build.
 
-`task` is the preferred runner in this repo. If `task` is not on your shell `PATH`,
-run the same commands via `mise exec -- task ...`.
+`make` is the runner in this repo; `make help` lists every target.
 
 ## Gate Order
 
 1. Validate local tooling and optional provider dependencies.
 
    ```bash
-   task preflight
+   make preflight
    ```
 
 2. Build the local binaries.
 
    ```bash
-   task build
+   make build
    ```
 
 3. Run the primary local quality gate.
 
    ```bash
-   task check
+   make check
    ```
 
 4. Run binary smoke coverage against the built artifacts.
 
    ```bash
-   task test:smoke
+   make test-smoke
    ```
 
 5. Start backing services needed for integration coverage.
 
    ```bash
-   task services:up
+   make services-up
    ```
 
 6. Run the broader integration suite.
 
    ```bash
-   task test:integration
+   make test-integration
    ```
 
 7. Run the focused end-to-end integration scenarios.
 
    ```bash
-   task test:e2e
+   make test-e2e
    ```
 
-8. Build release-grade binaries and package release artifacts.
+8. Build release artifacts locally with the GoReleaser config the release
+   workflow uses (snapshot: no tag, no publish, no signing).
 
    ```bash
-   task build:prod
-   task release:build
+   make goreleaser-check
+   scripts/ci/tools.sh goreleaser -- goreleaser release --snapshot --clean --skip=sign
    ```
 
 9. If you are publishing the container path, verify the production Docker flow.
@@ -81,6 +81,6 @@ run the same commands via `mise exec -- task ...`.
 
 ## Notes
 
-- `task check` is the primary local gate. It is not a substitute for the full pre-alpha publish gate above.
-- Run `task services:down` after integration testing if you started backing services.
-- Production Docker uses direct `docker compose` commands because there is no production Task target today.
+- `make check` is the primary local gate. It is not a substitute for the full pre-alpha publish gate above.
+- Run `make services-down` after integration testing if you started backing services.
+- `make docker-build`, `make docker-prod` and `make docker-down` wrap the production Docker commands in step 9.

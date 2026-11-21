@@ -1,4 +1,4 @@
-.PHONY: all build build-ctxt build-dpkms clean install deps test test-unit test-integration test-integration-services test-smoke test-e2e test-all test-cover test-gate test-docker toolchain-check goreleaser-check lint gosec fmt help docs docs-dev docker-build docker-dev docker-prod docker-down docker-logs docker-ps docker-shell security-scan install-hooks install-gitleaks secret-scan-local vuln-scan trivy-scan eva check ben ben-text-short ben-vector ben-install ben-adapter
+.PHONY: all build build-ctxt build-dpkms clean install deps preflight test test-unit test-integration test-integration-services test-smoke test-e2e test-all test-cover test-gate test-docker toolchain-check goreleaser-check lint gosec fmt help docs docs-dev docker-build docker-dev docker-prod docker-down docker-logs docker-ps docker-shell services-up services-down services-clean security-scan install-hooks install-gitleaks secret-scan-local vuln-scan trivy-scan eva check ben ben-text-short ben-vector ben-install ben-adapter
 
 # Version information
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -62,6 +62,10 @@ all: build
 ## deps: Install media processing dependencies (pdftotext, whisper, pyannote)
 deps: build-dpkms
 	$(DPKMS_BINARY) install-deps
+
+## preflight: Check build tools, ingestor binaries and API keys (read-only)
+preflight:
+	@scripts/preflight.sh
 
 ## build: Build both ctxt and dpkms binaries
 build: build-ctxt build-dpkms
@@ -339,6 +343,22 @@ docker-ps:
 ## docker-shell: Open a shell in the running dpkms container
 docker-shell:
 	docker exec -it ctxt-dpkms sh
+
+# Side services (Postgres) for the integration tier: docker-compose.dev.yml.
+SERVICES_COMPOSE = docker compose -f docker-compose.dev.yml
+
+## services-up: Start side services (Postgres) for integration tests
+services-up:
+	$(SERVICES_COMPOSE) up -d --wait
+	$(SERVICES_COMPOSE) ps
+
+## services-down: Stop side services
+services-down:
+	$(SERVICES_COMPOSE) down
+
+## services-clean: Stop side services and remove their volumes
+services-clean:
+	$(SERVICES_COMPOSE) down -v
 
 ## trivy-scan: Scan Dockerfile for misconfigs and image for CVEs (requires trivy)
 TRIVY_IMAGE ?= ghcr.io/$(shell git remote get-url origin 2>/dev/null | sed 's|.*github.com[:/]||;s|\.git$$||' | tr '[:upper:]' '[:lower:]')/ctxt-dpkms:latest

@@ -11,7 +11,7 @@ This file helps AI coding tools work effectively in the core `ctxt` workspace.
 
 - `make build` — Build both `ctxt` and `dpkms`
 - `make test` — Run all tests
-- `task <task-name>` — Run specific Taskfile commands
+- `make help` — List all Makefile targets
 - `dpkms serve` — Start the background worker and API
 - `ctxt analyze <content>` — Process and ingest content
 
