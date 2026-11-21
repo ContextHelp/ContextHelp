@@ -46,7 +46,7 @@ func runIngest(t *testing.T, jobType, payload, source string, srv *httptest.Serv
 	pipes.Upsert("url.test", &pipeline.Pipeline{
 		PipelineName: "url.test",
 		Steps: []pipeline.PipelineStep{
-			steps.NewURLFetcher(steps.WithURLHTTPClient(srv.Client())),
+			steps.NewURLFetcher(steps.WithURLClientBridge(steps.NewClientBridge(steps.WithBridgeHTTPClient(srv.Client())))),
 			steps.NewTypeDetector(),
 		},
 	})
