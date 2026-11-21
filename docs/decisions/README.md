@@ -531,11 +531,12 @@ Named share policies (RSQL data filter, class exclusions, field projection, reda
 - **Search.** Restricted viewers search a masked shadow index (FTS + masked vectors) plus `pii_terms` for revealed categories.
 - **Backstop.** A fail-closed check of every ID and every masked value in each response; a read audit of who saw what. Ingest-time masking (ADR-058 custom steps) stays the "never store" option.
 
-### **ADR-081 – Capture URL Hygiene: Canonicalization and Noise Presets (Proposed)**
+### **ADR-081 – Capture URL Hygiene: Canonicalization and Noise Presets (Accepted; Q8 open)**
 Client-side stages between the browser and enqueue for `ctxt capture tabs` and `history`: canonicalize URLs (tracking params, fragments, GitHub file URLs), then apply shipped opt-out category presets (webmail, calendar, finance, auth, checkout, admin consoles) as ordinary `urlfilter` rules.
-- **Dedup.** Canonical form feeds the existing exact-URL and server content-hash dedup.
-- **Visibility.** `--dry-run` shows rewrites, preset and category; decisions are still logged without the URL.
-- **Decisions.** Keep GitHub file URLs (strip anchors), `default` preset level on, drop fragments, browser capture only, release-bound lists, shared `internal/githuburl`, category disable user-config only. Open: strict-level credential-key heuristic.
+- **Dedup.** Canonical URL is the `Source`, so identical fetched bodies reinforce one object; enqueue-time dedup never hits for URL captures.
+- **Visibility.** `--dry-run` shows rewrites and the matching rule scope (`preset:<level>/<category>`); decisions are still logged without the URL.
+- **Order.** Rules run on the raw URL first; only allowed URLs are canonicalized and re-checked. Applies to `capture tabs`, `capture history` and ambient `browserhistory`.
+- **Decisions.** Keep GitHub file URLs (strip anchors), `default` preset level on, drop fragments, browser capture only (ambient included), release-bound lists, shared `internal/githuburl`; every protection-lowering knob is user-layer-only. Open: strict-level credential-key check.
 
 ---
 
