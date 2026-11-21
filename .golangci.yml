@@ -82,6 +82,12 @@ linters:
     goconst:
       min-len: 3
       min-occurrences: 3
+      # 2.15 (goconst 1.9) counts strings in composite literals and struct
+      # fields; 2.1.6 did not, and the cobra Use:/Short: fields and table
+      # rows are not constants worth extracting. Pin the 2.1.6 coverage.
+      exclude-types:
+        - Call
+        - CompositeLit
     gocritic:
       disabled-checks:
         - commentFormatting
@@ -98,6 +104,18 @@ linters:
       # entry point". 20 keeps the genuinely tangled ones (24 functions,
       # up to complexity 37) and stops reporting the other 53.
       min-complexity: 20
+    staticcheck:
+      # 2.15 enables QF1012 (WriteString(fmt.Sprintf) -> Fprintf) through the
+      # default "all"; 2.1.6 did not report it. Keep the 2.1.6 default set.
+      checks:
+        - all
+        - -ST1000
+        - -ST1003
+        - -ST1016
+        - -ST1020
+        - -ST1021
+        - -ST1022
+        - -QF1012
     gosec:
       # Same rule set and thresholds as the Makefile gosec target (the CI
       # Security job). Change both places together.
@@ -217,6 +235,12 @@ linters:
       - linters:
           - all
         path: (.*)/generated/(.*)\.go
+      # noctx 2.15 also flags os/exec.Command, net.Listen, database/sql and
+      # tls Handshake without a context; 2.1.6 checked HTTP requests only.
+      # Keep the 2.1.6 scope: HTTP findings still report.
+      - linters:
+          - noctx
+        text: (os/exec\.Command|net\.Listen|database/sql|crypto/tls)
       # ADR-080 §4: the raw-driver ban applies to request handlers and
       # the service they read through. Everywhere else storage.System
       # is the sanctioned way to name the unscoped driver, so its
