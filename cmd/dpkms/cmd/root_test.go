@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
+	"hop.top/kit/go/runtime/sideeffect"
 )
 
 // TestMain isolates HOME and XDG dirs so host state (current-instance file,
@@ -28,7 +29,16 @@ func TestMain(m *testing.M) {
 	}, "dpkms"))
 }
 
-// resetAllFlags resets all flags on a command and its subcommands to defaults.
+// resetAllFlags resets all flags on a command and its subcommands to
+// defaults, and clears the dry-run mark an earlier --dry-run run left on
+// a command's context.
+//
+// Kit records a dry run twice: in the --dry-run flag and, when it
+// applies the flag, as a mark on the leaf's context; kitcli.IsDryRun
+// reads either. Cobra keeps a subcommand's context across in-process
+// runs, so resetting the flag alone leaves every later run of that leaf
+// a dry run. The rest of the context is kept: tests inject a cancelable
+// one on a subcommand before executing it.
 func resetAllFlags(cmd *cobra.Command) {
 	cmd.Flags().VisitAll(func(f *pflag.Flag) {
 		resetFlag(f)
@@ -38,6 +48,9 @@ func resetAllFlags(cmd *cobra.Command) {
 		resetFlag(f)
 		f.Changed = false
 	})
+	if ctx := cmd.Context(); ctx != nil && sideeffect.IsDryRun(ctx) {
+		cmd.SetContext(sideeffect.WithDryRun(ctx, false))
+	}
 	for _, sub := range cmd.Commands() {
 		resetAllFlags(sub)
 	}

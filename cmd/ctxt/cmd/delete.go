@@ -138,9 +138,9 @@ func errNoDeleteSelector() error {
 // than this.
 var previewRendered bool
 
-// restoreTokenGate re-arms the typed-confirmation annotation that the
-// current preview invocation suspended. Set by previewDelete,
-// consumed by runDelete once kit's gate has been passed.
+// restoreTokenGate re-arms the annotations that the current declined
+// invocation (--confirm=no) suspended. Set by previewDelete, consumed
+// by runDelete once kit's gate has been passed.
 var restoreTokenGate func()
 
 // previewDelete answers a preview request before any gate can refuse
@@ -178,6 +178,12 @@ var restoreTokenGate func()
 // touch rather than an approximation of it.
 func previewDelete(cmd *cobra.Command, _ []string) error {
 	previewRendered = false
+	// A previous --confirm=no invocation in this process may have been
+	// refused by kit before runDelete could re-arm its gates; re-arm them
+	// now so this invocation starts with both annotations in place.
+	if restoreTokenGate != nil {
+		restoreTokenGate()
+	}
 	restoreTokenGate = nil
 	dryRun := kitcli.IsDryRun(cmd)
 	declined := strings.EqualFold(strings.TrimSpace(inheritedFlag(cmd, "confirm")), "no")
@@ -216,8 +222,11 @@ func previewDelete(cmd *cobra.Command, _ []string) error {
 		if err := cliformat.EncodePreview(w, cliformat.NewPlan(cmd.CommandPath(), actions)); err != nil {
 			return err
 		}
+		// No suspension: kit skips both gates for a dry run it applied,
+		// and its RunE wrapper decides that from kit/side-effect. With
+		// the tag dropped, kit reads the leaf as untagged and refuses
+		// --dry-run as a usage error after the plan was printed.
 		previewRendered = true
-		restoreTokenGate = suspendGatesForAnsweredInspection(cmd)
 		return nil
 	}
 
@@ -231,10 +240,11 @@ func previewDelete(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-// suspendGatesForAnsweredInspection drops, for the remainder of this
+// suspendGatesForAnsweredInspection lifts, for the remainder of this
 // one invocation, the two annotations kit's confirmation gates read:
-// the typed-confirmation requirement and the destructive side-effect
-// class. It returns a function that puts both back.
+// it drops the typed-confirmation requirement and downgrades the
+// destructive side-effect class to read. It returns a function that
+// puts both back.
 //
 // Both annotations are true statements about `ctxt delete` and wrong
 // statements about this invocation of it. kit reads them ahead of
@@ -246,6 +256,10 @@ func previewDelete(cmd *cobra.Command, _ []string) error {
 // answer. The same reasoning covers both cases; a declined delete
 // deletes nothing either, and the caller that declined is the one
 // being denied the preview it declined in order to see.
+//
+// Only the --confirm=no path calls it. A --dry-run keeps both
+// annotations: kit's RunE wrapper resolves the leaf's dry-run policy
+// from kit/side-effect, and an untagged leaf has its --dry-run refused.
 //
 // The suspension is scoped as narrowly as the claim it makes:
 //
@@ -261,7 +275,6 @@ func previewDelete(cmd *cobra.Command, _ []string) error {
 // The general fix belongs upstream: kit should let an adopter declare
 // an invocation non-mutating, the way --dry-run already does, instead
 // of leaving adopters to reach for the annotations behind its gates.
-// See the report accompanying this change.
 func suspendGatesForAnsweredInspection(cmd *cobra.Command) func() {
 	const (
 		tokenAnnotation      = "kit/destructive-token"
@@ -275,6 +288,12 @@ func suspendGatesForAnsweredInspection(cmd *cobra.Command) func() {
 		} else {
 			saved[key] = nil
 		}
+	}
+	// An absent tag is not neutral: kit reads a leaf named delete with
+	// no kit/side-effect as destructive by name and gates it. An explicit
+	// read tag is, so the invocation declares itself non-mutating.
+	if saved[sideEffectAnnotation] != nil {
+		cmd.Annotations[sideEffectAnnotation] = string(cliconv.SideEffectRead)
 	}
 	return func() {
 		for key, v := range saved {

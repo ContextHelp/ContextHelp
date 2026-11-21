@@ -22,6 +22,8 @@ package cmd
 import (
 	"testing"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/spf13/cobra"
 	kitcli "hop.top/kit/go/console/cli"
 )
 
@@ -72,4 +74,45 @@ func TestRootValidate_StrictGatesPass(t *testing.T) {
 	if err := root.Validate(); err != nil {
 		t.Fatalf("root.Validate() must return nil under strict gates; got:\n%v", err)
 	}
+}
+
+// TestRunnableGroups_DeclareSideEffect asserts every command that has
+// subcommands and also runs on its own carries a kit/side-effect tier.
+//
+// Such a group runs like a leaf, but kit's Validate checks only
+// leaves: a group without a tier is not refused at boot, it is named
+// in a stderr warning on every invocation of ctxt, and discovery and
+// the policy gates see a command that declares nothing. The root and
+// kit-reserved verbs are skipped, as kit skips them.
+func TestRunnableGroups_DeclareSideEffect(t *testing.T) {
+	valid := map[kitcli.SideEffect]bool{}
+	for _, s := range []kitcli.SideEffect{
+		cliconv.SideEffectRead, cliconv.SideEffectWrite,
+		cliconv.SideEffectWriteLocal, cliconv.SideEffectWriteShared,
+		cliconv.SideEffectDestructive, cliconv.SideEffectDestructiveLocal,
+		cliconv.SideEffectDestructiveShared, cliconv.SideEffectInteractive,
+	} {
+		valid[s] = true
+	}
+
+	var check func(cmd *cobra.Command, top string)
+	check = func(cmd *cobra.Command, top string) {
+		for _, sub := range cmd.Commands() {
+			name := top
+			if cmd == rootCmd {
+				name = sub.Name()
+			}
+			if root.IsReserved(name) || sub.Name() == "help" || sub.Name() == "completion" {
+				continue
+			}
+			if sub.HasSubCommands() && sub.Runnable() {
+				if s, ok := kitcli.GetSideEffect(sub); !ok || !valid[s] {
+					t.Errorf("%s runs on its own but declares no kit/side-effect tier (got %q)",
+						sub.CommandPath(), string(s))
+				}
+			}
+			check(sub, name)
+		}
+	}
+	check(rootCmd, "")
 }

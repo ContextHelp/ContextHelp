@@ -8,7 +8,7 @@
 #   - verify-no-leak + verify-stories, executed here against
 #     e2e/stories/                             -> F1, F2, F9, F10, F12
 #   - e2e/conformance/verdicts/*.json written
-#     by `scripts/12fcc-grade.sh`              -> F3-F8, F11
+#     by `scripts/12fcc-grade-all.sh`          -> F3-F8, F11
 #
 # A factor with no measurement stays `skip`; a failing leaf or verdict
 # marks its factors `fail`; an ungradable verdict aborts (measurement
@@ -17,10 +17,11 @@
 #
 # Requirements:
 #   - KIT_BIN: path to a kit binary that ships the `conformance`
-#     command group (build from hop.top/kit cmd/kit). Defaults to
-#     `kit` on PATH.
+#     command group (build from hop.top/kit cmd/kit, at the version
+#     go.mod pins). Defaults to `kit` on PATH.
 #
-# Usage (after 12fcc-record.sh + 12fcc-grade.sh):
+# Usage (after 12fcc-record.sh + 12fcc-record-dpkms.sh +
+# 12fcc-grade-all.sh):
 #   KIT_BIN=/path/to/kit scripts/12fcc-badge.sh
 set -euo pipefail
 
@@ -45,9 +46,14 @@ esac
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/ctxt-12fcc-badge.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
 
-# Run a verify leaf and map kit's exit contract (0 clean / 2 findings)
-# to a factor status. Any other exit means measurement broke: abort
-# rather than guess.
+# kit's conformance exit contract: 0 clean, 66 findings (LEAK_DETECTED,
+# which both verify leaves use). Any other code -- 2 usage, 6
+# transient, 67 config -- means the measurement itself broke: abort
+# rather than publish a failed invocation as a factor verdict.
+KIT_EXIT_CLEAN=0
+KIT_EXIT_FINDINGS=66
+
+# Run a verify leaf and map its exit code to a factor status.
 run_leaf() {
   local leaf="$1" rc
   set +e
@@ -57,10 +63,10 @@ run_leaf() {
   rc=$?
   set -e
   case "$rc" in
-    0) echo pass ;;
-    2) echo fail ;;
+    "$KIT_EXIT_CLEAN") echo pass ;;
+    "$KIT_EXIT_FINDINGS") echo fail ;;
     *)
-      echo "ERROR: '$KIT_BIN conformance $leaf' exited $rc (want 0 or 2):" >&2
+      echo "ERROR: '$KIT_BIN conformance $leaf' exited $rc (want $KIT_EXIT_CLEAN or $KIT_EXIT_FINDINGS):" >&2
       cat "$TMP/$leaf.json" >&2
       exit 1
       ;;
@@ -90,10 +96,10 @@ set +e
 leak_rc=$?
 set -e
 case "$leak_rc" in
-  0) NO_LEAK_STATUS=pass ;;
-  2) NO_LEAK_STATUS=fail ;;
+  "$KIT_EXIT_CLEAN") NO_LEAK_STATUS=pass ;;
+  "$KIT_EXIT_FINDINGS") NO_LEAK_STATUS=fail ;;
   *)
-    echo "ERROR: verify-no-leak exited $leak_rc (want 0 or 2):" >&2
+    echo "ERROR: verify-no-leak exited $leak_rc (want $KIT_EXIT_CLEAN or $KIT_EXIT_FINDINGS):" >&2
     cat "$TMP/verify-no-leak.json" >&2
     exit 1
     ;;
