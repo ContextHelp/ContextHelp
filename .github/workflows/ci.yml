@@ -165,6 +165,9 @@ jobs:
       - name: Run go vet
         run: make ci-vet
 
+      - name: Build and vet without go.work
+        run: make ci-gowork-off
+
   # GoReleaser ships windows/amd64 binaries, cross-compiled with CGO and
   # mingw-w64 (release.yml). Type-check every package, tests included, for
   # that target with the same toolchain so Unix-only syscalls fail here
