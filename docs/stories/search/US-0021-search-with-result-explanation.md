@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: partial
 ---
 
 # US-0021: Search with Result Explanation
+
+> **Implementation status:** Built: `--explain` flag and score breakdown (FTS, vector, RRF). Not built: `rank.explain` JSON shape, `primary_match_reason`, graph_match signal.
 
 **System Types:** ctxt, dpkms (self-hosted), dpkms cloud
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md), [Agents/LLMs](../../personas/agents-llms-tools.md)

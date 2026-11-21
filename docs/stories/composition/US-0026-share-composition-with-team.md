@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: paper
 ---
 
 # US-0026: Share Composition With Team
+
+> **Implementation status:** No composition sharing: no share tokens, permissions, expiry, or revocation. Existing sharing (audiences/policies/invites) is a separate model.
 
 **System Types:** ctxt, dpkms cloud
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md)

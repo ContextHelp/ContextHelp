@@ -1,9 +1,11 @@
 ---
-status: paper
+status: partial
 adr: ADR-067
 ---
 
 # US-0216: Work Sessions (Temporal Grouping of Captures)
+
+> **Implementation status:** Built (library only, unit-tested): session cutter rules. Not built: session storage/tables, `session_id` on objects, session API and CLI.
 
 **System Types:** ctxt, dpkms
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md), [Researchers & OSINT Analysts](../../personas/researchers-osint.md), [AI Agents](../../personas/agents-llms-tools.md)

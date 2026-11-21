@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: partial
 ---
 
 # US-0052: Graph-Based Entity Search
+
+> **Implementation status:** Built: edge creation at ingest, `find @entity` backlinks. Not built: graph depth/distance, relation filter, `graph_match` explain.
 
 **System Types:** dpkms (self-hosted), dpkms cloud
 **Personas:** [Agents/LLMs](../../personas/agents-llms-tools.md)

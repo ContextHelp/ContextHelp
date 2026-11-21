@@ -22,7 +22,7 @@ tailor search, enrichment, and capture behaviour to specific roles or projects.
 Focus profiles are named presets stored in the ctxt config file
 (`~/.config/contexthelp/config.yaml`). They carry `description`, `tags`, `mention_namespaces`,
 and `rerank_boosts`. All `ctxt profile` subcommands operate on the local config file — there
-is no server-side REST endpoint. The `--profile` flag on `ctxt add` passes the profile name
+is no server-side REST endpoint. The `--profile` flag on `ctxt analyze` passes the profile name
 in the `POST /analyze` payload so the server can apply rerank boosts and tag defaults.
 
 ---
@@ -30,14 +30,14 @@ in the `POST /analyze` payload so the server can apply rerank boosts and tag def
 ## Acceptance Criteria
 
 - [ ] `ctxt profile create <name>` adds the profile to the config file
-- [ ] `ctxt profile delete <name>` removes the profile from the config file
-- [ ] `ctxt profile set-default <name>` persists the default profile in config
-- [ ] `ctxt profile set-default` (no arg) clears the default profile
+- [ ] `ctxt profile rm <name>` removes the profile from the config file
+- [ ] `ctxt profile set <name>` persists the default profile in config
+- [ ] `ctxt profile unset <name>` clears the default profile
 - [ ] `ctxt profile list` shows all profiles and marks the default with `*`
-- [ ] `ctxt profile show <name>` displays `description`, `tags`, `mention_namespaces`,
+- [ ] `ctxt profile view <name>` displays `description`, `tags`, `mention_namespaces`,
   `rerank_boosts`
 - [ ] `ctxt profile list --output json` returns JSON with `default` and `profiles` keys
-- [ ] `ctxt add --profile <name>` passes profile name in request payload to server
+- [ ] `ctxt analyze --profile <name>` passes profile name in request payload to server
 - [ ] Creating a duplicate profile returns an error
 - [ ] Deleting a non-existent profile returns an error
 - [ ] Config file changes persist across process restarts
@@ -52,13 +52,13 @@ in the `POST /analyze` payload so the server can apply rerank boosts and tag def
 ctxt profile list
 ctxt profile list --output json
 
-ctxt profile show <name>
-ctxt profile show <name> --output json
+ctxt profile view <name>
+ctxt profile view <name> --output json
 
 ctxt profile create <name>
-ctxt profile delete <name>
-ctxt profile set-default <name>
-ctxt profile set-default          # clears default
+ctxt profile rm <name>
+ctxt profile set <name>
+ctxt profile unset <name>         # clears default
 ```
 
 ### Config File Structure (YAML)
@@ -108,15 +108,15 @@ Content-Type: application/json
 - [ ] Create: `ctxt profile list` immediately reflects new profile (no restart needed)
 
 ### Delete — Config File Updated
-- [ ] Delete: `ctxt profile delete myproject` exits `0`
+- [ ] Delete: `ctxt profile rm myproject` exits `0`
 - [ ] Delete: Config file no longer contains `myproject` under `profile.profiles`
 - [ ] Delete: Deleting the current default also clears `profile.default` in config
 - [ ] Delete: Non-existent name → exits non-zero with "profile not found" error
 
 ### Set-Default — Config File Updated
-- [ ] SetDefault: `ctxt profile set-default <name>` sets `profile.default` in config file
+- [ ] SetDefault: `ctxt profile set <name>` sets `profile.default` in config file
 - [ ] SetDefault: `ctxt profile list` shows `*` next to the new default
-- [ ] SetDefault: `ctxt profile set-default` (no arg) clears `profile.default` to empty string
+- [ ] SetDefault: `ctxt profile unset <name>` clears `profile.default` to empty string
 - [ ] SetDefault: Non-existent name → exits non-zero with "profile not found" error
 
 ### List — Output Reflects Config
@@ -125,7 +125,7 @@ Content-Type: application/json
 - [ ] List: Empty profiles section → prints "No profiles defined."
 
 ### Show — All Fields Displayed
-- [ ] Show: `ctxt profile show <name>` prints `description`, `tags`, `mention_namespaces`,
+- [ ] Show: `ctxt profile view <name>` prints `description`, `tags`, `mention_namespaces`,
   `rerank_boosts` for the named profile
 - [ ] Show: `--output json` returns `{"name":"...","is_default":true/false,"profile":{...}}`
 - [ ] Show: Non-existent name → exits non-zero with "profile not found" error
@@ -135,7 +135,7 @@ Content-Type: application/json
 - [ ] Persist: Default profile persists across invocations
 
 ### Profile Forwarded in Capture Payload
-- [ ] Capture: `ctxt add "text" --profile founder` sends `{"profile":"founder"}` in
+- [ ] Capture: `ctxt analyze "text" --profile founder` sends `{"profile":"founder"}` in
   `POST /analyze` request body
 - [ ] Capture: Absence of `--profile` → `profile` field omitted or empty in payload
 

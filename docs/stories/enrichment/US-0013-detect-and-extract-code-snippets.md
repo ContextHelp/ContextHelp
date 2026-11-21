@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: partial
 ---
 
 # US-0013: Detect And Extract Code Snippets
+
+> **Implementation status:** Built: fenced code block extraction. Not built: inline code detection, `/enrich/*` API, detection-strategy option.
 
 **System Types:** dpkms (self-hosted), dpkms cloud
 **Personas:** [Agents/LLMs](../../personas/agents-llms-tools.md), [Platform Integrators](../../personas/platform-integrators.md)

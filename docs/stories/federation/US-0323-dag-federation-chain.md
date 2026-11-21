@@ -1,8 +1,10 @@
 ---
-status: paper
+status: partial
 ---
 
 # US-0323: DAG Federation Chain Push
+
+> **Implementation status:** Built: 2-hop forwarding via change sequence, self-loop cycle detection. Not built: multi-hop (A->B->A) cycle detection.
 
 **System Types:** dpkms (self-hosted)
 **Personas:** [Platform Integrators](../../personas/platform-integrators.md)

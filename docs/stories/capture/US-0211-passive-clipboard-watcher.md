@@ -1,9 +1,11 @@
 ---
-status: paper
+status: partial
 adr: ADR-066
 ---
 
 # US-0211: Passive Clipboard Watcher
+
+> **Implementation status:** Built (library only, unit-tested): clipboard source, redaction, dedup, routing. Not built: runner wiring (`ctxt capture --ambient` is unimplemented), CEL veto.
 
 **System Types:** ctxt
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md),

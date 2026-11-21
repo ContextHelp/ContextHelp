@@ -1,9 +1,11 @@
 ---
-status: paper
+status: partial
 adr: ADR-066
 ---
 
 # US-0212: Screenshot-on-Demand Source
+
+> **Implementation status:** Built (library only, unit-tested): screenshot trigger, bundle exclusion, fingerprint. Not built: hotkey, schedule trigger, per-OS capturers, retention, runner wiring.
 
 **System Types:** ctxt
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md),

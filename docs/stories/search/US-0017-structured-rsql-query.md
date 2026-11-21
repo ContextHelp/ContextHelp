@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: partial
 ---
 
 # US-0017: Structured RSQL Query
+
+> **Implementation status:** Built: RSQL via `GET /api/v1/search?q=` (`==`, `=in=`). Not built: `--rsql` flag, `query_mode`, `=gt=`/`=lt=` coverage. Profiles are a lens and do not narrow RSQL results.
 
 **System Types:** ctxt, dpkms (self-hosted), dpkms cloud
 **Personas:** [Agents/LLMs](../../personas/agents-llms-tools.md), [Maintainers](../../personas/maintainers.md)

@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: partial
 ---
 
 # US-0009: Extract Entities and Mentions
+
+> **Implementation status:** Built: literal-mention entity extraction and graph nodes. Not built: `ctxt enrich` API and routes, constrained-generation backends, canonical-entity linking of unknown mentions.
 
 **System Types:** dpkms (self-hosted), dpkms cloud
 **Personas:** [Agents/LLMs](../../personas/agents-llms-tools.md), [Knowledge Workers](../../personas/knowledge-workers.md)

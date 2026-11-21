@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: paper
 ---
 
 # US-0023: Generate Plan From Decisions
+
+> **Implementation status:** `ctxt compose plan` emits a snippet list only; no `--from`/`--tag`/`--horizon`/`--format`/`--profile`, tasks, milestones, or owners.
 
 **System Types:** ctxt
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md)

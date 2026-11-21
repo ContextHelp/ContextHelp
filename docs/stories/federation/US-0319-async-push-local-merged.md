@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: shipped-no-e2e
 ---
 
 # US-0319: Async Federation Push to Local Merged DB
+
+> **Implementation status:** E2E tests require the `federation_e2e` build tag and are not run by default; worker-tick path is covered by unit tests.
 
 **System Types:** dpkms (self-hosted)
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md)

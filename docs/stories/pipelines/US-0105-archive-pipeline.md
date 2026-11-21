@@ -41,6 +41,7 @@ Archived pipelines cannot be:
 - **Archived pipelines cannot be selected**
 - `SelectPipeline()` skips archived pipelines by default
 - **Jobs requesting archived pipeline return error**
+- **Enqueue against an archived pipeline returns `409 CONFLICT`** ("Pipeline is archived and cannot be used") (moved from US-0113). Not yet enforced: the enqueue handler has no archived check; unknown pipelines return 404.
 
 - **Clear error messaging** explain why pipeline is unavailable
 

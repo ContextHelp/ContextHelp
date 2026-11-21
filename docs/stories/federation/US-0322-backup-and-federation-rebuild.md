@@ -1,8 +1,10 @@
 ---
-status: paper
+status: shipped-no-e2e
 ---
 
 # US-0322: Backup and Federation Rebuild
+
+> **Implementation status:** Backup/restore implemented and unit-tested; e2e (delete downstream and rebuild) is not run by default.
 
 **System Types:** dpkms (self-hosted)
 **Personas:** [Operations](../../personas/operations.md)

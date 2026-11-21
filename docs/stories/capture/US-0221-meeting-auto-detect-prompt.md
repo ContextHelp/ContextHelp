@@ -1,9 +1,11 @@
 ---
-status: paper
+status: partial
 adr: ADR-069
 ---
 
 # US-0221: Meeting Auto-Detect Prompt (Opt-In)
+
+> **Implementation status:** Built (library only, unit-tested): bundle matching, prompt/dismiss/never rules. Not built: foreground-event wiring, OS notification, rule persistence CLI, enable flag.
 
 **System Types:** ctxt
 **Personas:** [Knowledge Workers](../../personas/knowledge-workers.md)

@@ -1,8 +1,10 @@
 ---
-status: paper
+status: partial
 ---
 
 # US-0321: Multi-Instance dpkms ps + Lifecycle
+
+> **Implementation status:** Built: `dpkms ps`, `stop`/`shutdown`, pidfile handling. Not built: `reboot` relaunch (SIGHUP only), per-instance isolation tests.
 
 **System Types:** dpkms (self-hosted)
 **Personas:** [Operations](../../personas/operations.md)

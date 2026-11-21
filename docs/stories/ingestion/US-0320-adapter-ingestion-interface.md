@@ -1,5 +1,5 @@
 ---
-status: paper
+status: shipped
 ---
 
 # US-0320: Generic Adapter Ingestion Interface

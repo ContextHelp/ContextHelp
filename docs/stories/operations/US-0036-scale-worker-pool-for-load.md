@@ -4,6 +4,8 @@ status: shipped
 
 # US-0036: Scale Worker Pool for Load
 
+> **Implementation status:** Not built: rejection of zero/negative worker counts.
+
 **System Types:** dpkms (self-hosted), dpkms cloud
 **Personas:** [Operations](../../personas/operations.md)
 

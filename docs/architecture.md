@@ -1257,10 +1257,12 @@ schema.
 
 ## Multi-source syndication (US-0410)
 
-Ingestion can pull from multiple sources with dual filter
-ownership: source-defined filters (what the source emits) and
-profile-defined filters (what the profile wants). See commit
-`5c0d06b`.
+Status: not implemented (story is `paper`). `internal/federation/pull.go`
+is a stub returning `ErrPullNotImplemented`; no syndication config,
+watermark, or provenance storage exists. Design intent: pull from
+multiple sources with dual filter ownership (source-defined filters
+for what the source emits, profile-defined filters for what the
+profile wants).
 
 ## Concrete cross-project contracts
 
@@ -1298,7 +1300,6 @@ Registry subscriptions and entity resolution cover:
 
 ## Recent activity
 
-- US-0410 multi-source syndication (`5c0d06b`)
 - GitHub adapter with README + Context7 (`1f9bd22`)
 - Backup / restore + manifest v2 + auto-create dir (`9c1b5e1`...`a7ad19f`)
 - Worker / bus DrainCtx + env auth + cross-process hub (`0fe3534`...`b148986`)

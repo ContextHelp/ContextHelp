@@ -1,8 +1,10 @@
 ---
-status: shipped
+status: shipped-no-e2e
 ---
 
 # US-0039: Agent Ingests Content And Waits
+
+> **Implementation status:** Tests are gated behind `INTEGRATION=1` and not run in CI.
 
 **System Types:** dpkms (self-hosted), dpkms cloud
 **Personas:** [Agents/LLMs](../../personas/agents-llms-tools.md)

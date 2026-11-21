@@ -45,6 +45,7 @@ Now, `dpkms pipeline enqueue` is:
 - **`ctxt analyze` must be refactored to call this endpoint**
 
 - **No direct Queue access from CLI or other API**
+- **`ctxt analyze` acts as the client of this endpoint** (absorbed from US-0113): sends `content`, `type`, `pipeline` (empty for auto-select), and `source: "cli"`. Note: the `ctxt analyze` integration tests currently exercise both `/api/v1/analyze` and `/api/v1/pipelines/enqueue`.
 
 ## Implementation Notes
 
