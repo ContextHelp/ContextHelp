@@ -35,6 +35,8 @@ func ApprovalsConformance(t *testing.T, drv storage.StorageDriver) {
 		{"create and get round trip", approvalConfRoundTrip},
 		{"create refusals", approvalConfCreateRefusals},
 		{"list filters newest first", approvalConfList},
+		{"list expiry, involvement and paging", approvalConfListNarrowing},
+		{"list loads the decisions of a large page", approvalConfListLargePage},
 		{"decisions one per approver, oldest first", approvalConfDecisions},
 		{"decision refusals", approvalConfDecisionRefusals},
 		{"transition out of requested only", approvalConfTransition},
@@ -207,6 +209,76 @@ func approvalConfList(t *testing.T, drv storage.StorageDriver) {
 	} {
 		if got := ids(c.f); !slices.Equal(got, c.want) {
 			t.Errorf("%s: %v, want %v", name, got, c.want)
+		}
+	}
+}
+
+// ExpiresAfter and ExpiresAtOrBefore split pending requests at a time;
+// Involving keeps what a principal filed, is the subject of or that is
+// of a listed kind; Offset pages the newest-first result.
+func approvalConfListNarrowing(t *testing.T, drv storage.StorageDriver) {
+	ctx := context.Background()
+	f := newApprovalFixture(t, drv, "narrow")
+	short := f.request("test.narrow", approvalT0)
+	short.ExpiresAt = approvalT0.Add(time.Hour)
+	createApproval(t, drv, short)
+	long := createApproval(t, drv, f.request("test.narrow", approvalT0.Add(time.Minute)))
+	mine := f.request("test.narrow.mine", approvalT0.Add(2*time.Minute))
+	mine.RequestedBy, mine.SubjectID = f.bob, ""
+	createApproval(t, drv, mine)
+	ids := func(fl storage.ApprovalFilter) []string {
+		t.Helper()
+		list, err := drv.Approvals().List(ctx, fl)
+		if err != nil {
+			t.Fatalf("List(%+v): %v", fl, err)
+		}
+		out := make([]string, len(list))
+		for i, r := range list {
+			out[i] = r.ID
+		}
+		return out
+	}
+	now := approvalT0.Add(2 * time.Hour)
+	for name, c := range map[string]struct {
+		f    storage.ApprovalFilter
+		want []string
+	}{
+		"pending, not expired": {storage.ApprovalFilter{Kind: "test.narrow", Status: storage.ApprovalRequested, ExpiresAfter: now}, []string{long.ID}},
+		"expired":              {storage.ApprovalFilter{Kind: "test.narrow", Status: storage.ApprovalRequested, ExpiresAtOrBefore: now}, []string{short.ID}},
+		"expiry boundary":      {storage.ApprovalFilter{Kind: "test.narrow", ExpiresAtOrBefore: short.ExpiresAt}, []string{short.ID}},
+		"filed or subject":     {storage.ApprovalFilter{Kind: "test.narrow", Involving: f.alice}, []string{long.ID, short.ID}},
+		"filed by":             {storage.ApprovalFilter{Involving: f.bob, Kind: "test.narrow.mine"}, []string{mine.ID}},
+		"or a listed kind":     {storage.ApprovalFilter{Involving: approvalNobody, InvolvingKinds: []string{"test.narrow.mine"}}, []string{mine.ID}},
+		"nobody involved":      {storage.ApprovalFilter{Kind: "test.narrow", Involving: approvalNobody}, []string{}},
+		"offset":               {storage.ApprovalFilter{Kind: "test.narrow", Offset: 1}, []string{short.ID}},
+		"limit with offset":    {storage.ApprovalFilter{Kind: "test.narrow", Limit: 1, Offset: 1}, []string{short.ID}},
+	} {
+		if got := ids(c.f); !slices.Equal(got, c.want) {
+			t.Errorf("%s: %v, want %v", name, got, c.want)
+		}
+	}
+}
+
+// A page larger than one IN list of decisions still loads every
+// request's decision.
+func approvalConfListLargePage(t *testing.T, drv storage.StorageDriver) {
+	ctx := context.Background()
+	f := newApprovalFixture(t, drv, "large")
+	const n = 1100
+	for i := 0; i < n; i++ {
+		r := createApproval(t, drv, f.request("test.large", approvalT0.Add(time.Duration(i)*time.Millisecond)))
+		d := &storage.ApprovalDecision{RequestID: r.ID, ApproverID: f.bob, Decision: storage.ApprovalVerdictApprove, PayloadDigest: r.PayloadDigest}
+		if err := drv.Approvals().AddDecision(ctx, d); err != nil {
+			t.Fatalf("AddDecision %d: %v", i, err)
+		}
+	}
+	list, err := drv.Approvals().List(ctx, storage.ApprovalFilter{Kind: "test.large"})
+	if err != nil || len(list) != n {
+		t.Fatalf("List = %d requests, %v; want %d", len(list), err, n)
+	}
+	for _, r := range list {
+		if len(r.Decisions) != 1 {
+			t.Fatalf("request %s has %d decisions, want 1", r.ID, len(r.Decisions))
 		}
 	}
 }

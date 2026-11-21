@@ -100,6 +100,26 @@ func (s *approvalStore) List(ctx context.Context, f storage.ApprovalFilter) ([]*
 			args = append(args, c.val)
 		}
 	}
+	if !f.ExpiresAfter.IsZero() {
+		where = append(where, "expires_at > ?")
+		args = append(args, toMillis(f.ExpiresAfter))
+	}
+	if !f.ExpiresAtOrBefore.IsZero() {
+		where = append(where, "expires_at <= ?")
+		args = append(args, toMillis(f.ExpiresAtOrBefore))
+	}
+	if f.Involving != "" {
+		or := []string{"requested_by = ?", "subject_id = ?"}
+		args = append(args, f.Involving, f.Involving)
+		if len(f.InvolvingKinds) > 0 {
+			marks := strings.TrimSuffix(strings.Repeat("?, ", len(f.InvolvingKinds)), ", ")
+			or = append(or, "kind IN ("+marks+")")
+			for _, k := range f.InvolvingKinds {
+				args = append(args, k)
+			}
+		}
+		where = append(where, "("+strings.Join(or, " OR ")+")")
+	}
 	query := `SELECT ` + approvalColumns + ` FROM approval_requests`
 	if len(where) > 0 {
 		query += ` WHERE ` + strings.Join(where, " AND ")
@@ -109,8 +129,8 @@ func (s *approvalStore) List(ctx context.Context, f storage.ApprovalFilter) ([]*
 	if f.Limit > 0 {
 		limit = f.Limit
 	}
-	query += ` ORDER BY requested_at DESC, id DESC LIMIT ?`
-	args = append(args, limit)
+	query += ` ORDER BY requested_at DESC, id DESC LIMIT ? OFFSET ?`
+	args = append(args, limit, max(f.Offset, 0))
 	q := conn(ctx, s.db)
 	rows, err := q.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -137,11 +157,23 @@ func (s *approvalStore) List(ctx context.Context, f storage.ApprovalFilter) ([]*
 	return out, nil
 }
 
-// fillDecisions loads the decisions of reqs, oldest first per request.
+// decisionChunk bounds one IN list: SQLite refuses more bound variables
+// than its limit (999 on old builds).
+const decisionChunk = 500
+
+// fillDecisions loads the decisions of reqs, oldest first per request,
+// in chunks of decisionChunk requests.
 func (s *approvalStore) fillDecisions(ctx context.Context, q querier, reqs []*storage.ApprovalRequest) error {
-	if len(reqs) == 0 {
-		return nil
+	for start := 0; start < len(reqs); start += decisionChunk {
+		end := min(start+decisionChunk, len(reqs))
+		if err := s.fillDecisionChunk(ctx, q, reqs[start:end]); err != nil {
+			return err
+		}
 	}
+	return nil
+}
+
+func (s *approvalStore) fillDecisionChunk(ctx context.Context, q querier, reqs []*storage.ApprovalRequest) error {
 	byID := make(map[string]*storage.ApprovalRequest, len(reqs))
 	marks := make([]string, 0, len(reqs))
 	args := make([]any, 0, len(reqs))

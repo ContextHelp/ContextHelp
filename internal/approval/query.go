@@ -44,48 +44,71 @@ func (s *Service) Get(ctx context.Context, id string, viewer *auth.Principal) (*
 	return s.item(ctx, k, r, viewer)
 }
 
+// listPage is how many requests List reads from the store at a time.
+const listPage = 100
+
 // List returns the requests viewer filed, is the subject of, or may
-// decide (the owner: every request), newest first.
+// decide (the owner: every request), newest first. The store narrows
+// them in SQL (kind, state, expiry and, for a viewer that is not the
+// acting owner, the requests it filed, is the subject of or that are of
+// a registered kind) and List pages through them, stopping at the
+// limit; only the kinds' own eligibility is decided here.
 func (s *Service) List(ctx context.Context, viewer *auth.Principal, f ListFilter) ([]*Item, error) {
 	if f.State != "" && !slices.Contains(States, f.State) {
 		return nil, refuse(CodeInvalid, "unknown state %q", f.State)
 	}
+	if viewer == nil || viewer.ID == "" {
+		return []*Item{}, nil
+	}
+	now := s.clock()
 	sf := storage.ApprovalFilter{Kind: f.Kind}
 	switch f.State {
 	case "":
+	case StateRequested:
+		sf.Status, sf.ExpiresAfter = storage.ApprovalRequested, now
 	case StateExpired:
-		sf.Status = storage.ApprovalRequested
+		sf.Status, sf.ExpiresAtOrBefore = storage.ApprovalRequested, now
 	default:
 		sf.Status = storage.ApprovalStatus(f.State)
 	}
-	reqs, err := s.store.List(ctx, sf)
-	if err != nil {
-		return nil, err
+	acting := ownerActs(viewer)
+	if !acting {
+		sf.Involving, sf.InvolvingKinds = viewer.ID, s.kinds.Names()
 	}
-	now := s.clock()
 	out := []*Item{}
-	for _, r := range reqs {
-		if f.State != "" && StateOf(r, now) != f.State {
-			continue
-		}
-		k, _ := s.kinds.Lookup(r.Kind)
-		ok, err := s.visible(ctx, k, r, viewer)
-		if err != nil {
-			return nil, err
-		}
-		if !ok {
-			continue
-		}
-		it, err := s.item(ctx, k, r, viewer)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, it)
-		if f.Limit > 0 && len(out) == f.Limit {
-			break
-		}
+	sf.Limit = listPage
+	if acting && f.Limit > 0 {
+		// Nothing is filtered after the store: it applies the limit.
+		sf.Limit = f.Limit
 	}
-	return out, nil
+	for {
+		reqs, err := s.store.List(ctx, sf)
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range reqs {
+			k, _ := s.kinds.Lookup(r.Kind)
+			ok, err := s.visible(ctx, k, r, viewer)
+			if err != nil {
+				return nil, err
+			}
+			if !ok {
+				continue
+			}
+			it, err := s.item(ctx, k, r, viewer)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, it)
+			if f.Limit > 0 && len(out) == f.Limit {
+				return out, nil
+			}
+		}
+		if len(reqs) < sf.Limit {
+			return out, nil
+		}
+		sf.Offset += len(reqs)
+	}
 }
 
 // item builds viewer's Item of r.
