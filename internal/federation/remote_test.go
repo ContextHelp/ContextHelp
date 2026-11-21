@@ -2,8 +2,10 @@ package federation
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -150,5 +152,35 @@ func TestRemotePusher_DoesNotAdvanceWatermarkOnFailure(t *testing.T) {
 	}
 	if got != 0 {
 		t.Errorf("failed push advanced watermark: got %d, want 0", got)
+	}
+}
+
+// The ambient envelope never leaves the instance in a push.
+func TestRemotePusher_OmitsAmbientEnvelope(t *testing.T) {
+	var body []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	o := makeObject("amb", "hamb")
+	o.SessionID = "sess_private"
+	o.Metadata = map[string]any{"title": "T", "ambient_source": "clipboard", "fingerprint": "sha256:fp",
+		"client": map[string]any{"window_title": "secret-window"}}
+	p := NewRemotePusher("test", srv.URL, "")
+	if err := p.Push(context.Background(), []storage.KnowledgeObject{o}, nil, nil); err != nil {
+		t.Fatalf("push: %v", err)
+	}
+	for _, leak := range []string{"sess_private", "sha256:fp", "secret-window", "ambient_source"} {
+		if strings.Contains(string(body), leak) {
+			t.Errorf("push body leaks %q: %s", leak, body)
+		}
+	}
+	if !strings.Contains(string(body), `"title":"T"`) {
+		t.Errorf("push body lost ordinary metadata: %s", body)
+	}
+	if o.SessionID != "sess_private" || o.Metadata["fingerprint"] == nil {
+		t.Errorf("caller's object modified")
 	}
 }

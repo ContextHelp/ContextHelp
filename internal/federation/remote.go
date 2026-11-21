@@ -12,6 +12,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // FederationPushRequest is the JSON body sent to POST /api/v1/federation/push.
@@ -130,6 +131,9 @@ func (p *RemotePusher) encodeInline(ctx context.Context, o storage.KnowledgeObje
 		return nil, objectBlobError(o.ID, err)
 	}
 	o.RawContent, o.TextContent = raw, text
+	// Capture-side ambient data stays on the source instance.
+	o.Metadata = storageutil.WithoutAmbient(o.Metadata)
+	o.SessionID = ""
 	enc, err := json.Marshal(o)
 	if err != nil {
 		return nil, fmt.Errorf("object %q: marshal: %w", o.ID, err)

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -126,6 +127,7 @@ func encodeUserAmbient(a *storage.AmbientContext) string {
 	}
 	b, err := json.Marshal(a)
 	if err != nil {
+		slog.Warn("storage: job ambient context not encoded, dropped", "err", err)
 		return ""
 	}
 	return string(b)

@@ -215,3 +215,39 @@ func (l *lockedLog) String() string {
 	defer l.mu.Unlock()
 	return l.b.String()
 }
+
+// A reanalysis rebuilds the projection but keeps what the capture
+// recorded: session id and the ambient metadata keys.
+func TestReanalyzeObject_KeepsSessionAndAmbientMetadata(t *testing.T) {
+	driver := storageutil.NewTestDriver(t)
+	store := embeddingtest.NewMemStore()
+	now := time.Now().Truncate(time.Second)
+	if err := driver.Objects().Create(ownerCtx(), &storage.KnowledgeObject{
+		ID: "re-amb", Type: "text", RawContent: "numbat sightings near the dryandra woodland",
+		Pipeline: "text.long@v0", CreatedAt: now, UpdatedAt: now, SessionID: "sess_keep",
+		Metadata: map[string]any{
+			"ambient_source": "clipboard", "fingerprint": "sha256:f",
+			"client": map[string]any{"app_name": "Terminal"},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := reanalyzeService(t, driver, embeddingtest.Models{reDefault}, store)
+	if _, _, err := svc.ReanalyzeObject(ownerCtx(), "re-amb"); err != nil {
+		t.Fatalf("reanalyze: %v", err)
+	}
+	got, err := driver.Objects().Get(ownerCtx(), "re-amb")
+	if err != nil || got == nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.SessionID != "sess_keep" {
+		t.Errorf("session id %q, want sess_keep", got.SessionID)
+	}
+	if got.Metadata["ambient_source"] != "clipboard" || got.Metadata["fingerprint"] != "sha256:f" {
+		t.Errorf("ambient keys lost: %v", got.Metadata)
+	}
+	if c, _ := got.Metadata["client"].(map[string]any); c["app_name"] != "Terminal" {
+		t.Errorf("metadata.client lost: %v", got.Metadata)
+	}
+}

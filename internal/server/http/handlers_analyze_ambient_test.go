@@ -13,6 +13,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/ambient"
 	"github.com/ideacrafterslabs/ctxt/internal/ambient/enqueue"
+	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -46,7 +47,8 @@ func TestAnalyzeAmbientFieldsReachObject(t *testing.T) {
 	assert.Equal(t, "sess_a1b2c3d4e5f6", obj.SessionID)
 	assert.Equal(t, "clipboard", obj.Metadata["ambient_source"])
 	assert.Equal(t, "sha256:abc", obj.Metadata["fingerprint"])
-	assert.Equal(t, "Terminal", obj.Metadata["app_name"])
+	assert.Equal(t, map[string]any{"app_name": "Terminal", "ambient_source": "spoof"}, obj.Metadata["client"])
+	assert.NotContains(t, obj.Metadata, "app_name")
 }
 
 func TestAnalyzeRawAmbientFieldsReachObject(t *testing.T) {
@@ -132,5 +134,18 @@ func TestAmbientEnqueueClientRoundTrip(t *testing.T) {
 	assert.Equal(t, "sess_roundtrip", obj.SessionID)
 	assert.Equal(t, "clipboard", obj.Metadata["ambient_source"])
 	assert.Equal(t, "sha256:echidna", obj.Metadata["fingerprint"])
-	assert.Equal(t, "com.apple.Terminal", obj.Metadata["foreground_bundle_id"])
+	assert.Equal(t, map[string]any{"foreground_bundle_id": "com.apple.Terminal"}, obj.Metadata["client"])
+}
+
+func TestAnalyzeOversizedBodyIs413(t *testing.T) {
+	ts := newTestServerBundle(t)
+	defer ts.Close()
+
+	body := `{"content":"` + strings.Repeat("a", int(service.MaxAnalyzeBodyBytes)+1) + `"}`
+	for _, path := range []string{"/api/v1/analyze", "/api/v1/pipelines/enqueue"} {
+		resp, err := http.Post(ts.URL+path, "application/json", strings.NewReader(body))
+		require.NoError(t, err)
+		resp.Body.Close()
+		assert.Equal(t, http.StatusRequestEntityTooLarge, resp.StatusCode, path)
+	}
 }

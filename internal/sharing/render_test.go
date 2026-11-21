@@ -10,6 +10,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 const (
@@ -327,4 +328,21 @@ func TestRenderSourceKeyFollowsSource(t *testing.T) {
 	assert.Empty(t, out.SourceKey)
 
 	assert.Equal(t, "gh:repo:42", sharing.Render(sharing.Unrestricted, obj, nil).Object.SourceKey)
+}
+
+// The ambient envelope is capture-side data: a projected metadata map
+// carries neither the fingerprint nor the client's own metadata.
+func TestRenderMetadataWithholdsAmbientEnvelope(t *testing.T) {
+	obj := &storage.KnowledgeObject{
+		ID: "obj-amb", Type: "note", Status: storage.ObjectStatusActive, SessionID: "sess_1",
+		Metadata: map[string]any{
+			"title": "T", "ambient_source": "clipboard", "fingerprint": "sha256:f",
+			"client": map[string]any{"window_title": "secret"},
+		},
+	}
+	assert.Equal(t, map[string]any{"title": "T"}, storageutil.WithoutAmbient(obj.Metadata))
+	r := sharing.Render(viewerFor(t, sharing.Policy{Name: "meta", Data: "type==note", Fields: map[string][]string{"note": {sharing.FieldMetadata}}}), obj, nil)
+	require.NotNil(t, r.Object)
+	assert.Equal(t, map[string]any{"title": "T"}, r.Object.Metadata)
+	assert.Empty(t, r.Object.SessionID)
 }

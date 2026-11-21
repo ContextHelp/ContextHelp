@@ -63,9 +63,10 @@ type AnalyzeRequest struct {
 	// ambient-capture fields the enqueue client sends (ADR-066, ADR-067).
 	// AmbientSource and Fingerprint land on the object as metadata keys
 	// MetadataAmbientSourceKey and MetadataFingerprintKey; SessionID in
-	// the objects.session_id column; Metadata merges into the object
-	// metadata without replacing a server-owned key (see
-	// storageutil.ApplyAmbient). Fingerprint dedup stays client-side.
+	// the objects.session_id column; Metadata is stored whole under the
+	// object metadata key "client" and never merged into the keys the
+	// server and pipeline steps own (see storageutil.ApplyAmbient).
+	// Fingerprint dedup stays client-side.
 	AmbientSource string         `json:"ambient_source,omitempty"`
 	Fingerprint   string         `json:"fingerprint,omitempty"`
 	SessionID     string         `json:"session_id,omitempty"`
