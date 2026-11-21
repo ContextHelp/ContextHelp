@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -275,8 +276,11 @@ func extractEmailBodies(mediaType string, params map[string]string, bodyBytes []
 		mr := multipart.NewReader(bytes.NewReader(bodyBytes), boundary)
 		for {
 			part, err := mr.NextPart()
-			if err != nil {
+			if errors.Is(err, io.EOF) {
 				break
+			}
+			if err != nil {
+				return fmt.Errorf("multipart part: %w", err)
 			}
 			partBytes, err := io.ReadAll(part)
 			// ReadAll drained the part, so Close has nothing left to read
