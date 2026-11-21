@@ -78,7 +78,7 @@ server:
   reminder_interval: 1m
   events_heartbeat: 15s
   events_retention: 168h       # event outbox retention (7 days)
-  max_analyze_bytes: 67108864  # content cap for /analyze on protected/public (64 MiB; 0 = unlimited; private: none)
+  max_analyze_bytes: 67108864  # content cap for /analyze on protected/public (64 MiB, base64 binary counts ~1.34x; 0 = unlimited; private: none)
 
 jobs:
   poll_interval: 500ms

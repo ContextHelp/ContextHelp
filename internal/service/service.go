@@ -323,6 +323,10 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 	if err := validateSubmission(req); err != nil {
 		return "", fmt.Errorf("analyze: %w", err)
 	}
+	req, err := decodeContent(req)
+	if err != nil {
+		return "", fmt.Errorf("analyze: %w", err)
+	}
 	now := time.Now().Truncate(time.Second)
 
 	// Auto-detect type if it's "text" but content looks like a URL.
@@ -978,6 +982,10 @@ func (s *Service) dedupeOnIdempotencyKey(ctx context.Context, key string) (jobID
 
 func (s *Service) Enqueue(ctx context.Context, req AnalyzeRequest) (string, error) {
 	if err := validateSubmission(req); err != nil {
+		return "", fmt.Errorf("enqueue: %w", err)
+	}
+	req, err := decodeContent(req)
+	if err != nil {
 		return "", fmt.Errorf("enqueue: %w", err)
 	}
 	now := time.Now().Truncate(time.Second)

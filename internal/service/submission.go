@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/contentenc"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -28,6 +29,26 @@ const (
 // ErrInvalidSubmission marks an analyze or enqueue request whose note or
 // data is refused. Surfaces map it to a client error (HTTP 400).
 var ErrInvalidSubmission = errors.New("invalid submission")
+
+// ErrInvalidContentEncoding marks a request whose content_encoding is
+// unknown or whose content does not decode under it. Surfaces map it to
+// a client error (HTTP 400 VALIDATION_ERROR).
+var ErrInvalidContentEncoding = errors.New("invalid content encoding")
+
+// decodeContent returns req with Content decoded under its
+// ContentEncoding, and the encoding cleared so no later layer decodes it
+// twice.
+func decodeContent(req AnalyzeRequest) (AnalyzeRequest, error) {
+	if req.ContentEncoding == "" {
+		return req, nil
+	}
+	c, err := contentenc.Decode(req.Content, req.ContentEncoding)
+	if err != nil {
+		return req, fmt.Errorf("%w: %w", ErrInvalidContentEncoding, err)
+	}
+	req.Content, req.ContentEncoding = c, ""
+	return req, nil
+}
 
 // validateSubmission checks the note, data, metadata and ambient id limits.
 func validateSubmission(req AnalyzeRequest) error {

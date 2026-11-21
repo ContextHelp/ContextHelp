@@ -11,17 +11,23 @@ import (
 
 // AnalyzeRequest represents a request to analyze content.
 type AnalyzeRequest struct {
-	Content     string `json:"content"`
-	Type        string `json:"type"`
-	Pipeline    string `json:"pipeline,omitempty"`
-	Source      string `json:"source,omitempty"`
-	KnownHash   string `json:"known_hash,omitempty"`   // pre-computed content hash; skips re-hashing
-	SourceTitle string `json:"source_title,omitempty"` // human-readable title of source (e.g. page title)
-	AuthState   string `json:"auth_state,omitempty"`   // opaque auth state token (browser extension)
-	Raw         bool   `json:"raw,omitempty"`          // skip AI enrichment; store object immediately in raw state
-	NoFanout    bool   `json:"no_fanout,omitempty"`    // skip post-ingest fan-out enrichment
-	SourceKey   string `json:"source_key,omitempty"`   // external dedup key (Slack ts, tweet ID, etc.)
-	Force       bool   `json:"force,omitempty"`        // bypass duplicate detection
+	Content string `json:"content"`
+	// ContentEncoding says how Content maps to the captured bytes: ""
+	// (UTF-8 text, as sent) or "base64" (standard encoding, for bytes
+	// that are not valid UTF-8, such as a PNG or a PDF). The service
+	// decodes it before any other use of Content, so dedup and the content
+	// hash see the decoded bytes; any other value is refused.
+	ContentEncoding string `json:"content_encoding,omitempty"`
+	Type            string `json:"type"`
+	Pipeline        string `json:"pipeline,omitempty"`
+	Source          string `json:"source,omitempty"`
+	KnownHash       string `json:"known_hash,omitempty"`   // pre-computed content hash; skips re-hashing
+	SourceTitle     string `json:"source_title,omitempty"` // human-readable title of source (e.g. page title)
+	AuthState       string `json:"auth_state,omitempty"`   // opaque auth state token (browser extension)
+	Raw             bool   `json:"raw,omitempty"`          // skip AI enrichment; store object immediately in raw state
+	NoFanout        bool   `json:"no_fanout,omitempty"`    // skip post-ingest fan-out enrichment
+	SourceKey       string `json:"source_key,omitempty"`   // external dedup key (Slack ts, tweet ID, etc.)
+	Force           bool   `json:"force,omitempty"`        // bypass duplicate detection
 	// Mentions are caller-asserted @namespace.slug strings. They
 	// are merged with auto-extracted mentions during pipeline execution and
 	// become real mention edges + thin entity rows. Caller-supplied wins on

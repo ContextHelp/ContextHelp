@@ -14,6 +14,7 @@ import (
 	"github.com/atotto/clipboard"
 	"github.com/ideacrafterslabs/ctxt/internal/cli"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
+	"github.com/ideacrafterslabs/ctxt/internal/contentenc"
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
@@ -229,8 +230,9 @@ func captureOnce(ctx context.Context, cmd *cobra.Command, args []string) error {
 	// Build request body. Server-side JSON contract uses `hints`
 	// and `mentions` arrays — both are caller-asserted user inputs that
 	// merge with auto-extracted entries during pipeline execution.
+	wireContent, contentEncoding := contentenc.Encode(content)
 	reqBody := map[string]any{
-		"content":    content,
+		"content":    wireContent,
 		"type":       contentType,
 		"pipeline":   pipeline,
 		"source":     source,
@@ -238,6 +240,9 @@ func captureOnce(ctx context.Context, cmd *cobra.Command, args []string) error {
 		"no_fanout":  noFanout,
 		"force":      noDedup,
 		"source_key": sourceKey,
+	}
+	if contentEncoding != "" {
+		reqBody["content_encoding"] = contentEncoding
 	}
 	if len(hints) > 0 {
 		reqBody["hints"] = hints
