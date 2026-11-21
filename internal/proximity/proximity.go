@@ -6,6 +6,7 @@ package proximity
 
 import (
 	"math"
+	"net/url"
 	"strings"
 	"time"
 
@@ -187,9 +188,9 @@ func OriginProximity(a, b *storage.KnowledgeObject) float64 {
 
 	// Same URL domain (for URL objects)
 	if a.Type == "url" && b.Type == "url" {
-		// A fetched page's RawContent is its body; the URL is the source.
-		domainA := extractDomain(urlOf(a))
-		domainB := extractDomain(urlOf(b))
+		// A fetched page's RawContent is its body: the host comes from its URL.
+		domainA := urlHost(a)
+		domainB := urlHost(b)
 		if domainA != "" && domainA == domainB {
 			score += 0.1
 		}
@@ -234,30 +235,28 @@ func ComputeProximity(a, b *storage.KnowledgeObject) *storage.ProximityScore {
 	}
 }
 
-// extractDomain parses a raw URL string and returns just the host component.
-// Returns empty string on failure.
-// urlOf is the URL a url object stands for: its source when that is a
-// URL, else its raw content (an unfetched capture is just the link).
-func urlOf(o *storage.KnowledgeObject) string {
-	if strings.Contains(o.Source, "://") {
-		return o.Source
-	}
-	return o.RawContent
-}
-
-func extractDomain(rawURL string) string {
-	// Find "://" separator
-	for i := 0; i < len(rawURL)-2; i++ {
-		if rawURL[i] == ':' && rawURL[i+1] == '/' && rawURL[i+2] == '/' {
-			rawURL = rawURL[i+3:]
-			// Trim to end of host
-			for j, c := range rawURL {
-				if c == '/' || c == '?' || c == '#' {
-					return rawURL[:j]
-				}
-			}
-			return rawURL
+// urlHost is the lower-cased host of the URL a url object stands for.
+// Preference: the fetcher's final URL, the browser fetcher's source
+// URL, an http(s) source, then raw content when it is just a link (an
+// unfetched capture). A fetched body is never scanned for a URL.
+func urlHost(o *storage.KnowledgeObject) string {
+	for _, k := range []string{"final_url", "source_url"} {
+		if s, _ := o.Metadata[k].(string); hostOf(s) != "" {
+			return hostOf(s)
 		}
 	}
-	return ""
+	if h := hostOf(o.Source); h != "" {
+		return h
+	}
+	return hostOf(o.RawContent)
+}
+
+// hostOf returns the lower-cased hostname of s when s, trimmed, is an
+// http(s) URL; otherwise "".
+func hostOf(s string) string {
+	u, err := url.Parse(strings.TrimSpace(s))
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return ""
+	}
+	return strings.ToLower(u.Hostname())
 }
