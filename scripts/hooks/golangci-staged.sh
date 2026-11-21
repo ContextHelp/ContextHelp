@@ -8,6 +8,11 @@
 #   2. --new-from-rev=HEAD, so only findings this commit introduces fail the
 #      hook. The full scan in CI catches anything this scope misses.
 #
+# Leading arguments that start with "--" (the hook's `args` in
+# .pre-commit-config.yaml) pass through to golangci-lint, e.g.
+# --enable-only=gosec for the security hook. The staged file
+# names follow them.
+#
 # See .pre-commit-config.yaml.
 #
 # golangci-lint is the mise.toml pin, resolved by scripts/ci/tools.sh. When
@@ -15,6 +20,12 @@
 # different version's findings are not evidence about CI, in either
 # direction.
 set -euo pipefail
+
+lint_args=()
+while [ "$#" -gt 0 ] && [[ $1 == --* ]]; do
+	lint_args+=("$1")
+	shift
+done
 
 [ "$#" -eq 0 ] && exit 0
 
@@ -61,4 +72,5 @@ pkgs=$(CGO_ENABLED=1 "$tools" go -- go list -e -tags integration,e2e,fts5,watch_
 [ -z "$pkgs" ] && exit 0
 
 # shellcheck disable=SC2086 # deliberate word-splitting of the package list
-"$tools" golangci-lint,go -- golangci-lint run --timeout=10m --new-from-rev=HEAD $pkgs
+"$tools" golangci-lint,go -- golangci-lint run --timeout=10m --new-from-rev=HEAD \
+	${lint_args[@]+"${lint_args[@]}"} $pkgs

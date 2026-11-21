@@ -16,6 +16,8 @@
 #   - gofmt / go vet   — run against the staged files (pre-commit passes them)
 #   - golangci-lint    — staged packages, filtered by --new-from-rev=HEAD so
 #                        only findings YOUR diff introduces fail the commit
+#   - go-security      — same scope, gosec only; runs even when the full
+#                        golangci-lint hook is skipped
 #
 # Net effect: a commit is checked in seconds; CI checks the whole tree.
 #
@@ -76,6 +78,18 @@ repos:
       - id: golangci-lint
         name: golangci-lint (new findings only)
         entry: scripts/hooks/golangci-staged.sh
+        language: script
+        types: [go]
+        pass_filenames: true
+        require_serial: true
+
+      # gosec alone (the CI Lint and Security jobs both fail on it), same
+      # staged scope and --new-from-rev=HEAD. Style checks stay in CI. A separate id, so
+      # SKIP=golangci-lint still runs it; skip it with SKIP=go-security.
+      - id: go-security
+        name: gosec (new findings only)
+        entry: scripts/hooks/golangci-staged.sh
+        args: [--enable-only=gosec]
         language: script
         types: [go]
         pass_filenames: true
