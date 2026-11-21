@@ -383,7 +383,7 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 		}
 	}
 
-	payload, encoding := jobPayload(req.Content)
+	payload, encoding := jobs.Payload(req.Content)
 	jobType := "ingest:" + detectedType
 	if req.NoFanout {
 		jobType += ":nofanout"
@@ -1022,7 +1022,7 @@ func (s *Service) Enqueue(ctx context.Context, req AnalyzeRequest) (string, erro
 		return "", fmt.Errorf("enqueue: %w: pipeline=%q", ErrPipelineArchived, pipelineName)
 	}
 
-	payload, encoding := jobPayload(req.Content)
+	payload, encoding := jobs.Payload(req.Content)
 	job := &storage.Job{
 		ID:              uuid.New().String(),
 		Type:            "ingest:" + req.Type,
