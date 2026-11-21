@@ -2004,6 +2004,16 @@ func (s *Service) AppendSearchHistory(ctx context.Context, query, profileID, str
 	return s.Store(ctx).SearchHistory().Append(ctx, e)
 }
 
+// RecordSearchHistory persists one executed search (US-0055). History is
+// a convenience log: a store that refuses or fails is logged and never
+// fails the search that already answered. The store is the viewer's, so the
+// entry is owned by the searching principal.
+func (s *Service) RecordSearchHistory(ctx context.Context, query, profileID, strategies string, resultCount int) {
+	if err := s.AppendSearchHistory(ctx, query, profileID, strategies, resultCount); err != nil {
+		slog.Warn("search history not recorded", "err", err)
+	}
+}
+
 // ListSearchHistory returns search history entries matching the filter.
 func (s *Service) ListSearchHistory(ctx context.Context, filter storage.SearchHistoryFilter) ([]*storage.SearchHistoryEntry, error) {
 	return s.Store(ctx).SearchHistory().List(ctx, filter)

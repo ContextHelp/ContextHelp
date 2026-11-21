@@ -24,6 +24,8 @@ func Search(svc *service.Service) http.HandlerFunc {
 			return
 		}
 
+		svc.RecordSearchHistory(r.Context(), q, r.URL.Query().Get("profile"), "fts", len(results))
+
 		WriteJSON(w, http.StatusOK, map[string]any{
 			"data":  results,
 			"total": total,

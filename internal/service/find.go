@@ -213,6 +213,9 @@ func (s *Service) Find(ctx context.Context, req FindRequest, sem retrieval.Seman
 		res.Objects = []*storage.KnowledgeObject{}
 	}
 	res.Total = len(res.Objects)
+	if !req.Trace { // a search graph's trace run is not a query the user typed
+		s.RecordSearchHistory(ctx, req.Query, req.Profile, mode, res.Total)
+	}
 
 	if req.Facets {
 		if res.Facets, err = s.FacetCounts(ctx, filter); err != nil {
