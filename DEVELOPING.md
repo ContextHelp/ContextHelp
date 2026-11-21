@@ -354,6 +354,44 @@ Run the hooks manually against your staged diff with `pre-commit run`, or
 against everything with `pre-commit run --all-files` (expect a lot of
 pre-existing findings).
 
+### Pre-push lint and security scan
+
+`make install-hooks` also installs `.githooks/pre-push`. On every push it
+runs your global pre-push hook (if any, with the same refs), then
+`make ci-lint ci-security`: the same targets, flags and pinned tools as CI's
+Lint and Security Scan jobs (full golangci-lint scan, gofmt, go vet, gosec,
+govulncheck). A push that passes locally cannot fail those jobs.
+
+Lint targets the commits being pushed, as CI does. A pushed commit that is HEAD
+with clean tracked files is linted in place (untracked files do not matter).
+Anything else (another branch, `<sha>:ref`, a dirty tree) is linted in a
+dedicated checkout at
+`${XDG_CACHE_HOME:-$HOME/.cache}/ctxt-pre-push/<repo-key>/lint-worktree`, where
+`<repo-key>` is a short hash of the clone's git dir (so clones never collide).
+It is outside the repo, so nothing tracks it, and it is reused and kept
+between pushes. Only that checkout is force-switched and cleaned; your working
+tree is never touched. A lockfile next to it serializes concurrent pushes.
+
+One-time step: mise must trust that checkout, and the hook never trusts it for
+you. The first push that needs it is blocked and prints the exact path and command:
+
+```bash
+mise trust <cache>/ctxt-pre-push/<repo-key>/lint-worktree/mise.toml
+```
+
+(plus `.config/mise.toml` if the repo has one). Trust persists across pushes.
+Until then, `SKIP_LINT=1 git push` bypasses.
+
+It is slow by design: a full scan, a few minutes, once per push rather than
+per commit. Pushes that only delete refs skip it. gosec and govulncheck
+fetch their pinned versions through the Go module proxy, so they need
+network access.
+
+On failure the push is blocked; fix the findings and re-run
+`make ci-lint ci-security` (also available as `make lint`). For an emergency,
+skip the lint once with `SKIP_LINT=1 git push`, or every hook with
+`git push --no-verify`.
+
 ### Secret scanning
 
 The pre-commit hook scans staged changes; CI's `secret-scan` job scans

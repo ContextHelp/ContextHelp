@@ -1,12 +1,187 @@
 #!/bin/sh
-# Chain to the user's global pre-push hook, if any.
+# Pre-push: chain to the user's global hook, then run CI's Lint and
+# Security Scan jobs locally (make ci-lint ci-security) so a push that
+# passes here cannot fail those jobs.
 #
 # Setting core.hooksPath to .githooks REPLACES the global hooks directory
 # rather than adding to it, so a global pre-push (e.g. an attribution guard)
-# would silently stop running. This forwards to it.
+# would silently stop running. It is run first, with the same args and refs.
+#
+# Cost: full golangci-lint scan, gosec and govulncheck; minutes, once per
+# push, per distinct pushed commit. Pushes that only delete refs skip the lint.
+# The pushed commit is what gets linted: in place when it is HEAD and the
+# tracked tree is clean, else in a reused hook-owned checkout in the user
+# cache dir (ctxt-pre-push/<repo-key>/lint-worktree). mise must trust it once; the
+# hook prints the exact command.
+#
+# Install with: make install-hooks
+# Bypass the lint once (emergencies only): SKIP_LINT=1 git push
+# Bypass every hook:                       git push --no-verify
+
+# Refs arrive on stdin, one per line:
+#   <local ref> <local sha> <remote ref> <remote sha>
+refs=$(cat)
 
 global_hooks=$(git config --global core.hooksPath 2>/dev/null)
+case $global_hooks in
+"~/"*) global_hooks="$HOME/${global_hooks#\~/}" ;;
+esac
 if [ -n "$global_hooks" ] && [ -x "$global_hooks/pre-push" ]; then
-	exec "$global_hooks/pre-push" "$@"
+	printf '%s\n' "$refs" | "$global_hooks/pre-push" "$@" || exit $?
 fi
-exit 0
+
+if [ -n "$SKIP_LINT" ]; then
+	echo "pre-push: SKIP_LINT set; skipping lint and security scan." >&2
+	exit 0
+fi
+
+# CI lints the pushed commit, so lint the pushed commits, not whatever the
+# working tree holds. Unique non-delete shas, in push order.
+shas=
+while read -r _ local_sha _ _; do
+	[ -z "$local_sha" ] && continue
+	case $local_sha in
+	*[!0]*) ;;
+	*) continue ;; # all zeros: deleting the ref
+	esac
+	case " $shas " in
+	*" $local_sha "*) ;;
+	*) shas="$shas $local_sha" ;;
+	esac
+done <<EOF2
+$refs
+EOF2
+if [ -z "$shas" ]; then
+	exit 0
+fi
+
+top=$(git rev-parse --show-toplevel) || exit 1
+common=$(git rev-parse --path-format=absolute --git-common-dir) || exit 1
+cd "$top" || exit 1
+head=$(git rev-parse HEAD 2>/dev/null)
+
+# One hook-owned checkout per clone, reused across pushes so mise's trust (a
+# per-path decision, made once by the user) persists. It lives in the user
+# cache dir, keyed by a short hash of the git dir so clones never collide:
+# never tracked, never seen by other tools. Only this checkout is ever
+# force-switched or cleaned; the working tree you push from is not touched.
+key=$( (printf '%s' "$common" | shasum -a 256 || printf '%s' "$common" | sha256sum) 2>/dev/null | cut -c1-12)
+if [ -z "$key" ]; then
+	echo "pre-push: cannot hash the git dir (need shasum or sha256sum); push blocked. Bypass: SKIP_LINT=1 git push" >&2
+	exit 1
+fi
+cache="${XDG_CACHE_HOME:-$HOME/.cache}/ctxt-pre-push/$key"
+mkdir -p "$cache" || exit 1
+lw="$cache/lint-worktree"
+lock="$cache/lint-worktree.lock"
+locked=
+
+release_lock() {
+	if [ -n "$locked" ]; then
+		rm -rf "$lock"
+		locked=
+	fi
+}
+trap release_lock EXIT
+trap 'exit 130' INT TERM HUP
+
+# mkdir is atomic; flock is not available everywhere. Wait up to ~2 minutes
+# for another push's lint to release it; a lock whose owner is gone is stale.
+acquire_lock() {
+	waited=0
+	while ! mkdir "$lock" 2>/dev/null; do
+		owner=$(cat "$lock/pid" 2>/dev/null)
+		if [ -n "$owner" ] && ! kill -0 "$owner" 2>/dev/null; then
+			rm -rf "$lock"
+			continue
+		fi
+		if [ "$waited" -ge "${PRE_PUSH_LOCK_WAIT:-120}" ]; then
+			echo "pre-push: another push is using the lint checkout ($lw) and did not finish in 2 minutes; push blocked." >&2
+			echo "Retry, remove $lock if no push is running, or bypass: SKIP_LINT=1 git push" >&2
+			exit 1
+		fi
+		[ "$waited" -eq 0 ] && echo "pre-push: waiting for another push's lint to finish..." >&2
+		sleep 1
+		waited=$((waited + 1))
+	done
+	echo $$ >"$lock/pid"
+	locked=1
+}
+
+fail() {
+	echo "" >&2
+	echo "pre-push: lint/security checks failed for $1; push blocked." >&2
+	echo "Fix the findings, re-run: make ci-lint ci-security" >&2
+	echo "Emergency bypass: SKIP_LINT=1 git push" >&2
+	exit 1
+}
+
+# Put the lint checkout at $1: create it, or switch the existing one.
+prepare_lint_worktree() {
+	(
+		unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
+		if [ -e "$lw/.git" ]; then
+			git -C "$lw" checkout -q --detach --force "$1" && git -C "$lw" clean -qfdx
+		else
+			git worktree prune
+			git worktree add -q --detach "$lw" "$1"
+		fi
+	)
+}
+
+# mise refuses untrusted config; trust is the user's decision, never ours.
+check_trust() {
+	command -v mise >/dev/null 2>&1 || return 0
+	untrusted=
+	real=$(cd "$lw" && pwd -P)
+	# Prints one "<dir>: trusted|untrusted" line per config dir in effect
+	# (~ abbreviates $HOME). Only the checkout's own dirs count; parents
+	# are not ours to trust. Run without a file argument: with one, mise
+	# reports nothing for an untrusted file.
+	lines=$(cd "$lw" && mise trust --show 2>/dev/null)
+	while IFS= read -r line; do
+		case $line in
+		*": untrusted") ;;
+		*) continue ;;
+		esac
+		d=${line%: untrusted}
+		case $d in
+		"~/"*) d="$HOME/${d#\~/}" ;;
+		esac
+		case $d in
+		"$lw" | "$real") [ -f "$lw/mise.toml" ] && untrusted="$untrusted $lw/mise.toml" ;;
+		"$lw/.config" | "$real/.config") [ -f "$lw/.config/mise.toml" ] && untrusted="$untrusted $lw/.config/mise.toml" ;;
+		esac
+	done <<EOF3
+$lines
+EOF3
+	[ -z "$untrusted" ] && return 0
+	echo "" >&2
+	echo "pre-push: the lint checkout's mise config is not trusted; push blocked." >&2
+	echo "Trust it once (it is reused for every push):" >&2
+	for f in $untrusted; do
+		echo "  mise trust $f" >&2
+	done
+	echo "Or bypass: SKIP_LINT=1 git push" >&2
+	return 1
+}
+
+for sha in $shas; do
+	if [ "$sha" = "$head" ] && git diff --quiet && git diff --cached --quiet; then
+		echo "pre-push: running make ci-lint ci-security on $sha (SKIP_LINT=1 to bypass)..." >&2
+		make ci-lint ci-security || fail "$sha"
+	else
+		echo "pre-push: running make ci-lint ci-security on a clean checkout of $sha in $lw (SKIP_LINT=1 to bypass)..." >&2
+		acquire_lock
+		prepare_lint_worktree "$sha" || {
+			echo "pre-push: cannot check out $sha in $lw; push blocked." >&2
+			echo "Bypass: SKIP_LINT=1 git push" >&2
+			exit 1
+		}
+		check_trust || exit 1
+		if ! (cd "$lw" && unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE && make ci-lint ci-security); then
+			fail "$sha"
+		fi
+		release_lock
+	fi
+done

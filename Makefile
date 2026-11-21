@@ -231,14 +231,13 @@ goreleaser-check:
 		exit $$s; \
 	fi
 
-## lint: Run linters (golangci-lint full scan + gosec), pinned versions
+## lint: Run what CI's Lint and Security Scan jobs run (ci-lint + ci-security)
 ##
-## The full scan is the blocking gate in CI (make ci-lint-full); the tree is
-## at zero findings at the pinned version. make lint-new narrows it to your
+## Same targets, flags and pins as CI, so a pass here is a pass there: the
+## full golangci-lint scan, gofmt, go vet, gosec and govulncheck. The
+## pre-push hook runs this. make lint-new narrows golangci-lint to your
 ## branch for a faster loop.
-lint: gosec
-	@echo "Running linters..."
-	$(GOLANGCI) run
+lint: ci-lint ci-security
 
 ## gosec: Run gosec static security analysis (fails on medium+ severity)
 ##
@@ -437,8 +436,9 @@ security-scan: install-gitleaks
 
 ## install-hooks: Point git at the repo's .githooks directory
 ##
-## Installs a pre-commit gitleaks scan. The pre-push hook chains to the
-## user's global one, since core.hooksPath replaces rather than extends.
+## Installs a pre-commit gitleaks scan and a pre-push hook that chains to
+## the user's global one (core.hooksPath replaces rather than extends), then
+## runs make ci-lint ci-security. SKIP_LINT=1 skips the lint once.
 install-hooks:
 	@echo "Installing git hooks..."
 	@git config core.hooksPath .githooks
@@ -446,7 +446,8 @@ install-hooks:
 	@echo "✓ hooks installed (core.hooksPath -> .githooks)"
 	@echo "  pre-commit: gitleaks secret scan, then the lint gate"
 	@echo "              (.pre-commit-config.yaml, scoped to staged files)"
-	@echo "  pre-push:   chains to your global pre-push hook, if any"
+	@echo "  pre-push:   chains to your global pre-push hook, if any, then"
+	@echo "              make ci-lint ci-security (SKIP_LINT=1 to bypass)"
 	@command -v gitleaks >/dev/null 2>&1 || echo "  NOTE: gitleaks not installed; run 'make install-gitleaks'"
 	@command -v pre-commit >/dev/null 2>&1 \
 		&& pre-commit install-hooks \
