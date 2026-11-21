@@ -27,6 +27,8 @@ func (d *TypeDetector) Name() string { return "typedetect" }
 func (d *TypeDetector) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
 	content := strings.TrimSpace(draft.RawContent)
 
+	// Only a blank or text type is derived from the content: a type the
+	// submitter or an earlier step set (url, image, repo) is kept.
 	if draft.Type == "" || draft.Type == taxonomy.TypeText {
 		if strings.HasPrefix(content, "http://") || strings.HasPrefix(content, "https://") {
 			draft.Type = taxonomy.TypeURL

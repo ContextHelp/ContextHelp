@@ -339,7 +339,7 @@ func TestCaptureTabs_SendsAllowedToConfiguredServerWithToken(t *testing.T) {
 		}
 		// Same request shape `ctxt capture <url>` sends: the URL as
 		// content and source, no pipeline, server-side detection.
-		if r.Body.Source != r.Body.Content || r.Body.Pipeline != "" || r.Body.Type != "text" {
+		if r.Body.Source != r.Body.Content || r.Body.Pipeline != "" || r.Body.Type != "url" {
 			t.Errorf("request shape = %+v", r.Body)
 		}
 	}

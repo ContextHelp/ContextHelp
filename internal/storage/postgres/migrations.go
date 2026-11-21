@@ -443,6 +443,17 @@ var pgMigrations = []pgMigration{
 		`ALTER TABLE objects ADD COLUMN IF NOT EXISTS session_id TEXT`,
 		`CREATE INDEX IF NOT EXISTS idx_objects_session ON objects (session_id) WHERE session_id IS NOT NULL`,
 	}},
+	// URL captures are type "url" (mirrors SQLite migration 059). Objects
+	// a url.* pipeline fetched from an http(s) source were stored as
+	// "text"; type is in no FTS or vector index, so nothing re-projects.
+	// Re-runnable: a second run matches no row.
+	{Version: 40, Name: "url captures typed url", Statements: []string{
+		`UPDATE objects SET type = 'url'
+			WHERE type = 'text'
+			  AND pipeline LIKE 'url.%'
+			  AND pipeline NOT LIKE 'url.repo%'
+			  AND LOWER(source) LIKE 'http%'`,
+	}},
 }
 
 // sharingRegistryStatements create the sharing registry and add the

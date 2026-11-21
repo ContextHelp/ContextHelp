@@ -49,3 +49,26 @@ func TestDetectLongText(t *testing.T) {
 		t.Errorf("Subtype: got %q, want long", got.Subtype)
 	}
 }
+
+func TestDetectKeepsPresetNonTextType(t *testing.T) {
+	for _, preset := range []string{"url", "image", "repo"} {
+		draft := &storage.KnowledgeObject{Type: preset, RawContent: "fetched page body, not a link"}
+		got, err := NewTypeDetector().Run(context.Background(), draft)
+		if err != nil {
+			t.Fatalf("run: %v", err)
+		}
+		if got.Type != preset {
+			t.Errorf("preset %q: Type = %q, want kept", preset, got.Type)
+		}
+	}
+}
+
+func TestDetectEmptyTypeStillDetected(t *testing.T) {
+	got, err := NewTypeDetector().Run(context.Background(), &storage.KnowledgeObject{RawContent: "plain words"})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if got.Type != "text" {
+		t.Errorf("Type = %q, want text", got.Type)
+	}
+}
