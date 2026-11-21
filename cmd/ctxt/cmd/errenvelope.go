@@ -69,7 +69,7 @@ func alreadyRendered(err error) bool {
 		if t == nil {
 			continue
 		}
-		if t.Kind() == reflect.Ptr {
+		if t.Kind() == reflect.Pointer {
 			t = t.Elem()
 		}
 		if t.PkgPath() == kitCLIPkgPath && t.Name() == kitRenderedMarkerType {

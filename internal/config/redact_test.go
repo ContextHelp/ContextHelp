@@ -72,7 +72,7 @@ func walkConfigFields(fn func(path string, f reflect.StructField)) {
 	seen := map[reflect.Type]bool{}
 	var walk func(t reflect.Type, path string)
 	walk = func(t reflect.Type, path string) {
-		for t.Kind() == reflect.Ptr || t.Kind() == reflect.Slice || t.Kind() == reflect.Map {
+		for t.Kind() == reflect.Pointer || t.Kind() == reflect.Slice || t.Kind() == reflect.Map {
 			t = t.Elem()
 		}
 		if t.Kind() != reflect.Struct || seen[t] {
@@ -153,7 +153,7 @@ func containsAny(s string, subs []string) bool {
 // a fresh value.
 func populate(v reflect.Value, path, tag string) {
 	switch v.Kind() {
-	case reflect.Ptr:
+	case reflect.Pointer:
 		v.Set(reflect.New(v.Type().Elem()))
 		populate(v.Elem(), path, tag)
 	case reflect.Struct:

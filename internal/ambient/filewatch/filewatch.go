@@ -296,6 +296,9 @@ func (s *Source) processPath(ctx context.Context, path string) {
 	}
 }
 
+// pipelineTextLong is the suggested pipeline for text and format-detected files.
+const pipelineTextLong = "text.long"
+
 // routeByExtension returns (pipeline, kind) for path's extension. Unknown
 // extensions route to text.long with KindFile so the pipeline-side router
 // can defer to format detection.
@@ -303,9 +306,9 @@ func routeByExtension(path string) (string, ambient.Kind) {
 	ext := strings.ToLower(filepath.Ext(path))
 	switch ext {
 	case ".md", ".txt", ".markdown":
-		return "text.long", ambient.KindText
+		return pipelineTextLong, ambient.KindText
 	case ".pdf":
-		return "text.long", ambient.KindFile
+		return pipelineTextLong, ambient.KindFile
 	case ".png", ".jpg", ".jpeg", ".heic", ".webp":
 		return "image.ocr", ambient.KindImage
 	case ".mp3", ".wav", ".m4a", ".flac", ".ogg", ".oga":
@@ -313,7 +316,7 @@ func routeByExtension(path string) (string, ambient.Kind) {
 	case ".mp4", ".mov", ".webm", ".mkv", ".avi":
 		return "video.full", ambient.KindFile
 	default:
-		return "text.long", ambient.KindFile
+		return pipelineTextLong, ambient.KindFile
 	}
 }
 
