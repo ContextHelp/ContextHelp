@@ -24,6 +24,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -284,6 +285,29 @@ func TestMCP_AllToolsListed(t *testing.T) {
 	for _, want := range []string{"schema", "search"} {
 		if !names[want] {
 			t.Errorf("missing tool %q", want)
+		}
+	}
+	// The cassette must carry the current search tool, word for word: the
+	// schema and the description. Re-record it (see the file header) when
+	// either changes.
+	for _, x := range tools {
+		tool := x.(map[string]any)
+		if tool["name"] != "search" {
+			continue
+		}
+		var want map[string]any
+		raw, err := json.Marshal((&mcp.SearchTool{}).InputSchema())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(raw, &want); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(tool["inputSchema"], want) {
+			t.Errorf("tools_list cassette is stale: its search inputSchema differs from mcp.SearchTool.InputSchema(); re-record it")
+		}
+		if tool["description"] != (&mcp.SearchTool{}).Description() {
+			t.Errorf("tools_list cassette is stale: its search description differs from mcp.SearchTool.Description(); re-record it")
 		}
 	}
 }
