@@ -3,10 +3,8 @@ package integration
 // US-0003: Image OCR ingestion.
 //
 // Drives the real image.ocr pipeline (filereader, formatdetector,
-// ocr_extractor, textcleaner) over image files on disk. The only stand-in is
-// the OCR provider boundary (fakeOCR): the builtin registry treats the stub
-// provider as unavailable, and no real OCR engine runs in tests, so the real
-// steps are composed under the image.ocr name with a fake provider.
+// ocr_extractor, textcleaner, tagger, embedding) over image files. The only
+// stand-in is the OCR engine (fakeOCR, injected through BuildOpts.OCR).
 
 import (
 	"bytes"
@@ -24,8 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
-	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
-	"github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/retrieval"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
@@ -49,21 +46,11 @@ func (f *fakeOCR) Extract(_ context.Context, _ []byte, _ string) (*providers.OCR
 
 const stubOCRText = "invoice total forty two euros"
 
-// startOCREnv is a test env with image.ocr registered from the real steps
-// and the given provider.
+// startOCREnv is a test env whose builtin image.ocr pipeline runs the
+// given provider.
 func startOCREnv(t *testing.T, ocr providers.OCRProvider) *testEnv {
 	t.Helper()
-	env := startTestEnv(t)
-	env.svc.Pipes.Upsert("image.ocr", &pipeline.Pipeline{
-		PipelineName: "image.ocr",
-		Steps: []pipeline.PipelineStep{
-			steps.NewFileReader(),
-			steps.NewFormatDetector(),
-			steps.NewOCRExtractor(steps.WithOCRProvider(ocr)),
-			steps.NewTextCleaner(),
-		},
-	})
-	return env
+	return startTestEnvWith(t, func(o *builtins.BuildOpts) { o.OCR = ocr })
 }
 
 // writeImage writes a real PNG's bytes under dir with the given file name
@@ -237,4 +224,19 @@ func TestUS0003_OCRProviderErrorFailsJob(t *testing.T) {
 	path := writeImage(t, "scan.png")
 	job := waitForJob(t, env.URL, analyzeFile(t, env, path), storage.JobFailed)
 	assert.Contains(t, job.Error, "engine crashed")
+}
+
+// File-size limit: unbuilt through the pipeline. /analyze stores Content as
+// the draft's raw content, so the file reader never opens Source and its
+// limit is unreachable here.
+func TestUS0003_FileSizeLimitEnforced(t *testing.T) {
+	t.Skip("unbuilt: analyze fills RawContent, so FileReader never reads Source; its size limit is unreachable via the pipeline")
+}
+
+func TestUS0003_GIFFirstFrameOnly(t *testing.T) {
+	t.Skip("unbuilt: no step extracts the first GIF frame")
+}
+
+func TestUS0003_OCRProviderConfigurable(t *testing.T) {
+	t.Skip("unbuilt: provider choice is covered at factory level; no per-request provider selection")
 }

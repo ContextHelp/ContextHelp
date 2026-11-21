@@ -145,12 +145,12 @@ watch:
 	time.Sleep(500 * time.Millisecond)
 
 	// THE REPRO: create a subdir AFTER the watcher started and drop a file in.
-	sub := filepath.Join(watchedDir, "bgroup", "wechalet", "bankruptcy")
+	sub := filepath.Join(watchedDir, "bgroup", "acme", "renewal")
 	require.NoError(t, os.MkdirAll(sub, 0o755))
 
-	const needle = "wechalet-bankruptcy-marker-subdir"
+	const needle = "acme-renewal-marker-subdir"
 	require.NoError(t, os.WriteFile(
-		filepath.Join(sub, "call-2026-05-04-jonathan-roy.md"),
+		filepath.Join(sub, "call-2026-05-04-jane-doe.md"),
 		[]byte("# Note\n\n"+needle+" body\n"),
 		0o644,
 	))
