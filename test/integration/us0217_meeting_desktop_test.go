@@ -21,71 +21,60 @@ import (
 )
 
 func TestMeeting_AudioOnly_macOS(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: macOS recorder (ScreenCaptureKit Swift bridge " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: macOS recorder (ScreenCaptureKit Swift bridge " +
 		"follow-up). Substrate state machine is unit-tested with fakeRecorder")
 }
 
 func TestMeeting_Full_macOS(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: macOS recorder full-mode (ScreenCaptureKit audio + window — " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: macOS recorder full-mode (ScreenCaptureKit audio + window — " +
 		"follow-up)")
 }
 
 func TestMeeting_Full_Windows(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: Windows recorder (WASAPI loopback + Graphics Capture + " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: Windows recorder (WASAPI loopback + Graphics Capture + " +
 		"Media Foundation C++ bridge follow-up)")
 }
 
 func TestMeeting_Full_LinuxWayland(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: Linux recorder (xdg-desktop-portal + PipeWire + gstreamer — " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: Linux recorder (xdg-desktop-portal + PipeWire + gstreamer — " +
 		"follow-up)")
 }
 
 func TestMeeting_Full_LinuxX11Fallback(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: Linux X11 recorder (XComposite + XDamage second-class " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: Linux X11 recorder (XComposite + XDamage second-class " +
 		"fallback)")
 }
 
 func TestMeeting_HotkeyTrigger(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: global hotkey listener registration (per OS); CLI Trigger " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: global hotkey listener registration (per OS); CLI Trigger " +
 		"path is unit-tested via TestSource_TriggerStartsRecording")
 }
 
 func TestMeeting_RecordingIndicatorMandatory(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: indicator UI implementation per OS (menubar pulse on " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: indicator UI implementation per OS (menubar pulse on " +
 		"macOS / tray on Windows / portal-mediated on Linux); substrate emits " +
 		"ctxt.ambient.meeting.indicator_displayed which is unit-tested")
 }
 
 func TestMeeting_CELVetoBeforePermission(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: kit/policy CEL rule wiring at ctxt.ambient.meeting.requested " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: kit/policy CEL rule wiring at ctxt.ambient.meeting.requested " +
 		"(must fire before recorder.Start which would surface OS permission prompt)")
 }
 
 func TestMeeting_DeviceChangeMidRecording(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: per-OS recorder must hook AVCaptureSession (macOS) / " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: per-OS recorder must hook AVCaptureSession (macOS) / " +
 		"AudioDeviceChange (Windows) / PipeWire device-change events to fire " +
 		"ctxt.ambient.meeting.device_changed (substrate emits the topic)")
 }
 
 func TestMeeting_RetentionEviction(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: E2E harness — retention is unit-tested in " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: E2E harness — retention is unit-tested in " +
 		"TestRetention_TTLEvictsOldFiles; E2E verifies a real meeting recording " +
 		"is evicted after media_retention_hours")
 }
 
 func TestMeeting_S3Archive(t *testing.T) {
-	skipUnlessE2E(t)
-	t.Skip("pending: meeting/retention.go S3 archive hook is stubbed; needs " +
+	t.Skip("unbuilt (no binary constructs ambient.Runner; ctxt capture --ambient unimplemented): pending: meeting/retention.go S3 archive hook is stubbed; needs " +
 		"wiring to internal/ambient/buffer/s3 (currently s3 buffer is for events, " +
 		"not media files — needs a separate kit/blob.Store for media)")
 }

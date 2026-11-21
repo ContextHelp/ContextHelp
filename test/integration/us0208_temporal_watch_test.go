@@ -5,7 +5,6 @@ package integration
 // Verifies: configure watch on mock URL, trigger mock content change,
 // new version ingested and delta recorded.
 // All external HTTP calls use httptest.NewServer — no real network.
-// Gate: INTEGRATION=1 env var required.
 
 import (
 	"context"
@@ -13,7 +12,6 @@ import (
 	"fmt"
 	gohttp "net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -89,10 +87,6 @@ func (s *changeDeltaStep) Run(_ context.Context, draft *storage.KnowledgeObject)
 // TestUS0208_InitialSnapshotIngested verifies the first watch capture stores a
 // snapshot with content hash.
 func TestUS0208_InitialSnapshotIngested(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
-
 	const contentHash = "sha256:abc123"
 
 	srv := httptest.NewServer(gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
@@ -143,10 +137,6 @@ func TestUS0208_InitialSnapshotIngested(t *testing.T) {
 // TestUS0208_ChangeDetectedOnNewVersion verifies that when the content changes,
 // the delta step records the change and stores the new version.
 func TestUS0208_ChangeDetectedOnNewVersion(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
-
 	const v1Hash = "sha256:abc111"
 	const v2Hash = "sha256:def222"
 
@@ -230,10 +220,6 @@ func TestUS0208_ChangeDetectedOnNewVersion(t *testing.T) {
 // TestUS0208_NoChangeWhenContentIdentical verifies that unchanged content is
 // detected as not changed.
 func TestUS0208_NoChangeWhenContentIdentical(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
-
 	const stableHash = "sha256:stable999"
 
 	srv := httptest.NewServer(gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {

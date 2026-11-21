@@ -11,10 +11,9 @@ package integration
 // contacted. See xrr_capture_helpers_test.go for what the cassettes do
 // and do not prove.
 //
-// Re-record: INTEGRATION=1 XRR_MODE=record go test -count=1 \
+// Re-record: XRR_MODE=record go test -count=1 \
 //   ./test/integration/ -run TestUS0203
 //
-// Gate: INTEGRATION=1 env var required.
 
 import (
 	"context"
@@ -23,7 +22,6 @@ import (
 	"fmt"
 	gohttp "net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -241,10 +239,6 @@ func TestUS0203_RecordCassettes(t *testing.T) {
 // TestUS0203_TitleAbstractAuthorsStored verifies title, abstract, authors, and
 // PDF URL are stored on the captured KnowledgeObject.
 func TestUS0203_TitleAbstractAuthorsStored(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
-
 	const arxivID = arxivPaperID
 	const wantTitle = arxivPaperTitle
 	const wantAbstract = arxivPaperAbstract
@@ -305,10 +299,6 @@ func TestUS0203_TitleAbstractAuthorsStored(t *testing.T) {
 
 // TestUS0203_ArxivIDStoredInMetadata verifies arxiv_id is stored for reference.
 func TestUS0203_ArxivIDStoredInMetadata(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
-
 	const arxivID = arxivIDOnlyPaperID
 
 	srv := httptest.NewServer(arxivAtomHandler(arxivIDOnlyFeed()))
@@ -352,10 +342,6 @@ func TestUS0203_ArxivIDStoredInMetadata(t *testing.T) {
 
 // TestUS0203_CaptureIsAsync verifies the arXiv capture returns job_id immediately.
 func TestUS0203_CaptureIsAsync(t *testing.T) {
-	if os.Getenv("INTEGRATION") == "" {
-		t.Skip("set INTEGRATION=1")
-	}
-
 	srv := httptest.NewServer(arxivAtomHandler(arxivAsyncFeed()))
 	defer srv.Close()
 
