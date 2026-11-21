@@ -94,9 +94,14 @@ Every `/api/v1` route and gRPC method requires one scope. A role is a fixed bund
 
 | Role | Scopes |
 |---|---|
-| `admin` | every scope except `signout:ui`. The entity entitlement and metering gate still applies: only the instance owner skips it |
+| `admin` | every scope except `signout:ui` and the approval scopes (`request:steward`, `approve:steward`, `approve:shares`). The entity entitlement and metering gate still applies: only the instance owner skips it |
 | `writer` | every `read:*` and `write:*` scope |
 | `reader` | every `read:*` scope |
+| `steward-requester` | `request:steward` |
+| `steward-approver` | `approve:steward` |
+| `share-approver` | `approve:shares` |
+
+The three approval roles (`steward-requester`, `steward-approver`, `share-approver`) are held beside a verb role and grant one scope each, plus `write:self`. No other role holds their scopes, `admin` included. Administering an instance is not access to its data (ADR-082). Nothing yielded over the API holds more than the caller who asked for it, so only the owner, which holds `admin` and all three approval roles, can give a principal one.
 
 `read:ui` (mint a web UI sign-in link) is a read scope, so every role holds it; a browser session never does, so a session cannot mint another. `signout:ui` (end your own browser session) belongs to browser sessions only: no role holds it.
 
@@ -111,7 +116,7 @@ A principal needs at least one known role; an unknown role on a declared key fai
 | `read:jobs` | reader, writer, admin | `GET` jobs, `import/{id}`, `importers/runs/{id}`, `capture/recent`; gRPC `JobService/*` |
 | `read:registries` | reader, writer, admin | `GET /steps/registries` |
 | `read:system` | reader, writer, admin | `GET /whoami`, `GET /system/reminders`; gRPC reflection |
-| `write:self` | reader, writer, admin; browser sessions | a principal's own credentials (`ctxt auth`): `GET`, `POST /self/keys`, `DELETE /self/keys/{key}`, `GET /self/identities`, `DELETE /self/identities/{identity}`, `GET /self/sessions`, `DELETE /self/sessions/{session}`, `PUT /self/keys/{key}/policy` (bind one's own key to a share policy); a target that is another principal's is 403 `NOT_SELF` |
+| `write:self` | reader, writer, admin; browser sessions | a principal's own credentials (`ctxt auth`): `GET`, `POST /self/keys`, `DELETE /self/keys/{key}`, `GET /self/identities`, `DELETE /self/identities/{identity}`, `GET /self/sessions`, `DELETE /self/sessions/{session}`, `PUT /self/keys/{key}/policy` (bind one's own key to a share policy); a target that is another principal's is 403 `NOT_SELF`; the approval queue (`ctxt approval`): `GET /approvals`, `GET`, `DELETE /approvals/{id}`, `POST /approvals/{id}/approve`, `/reject`; who sees and decides a request is the request's own rule (see the Approvals section of `docs/api/api-rest.md`) |
 | `read:pipelines` | reader, writer, admin | `GET` pipelines and steps |
 | `read:watches` | reader, writer, admin | `GET` watches and watch files |
 | `write:objects` | writer, admin | `POST /analyze`, `capture/*`, `import`, `importers/*/run`, `pipelines/enqueue`, `aliases`, `saved-searches`, suggestion approve and reject, `entities/{slug}/pull`; `PATCH /objects/{id}`, `POST /objects/{id}/reprocess`, `POST /edges`; gRPC `AnalyzeService/Analyze` |
@@ -135,6 +140,9 @@ A principal needs at least one known role; an unknown role on a declared key fai
 | `admin:shares` | admin; an admin's browser session | the sharing registry (`ctxt share`): `POST /share/invites` (with `audience`; the owner only); `GET`, `POST /share/audiences`, `GET /share/audiences/{audience}`, `PUT`, `DELETE /share/audiences/{audience}/members/{principal}`; `GET`, `POST /share/policies`, `GET`, `PUT /share/policies/{policy}`; `GET /share/templates`, `POST /share/templates/{name}`; `GET`, `POST /share/grants`, `DELETE /share/grants/{grant}`; `GET`, `PUT /principals/{id}/ceiling`; `PUT /share/keys/{key}/policy`. Only the `admin` role holds it, and an admin's browser session does too: the Sharing page |
 | `read:ui` | reader, writer, admin; never a browser session | `POST /ui/login-codes` (`ctxt ui open`) |
 | `signout:ui` | browser sessions only | `DELETE /ui/session` |
+| `request:steward` | steward-requester; the owner | reserved for steward grant requests; no route checks it yet |
+| `approve:steward` | steward-approver; the owner | approves steward grant requests, once that kind of request exists |
+| `approve:shares` | share-approver; the owner | approves the sharing changes that widen a view when an admin other than the owner files them, once that kind of request exists |
 
 `POST /api/v1/federation/push` needs `write:objects` and, on non-private instances, the key of a principal of kind `peer`; any other principal gets 403 `PEER_REQUIRED`. `/health`, `/healthz` and gRPC health are open.
 
@@ -296,11 +304,13 @@ server:
 - **Scopes**: the key's scopes narrowed to the web UI's set: `read:objects`,
   `read:inbox`, `read:feeds`, `read:jobs`, `read:registries`,
   `read:system`, `delete:objects`, `write:jobs`, `write:self`,
-  `admin:shares`, plus `signout:ui`, which only sessions hold. Apart from
+  `admin:shares`, the approval scopes `request:steward`,
+  `approve:steward` and `approve:shares`, plus `signout:ui`, which only
+  sessions hold. Apart from
   signing itself out, a session never holds a scope its key lacks. A
   reader's session only reads and manages its own credentials. A
-  writer's may also retry jobs. An admin's gets the whole set and nothing
-  more: `admin:shares` is the one admin scope in the set, so the owner
+  writer's may also retry jobs. An admin gets the whole set except the
+  approval scopes; the owner gets all of it. `admin:shares` is the one admin scope in the set, so the owner
   manages sharing from the web UI's Sharing page while a reader's or
   writer's session never holds it. A session never holds
   `read:ui`, so it cannot mint sign-in links. Every other route

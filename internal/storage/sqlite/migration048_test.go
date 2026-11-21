@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -33,9 +34,15 @@ func assertAuthRegistry(t *testing.T, d *Driver) {
 	if err != nil {
 		t.Fatalf("Get(owner): %v", err)
 	}
+	// Migration 060 gives the seeded owner the approval roles beside
+	// admin.
+	want, err := storage.ParseRolesJSON(ownerRolesJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if owner.Kind != storage.PrincipalKindOwner || owner.Status != storage.PrincipalActive ||
-		owner.DisplayName != "Owner" || len(owner.Roles) != 1 || owner.Roles[0] != "admin" {
-		t.Errorf("owner = %+v, want kind owner, active, display name Owner, roles [admin]", owner)
+		owner.DisplayName != "Owner" || !slices.Equal(owner.Roles, want) {
+		t.Errorf("owner = %+v, want kind owner, active, display name Owner, roles %v", owner, want)
 	}
 }
 

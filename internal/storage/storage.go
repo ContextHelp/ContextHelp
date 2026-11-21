@@ -116,6 +116,9 @@ type StorageDriver interface {
 	// Sharing is the sharing registry (ADR-080): audiences, share
 	// policies, grants, ceilings, key bindings and the read audit.
 	Sharing() SharingStore
+	// Approvals is the approval mechanism's store (ADR-082 §9):
+	// requests and their decisions.
+	Approvals() ApprovalStore
 	Health(ctx context.Context) error
 }
 

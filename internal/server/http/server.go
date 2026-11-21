@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/ideacrafterslabs/ctxt/internal/approval"
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/mcp"
 	"github.com/ideacrafterslabs/ctxt/internal/registry"
@@ -109,6 +110,9 @@ type RouterConfig struct {
 	// or the routes refuse every call.
 	AccessPrincipal string
 	AccessScope     string
+	// Approvals is the shared approval mechanism (ADR-082 §9) the
+	// /approvals routes serve. nil = those routes answer 404.
+	Approvals *approval.Service
 }
 
 // NewRouter creates the HTTP router with all routes and middleware.

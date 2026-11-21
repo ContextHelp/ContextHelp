@@ -60,3 +60,19 @@ func (d *Driver) ReplayAccessReceiptForTest(ctx context.Context) error {
 	}
 	return nil
 }
+
+// ReplayStatementsForTest re-runs the statements of migration version
+// on a database that already has it, pinning that a replay is a no-op.
+func (d *Driver) ReplayStatementsForTest(ctx context.Context, version int) error {
+	for _, m := range pgMigrations {
+		if m.Version != version {
+			continue
+		}
+		for _, stmt := range m.Statements {
+			if _, err := d.db.ExecContext(ctx, stmt); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}

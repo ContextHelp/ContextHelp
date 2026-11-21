@@ -175,6 +175,7 @@ Core endpoints:
 - `GET|POST /share/policies`, `GET|PUT /share/policies/{policy}`, `GET /share/templates`, `POST /share/templates/{name}`
 - `GET|POST /share/grants`, `DELETE /share/grants/{grant}`, `GET|PUT /principals/{id}/ceiling`, `PUT /share/keys/{key}/policy`
 - `GET|POST /self/keys`, `DELETE /self/keys/{key}`, `PUT /self/keys/{key}/policy`, `GET /self/identities`, `DELETE /self/identities/{identity}`, `GET /self/sessions`, `DELETE /self/sessions/{session}`
+- `GET /approvals`, `GET|DELETE /approvals/{id}`, `POST /approvals/{id}/approve`, `POST /approvals/{id}/reject`
 
 ---
 
@@ -1078,6 +1079,25 @@ Get registry details and capabilities.
 ### `GET /suggest/tags`
 
 ### `GET /suggest/mentions`
+
+---
+
+## Approvals
+
+Some changes take effect only once someone other than the person who asked accepts them (ADR-082 §9). Each one is a request on the approval queue: who filed it, a reason, the operation frozen with a digest, how many approvals it needs and when it expires (`approvals.pending_ttl`, 72 hours by default). No kind of request is registered yet, so the queue stays empty until the features that file requests land.
+
+Every route below takes `write:self`, which every role and every browser session holds. Who may see or decide a request is the request's own rule: its requester, its subject, the eligible approvers of its kind, and the owner. A request you may not see answers `404`, the same as one that does not exist.
+
+- `GET /approvals?kind=&state=&limit=`: the requests you filed, are the subject of, or may decide (the owner sees all of them), newest first. `state` is one of `requested`, `approved`, `rejected`, `withdrawn`, `stale` or `expired`; `limit` is 1 to 500. Each record carries `state`, `approvals`, `approvals_required`, `payload`, `payload_digest`, `decisions` and `can_decide`.
+- `GET /approvals/{id}`: one request.
+- `POST /approvals/{id}/approve` and `POST /approvals/{id}/reject`, body `{"payload_digest": "...", "note": "..."}`: send the digest of the payload you reviewed; a different one is refused. The requester, the subject and anyone the change benefits cannot decide, and each person decides once. The last approval applies the change and answers with `state: approved`; if what the request was filed against changed in the meantime, it ends `stale` instead and nothing is applied. One rejection rejects the request.
+- `DELETE /approvals/{id}`: the requester or the owner withdraws a pending request.
+
+| Status | Code | When |
+|---|---|---|
+| 400 | `INVALID_REQUEST`, `INVALID_PARAM` | No `payload_digest`, or a bad list parameter |
+| 403 | `REQUESTER_CANNOT_DECIDE`, `BENEFICIARY_CANNOT_DECIDE`, `APPROVER_NOT_ELIGIBLE`, `NOT_REQUESTER` | The caller may not take that action on this request |
+| 409 | `APPROVAL_CLOSED`, `APPROVAL_EXPIRED`, `APPROVAL_STALE`, `ALREADY_DECIDED`, `DIGEST_MISMATCH` | The request is no longer pending, or the decision does not match it |
 
 ---
 

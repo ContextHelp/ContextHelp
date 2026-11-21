@@ -350,6 +350,11 @@ var uiSessionRouteSet = []string{
 	"GET /api/v1/share/grants", "POST /api/v1/share/grants", "DELETE /api/v1/share/grants/{grant}",
 	"GET /api/v1/principals/{id}/ceiling", "PUT /api/v1/principals/{id}/ceiling",
 	"PUT /api/v1/share/keys/{key}/policy",
+	// write:self: the approval queue (ADR-082 §9); stewards and
+	// approvers act from a browser.
+	"GET /api/v1/approvals", "GET /api/v1/approvals/{id}",
+	"POST /api/v1/approvals/{id}/approve", "POST /api/v1/approvals/{id}/reject",
+	"DELETE /api/v1/approvals/{id}",
 }
 
 // The ui scope set, applied to the route table, yields exactly the web

@@ -131,6 +131,8 @@ type Config struct {
 
 	// GitHub configures the REST client behind the url.github.* pipelines.
 	GitHub GitHubConfig `mapstructure:"github" yaml:"github"`
+	// Approvals configures the shared approval mechanism (ADR-082 §9).
+	Approvals ApprovalsConfig `mapstructure:"approvals" yaml:"approvals"`
 }
 
 // GitHub client defaults.
@@ -1018,10 +1020,10 @@ func (k AuthKeyConfig) ExpiresAt() (time.Time, error) {
 	return at.UTC(), nil
 }
 
-// AuthRoles are the roles a principal or a declared key may carry,
-// most to least privileged. The scope each one grants lives in
-// internal/auth.
-var AuthRoles = []string{"admin", "writer", "reader"}
+// AuthRoles are the roles a principal or a declared key may carry:
+// the verb roles, most to least privileged, then the approval roles
+// (ADR-082). The scope each one grants lives in internal/auth.
+var AuthRoles = []string{"admin", "writer", "reader", "steward-requester", "steward-approver", "share-approver"}
 
 // EffectiveMethods returns Methods, or DefaultAuthMethods when unset.
 func (a AuthConfig) EffectiveMethods() []string {
@@ -1587,6 +1589,7 @@ func setDefaults(v *viper.Viper) {
 
 	// Jobs defaults (reproduce current hardcoded values)
 	v.SetDefault("sharing.audit.retention", DefaultAuditRetention)
+	v.SetDefault("approvals.pending_ttl", DefaultApprovalPendingTTL)
 	v.SetDefault("jobs.poll_interval", 500*time.Millisecond)
 	v.SetDefault("jobs.stale_timeout", 30*time.Minute)
 	v.SetDefault("jobs.max_retries", 3)

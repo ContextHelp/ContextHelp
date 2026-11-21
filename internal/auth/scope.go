@@ -119,6 +119,24 @@ const (
 	// ScopeSignoutUI ends the caller's own browser session. Only a
 	// browser session holds it (UISessionScopes); no role bundle does.
 	ScopeSignoutUI Scope = "signout:ui"
+
+	// The approval scopes (ADR-082 §1, §10 B). Each belongs to one
+	// dedicated bundle and to no verb bundle: the admin bundle leaves
+	// them out by name (approvalScopes), and their verbs keep them out
+	// of reader and writer. Like the principal-registry scopes they land
+	// ahead of the routes that check them, so the owner can assign the
+	// bundles before the approval kinds exist.
+
+	// ScopeRequestSteward files a steward grant request, withdraws the
+	// holder's own pending one and elevates into a grant it is the
+	// steward of.
+	ScopeRequestSteward Scope = "request:steward"
+	// ScopeApproveSteward approves and rejects steward grant requests,
+	// revokes grants and reads their activity reports.
+	ScopeApproveSteward Scope = "approve:steward"
+	// ScopeApproveShares approves and rejects the sharing changes a
+	// non-owner administrator files because they widen a view.
+	ScopeApproveShares Scope = "approve:shares"
 )
 
 // AllScopes lists every scope in a stable order: grouped by resource,
@@ -136,6 +154,7 @@ var AllScopes = []Scope{
 	ScopeReadWatches, ScopeAdminWatches,
 	ScopeAdminAudit, ScopeAdminPrincipals, ScopeAdminShares,
 	ScopeReadUI, ScopeSignoutUI,
+	ScopeRequestSteward, ScopeApproveSteward, ScopeApproveShares,
 }
 
 // sessionOnlyScopes exist only in a browser session's own set: no role
@@ -147,11 +166,25 @@ var sessionOnlyScopes = []Scope{ScopeSignoutUI}
 // of any role manages its own credentials (ADR-079 §5).
 var selfScopes = []Scope{ScopeWriteSelf}
 
+// approvalScopes are left out of the admin bundle by name (ADR-082 §1):
+// administering is not data access, so no admin, an IdP admin included,
+// holds a steward or approver scope by being admin. Each is held only
+// through its own approval role, which only a principal already
+// holding the scope can hand out (no route yields more than the caller
+// holds): the owner.
+var approvalScopes = []Scope{ScopeRequestSteward, ScopeApproveSteward, ScopeApproveShares}
+
+// IsApprovalScope reports whether s is one of the approval scopes the
+// admin bundle leaves out.
+func IsApprovalScope(s Scope) bool { return slices.Contains(approvalScopes, s) }
+
 // UISessionScopes is the fixed scope set of a web UI browser session:
 // the reads the web UI makes, its own writes (delete an object, retry a
 // job, manage its own credentials, sign out), the Sharing page
 // (admin:shares, ADR-080 §11: audiences, policies, grants, ceilings and
-// invites, which only an admin's session reaches) and nothing else. No
+// invites, which only an admin's session reaches), the approval scopes
+// (ADR-082: stewards and approvers act from a browser; a session holds
+// one only when its principal does) and nothing else. No
 // MCP, pipelines, steps, watches, audit log, principal registry or
 // login codes (read:ui); no other write. A session's effective scopes
 // are these intersected with its minting principal's scopes, plus
@@ -167,6 +200,7 @@ var UISessionScopes = []Scope{
 	ScopeWriteSelf,
 	ScopeAdminShares,
 	ScopeSignoutUI,
+	ScopeRequestSteward, ScopeApproveSteward, ScopeApproveShares,
 }
 
 // Scope verbs the role bundles are built from.
@@ -184,9 +218,9 @@ func (s Scope) Verb() string {
 
 // Roles the static provider issues. Each is a fixed scope bundle.
 const (
-	// RoleAdmin holds every scope but the session-only ones and
-	// bypasses the inbound entitlement and metering gate on entity
-	// reads.
+	// RoleAdmin holds every scope but the session-only and the
+	// approval ones, and bypasses the inbound entitlement and metering
+	// gate on entity reads.
 	RoleAdmin = "admin"
 	// RoleWriter holds every read:* and write:* scope: capture-only
 	// devices. No delete, inbox processing, sync or admin scopes.
@@ -195,17 +229,55 @@ const (
 	RoleReader = "reader"
 )
 
-// Roles lists the known roles, most to least privileged.
+// Roles lists the verb roles, most to least privileged.
 var Roles = []string{RoleAdmin, RoleWriter, RoleReader}
 
+// The approval roles (ADR-082 §1, §10 B): each grants one approval
+// scope and is held beside a verb role. The admin bundle never holds
+// their scopes, so only the owner, which does, can assign them.
+const (
+	// RoleStewardRequester holds request:steward.
+	RoleStewardRequester = "steward-requester"
+	// RoleStewardApprover holds approve:steward.
+	RoleStewardApprover = "steward-approver"
+	// RoleShareApprover holds approve:shares.
+	RoleShareApprover = "share-approver"
+)
+
+// ApprovalRoles lists the approval roles.
+var ApprovalRoles = []string{RoleStewardRequester, RoleStewardApprover, RoleShareApprover}
+
+// approvalBundles maps each approval role to its one scope.
+var approvalBundles = map[string]Scope{
+	RoleStewardRequester: ScopeRequestSteward,
+	RoleStewardApprover:  ScopeApproveSteward,
+	RoleShareApprover:    ScopeApproveShares,
+}
+
+// KnownRoles lists every role a principal may carry: the verb roles,
+// then the approval roles.
+func KnownRoles() []string { return append(slices.Clone(Roles), ApprovalRoles...) }
+
+// OwnerRoles are the roles of the owner principal (LocalPrincipal and
+// the registry's owner row): admin plus every approval role. The owner
+// holds every steward and approver scope explicitly (ADR-082 §1), which
+// makes it the one principal that can assign them; what the owner may
+// not do with them is the approval mechanism's to refuse (the owner
+// files no request).
+var OwnerRoles = []string{RoleAdmin, RoleStewardRequester, RoleStewardApprover, RoleShareApprover}
+
 // Bundle returns the scopes a role grants, in AllScopes order: the
-// role's verbs plus selfScopes, minus the session-only scopes. ok is
-// false for an unknown role.
+// role's verbs (an approval role: its one scope) plus selfScopes, minus
+// the session-only scopes; the admin bundle also leaves out the
+// approval scopes. ok is false for an unknown role.
 func Bundle(role string) (scopes []Scope, ok bool) {
 	var keep func(Scope) bool
 	switch role {
 	case RoleAdmin:
-		keep = func(Scope) bool { return true }
+		keep = func(s Scope) bool { return !IsApprovalScope(s) }
+	case RoleStewardRequester, RoleStewardApprover, RoleShareApprover:
+		own := approvalBundles[role]
+		keep = func(s Scope) bool { return s == own }
 	case RoleWriter:
 		keep = func(s Scope) bool { return s.Verb() == verbRead || s.Verb() == verbWrite }
 	case RoleReader:
@@ -226,11 +298,11 @@ func Bundle(role string) (scopes []Scope, ok bool) {
 // error rather than a silent lockout.
 func ValidateRoles(roles []string) error {
 	if len(roles) == 0 {
-		return fmt.Errorf("at least one role is required (valid: %s)", strings.Join(Roles, ", "))
+		return fmt.Errorf("at least one role is required (valid: %s)", strings.Join(KnownRoles(), ", "))
 	}
 	for _, r := range roles {
 		if _, ok := Bundle(r); !ok {
-			return fmt.Errorf("unknown role %q (valid: %s)", r, strings.Join(Roles, ", "))
+			return fmt.Errorf("unknown role %q (valid: %s)", r, strings.Join(KnownRoles(), ", "))
 		}
 	}
 	return nil
@@ -315,7 +387,7 @@ func LocalPrincipal() *Principal {
 		Name:     storage.OwnerPrincipal,
 		Kind:     storage.PrincipalKindOwner,
 		Provider: "none",
-		Roles:    []string{RoleAdmin},
+		Roles:    slices.Clone(OwnerRoles),
 		Scopes:   slices.Clone(AllScopes),
 	}
 }

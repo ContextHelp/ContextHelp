@@ -230,6 +230,16 @@ var routeAccessTable = map[string]routeAccess{
 	"DELETE /share/grants/{grant}":                           routeNone,
 	"PUT /share/keys/{key}/policy":                           routeNone,
 
+	// The approval queue is governed by each request's own rule
+	// (requester, subject, eligible approvers), not by share policies:
+	// a request names principals and registry changes, never a
+	// knowledge object (ADR-082 §9).
+	"GET /approvals":               routeNone,
+	"GET /approvals/{id}":          routeNone,
+	"POST /approvals/{id}/approve": routeNone,
+	"POST /approvals/{id}/reject":  routeNone,
+	"DELETE /approvals/{id}":       routeNone,
+
 	// The MCP mount answers tools/call with the search results as a
 	// JSON document inside the answer; the objects shape follows it.
 	"ANY /mcp/": needs(storage.CapabilityMCP, sharing.ShapeObjects),
