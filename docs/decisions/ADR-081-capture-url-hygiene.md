@@ -1,6 +1,6 @@
 # ADR-081 – Capture URL Hygiene: Canonicalization and Noise Presets for Browser Capture
 
-> **Status:** Accepted (2026-11-21; decisions Q1-Q7 as recommended, Q8-Q9 open; see [Decisions](#decisions))
+> **Status:** Accepted (2026-11-21; decisions Q1-Q7 and Q9 as recommended, Q8 open; see [Decisions](#decisions))
 > **Date:** 2026-11-21
 > **Author:** jadb
 > **Applies to:** ctxt browser capture: `ctxt capture tabs`, `ctxt capture history` and the ambient `browserhistory` source; dpkms only through the existing enqueue API
@@ -66,14 +66,14 @@ Filter order. Path rules are prefix matches (`internal/urlfilter/pattern.go:286`
 
 ### Sources
 
-Browser URLs enter through four commands. Today three use `urlfilter` and bookmark import does not. Recommended treatment (the bookmark row is a recommendation, not decided; open question 9):
+Browser URLs enter through four commands. Today three use `urlfilter` and bookmark import does not. Treatment (the bookmark row is decided by question 9):
 
 | Source | Command / code | Canonicalization | User `url_filter` rules | Shipped noise presets | Dry-run / report surface |
 |---|---|---|---|---|---|
 | Tabs | `ctxt capture tabs` (`capture_tabs.go`) | on | on (today) | on at `default` | per-tab status, reason, canonical form, counters |
 | History, CLI | `ctxt capture history` (`capture_history.go`) | on | on (today) | on at `default` | per-visit outcome, canonical form, counters |
 | History, ambient | `browserhistory` source (`internal/ambient/browserhistory/browserhistory.go:211`) | on | on (today) | on at `default` | no terminal output: events carry rule scope and counts, never the URL |
-| Bookmarks | `ctxt import chrome\|edge\|firefox\|safari` | on (recommended) | on (recommended; closes the bypass) | **off by default** (recommended: a bookmark is a deliberate save); enabled per source with `capture.url_filter.hygiene.sources.bookmarks.preset` | needs per-URL status and counters in `--dry-run` (today a count and a 20-URL preview) |
+| Bookmarks | `ctxt import chrome\|edge\|firefox\|safari` | on | on (closes the bypass) | **off by default** (a bookmark is a deliberate save); enabled per source with `capture.url_filter.hygiene.sources.bookmarks.preset` | needs per-URL status and counters in `--dry-run` (today a count and a 20-URL preview) |
 
 A per-source `preset` under `sources.<tabs|history|ambient|bookmarks>` follows the Layer rule: setting a source below its shipped default is a lowering knob and user-layer-only. Raising bookmarks to `default` is a raising knob and honored from any layer.
 
@@ -212,7 +212,7 @@ Operator impact (ADR-070 declaration, when implemented): behavior change for cli
 
 ## Decisions
 
-The owner accepted the recommendation stated for each of questions 1-7. The ADR is Accepted with questions 8 and 9 carved out as open, as ADR-066 and ADR-080 are; nothing is implemented. The review amendments (filter-before-canonicalize, layer rule, config shape) are part of the accepted design.
+The owner accepted the recommendation stated for each of questions 1-7 and 9. The ADR is Accepted with question 8 carved out as open, as ADR-066 and ADR-080 are; nothing is implemented. The review amendments (filter-before-canonicalize, layer rule, config shape) are part of the accepted design.
 
 | # | Question | Decision |
 |---|---|---|
@@ -223,11 +223,11 @@ The owner accepted the recommendation stated for each of questions 1-7. The ADR 
 | 5 | Scope of canonicalization (capture sources) | Browser capture only: `capture tabs`, `capture history` and the ambient `browserhistory` source (same filter, same flow). Not `ctxt capture <url>` or `ctxt analyze <url>`: a pasted URL may be wanted verbatim. Bookmark import is not covered by this decision; see question 9. |
 | 6 | Tracking-param and category list ownership | Release-bound lists maintained in ctxt; no network fetch, no registry-delivered updates. A list change is a release-note item. |
 | 7 | `parseGitHubURL` sharing | Export from a small `internal/githuburl` package so canonicalization and the github strategies agree on URL shape; no duplication. |
+| 9 | Bookmark import | In scope: canonicalization and the user `url_filter` deny/`allow_only` rules apply to `ctxt import chrome\|edge\|firefox\|safari`, closing today's bypass. Shipped noise presets default off for bookmarks; `capture.url_filter.hygiene.sources.bookmarks.preset` raises them. Bookmark `--dry-run` reports per-URL status and counters like the other sources. |
 
 ## Open questions for the owner
 
 8. Strict-level credential-key check (`token`, `key`, `code`, `session` in the query): acceptable false-positive rate, or drop it from `strict`? No recommendation is stated; decide before implementing `strict`. Other levels do not depend on it.
-9. Bookmark import (`ctxt import chrome|edge|firefox|safari`). Recommendation, not decided: apply canonicalization and the user `url_filter` deny/`allow_only` rules (closing the bypass); shipped noise presets default off for bookmarks and are enabled per source by config. Accept, or treat bookmarks as out of scope (and then the `url_filter` bypass remains)?
 
 ## Test plan
 
@@ -237,6 +237,6 @@ The owner accepted the recommendation stated for each of questions 1-7. The ADR 
 - Per-category tables: each category has allowed and denied URLs, no rule string in two categories, no organization-specific entries, `/cartography` allowed.
 - Layer tests: a project-layer file setting `preset: off`, `categories.x: false`, `keep_params` or `rewrites.<n>: false` is ignored with a warning; the same keys in user, system and extra layers apply; a project-layer `strict` or `custom` deny applies.
 - Canonicalize error on an allowed URL denies it and sends nothing.
-- All callers (`capture tabs`, `capture history`, ambient `browserhistory`, and bookmark import if question 9 is accepted) call the same pipeline; a table shared by their tests. Bookmark import test: a URL denied by a user rule is not enqueued, and presets stay off unless configured.
+- All callers (`capture tabs`, `capture history`, ambient `browserhistory`, and bookmark import) call the same pipeline; a table shared by their tests. Bookmark import test: a URL denied by a user rule is not enqueued, and presets stay off unless configured.
 - Logging test: no URL, query key or query value in any log line or event payload.
 - Everything is pure `net/url` and string work, with no OS-specific code, so one test set covers macOS, Linux and Windows; CI runs it on all three.
