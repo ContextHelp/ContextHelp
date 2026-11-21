@@ -11,6 +11,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliformat"
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
+	"github.com/ideacrafterslabs/ctxt/internal/tagfilter"
 	"github.com/spf13/cobra"
 	kitcli "hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/output"
@@ -67,7 +68,7 @@ func init() {
 
 	// Selector flags
 	deleteCmd.Flags().String("id", "", "delete specific knowledge object")
-	deleteCmd.Flags().String("tagged", "", "delete the objects carrying this tag")
+	deleteCmd.Flags().String("tagged", "", "delete the objects carrying this one tag (a literal label: no list, no leading + or -; may hold spaces)")
 	deleteCmd.Flags().String("mention", "", "delete by mention")
 	deleteCmd.Flags().String("type", "", "delete by type")
 	deleteCmd.Flags().Bool("all", false, "delete all active objects (requires confirmation)")
@@ -94,6 +95,23 @@ func deleteSelection(cmd *cobra.Command) deleteSelector {
 
 func (s deleteSelector) empty() bool {
 	return s.id == "" && s.tag == "" && s.mention == "" && s.typ == "" && !s.all
+}
+
+// validate refuses a --tagged that is not one literal tag. Delete is
+// destructive: the list grammar of the read commands would silently widen
+// the selection, so commas and a leading + or - are errors here. A label
+// may hold spaces.
+func (s deleteSelector) validate() error {
+	tag := strings.TrimSpace(s.tag)
+	if tag == "" {
+		return nil
+	}
+	if strings.Contains(tag, ",") || strings.HasPrefix(tag, "+") || strings.HasPrefix(tag, "-") {
+		e := output.UsageError(fmt.Sprintf("--tagged %q: delete takes one literal tag, not a list or a leading + or -", s.tag))
+		e.SuggestedFix = "name a single tag; to delete by several tags run delete once per tag"
+		return e
+	}
+	return nil
 }
 
 // kit --confirm values that authorize a destructive run without asking.
@@ -170,6 +188,9 @@ func previewDelete(cmd *cobra.Command, _ []string) error {
 	sel := deleteSelection(cmd)
 	if sel.empty() {
 		return errNoDeleteSelector()
+	}
+	if err := sel.validate(); err != nil {
+		return err
 	}
 	client, err := newDpkmsClient(cmd, dpkmsclient.DefaultTimeout)
 	if err != nil {
@@ -304,7 +325,7 @@ func deleteTargets(ctx context.Context, client *dpkmsclient.Client, sel deleteSe
 	case sel.all:
 		describe = "matched --all"
 	case sel.tag != "" || sel.mention != "" || sel.typ != "":
-		filter = dpkmsclient.ObjectFilter{Type: sel.typ, Tag: sel.tag, Mention: sel.mention}
+		filter = dpkmsclient.ObjectFilter{Type: sel.typ, Tagged: tagfilter.One(sel.tag), Mention: sel.mention}
 		describe = "matched the requested filter"
 	default:
 		return nil, 0, "", errNoDeleteSelector()
@@ -371,6 +392,9 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	sel := deleteSelection(cmd)
 	if sel.empty() {
 		return errNoDeleteSelector()
+	}
+	if err := sel.validate(); err != nil {
+		return err
 	}
 	// Kit's wrapPolicyRunE has already enforced the --confirm + token
 	// matrix before this inner RunE was invoked: when control reaches

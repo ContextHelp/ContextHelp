@@ -197,7 +197,9 @@ func (c *Client) Do(ctx context.Context, r Request, out any) error {
 func (c *Client) newRequest(ctx context.Context, r Request) (*http.Request, error) {
 	target := c.base + r.Path
 	if len(r.Query) > 0 {
-		target += "?" + r.Query.Encode()
+		// Encode writes a space as "+" and a literal "+" as %2B. Servers read
+		// the tag grammar's "+" (required) raw, so a space goes as %20.
+		target += "?" + strings.ReplaceAll(r.Query.Encode(), "+", "%20")
 	}
 	var body io.Reader
 	if r.Body != nil {

@@ -333,3 +333,36 @@ func TestDeleteHelp(t *testing.T) {
 		}
 	}
 }
+
+// TestDeleteTaggedIsOneLiteralTag: --tagged on delete never takes the list
+// grammar of the read commands; a widening selector is refused before
+// anything is previewed or removed.
+func TestDeleteTaggedIsOneLiteralTag(t *testing.T) {
+	for _, tag := range []string{"tmp,keep", "+tmp", "-tmp", "a, b", " +tmp", "\t-tmp"} {
+		t.Run(tag, func(t *testing.T) {
+			db := setupTestDB(t)
+			seedDeleteCorpus(t, db)
+			for _, extra := range [][]string{{"--confirm=yes"}, {"--dry-run"}} {
+				args := append([]string{"delete", "--tagged", tag}, extra...)
+				_, err := db.exec(args...)
+				if err == nil || exitOf(err) != output.ExitUsage {
+					t.Fatalf("%v: err = %v, want a usage error", args, err)
+				}
+			}
+			if got := storedIDs(t, db); len(got) != 4 {
+				t.Errorf("stored = %v, want all four untouched", got)
+			}
+		})
+	}
+}
+
+func TestDeleteTaggedLabelWithSpaces(t *testing.T) {
+	db := setupTestDB(t)
+	seedDeleteCorpus(t, db)
+	if _, err := db.exec("delete", "--tagged", "no such label", "--confirm=yes"); err != nil {
+		t.Fatalf("literal spaced label: %v", err)
+	}
+	if got := storedIDs(t, db); len(got) != 4 {
+		t.Errorf("stored = %v, want all four untouched", got)
+	}
+}

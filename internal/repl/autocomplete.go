@@ -44,7 +44,7 @@ func (c *Completer) Complete(line string) []string {
 		return c.completeOpen()
 	case strings.HasPrefix(line, "list --type "):
 		return knownTypes
-	case strings.HasPrefix(line, "list --tag "):
+	case strings.HasPrefix(line, "list --tagged "):
 		return c.completeTags()
 	case strings.HasPrefix(line, "make "):
 		return knownArtifactTypes
