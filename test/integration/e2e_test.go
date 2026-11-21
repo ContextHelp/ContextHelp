@@ -112,14 +112,30 @@ func startTestEnv(t *testing.T) *testEnv {
 
 func (e *testEnv) stop(t *testing.T) {
 	t.Helper()
+	// http.Server.Shutdown waits on a connection that never sent a request
+	// (state new) for 5s before treating it as idle. The shared client can
+	// park exactly such a connection: a dial that lost the race to a freed
+	// pooled one completes later and sits idle, unused. Drop the client's
+	// idle connections so the server sees EOF, and keep dropping while it
+	// drains to cover a dial still in flight.
+	gohttp.DefaultClient.CloseIdleConnections()
 	e.cancel()
-	select {
-	case err := <-e.done:
-		if err != nil {
-			t.Errorf("shutdown: %v", err)
+	tick := time.NewTicker(10 * time.Millisecond)
+	defer tick.Stop()
+	timeout := time.After(5 * time.Second)
+	for {
+		select {
+		case err := <-e.done:
+			if err != nil {
+				t.Errorf("shutdown: %v", err)
+			}
+			return
+		case <-tick.C:
+			gohttp.DefaultClient.CloseIdleConnections()
+		case <-timeout:
+			t.Error("server did not shut down in time")
+			return
 		}
-	case <-time.After(5 * time.Second):
-		t.Error("server did not shut down in time")
 	}
 }
 
