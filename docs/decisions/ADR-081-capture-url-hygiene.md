@@ -1,6 +1,6 @@
 # ADR-081 – Capture URL Hygiene: Canonicalization and Noise Presets for Browser Capture
 
-> **Status:** Proposed (2026-11-21)
+> **Status:** Proposed (2026-11-21; recommendations for questions 1-7 accepted by the owner, question 8 open; see [Decisions](#decisions))
 > **Date:** 2026-11-21
 > **Author:** jadb
 > **Applies to:** ctxt (`ctxt capture tabs`, `ctxt capture history`); dpkms only through the existing enqueue API
@@ -180,13 +180,20 @@ Negative: shipped category lists must be curated and tested (table-driven tests 
 
 Operator impact (ADR-070 declaration, when implemented): behavior change for clients, none for the dpkms daemon (no schema, API or pipeline change).
 
+## Decisions
+
+The owner accepted the recommendation stated for each of questions 1-7. The ADR stays Proposed until question 8 is settled; nothing is implemented.
+
+| # | Question | Decision |
+|---|---|---|
+| 1 | GitHub `blob`/`tree` URLs | Keep the file, strip anchor and ref noise (option A). No repo-root collapse, no extra repo enqueue, no per-profile switch. |
+| 2 | Default preset level | `default` on for everyone, with a one-time notice on first run naming the level and `ctxt capture presets`. |
+| 3 | Who may disable a shipped category | User config only (`categories.<x>: false` is a user-scope-only key); a project config may enable or raise, never disable. Keeps "layers only narrow". |
+| 4 | Fragments | Drop all fragments. Presets already skip the main hash-routed apps (webmail, calendar). |
+| 5 | Scope of canonicalization | Browser capture only (`capture tabs`, `capture history`). Not `ctxt capture <url>` or `ctxt analyze <url>`: a pasted URL may be wanted verbatim. |
+| 6 | Tracking-param and category list ownership | Release-bound lists maintained in ctxt; no network fetch, no registry-delivered updates. A list change is a release-note item. |
+| 7 | `parseGitHubURL` sharing | Export from a small `internal/githuburl` package so canonicalization and the github strategies agree on URL shape; no duplication. |
+
 ## Open questions for the owner
 
-1. GitHub `blob`/`tree`: keep file (A), collapse to repo (B), both (C), or a per-profile switch (D)? Default recommendation: A.
-2. Default level: `default` on for everyone (recommended), or `minimal`, or off with a hint?
-3. May a project config disable a shipped category, or only the user's own config? (Recommended: user config only, to keep "layers only narrow".)
-4. Drop all fragments, or keep them for known hash-routed apps? (Recommended: drop; presets already skip the main hash-routed apps, webmail and calendar.)
-5. Should canonicalization also apply to `ctxt capture <url>` and `ctxt analyze <url>`, not just browser capture? That touches explicit user intent: a pasted URL may be wanted verbatim. Recommended: no, browser capture only.
-6. Who owns the tracking-parameter and category lists, and what is the update cadence (release-bound, or fetched from a registry per ADR-034)? Recommended: release-bound, no network fetch.
-7. Does `parseGitHubURL` move to a shared package so canonicalization and the github strategies agree on URL shape? Recommended: yes, export from a small `internal/githuburl` package rather than duplicating.
-8. Strict-level credential-key heuristic: acceptable false-positive rate, or drop it from `strict`?
+8. Strict-level credential-key heuristic (`token`, `key`, `code`, `session` in the query): acceptable false-positive rate, or drop it from `strict`? No recommendation is stated; decide before implementation.
