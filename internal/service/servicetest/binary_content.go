@@ -3,6 +3,8 @@ package servicetest
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -110,7 +112,6 @@ type binaryFixture struct {
 	t    *testing.T
 	drv  storage.StorageDriver
 	svc  *service.Service
-	q    *jobs.Queue
 	pool *jobs.WorkerPool
 }
 
@@ -120,7 +121,7 @@ func newBinaryFixture(t *testing.T, drv storage.StorageDriver) *binaryFixture {
 	pipes := builtins.Registry()
 	svc := service.New(drv, q, pipes, search.NewEngine(drv), "", nil, config.Config{})
 	cfg := config.JobsConfig{PollInterval: 50 * time.Millisecond, StaleTimeout: 30 * time.Minute, MaxRetries: 3, MaxHops: 5}
-	return &binaryFixture{t: t, drv: drv, svc: svc, q: q, pool: jobs.NewWorkerPool(q, pipes, drv, 1, nil, cfg)}
+	return &binaryFixture{t: t, drv: drv, svc: svc, pool: jobs.NewWorkerPool(q, pipes, drv, 1, nil, cfg)}
 }
 
 // work runs the worker until job id is settled and returns the job.
@@ -130,15 +131,17 @@ func (f *binaryFixture) work(id string) *storage.Job {
 	defer cancel()
 	go func() {
 		for ctx.Err() == nil {
-			if j, _ := f.q.Get(ctx, id); j != nil && (j.Status == storage.JobCompleted || j.Status == storage.JobFailed) {
+			if j, _ := f.svc.GetJob(ctx, id); j != nil && (j.Status == storage.JobCompleted || j.Status == storage.JobFailed) {
 				cancel()
 				return
 			}
 			time.Sleep(20 * time.Millisecond)
 		}
 	}()
-	f.pool.Start(ctx)
-	j, err := f.q.Get(context.Background(), id)
+	if err := f.pool.Start(ctx); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		f.t.Fatalf("worker: %v", err)
+	}
+	j, err := f.svc.GetJob(sharing.WithViewer(context.Background(), sharing.Unrestricted), id)
 	if err != nil {
 		f.t.Fatalf("get job: %v", err)
 	}
@@ -233,7 +236,7 @@ func RunBinaryContent(t *testing.T, drv storage.StorageDriver) {
 			t.Run("federation accept", func(t *testing.T) {
 				// A peer pushes the content inline.
 				fed := append(append([]byte{}, bc.data...), 0x00, 0xfd, 'f')
-				id := "fed-" + string(rune('a'+i))
+				id := fmt.Sprintf("fed-%d", i)
 				now := time.Now().UTC().Truncate(time.Second)
 				n, err := f.svc.FederationAccept(ctx, []storage.KnowledgeObject{{
 					ID: id, Type: "text", RawContent: string(fed), Source: "peer://x",
