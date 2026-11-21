@@ -2,10 +2,12 @@ package steps
 
 import (
 	"context"
+	"net/http"
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blobref"
 	"github.com/ideacrafterslabs/ctxt/pkg/taxonomy"
 )
 
@@ -26,6 +28,17 @@ func NewTypeDetector() *TypeDetector {
 func (d *TypeDetector) Name() string { return "typedetect" }
 
 func (d *TypeDetector) Run(_ context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
+	// Binary is not short or long text: its subtype is what an earlier
+	// step (the content type router) made of it, and when none did, only
+	// its content type is sniffed.
+	if blobref.NeedsBlob(draft.RawContent) {
+		if draft.ContentType == "" {
+			sniffed := http.DetectContentType([]byte(draft.RawContent))
+			draft.ContentType = strings.TrimSpace(strings.SplitN(sniffed, ";", 2)[0])
+		}
+		return draft, nil
+	}
+
 	content := strings.TrimSpace(draft.RawContent)
 
 	// Only a blank or text type is derived from the content: a type the
