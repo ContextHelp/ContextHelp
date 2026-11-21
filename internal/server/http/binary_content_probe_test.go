@@ -13,6 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blobref"
 )
 
 // Probe: `ctxt capture <file>` sends string(os.ReadFile(...)) as the
@@ -34,7 +36,12 @@ func TestCaptureBinaryFileRoundTripsByteForByte(t *testing.T) {
 
 	obj, err := ts.svc.Store(ownerCtx()).Objects().Get(ownerCtx(), id)
 	require.NoError(t, err)
-	require.Equal(t, bin, []byte(obj.RawContent), "stored bytes differ from the file's")
+	// Binary lives in the blob store (a TEXT column cannot hold it); the
+	// row keeps the ref.
+	require.True(t, blobref.Is(obj.RawContent), obj.RawContent)
+	got, err := blob.Content(context.Background(), ts.svc.Store(ownerCtx()).Blobs(), obj.RawContent)
+	require.NoError(t, err)
+	require.Equal(t, bin, []byte(got), "stored bytes differ from the file's")
 }
 
 func postAnalyzeBody(t *testing.T, url, path string, body map[string]any) (int, ErrorEnvelope) {
@@ -63,7 +70,9 @@ func TestAnalyzeBase64ContentStoredDecoded(t *testing.T) {
 	require.NoError(t, err)
 	obj, err := ts.svc.Store(ownerCtx()).Objects().Get(ownerCtx(), id)
 	require.NoError(t, err)
-	require.Equal(t, bin, []byte(obj.RawContent))
+	got, err := blob.Content(context.Background(), ts.svc.Store(ownerCtx()).Blobs(), obj.RawContent)
+	require.NoError(t, err)
+	require.Equal(t, bin, []byte(got))
 }
 
 func TestAnalyzeRejectsBadContentEncoding(t *testing.T) {

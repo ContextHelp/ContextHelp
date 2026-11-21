@@ -38,12 +38,23 @@ func NewExternalizer(store storage.BlobStore, threshold int64) *Externalizer {
 
 func (e *Externalizer) Name() string { return "externalize_content" }
 
-func (e *Externalizer) Run(ctx context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
-	if e.threshold <= 0 {
+// ExternalizeBinary moves draft's content to store when it cannot live
+// in a text column (blobref.NeedsBlob), whatever the size threshold, and
+// leaves any other content alone. Ingest calls it after the pipeline so a
+// pipeline without externalize_content cannot store binary inline.
+func ExternalizeBinary(ctx context.Context, store storage.BlobStore, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
+	if !blobref.NeedsBlob(draft.RawContent) {
 		return draft, nil
 	}
+	if store == nil {
+		return nil, fmt.Errorf("externalize: binary content needs a blob store")
+	}
+	return NewExternalizer(store, 0).Run(ctx, draft)
+}
 
-	if int64(len(draft.RawContent)) <= e.threshold {
+func (e *Externalizer) Run(ctx context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
+	binary := blobref.NeedsBlob(draft.RawContent)
+	if !binary && (e.threshold <= 0 || int64(len(draft.RawContent)) <= e.threshold) {
 		return draft, nil
 	}
 
@@ -70,7 +81,11 @@ func (e *Externalizer) Run(ctx context.Context, draft *storage.KnowledgeObject) 
 	// most threshold bytes inline, the most an inline object holds, and
 	// flag it. Text an earlier step set apart from the content (extracted
 	// from a document, say) is left alone.
-	if draft.TextContent == "" || draft.TextContent == draft.RawContent {
+	// Binary has no text to keep: its text_content is empty.
+	switch {
+	case binary && (draft.TextContent == "" || draft.TextContent == draft.RawContent || blobref.NeedsBlob(draft.TextContent)):
+		draft.TextContent = ""
+	case draft.TextContent == "" || draft.TextContent == draft.RawContent:
 		draft.TextContent = TextPrefix(draft.RawContent, e.threshold)
 		draft.Metadata[MetaTextTruncated] = true
 	}

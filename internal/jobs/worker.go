@@ -5,6 +5,7 @@ package jobs
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -23,6 +24,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/events"
 	"github.com/ideacrafterslabs/ctxt/internal/mentions"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
@@ -229,6 +231,10 @@ func (p *WorkerPool) processWithHops(ctx context.Context, job *storage.Job) (*st
 		return nil, fmt.Errorf("pipeline: %w", err)
 	}
 
+	content, err := jobContent(job)
+	if err != nil {
+		return nil, &pipeline.PermanentError{Err: err}
+	}
 	draft := &storage.KnowledgeObject{
 		ID: uuid.New().String(),
 		// the input kind the job names ("ingest:url"), or the url.*
@@ -236,7 +242,7 @@ func (p *WorkerPool) processWithHops(ctx context.Context, job *storage.Job) (*st
 		// it (format detector, repo mapper) and typedetector only fills
 		// a blank or text.
 		Type:       seedType(job.Type, job.Pipeline),
-		RawContent: job.Payload,
+		RawContent: content,
 		Pipeline:   job.Pipeline,
 		Source:     job.Source,
 		CreatedAt:  time.Now(),
@@ -296,7 +302,22 @@ func (p *WorkerPool) processWithHops(ctx context.Context, job *storage.Job) (*st
 	// storageutil.ApplyAmbient).
 	storageutil.ApplyAmbient(draft, job.UserAmbient)
 
-	return draft, nil
+	// Binary content cannot live in the row (a TEXT column), whether or
+	// not the pipeline externalizes: it goes to the blob store here.
+	return steps.ExternalizeBinary(ctx, p.store.Blobs(), draft)
+}
+
+// jobContent is the content job carries: its payload, base64-decoded when
+// the job type says it travels encoded.
+func jobContent(job *storage.Job) (string, error) {
+	if !strings.HasSuffix(job.Type, storage.JobTypeBase64) {
+		return job.Payload, nil
+	}
+	b, err := base64.StdEncoding.DecodeString(job.Payload)
+	if err != nil {
+		return "", fmt.Errorf("job payload is not valid base64: %w", err)
+	}
+	return string(b), nil
 }
 
 func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
@@ -417,7 +438,7 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 	p.markCompleted(ctx, job.ID, draft.ID, durationMs)
 
 	// Post-ingest fan-out enrichment (bidirectional edges, audit log).
-	if p.fanOut != nil && !strings.HasSuffix(job.Type, ":nofanout") {
+	if p.fanOut != nil && !strings.HasSuffix(strings.TrimSuffix(job.Type, storage.JobTypeBase64), ":nofanout") {
 		if err := p.fanOut(ctx, draft.ID); err != nil {
 			slog.Warn("jobs: fan-out enrichment failed", "object", draft.ID, "err", err)
 		}

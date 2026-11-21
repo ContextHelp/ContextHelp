@@ -181,3 +181,52 @@ func TestTextPrefixCutsAtRuneBoundary(t *testing.T) {
 		t.Errorf("TextPrefix(0) = %q, want the whole string", got)
 	}
 }
+
+// Binary content (not valid UTF-8, or holding NUL) goes to the blob store
+// at any size and with the threshold off: a TEXT column cannot hold it.
+func TestExternalizeBinaryAtAnySize(t *testing.T) {
+	bin := "\x89PNG\x00\xff\xfe"
+	for name, run := range map[string]func(bs storage.BlobStore, d *storage.KnowledgeObject) (*storage.KnowledgeObject, error){
+		"step over a large threshold": func(bs storage.BlobStore, d *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
+			return NewExternalizer(bs, 1<<20).Run(context.Background(), d)
+		},
+		"step with threshold off": func(bs storage.BlobStore, d *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
+			return NewExternalizer(bs, 0).Run(context.Background(), d)
+		},
+		"ExternalizeBinary": func(bs storage.BlobStore, d *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
+			return ExternalizeBinary(context.Background(), bs, d)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			bs, _ := local.New(t.TempDir())
+			got, err := run(bs, &storage.KnowledgeObject{RawContent: bin, TextContent: bin, Source: "s"})
+			if err != nil {
+				t.Fatalf("run: %v", err)
+			}
+			if !blob.IsBlobRef(got.RawContent) {
+				t.Fatalf("RawContent = %q, want a blob ref", got.RawContent)
+			}
+			if got.TextContent != "" {
+				t.Errorf("TextContent = %q, want empty for binary", got.TextContent)
+			}
+			s, err := blob.Content(context.Background(), bs, got.RawContent)
+			if err != nil || s != bin {
+				t.Fatalf("blob = %q, %v; want the exact bytes", s, err)
+			}
+		})
+	}
+}
+
+func TestExternalizeBinaryLeavesTextAlone(t *testing.T) {
+	bs, _ := local.New(t.TempDir())
+	d := &storage.KnowledgeObject{RawContent: "plain héllo", Source: "s"}
+	got, err := ExternalizeBinary(context.Background(), bs, d)
+	if err != nil || got.RawContent != "plain héllo" {
+		t.Fatalf("got %q, %v; want text unchanged", got.RawContent, err)
+	}
+	// NUL alone is enough: Postgres refuses it in TEXT.
+	got, err = ExternalizeBinary(context.Background(), bs, &storage.KnowledgeObject{RawContent: "a\x00b", Source: "s"})
+	if err != nil || !blob.IsBlobRef(got.RawContent) {
+		t.Fatalf("NUL content: got %q, %v; want a blob ref", got.RawContent, err)
+	}
+}

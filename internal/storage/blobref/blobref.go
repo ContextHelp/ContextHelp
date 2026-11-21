@@ -4,7 +4,10 @@
 // projection) can.
 package blobref
 
-import "strings"
+import (
+	"strings"
+	"unicode/utf8"
+)
 
 // Prefix starts every blob ref; the blob key follows it.
 const Prefix = "blob://"
@@ -29,3 +32,11 @@ func Key(s string) (string, bool) {
 
 // For returns the ref for blob key key.
 func For(key string) string { return Prefix + key }
+
+// NeedsBlob reports whether s cannot live in a text column: it is not
+// valid UTF-8 or holds a NUL byte (a binary file, a PNG say). Postgres
+// refuses both in TEXT, so such content is stored in the blob store at
+// any size.
+func NeedsBlob(s string) bool {
+	return !utf8.ValidString(s) || strings.IndexByte(s, 0) >= 0
+}
