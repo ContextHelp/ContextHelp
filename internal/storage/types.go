@@ -340,6 +340,12 @@ const (
 	JobCancelled JobStatus = "cancelled"
 )
 
+// JobTypeBase64 is the last suffix of an ingest job type whose payload is
+// base64 of the content. The payload is a TEXT column, which holds neither
+// invalid UTF-8 nor NUL, so content that is binary (blobref.NeedsBlob)
+// travels encoded; the worker decodes it.
+const JobTypeBase64 = ":b64"
+
 // Job represents an ingestion job.
 type Job struct {
 	ID          string     `json:"id"`

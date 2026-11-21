@@ -295,7 +295,23 @@ func TestEnqueueBase64PayloadDecoded(t *testing.T) {
 	require.NoError(t, err)
 	job, err := svc.Store(ctx).Jobs().Get(ctx, id)
 	require.NoError(t, err)
-	require.Equal(t, bin, []byte(job.Payload))
+	// The payload is a TEXT column: binary travels base64, flagged on the type.
+	require.True(t, strings.HasSuffix(job.Type, storage.JobTypeBase64), job.Type)
+	got, err := base64.StdEncoding.DecodeString(job.Payload)
+	require.NoError(t, err)
+	require.Equal(t, bin, got)
+}
+
+// Text keeps its payload and job type as they were.
+func TestEnqueueTextPayloadUnencoded(t *testing.T) {
+	svc := newTestService(t)
+	ctx := ownerCtx()
+	id, err := svc.Enqueue(ctx, AnalyzeRequest{Content: "héllo", Type: "text"})
+	require.NoError(t, err)
+	job, err := svc.Store(ctx).Jobs().Get(ctx, id)
+	require.NoError(t, err)
+	require.Equal(t, "héllo", job.Payload)
+	require.False(t, strings.HasSuffix(job.Type, storage.JobTypeBase64), job.Type)
 }
 
 func TestAnalyzeRefusesBadContentEncoding(t *testing.T) {

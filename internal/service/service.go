@@ -31,6 +31,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/mentions"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
+	pipesteps "github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/ranking"
 	registrysync "github.com/ideacrafterslabs/ctxt/internal/registry"
@@ -382,16 +383,18 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 		}
 	}
 
+	payload, b64 := jobPayload(req.Content)
 	jobType := "ingest:" + detectedType
 	if req.NoFanout {
 		jobType += ":nofanout"
 	}
+	jobType += b64
 
 	job := &storage.Job{
 		ID:           uuid.New().String(),
 		Type:         jobType,
 		Status:       storage.JobPending,
-		Payload:      req.Content,
+		Payload:      payload,
 		Pipeline:     pipelineName,
 		Source:       jobSource,
 		MaxRetries:   3,
@@ -459,8 +462,16 @@ func (s *Service) analyzeRaw(ctx context.Context, req AnalyzeRequest, detectedTy
 			return s.updateRawBySourceKey(ctx, stored, req)
 		}
 	}
+	// Binary content cannot live in the row (a TEXT column): it goes to
+	// the blob store whatever its size, the row keeps the ref.
+	if _, err := pipesteps.ExternalizeBinary(ctx, s.Store(ctx).Blobs(), obj); err != nil {
+		return "", fmt.Errorf("analyze raw: %w", err)
+	}
 	cctx, rawEv := s.announce(ctx, events.TopicObjectRawStored, "service.analyze", obj.ID, obj)
 	if err := s.Store(cctx).Objects().Create(cctx, obj); err != nil {
+		return "", fmt.Errorf("analyze raw: store: %w", err)
+	}
+	if err := blob.Ensure(ctx, s.Store(cctx).Blobs(), obj); err != nil {
 		return "", fmt.Errorf("analyze raw: store: %w", err)
 	}
 	// caller-asserted mentions become thin entity rows + mention
@@ -1011,11 +1022,12 @@ func (s *Service) Enqueue(ctx context.Context, req AnalyzeRequest) (string, erro
 		return "", fmt.Errorf("enqueue: %w: pipeline=%q", ErrPipelineArchived, pipelineName)
 	}
 
+	payload, b64 := jobPayload(req.Content)
 	job := &storage.Job{
 		ID:             uuid.New().String(),
-		Type:           "ingest:" + req.Type,
+		Type:           "ingest:" + req.Type + b64,
 		Status:         storage.JobPending,
-		Payload:        req.Content,
+		Payload:        payload,
 		Pipeline:       pipelineName,
 		Source:         req.Source,
 		MaxRetries:     3,
