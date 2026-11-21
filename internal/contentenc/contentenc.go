@@ -50,7 +50,7 @@ func Decode(content, encoding string) (string, error) {
 	case Base64:
 		b, err := base64.StdEncoding.DecodeString(content)
 		if err != nil {
-			return "", fmt.Errorf("%w: %v", ErrInvalidBase64, err)
+			return "", fmt.Errorf("%w: %w", ErrInvalidBase64, err)
 		}
 		return string(b), nil
 	default:
