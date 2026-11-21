@@ -18,7 +18,7 @@ func ListSearchHistory(svc *service.Service) http.HandlerFunc {
 		}
 		results, err := svc.ListSearchHistory(r.Context(), filter)
 		if err != nil {
-			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+			writeSearchStateError(w, err, "search history entries")
 			return
 		}
 		if results == nil {
@@ -34,7 +34,7 @@ func ClearSearchHistory(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		profileID := r.URL.Query().Get("profile_id")
 		if err := svc.ClearSearchHistory(r.Context(), profileID); err != nil {
-			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+			writeSearchStateError(w, err, "search history entries")
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
