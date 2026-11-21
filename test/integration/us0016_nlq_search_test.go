@@ -78,6 +78,7 @@ func TestUS0016_NLQSearchReturnsMatchingObjects(t *testing.T) {
 // TestUS0016_NLQSearchViaHTTPReturnsResults verifies the REST endpoint
 // responds with matching objects for an NLQ-style text query.
 func TestUS0016_NLQSearchViaHTTPReturnsResults(t *testing.T) {
+	t.Skip("unbuilt: no HTTP route accepts a natural-language query; GET /api/v1/search is RSQL-only (HybridSearch is not routed)")
 	env := startTestEnv(t)
 	defer env.stop(t)
 

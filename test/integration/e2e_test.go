@@ -41,14 +41,26 @@ type testEnv struct {
 
 func startTestEnv(t *testing.T) *testEnv {
 	t.Helper()
+	return startTestEnvWith(t, nil)
+}
+
+// startTestEnvWith is startTestEnv with a hook to adjust the builtin
+// registry options, e.g. to supply a providers.Factory so provider-backed
+// pipelines register.
+func startTestEnvWith(t *testing.T, tune func(*builtins.BuildOpts)) *testEnv {
+	t.Helper()
 
 	driver := storageutil.NewTestDriver(t)
 	queue := jobs.NewQueue(driver.Jobs())
 	// The mock feed and page servers bind loopback, which the default
 	// fetch guard refuses, as fetch.allow_private: true would allow.
-	pipes := builtins.ConfiguredRegistryWithOpts(builtins.BuildOpts{
+	opts := builtins.BuildOpts{
 		FetchGuard: safefetch.New(safefetch.Options{Policy: safefetch.Policy{AllowPrivate: true}}),
-	})
+	}
+	if tune != nil {
+		tune(&opts)
+	}
+	pipes := builtins.ConfiguredRegistryWithOpts(opts)
 	queue.SetPipelineValidator(func(name string) error {
 		// Check in-memory registry first, then DB-stored pipelines.
 		if _, err := pipes.Get(name); err == nil {
