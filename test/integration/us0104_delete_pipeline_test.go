@@ -17,7 +17,7 @@ func TestUS0104_DeleteCustom(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"}]`
+	stepsJSON := `[{"type":"noop"}]`
 	body, _ := json.Marshal(map[string]string{
 		"name":  "delete-pipeline",
 		"steps": stepsJSON,
@@ -64,7 +64,7 @@ func TestUS0104_DeleteConfirmedGoneFromList(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"}]`
+	stepsJSON := `[{"type":"noop"}]`
 	body, _ := json.Marshal(map[string]string{
 		"name":  "gone-pl",
 		"steps": stepsJSON,
@@ -116,7 +116,7 @@ func TestUS0104_DeleteThenRecreate(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"}]`
+	stepsJSON := `[{"type":"noop"}]`
 	body, _ := json.Marshal(map[string]string{
 		"name":  "recycle-pl",
 		"steps": stepsJSON,
@@ -148,7 +148,7 @@ func TestUS0104_DeleteReturnsNoBody(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"}]`
+	stepsJSON := `[{"type":"noop"}]`
 	body, _ := json.Marshal(map[string]string{
 		"name":  "nobody-pl",
 		"steps": stepsJSON,
@@ -174,7 +174,7 @@ func TestUS0104_DeleteDoesNotAffectOthers(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"}]`
+	stepsJSON := `[{"type":"noop"}]`
 
 	bodyKeep, _ := json.Marshal(map[string]string{
 		"name":  "keep-pl",

@@ -16,7 +16,7 @@ func TestUS0106_EnqueueBasic(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"}]`
+	stepsJSON := `[{"type":"noop"}]`
 	body, _ := json.Marshal(map[string]string{
 		"name":  "enqueue-pipeline",
 		"steps": stepsJSON,
@@ -46,7 +46,7 @@ func TestUS0106_JobHasCorrectPipeline(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"}]`
+	stepsJSON := `[{"type":"noop"}]`
 	body, _ := json.Marshal(map[string]string{
 		"name":  "job-check-pipeline",
 		"steps": stepsJSON,
@@ -205,7 +205,7 @@ func TestUS0106_CreateThenEnqueue(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"}]`
+	stepsJSON := `[{"type":"noop"}]`
 	body, _ := json.Marshal(map[string]string{
 		"name":        "roundtrip-pipeline",
 		"description": "Roundtrip test",

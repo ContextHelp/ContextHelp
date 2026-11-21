@@ -105,7 +105,7 @@ func TestUS0112_SandboxConfig_NoNetworkFlag(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"}]`
+	stepsJSON := `[{"type":"noop"}]`
 	body, err := json.Marshal(map[string]any{
 		"name":  "sandbox-no-network",
 		"steps": stepsJSON,
@@ -132,12 +132,13 @@ func TestUS0112_SandboxConfig_NoNetworkFlag(t *testing.T) {
 	assert.False(t, got.Sandbox.Network, "network access must be disabled in sandbox config")
 }
 
-func TestUS0112_SandboxConfig_NetworkAllowed(t *testing.T) {
-	// Verify that SandboxConfig.Network=true is surfaced via API.
+func TestUS0112_SandboxConfig_NetworkRejected(t *testing.T) {
+	// network=true is not allowed in a sandboxed pipeline: validation
+	// error, and no record is created.
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"}]`
+	stepsJSON := `[{"type":"noop"}]`
 	body, err := json.Marshal(map[string]any{
 		"name":  "sandbox-net-allowed",
 		"steps": stepsJSON,
@@ -150,17 +151,12 @@ func TestUS0112_SandboxConfig_NetworkAllowed(t *testing.T) {
 	resp, err := gohttp.Post(env.URL+"/api/v1/pipelines", "application/json", bytes.NewReader(body))
 	require.NoError(t, err)
 	resp.Body.Close()
-	require.Equal(t, gohttp.StatusCreated, resp.StatusCode)
+	require.Equal(t, gohttp.StatusBadRequest, resp.StatusCode)
 
 	getResp, err := gohttp.Get(env.URL + "/api/v1/pipelines/sandbox-net-allowed")
 	require.NoError(t, err)
 	defer getResp.Body.Close()
-	require.Equal(t, gohttp.StatusOK, getResp.StatusCode)
-
-	var got storage.Pipeline
-	require.NoError(t, json.NewDecoder(getResp.Body).Decode(&got))
-	require.NotNil(t, got.Sandbox)
-	assert.True(t, got.Sandbox.Network, "network access must be allowed per config")
+	require.Equal(t, gohttp.StatusNotFound, getResp.StatusCode, "rejected pipeline must not be stored")
 }
 
 func TestUS0112_SandboxConfig_RoundTrip_ViaCreateAPI(t *testing.T) {
@@ -168,7 +164,7 @@ func TestUS0112_SandboxConfig_RoundTrip_ViaCreateAPI(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"}]`
+	stepsJSON := `[{"type":"noop"}]`
 	payload := map[string]any{
 		"name":        "sandboxed-roundtrip",
 		"description": "Pipeline with sandbox config",
