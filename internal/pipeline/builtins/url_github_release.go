@@ -5,7 +5,7 @@ import "regexp"
 // githubReleasePattern matches GitHub release URLs:
 //   - https://github.com/<owner>/<repo>/releases/tag/<tag>
 //   - https://github.com/<owner>/<repo>/releases
-var githubReleasePattern = regexp.MustCompile(`(?i)^https?://github\.com/[^/]+/[^/]+/releases`)
+var githubReleasePattern = regexp.MustCompile(`(?i)^https?://(www\.)?github\.com/[^/]+/[^/]+/releases`)
 
 func init() {
 	MustRegister("url.github.release", Def{

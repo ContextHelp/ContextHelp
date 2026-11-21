@@ -298,8 +298,8 @@ func TestDedupStepRegistered(t *testing.T) {
 }
 
 // TestSelectPipelineGitHubScheme: every github.* URL pattern tolerates an
-// http scheme and any scheme/host case, and still outranks url.repo and
-// url.generic.
+// http scheme, a www. host prefix and any scheme/host case, and still
+// outranks url.repo and url.generic.
 func TestSelectPipelineGitHubScheme(t *testing.T) {
 	r := Registry()
 	paths := []struct {
@@ -321,6 +321,8 @@ func TestSelectPipelineGitHubScheme(t *testing.T) {
 		"http://github.com/",
 		"HTTP://GitHub.com/",
 		"HTTPS://GITHUB.COM/",
+		"https://www.github.com/",
+		"http://WWW.GitHub.com/",
 	}
 	for _, p := range prefixes {
 		for _, tt := range paths {

@@ -9,7 +9,7 @@ import "regexp"
 //	https://github.com/torvalds
 //	https://github.com/nomic-ai
 //	https://github.com/torvalds?tab=repositories  (tab param ignored)
-var githubProfilePattern = regexp.MustCompile(`(?i)^https?://github\.com/[^/]+/?(\?.*)?$`)
+var githubProfilePattern = regexp.MustCompile(`(?i)^https?://(www\.)?github\.com/[^/]+/?(\?.*)?$`)
 
 func init() {
 	MustRegister("url.github.profile", Def{
