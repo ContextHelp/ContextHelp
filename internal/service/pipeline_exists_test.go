@@ -207,3 +207,25 @@ func TestEnqueueRejectsUnknownPipeline(t *testing.T) {
 	})
 	require.ErrorIs(t, err, ErrPipelineNotFound)
 }
+
+// TestEnqueueRefusesArchivedPipeline: an archived pipeline is retained but
+// disabled; enqueue and analyze refuse it with ErrPipelineArchived and no job
+// is created.
+func TestEnqueueRefusesArchivedPipeline(t *testing.T) {
+	driver := storageutil.NewTestDriver(t)
+	svc := newPipelineExistsService(t, driver)
+	storePipeline(t, driver, "user.custom")
+	ctx := ownerCtx()
+	require.NoError(t, svc.ArchivePipeline(ctx, "user.custom"))
+
+	_, err := svc.Enqueue(ctx, AnalyzeRequest{Content: "hello", Type: "text", Pipeline: "user.custom"})
+	require.ErrorIs(t, err, ErrPipelineArchived)
+
+	_, err = svc.Analyze(ctx, AnalyzeRequest{Content: "hello", Type: "text", Pipeline: "user.custom"})
+	require.ErrorIs(t, err, ErrPipelineArchived)
+
+	require.NoError(t, svc.UnarchivePipeline(ctx, "user.custom"))
+	jobID, err := svc.Enqueue(ctx, AnalyzeRequest{Content: "hello", Type: "text", Pipeline: "user.custom"})
+	require.NoError(t, err, "unarchived pipeline is usable again")
+	require.NotEmpty(t, jobID)
+}
