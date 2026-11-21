@@ -71,7 +71,7 @@ func TestPolicy_PrincipalPropagatesIntoCEL(t *testing.T) {
 	ctx := ownerCtx()
 	_, err := svc.CreatePipeline(ctx, CreatePipelineRequest{
 		Name:  "principal-gated",
-		Steps: `[{"name":"text_summary"}]`,
+		Steps: `[{"name":"noop"}]`,
 	})
 	require.NoError(t, err)
 

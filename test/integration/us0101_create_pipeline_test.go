@@ -16,7 +16,7 @@ func TestUS0101_CreateFromJSON(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"}]`
+	stepsJSON := `[{"type":"noop"}]`
 	body, _ := json.Marshal(map[string]string{
 		"name":        "json-pipeline",
 		"description": "JSON pipeline",
@@ -54,7 +54,7 @@ func TestUS0101_SandboxConfigStored(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"}]`
+	stepsJSON := `[{"type":"noop"}]`
 	sandbox := map[string]any{
 		"enabled":         true,
 		"isolation_level": "process",
@@ -94,7 +94,7 @@ func TestUS0101_DuplicateName(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"}]`
+	stepsJSON := `[{"type":"noop"}]`
 	body, _ := json.Marshal(map[string]string{
 		"name":        "dup-pipeline",
 		"description": "First creation",
@@ -116,7 +116,14 @@ func TestUS0101_DuplicateName(t *testing.T) {
 	require.NoError(t, err)
 	defer resp2.Body.Close()
 
-	assert.NotEqual(t, gohttp.StatusCreated, resp2.StatusCode, "duplicate name should not return 201")
+	assert.Equal(t, gohttp.StatusConflict, resp2.StatusCode, "duplicate name is a conflict")
+	var env2 struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	require.NoError(t, json.NewDecoder(resp2.Body).Decode(&env2))
+	assert.Equal(t, "DUPLICATE_NAME", env2.Error.Code)
 }
 
 func TestUS0101_MissingName(t *testing.T) {
@@ -124,7 +131,7 @@ func TestUS0101_MissingName(t *testing.T) {
 	defer env.stop(t)
 
 	body, _ := json.Marshal(map[string]string{
-		"steps": `[{"type":"x"}]`,
+		"steps": `[{"type":"noop"}]`,
 	})
 
 	resp, err := gohttp.Post(env.URL+"/api/v1/pipelines", "application/json", bytes.NewReader(body))
@@ -153,7 +160,7 @@ func TestUS0101_MultipleSteps(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"},{"type":"entity_extract","config":{"threshold":0.5}}]`
+	stepsJSON := `[{"type":"noop"},{"type":"entity_extractor","config":{"threshold":0.5}}]`
 	body, _ := json.Marshal(map[string]string{
 		"name":  "multi-step-pl",
 		"steps": stepsJSON,
@@ -173,8 +180,8 @@ func TestUS0101_MultipleSteps(t *testing.T) {
 	require.NoError(t, json.NewDecoder(respGet.Body).Decode(&pipeline))
 
 	require.Len(t, pipeline.Steps, 2)
-	assert.Equal(t, "text_summary", pipeline.Steps[0].Name)
-	assert.Equal(t, "entity_extract", pipeline.Steps[1].Name)
+	assert.Equal(t, "noop", pipeline.Steps[0].Name)
+	assert.Equal(t, "entity_extractor", pipeline.Steps[1].Name)
 	assert.NotNil(t, pipeline.Steps[1].Config)
 }
 
@@ -182,7 +189,7 @@ func TestUS0101_FullMetadata(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"}]`
+	stepsJSON := `[{"type":"noop"}]`
 	body, _ := json.Marshal(map[string]string{
 		"name":        "metadata-pl",
 		"description": "A detailed description",
@@ -215,36 +222,25 @@ func TestUS0101_StepNamesCaseSensitive(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	// Create pipeline with upper-cased step name.
+	// An upper-cased step name is a different, unregistered step: refused.
 	bodyUpper, _ := json.Marshal(map[string]string{
 		"name":  "case-upper",
-		"steps": `[{"type":"Text_Summary"}]`,
+		"steps": `[{"type":"Noop"}]`,
 	})
 	respUpper, err := gohttp.Post(env.URL+"/api/v1/pipelines", "application/json", bytes.NewReader(bodyUpper))
 	require.NoError(t, err)
 	defer respUpper.Body.Close()
-	require.Equal(t, gohttp.StatusCreated, respUpper.StatusCode)
+	require.Equal(t, gohttp.StatusBadRequest, respUpper.StatusCode)
 
 	// Create pipeline with lower-cased step name.
 	bodyLower, _ := json.Marshal(map[string]string{
 		"name":  "case-lower",
-		"steps": `[{"type":"text_summary"}]`,
+		"steps": `[{"type":"noop"}]`,
 	})
 	respLower, err := gohttp.Post(env.URL+"/api/v1/pipelines", "application/json", bytes.NewReader(bodyLower))
 	require.NoError(t, err)
 	defer respLower.Body.Close()
 	require.Equal(t, gohttp.StatusCreated, respLower.StatusCode)
-
-	// GET and verify casing is preserved for upper-case pipeline.
-	getUpper, err := gohttp.Get(env.URL + "/api/v1/pipelines/case-upper")
-	require.NoError(t, err)
-	defer getUpper.Body.Close()
-	require.Equal(t, gohttp.StatusOK, getUpper.StatusCode)
-
-	var pipelineUpper storage.Pipeline
-	require.NoError(t, json.NewDecoder(getUpper.Body).Decode(&pipelineUpper))
-	require.Len(t, pipelineUpper.Steps, 1)
-	assert.Equal(t, "Text_Summary", pipelineUpper.Steps[0].Name, "step name casing should be preserved")
 
 	// GET and verify casing is preserved for lower-case pipeline.
 	getLower, err := gohttp.Get(env.URL + "/api/v1/pipelines/case-lower")
@@ -255,7 +251,7 @@ func TestUS0101_StepNamesCaseSensitive(t *testing.T) {
 	var pipelineLower storage.Pipeline
 	require.NoError(t, json.NewDecoder(getLower.Body).Decode(&pipelineLower))
 	require.Len(t, pipelineLower.Steps, 1)
-	assert.Equal(t, "text_summary", pipelineLower.Steps[0].Name, "step name casing should be preserved")
+	assert.Equal(t, "noop", pipelineLower.Steps[0].Name, "step name casing should be preserved")
 }
 
 func TestUS0101_PipelineImmediatelyAvailableForEnqueue(t *testing.T) {
@@ -265,7 +261,7 @@ func TestUS0101_PipelineImmediatelyAvailableForEnqueue(t *testing.T) {
 	// Create a pipeline.
 	createBody, _ := json.Marshal(map[string]string{
 		"name":  "enqueue-ready",
-		"steps": `[{"type":"text_summary"}]`,
+		"steps": `[{"type":"noop"}]`,
 	})
 	respCreate, err := gohttp.Post(env.URL+"/api/v1/pipelines", "application/json", bytes.NewReader(createBody))
 	require.NoError(t, err)
@@ -309,4 +305,22 @@ func TestUS0101_EmptyStepsArray(t *testing.T) {
 		resp.StatusCode,
 		"empty steps array should return 201 (accepted) or 400 (rejected), got %d", resp.StatusCode,
 	)
+}
+
+func TestUS0101_UnknownStepAndProtectedName(t *testing.T) {
+	env := startTestEnv(t)
+	defer env.stop(t)
+
+	post := func(name, steps string) *gohttp.Response {
+		body, _ := json.Marshal(map[string]string{"name": name, "steps": steps})
+		resp, err := gohttp.Post(env.URL+"/api/v1/pipelines", "application/json", bytes.NewReader(body))
+		require.NoError(t, err)
+		t.Cleanup(func() { resp.Body.Close() })
+		return resp
+	}
+
+	assert.Equal(t, gohttp.StatusBadRequest, post("legal-doc-pipeline", `[{"type":"legal_classifier"}]`).StatusCode,
+		"unregistered step is a validation error")
+	assert.Equal(t, gohttp.StatusForbidden, post("text.mine", `[{"type":"noop"}]`).StatusCode,
+		"text.* names are protected")
 }

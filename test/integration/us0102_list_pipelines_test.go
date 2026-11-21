@@ -17,7 +17,7 @@ func TestUS0102_ListNonArchived(t *testing.T) {
 	defer env.stop(t)
 
 	createTestPipeline := func(name string) {
-		stepsJSON := `[{"type":"text_summary"}]`
+		stepsJSON := `[{"type":"noop"}]`
 		body, _ := json.Marshal(map[string]string{
 			"name":  name,
 			"steps": stepsJSON,
@@ -59,7 +59,7 @@ func TestUS0102_NameFilter(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"}]`
+	stepsJSON := `[{"type":"noop"}]`
 	body, _ := json.Marshal(map[string]string{
 		"name":  "filter-target",
 		"steps": stepsJSON,
@@ -88,7 +88,7 @@ func TestUS0102_OnlyArchived(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"}]`
+	stepsJSON := `[{"type":"noop"}]`
 
 	for _, name := range []string{"active-pl", "archived-pl"} {
 		body, _ := json.Marshal(map[string]string{
@@ -130,7 +130,7 @@ func TestUS0102_IncludeArchivedShowsBoth(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"}]`
+	stepsJSON := `[{"type":"noop"}]`
 
 	for _, name := range []string{"inc-active", "inc-archived"} {
 		body, _ := json.Marshal(map[string]string{
@@ -172,7 +172,7 @@ func TestUS0102_ExcludesArchived(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"}]`
+	stepsJSON := `[{"type":"noop"}]`
 
 	for _, name := range []string{"visible-pl", "hidden-pl"} {
 		body, _ := json.Marshal(map[string]string{
@@ -214,7 +214,7 @@ func TestUS0102_StepCountAccurate(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"},{"type":"entity_extract"},{"type":"tag_assign"}]`
+	stepsJSON := `[{"type":"noop"},{"type":"entity_extractor"},{"type":"tagger"}]`
 	body, _ := json.Marshal(map[string]string{
 		"name":  "three-step-pipeline",
 		"steps": stepsJSON,
@@ -276,7 +276,7 @@ func TestUS0102_TotalMatchesLength(t *testing.T) {
 	env := startTestEnv(t)
 	defer env.stop(t)
 
-	stepsJSON := `[{"type":"text_summary"}]`
+	stepsJSON := `[{"type":"noop"}]`
 	for _, name := range []string{"tm-pipeline-1", "tm-pipeline-2", "tm-pipeline-3"} {
 		body, _ := json.Marshal(map[string]string{
 			"name":  name,

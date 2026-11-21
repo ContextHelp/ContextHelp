@@ -847,6 +847,10 @@ func (s *Service) CreatePipeline(ctx context.Context, req CreatePipelineRequest)
 		UpdatedAt:   now,
 	}
 
+	if err := s.validatePipelineCreate(ctx, pipeline); err != nil {
+		return "", fmt.Errorf("create pipeline: %w", err)
+	}
+
 	if s.pipelineSvc != nil {
 		if err := s.pipelineSvc.Create(ctx, pipeline); err != nil {
 			return "", fmt.Errorf("create pipeline: %w", err)

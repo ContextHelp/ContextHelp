@@ -61,6 +61,7 @@ func startTestEnv(t *testing.T) *testEnv {
 	})
 	engine := search.NewEngine(driver)
 	svc := service.New(driver, queue, pipes, engine, "", nil)
+	svc.Installer.Reserved = builtins.IsStepName // as the stack wires it: pipeline create validates step names
 	router := httpserver.NewRouter(svc, false, nil)
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
