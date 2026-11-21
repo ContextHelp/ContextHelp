@@ -8,6 +8,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // StepContract is what the render layer knows of a pipeline step: the
@@ -203,7 +204,9 @@ func (r *renderer) genericMetadata(out *storage.KnowledgeObject) {
 	switch {
 	case r.fs.has(FieldMetadata) && r.ok(koMetadata):
 		if obj.Metadata != nil {
-			out.Metadata = maps.Clone(obj.Metadata)
+			// The ambient envelope (fingerprint, client metadata) is
+			// capture-side data, never shared.
+			out.Metadata = storageutil.WithoutAmbient(obj.Metadata)
 		}
 	case r.fs.has(FieldTitle) && r.ok(koMetadata):
 		if t, ok := obj.Metadata["title"].(string); ok && t != "" {

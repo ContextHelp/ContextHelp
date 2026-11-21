@@ -14,6 +14,10 @@ import (
 const (
 	MaxAnalyzeNoteBytes = 2 << 20   // 2 MiB
 	MaxAnalyzeDataBytes = 256 << 10 // 256 KiB encoded
+	// MaxAnalyzeBodyBytes bounds one analyze or enqueue request body:
+	// content (up to 64 MiB, the cap the access-set body already uses),
+	// the note, and the data and metadata objects, plus JSON framing.
+	MaxAnalyzeBodyBytes = 64<<20 + MaxAnalyzeNoteBytes + MaxAnalyzeDataBytes + MaxAnalyzeMetadataBytes + 64<<10
 	// MaxAnalyzeMetadataBytes bounds the client metadata, like the data.
 	MaxAnalyzeMetadataBytes = MaxAnalyzeDataBytes
 	// MaxAnalyzeAmbientIDBytes bounds ambient_source, fingerprint and

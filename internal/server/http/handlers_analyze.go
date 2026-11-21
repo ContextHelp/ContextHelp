@@ -12,7 +12,11 @@ import (
 func Analyze(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req service.AnalyzeRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, service.MaxAnalyzeBodyBytes)).Decode(&req); err != nil {
+			if tooLarge := (*http.MaxBytesError)(nil); errors.As(err, &tooLarge) {
+				WriteError(w, http.StatusRequestEntityTooLarge, "PAYLOAD_TOO_LARGE", "request body over the analyze limit")
+				return
+			}
 			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid JSON body")
 			return
 		}

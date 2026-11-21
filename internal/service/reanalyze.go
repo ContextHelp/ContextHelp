@@ -20,6 +20,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
 // ReanalyzeObject re-runs the registry's currently-installed pipeline for
@@ -128,6 +129,10 @@ func (s *Service) ReanalyzeObject(ctx context.Context, id string) (newPipelineVe
 		}
 		draft = out
 	}
+
+	// The ambient envelope (session id, ambient_source, fingerprint,
+	// metadata.client) is capture-side data no step regenerates: carry it.
+	storageutil.CarryAmbient(draft, obj)
 
 	// Stamp the version + updated time and persist atomically. Update writes
 	// every projection column so the new pipeline output overwrites the old.
