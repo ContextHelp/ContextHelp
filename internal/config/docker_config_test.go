@@ -496,13 +496,19 @@ func TestDockerEnvExamples_OnlyComposeInterpolatedKeys(t *testing.T) {
 // Compose interpolates the whole file for every command, and
 // DPKMS_BUS_TOKEN is required, so each docker compose invocation the
 // docs and Makefile show must pass the env file the examples become.
+// `-f docker-compose.dev.yml` loads only the side-services file, which
+// interpolates nothing, so those invocations need no env file.
 func TestDockerDocs_ComposeCommandsPassEnvFile(t *testing.T) {
 	invocation := regexp.MustCompile(`(?m)^.*\bdocker compose\s+[-a-z].*$`)
 	envFile := regexp.MustCompile(`--env-file (docker/\.env\.(dev|prod)|\$\(DOCKER_ENV_FILE\))`)
+	sideServices := regexp.MustCompile(`\bdocker compose -f docker-compose\.dev\.yml\b`)
 	for _, f := range []string{"README.md", "Makefile", "docs/deployment/docker.md", "docs/deployment/docker-dev.md", "docs/operations/pre-alpha-gate.md"} {
 		data, err := os.ReadFile(filepath.Join("..", "..", f))
 		require.NoError(t, err)
 		for _, line := range invocation.FindAllString(string(data), -1) {
+			if sideServices.MatchString(line) {
+				continue
+			}
 			assert.Regexp(t, envFile, line, "%s: docker compose without the env file", f)
 		}
 	}

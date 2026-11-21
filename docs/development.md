@@ -178,8 +178,8 @@ main          # Production-ready code
 git checkout -b feature/my-feature develop
 
 # 2. Make changes and test
-task test
-task lint
+make test
+make lint
 
 # 3. Commit with conventional commits
 git commit -m "feat(pipelines): add video transcription pipeline"
@@ -213,7 +213,7 @@ test(pipelines): add unit tests for text.long pipeline
 ### 4. Code Review Process
 
 1. **Self-review first** — Review your own diff
-2. **Run checks locally** — `task ci`
+2. **Run checks locally** — `make ci`
 3. **Write good PR description** — What, why, how
 4. **Respond to feedback** — Address comments promptly
 5. **Update as needed** — Keep commits clean
@@ -324,22 +324,19 @@ docs, and gateway middleware in lockstep.
 
 ```bash
 # All tests
-task test
+make test
 
 # Unit tests only (fast)
-task test:unit
+make test-unit
 
 # Integration tests
-task test:integration
+make test-integration
 
 # E2E tests
-task test:e2e
+make test-e2e
 
 # With coverage
-task test:coverage
-
-# Watch mode (auto-rerun on changes)
-task test:watch
+make test-cover
 
 # Specific package
 go test -v ./internal/dpkms/storage/...
@@ -449,10 +446,10 @@ func SetupTestStore(t *testing.T) (*storage.Store, func()) {
 
 ```bash
 # Run all linters
-task lint
+make lint
 
-# Auto-fix issues
-task lint:fix
+# Only issues new since the merge base
+make lint-new
 
 # Specific linters
 golangci-lint run --disable-all --enable=gofmt
@@ -463,7 +460,7 @@ golangci-lint run --disable-all --enable=govet
 
 ```bash
 # Format all Go code
-task fmt
+make fmt
 
 # Check formatting without changing
 gofmt -l .
@@ -485,13 +482,13 @@ set -e
 echo "Running pre-commit checks..."
 
 # Format
-task fmt
+make fmt
 
 # Lint
-task lint
+make lint
 
 # Test
-task test:unit
+make test-unit
 
 echo "✓ All checks passed"
 HOOK
@@ -504,7 +501,7 @@ chmod +x .git/hooks/pre-commit
 ## Database & Migrations
 
 The schema lives in migrations embedded in the binaries. There is no
-separate migrate tool, migration directory or Taskfile target: `dpkms` and
+separate migrate tool, migration directory or make target: `dpkms` and
 `ctxt` apply every pending migration whenever they open the database
 (`Driver.Init` -> `Migrate`). Migrations are forward-only; there are no
 down steps.
@@ -617,7 +614,7 @@ dlv test ./internal/dpkms/storage
 
 ```bash
 # Run benchmarks
-task test:bench
+go test -tags fts5 -bench=. -benchmem ./...
 
 # Specific benchmark
 go test -bench=BenchmarkStorageCreate -benchmem ./internal/dpkms/storage/
@@ -647,8 +644,9 @@ Release notes for operators live in [release-notes/](release-notes/); the
 `Operator-Impact:` commit trailer feeds them (see
 [release-notes/template.md](release-notes/template.md)).
 
-`task release:build` packs `bin/` into `dist/contexthelp-<tag>.tar.gz` for
-a local check; it does not publish anything.
+`scripts/ci/tools.sh goreleaser -- goreleaser release --snapshot --clean --skip=sign`
+builds the release archives into `dist/` for a local check; it does not
+publish anything.
 
 ---
 

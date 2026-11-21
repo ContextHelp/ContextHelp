@@ -18,11 +18,11 @@
 #      step order, prefixed with `-` exactly when that step has
 #      continue-on-error: true
 #   4. CI_JOBS in the Makefile lists ci.yml's jobs, in order
-#   5. every golangci-lint run in the Makefile, Taskfile, scripts/ and
-#      .githooks/ goes through scripts/ci/tools.sh, which uses the
+#   5. every golangci-lint run in the Makefile, scripts/ and .githooks/
+#      goes through scripts/ci/tools.sh, which uses the
 #      mise.toml pin or fails
-#   6. the gosec and govulncheck versions named in workflows, the Taskfile
-#      and scripts/ are the Makefile's GOSEC_VERSION / GOVULNCHECK_VERSION
+#   6. the gosec and govulncheck versions named in workflows and scripts/
+#      are the Makefile's GOSEC_VERSION / GOVULNCHECK_VERSION
 #
 #   scripts/check-ci-parity.sh --ci-only   lists the CI steps a local run
 #                                          does not reproduce, and exits
@@ -255,7 +255,6 @@ fi
 
 # ── 5 and 6. pinned tools on every local path ────────────────────────────────
 dev_files=("$mk")
-for f in Taskfile.yml Taskfile.yaml; do [ -f "$f" ] && dev_files+=("$f"); done
 while IFS= read -r f; do dev_files+=("$f"); done < <(
 	find scripts .githooks -type f ! -name '*_test.go' ! -path '*/testdata/*' ! -name check-ci-parity.sh 2>/dev/null | sort
 )

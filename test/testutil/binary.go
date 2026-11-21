@@ -38,21 +38,16 @@ func BinaryPath(name string) string {
 }
 
 func buildCommand(root string) *exec.Cmd {
-	if _, err := exec.LookPath("task"); err == nil {
-		cmd := exec.Command("task", "build")
-		cmd.Dir = root
-		return cmd
+	if _, err := exec.LookPath("make"); err != nil {
+		return nil
 	}
-	if _, err := exec.LookPath("mise"); err == nil {
-		cmd := exec.Command("mise", "exec", "--", "task", "build")
-		cmd.Dir = root
-		return cmd
-	}
-	return nil
+	cmd := exec.Command("make", "build")
+	cmd.Dir = root
+	return cmd
 }
 
 // EnsureBuilt checks if both bin/ctxt and bin/dpkms exist. If either is
-// missing, it runs "task build" from the project root. If the build fails
+// missing, it runs "make build" from the project root. If the build fails
 // the test is skipped.
 func EnsureBuilt(t *testing.T) {
 	t.Helper()
@@ -75,7 +70,7 @@ func EnsureBuilt(t *testing.T) {
 
 	cmd := buildCommand(root)
 	if cmd == nil {
-		t.Skip("build skipped: neither task nor mise is available")
+		t.Skip("build skipped: make is not available")
 		return
 	}
 	out, err := cmd.CombinedOutput()
@@ -104,7 +99,7 @@ func EnsureBuiltM() error {
 
 	cmd := buildCommand(root)
 	if cmd == nil {
-		return fmt.Errorf("build failed: neither task nor mise is available")
+		return fmt.Errorf("build failed: make is not available")
 	}
 	out, err := cmd.CombinedOutput()
 	if err != nil {

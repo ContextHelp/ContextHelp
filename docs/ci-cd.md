@@ -42,7 +42,7 @@ step of CI) fails when anything disagrees:
   output);
 - no workflow uses `@master`, `@main`, `@latest`, a `~>` range or
   `version: latest`;
-- the Makefile, Taskfile and `scripts/` install no Go tool at `@latest`
+- the Makefile and `scripts/` install no Go tool at `@latest`
   or a branch, and any golangci-lint they install is the v2 module at the
   pin;
 - `release.yml` runs `ci.yml` ahead of every other job (see
@@ -51,8 +51,8 @@ step of CI) fails when anything disagrees:
 gosec and govulncheck have no `mise.toml` entry. The Makefile pins them
 (`GOSEC_VERSION`, `GOVULNCHECK_VERSION`) and runs them with
 `go run <pkg>@<version>`, in CI and locally alike.
-`scripts/check-ci-parity.sh` fails when a workflow, the Taskfile or a script
-names another version. Pinned in place: nancy `v1.2.0`, Trivy action
+`scripts/check-ci-parity.sh` fails when a workflow or a script names
+another version. Pinned in place: nancy `v1.2.0`, Trivy action
 `v0.36.0` (by commit SHA, tag in a trailing comment).
 
 ### Local-path replaces
@@ -131,7 +131,7 @@ run in the `toolchain` job) fails when:
   `$(CI_STEP) <target>` lines, or differs from the job's steps in order or
   in `continue-on-error` (a `-` prefix);
 - `CI_JOBS` is not `ci.yml`'s job list;
-- a Makefile, Taskfile, `scripts/` or `.githooks/` line runs golangci-lint
+- a Makefile, `scripts/` or `.githooks/` line runs golangci-lint
   without `scripts/ci/tools.sh`, or names a gosec/govulncheck version other
   than the Makefile's.
 
@@ -142,8 +142,8 @@ then add a `$(CI_STEP) <target>` line to `ci-<job>` in step order.
 `mise.toml` pin (pnpm: `packageManager`), resolved through mise, or through
 `PATH` on a runner without mise. A missing tool or another version is an
 error that names the fix (`mise trust && mise install`), never a warning.
-It also unsets `GOROOT` and sets `GOWORK=off`. The pre-commit hooks,
-`make lint` and the Taskfile lint tasks use it too.
+It also unsets `GOROOT` and sets `GOWORK=off`. The pre-commit hooks and
+`make lint` use it too.
 
 **What cannot match, and how the local run handles it:**
 
