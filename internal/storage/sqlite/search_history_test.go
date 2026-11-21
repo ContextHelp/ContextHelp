@@ -59,7 +59,7 @@ func TestSearchHistoryStore_List_Pagination(t *testing.T) {
 	assert.Len(t, all, 5)
 }
 
-func TestSearchHistoryStore_ClearByProfile(t *testing.T) {
+func TestSearchHistoryStore_Clear(t *testing.T) {
 	db := newTestDriver(t)
 	ctx := context.Background()
 	require.NoError(t, db.Init(ctx))
@@ -73,10 +73,35 @@ func TestSearchHistoryStore_ClearByProfile(t *testing.T) {
 		}))
 	}
 
-	require.NoError(t, db.SearchHistory().ClearByProfile(ctx, "prof_a"))
+	require.NoError(t, db.SearchHistory().Clear(ctx, storage.SearchHistoryFilter{ProfileID: "prof_a"}))
 
 	remaining, err := db.SearchHistory().List(ctx, storage.SearchHistoryFilter{})
 	require.NoError(t, err)
 	require.Len(t, remaining, 1)
 	assert.Equal(t, "prof_b", remaining[0].ProfileID)
+}
+
+// Clear with no profile removes every matching entry, those recorded with
+// no profile included, and only the filtered principal's.
+func TestSearchHistoryStore_ClearAllProfilesOfPrincipal(t *testing.T) {
+	db := newTestDriver(t)
+	ctx := context.Background()
+	require.NoError(t, db.Init(ctx))
+
+	now := time.Now().UTC().Truncate(time.Second)
+	for _, e := range []storage.SearchHistoryEntry{
+		{ID: "c1", Query: "q", ProfileID: "", OwnerPrincipal: "prn_a", SearchedAt: now},
+		{ID: "c2", Query: "q", ProfileID: "work", OwnerPrincipal: "prn_a", SearchedAt: now},
+		{ID: "c3", Query: "q", ProfileID: "", OwnerPrincipal: "prn_b", SearchedAt: now},
+	} {
+		e := e
+		require.NoError(t, db.SearchHistory().Append(ctx, &e))
+	}
+
+	require.NoError(t, db.SearchHistory().Clear(ctx, storage.SearchHistoryFilter{OwnerPrincipal: "prn_a"}))
+
+	left, err := db.SearchHistory().List(ctx, storage.SearchHistoryFilter{})
+	require.NoError(t, err)
+	require.Len(t, left, 1)
+	assert.Equal(t, "c3", left[0].ID)
 }

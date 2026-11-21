@@ -49,10 +49,18 @@ func (s *SearchHistoryStore) List(
 	return rowscan.AllScanner(rows, scanSearchHistoryEntry)
 }
 
-func (s *SearchHistoryStore) ClearByProfile(ctx context.Context, profileID string) error {
-	_, err := s.db.ExecContext(ctx,
-		`DELETE FROM search_history WHERE profile_id = ?`, profileID,
-	)
+func (s *SearchHistoryStore) Clear(ctx context.Context, f storage.SearchHistoryFilter) error {
+	query := `DELETE FROM search_history WHERE 1=1`
+	var args []any
+	if f.OwnerPrincipal != "" {
+		query += andOwnerPrincipal
+		args = append(args, f.OwnerPrincipal)
+	}
+	if f.ProfileID != "" {
+		query += andProfileScoped
+		args = append(args, f.ProfileID)
+	}
+	_, err := s.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		return fmt.Errorf("search_history clear: %w", err)
 	}

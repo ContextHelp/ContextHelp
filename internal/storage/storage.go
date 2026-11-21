@@ -575,6 +575,8 @@ type SearchHistoryStore interface {
 	Append(ctx context.Context, e *SearchHistoryEntry) error
 	// List returns history entries matching the filter, ordered by searched_at desc.
 	List(ctx context.Context, f SearchHistoryFilter) ([]*SearchHistoryEntry, error)
-	// ClearByProfile removes all history entries for a profile.
-	ClearByProfile(ctx context.Context, profileID string) error
+	// Clear removes the entries matching f's OwnerPrincipal and ProfileID;
+	// an empty field matches every value, so an empty ProfileID clears
+	// entries recorded with no profile too. Limit and Offset are ignored.
+	Clear(ctx context.Context, f SearchHistoryFilter) error
 }

@@ -71,15 +71,25 @@ func TestClearSearchHistory(t *testing.T) {
 	assert.Empty(t, out.Data)
 }
 
-func TestClearSearchHistory_MissingProfileID(t *testing.T) {
+// Without profile_id the caller's whole history is cleared, entries
+// recorded with no profile (ctxt find without --profile) included.
+func TestClearSearchHistory_AllProfiles(t *testing.T) {
 	ts := newTestServerBundle(t)
 	defer ts.Close()
+
+	ctx := ownerCtx()
+	require.NoError(t, ts.svc.AppendSearchHistory(ctx, "q1", "", "fts", 1))
+	require.NoError(t, ts.svc.AppendSearchHistory(ctx, "q2", "work", "fts", 1))
 
 	req, _ := http.NewRequest(http.MethodDelete, ts.URL+"/api/v1/search-history", nil)
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	resp.Body.Close()
-	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	assert.Equal(t, http.StatusNoContent, resp.StatusCode)
+
+	left, err := ts.svc.ListSearchHistory(ctx, storage.SearchHistoryFilter{})
+	require.NoError(t, err)
+	assert.Empty(t, left)
 }
 
 // A search through /search is recorded and listable through /search-history.

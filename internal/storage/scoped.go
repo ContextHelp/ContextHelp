@@ -345,7 +345,6 @@ var restrictedReads = map[string][]string{
 	"Proximity":       {"FindStale", "Stats"},
 	"Registries":      {"GetCachedManifest", "List"},
 	"Reminders":       {"Get", "List"},
-	"SearchHistory":   {"ClearByProfile"},
 	"Steps":           {"Get", "List"},
 	"UISessions":      {"Lookup", "Get", "List"},
 	"Watches":         {"GetWatch", "ListWatches", "GetFileRecord", "ListFileRecords"},
