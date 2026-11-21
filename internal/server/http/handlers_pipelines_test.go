@@ -196,3 +196,31 @@ func TestEnqueue_ArchivedPipelineReturns409(t *testing.T) {
 		t.Errorf("code: got %q, want CONFLICT", env.Error.Code)
 	}
 }
+
+// POST /pipelines answers a malformed steps value 400 INVALID_REQUEST and a
+// server with no step predicate 500 STEP_VALIDATION_UNAVAILABLE, each with
+// its own code.
+func TestCreatePipeline_ErrorCodes(t *testing.T) {
+	ts := newTestServerBundle(t)
+	defer ts.Close()
+
+	post := func(body string) (int, ErrorEnvelope) {
+		t.Helper()
+		resp, err := http.Post(ts.URL+"/api/v1/pipelines", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatalf("post: %v", err)
+		}
+		defer resp.Body.Close()
+		var env ErrorEnvelope
+		_ = json.NewDecoder(resp.Body).Decode(&env)
+		return resp.StatusCode, env
+	}
+
+	if status, env := post(`{"name":"bad-steps","steps":"not json"}`); status != http.StatusBadRequest || env.Error.Code != "INVALID_REQUEST" {
+		t.Errorf("malformed steps: %d %q, want 400 INVALID_REQUEST", status, env.Error.Code)
+	}
+	// The test server's service has no built-in step predicate.
+	if status, env := post(`{"name":"some-pl","steps":"[{\"name\":\"noop\"}]"}`); status != http.StatusInternalServerError || env.Error.Code != "STEP_VALIDATION_UNAVAILABLE" {
+		t.Errorf("no predicate: %d %q, want 500 STEP_VALIDATION_UNAVAILABLE", status, env.Error.Code)
+	}
+}

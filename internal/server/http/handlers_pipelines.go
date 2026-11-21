@@ -45,8 +45,11 @@ func CreatePipeline(svc *service.Service) http.HandlerFunc {
 				WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 			case errors.Is(err, domain.ErrConflict):
 				WriteError(w, http.StatusConflict, "DUPLICATE_NAME", fmt.Sprintf("pipeline %q already exists", req.Name))
+			case errors.Is(err, service.ErrStepValidationUnavailable):
+				// A misconfigured server, not a bad request: 500 with a code that says so.
+				WriteError(w, http.StatusInternalServerError, "STEP_VALIDATION_UNAVAILABLE", err.Error())
 			case strings.Contains(err.Error(), "parse steps") || strings.Contains(err.Error(), "invalid JSON"):
-				WriteError(w, http.StatusBadRequest, "INTERNAL_ERROR", err.Error())
+				WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
 			default:
 				WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 			}

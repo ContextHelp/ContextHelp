@@ -53,19 +53,28 @@ func withPolicyAction(ctx context.Context, action string) context.Context {
 // directly.
 type pipelineRepo struct {
 	store storage.PipelineStore
+	// validate, when set, checks a new pipeline just before it is
+	// stored. The repository runs after the pre_persisted veto seam, so
+	// a caller policy refuses is never told what is wrong with its input.
+	validate func(context.Context, *storage.Pipeline) error
 }
 
 // Compile-time assertion: pipelineRepo implements
 // domain.Repository[storage.Pipeline].
 var _ domain.Repository[storage.Pipeline] = (*pipelineRepo)(nil)
 
-func newPipelineRepo(store storage.PipelineStore) *pipelineRepo {
-	return &pipelineRepo{store: store}
+func newPipelineRepo(store storage.PipelineStore, validate func(context.Context, *storage.Pipeline) error) *pipelineRepo {
+	return &pipelineRepo{store: store, validate: validate}
 }
 
 func (r *pipelineRepo) Create(ctx context.Context, p *storage.Pipeline) error {
 	if p == nil {
 		return fmt.Errorf("%w: pipeline is required", domain.ErrValidation)
+	}
+	if r.validate != nil {
+		if err := r.validate(ctx, p); err != nil {
+			return err
+		}
 	}
 	if err := r.store.Create(ctx, p); err != nil {
 		return mapPipelineRepoErr(err)
@@ -194,8 +203,8 @@ func (v *pipelineValidator) Validate(ctx context.Context, p storage.Pipeline) er
 // path leave it nil. When pub is non-nil, every Create/Update/Delete
 // fires kit.runtime.entity.pre_persisted on the bus and a sync
 // subscriber (the policy engine) can veto by returning an error.
-func newPipelineService(store storage.PipelineStore, pub domain.EventPublisher) *domain.Service[storage.Pipeline] {
-	repo := newPipelineRepo(store)
+func newPipelineService(store storage.PipelineStore, pub domain.EventPublisher, validate func(context.Context, *storage.Pipeline) error) *domain.Service[storage.Pipeline] {
+	repo := newPipelineRepo(store, validate)
 	val := newPipelineValidator()
 	opts := []domain.Option[storage.Pipeline]{
 		domain.WithValidation[storage.Pipeline](val),

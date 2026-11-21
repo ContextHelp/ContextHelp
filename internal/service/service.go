@@ -168,7 +168,7 @@ func NewWithOptions(store storage.StorageDriver, queue *jobs.Queue, pipes pipeli
 		discovery.WithCredentials(s.registryAuth)
 	}
 	if store != nil {
-		s.pipelineSvc = newPipelineService(store.Pipelines(), s.policyPub)
+		s.pipelineSvc = newPipelineService(store.Pipelines(), s.policyPub, s.validatePipelineCreate)
 		s.viewers = sharing.NewResolver(store.Sharing()).WithRegistry(store.Auth())
 		if s.authority != nil {
 			s.viewers.WithRecords(sharing.AuthorityRecords{Holder: s.authority, Identities: store.Auth().Identities()})
@@ -850,15 +850,15 @@ func (s *Service) CreatePipeline(ctx context.Context, req CreatePipelineRequest)
 		UpdatedAt:   now,
 	}
 
-	if err := s.validatePipelineCreate(ctx, pipeline); err != nil {
-		return "", fmt.Errorf("create pipeline: %w", err)
-	}
-
 	if s.pipelineSvc != nil {
+		// Validation runs inside the domain service, after the policy veto.
 		if err := s.pipelineSvc.Create(ctx, pipeline); err != nil {
 			return "", fmt.Errorf("create pipeline: %w", err)
 		}
 	} else {
+		if err := s.validatePipelineCreate(ctx, pipeline); err != nil {
+			return "", fmt.Errorf("create pipeline: %w", err)
+		}
 		if err := s.Store(ctx).Pipelines().Create(ctx, pipeline); err != nil {
 			return "", fmt.Errorf("create pipeline: %w", err)
 		}

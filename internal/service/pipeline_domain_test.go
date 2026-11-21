@@ -1,7 +1,9 @@
 package service
 
 import (
+	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -163,10 +165,21 @@ func TestCreatePipelineValidation(t *testing.T) {
 	t.Run("registered built-in pipeline protected", func(t *testing.T) {
 		svc := newTestService(t)
 		svc.Pipes.Upsert("github.repo", &pipeline.Pipeline{PipelineName: "github.repo"})
-		for _, n := range []string{"github.repo", "github.mine"} {
+		_, err := svc.CreatePipeline(ownerCtx(), CreatePipelineRequest{Name: "github.repo", Steps: steps})
+		require.ErrorIs(t, err, ErrProtectedPipeline)
+		// Only the exact built-in names and text.* are protected: a
+		// custom pipeline may live in a built-in's namespace.
+		for _, n := range []string{"github.mine", "doc.legal", "email.newsletter"} {
 			_, err := svc.CreatePipeline(ownerCtx(), CreatePipelineRequest{Name: n, Steps: steps})
-			require.ErrorIs(t, err, ErrProtectedPipeline, n)
+			require.NoError(t, err, n)
 		}
+	})
+
+	t.Run("network allowed when sandbox disabled", func(t *testing.T) {
+		svc := newTestService(t)
+		_, err := svc.CreatePipeline(ownerCtx(), CreatePipelineRequest{Name: "p-off", Steps: steps,
+			Sandbox: &storage.SandboxConfig{Enabled: false, Network: true}})
+		require.NoError(t, err, "network applies to an enabled sandbox only")
 	})
 }
 
@@ -178,11 +191,33 @@ func TestCreatePipelineFailsClosedWithoutStepPredicate(t *testing.T) {
 	svc.Installer.Reserved = nil
 
 	_, err := svc.CreatePipeline(ownerCtx(), CreatePipelineRequest{Name: "p-closed", Steps: `[{"name":"definitely_not_a_step"}]`})
-	require.Error(t, err)
+	require.ErrorIs(t, err, ErrStepValidationUnavailable)
 	require.NotErrorIs(t, err, domain.ErrConflict)
 	_, getErr := svc.GetPipeline(ownerCtx(), "p-closed")
 	require.Error(t, getErr, "a refused pipeline must not be persisted")
 
 	_, err = svc.CreatePipeline(ownerCtx(), CreatePipelineRequest{Name: "p-empty", Steps: `[]`})
 	require.NoError(t, err)
+}
+
+// A caller policy denies is told so, not told what is wrong with the
+// pipeline: validation runs after authorization.
+type vetoCreate struct{ err error }
+
+func (v vetoCreate) Publish(_ context.Context, topic, _ string, _ any) error {
+	if strings.HasSuffix(topic, "pre_persisted") {
+		return v.err
+	}
+	return nil
+}
+
+func TestCreatePipelineValidatesAfterAuthorization(t *testing.T) {
+	svc := newTestService(t)
+	svc.pipelineSvc = newPipelineService(svc.Store(ownerCtx()).Pipelines(), vetoCreate{err: errors.New("denied by policy")}, svc.validatePipelineCreate)
+
+	_, err := svc.CreatePipeline(ownerCtx(), CreatePipelineRequest{Name: "text.mine", Steps: `[{"name":"not_a_step"}]`})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "denied by policy")
+	require.NotErrorIs(t, err, domain.ErrValidation)
+	require.NotErrorIs(t, err, ErrProtectedPipeline)
 }
