@@ -8,7 +8,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
+
+	"github.com/go-chi/chi/v5"
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/security"
@@ -51,14 +52,18 @@ type VisibilityConfig struct {
 
 // Visibility returns the middleware that wraps a restricted viewer's
 // request on the route mounted on method and pattern (ADR-080 §8):
-// it attaches the request's ledger, which the scoped reads record
-// every released row into; buffers the response; records the read
-// audit entry (§9); walks the ID paths of the route's declared shape
-// and searches the body for the withheld values, stripping anything
-// the ledger does not hold; and logs, counts and (strictly) refuses a
-// hit. An unrestricted viewer
-// passes through untouched and unbuffered: the owner pays nothing.
-// A route with no declared shape fails closed for a restricted viewer.
+// it opens the request's receipt (sharing.Receipt), which the scope and
+// capability checks behind it and the checks below append to, and
+// finishes it once on every way out, early refusals included: one read
+// audit entry (§9) with the decision, the ordered checks and the
+// operation digest. It also attaches the request's ledger, which the
+// scoped reads record every released row into; buffers the response;
+// walks the ID paths of the route's declared shape and searches the
+// body for the withheld values, stripping anything the ledger does not
+// hold; and logs, counts and (strictly) refuses a hit. An unrestricted
+// viewer passes through untouched and unbuffered: the owner pays
+// nothing. A route with no declared shape fails closed for a restricted
+// viewer.
 //
 // The owner previewing another viewer (X-Ctxt-View-As: a principal id
 // or a share policy name) has its viewer swapped here, before the
@@ -74,87 +79,189 @@ func Visibility(method, pattern string, scope authn.Scope, cfg VisibilityConfig)
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			v, ok := sharing.FromContext(r.Context())
-			if target := strings.TrimSpace(r.Header.Get(sharing.HeaderViewAs)); target != "" {
-				pv, done := viewAs(w, r, cfg.Viewers, v, ok, reads, target)
-				if done {
+			target := strings.TrimSpace(r.Header.Get(sharing.HeaderViewAs))
+			restricted := !ok || !v.IsUnrestricted()
+			if !restricted && target == "" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			// One receipt per audited request, finished once on every
+			// way out, early refusals included (ADR-080 §9).
+			rcpt := sharing.NewReceipt(operationFor(r, route, v))
+			defer func() { rcpt.Finish(cfg.Audit) }()
+			r = r.WithContext(sharing.WithReceipt(r.Context(), rcpt))
+			if target != "" {
+				pv, refused := viewAs(w, r, cfg.Viewers, v, ok, reads, target)
+				if refused != "" {
+					if restricted {
+						rcpt.Refuse(sharing.CheckViewAs, refused)
+					} else {
+						rcpt.Discard() // the owner's own requests are not logged
+					}
 					return
 				}
 				v, ok = pv, true
 				r = r.WithContext(previewContext(r.Context(), pv, target))
+				p, _ := sharing.PreviewFrom(r.Context())
+				rcpt.SetPreview(p, pv)
 			}
 			if ok && v.IsUnrestricted() {
+				// The owner previewing the owner is the owner: untouched
+				// and not logged.
+				rcpt.Discard()
 				next.ServeHTTP(w, r)
 				return
 			}
 			if streams {
 				// The handler filters each frame for the viewer; a
-				// buffered check would hold the stream until it ends.
+				// buffered check would hold the stream until it ends. Its
+				// receipt is written when the stream ends, stamped with
+				// when it began.
 				next.ServeHTTP(w, r)
+				if !rcpt.Refused() {
+					rcpt.SettleStream()
+				}
 				return
 			}
 			if !known {
 				slog.Error("visibility: route declares no response shape", "route", route)
+				rcpt.Refuse(sharing.CheckRouteAccess, sharing.ReasonRouteUnclassified)
 				WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "route declares no response shape")
 				return
 			}
 			ledger := sharing.NewLedger()
+			rcpt.SetLedger(ledger)
 			ctx := sharing.WithLedger(r.Context(), ledger)
 			rec := newRecorder(w)
 			next.ServeHTTP(rec, r.WithContext(ctx))
-			cfg.Audit.Record(sharing.AccessEntryFor(ctx, v, route, ledger, time.Now()))
-
-			res, err := sharing.Backstop(rec.body.Bytes(), sharing.HTTPPaths(shape), ledger)
-			if err != nil {
-				slog.Error("visibility: backstop cannot check the response", "route", route, "err", err)
-				w.Header().Del("Content-Length")
-				WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "response cannot be checked for visibility")
-				return
+			// A check that refused the request ended its trail there: the
+			// handler never ran, and the checks after it are not recorded.
+			// The response is still checked below, whatever its source.
+			reached := !rcpt.Refused()
+			if reached {
+				rcpt.SettlePolicy()
 			}
-			if len(res.Hits) > 0 {
-				recordBackstop(r, cfg.Security, route, v, res.Hits)
-				if cfg.Strict {
-					w.Header().Del("Content-Length")
-					WriteError(w, http.StatusInternalServerError, CodeVisibilityBackstop, "the response carried data outside the viewer's visibility and was refused")
-					return
-				}
-			}
-			status, body := rec.status, res.Body
-			if res.Absent {
-				w.Header().Del("Content-Length")
-				WriteError(w, http.StatusNotFound, CodeNotFound, "resource not found")
-				return
-			}
-			w.Header().Set("Content-Length", strconv.Itoa(len(body)))
-			w.WriteHeader(status)
-			_, _ = w.Write(body)
+			answer(w, r, rec, backstopRun{shape: shape, route: route, viewer: v, ledger: ledger, reached: reached}, cfg, rcpt)
 		})
 	}
 }
 
-// viewAs resolves an X-Ctxt-View-As target for the owner, writing the
-// refusal and reporting done when the request may not go on: a
-// non-owner sender (403), a route that writes (400), an unknown target
-// (404) or a resolution failure (500).
-func viewAs(w http.ResponseWriter, r *http.Request, viewers *sharing.Resolver, v sharing.Viewer, ok, reads bool, target string) (sharing.Viewer, bool) {
+// backstopRun is what answer needs to check one buffered response.
+type backstopRun struct {
+	shape   sharing.Shape
+	route   string
+	viewer  sharing.Viewer
+	ledger  *sharing.Ledger
+	reached bool
+}
+
+// answer runs the backstop over the buffered response and writes what
+// passes (ADR-080 §8), recording the backstop check on the receipt:
+// refused on a strict instance, stripped otherwise, unreadable when the
+// body cannot be checked. A request a check refused before the handler
+// ran (reached false) is still checked, but the check is not recorded,
+// since the trail ended at the refusal.
+func answer(w http.ResponseWriter, r *http.Request, rec *recorder, run backstopRun, cfg VisibilityConfig, rcpt *sharing.Receipt) {
+	res, err := sharing.Backstop(rec.body.Bytes(), sharing.HTTPPaths(run.shape), run.ledger)
+	if err != nil {
+		slog.Error("visibility: backstop cannot check the response", "route", run.route, "err", err)
+		if run.reached {
+			rcpt.Defer(sharing.CheckBackstop, sharing.ReasonResponseUnreadable)
+		}
+		w.Header().Del("Content-Length")
+		WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "response cannot be checked for visibility")
+		return
+	}
+	if len(res.Hits) > 0 {
+		recordBackstop(r, cfg.Security, run.route, run.viewer, res.Hits)
+		if cfg.Strict {
+			if run.reached {
+				rcpt.Refuse(sharing.CheckBackstop, sharing.ReasonHitRefused)
+			}
+			w.Header().Del("Content-Length")
+			WriteError(w, http.StatusInternalServerError, CodeVisibilityBackstop, "the response carried data outside the viewer's visibility and was refused")
+			return
+		}
+	}
+	switch {
+	case !run.reached:
+	case len(res.Hits) > 0 || res.Absent:
+		rcpt.Fail(sharing.CheckBackstop, sharing.ReasonHitStripped)
+	default:
+		rcpt.Pass(sharing.CheckBackstop, sharing.ReasonClean)
+	}
+	if res.Absent {
+		w.Header().Del("Content-Length")
+		WriteError(w, http.StatusNotFound, CodeNotFound, "resource not found")
+		return
+	}
+	w.Header().Set("Content-Length", strconv.Itoa(len(res.Body)))
+	w.WriteHeader(rec.status)
+	_, _ = w.Write(res.Body)
+}
+
+// operationFor describes the request for its receipt: the route
+// template, the consequential params (query and path), and the caller as
+// the authentication middleware attached it. A request whose principal
+// was not attached falls back to the viewer's, so a viewer is always
+// attributed to the principal it was compiled for.
+func operationFor(r *http.Request, route string, v sharing.Viewer) sharing.Operation {
+	op := sharing.Operation{
+		Method: r.Method, Route: route, Params: httpParams(r), Viewer: v,
+		Principal: v.PrincipalID(), Identity: v.IdentityID(),
+	}
+	if p, ok := authn.FromContext(r.Context()); ok {
+		op.Principal, op.Identity = p.ID, p.Meta[authn.MetaIdentityID]
+		if p.Provider != "" && p.Provider != "none" {
+			op.AuthMethod = p.Provider
+		}
+	}
+	return op
+}
+
+// httpParams lists the request's consequential params for the
+// operation digest: every query parameter as "query.<name>" and every
+// route parameter as "path.<name>".
+func httpParams(r *http.Request) map[string][]string {
+	params := map[string][]string{}
+	for k, vs := range r.URL.Query() {
+		params["query."+k] = vs
+	}
+	if rctx := chi.RouteContext(r.Context()); rctx != nil {
+		for i, k := range rctx.URLParams.Keys {
+			if i < len(rctx.URLParams.Values) {
+				params["path."+k] = append(params["path."+k], rctx.URLParams.Values[i])
+			}
+		}
+	}
+	return params
+}
+
+// viewAs resolves an X-Ctxt-View-As target for the owner. When the
+// request may not go on it has written the refusal and returns its
+// reason code: a non-owner sender (403, owner_only), a route that
+// writes (400), an unknown target (404) or a resolution failure (500).
+// The reason is empty when the preview is on.
+func viewAs(w http.ResponseWriter, r *http.Request, viewers *sharing.Resolver, v sharing.Viewer, ok, reads bool, target string) (sharing.Viewer, string) {
 	if !ok || !v.IsUnrestricted() {
 		WriteError(w, http.StatusForbidden, CodeViewAsOwnerOnly, sharing.HeaderViewAs+" is for the owner")
-		return v, true
+		return v, sharing.ReasonOwnerOnly
 	}
 	if !reads {
 		WriteError(w, http.StatusBadRequest, CodeViewAsReadOnly, sharing.HeaderViewAs+" previews read routes only")
-		return v, true
+		return v, sharing.ReasonViewAsReadOnly
 	}
 	pv, err := viewers.ViewAs(r.Context(), target)
 	switch {
 	case errors.Is(err, sharing.ErrViewAsUnknown):
 		WriteError(w, http.StatusNotFound, CodeNotFound, "no principal or share policy named "+strconv.Quote(target))
-		return v, true
+		return v, sharing.ReasonViewAsUnknownTarget
 	case err != nil:
 		slog.Error("view-as: resolve failed", "target", target, "err", err)
 		WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "view-as resolution failed")
-		return v, true
+		return v, sharing.ReasonViewAsResolutionFailed
 	}
-	return pv, false
+	return pv, ""
 }
 
 // previewContext attaches the previewed viewer and the preview marker

@@ -62,6 +62,9 @@ func SharingConformance(t *testing.T, drv storage.StorageDriver) {
 		{"access log query by object and window", sharingConfAccessLogObject},
 		{"access log prune keeps entries and counts", sharingConfAccessLogPrune},
 		{"access log refusals", sharingConfAccessLogRefusals},
+		{"access log receipt round trip", sharingConfAccessLogReceipt},
+		{"access log decision filter", sharingConfAccessLogDecision},
+		{"access log receipt refusals", sharingConfAccessLogReceiptRefusals},
 	} {
 		t.Run(c.name, func(t *testing.T) { c.fn(t, drv) })
 	}
@@ -645,10 +648,10 @@ func sharingConfIdentityPolicyRefusals(t *testing.T, drv storage.StorageDriver) 
 // so the cases never see each other's rows.
 func accessLogEntries(tag string) []*storage.AccessEntry {
 	return []*storage.AccessEntry{
-		{At: sharingT0, PrincipalID: "prn_log_a_" + tag, IdentityID: "idn_log_a", Route: routeObjects, PolicyVersions: "v1", ObjectCount: 2, EntityCount: 1, ObjectIDs: []string{"obj-2-" + tag, "obj-1-" + tag, "obj-2-" + tag}},
-		{At: sharingT0.Add(time.Minute), PrincipalID: "prn_log_a_" + tag, Route: routeFind, PolicyVersions: "v1", ObjectCount: 1, ObjectIDs: []string{"obj-3-" + tag}},
-		{At: sharingT0.Add(2 * time.Minute), PrincipalID: "prn_log_b_" + tag, Route: routeObjects + "/obj-1", PolicyVersions: "v2", ObjectCount: 1, ObjectIDs: []string{"obj-1-" + tag}},
-		{PrincipalID: "prn_log_c_" + tag, Route: "GET /stats"},
+		{At: sharingT0, PrincipalID: "prn_log_a_" + tag, IdentityID: "idn_log_a", Route: routeObjects, Decision: storage.AccessDecisionAllowed, OperationDigest: accessDigest, PolicyVersions: "v1", ObjectCount: 2, EntityCount: 1, ObjectIDs: []string{"obj-2-" + tag, "obj-1-" + tag, "obj-2-" + tag}},
+		{At: sharingT0.Add(time.Minute), PrincipalID: "prn_log_a_" + tag, Route: routeFind, Decision: storage.AccessDecisionAllowed, OperationDigest: accessDigest, PolicyVersions: "v1", ObjectCount: 1, ObjectIDs: []string{"obj-3-" + tag}},
+		{At: sharingT0.Add(2 * time.Minute), PrincipalID: "prn_log_b_" + tag, Route: routeObjects + "/obj-1", Decision: storage.AccessDecisionAllowed, OperationDigest: accessDigest, PolicyVersions: "v2", ObjectCount: 1, ObjectIDs: []string{"obj-1-" + tag}},
+		{PrincipalID: "prn_log_c_" + tag, Route: "GET /stats", Decision: storage.AccessDecisionAllowed, OperationDigest: accessDigest},
 	}
 }
 
@@ -743,8 +746,8 @@ func sharingConfAccessLogRefusals(t *testing.T, drv storage.StorageDriver) {
 	ctx := context.Background()
 	st := drv.Sharing().AccessLog()
 	for name, e := range map[string]*storage.AccessEntry{
-		"no principal": {Route: routeObjects},
-		"no route":     {PrincipalID: "prn_log_x"},
+		"no principal": {Route: routeObjects, Decision: storage.AccessDecisionAllowed, OperationDigest: accessDigest},
+		"no route":     {PrincipalID: "prn_log_x", Decision: storage.AccessDecisionAllowed, OperationDigest: accessDigest},
 	} {
 		if err := st.Append(ctx, []*storage.AccessEntry{e}); err == nil {
 			t.Fatalf("Append(%s) must fail", name)
@@ -754,7 +757,7 @@ func sharingConfAccessLogRefusals(t *testing.T, drv storage.StorageDriver) {
 		t.Fatal("Append(nil entry) must fail")
 	}
 	// A refused batch writes nothing.
-	ok := &storage.AccessEntry{PrincipalID: "prn_log_batch", Route: routeObjects}
+	ok := &storage.AccessEntry{PrincipalID: "prn_log_batch", Route: routeObjects, Decision: storage.AccessDecisionAllowed, OperationDigest: accessDigest}
 	if err := st.Append(ctx, []*storage.AccessEntry{ok, {Route: "GET /x"}}); err == nil {
 		t.Fatal("Append(mixed batch) must fail")
 	}

@@ -135,9 +135,26 @@ The owner can run any read command through another viewer's view: a principal id
 ```bash
 ctxt share audit --object <object-id>
 ctxt share audit --principal prn_01J... --since 7d
+ctxt share audit --decision denied --checks
 ```
 
-Every request by a non-owner principal leaves one entry: who, through which credential, on which route, under which policy versions, with the objects the answer carried. `--object` asks who saw one object; `--principal` asks what one viewer read; `--since` takes a date, an RFC 3339 time or a duration such as `7d`. Your own requests are not logged, except previews. The API behind it is `GET /api/v1/share/audit`, under `admin:audit`.
+Every shared-viewer request leaves exactly one entry – answered or refused, it doesn't matter. Think of it as a receipt: who asked, through which credential, on which route, under which policy versions, what the answer carried, the decision, the checks behind that decision in the order they ran, and a digest of the operation.
+
+The decision lands in one of three states: allowed, denied, or deferred. Denied means a check stopped the request cold – a missing scope, a route closed to shared viewers, a viewer no grant applies to, or the backstop refusing an answer on a strict instance. Deferred means the instance couldn't decide and failed closed: the backstop couldn't read the response, so it shut the door. An allowed entry can still carry a failing backstop check – that's what happened when the backstop stripped something out of the answer before it went through.
+
+Each check gets an outcome: PASS, FAIL, UNKNOWN, or NOT_APPLICABLE. Behind each outcome sits a stable reason code – `scope_missing`, `owner_only`, `capability_missing`, `no_applicable_grant`, `hit_refused`. The checks themselves run in order: `authn` (named after the method that admitted the request – `authn.api_key`, for example), then `scope`, `view_as`, `route_access`, `share_policy`, `deny_class`, and `backstop`. When a check refuses, the list ends there. Every check the request never reached is simply absent – never recorded as a PASS. NOT_APPLICABLE means the check ran and found nothing to decide: a route that read nothing through the viewer's grants, or a principal with no deny-class ceiling.
+
+The operation digest is a SHA-256 over the method, the route template, and the sorted query, path, and request parameters – written `v1:sha256:<hex>`. Same operation, same digest, regardless of what order the parameters arrive in. The values are hashed and never stored. A value with few possibilities can be confirmed by guessing. Treat the digest as an identifier, not a secret. Version 1 doesn't cover the request body – two requests that differ only in their body share a digest. For a streaming call, the digest covers the method alone. On gRPC, fields that carry a body (bytes fields, `content`, `body`, `raw_content`, `text_content`, and any string over 256 bytes) are left out, as REST leaves the body out.
+
+A stream's entry is written when the stream ends, stamped with the time it started, and the process dying mid-stream loses it. Its share policy is NOT_APPLICABLE with the reason `stream_filtered`, since the stream filters each frame for the viewer; on gRPC its backstop checks come before the share policy and ceiling. A revocation that ends a stream early leaves no entry of its own.
+
+The authority's provisioning routes (`/bos/v1`) leave an entry too: the authentication and the authority check, nothing else.
+
+Two categories never make it into the log. Requests with no credential, or a bad one, aren't recorded – nobody is accountable for them, and an unauthenticated flood must not grow the table. Those land in security events instead. A request the session guard refuses, or one whose viewer could not be resolved after authentication, is refused before the entry opens and is not recorded either, like the browser rules for a session cookie. Your own requests aren't logged either, refused or not, with one exception: previews. Refusals are buffered and written alongside everything else, so a burst of them never makes a request wait on the store.
+
+`--object` asks who saw one object. `--principal` asks what one viewer read. `--decision denied` lists who was refused and by which check. `--checks` prints the full list of checks behind each entry. `--since` takes a date, an RFC 3339 time, or a duration such as `7d`.
+
+The API behind it is `GET /api/v1/share/audit`, under `admin:audit`. It takes the same filters: `principal`, `object`, `decision`, and `since`.
 
 Entries are buffered and written in batches by one goroutine, so a read never waits on the writer. Entries still in the buffer when the process dies are lost; everything written before them is safe. Object ids are kept for `sharing.audit.retention` (`2160h`, 90 days, by default) and pruned by `dpkms housekeeping run`; the entries and their counts stay.
 

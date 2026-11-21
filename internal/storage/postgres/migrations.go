@@ -424,6 +424,18 @@ var pgMigrations = []pgMigration{
 			outbox_pruned_through BIGINT NOT NULL DEFAULT 0
 		)`,
 	}},
+	// access_log becomes receipt-shaped (ADR-080 §9), mirroring SQLite
+	// migration 057: decision (allowed | denied | deferred), the ordered
+	// check trail (a JSON array in TEXT, as SQLite keeps it) and the
+	// operation digest. Earlier rows are admitted reads and backfill as
+	// allowed. Columns and an index only; IF NOT EXISTS makes a replay
+	// a no-op.
+	{Version: 38, Name: "access_log receipt", Statements: []string{
+		`ALTER TABLE access_log ADD COLUMN IF NOT EXISTS decision TEXT NOT NULL DEFAULT 'allowed' CHECK (decision IN ('allowed', 'denied', 'deferred'))`,
+		`ALTER TABLE access_log ADD COLUMN IF NOT EXISTS checks TEXT NOT NULL DEFAULT '[]'`,
+		`ALTER TABLE access_log ADD COLUMN IF NOT EXISTS operation_digest TEXT NOT NULL DEFAULT ''`,
+		`CREATE INDEX IF NOT EXISTS idx_access_log_decision ON access_log (decision, at)`,
+	}},
 }
 
 // sharingRegistryStatements create the sharing registry and add the

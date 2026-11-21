@@ -12,6 +12,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/security"
 	pb "github.com/ideacrafterslabs/ctxt/internal/server/grpc/pb"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 )
 
 // Server reflection method names. Reflection is registered only when
@@ -61,19 +62,23 @@ func authorizeMethod(ctx context.Context, fullMethod string, sec *security.Emitt
 	if !ok {
 		return status.Error(codes.Unauthenticated, "authentication required")
 	}
+	rcpt := sharing.ReceiptFrom(ctx)
 	scope, known := methodScopes[fullMethod]
 	if !known {
+		rcpt.Refuse(sharing.CheckScope, sharing.ReasonScopeUndeclared)
 		if sec != nil {
 			sec.RecordACLDenial(ctx, p.ID)
 		}
 		return status.Errorf(codes.PermissionDenied, "INSUFFICIENT_SCOPE: method %s declares no scope", fullMethod)
 	}
 	if !p.HasScope(scope) {
+		rcpt.Refuse(sharing.CheckScope, sharing.ReasonScopeMissing)
 		if sec != nil {
 			sec.RecordACLDenial(ctx, p.ID)
 		}
 		return status.Error(codes.PermissionDenied, fmt.Sprintf("INSUFFICIENT_SCOPE: missing scope %s", scope))
 	}
+	rcpt.Pass(sharing.CheckScope, sharing.ReasonScopeHeld)
 	return nil
 }
 
