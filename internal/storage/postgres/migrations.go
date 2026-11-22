@@ -536,6 +536,29 @@ var pgMigrations = []pgMigration{
 		`ALTER TABLE ui_sessions ADD COLUMN IF NOT EXISTS steward_grant_id TEXT`,
 		`ALTER TABLE ui_sessions ADD COLUMN IF NOT EXISTS steward_active_at TIMESTAMPTZ`,
 	}},
+	// The steward audit (ADR-083 §5), mirroring SQLite migration 065:
+	// access_log gains steward_grant_id and the chain columns
+	// (chain_seq, prev_digest, entry_digest, objects_digest), NULL on
+	// every ordinary entry, and access_log_chain holds the chain head,
+	// one row seeded empty, which an append locks (SELECT ... FOR
+	// UPDATE) so concurrent appends keep one linear chain. Columns,
+	// indexes and a new table only; IF NOT EXISTS and ON CONFLICT DO
+	// NOTHING make a replay a no-op.
+	{Version: 46, Name: "steward audit chain", Statements: []string{
+		`ALTER TABLE access_log ADD COLUMN IF NOT EXISTS steward_grant_id TEXT`,
+		`ALTER TABLE access_log ADD COLUMN IF NOT EXISTS chain_seq BIGINT`,
+		`ALTER TABLE access_log ADD COLUMN IF NOT EXISTS prev_digest TEXT`,
+		`ALTER TABLE access_log ADD COLUMN IF NOT EXISTS entry_digest TEXT`,
+		`ALTER TABLE access_log ADD COLUMN IF NOT EXISTS objects_digest TEXT`,
+		`CREATE INDEX IF NOT EXISTS idx_access_log_steward ON access_log (steward_grant_id, at) WHERE steward_grant_id IS NOT NULL`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_access_log_chain_seq ON access_log (chain_seq) WHERE chain_seq IS NOT NULL`,
+		`CREATE TABLE IF NOT EXISTS access_log_chain (
+			id   INTEGER PRIMARY KEY CHECK (id = 1),
+			seq  BIGINT NOT NULL CHECK (seq >= 0),
+			head TEXT NOT NULL
+		)`,
+		`INSERT INTO access_log_chain (id, seq, head) VALUES (1, 0, '') ON CONFLICT (id) DO NOTHING`,
+	}},
 }
 
 // sharingRegistryStatements create the sharing registry and add the

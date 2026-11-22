@@ -127,6 +127,15 @@ type AccessEntry struct {
 	// ObjectIDs are the objects the response carried. They live in
 	// access_log_objects and are pruned by retention; the counts stay.
 	ObjectIDs []string `json:"object_ids,omitempty"`
+	// StewardGrantID is the steward grant an elevated request named
+	// (ADR-083 §5), whether it was used or refused; empty for every
+	// other request. A steward entry is durable and chained
+	// (AppendSteward), and sharing.audit.retention never prunes its
+	// object ids: steward.audit_retention does.
+	StewardGrantID string `json:"steward_grant_id,omitempty"`
+	// Chain is a steward entry's place in the tamper-evident chain;
+	// nil for every other entry. Not part of the API answer.
+	Chain *AccessChainLink `json:"-"`
 }
 
 // AccessFilter narrows AccessLogStore.Query.
@@ -137,6 +146,14 @@ type AccessFilter struct {
 	ObjectID    string
 	// Decision keeps entries with that decision; empty keeps all.
 	Decision AccessDecision
+	// StewardGrantID keeps the entries of requests elevated into that
+	// steward grant.
+	StewardGrantID string
+	// HideStewardObjects is for a caller that may not see the object id
+	// lists of steward entries (ADR-083 §5: approve:steward holders and
+	// the owner only): ObjectID does not match through them, and steward
+	// entries come back without ObjectIDs. Their routes and counts stay.
+	HideStewardObjects bool
 	// Since and Until bound At: Since inclusive, Until exclusive; zero
 	// means unbounded.
 	Since time.Time
@@ -220,16 +237,36 @@ type AccessLogStore interface {
 	// route, a decision other than allowed, denied or deferred, an empty
 	// operation digest, a check without id or reason or with an unknown
 	// outcome, a denied entry with no FAIL check and a deferred entry
-	// with no UNKNOWN check are errors. Nothing is written for a batch
-	// with an invalid entry.
+	// with no UNKNOWN check are errors, and so is a steward entry
+	// (StewardGrantID set), which only AppendSteward writes. Nothing is
+	// written for a batch with an invalid entry.
 	Append(ctx context.Context, entries []*AccessEntry) error
+	// AppendSteward stores one steward entry (ADR-083 §5) durably and
+	// chained: in one transaction it takes the chain head (a row lock on
+	// Postgres; SQLite's single writer already serialises), links e after
+	// it (LinkAccessEntry, which sets e.Chain and keeps At to the
+	// millisecond), writes e with its object ids and moves the head. When
+	// it returns nil the entry is committed. The entry is validated as
+	// Append validates, its object ids sorted and deduplicated; an entry
+	// without StewardGrantID is an error.
+	AppendSteward(ctx context.Context, e *AccessEntry) error
 	// Query returns entries matching f, newest first, their ObjectIDs
-	// filled from what retention has kept.
+	// filled from what retention has kept, StewardGrantID and Chain
+	// filled for steward entries.
 	Query(ctx context.Context, f AccessFilter) ([]*AccessEntry, error)
 	// Prune deletes the object ID lists of entries logged before
 	// before and returns how many IDs it removed. The entries and their
-	// counts stay.
+	// counts stay. Steward entries are exempt (sharing.audit.retention
+	// does not govern them); PruneSteward prunes theirs.
 	Prune(ctx context.Context, before time.Time) (int64, error)
+	// PruneSteward deletes the object ID lists of steward entries logged
+	// before before (steward.audit_retention) and returns how many IDs it
+	// removed. The entries, their counts and their chain stay.
+	PruneSteward(ctx context.Context, before time.Time) (int64, error)
+	// StewardChain returns the chain head and every steward entry in
+	// append order, with its link and the object ids retention kept, for
+	// VerifyAccessChain.
+	StewardChain(ctx context.Context) (AccessChainHead, []*AccessEntry, error)
 }
 
 // SharingStore gathers the sharing registry stores of a driver.
@@ -390,6 +427,15 @@ func PrepareNewShareGrant(g *ShareGrant, now time.Time) error {
 // PrepareAccessEntry fills the defaults of an entry about to be
 // appended and validates it, as AccessLogStore.Append documents.
 func PrepareAccessEntry(e *AccessEntry, now time.Time) error {
+	if e != nil && e.StewardGrantID != "" {
+		return errors.New("access entry: a steward entry is appended durably and chained (AppendSteward)")
+	}
+	return prepareAccessEntry(e, now)
+}
+
+// prepareAccessEntry is the validation and defaults both kinds of entry
+// share.
+func prepareAccessEntry(e *AccessEntry, now time.Time) error {
 	if err := ValidateAccessEntry(e); err != nil {
 		return err
 	}

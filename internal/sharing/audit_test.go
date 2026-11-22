@@ -19,6 +19,7 @@ import (
 type memAccessLog struct {
 	mu      sync.Mutex
 	batches [][]*storage.AccessEntry
+	steward []*storage.AccessEntry
 	fail    error
 }
 
@@ -37,6 +38,22 @@ func (m *memAccessLog) Query(context.Context, storage.AccessFilter) ([]*storage.
 }
 
 func (m *memAccessLog) Prune(context.Context, time.Time) (int64, error) { return 0, nil }
+
+func (m *memAccessLog) AppendSteward(_ context.Context, e *storage.AccessEntry) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.fail != nil {
+		return m.fail
+	}
+	m.steward = append(m.steward, e)
+	return nil
+}
+
+func (m *memAccessLog) PruneSteward(context.Context, time.Time) (int64, error) { return 0, nil }
+
+func (m *memAccessLog) StewardChain(context.Context) (storage.AccessChainHead, []*storage.AccessEntry, error) {
+	return storage.AccessChainHead{}, nil, nil
+}
 
 func (m *memAccessLog) count() (batches, entries int) {
 	m.mu.Lock()

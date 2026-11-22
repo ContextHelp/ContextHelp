@@ -358,6 +358,13 @@ var migrations = []migration{
 	// request, from which steward.elevation_idle ends it. Columns only;
 	// existing sessions are not elevated. A replay is a no-op.
 	{Version: 64, fn: migrate064UISessionElevation},
+	// Migration 065: the steward audit (ADR-083 §5): access_log gains
+	// steward_grant_id and the chain columns (chain_seq, prev_digest,
+	// entry_digest, objects_digest), NULL on every ordinary entry, and
+	// access_log_chain holds the chain head, one row seeded empty.
+	// Columns, indexes and a new table only; nothing is an FTS input,
+	// so no re-projection follows. A replay is a no-op.
+	{Version: 65, fn: migrate065StewardAudit},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,

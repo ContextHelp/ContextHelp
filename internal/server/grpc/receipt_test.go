@@ -35,6 +35,19 @@ func (s *auditSink) Query(context.Context, storage.AccessFilter) ([]*storage.Acc
 }
 func (s *auditSink) Prune(context.Context, time.Time) (int64, error) { return 0, nil }
 
+func (s *auditSink) AppendSteward(_ context.Context, e *storage.AccessEntry) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.entries = append(s.entries, e)
+	return nil
+}
+
+func (s *auditSink) PruneSteward(context.Context, time.Time) (int64, error) { return 0, nil }
+
+func (s *auditSink) StewardChain(context.Context) (storage.AccessChainHead, []*storage.AccessEntry, error) {
+	return storage.AccessChainHead{}, nil, nil
+}
+
 func newSink(t *testing.T) (*auditSink, *sharing.AuditWriter) {
 	t.Helper()
 	sink := &auditSink{}
