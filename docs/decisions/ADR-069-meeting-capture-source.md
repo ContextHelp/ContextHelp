@@ -1,6 +1,6 @@
 # ADR-069 – Meeting Capture Source (Audio + Video, Multi-Platform)
 
-> **Status:** Accepted
+> **Status:** Accepted (amended 2026-11-22: see [Amendment (2026-11-22)](#amendment-2026-11-22-poly-tap-capture-and-poly-stt-transcription))
 > **Date:** 2026-05-05
 > **Author:** jadb
 > **Applies to:** ctxt CLI, ctxd local daemon, mobile companions (iOS/Android), existing audio.transcribe / video.full / video.audio_only pipelines
@@ -415,3 +415,61 @@ User triggers recording, OS permission flow, capture, file lands, pipeline runs,
   - Android [MediaProjection](https://developer.android.com/reference/android/media/projection/MediaProjection) + [AudioPlaybackCapture](https://developer.android.com/guide/topics/media/playback-capture)
 - Prior art (proprietary, mostly auto-record-by-default): Otter, Granola, Cleft, Zoom AI Companion, Microsoft Copilot in Teams, Google Meet AI Notes
 - US one-party-vs-two-party-consent state survey: [DMLP State Law: Recording](https://www.dmlp.org/legal-guide/state-law-recording)
+
+---
+
+## Amendment (2026-11-22): poly-tap capture and poly-stt transcription
+
+> **Status:** Accepted
+> **Scope:** Desktop capture mechanism (§1, §3, Rationale, Implementation Notes), transcription and speaker diarization (§1, §4, Rationale, Rejected alternative 9), and two-track speaker attribution. Trigger semantics (§2), bus event taxonomy (§5), CLI surface (§6), mandatory recording indicator (§7), media retention/redaction (§4, §6), and deferred mobile companions (§1) stand unless noted below. Where the sections above and this amendment disagree, this amendment wins.
+
+### Why this amendment
+
+Two assumptions in the original 2026-05-05 decision no longer hold:
+
+1. **Per-OS cgo capture bridges inside `ctxt` are unnecessary duplication.** Maintaining a Swift ScreenCaptureKit bridge, a C++ WASAPI/Graphics Capture/Media Foundation bridge, and a GStreamer/D-Bus portal bridge inside `ctxt` complicates Go builds and duplicates audio-capture primitives needed by other tools in the ecosystem. Device audio capture now lives in a dedicated library and service: [`hop-top/poly-tap`](https://github.com/hop-top/poly-tap).
+2. **`audio.transcribe` did not actually solve transcription and diarization.** The original Context and Rationale (including Rejected alternative 9) claimed that `audio.transcribe` already handled Whisper transcription and speaker diarization. In practice, `ctxt`'s built-in wrappers (`internal/providers/transcription_whisper.go` and `internal/providers/diarization_pyannote.go`) shell out to brittle CLI invocations (`whisper-cpp`/`whisper`, `pyannote-audio`/`python3 -m pyannote.audio`) and fall back to stubs when absent. Local, OS-agnostic transcription and speaker diarization now live in [`hop-top/poly-stt`](https://github.com/hop-top/poly-stt), consumed by `ctxt` as a swappable provider under [ADR-076](ADR-076-media-text-representations.md).
+
+### 1. Capture via `poly-tap` over local socket (replaces §3 per-OS cgo bridges)
+
+- **Audio capture moves to [`hop-top/poly-tap`](https://github.com/hop-top/poly-tap) (Rust crate `hop-top-tap`).** `ctxt` drops the planned per-OS cgo recorder bridges (`recorder_darwin.go` + `ScreenCaptureKitBridge.swift`, `recorder_windows.go` + `WindowsCaptureBridge.cpp`, `recorder_linux.go` + GStreamer/D-Bus).
+- **Process boundary, no Rust FFI in Go.** `ctxt`'s `MeetingRecorder` implementation (`internal/ambient/meeting/`) is a Go client of `poly-tap`'s local socket service, which runs capture in a separate process and streams per-track PCM frames (`Track::Mic`, `Track::System`) plus versioned lifecycle/gap events (`tap.capture.session.*`, `tap.capture.gap.*`). `ctxt` stays pure Go with no Rust FFI or per-OS media toolchains.
+- **Output selection modes.** System output capture supports both modes exposed by `poly-tap`'s selection contract, configured in ambient policy:
+  - **Per-app:** capture audio only from matched meeting application selectors (driven by `internal/ambient/meeting/autodetect.go` or explicit app selectors; no silent fallback to global on unsupported platforms).
+  - **Global with excludes:** capture system output minus listed excluded applications (with the capture process itself always excluded).
+  - Plus the local **microphone** track, resampled by `poly-tap` with optional far-end echo cancellation so remote audio does not bleed into the mic track.
+- **`poly-tap` is not a recorder; `ctxt` owns files and enqueue.** `poly-tap` buffers frames only in memory and never writes to disk. `ctxt`'s `MeetingRecorder` drains frames from the socket stream, writes **one audio file per track** (`mic` and `system`) anchored to `poly-tap`'s single capture session clock, and on stop enqueues the media into dpkms carrying blob key and source metadata per [ADR-076](ADR-076-media-text-representations.md).
+- **Consent and gate alignment.** `poly-tap` enforces a closed-by-default `CaptureGate` (no audio source opens and no frame is accepted while closed) without owning consent policy. `ctxt`'s meeting source owns trigger, policy veto, and recording indicator, and opens/closes `poly-tap`'s gate in lockstep with `Start`, `Pause`, `Resume`, `Stop`, and `Discard`.
+- **Single capture per meeting.** If an active live-copilot session is already capturing the same call, `ctxt` may ingest its approved transcript/notes rather than starting a second capture.
+- **Platform rollout follows `poly-tap`.** macOS Core Audio process taps (14.2+, with ScreenCaptureKit audio fallback on 13+) land first, followed by Windows (WASAPI process loopback + mic) and Linux (PipeWire sink monitor + mic).
+- **Video / framebuffer capture is deferred.** Desktop meeting capture is **audio-first via `poly-tap`**. Live window framebuffer capture (ScreenCaptureKit video, Windows Graphics Capture API, `xdg-desktop-portal` ScreenCast, X11 XComposite) is out of scope for `ctxt` unless `poly-tap` later adds an explicit video slot (or a separate capture service provides it). This reverses the original Rationale's Rejected alternative 4 for live recording: audio-only is now the default and sole live-capture mode on desktop. The existing `video.full` pipeline remains supported for externally recorded or manually ingested video files.
+
+### 2. Transcription and diarization via `poly-stt` (replaces Rationale / Rejected alternative 9)
+
+- **Both capabilities come from [`hop-top/poly-stt`](https://github.com/hop-top/poly-stt).** `poly-stt` provides OS-agnostic speech-to-text transcription and speaker diarization behind a stable local daemon (`stt serve`), CLI (`stt`), and thin Go client (`hop.top/stt`), keeping inference runtimes (e.g., Whisper/GGML, ONNX/`sherpa-onnx`, optional hardware acceleration) out of `ctxt`.
+- **Swappable provider boundary (aligns with [ADR-076](ADR-076-media-text-representations.md) §0).** `ctxt` consumes `poly-stt` behind its existing `TranscriptionProvider` and `DiarizationProvider` interfaces (`internal/providers/transcription.go`), configured via `providers.transcription.{backend,model}` and `providers.diarization.backend` (overridable per pipeline). `poly-stt` is the local default; cloud backends remain opt-in only.
+- **No silent stub fallback.** Per [ADR-076](ADR-076-media-text-representations.md) §0 and §5, a missing or unreachable transcription provider fails loudly instead of indexing stub text. Diarization remains optional enrichment per pipeline: when diarization fails, the transcript is preserved and the error is recorded in `diarization_error` metadata (`internal/pipeline/steps/speaker_diarizer.go`).
+- **Batch first, streaming later.** Meeting capture submits recorded tracks for batch transcription and offline diarization first; live streaming transcription remains deferred.
+- **Retiring ctxt-owned wrappers.** `ctxt` will not maintain bespoke `whisper-cpp`/`openai-whisper` CLI parsers or `pyannote-audio` RTTM subprocess wrappers once the `poly-stt` provider ships; backend selection lives inside `poly-stt`.
+
+### 3. Track-aware speaker attribution
+
+- **Preserve separate tracks rather than pre-mixing.** Contrary to §3's original "mixed into a single 2-channel track" note, `ctxt` keeps the `mic` and `system` tracks separate on `poly-tap`'s shared session clock and submits both tracks together to `poly-stt`.
+- **Attribute by track first, diarize remote only:**
+  - **`mic` track → local owner.** Segments from the microphone track are attributed directly to the local user (configurable label, mapped to the owner's entity in `ctxt`) without clustering the owner's voice against remote speakers.
+  - **`system` track → remote participants.** `poly-stt` runs speaker diarization only on the system-output track, producing anonymous remote speaker labels (`S1..Sn`).
+  - **Single merged timeline.** `poly-stt` merges both attributed streams on the shared session clock into ordered transcript segments (`start_ms`, `end_ms`, `speaker`), which `ctxt` stores as `transcript` representation nodes with provenance per [ADR-076](ADR-076-media-text-representations.md) §1–§2.
+- **Single-track fallback.** Imported recordings and single-track captures (e.g., mobile recordings without split tracks) continue to work via standard single-track diarization in `poly-stt`.
+- **Entity resolution stays separate.** Mapping anonymous remote labels (`S1..Sn`) to `@person` entities (via calendar attendees or opt-in voice profiles) remains a separate downstream step, unchanged from Neutral / Considerations above.
+
+### Impact on existing sections and artifacts
+
+- **`MeetingRecorder` / `RecordResult` (`internal/ambient/meeting/meeting.go`):** generalizes from a single `FilePath` to per-track audio outputs (`mic`, `system`) plus shared session-clock metadata, backed by a single Go socket client implementation instead of per-OS build-tagged cgo files.
+- **Phasing:** Phases 3a–3d collapse into wiring the `poly-tap` socket client (macOS first as `poly-tap` adapters ship, then Windows and Linux without new cgo bridges in `ctxt`); Phase 3b (desktop live video) is deferred.
+- **Diagrams:** [`069-multi-platform.mmd`](../diagrams/ambient/069-multi-platform.mmd) reflects the original pre-amendment per-OS cgo design and is historical until updated for the `poly-tap` socket client + `poly-stt` provider boundary.
+
+### Amendment references
+
+- [ADR-076 – Media as Text Representations](ADR-076-media-text-representations.md) — swappable local-default providers, blob-backed originals, provenance-carrying `transcript` representation nodes
+- [`hop-top/poly-tap`](https://github.com/hop-top/poly-tap) — device audio capture library (`hop-top-tap`), `CaptureGate`, session clock, per-app and global-with-excludes system output, local socket service
+- [`hop-top/poly-stt`](https://github.com/hop-top/poly-stt) — OS-agnostic speech-to-text runtime (`stt` CLI / `stt serve` daemon / `hop.top/stt` Go client), batch + streaming contracts, multi-track input and speaker diarization
