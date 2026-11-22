@@ -3,6 +3,7 @@ package http
 import (
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -99,7 +100,11 @@ func (a accessRoutes) route(method, pattern string, next http.HandlerFunc) http.
 			writeAccessError(w, &bosaccess.Error{Code: "forbidden", Message: "not the access authority"})
 			return
 		}
-		defer rcpt.Finish(a.rc.Audit)
+		defer func() {
+			if err := rcpt.Finish(a.rc.Audit); err != nil {
+				slog.Warn("audit: entry committed after the answer failed", "error", err)
+			}
+		}()
 		guarded(w, r.WithContext(sharing.WithReceipt(r.Context(), rcpt)))
 	}
 }

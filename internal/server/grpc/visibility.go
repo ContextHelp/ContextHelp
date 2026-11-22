@@ -48,7 +48,7 @@ func visibilityUnaryInterceptor(cfg visibilityConfig) grpc.UnaryServerIntercepto
 		ctx, rcpt := ensureReceipt(ctx, info.FullMethod, req)
 		// A panic below still leaves the entry; after a commit this is
 		// a no-op.
-		defer func() { rcpt.Finish(cfg.audit) }()
+		defer finishLogged(rcpt, cfg.audit)
 		resp, err := cfg.serveUnary(ctx, req, info, handler)
 		return commitElevated(ctx, rcpt, cfg.audit, resp, err)
 	}
@@ -91,7 +91,7 @@ func visibilityStreamInterceptor(cfg visibilityConfig) grpc.StreamServerIntercep
 		if audited(ctx) {
 			var rcpt *sharing.Receipt
 			ctx, rcpt = ensureReceipt(ctx, info.FullMethod, nil)
-			defer func() { rcpt.Finish(cfg.audit) }()
+			defer finishLogged(rcpt, cfg.audit)
 			if rcpt.Elevated() {
 				return refuseElevatedStream(ctx, rcpt, cfg.audit)
 			}
@@ -264,5 +264,13 @@ func (cfg visibilityConfig) record(ctx context.Context, fullMethod string, v sha
 		cfg.security.RecordVisibilityBackstop(ctx, principal, map[string]string{
 			"route": fullMethod, "policy_versions": v.PolicyKey(), "hits": strconv.Itoa(len(hits)), "first_hit": hits[0],
 		})
+	}
+}
+
+// finishLogged commits rcpt after the answer, for a path that did not
+// commit it first; the answer has left, so a failure can only be logged.
+func finishLogged(rcpt *sharing.Receipt, w *sharing.AuditWriter) {
+	if err := rcpt.Finish(w); err != nil {
+		slog.Warn("audit: entry committed after the answer failed", "error", err)
 	}
 }

@@ -167,7 +167,7 @@ func ValidStewardGrantID(id string) bool {
 		return false
 	}
 	for _, c := range rest {
-		if !(c >= '0' && c <= '9' || c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z') {
+		if (c < '0' || c > '9') && (c < 'A' || c > 'Z') && (c < 'a' || c > 'z') {
 			return false
 		}
 	}

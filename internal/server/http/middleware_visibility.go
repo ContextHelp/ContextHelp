@@ -91,7 +91,11 @@ func Visibility(method, pattern string, scope authn.Scope, cfg VisibilityConfig)
 			r = r.WithContext(sharing.WithReceipt(r.Context(), rcpt))
 			// A panic below still leaves the entry: Finish commits an
 			// elevated one durably, and does nothing once released.
-			defer func() { rcpt.Finish(cfg.Audit) }()
+			defer func() {
+				if err := rcpt.Finish(cfg.Audit); err != nil {
+					slog.Warn("audit: entry committed after the answer failed", "error", err)
+				}
+			}()
 			serve := func(w http.ResponseWriter, r *http.Request) {
 				serveAudited(w, r, auditedRun{
 					shape: shape, known: known, route: route, reads: reads, streams: streams, target: target,
@@ -257,7 +261,7 @@ func operationFor(r *http.Request, route string, v sharing.Viewer) sharing.Opera
 	}
 	if p, ok := authn.FromContext(r.Context()); ok {
 		op.Principal, op.Identity = p.ID, p.Meta[authn.MetaIdentityID]
-		if p.Provider != "" && p.Provider != "none" {
+		if p.Provider != "" && p.Provider != viaNone {
 			op.AuthMethod = p.Provider
 		}
 	}
