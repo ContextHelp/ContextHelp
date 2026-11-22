@@ -63,6 +63,11 @@ func RequireAuth(chain *authn.Chain, sec *security.Emitter, devCORS bool, viewer
 			}
 			ctx, err := attachCaller(r.Context(), res.Principal, viewers)
 			if err != nil {
+				var refusal *sharing.StewardRefusal
+				if errors.As(err, &refusal) {
+					writeStewardRefusal(w, res.Principal, refusal)
+					return
+				}
 				slog.Error("auth: viewer resolution failed", "principal", res.Principal.ID, "err", err)
 				WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "viewer resolution failed")
 				return
@@ -91,7 +96,8 @@ func withRecheck(ctx context.Context, chain *authn.Chain, cred authn.Credential,
 		if err != nil {
 			return sharing.Viewer{}, err
 		}
-		return viewers.Resolve(ctx, res.Principal.ID, res.Principal.Kind, res.Principal.Meta[authn.MetaIdentityID])
+		return viewers.Resolve(ctx, res.Principal.ID, res.Principal.Kind, res.Principal.Meta[authn.MetaIdentityID],
+			sharing.AsSteward(res.Principal.Meta[authn.MetaStewardGrantID]))
 	})
 	return context.WithValue(ctx, recheckKey{}, rc)
 }
@@ -132,14 +138,33 @@ func browserRulesPass(w http.ResponseWriter, cop *http.CrossOriginProtection, r 
 // in one step, so no request reaches a handler authenticated but
 // unscoped. The owner is Unrestricted; anyone else gets the viewer
 // viewers compiles from its grants, under the identity that
-// authenticated it (ADR-080 §4). A resolution failure is returned and
-// the request refused: a caller is never attached unscoped by mistake.
+// authenticated it (ADR-080 §4). A principal that names a steward grant
+// (Meta) gets that grant's viewer alone, and a grant that fails a check
+// is a *sharing.StewardRefusal (ADR-083 §3). A resolution failure is
+// returned and the request refused: a caller is never attached
+// unscoped by mistake, nor served its ordinary view in place of a
+// grant it asked for.
 func attachCaller(ctx context.Context, princ *authn.Principal, viewers *sharing.Resolver) (context.Context, error) {
-	v, err := viewers.Resolve(ctx, princ.ID, princ.Kind, princ.Meta[authn.MetaIdentityID])
+	v, err := viewers.Resolve(ctx, princ.ID, princ.Kind, princ.Meta[authn.MetaIdentityID],
+		sharing.AsSteward(princ.Meta[authn.MetaStewardGrantID]))
 	if err != nil {
 		return nil, err
 	}
 	return sharing.WithViewer(authn.Attach(ctx, princ), v), nil
+}
+
+// writeStewardRefusal answers a request whose steward grant failed a
+// check: 403 with the check's code when the answer is no, 503 when a
+// store could not be read. The cause is logged, never shown.
+func writeStewardRefusal(w http.ResponseWriter, princ *authn.Principal, refusal *sharing.StewardRefusal) {
+	status := http.StatusForbidden
+	msg := "the steward grant cannot be used: " + refusal.Reason
+	if refusal.Deferred {
+		status = http.StatusServiceUnavailable
+		msg = "the steward grant cannot be checked now"
+	}
+	slog.Warn("auth: steward grant refused", "principal", princ.ID, "reason", refusal.Reason, "deferred", refusal.Deferred, "err", refusal.Err)
+	WriteError(w, status, refusal.Code(), msg)
 }
 
 // remoteHost extracts the peer host from RemoteAddr for security-event

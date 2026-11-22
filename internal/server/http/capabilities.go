@@ -284,8 +284,8 @@ func RouteShape(method, pattern string) (sharing.Shape, bool) {
 
 // routeRefusal is the reason code the capability table refuses a
 // restricted viewer's request with, in the order the table is read:
-// no viewer, an unclassified route, an owner-only route, a capability
-// the viewer lacks. "" means the viewer may reach the route.
+// no viewer, an unclassified route, an owner-only route, a stream an
+// elevated steward asks for, a capability the viewer lacks. "" means the viewer may reach the route.
 func routeRefusal(v sharing.Viewer, haveViewer bool, access routeAccess, known bool) string {
 	switch {
 	case !haveViewer:
@@ -294,6 +294,11 @@ func routeRefusal(v sharing.Viewer, haveViewer bool, access routeAccess, known b
 		return sharing.ReasonRouteUnclassified
 	case access.ownerOnly:
 		return sharing.ReasonOwnerOnly
+	case access.stream && v.StewardGrantID() != "":
+		// A steward grant opens no stream: the event stream is open to
+		// every other viewer, but an elevated request is refused here,
+		// whatever its scope says (ADR-083 §3).
+		return sharing.ReasonStewardNoStream
 	case access.capability != "" && !v.Allows(access.capability):
 		return sharing.ReasonCapabilityMissing
 	}
@@ -303,8 +308,8 @@ func routeRefusal(v sharing.Viewer, haveViewer bool, access routeAccess, known b
 // RequireCapability returns middleware that lets a request through
 // only when the viewer RequireAuth attached may reach the route: an
 // unrestricted viewer always; a restricted one when the route is open,
-// or needs a capability it holds. An owner-only route, a capability
-// the viewer lacks, an unclassified route and a request with no viewer
+// or needs a capability it holds. An owner-only route, a stream asked
+// by a steward-elevated request, a capability the viewer lacks, an unclassified route and a request with no viewer
 // are answered 403 NOT_SHARED. It never names a row. A route a
 // capability opens runs as the viewer narrowed to the grants holding
 // it (sharing.Viewer.ForCapability): any one grant opens the surface,

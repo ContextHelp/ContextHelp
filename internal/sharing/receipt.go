@@ -60,6 +60,10 @@ const (
 	// the viewer by the stream's handler, so the share policy has no
 	// single verdict to record.
 	ReasonStreamFiltered = "stream_filtered"
+	// ReasonStewardNoStream: a steward-elevated request asked for a
+	// stream (the event stream), which a steward grant never opens
+	// (ADR-083 §3).
+	ReasonStewardNoStream = "steward_no_stream"
 	// The authority's guard on the /bos/v1 provisioning routes
 	// (CheckRouteAccess): the caller is the configured authority, is
 	// not, or none is configured.
