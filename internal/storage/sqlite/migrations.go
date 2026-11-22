@@ -352,6 +352,12 @@ var migrations = []migration{
 	// scope, window and revocation. New table only, nothing is an FTS
 	// input, so no re-projection follows.
 	{Version: 63, fn: migrate063StewardGrants},
+	// Migration 064: the steward elevation of a browser session
+	// (ADR-083 §3): ui_sessions.steward_grant_id, the grant the session
+	// is elevated into, and steward_active_at, the elevation's last
+	// request, from which steward.elevation_idle ends it. Columns only;
+	// existing sessions are not elevated. A replay is a no-op.
+	{Version: 64, fn: migrate064UISessionElevation},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,

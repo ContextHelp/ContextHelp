@@ -64,7 +64,8 @@ func (r *uiRegistry) code(hash string, idn *storage.Identity, created time.Time,
 // and absolute expiry, touch, revocation, listing and pruning, and the
 // binding to the principal registry: a session or code names the
 // identity that minted it, and revoking that identity, or its
-// principal, ends the sessions and codes it minted in the same step.
+// principal, ends the sessions and codes it minted in the same step;
+// and a session's steward elevation (ui_sessions_elevation.go).
 func UISessionConformance(t *testing.T, drv storage.StorageDriver) {
 	t.Helper()
 	st := drv.UISessions()
@@ -92,6 +93,9 @@ func UISessionConformance(t *testing.T, drv storage.StorageDriver) {
 		{"list", uiConfList},
 		{"prune", uiConfPrune},
 	} {
+		t.Run(c.name, func(t *testing.T) { c.fn(t, st, reg) })
+	}
+	for _, c := range uiElevationCases {
 		t.Run(c.name, func(t *testing.T) { c.fn(t, st, reg) })
 	}
 }

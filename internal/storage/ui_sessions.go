@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"time"
 )
 
@@ -44,7 +45,19 @@ type UISession struct {
 	// why ("logout", "revoked", "identity revoked", "principal revoked").
 	RevokedAt    *time.Time `json:"revoked_at,omitempty"`
 	RevokeReason string     `json:"revoke_reason,omitempty"`
+
+	// StewardGrantID names the steward grant the session is elevated
+	// into (ADR-083 §3), "" when it is not; StewardActiveAt is the last
+	// request of the elevation, from which steward.elevation_idle ends
+	// it. Both are set together by Elevate and cleared together by
+	// EndElevation; Create never elevates.
+	StewardGrantID  string     `json:"steward_grant_id,omitempty"`
+	StewardActiveAt *time.Time `json:"steward_active_at,omitempty"`
 }
+
+// ErrSessionElevated is an elevation of a session already elevated
+// into another steward grant: a session holds one elevation at a time.
+var ErrSessionElevated = errors.New("the session is elevated into another steward grant")
 
 // Active reports whether the session may still authenticate at now.
 func (s *UISession) Active(now time.Time) bool {
@@ -113,6 +126,24 @@ type UISessionStore interface {
 	// Revoke ends the session with id at at. Revoking a revoked session
 	// keeps its first revocation. An unknown id is ErrNotFound.
 	Revoke(ctx context.Context, id string, at time.Time, reason string) error
+
+	// Elevate elevates session id into steward grant grantID at at:
+	// StewardGrantID becomes grantID and StewardActiveAt at. A session
+	// already elevated into grantID is refreshed; one elevated into
+	// another grant is ErrSessionElevated and left alone. An unknown or
+	// revoked session is ErrNotFound. Whether the grant may be used is
+	// the caller's to check: the store keeps the id it is given.
+	Elevate(ctx context.Context, id, grantID string, at time.Time) error
+	// TouchElevation records a request of session id's elevation into
+	// grantID at at (StewardActiveAt) and reports whether the session,
+	// not revoked, is still elevated into grantID; when it is not,
+	// nothing changes. An unknown id is ErrNotFound.
+	TouchElevation(ctx context.Context, id, grantID string, at time.Time) (bool, error)
+	// EndElevation ends session id's elevation into grantID, clearing
+	// both columns, and reports whether the session was elevated into
+	// grantID; an elevation into another grant is left alone. An
+	// unknown id is ErrNotFound.
+	EndElevation(ctx context.Context, id, grantID string) (bool, error)
 	// List returns sessions, newest first.
 	List(ctx context.Context, f UISessionFilter) ([]*UISession, error)
 	// Prune deletes sessions that ended (expired or were revoked) before

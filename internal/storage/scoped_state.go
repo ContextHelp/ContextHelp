@@ -265,6 +265,18 @@ func (v restrictedUISessions) Revoke(ctx context.Context, id string, at time.Tim
 	return v.inner.Revoke(ctx, id, at, reason)
 }
 
+func (v restrictedUISessions) Elevate(ctx context.Context, id, grantID string, at time.Time) error {
+	return v.inner.Elevate(ctx, id, grantID, at)
+}
+
+func (v restrictedUISessions) TouchElevation(ctx context.Context, id, grantID string, at time.Time) (bool, error) {
+	return v.inner.TouchElevation(ctx, id, grantID, at)
+}
+
+func (v restrictedUISessions) EndElevation(ctx context.Context, id, grantID string) (bool, error) {
+	return v.inner.EndElevation(ctx, id, grantID)
+}
+
 func (v restrictedUISessions) List(_ context.Context, _ UISessionFilter) ([]*UISession, error) {
 	return nil, restrictedRead("UISessions", "List")
 }

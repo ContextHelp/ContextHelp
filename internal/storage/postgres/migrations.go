@@ -526,6 +526,16 @@ var pgMigrations = []pgMigration{
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_steward_grants_steward ON steward_grants (steward_id, status)`,
 	}},
+	// The steward elevation of a browser session (ADR-083 §3),
+	// mirroring SQLite migration 064: ui_sessions.steward_grant_id, the
+	// grant the session is elevated into, and steward_active_at, the
+	// elevation's last request, from which steward.elevation_idle ends
+	// it. Columns only; existing sessions are not elevated. IF NOT
+	// EXISTS makes a replay a no-op.
+	{Version: 45, Name: "ui_sessions steward elevation", Statements: []string{
+		`ALTER TABLE ui_sessions ADD COLUMN IF NOT EXISTS steward_grant_id TEXT`,
+		`ALTER TABLE ui_sessions ADD COLUMN IF NOT EXISTS steward_active_at TIMESTAMPTZ`,
+	}},
 }
 
 // sharingRegistryStatements create the sharing registry and add the
