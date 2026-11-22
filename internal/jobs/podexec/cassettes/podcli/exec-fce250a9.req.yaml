@@ -1,0 +1,15 @@
+xrr: "1"
+adapter: exec
+fingerprint: fce250a9
+recorded_at: "2026-11-22T18:25:51Z"
+payload:
+    argv:
+        - pod
+        - exec
+        - ctxt-job-xrrdemo
+        - --
+        - dpkms
+        - worker
+        - run-draft
+        - --input
+        - /tmp/ctxt-job-req.json

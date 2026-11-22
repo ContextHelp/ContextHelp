@@ -86,6 +86,7 @@ type WorkerPool struct {
 	maxHops      int
 	maxRetries   int
 	fanOut       FanOutFunc
+	executor     PipelineExecutor       // optional Stage 1 pipeline executor (nil = in-process)
 	handlers     map[string]TaskHandler // task job type -> handler (tasks.go)
 	inflight     sync.Map               // task job ID -> *taskClaim, running in this pool
 	leaseTTL     time.Duration          // task job lease; renewed every leaseTTL/3
@@ -112,6 +113,11 @@ func NewWorkerPool(queue *Queue, pipelines pipeline.Registry, store storage.Stor
 
 // SetFanOut installs a post-ingest fan-out callback.
 func (p *WorkerPool) SetFanOut(fn FanOutFunc) { p.fanOut = fn }
+
+// SetExecutor installs an optional Stage 1 pipeline executor (for example, the
+// opt-in pod job executor router). Passing nil restores the default in-process
+// execution path.
+func (p *WorkerPool) SetExecutor(exec PipelineExecutor) { p.executor = exec }
 
 // Start runs the worker pool until the context is cancelled.
 // On cancellation, in-flight jobs are given drainTimeout to finish before
@@ -174,29 +180,6 @@ func (p *WorkerPool) workerLoop(acquireCtx, jobCtx context.Context) error {
 	}
 }
 
-// runSteps executes all steps in a pipeline on draft, skipping any step that
-// returns ErrDelegate and failing on any other error.
-func (p *WorkerPool) runSteps(ctx context.Context, pipe *pipeline.Pipeline, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
-	var err error
-	for _, step := range pipe.Steps {
-		// A step that reads content as text never sees binary: it would
-		// copy bytes into sections, nodes or metadata.
-		if pipeline.SkipsBinary(step, draft) {
-			slog.Debug("jobs: binary content, step skipped", "step", step.Name())
-			continue
-		}
-		draft, err = step.Run(ctx, draft)
-		if err != nil {
-			if errors.Is(err, pipeline.ErrDelegate) {
-				slog.Debug("jobs: step delegated, skipping", "step", step.Name())
-				continue
-			}
-			return nil, fmt.Errorf("step %s: %w", step.Name(), err)
-		}
-	}
-	return draft, nil
-}
-
 // jobObjectType is the object type an ingest job asks for, from its
 // "ingest:<type>[:nofanout]" type. Blank means the pipeline decides:
 // text and auto name no kind, and job kinds that are not object types
@@ -230,90 +213,13 @@ func seedType(jobType, pipelineName string) string {
 }
 
 // processWithHops runs the initial pipeline and follows any hop requests
-// (draft.Metadata["next_pipeline"]) up to maxHops total runs.
+// (draft.Metadata["next_pipeline"]) up to maxHops total runs, then externalizes
+// binary content to the blob store.
 func (p *WorkerPool) processWithHops(ctx context.Context, job *storage.Job) (*storage.KnowledgeObject, error) {
-	pipe, err := p.pipelines.Get(job.Pipeline)
-	if err != nil {
-		return nil, fmt.Errorf("pipeline: %w", err)
-	}
-
-	content, err := jobContent(job)
-	if err != nil {
-		return nil, &pipeline.PermanentError{Err: err}
-	}
-	draft := &storage.KnowledgeObject{
-		ID: uuid.New().String(),
-		// the input kind the job names ("ingest:url"), or the url.*
-		// pipeline itself, is the object's type; steps may still refine
-		// it (format detector, repo mapper) and typedetector only fills
-		// a blank or text.
-		Type:       seedType(job.Type, job.Pipeline),
-		RawContent: content,
-		Pipeline:   job.Pipeline,
-		Source:     job.Source,
-		CreatedAt:  time.Now(),
-		// caller-asserted mentions (`ctxt analyze --mentions`) start
-		// life on the draft so entity_extractor's text-scan can merge with
-		// them by slug instead of overwriting them.
-		Mentions: parseUserMentions(job.UserMentions),
-		// caller-asserted hints (`ctxt capture --hint`) start life
-		// on the draft so the auto-tagger's heuristic+LLM tags can merge
-		// with them by lowercase label instead of overwriting them.
-		Tags: parseUserHints(job.UserHints),
-		// caller-asserted profile + note pre-populate the draft
-		// so they survive pipeline execution and land on the persisted
-		// KnowledgeObject. Pipeline steps that don't touch these fields
-		// preserve them; steps that overwrite (none today) would need
-		// to merge instead.
-		ProfileID: job.UserProfile,
-		InboxNote: job.UserNote,
-		// caller-supplied source key and structured data start on the
-		// draft too, so steps see them next to the fetched content
-		// (which they never replace) and the stored object keeps them.
-		SourceKey: job.UserSourceKey,
-	}
-	if len(job.UserData) > 0 {
-		draft.Metadata = map[string]any{storageutil.MetadataDataKey: job.UserData}
-	}
-
-	draft, err = p.runSteps(ctx, pipe, draft)
+	draft, err := RunDraft(ctx, p.pipelines, job, p.maxHops)
 	if err != nil {
 		return nil, err
 	}
-
-	for hop := 1; hop < p.maxHops; hop++ {
-		if draft.Metadata == nil {
-			break
-		}
-		next, ok := draft.Metadata["next_pipeline"].(string)
-		if !ok || next == "" {
-			break
-		}
-		delete(draft.Metadata, "next_pipeline")
-
-		nextPipe, err := p.pipelines.Get(next)
-		if err != nil {
-			slog.Debug("jobs: hop pipeline not found, stopping hops", "pipeline", next)
-			break
-		}
-		draft, err = p.runSteps(ctx, nextPipe, draft)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	// ambient context (source, fingerprint, session, client metadata) lands
-	// after the steps, so a step that replaces the metadata map cannot drop
-	// it; client metadata stays isolated under metadata.client (see
-	// storageutil.ApplyAmbient).
-	storageutil.ApplyAmbient(draft, job.UserAmbient)
-
-	// The dedup hash is over the content itself: analyze hashes the bytes,
-	// so hashing the blob ref ExternalizeBinary leaves would never match.
-	// A pipeline that externalized mid-run left a ref in RawContent: the
-	// hash is over the bytes it stands for.
-	draft.ContentHash = storageutil.DraftContentHash(pipeline.ContentBytes(draft), draft.Source, draft.Metadata)
-
 	// Binary content cannot live in the row (a TEXT column), whether or
 	// not the pipeline externalizes: it goes to the blob store here.
 	return steps.ExternalizeBinary(ctx, p.store.Blobs(), draft)
@@ -346,7 +252,16 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 		return
 	}
 
-	draft, err := p.processWithHops(ctx, job)
+	var draft *storage.KnowledgeObject
+	var err error
+	if p.executor != nil {
+		draft, err = p.executor.Execute(ctx, job)
+		if err == nil {
+			draft, err = steps.ExternalizeBinary(ctx, p.store.Blobs(), draft)
+		}
+	} else {
+		draft, err = p.processWithHops(ctx, job)
+	}
 	if err != nil {
 		var perm *pipeline.PermanentError
 		if errors.As(err, &perm) {

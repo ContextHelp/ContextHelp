@@ -126,6 +126,14 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Opt-in pod job executor preflight (project-layer check + pod detection
+	// only when jobs.executor=pod). Runs before locks/listeners so missing pod
+	// or forbidden project config fails fast.
+	installJobExecutor, err := prepareJobExecutor(cfg, defaultJobExecDeps)
+	if err != nil {
+		return err
+	}
+
 	// --daemon: re-exec self in background, detached from terminal.
 	if daemon, _ := cmd.Flags().GetBool("daemon"); daemon {
 		return daemonize()
@@ -388,6 +396,9 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// The worker pool and the upgrade jobs run as the system: they read
 	// and write every row, so they name the unscoped driver.
 	pool := jobs.NewWorkerPool(queue, pipes, storage.System(driver), workers, svc.Bus, cfg.Jobs)
+	if installJobExecutor != nil {
+		installJobExecutor(pool, pipes)
+	}
 	handleEmbeddingsMigrate(pool, storage.System(driver), upgradeMgr, svc.Bus)
 	handleReproject(pool, storage.System(driver), upgradeMgr, svc.Bus, cfg.Storage.Blob.Threshold)
 	handleReprocess(pool, st)

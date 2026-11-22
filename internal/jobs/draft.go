@@ -1,0 +1,132 @@
+package jobs
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
+)
+
+// PipelineExecutor computes a Stage 1 KnowledgeObject draft from an acquired
+// ingest job without writing to the job queue or object store. WorkerPool
+// performs Stage 2 persistence (binary externalization, dedup, object creation,
+// vector writes, mention edges, item fan-out, and queue settlement).
+type PipelineExecutor interface {
+	Execute(ctx context.Context, job *storage.Job) (*storage.KnowledgeObject, error)
+}
+
+// DraftJobRequest is the wire payload sent to a stateless pod worker
+// (`dpkms worker run-draft`) to execute Stage 1 of an ingest job.
+type DraftJobRequest struct {
+	Job     storage.Job `json:"job"`
+	MaxHops int         `json:"max_hops,omitempty"`
+}
+
+// DraftJobResult is the wire result returned by `dpkms worker run-draft`.
+type DraftJobResult struct {
+	Draft     *storage.KnowledgeObject `json:"draft,omitempty"`
+	Permanent bool                     `json:"permanent,omitempty"`
+	Error     string                   `json:"error,omitempty"`
+}
+
+// LocalExecutor runs Stage 1 pipeline execution in-process against a Registry.
+type LocalExecutor struct {
+	Pipelines pipeline.Registry
+	MaxHops   int
+}
+
+// Execute runs Stage 1 draft computation locally in-process.
+func (e *LocalExecutor) Execute(ctx context.Context, job *storage.Job) (*storage.KnowledgeObject, error) {
+	return RunDraft(ctx, e.Pipelines, job, e.MaxHops)
+}
+
+// RunDraft executes Stage 1 of an ingest job: decodes job content, runs the
+// initial pipeline and any `next_pipeline` hops up to maxHops, applies ambient
+// metadata, and computes DraftContentHash. It performs no database or blob
+// writes, making it safe to execute either in-process or inside a stateless pod.
+func RunDraft(ctx context.Context, reg pipeline.Registry, job *storage.Job, maxHops int) (*storage.KnowledgeObject, error) {
+	if maxHops <= 0 {
+		maxHops = 5
+	}
+	pipe, err := reg.Get(job.Pipeline)
+	if err != nil {
+		return nil, fmt.Errorf("pipeline: %w", err)
+	}
+
+	content, err := jobContent(job)
+	if err != nil {
+		return nil, &pipeline.PermanentError{Err: err}
+	}
+	draft := &storage.KnowledgeObject{
+		ID:         uuid.New().String(),
+		Type:       seedType(job.Type, job.Pipeline),
+		RawContent: content,
+		Pipeline:   job.Pipeline,
+		Source:     job.Source,
+		CreatedAt:  time.Now(),
+		Mentions:   parseUserMentions(job.UserMentions),
+		Tags:       parseUserHints(job.UserHints),
+		ProfileID:  job.UserProfile,
+		InboxNote:  job.UserNote,
+		SourceKey:  job.UserSourceKey,
+	}
+	if len(job.UserData) > 0 {
+		draft.Metadata = map[string]any{storageutil.MetadataDataKey: job.UserData}
+	}
+
+	draft, err = runPipelineSteps(ctx, pipe, draft)
+	if err != nil {
+		return nil, err
+	}
+
+	for hop := 1; hop < maxHops; hop++ {
+		if draft.Metadata == nil {
+			break
+		}
+		next, ok := draft.Metadata["next_pipeline"].(string)
+		if !ok || next == "" {
+			break
+		}
+		delete(draft.Metadata, "next_pipeline")
+
+		nextPipe, err := reg.Get(next)
+		if err != nil {
+			slog.Debug("jobs: hop pipeline not found, stopping hops", "pipeline", next)
+			break
+		}
+		draft, err = runPipelineSteps(ctx, nextPipe, draft)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	storageutil.ApplyAmbient(draft, job.UserAmbient)
+	draft.ContentHash = storageutil.DraftContentHash(pipeline.ContentBytes(draft), draft.Source, draft.Metadata)
+	return draft, nil
+}
+
+func runPipelineSteps(ctx context.Context, pipe *pipeline.Pipeline, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
+	var err error
+	for _, step := range pipe.Steps {
+		if pipeline.SkipsBinary(step, draft) {
+			slog.Debug("jobs: binary content, step skipped", "step", step.Name())
+			continue
+		}
+		draft, err = step.Run(ctx, draft)
+		if err != nil {
+			if errors.Is(err, pipeline.ErrDelegate) {
+				slog.Debug("jobs: step delegated, skipping", "step", step.Name())
+				continue
+			}
+			return nil, fmt.Errorf("step %s: %w", step.Name(), err)
+		}
+	}
+	return draft, nil
+}

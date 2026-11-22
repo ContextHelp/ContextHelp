@@ -1,0 +1,19 @@
+xrr: "1"
+adapter: exec
+fingerprint: 8961af1a
+recorded_at: "2026-11-22T18:25:51Z"
+payload:
+    argv:
+        - pod
+        - create
+        - ctxt-job-xrrdemo
+        - --provider
+        - docker
+        - --image
+        - ctxt-pod-worker:local
+        - --note
+        - ctxt job xrrjob1
+        - --format
+        - json
+        - --no-hints
+        - --no-color

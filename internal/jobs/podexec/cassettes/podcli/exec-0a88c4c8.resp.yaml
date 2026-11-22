@@ -1,0 +1,12 @@
+xrr: "1"
+adapter: exec
+fingerprint: 0a88c4c8
+recorded_at: "2026-11-22T18:25:51Z"
+payload:
+    stdout: |
+        {
+          "name": "ctxt-job-xrrdemo",
+          "id": "e006ed3c04c6359e903910a7372b9c94e8583e6dabe79e17e7abc75e1db39712",
+          "destroyed": true
+        }
+    exit_code: 0

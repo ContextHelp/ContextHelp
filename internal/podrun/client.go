@@ -49,13 +49,17 @@ type CapabilityLeaf struct {
 	Idempotent string `json:"idempotent,omitempty"`
 }
 
-// HasLeaf reports whether caps declares the exact command path (e.g. "pod exec").
+// HasLeaf reports whether caps declares the command path (e.g. "pod exec" or "exec").
 func (c *Capabilities) HasLeaf(path string) bool {
 	if c == nil {
 		return false
 	}
+	qualified := path
+	if !strings.HasPrefix(qualified, BinaryName+" ") {
+		qualified = BinaryName + " " + path
+	}
 	for _, l := range c.Leaves {
-		if l.Path == path {
+		if l.Path == path || l.Path == qualified {
 			return true
 		}
 	}

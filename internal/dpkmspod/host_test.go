@@ -27,7 +27,7 @@ func TestMain(m *testing.M) {
 	testguard.Main(m, nil, "ctxt", "dpkms")
 }
 
-const fullCapsJSON = `{"tool":"pod","schema_version":"1.0","leaves":[{"path":"show"},{"path":"start"},{"path":"stop"},{"path":"exec"},{"path":"forward"},{"path":"upload"}]}`
+const fullCapsJSON = `{"tool":"pod","schema_version":"1.0","leaves":[{"path":"pod show"},{"path":"pod start"},{"path":"pod stop"},{"path":"pod exec"},{"path":"pod forward"},{"path":"pod upload"}]}`
 
 type fakeProc struct {
 	pid    int

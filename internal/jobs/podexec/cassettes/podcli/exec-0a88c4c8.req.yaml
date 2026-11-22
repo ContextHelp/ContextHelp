@@ -1,0 +1,16 @@
+xrr: "1"
+adapter: exec
+fingerprint: 0a88c4c8
+recorded_at: "2026-11-22T18:25:51Z"
+payload:
+    argv:
+        - pod
+        - destroy
+        - ctxt-job-xrrdemo
+        - --force
+        - --note
+        - ctxt job cleanup
+        - --format
+        - json
+        - --no-hints
+        - --no-color
