@@ -136,3 +136,19 @@ func TestAdminCannotTakeAViewersCredential_Postgres(t *testing.T) {
 func TestAdminEntityGateHoldsGrantedAdmins_Postgres(t *testing.T) {
 	adminEntityGateHoldsGrantedAdmins(t, freshPostgres)
 }
+
+func TestStewardEveryReadRouteIsRecorded_Postgres(t *testing.T) {
+	stewardEveryReadRouteIsRecorded(t, freshPostgres)
+}
+
+func TestStewardDataReadsRecordWhatTheyRelease_Postgres(t *testing.T) {
+	stewardDataReadsRecordWhatTheyRelease(t, freshPostgres)
+}
+
+func TestStewardRefusedGrantsAreRecorded_Postgres(t *testing.T) {
+	stewardRefusedGrantsAreRecorded(t, freshPostgres)
+}
+
+func TestStewardConcurrentRequestsAreAllRecorded_Postgres(t *testing.T) {
+	stewardConcurrentRequestsAreAllRecorded(t, freshPostgres)
+}

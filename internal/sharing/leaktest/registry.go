@@ -41,6 +41,9 @@ type Principal struct {
 	// viewer is the viewer the instance compiles for it; the zero
 	// viewer for the owner, whose checks are the no-server-error one.
 	viewer sharing.Viewer
+	// grant is the steward grant the principal is elevated into
+	// (fixture_steward.go); "" for every other principal.
+	grant string
 }
 
 // Viewer is the viewer the fixture compiled for p.
