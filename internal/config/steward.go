@@ -15,6 +15,10 @@ const (
 	// DefaultStewardMinReasonChars is the shortest reason a steward
 	// grant request may give when steward.min_reason_chars is unset.
 	DefaultStewardMinReasonChars = 30
+	// DefaultStewardElevationIdle ends a browser session's steward
+	// elevation this long after its last request when
+	// steward.elevation_idle is unset: 15 minutes.
+	DefaultStewardElevationIdle = 15 * time.Minute
 )
 
 // DefaultStewardWithheldClasses are the classes withheld from every
@@ -36,6 +40,11 @@ type StewardConfig struct {
 	// MinReasonChars is the shortest reason a request may give, in
 	// characters (30 by default).
 	MinReasonChars int `mapstructure:"min_reason_chars" yaml:"min_reason_chars"`
+	// ElevationIdle ends a browser session's elevation into a grant this
+	// long after the elevation's last request; the steward elevates
+	// again. The session itself lives on. A duration (15 minutes by
+	// default).
+	ElevationIdle time.Duration `mapstructure:"elevation_idle" yaml:"elevation_idle"`
 	// WithheldClasses are removed from every steward scope at compile
 	// time (personal by default). An explicit empty list withholds
 	// nothing.
@@ -64,12 +73,23 @@ func (s StewardConfig) EffectiveMinReasonChars() int {
 	return s.MinReasonChars
 }
 
+// EffectiveElevationIdle is ElevationIdle, or the default when unset.
+func (s StewardConfig) EffectiveElevationIdle() time.Duration {
+	if s.ElevationIdle <= 0 {
+		return DefaultStewardElevationIdle
+	}
+	return s.ElevationIdle
+}
+
 // Validate refuses a negative duration or length and a withheld class
 // that is not a class name.
 func (s StewardConfig) Validate() []ValidationError {
 	var errs []ValidationError
 	if s.MaxDuration < 0 {
 		errs = append(errs, ValidationError{Field: "steward.max_duration", Message: fmt.Sprintf("must be a positive duration or 0 for the default (%s); got %s", DefaultStewardMaxDuration, s.MaxDuration)})
+	}
+	if s.ElevationIdle < 0 {
+		errs = append(errs, ValidationError{Field: "steward.elevation_idle", Message: fmt.Sprintf("must be a positive duration or 0 for the default (%s); got %s", DefaultStewardElevationIdle, s.ElevationIdle)})
 	}
 	if s.MinReasonChars < 0 {
 		errs = append(errs, ValidationError{Field: "steward.min_reason_chars", Message: fmt.Sprintf("must be a positive count or 0 for the default (%d); got %d", DefaultStewardMinReasonChars, s.MinReasonChars)})

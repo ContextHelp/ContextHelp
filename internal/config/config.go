@@ -1598,6 +1598,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("steward.enabled", false)
 	v.SetDefault("steward.max_duration", DefaultStewardMaxDuration)
 	v.SetDefault("steward.min_reason_chars", DefaultStewardMinReasonChars)
+	v.SetDefault("steward.elevation_idle", DefaultStewardElevationIdle)
 	v.SetDefault("steward.withheld_classes", DefaultStewardWithheldClasses)
 	v.SetDefault("steward.allow_withheld", false)
 	v.SetDefault("steward.allow_export", false)

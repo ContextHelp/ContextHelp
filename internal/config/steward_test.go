@@ -9,8 +9,8 @@ import (
 )
 
 // The steward settings (ADR-083 §2) default to feature off, a 14-day
-// cap, a 30-character reason, `personal` withheld, nothing exportable
-// and one approver.
+// cap, a 30-character reason, a 15-minute elevation idle, `personal`
+// withheld, nothing exportable and one approver.
 func TestStewardConfigDefaults(t *testing.T) {
 	cfg, err := Load("ctxt", "")
 	require.NoError(t, err)
@@ -18,6 +18,7 @@ func TestStewardConfigDefaults(t *testing.T) {
 	assert.False(t, s.Enabled)
 	assert.Equal(t, 14*24*time.Hour, s.EffectiveMaxDuration())
 	assert.Equal(t, 30, s.EffectiveMinReasonChars())
+	assert.Equal(t, 15*time.Minute, s.EffectiveElevationIdle())
 	assert.Equal(t, []string{"personal"}, s.WithheldClasses)
 	assert.False(t, s.AllowWithheld)
 	assert.False(t, s.AllowExport)
@@ -33,6 +34,7 @@ steward:
   enabled: true
   max_duration: 72h
   min_reason_chars: 12
+  elevation_idle: 5m
   withheld_classes: [personal, financial]
   allow_withheld: true
   allow_export: true
@@ -45,6 +47,7 @@ approvals:
 	assert.True(t, s.Enabled)
 	assert.Equal(t, 72*time.Hour, s.EffectiveMaxDuration())
 	assert.Equal(t, 12, s.EffectiveMinReasonChars())
+	assert.Equal(t, 5*time.Minute, s.EffectiveElevationIdle())
 	assert.Equal(t, []string{"personal", "financial"}, s.WithheldClasses)
 	assert.True(t, s.AllowWithheld)
 	assert.True(t, s.AllowExport)
@@ -64,6 +67,7 @@ approvals:
 func TestStewardConfigValidate(t *testing.T) {
 	assert.Equal(t, DefaultStewardMaxDuration, StewardConfig{}.EffectiveMaxDuration())
 	assert.Equal(t, DefaultStewardMinReasonChars, StewardConfig{}.EffectiveMinReasonChars())
+	assert.Equal(t, DefaultStewardElevationIdle, StewardConfig{}.EffectiveElevationIdle())
 	assert.Equal(t, 1, ApprovalKindConfig{}.EffectiveRequired())
 	assert.Equal(t, 3, ApprovalKindConfig{Required: 3}.EffectiveRequired())
 
@@ -78,10 +82,11 @@ func TestStewardConfigValidate(t *testing.T) {
 		cfg   Config
 		field string
 	}{
-		"negative max duration":  {Config{Steward: StewardConfig{MaxDuration: -time.Hour}}, "steward.max_duration"},
-		"negative reason length": {Config{Steward: StewardConfig{MinReasonChars: -1}}, "steward.min_reason_chars"},
-		"bad withheld class":     {Config{Steward: StewardConfig{WithheldClasses: []string{"Not A Class"}}}, "steward.withheld_classes[0]"},
-		"negative approvers":     {Config{Approvals: ApprovalsConfig{Steward: ApprovalKindConfig{Required: -1}}}, "approvals.steward.required"},
+		"negative max duration":   {Config{Steward: StewardConfig{MaxDuration: -time.Hour}}, "steward.max_duration"},
+		"negative reason length":  {Config{Steward: StewardConfig{MinReasonChars: -1}}, "steward.min_reason_chars"},
+		"negative elevation idle": {Config{Steward: StewardConfig{ElevationIdle: -time.Minute}}, "steward.elevation_idle"},
+		"bad withheld class":      {Config{Steward: StewardConfig{WithheldClasses: []string{"Not A Class"}}}, "steward.withheld_classes[0]"},
+		"negative approvers":      {Config{Approvals: ApprovalsConfig{Steward: ApprovalKindConfig{Required: -1}}}, "approvals.steward.required"},
 	} {
 		cfg := c.cfg
 		assert.Contains(t, fields(&cfg), c.field, name)
