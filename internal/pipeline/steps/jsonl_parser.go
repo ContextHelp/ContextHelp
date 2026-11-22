@@ -51,7 +51,8 @@ func (s *JSONLParser) Run(_ context.Context, draft *storage.KnowledgeObject) (*s
 		if err := json.Unmarshal([]byte(line), &rec); err != nil {
 			return nil, fmt.Errorf("jsonl_parser: line %d: %w", lineNum, err)
 		}
-		records = append(records, rec)
+		cleaned, _ := cleanJSON(rec).(map[string]any)
+		records = append(records, cleaned)
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("jsonl_parser: read: %w", err)
@@ -60,4 +61,26 @@ func (s *JSONLParser) Run(_ context.Context, draft *storage.KnowledgeObject) (*s
 	draft.Metadata["import_records"] = records
 	draft.Metadata["record_count"] = len(records)
 	return draft, nil
+}
+
+// cleanJSON is v with every string, map key included, as clean text (see
+// cleanText): a JSON \u0000 escape decodes to a NUL a database refuses.
+func cleanJSON(v any) any {
+	switch t := v.(type) {
+	case string:
+		return cleanText(t)
+	case []any:
+		for i, e := range t {
+			t[i] = cleanJSON(e)
+		}
+		return t
+	case map[string]any:
+		out := make(map[string]any, len(t))
+		for k, e := range t {
+			out[cleanText(k)] = cleanJSON(e)
+		}
+		return out
+	default:
+		return v
+	}
 }

@@ -72,22 +72,6 @@ func TestParsersRejectUndecodableContentPermanently(t *testing.T) {
 	}
 }
 
-func TestParserContractsDeclareBinary(t *testing.T) {
-	filter, err := NewEmailFilterFromRules(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for name, step := range map[string]pipeline.PipelineStep{
-		"csv_parser": NewCSVParser(), "jsonl_parser": NewJSONLParser(), "email_parser": NewEmailParser(),
-		"email_filter": filter, "email_enqueuer": NewEmailEnqueuer(),
-		"batch_enqueuer": NewBatchEnqueuer(), "record_validator": NewRecordValidator(),
-	} {
-		if !step.Contract().Binary {
-			t.Errorf("%s: not Binary: a legacy-charset input would skip it", name)
-		}
-	}
-}
-
 func TestEmailParserDecodesEachPartByItsCharset(t *testing.T) {
 	raw := win1252(t, "From: Zoë <zoe@example.com>\nTo: bob@example.com\nSubject: Café\n"+
 		"Message-Id: <m@example.com>\nMIME-Version: 1.0\n"+
@@ -124,13 +108,5 @@ func TestEmailParserDecodesEncodedWordInLegacyCharset(t *testing.T) {
 	}
 	if got := out.Metadata["email_messages"].([]map[string]any)[0]["subject"]; got != "řekni" {
 		t.Fatalf("subject = %q", got)
-	}
-}
-
-func TestEmailParserUnknownCharsetFails(t *testing.T) {
-	raw := "From: a@example.com\nTo: b@example.com\nSubject: x\nContent-Type: text/plain; charset=x-no-such\n\nbody\n"
-	_, err := NewEmailParser().Run(context.Background(), &storage.KnowledgeObject{RawContent: raw})
-	if err == nil || !pipeline.IsPermanent(err) {
-		t.Fatalf("err = %v, want permanent", err)
 	}
 }

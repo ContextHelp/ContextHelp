@@ -7,7 +7,6 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
-	"github.com/ideacrafterslabs/ctxt/internal/storage/blobref"
 	"github.com/ideacrafterslabs/ctxt/pkg/taxonomy"
 )
 
@@ -31,9 +30,11 @@ func (d *TypeDetector) Run(_ context.Context, draft *storage.KnowledgeObject) (*
 	// Binary is not short or long text: its subtype is what an earlier
 	// step (the content type router) made of it, and when none did, only
 	// its content type is sniffed.
-	if blobref.NeedsBlob(draft.RawContent) {
+	// A blob ref an earlier step left in RawContent stands for binary
+	// bytes the draft still carries (see pipeline.HoldsBinary).
+	if pipeline.HoldsBinary(draft) {
 		if draft.ContentType == "" {
-			sniffed := http.DetectContentType([]byte(draft.RawContent))
+			sniffed := http.DetectContentType([]byte(pipeline.ContentBytes(draft)))
 			draft.ContentType = strings.TrimSpace(strings.SplitN(sniffed, ";", 2)[0])
 		}
 		return draft, nil
