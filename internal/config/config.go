@@ -133,6 +133,10 @@ type Config struct {
 	GitHub GitHubConfig `mapstructure:"github" yaml:"github"`
 	// Approvals configures the shared approval mechanism (ADR-083 §9).
 	Approvals ApprovalsConfig `mapstructure:"approvals" yaml:"approvals"`
+
+	// Steward configures steward access for business instances
+	// (ADR-083 §2).
+	Steward StewardConfig `mapstructure:"steward" yaml:"steward"`
 }
 
 // GitHub client defaults.
@@ -1590,6 +1594,13 @@ func setDefaults(v *viper.Viper) {
 	// Jobs defaults (reproduce current hardcoded values)
 	v.SetDefault("sharing.audit.retention", DefaultAuditRetention)
 	v.SetDefault("approvals.pending_ttl", DefaultApprovalPendingTTL)
+	v.SetDefault("approvals.steward.required", 1)
+	v.SetDefault("steward.enabled", false)
+	v.SetDefault("steward.max_duration", DefaultStewardMaxDuration)
+	v.SetDefault("steward.min_reason_chars", DefaultStewardMinReasonChars)
+	v.SetDefault("steward.withheld_classes", DefaultStewardWithheldClasses)
+	v.SetDefault("steward.allow_withheld", false)
+	v.SetDefault("steward.allow_export", false)
 	v.SetDefault("jobs.poll_interval", 500*time.Millisecond)
 	v.SetDefault("jobs.stale_timeout", 30*time.Minute)
 	v.SetDefault("jobs.max_retries", 3)
