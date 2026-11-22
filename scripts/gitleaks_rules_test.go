@@ -36,16 +36,43 @@ func TestGitleaksRuleIDsPrefixed(t *testing.T) {
 	}
 }
 
+// gitleaksBinary returns the real gitleaks executable, skipping the test
+// when there is none. mise resolves it from the checkout (`mise which`):
+// a mise shim found on PATH only works inside a directory whose mise
+// config pins the tool, and these tests run gitleaks from temp repos and
+// trees, where the shim fails with "gitleaks is not a valid shim". Without
+// mise, PATH decides.
+func gitleaksBinary(t *testing.T) string {
+	t.Helper()
+	if _, err := exec.LookPath("mise"); err == nil {
+		cmd := exec.Command("mise", "which", "gitleaks")
+		cmd.Dir = ".."
+		if out, err := cmd.Output(); err == nil {
+			if bin := strings.TrimSpace(string(out)); bin != "" {
+				return bin
+			}
+		}
+	}
+	bin, err := exec.LookPath("gitleaks")
+	if err != nil {
+		t.Skip("gitleaks not on PATH")
+	}
+	return bin
+}
+
+// withGitleaksFirst returns the environment with gitleaks' directory first
+// on PATH, so scripts that call plain `gitleaks` get the real binary.
+func withGitleaksFirst(bin string) []string {
+	return append(os.Environ(), "PATH="+filepath.Dir(bin)+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
 // TestTestHooksScriptRealGitleaks runs scripts/test-hooks.sh against the
 // real gitleaks binary and the checkout's .gitleaks.toml: every fake key
 // must be blocked by the installed pre-commit hook and every allowlisted
 // sample must pass.
 func TestTestHooksScriptRealGitleaks(t *testing.T) {
 	requireTools(t)
-	gitleaks, err := exec.LookPath("gitleaks")
-	if err != nil {
-		t.Skip("gitleaks not on PATH")
-	}
+	gitleaks := gitleaksBinary(t)
 	h := newHarness(t)
 	h.prependPath(filepath.Dir(gitleaks))
 	repo := h.newRepo("clone", hookScriptFiles...)
@@ -184,10 +211,7 @@ func TestGitleaksAllowlistRegexesSpareProviderKeys(t *testing.T) {
 // fixture or sample config, and the fixture-token allowlist must need both
 // a test path and the fixture shape.
 func TestGitleaksReportsKeysInDocsTestsAndExamples(t *testing.T) {
-	gitleaks, err := exec.LookPath("gitleaks")
-	if err != nil {
-		t.Skip("gitleaks not on PATH")
-	}
+	gitleaks := gitleaksBinary(t)
 	config, err := filepath.Abs(filepath.Join("..", ".gitleaks.toml"))
 	if err != nil {
 		t.Fatal(err)
@@ -267,15 +291,14 @@ func TestGitleaksFullTreeClean(t *testing.T) {
 	if testing.Short() {
 		t.Skip("full-tree scan takes tens of seconds")
 	}
-	if _, err := exec.LookPath("gitleaks"); err != nil {
-		t.Skip("gitleaks not on PATH")
-	}
+	gitleaks := gitleaksBinary(t)
 	for _, tool := range []string{"bash", "git", "tar"} {
 		if _, err := exec.LookPath(tool); err != nil {
 			t.Skipf("%s not on PATH", tool)
 		}
 	}
 	cmd := exec.Command("bash", "secret-scan-tree.sh")
+	cmd.Env = withGitleaksFirst(gitleaks)
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
 	if err := cmd.Run(); err != nil {
@@ -352,12 +375,14 @@ func TestGitleaksHistoryScanClean(t *testing.T) {
 	if testing.Short() {
 		t.Skip("history scan takes tens of seconds")
 	}
-	for _, tool := range []string{"gitleaks", "git", "make"} {
+	gitleaks := gitleaksBinary(t)
+	for _, tool := range []string{"git", "make"} {
 		if _, err := exec.LookPath(tool); err != nil {
 			t.Skipf("%s not on PATH", tool)
 		}
 	}
 	cmd := exec.Command("make", "--no-print-directory", "-C", "..", "security-scan")
+	cmd.Env = withGitleaksFirst(gitleaks)
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
 	if err := cmd.Run(); err != nil {
