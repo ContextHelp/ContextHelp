@@ -103,9 +103,6 @@ Examples:
 func init() {
 	rootCmd.AddCommand(stewardCmd)
 	stewardCmd.AddCommand(stewardRequestCmd, stewardListCmd, stewardShowCmd, stewardRevokeCmd)
-	for _, c := range []*cobra.Command{stewardRequestCmd, stewardListCmd, stewardShowCmd, stewardRevokeCmd} {
-		c.Flags().String("server", "", serverFlagUsage)
-	}
 	f := stewardRequestCmd.Flags()
 	f.String("steward", "", "the person who will read; you when left out")
 	f.String("scope", "", "a share policy document (YAML or JSON) naming what the steward may read; - reads stdin")
