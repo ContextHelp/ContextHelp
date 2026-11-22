@@ -21,7 +21,13 @@ type memAccessLog struct {
 	batches [][]*storage.AccessEntry
 	steward []*storage.AccessEntry
 	fail    error
+	// stewardFails is how many steward appends fail (errStoreDown)
+	// before the store takes them again.
+	stewardFails int
 }
+
+// errStoreDown is what a failing steward append returns.
+var errStoreDown = errors.New("access log: store down")
 
 func (m *memAccessLog) Append(_ context.Context, entries []*storage.AccessEntry) error {
 	m.mu.Lock()
@@ -44,6 +50,13 @@ func (m *memAccessLog) AppendSteward(_ context.Context, e *storage.AccessEntry) 
 	defer m.mu.Unlock()
 	if m.fail != nil {
 		return m.fail
+	}
+	if m.stewardFails > 0 {
+		m.stewardFails--
+		return errStoreDown
+	}
+	if err := storage.PrepareStewardEntry(e, time.Now()); err != nil {
+		return err
 	}
 	m.steward = append(m.steward, e)
 	return nil

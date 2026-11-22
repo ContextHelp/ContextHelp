@@ -108,6 +108,11 @@ type Operation struct {
 	// with when the receipt finished, which for a stream is when it
 	// ended. Zero is now.
 	At time.Time
+	// StewardGrant is the steward grant the request named (ADR-083 §3):
+	// the elevated viewer's grant, or the grant of a refused elevation,
+	// whose Viewer is the zero viewer. "" for an ordinary request; when
+	// left empty it is taken from Viewer.
+	StewardGrant string
 }
 
 // Receipt collects the audit record of one request by a restricted
@@ -136,17 +141,31 @@ type Receipt struct {
 	ledger    *Ledger
 	discarded bool
 	done      bool
+	// auditFailed is set once a steward entry could not be committed:
+	// the request failed closed and its decision is deferred.
+	auditFailed bool
+	// commitErr is what the first Commit returned.
+	commitErr error
 }
 
 // NewReceipt starts the receipt of op. When the request was
-// authenticated, the trail opens with the authn check that admitted it.
+// authenticated, the trail opens with the authn check that admitted it;
+// a request elevated into a steward grant (ADR-083 §5) carries the
+// steward_grant check next, passed when op.Viewer is that grant's
+// elevation. A refused elevation records its code with StewardRefused.
 func NewReceipt(op Operation) *Receipt {
 	if op.At.IsZero() {
 		op.At = time.Now()
 	}
+	if op.StewardGrant == "" {
+		op.StewardGrant = op.Viewer.StewardGrantID()
+	}
 	r := &Receipt{op: op, viewer: op.Viewer}
 	if op.Principal != "" && op.AuthMethod != "" {
 		r.add(CheckAuthn(op.AuthMethod), storage.AccessOutcomePass, ReasonAuthenticated)
+	}
+	if op.StewardGrant != "" && op.Viewer.StewardGrantID() == op.StewardGrant {
+		r.add(CheckStewardGrant, storage.AccessOutcomePass, StewardReasonGrantActive)
 	}
 	return r
 }
@@ -347,8 +366,16 @@ func (r *Receipt) Discard() {
 // time the receipt began; later calls do nothing. A discarded receipt, and a request with no attributable
 // principal, record nothing: an unauthenticated flood must not grow the
 // table. w may be nil.
+//
+// An elevated request's entry never goes to the buffer: Finish commits
+// it durably (Commit), after the fact, for a path that did not commit
+// it before its answer. The transports commit it before the answer.
 func (r *Receipt) Finish(w *AuditWriter) {
 	if r == nil {
+		return
+	}
+	if r.Elevated() {
+		_ = r.Commit(context.Background(), w)
 		return
 	}
 	r.mu.Lock()
@@ -380,6 +407,7 @@ func (r *Receipt) entry() *storage.AccessEntry {
 		OperationDigest: OperationDigest(r.op.Method, r.op.Route, r.op.Params),
 		PolicyVersions:  r.viewer.PolicyKey(),
 		ObjectIDs:       r.ledger.Objects(),
+		StewardGrantID:  r.op.StewardGrant,
 	}
 	e.ObjectCount = len(e.ObjectIDs)
 	e.EntityCount = len(r.ledger.Entities())
@@ -397,7 +425,12 @@ func (r *Receipt) entry() *storage.AccessEntry {
 // is valid by construction: denied when a check refused (its FAIL is
 // held), else deferred when any check is UNKNOWN, else allowed.
 func (r *Receipt) decision() storage.AccessDecision {
-	if r.refused {
+	switch {
+	case r.auditFailed:
+		// The answer was replaced by AUDIT_UNAVAILABLE: no verdict was
+		// released, whatever the checks had decided.
+		return storage.AccessDecisionDeferred
+	case r.refused:
 		return storage.AccessDecisionDenied
 	}
 	for _, c := range r.checks {
