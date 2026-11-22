@@ -2,6 +2,7 @@ package approval_test
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"sync"
@@ -50,6 +51,36 @@ func TestApply_StaleOnFingerprintMismatch(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, approval.StateRequested, d.State)
 	assert.Equal(t, storage.ApprovalApproved, f.stored(fresh.ID).Status)
+}
+
+// The N-th approval applies only when every recorded approval binds to
+// the request's current payload digest: a payload rewritten between two
+// approvals (digest recomputed, so each single check holds) has an
+// approval given to another payload on record, and the request ends
+// stale with nothing applied.
+func TestApply_StaleWhenAnApprovalBindsToAnotherDigest(t *testing.T) {
+	f := newFixture(t)
+	f.kind.SetRequired(2)
+	r := f.file("bound")
+	_, err := f.approve(r, f.alice)
+	require.NoError(t, err)
+
+	moved, err := approval.Canonicalize(approvaltest.Raw(f.target.ID, "rewritten"))
+	require.NoError(t, err)
+	digest := approval.Digest(moved)
+	require.NotEqual(t, r.PayloadDigest, digest)
+	db := f.drv.(interface{ DB() *sql.DB }).DB()
+	_, err = db.ExecContext(context.Background(), `UPDATE approval_requests SET payload = ?, payload_digest = ? WHERE id = ?`, string(moved), digest, r.ID)
+	require.NoError(t, err)
+
+	_, err = f.svc.Approve(context.Background(), r.ID, f.bob, digest, "ok")
+	requireCode(t, err, approval.CodeStale)
+	got := f.stored(r.ID)
+	assert.Equal(t, storage.ApprovalStale, got.Status)
+	assert.Empty(t, got.ResultRef)
+	assert.Len(t, got.Decisions, 2, "the last approval is on record")
+	assert.Zero(t, f.kind.Attempts(), "nothing applied")
+	assert.Contains(t, eventTypes(f.events(r.ID)), approval.EventStale)
 }
 
 // Apply runs in the last approval's transaction: it sees the decision

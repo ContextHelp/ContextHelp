@@ -144,11 +144,12 @@ type Decided struct {
 }
 
 // Approve records approver's approval of request id, bound to digest.
-// The N-th approval re-checks the preconditions: when they hold, the
-// kind applies the payload and the request is approved, in the same
-// transaction; when they moved, the request is stale, nothing is
-// applied, and the error is CodeStale. A failed apply rolls back the
-// decision with it.
+// The N-th approval re-checks that every approval on record binds to
+// the request's current payload digest and that the preconditions
+// hold: when both do, the kind applies the payload and the request is
+// approved, in the same transaction; otherwise the request is stale,
+// nothing is applied, and the error is CodeStale. A failed apply rolls
+// back the decision with it.
 func (s *Service) Approve(ctx context.Context, id string, approver *auth.Principal, digest, note string) (*Decided, error) {
 	var out *Decided
 	var refused *storage.ApprovalRequest
@@ -171,7 +172,7 @@ func (s *Service) Approve(ctx context.Context, id string, approver *auth.Princip
 		if err != nil {
 			return err
 		}
-		if !preconditionsHold(r.Preconditions, current) {
+		if !approvalsBound(r) || !preconditionsHold(r.Preconditions, current) {
 			stale = true
 			return s.close(ctx, r, StateStale, approver.ID, now, "", EventStale, nil)
 		}
@@ -356,6 +357,20 @@ func (s *Service) close(ctx context.Context, r *storage.ApprovalRequest, to Stat
 		extra["result_ref"] = ref
 	}
 	return s.record(ctx, event, actor, r, now, extra)
+}
+
+// approvalsBound reports whether every approval recorded on r binds to
+// r's current payload digest (ADR-083 §9). Each decision is checked
+// against the digest when it is made, but only the final approval sees
+// them all: one given to another digest approved another payload, so
+// the payload in hand was not approved N times.
+func approvalsBound(r *storage.ApprovalRequest) bool {
+	for _, d := range r.Decisions {
+		if d.Decision == storage.ApprovalVerdictApprove && d.PayloadDigest != r.PayloadDigest {
+			return false
+		}
+	}
+	return true
 }
 
 // preconditionsHold compares the canonical fingerprint frozen at filing
