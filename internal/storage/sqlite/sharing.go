@@ -22,6 +22,9 @@ func (s *sharingStore) Audiences() storage.AudienceStore   { return &audienceSto
 func (s *sharingStore) Policies() storage.SharePolicyStore { return &sharePolicyStore{db: s.db} }
 func (s *sharingStore) Grants() storage.ShareGrantStore    { return &shareGrantStore{db: s.db} }
 func (s *sharingStore) AccessLog() storage.AccessLogStore  { return &accessLogStore{db: s.db} }
+func (s *sharingStore) StewardGrants() storage.StewardGrantStore {
+	return &stewardGrantStore{db: s.db}
+}
 
 func (s *sharingStore) DenyClasses(ctx context.Context, principalID string) ([]string, error) {
 	var raw string

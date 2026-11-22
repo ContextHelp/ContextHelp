@@ -347,6 +347,11 @@ var migrations = []migration{
 	{Version: 62, fn: func(ctx context.Context, d *Driver) error {
 		return addJobsColumnIfMissing(ctx, d, "payload_encoding", "TEXT NOT NULL DEFAULT ''")
 	}},
+	// Migration 063: steward grants (ADR-083 §2): steward_grants, the
+	// grant half of an approved steward.grant request, with its frozen
+	// scope, window and revocation. New table only, nothing is an FTS
+	// input, so no re-projection follows.
+	{Version: 63, fn: migrate063StewardGrants},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
