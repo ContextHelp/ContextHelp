@@ -133,7 +133,7 @@ func approvalStatus(code string) int {
 		return http.StatusBadRequest
 	case approval.CodeOwnerCannotRequest, approval.CodeRequesterCannotDecide, approval.CodeBeneficiaryCannotDecide,
 		approval.CodeNotEligible, approval.CodeNotRequester,
-		steward.CodeDisabled, steward.CodeRequesterRole:
+		steward.CodeDisabled, steward.CodeRequesterRole, steward.CodeRequesterKind:
 		return http.StatusForbidden
 	case approval.CodeClosed, approval.CodeExpired, approval.CodeStale, approval.CodeAlreadyDecided, approval.CodeDigestMismatch:
 		return http.StatusConflict

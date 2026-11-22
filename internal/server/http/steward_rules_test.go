@@ -132,6 +132,7 @@ func stewardFlowFilingRefusals(t *testing.T, f *stewardFlow) {
 		code   string
 	}{
 		"the owner files nothing":       {sfOwner, f.filing(), http.StatusForbidden, approval.CodeOwnerCannotRequest},
+		"a device requester":            {sfDevice, f.filing(), http.StatusForbidden, steward.CodeRequesterKind},
 		"a steward without the role":    {sfRequester, with("steward_id", sfPlain), http.StatusBadRequest, steward.CodeStewardIneligible},
 		"a short reason":                {sfRequester, with("reason", "because"), http.StatusBadRequest, approval.CodeReasonTooShort},
 		"a window past the cap":         {sfRequester, with("expires_at", now.Add(15*24*time.Hour)), http.StatusBadRequest, steward.CodeWindowTooLong},
