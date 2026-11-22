@@ -12,11 +12,17 @@ import (
 
 // uiSessionStore persists web UI sessions and login codes in the
 // ui_sessions and ui_login_codes tables (migration 041, rebuilt by 049
-// to reference principal_identities). Times are Unix milliseconds, UTC.
+// to reference principal_identities; the steward elevation columns are
+// 064's). Times are Unix milliseconds, UTC.
 type uiSessionStore struct{ db *sql.DB }
 
-const uiSessionColumns = `id, secret_hash, principal_id, identity_id, scope, user_agent, remote_addr,
+// uiSessionInsertColumns are the columns Create writes: a new session
+// is never elevated.
+const uiSessionInsertColumns = `id, secret_hash, principal_id, identity_id, scope, user_agent, remote_addr,
 	created_at, last_seen_at, idle_expires_at, expires_at, revoked_at, revoke_reason`
+
+// uiSessionColumns are the columns every read selects.
+const uiSessionColumns = uiSessionInsertColumns + `, steward_grant_id, steward_active_at`
 
 func toMillis(t time.Time) int64 { return t.UTC().UnixMilli() }
 
@@ -57,7 +63,7 @@ func (s *uiSessionStore) Create(ctx context.Context, u *storage.UISession) error
 	if u.RevokedAt != nil {
 		revoked = toMillis(*u.RevokedAt)
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO ui_sessions (`+uiSessionColumns+`)
+	_, err := s.db.ExecContext(ctx, `INSERT INTO ui_sessions (`+uiSessionInsertColumns+`)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		u.ID, u.SecretHash, u.PrincipalID, u.IdentityID, u.Scope, u.UserAgent, u.RemoteAddr,
 		toMillis(u.CreatedAt), toMillis(u.LastSeenAt), toMillis(u.IdleExpiresAt), toMillis(u.ExpiresAt),
@@ -71,9 +77,10 @@ func (s *uiSessionStore) Create(ctx context.Context, u *storage.UISession) error
 func scanUISession(row interface{ Scan(...any) error }) (*storage.UISession, error) {
 	u := &storage.UISession{}
 	var created, seen, idle, expires int64
-	var revoked sql.NullInt64
+	var revoked, stewardActive sql.NullInt64
+	var stewardGrant sql.NullString
 	if err := row.Scan(&u.ID, &u.SecretHash, &u.PrincipalID, &u.IdentityID, &u.Scope, &u.UserAgent, &u.RemoteAddr,
-		&created, &seen, &idle, &expires, &revoked, &u.RevokeReason); err != nil {
+		&created, &seen, &idle, &expires, &revoked, &u.RevokeReason, &stewardGrant, &stewardActive); err != nil {
 		return nil, err
 	}
 	u.CreatedAt, u.LastSeenAt = fromMillis(created), fromMillis(seen)
@@ -81,6 +88,10 @@ func scanUISession(row interface{ Scan(...any) error }) (*storage.UISession, err
 	if revoked.Valid {
 		t := fromMillis(revoked.Int64)
 		u.RevokedAt = &t
+	}
+	if stewardGrant.Valid && stewardGrant.String != "" && stewardActive.Valid {
+		t := fromMillis(stewardActive.Int64)
+		u.StewardGrantID, u.StewardActiveAt = stewardGrant.String, &t
 	}
 	return u, nil
 }
@@ -145,6 +156,61 @@ func (s *uiSessionStore) Revoke(ctx context.Context, id string, at time.Time, re
 		return err
 	}
 	return s.exists(ctx, id)
+}
+
+func (s *uiSessionStore) Elevate(ctx context.Context, id, grantID string, at time.Time) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE ui_sessions SET steward_grant_id = ?, steward_active_at = ?
+		WHERE id = ? AND revoked_at IS NULL AND (steward_grant_id IS NULL OR steward_grant_id = ?)`,
+		grantID, toMillis(at), id, grantID)
+	if err != nil {
+		return fmt.Errorf("ui session elevate %q: %w", id, err)
+	}
+	if n, err := res.RowsAffected(); err != nil || n > 0 {
+		return err
+	}
+	// Nothing matched: no such session, a revoked one, or one elevated
+	// into another grant.
+	var revoked sql.NullInt64
+	err = s.db.QueryRowContext(ctx, `SELECT revoked_at FROM ui_sessions WHERE id = ?`, id).Scan(&revoked)
+	switch {
+	case errors.Is(err, sql.ErrNoRows), err == nil && revoked.Valid:
+		return storage.ErrNotFound
+	case err != nil:
+		return fmt.Errorf("ui session elevate %q: %w", id, err)
+	}
+	return storage.ErrSessionElevated
+}
+
+func (s *uiSessionStore) TouchElevation(ctx context.Context, id, grantID string, at time.Time) (bool, error) {
+	res, err := s.db.ExecContext(ctx, `UPDATE ui_sessions SET steward_active_at = ?
+		WHERE id = ? AND steward_grant_id = ? AND revoked_at IS NULL`, toMillis(at), id, grantID)
+	if err != nil {
+		return false, fmt.Errorf("ui session touch elevation %q: %w", id, err)
+	}
+	return s.matched(ctx, id, res)
+}
+
+func (s *uiSessionStore) EndElevation(ctx context.Context, id, grantID string) (bool, error) {
+	res, err := s.db.ExecContext(ctx, `UPDATE ui_sessions SET steward_grant_id = NULL, steward_active_at = NULL
+		WHERE id = ? AND steward_grant_id = ?`, id, grantID)
+	if err != nil {
+		return false, fmt.Errorf("ui session end elevation %q: %w", id, err)
+	}
+	return s.matched(ctx, id, res)
+}
+
+// matched reports whether res changed session id's row: an update that
+// matched nothing is false, or ErrNotFound when there is no such
+// session.
+func (s *uiSessionStore) matched(ctx context.Context, id string, res sql.Result) (bool, error) {
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if n > 0 {
+		return true, nil
+	}
+	return false, s.exists(ctx, id)
 }
 
 func (s *uiSessionStore) List(ctx context.Context, f storage.UISessionFilter) ([]*storage.UISession, error) {
