@@ -10,7 +10,6 @@ import (
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/sharing"
-	"github.com/ideacrafterslabs/ctxt/internal/steward"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -40,13 +39,9 @@ type elevationRecord struct {
 }
 
 // browserSession reports whether p is a web UI browser session this
-// router can elevate, writing the refusal when it is not.
-func (s *stewardRoutes) browserSession(w http.ResponseWriter, p *authn.Principal) bool {
-	if s.sessions != nil && p.SessionKind() == authn.SessionKindUI {
-		return true
-	}
-	writeBrowserOnly(w)
-	return false
+// router can elevate.
+func (s *stewardRoutes) browserSession(p *authn.Principal) bool {
+	return s.sessions != nil && p.SessionKind() == authn.SessionKindUI
 }
 
 // writeBrowserOnly answers an elevation asked by anything but a web UI
@@ -64,8 +59,14 @@ func writeBrowserOnly(w http.ResponseWriter) {
 // same grant again refreshes the elevation.
 func (s *stewardRoutes) Elevate(w http.ResponseWriter, r *http.Request) {
 	ctx, id, p := r.Context(), chi.URLParam(r, "id"), caller(r)
-	if !s.browserSession(w, p) {
-		steward.RecordElevationRefused(ctx, s.sec, p.ID, id, reasonBrowserOnly, false)
+	if !s.browserSession(p) {
+		// An API credential never elevates: a refusal like any other,
+		// recorded before it is answered.
+		if committed, _ := recordRefusedGrant(r, p, id, &sharing.StewardRefusal{Reason: reasonBrowserOnly}, s.sec, s.audit); !committed {
+			writeAuditUnavailable(w, nil)
+			return
+		}
+		writeBrowserOnly(w)
 		return
 	}
 	v, err := s.stewards.Get(ctx, id, p)
@@ -87,7 +88,11 @@ func (s *stewardRoutes) Elevate(w http.ResponseWriter, r *http.Request) {
 	if _, err := s.svc.Viewers().Resolve(ctx, p.ID, p.Kind, p.Meta[authn.MetaIdentityID], sharing.AsSteward(id)); err != nil {
 		var refusal *sharing.StewardRefusal
 		if errors.As(err, &refusal) {
-			steward.RecordElevationRefused(ctx, s.sec, p.ID, id, refusal.Reason, refusal.Deferred)
+			committed, _ := recordRefusedGrant(r, p, id, refusal, s.sec, s.audit)
+			if !committed {
+				writeAuditUnavailable(w, nil)
+				return
+			}
 			writeStewardRefusal(w, p, refusal)
 			return
 		}
@@ -123,7 +128,8 @@ func (s *stewardRoutes) Elevate(w http.ResponseWriter, r *http.Request) {
 // request is the ordinary view. A session not elevated into id is 404.
 func (s *stewardRoutes) EndElevation(w http.ResponseWriter, r *http.Request) {
 	ctx, id, p := r.Context(), chi.URLParam(r, "id"), caller(r)
-	if !s.browserSession(w, p) {
+	if !s.browserSession(p) {
+		writeBrowserOnly(w)
 		return
 	}
 	ended, err := s.sessions.EndElevation(ctx, p, id, authn.ElevationEndedByCaller)
