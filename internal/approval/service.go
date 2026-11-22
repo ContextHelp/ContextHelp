@@ -184,7 +184,11 @@ func (s *Service) Approve(ctx context.Context, id string, approver *auth.Princip
 		if err != nil {
 			return err
 		}
-		if !approvalsBound(r) || !preconditionsHold(r.Preconditions, current) {
+		tainted, err := s.approverBecameBeneficiary(ctx, k, r)
+		if err != nil {
+			return err
+		}
+		if !approvalsBound(r) || !preconditionsHold(r.Preconditions, current) || tainted {
 			stale = true
 			return s.close(ctx, r, StateStale, approver.ID, now, "", EventStale, nil)
 		}
@@ -388,6 +392,27 @@ func approvalsBound(r *storage.ApprovalRequest) bool {
 		}
 	}
 	return true
+}
+
+// approverBecameBeneficiary reports whether an approver on record is a
+// principal the request would benefit as things stand now: a beneficiary
+// is computed at decision time, so one who joined after approving would
+// otherwise have approved a change for themselves. The request ends
+// stale, like one whose preconditions moved; the requester files again.
+func (s *Service) approverBecameBeneficiary(ctx context.Context, k *Kind, r *storage.ApprovalRequest) (bool, error) {
+	if k.Beneficiaries == nil {
+		return false, nil
+	}
+	ids, err := k.Beneficiaries(ctx, r)
+	if err != nil {
+		return false, fmt.Errorf("approval kind %s: beneficiaries: %w", k.Name, err)
+	}
+	for _, id := range approverIDs(r) {
+		if slices.Contains(ids, id) && (id != r.SubjectID || !k.SubjectMayApprove) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // preconditionsHold compares the canonical fingerprint frozen at filing
