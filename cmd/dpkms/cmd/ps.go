@@ -63,9 +63,14 @@ func init() {
 	// pidfiles whose process is already gone, which is bookkeeping over
 	// dead state rather than an observable mutation. Read.
 	cliconv.WithSideEffect(psCmd, cliconv.SideEffectRead)
+	psCmd.Flags().String("runner", "", "daemon runner: local (default) or pod (overrides daemon.runner)")
+	psCmd.Flags().String("pod", "", "existing pod name for --runner pod (overrides daemon.pod.name)")
 }
 
 func runPS(cmd *cobra.Command, _ []string) error {
+	if handled, err := maybeRunPSPod(cmd, defaultDpkmsPodDeps); handled || err != nil {
+		return err
+	}
 	runDir, err := config.RunDirPath(dataDir())
 	if err != nil {
 		return fmt.Errorf("run dir: %w", err)

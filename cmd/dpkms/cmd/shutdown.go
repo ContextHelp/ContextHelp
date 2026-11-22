@@ -39,9 +39,15 @@ func init() {
 	// work is interrupted and the process does not come back on its own.
 	// Destructive.
 	cliconv.WithSideEffect(shutdownCmd, cliconv.SideEffectDestructive)
+	shutdownCmd.Flags().String("runner", "", "daemon runner: local (default) or pod (overrides daemon.runner)")
+	shutdownCmd.Flags().String("pod", "", "existing pod name for --runner pod (overrides daemon.pod.name)")
+	shutdownCmd.Flags().Bool("stop-pod", false, "with --runner pod, also stop the pod after dpkms exits")
 }
 
 func runShutdown(cmd *cobra.Command, _ []string) error {
+	if handled, err := maybeRunShutdownPod(cmd, defaultDpkmsPodDeps); handled || err != nil {
+		return err
+	}
 	return signalInstance(cmd, syscall.SIGTERM, "SIGTERM")
 }
 
