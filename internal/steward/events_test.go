@@ -166,3 +166,29 @@ func TestEvents_GrantRevoked(t *testing.T) {
 	assert.Equal(t, f.alice.ID, got[0].Principal)
 	assert.Equal(t, map[string]string{"grant_id": g.ID, "request_id": g.RequestID, "steward_id": f.stewardP.ID}, got[0].Meta)
 }
+
+// The session hook turns each elevation start and end into its event,
+// and a refusal is its own event with the code and whether it was
+// deferred.
+func TestEvents_Elevation(t *testing.T) {
+	sec, rec := emitter(t)
+	hook := steward.ElevationEvents(sec)
+	ctx := context.Background()
+	hook(ctx, auth.ElevationEvent{Started: true, PrincipalID: "prn_s", SessionID: "uis_1", GrantID: "stg_1"})
+	hook(ctx, auth.ElevationEvent{PrincipalID: "prn_s", SessionID: "uis_1", GrantID: "stg_1", Reason: auth.ElevationEndedIdle})
+	steward.RecordElevationRefused(ctx, sec, "prn_s", "stg_1", "grant_revoked", false)
+
+	got := rec.wait(t, 3)
+	require.Len(t, got, 3)
+	byKind := map[string]security.Alert{}
+	for _, a := range got {
+		byKind[a.Kind] = a
+		assert.Equal(t, "prn_s", a.Principal, a.Kind)
+		assert.Equal(t, "stg_1", a.Meta["grant_id"], a.Kind)
+	}
+	assert.Equal(t, "uis_1", byKind[security.EventStewardElevationStarted].Meta["session_id"])
+	assert.Equal(t, auth.ElevationEndedIdle, byKind[security.EventStewardElevationEnded].Meta["reason"])
+	refused := byKind[security.EventStewardElevationRefused]
+	assert.Equal(t, "grant_revoked", refused.Meta["reason"])
+	assert.Equal(t, "false", refused.Meta["deferred"])
+}
