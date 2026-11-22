@@ -18,7 +18,7 @@ func (s *ObjectStore) TagCounts(ctx context.Context, q storage.TagQuery) ([]stor
 		inner += " AND " + term
 		args = append(args, sargs...)
 	}
-	query := "SELECT t->>'label' AS label, COUNT(DISTINCT o.oid) AS n FROM ("
+	query := `SELECT (t->>'label') COLLATE "C" AS label, COUNT(DISTINCT o.oid) AS n FROM (`
 	query += inner
 	query += ") AS o, jsonb_array_elements(o.tags) AS t WHERE t->>'label' IS NOT NULL AND t->>'label' <> ''"
 	if q.Prefix != "" {
@@ -26,7 +26,9 @@ func (s *ObjectStore) TagCounts(ctx context.Context, q storage.TagQuery) ([]stor
 		args = append(args, storage.PrefixPattern(q.Prefix))
 		idx++
 	}
-	query += ` GROUP BY t->>'label' ORDER BY n DESC, t->>'label' COLLATE "C" ASC`
+	// Group and order by the one collated label expression: Postgres
+	// rejects an ORDER BY key that differs from the GROUP BY key.
+	query += " GROUP BY 1 ORDER BY n DESC, label ASC"
 	if q.Limit > 0 {
 		// #nosec G202 -- only the integer placeholder index is formatted in;
 		// the limit value itself is bound as a query argument.
