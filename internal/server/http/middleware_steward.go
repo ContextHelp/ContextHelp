@@ -39,25 +39,37 @@ const apiPrefix = "/api/v1"
 // not be committed: it is answered 503 AUDIT_UNAVAILABLE, as every
 // elevated request whose record failed, and its event says deferred.
 func refuseElevation(w http.ResponseWriter, r *http.Request, princ *authn.Principal, refusal *sharing.StewardRefusal, sec *security.Emitter, sessions *authn.Sessions, audit *sharing.AuditWriter) {
-	route, params := requestRoute(r)
-	op := sharing.Operation{
-		Method: r.Method, Route: route, Params: params,
-		Principal: princ.ID, Identity: princ.Meta[authn.MetaIdentityID], AuthMethod: authMethod(princ),
-		StewardGrant: princ.Meta[authn.MetaStewardGrantID],
-	}
-	rcpt := sharing.NewReceipt(op)
-	rcpt.StewardRefused(refusal)
-	committed := rcpt.Commit(r.Context(), audit) == nil
-	deferred := refusal.Deferred || !committed
-	steward.RecordElevationRefused(r.Context(), sec, princ.ID, op.StewardGrant, refusal.Reason, deferred)
+	grant := princ.Meta[authn.MetaStewardGrantID]
+	committed, deferred := recordRefusedGrant(r, princ, grant, refusal, sec, audit)
 	if !deferred {
-		endRefusedElevation(r.Context(), princ, op.StewardGrant, sessions)
+		endRefusedElevation(r.Context(), princ, grant, sessions)
 	}
 	if !committed {
 		writeAuditUnavailable(w, nil)
 		return
 	}
 	writeStewardRefusal(w, princ, refusal)
+}
+
+// recordRefusedGrant leaves the durable record of a refusal that names
+// grant: the read audit entry (the steward_grant check failed with the
+// refusal's code, committed durably), then the security event. It
+// reports whether the entry was committed and whether the refusal ends
+// up deferred (a store could not be read, or the entry was not
+// committed), which the event says too.
+func recordRefusedGrant(r *http.Request, princ *authn.Principal, grant string, refusal *sharing.StewardRefusal, sec *security.Emitter, audit *sharing.AuditWriter) (committed, deferred bool) {
+	route, params := requestRoute(r)
+	op := sharing.Operation{
+		Method: r.Method, Route: route, Params: params,
+		Principal: princ.ID, Identity: princ.Meta[authn.MetaIdentityID], AuthMethod: authMethod(princ),
+		StewardGrant: grant,
+	}
+	rcpt := sharing.NewReceipt(op)
+	rcpt.StewardRefused(refusal)
+	committed = rcpt.Commit(r.Context(), audit) == nil
+	deferred = refusal.Deferred || !committed
+	steward.RecordElevationRefused(r.Context(), sec, princ.ID, grant, refusal.Reason, deferred)
+	return committed, deferred
 }
 
 // endRefusedElevation ends the browser session's elevation into grant

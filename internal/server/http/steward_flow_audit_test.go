@@ -28,6 +28,9 @@ func runStewardFlowAuditSuite(t *testing.T, newDriver func(*testing.T) storage.S
 		"an elevated read is one chained entry":            stewardAuditElevatedRead,
 		"a revoked grant is refused, recorded and cleared": stewardAuditRevoked,
 		"an audit outage withholds and keeps elevation":    stewardAuditOutage,
+		"a refused elevation leaves an entry and an event": stewardAuditElevateRefused,
+		"an API key naming a grant is recorded refused":    stewardAuditKeyElevate,
+		"an elevated session never reaches the events":     stewardAuditEventsRefused,
 	} {
 		t.Run(name, func(t *testing.T) { fn(t, newStewardFlow(t, newDriver)) })
 	}
@@ -180,4 +183,96 @@ func stewardAuditOutage(t *testing.T, f *stewardFlow) {
 	require.Len(t, events, 2)
 	assert.Equal(t, "false", events[1].Meta["deferred"])
 	f.verifyChain()
+}
+
+// Elevating into a grant that fails a check is a refusal like any other:
+// one denied entry under the elevate route, steward_grant failed with
+// the resolution's code, committed before the answer, one security
+// event, and the session stays unelevated.
+func stewardAuditElevateRefused(t *testing.T, f *stewardFlow) {
+	grant := f.grant()
+	require.Equal(t, http.StatusOK, f.do(sfOwner, http.MethodPost, "/api/v1/steward/grants/"+grant+"/revoke", nil).StatusCode)
+
+	resp := f.elevate(sfSteward, grant)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	assert.Equal(t, "STEWARD_GRANT_REVOKED", errCode(t, resp))
+	got := f.stewardLog(grant)
+	require.Len(t, got, 1, "the refused elevation is one durable entry")
+	e := got[0]
+	assert.Equal(t, sfSteward, e.PrincipalID)
+	assert.Equal(t, "POST /steward/grants/{id}/elevate", e.Route)
+	assert.Equal(t, storage.AccessDecisionDenied, e.Decision)
+	assert.Equal(t, storage.AccessCheck{Check: sharing.CheckStewardGrant, Outcome: storage.AccessOutcomeFail, Reason: sharing.StewardReasonGrantRevoked}, e.Checks[len(e.Checks)-1])
+	assert.Empty(t, e.ObjectIDs)
+	assert.Empty(t, f.session(sfSteward).StewardGrantID)
+	events := f.refusals(grant, 1)
+	require.Len(t, events, 1)
+	assert.Equal(t, map[string]string{"grant_id": grant, "reason": sharing.StewardReasonGrantRevoked, "deferred": "false"}, events[0].Meta)
+	assert.Equal(t, int64(1), f.verifyChain())
+
+	// No record, no answer: an outage turns the refusal into 503.
+	f.auditDown.Store(true)
+	resp = f.elevate(sfSteward, grant)
+	require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+	assert.Equal(t, sharing.CodeAuditUnavailable, errCode(t, resp))
+	f.auditDown.Store(false)
+	assert.Len(t, f.stewardLog(grant), 1)
+}
+
+// An API credential never elevates, and naming a grant to try is
+// recorded: a denied entry whose steward_grant check failed browser_only
+// and an event, before the refusal is answered.
+func stewardAuditKeyElevate(t *testing.T, f *stewardFlow) {
+	grant := f.grant()
+	resp := f.do(sfDevice, http.MethodPost, "/api/v1/steward/grants/"+grant+"/elevate", nil)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	assert.Equal(t, codeElevationBrowserOnly, errCode(t, resp))
+	got := f.stewardLog(grant)
+	require.Len(t, got, 1)
+	assert.Equal(t, storage.AccessDecisionDenied, got[0].Decision)
+	assert.Equal(t, storage.AccessCheck{Check: sharing.CheckStewardGrant, Outcome: storage.AccessOutcomeFail, Reason: reasonBrowserOnly}, got[0].Checks[len(got[0].Checks)-1])
+	events := f.refusals(grant, 1)
+	require.Len(t, events, 1)
+	assert.Equal(t, reasonBrowserOnly, events[0].Meta["reason"])
+}
+
+// A browser session elevated through the elevate route is refused at
+// the event stream: 403 NOT_SHARED, nothing streamed, one denied entry
+// whose route_access check failed steward_no_stream. Before elevating
+// and after ending, the same session reaches the stream like any
+// restricted viewer.
+func stewardAuditEventsRefused(t *testing.T, f *stewardFlow) {
+	grant := f.grant()
+	events := func() (int, string) {
+		resp := f.do(sfSteward, http.MethodGet, "/api/v1/events", nil, func(r *http.Request) {
+			ctx, cancel := context.WithTimeout(r.Context(), 300*time.Millisecond)
+			t.Cleanup(cancel)
+			*r = *r.WithContext(ctx)
+		})
+		return resp.StatusCode, resp.Header.Get("Content-Type")
+	}
+	code, _ := events()
+	assert.Equal(t, http.StatusOK, code, "the ordinary view keeps its stream")
+
+	require.Equal(t, http.StatusOK, f.elevate(sfSteward, grant).StatusCode)
+	resp := f.do(sfSteward, http.MethodGet, "/api/v1/events", nil)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	assert.Equal(t, CodeNotShared, errCode(t, resp))
+	got := f.stewardLog(grant)
+	require.Len(t, got, 1)
+	e := got[0]
+	assert.Equal(t, "GET /events", e.Route)
+	assert.Equal(t, storage.AccessDecisionDenied, e.Decision)
+	assert.Equal(t, storage.AccessCheck{Check: sharing.CheckRouteAccess, Outcome: storage.AccessOutcomeFail, Reason: sharing.ReasonStewardNoStream}, e.Checks[len(e.Checks)-1])
+	assert.Empty(t, e.ObjectIDs)
+	assert.Equal(t, grant, f.session(sfSteward).StewardGrantID, "a refused stream is no refusal of the grant")
+
+	require.Equal(t, http.StatusNoContent, f.do(sfSteward, http.MethodDelete, "/api/v1/steward/grants/"+grant+"/elevate", nil).StatusCode)
+	code, _ = events()
+	assert.Equal(t, http.StatusOK, code)
+	// The end request itself ran under the elevation: the chain holds
+	// the refused stream and that request, and the stream the ordinary
+	// view opened adds none.
+	assert.Len(t, f.stewardLog(grant), 2)
+	assert.Equal(t, int64(2), f.verifyChain())
 }

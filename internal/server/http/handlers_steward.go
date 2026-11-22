@@ -17,6 +17,7 @@ import (
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/security"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
+	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/steward"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
@@ -55,10 +56,11 @@ type stewardRoutes struct {
 	stewards  *steward.Service
 	sessions  *authn.Sessions
 	sec       *security.Emitter
+	audit     *sharing.AuditWriter
 }
 
 func newStewardRoutes(svc *service.Service, rc RouterConfig) *stewardRoutes {
-	return &stewardRoutes{svc: svc, approvals: rc.Approvals, stewards: rc.Stewards, sessions: rc.Sessions, sec: rc.Security}
+	return &stewardRoutes{svc: svc, approvals: rc.Approvals, stewards: rc.Stewards, sessions: rc.Sessions, sec: rc.Security, audit: rc.Audit}
 }
 
 // enabled reports whether the steward routes exist: the instance is
