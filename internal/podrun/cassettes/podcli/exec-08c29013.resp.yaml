@@ -1,0 +1,24 @@
+xrr: "1"
+adapter: exec
+fingerprint: 08c29013
+recorded_at: "2026-11-22T17:59:04Z"
+payload:
+    stdout: |
+        {
+          "name": "cassette-pod",
+          "id": "12b85e53547c68db78eec536a759ff074dd7c25c1e642f2363866ff087faf9df",
+          "provider": "docker",
+          "status": "stopped",
+          "active": "*",
+          "image": "pod-sleep:local",
+          "gpu": "-",
+          "gpu_count": 0,
+          "vllm_build": "",
+          "computer_use": "off",
+          "created_at": "2026-11-22T17:58:53Z",
+          "updated_at": "2026-11-22T17:58:54Z",
+          "metadata": {
+            "container": "12b85e53547c68db78eec536a759ff074dd7c25c1e642f2363866ff087faf9df"
+          }
+        }
+    exit_code: 0

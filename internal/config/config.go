@@ -137,6 +137,9 @@ type Config struct {
 	// Steward configures steward access for business instances
 	// (ADR-083 §2).
 	Steward StewardConfig `mapstructure:"steward" yaml:"steward"`
+
+	// Daemon configures where launched daemons (ctxd, dpkms) run.
+	Daemon DaemonConfig `mapstructure:"daemon" yaml:"daemon"`
 }
 
 // GitHub client defaults.
@@ -1607,6 +1610,16 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("jobs.stale_timeout", 30*time.Minute)
 	v.SetDefault("jobs.max_retries", 3)
 	v.SetDefault("jobs.max_hops", 5)
+
+	// Daemon runner defaults (local by default; pod is opt-in).
+	v.SetDefault("daemon.runner", DaemonRunnerLocal)
+	v.SetDefault("daemon.pod.ctxd_bin", DefaultDaemonPodCtxdBin)
+	v.SetDefault("daemon.pod.dpkms_bin", DefaultDaemonPodDpkmsBin)
+	v.SetDefault("daemon.pod.dpkms_port", DefaultDaemonPodDpkmsPort)
+	v.SetDefault("daemon.pod.timeouts.probe", DefaultDaemonPodProbeTimeout)
+	v.SetDefault("daemon.pod.timeouts.query", DefaultDaemonPodQueryTimeout)
+	v.SetDefault("daemon.pod.timeouts.exec", DefaultDaemonPodExecTimeout)
+	v.SetDefault("daemon.pod.timeouts.lifecycle", DefaultDaemonPodLifecycleTimeout)
 
 	// Pipelines defaults
 	v.SetDefault("pipelines.overrides", map[string]any{})

@@ -1,0 +1,15 @@
+xrr: "1"
+adapter: exec
+fingerprint: 08c29013
+recorded_at: "2026-11-22T17:59:04Z"
+payload:
+    argv:
+        - pod
+        - stop
+        - cassette-pod
+        - --note
+        - cassette test
+        - --format
+        - json
+        - --no-hints
+        - --no-color

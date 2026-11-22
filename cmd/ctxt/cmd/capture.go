@@ -99,24 +99,35 @@ func init() {
 	captureCmd.Flags().String("source-key", "", "external dedup key (Slack ts, tweet ID, etc.)")
 	captureCmd.Flags().Bool("wait", false, "block until job completes")
 
-	// --- Track 2 stubs (defined but error when used) ---
-	captureCmd.Flags().Bool("ambient", false, "(Track 2) sweep every sensor enabled in policy/ambient.yaml")
-	captureCmd.Flags().StringSlice("input", nil, "(Track 2) restrict ambient sweep to listed sensors")
-	captureCmd.Flags().StringSlice("skip", nil, "(Track 2) exclude listed sensors from the ambient sweep")
+	// --- Track 2 / ambient daemon flags ---
+	captureCmd.Flags().Bool("ambient", false, "manage or start the ambient capture daemon (ctxd)")
+	captureCmd.Flags().StringSlice("input", nil, "restrict ambient capture to listed sensors")
+	captureCmd.Flags().StringSlice("skip", nil, "exclude listed sensors from ambient capture")
 	captureCmd.Flags().Duration("window", 0, "(Track 2) capture state from the last duration")
+	captureCmd.Flags().String("runner", "", "daemon runner for --ambient: local | pod (overrides daemon.runner)")
+	captureCmd.Flags().String("pod", "", "existing pod name for --ambient --runner pod (overrides daemon.pod.name)")
+	captureCmd.Flags().Bool("stop-pod", false, "with --ambient stop --runner pod, also stop the pod")
+	captureCmd.Flags().Bool("foreground", false, "run ambient daemon attached to the terminal (local runner only)")
 }
 
 // validateCaptureFlags enforces mutex rules for ctxt capture:
-//   - --ambient is unimplemented in Track 1.
-//   - --input / --skip / --window belong to ambient mode and also error.
+//   - --ambient dispatches to the ambient runner (pod mode or local mode).
+//   - --input / --skip / --window / --runner / --pod / --stop-pod / --foreground
+//     require --ambient.
 //   - positional source is mutually exclusive with --stdin.
 func validateCaptureFlags(cmd *cobra.Command, args []string) error {
-	if cmd.Flags().Changed("ambient") {
-		return fmt.Errorf("ambient mode not yet implemented (Track 2)")
+	ambientOn, _ := cmd.Flags().GetBool("ambient")
+	if ambientOn {
+		return nil
 	}
 	for _, name := range []string{"input", "skip", "window"} {
 		if cmd.Flags().Changed(name) {
 			return fmt.Errorf("flag --%s is part of ambient mode (Track 2 — not yet implemented)", name)
+		}
+	}
+	for _, name := range []string{"runner", "pod", "stop-pod", "foreground"} {
+		if cmd.Flags().Changed(name) {
+			return fmt.Errorf("flag --%s requires --ambient", name)
 		}
 	}
 	stdin, _ := cmd.Flags().GetBool("stdin")
@@ -138,6 +149,9 @@ const captureTimeout = 30 * time.Second
 func RunCapture(cmd *cobra.Command, args []string) error {
 	if err := validateCaptureFlags(cmd, args); err != nil {
 		return err
+	}
+	if ambientOn, _ := cmd.Flags().GetBool("ambient"); ambientOn {
+		return runAmbientPod(cmd, args, defaultAmbientPodDeps)
 	}
 	every, _ := cmd.Flags().GetDuration("every")
 	if every <= 0 {
