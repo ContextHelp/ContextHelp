@@ -208,7 +208,7 @@ func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
 		// it). Method-agnostic by construction: the middleware
 		// consumes the authn.Chain, never a scheme.
 		if rc.Auth != nil {
-			r.Use(RequireAuth(rc.Auth, rc.Security, rc.DevCORS, svc.Viewers()))
+			r.Use(RequireAuth(rc.Auth, rc.Security, rc.DevCORS, svc.Viewers(), rc.Sessions, rc.Audit))
 			r.Use(SessionGuard(rc.Sessions, rc.SessionRecheck))
 		} else {
 			// Private instance: no principal, but every caller is the
@@ -234,7 +234,7 @@ func mountAccessRoutes(r chi.Router, rc RouterConfig, svc *service.Service) {
 	a := accessRoutes{rc: rc, rcv: rc.Access}
 	r.Route("/bos/v1", func(r chi.Router) {
 		if rc.Auth != nil {
-			r.Use(RequireAuth(rc.Auth, rc.Security, rc.DevCORS, svc.Viewers()))
+			r.Use(RequireAuth(rc.Auth, rc.Security, rc.DevCORS, svc.Viewers(), rc.Sessions, rc.Audit))
 		} else {
 			r.Use(WithViewer(sharing.Unrestricted))
 		}

@@ -47,10 +47,11 @@ func authUnaryInterceptor(chain *authn.Chain, sec *security.Emitter, viewers *sh
 			recordAuthFailure(ctx, sec)
 			return nil, unauthenticatedStatus(err)
 		}
-		ctx, err = attachCaller(ctx, res.Principal, viewers)
+		attached, err := attachCaller(ctx, res.Principal, viewers)
 		if err != nil {
-			return nil, err
+			return nil, callerRefusal(ctx, info.FullMethod, req, res.Principal, err, sec, audit)
 		}
+		ctx = attached
 		// A restricted caller's receipt starts here, ahead of the scope
 		// check, so a scope refusal is an entry too (ADR-080 §9). The
 		// visibility interceptor behind finishes it on every other way
@@ -60,8 +61,8 @@ func authUnaryInterceptor(chain *authn.Chain, sec *security.Emitter, viewers *sh
 			ctx, _ = ensureReceipt(ctx, info.FullMethod, req)
 		}
 		if err := authorizeMethod(ctx, info.FullMethod, sec); err != nil {
-			if restricted {
-				finishReceipt(ctx, audit, callerRestricted(ctx))
+			if restricted && finishReceipt(ctx, audit, callerRestricted(ctx)) != nil {
+				return nil, auditUnavailable()
 			}
 			return nil, err
 		}
@@ -74,27 +75,44 @@ func authUnaryInterceptor(chain *authn.Chain, sec *security.Emitter, viewers *sh
 // The owner is Unrestricted; anyone else gets the viewer viewers
 // compiles from its grants, under the identity that authenticated it
 // (ADR-080 §4). A principal that names a steward grant (Meta) gets that
-// grant's viewer alone, and a grant that fails a check refuses the RPC:
-// PermissionDenied when the answer is no, Unavailable when a store
-// could not be read (ADR-083 §3), never the ordinary view in its place.
-// Any other resolution failure is Internal and the RPC refused: a
-// caller is never attached unscoped by mistake.
+// grant's viewer alone, and a grant that fails a check is a
+// *sharing.StewardRefusal (ADR-083 §3), never the ordinary view in its
+// place. Any resolution failure is returned and the RPC refused
+// (callerRefusal): a caller is never attached unscoped by mistake.
 func attachCaller(ctx context.Context, princ *authn.Principal, viewers *sharing.Resolver) (context.Context, error) {
 	v, err := viewers.Resolve(ctx, princ.ID, princ.Kind, princ.Meta[authn.MetaIdentityID],
 		sharing.AsSteward(princ.Meta[authn.MetaStewardGrantID]))
 	if err != nil {
-		var refusal *sharing.StewardRefusal
-		if errors.As(err, &refusal) {
-			slog.Warn("grpc auth: steward grant refused", "principal", princ.ID, "reason", refusal.Reason, "deferred", refusal.Deferred, "err", refusal.Err)
-			if refusal.Deferred {
-				return nil, status.Error(codes.Unavailable, refusal.Code()+": the steward grant cannot be checked now")
-			}
-			return nil, status.Error(codes.PermissionDenied, refusal.Code()+": the steward grant cannot be used: "+refusal.Reason)
-		}
-		slog.Error("grpc auth: viewer resolution failed", "principal", princ.ID, "err", err)
-		return nil, status.Error(codes.Internal, "viewer resolution failed")
+		return nil, err
 	}
 	return sharing.WithViewer(authn.Attach(ctx, princ), v), nil
+}
+
+// callerRefusal is the status of a call whose viewer could not be
+// attached: a refused elevation is PermissionDenied when the answer is
+// no and Unavailable when a store could not be read, recorded as a
+// durable audit entry and a security event first (refuseElevation);
+// any other failure is Internal.
+func callerRefusal(ctx context.Context, fullMethod string, req any, princ *authn.Principal, err error, sec *security.Emitter, audit *sharing.AuditWriter) error {
+	var refusal *sharing.StewardRefusal
+	if errors.As(err, &refusal) {
+		slog.Warn("grpc auth: steward grant refused", "principal", princ.ID, "reason", refusal.Reason, "deferred", refusal.Deferred, "err", refusal.Err)
+		return refuseElevation(ctx, fullMethod, req, princ, refusal, sec, audit)
+	}
+	slog.Error("grpc auth: viewer resolution failed", "principal", princ.ID, "err", err)
+	return status.Error(codes.Internal, "viewer resolution failed")
+}
+
+// stewardRefusalStatus is the gRPC answer to a refused elevation, the
+// counterpart of the HTTP one: PermissionDenied where HTTP answers 403
+// (the answer is no), Unavailable where it answers 503 (a store could
+// not be read), the stable code STEWARD_<REASON> leading the message
+// in both. The cause is never shown.
+func stewardRefusalStatus(refusal *sharing.StewardRefusal) error {
+	if refusal.Deferred {
+		return status.Error(codes.Unavailable, refusal.Code()+": the steward grant cannot be checked now")
+	}
+	return status.Error(codes.PermissionDenied, refusal.Code()+": the steward grant cannot be used: "+refusal.Reason)
 }
 
 // viewerUnaryInterceptor attaches v to every unary call. It is the
@@ -128,15 +146,15 @@ func authStreamInterceptor(chain *authn.Chain, sec *security.Emitter, viewers *s
 		}
 		ctx, err := attachCaller(ss.Context(), res.Principal, viewers)
 		if err != nil {
-			return err
+			return callerRefusal(ss.Context(), info.FullMethod, nil, res.Principal, err, sec, audit)
 		}
 		restricted := audited(ctx)
 		if restricted {
 			ctx, _ = ensureReceipt(ctx, info.FullMethod, nil)
 		}
 		if err := authorizeMethod(ctx, info.FullMethod, sec); err != nil {
-			if restricted {
-				finishReceipt(ctx, audit, callerRestricted(ctx))
+			if restricted && finishReceipt(ctx, audit, callerRestricted(ctx)) != nil {
+				return auditUnavailable()
 			}
 			return err
 		}

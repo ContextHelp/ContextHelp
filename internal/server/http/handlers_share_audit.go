@@ -22,6 +22,12 @@ const defaultAuditLimit = 100
 // The owner's own requests are not logged, except its previews of
 // another viewer, which name the previewed principal or policy in
 // policy_versions.
+//
+// Steward entries (ADR-083 §5) are listed with their grant id, route,
+// decision, checks and counts; never the grant's reason, which stays
+// with the grant. Their object id lists go to the owner and holders of
+// approve:steward only: for anyone else they are left out, and
+// ?object= does not match through them.
 func (s *shareRoutes) ListShareAudit(w http.ResponseWriter, r *http.Request) {
 	if !s.ready(w) {
 		return
@@ -35,6 +41,8 @@ func (s *shareRoutes) ListShareAudit(w http.ResponseWriter, r *http.Request) {
 		PrincipalID: strings.TrimSpace(q.Get("principal")),
 		ObjectID:    strings.TrimSpace(q.Get("object")),
 		Limit:       defaultAuditLimit,
+		// Object id lists of steward entries: owner and approvers only.
+		HideStewardObjects: !seesStewardObjects(r),
 	}
 	if d := strings.TrimSpace(q.Get("decision")); d != "" {
 		f.Decision = storage.AccessDecision(d)
