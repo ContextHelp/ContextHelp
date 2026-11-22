@@ -358,6 +358,16 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 		return
 	}
 
+	// Defense in depth: the store refuses NUL and invalid UTF-8 in text
+	// columns and JSON with a driver error. A step that let either
+	// through fails the job here, permanently and by field, before any
+	// write (create, update by source key, or reinforce). The draft's
+	// content was externalized above, so only text fields remain.
+	if field := pipeline.NonTextField(draft, false, true); field != "" {
+		p.markFailed(ctx, job.ID, fmt.Sprintf("%s holds NUL or invalid UTF-8: refusing to store", field))
+		return
+	}
+
 	draft.UpdatedAt = time.Now()
 
 	durationMs := time.Since(start).Milliseconds()
