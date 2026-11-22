@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 )
 
 // LayerKind names the slot a config file fills in LoadWithOverrides'
@@ -61,7 +62,7 @@ func ProjectLayerSets(bin, cfgFile string, extraPaths []string, key string) (pat
 		if err != nil {
 			return "", false, err
 		}
-		if l.Has(key) {
+		if l.Has(strings.Split(key, ".")...) {
 			return src.Path, true, nil
 		}
 	}

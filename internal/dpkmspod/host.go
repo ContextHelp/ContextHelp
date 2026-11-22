@@ -21,7 +21,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/podrun"
 )
 
-var requiredLeaves = []string{"show", "start", "stop", "exec", "forward", "upload"}
+var requiredLeaves = []string{"pod show", "pod start", "pod stop", "pod exec", "pod forward", "pod upload"}
 
 // Host orchestrates a pod-hosted dpkms instance using a podrun.Client.
 type Host struct {
@@ -402,7 +402,7 @@ func (h *Host) PS(ctx context.Context, opts PSOpts) (*PSResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := podrun.RequireLeaves(caps, "show", "exec"); err != nil {
+	if err := podrun.RequireLeaves(caps, "pod show", "pod exec"); err != nil {
 		return nil, err
 	}
 
@@ -475,9 +475,9 @@ func (h *Host) Shutdown(ctx context.Context, opts ShutdownOpts) (*ShutdownResult
 	if err != nil {
 		return nil, err
 	}
-	need := []string{"show", "exec"}
+	need := []string{"pod show", "pod exec"}
 	if opts.StopPod {
-		need = append(need, "stop")
+		need = append(need, "pod stop")
 	}
 	if err := podrun.RequireLeaves(caps, need...); err != nil {
 		return nil, err

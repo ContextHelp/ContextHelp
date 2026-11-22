@@ -1,0 +1,24 @@
+xrr: "1"
+adapter: exec
+fingerprint: 8961af1a
+recorded_at: "2026-11-22T18:25:51Z"
+payload:
+    stdout: |
+        {
+          "name": "ctxt-job-xrrdemo",
+          "id": "e006ed3c04c6359e903910a7372b9c94e8583e6dabe79e17e7abc75e1db39712",
+          "provider": "docker",
+          "status": "running",
+          "active": "*",
+          "image": "ctxt-pod-worker:local",
+          "gpu": "-",
+          "gpu_count": 0,
+          "vllm_build": "",
+          "computer_use": "off",
+          "created_at": "2026-11-22T18:25:51Z",
+          "updated_at": "2026-11-22T18:25:51Z",
+          "metadata": {
+            "container": "e006ed3c04c6359e903910a7372b9c94e8583e6dabe79e17e7abc75e1db39712"
+          }
+        }
+    exit_code: 0

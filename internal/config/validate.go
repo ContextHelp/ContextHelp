@@ -75,6 +75,7 @@ func Validate(c *Config) []ValidationError {
 	if c.Jobs.PollInterval != 0 && c.Jobs.PollInterval < 50*time.Millisecond {
 		errs = append(errs, ValidationError{Field: "jobs.poll_interval", Message: fmt.Sprintf("must be ≥50ms, got %s", c.Jobs.PollInterval)})
 	}
+	errs = append(errs, c.Jobs.ValidateExecutor()...)
 
 	if c.Profile.Default != "" {
 		if _, ok := c.Profile.Profiles[c.Profile.Default]; !ok {

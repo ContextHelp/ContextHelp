@@ -1610,6 +1610,10 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("jobs.stale_timeout", 30*time.Minute)
 	v.SetDefault("jobs.max_retries", 3)
 	v.SetDefault("jobs.max_hops", 5)
+	v.SetDefault("jobs.executor", JobExecutorLocal)
+	v.SetDefault("jobs.pod.dpkms_bin", DefaultDaemonPodDpkmsBin)
+	v.SetDefault("jobs.pod.max_inflight", DefaultJobsPodMaxInflight)
+	v.SetDefault("jobs.pod.max_pod_duration", DefaultJobsPodMaxPodDuration)
 
 	// Daemon runner defaults (local by default; pod is opt-in).
 	v.SetDefault("daemon.runner", DaemonRunnerLocal)
@@ -1948,6 +1952,12 @@ type JobsConfig struct {
 	// DrainTimeout is how long to wait for in-flight jobs to finish on
 	// graceful shutdown. Defaults to 30s if zero.
 	DrainTimeout time.Duration `mapstructure:"drain_timeout" yaml:"drain_timeout"`
+	// Executor selects where ingestion pipeline Stage 1 runs: "local" (default)
+	// or "pod" (opt-in ephemeral pod offload).
+	Executor string `mapstructure:"executor" yaml:"executor,omitempty"`
+	// Pod configures the opt-in ephemeral pod job executor. Ignored when
+	// Executor is "local".
+	Pod JobsPodConfig `mapstructure:"pod" yaml:"pod,omitempty"`
 }
 
 // PipelinesConfig holds per-pipeline overrides and global routing config.

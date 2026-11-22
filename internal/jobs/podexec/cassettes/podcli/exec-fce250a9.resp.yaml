@@ -1,0 +1,20 @@
+xrr: "1"
+adapter: exec
+fingerprint: fce250a9
+recorded_at: "2026-11-22T18:25:51Z"
+payload:
+    stdout: |
+        {"draft":{"id":"fcbfbdf8-264b-4681-a3bf-4d4154737e2f","type":"code","subtype":"short","raw_content":"package xrrdemo\nfunc Run() string { return \"ok\" }\n","metadata":{"c12n_status":"unavailable"},"tags":[{"label":"func","weight":1,"source":"auto"},{"label":"package","weight":1,"source":"auto"},{"label":"return","weight":1,"source":"auto"},{"label":"run","weight":1,"source":"auto"},{"label":"string","weight":1,"source":"auto"},{"label":"xrrdemo","weight":1,"source":"auto"}],"pipeline":"text.short","source":"cli","content_hash":"0f39ddee2425ebb80d0b1313faf5464374157161a9b126d20ca316b6f9581448","created_at":"2026-11-22T18:25:51.741412757Z","updated_at":"0001-01-01T00:00:00Z","fts_indexed":false,"graph":{"nodes":[{"id":"fcbfbdf8-264b-4681-a3bf-4d4154737e2f/tag/0","node_type":"tag","label":"func","order":0,"metadata":{"source":"auto","weight":1}},{"id":"fcbfbdf8-264b-4681-a3bf-4d4154737e2f/tag/1","node_type":"tag","label":"package","order":1,"metadata":{"source":"auto","weight":1}},{"id":"fcbfbdf8-264b-4681-a3bf-4d4154737e2f/tag/2","node_type":"tag","label":"return","order":2,"metadata":{"source":"auto","weight":1}},{"id":"fcbfbdf8-264b-4681-a3bf-4d4154737e2f/tag/3","node_type":"tag","label":"run","order":3,"metadata":{"source":"auto","weight":1}},{"id":"fcbfbdf8-264b-4681-a3bf-4d4154737e2f/tag/4","node_type":"tag","label":"string","order":4,"metadata":{"source":"auto","weight":1}},{"id":"fcbfbdf8-264b-4681-a3bf-4d4154737e2f/tag/5","node_type":"tag","label":"xrrdemo","order":5,"metadata":{"source":"auto","weight":1}}]}}}
+    stderr: |
+        builtins: skipping pipeline "image.ocr" (required provider(s) [ocr] not available)
+        builtins: skipping pipeline "url.interactive" (required provider(s) [browser] not available)
+        builtins: skipping pipeline "image.analysis" (required provider(s) [ocr vision] not available)
+        builtins: skipping pipeline "audio.transcribe" (required provider(s) [transcription diarization] not available)
+        builtins: skipping pipeline "url.authenticated" (required provider(s) [browser] not available)
+        builtins: pipeline "text.long": pruning step "graph_extractor" (missing capability)
+        builtins: pipeline "text.long": pruning step "structured_metadata" (missing capability)
+        builtins: pipeline "text.short": pruning step "structured_metadata" (missing capability)
+        builtins: skipping pipeline "video.audio_only" (required provider(s) [video transcription diarization] not available)
+        builtins: skipping pipeline "video.full" (required provider(s) [video transcription ocr] not available)
+        c12n_classify: pipeline unavailable, skipping: c12n: native engine disabled (build with -tags c12n_native)
+    exit_code: 0
