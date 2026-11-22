@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -52,10 +53,7 @@ func (s *BatchEnqueuer) Run(_ context.Context, draft *storage.KnowledgeObject) (
 		if strings.TrimSpace(content) == "" {
 			continue
 		}
-		title := content
-		if len(title) > 80 {
-			title = title[:80]
-		}
+		title := truncateRunes(content, titleRunes)
 		sections = append(sections, storage.Section{
 			Title:   title,
 			Content: content,
@@ -73,6 +71,17 @@ func (s *BatchEnqueuer) Run(_ context.Context, draft *storage.KnowledgeObject) (
 	stageItems(draft, staged)
 	draft.Metadata["batch_queued"] = len(sections)
 	return draft, nil
+}
+
+// titleRunes is the longest section or item title, in runes.
+const titleRunes = 80
+
+// truncateRunes is s cut to at most n runes, never inside one.
+func truncateRunes(s string, n int) string {
+	if utf8.RuneCountInString(s) <= n {
+		return s
+	}
+	return string([]rune(s)[:n])
 }
 
 // batchRecords returns the parsed records of a JSONL or CSV/TSV batch.

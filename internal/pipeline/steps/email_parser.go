@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime"
 	"mime/multipart"
 	"mime/quotedprintable"
@@ -38,6 +39,9 @@ type EmailMessage struct {
 	Headers     map[string]string `json:"headers"`
 	SizeBytes   int               `json:"size_bytes"`
 	ContentHash string            `json:"content_hash"`
+	// CharsetGuessed is set when a charset was assumed or undecodable
+	// bytes were replaced while reading the message.
+	CharsetGuessed bool `json:"charset_guessed,omitempty"`
 }
 
 // AttachmentMeta captures attachment metadata without storing content.
@@ -95,11 +99,8 @@ func (s *EmailParser) Run(_ context.Context, draft *storage.KnowledgeObject) (*s
 	var parseErr error
 
 	// Messages are bytes, not necessarily UTF-8: a legacy 8-bit message
-	// is read by the charsets it declares. NUL bytes are not mail text.
-	if strings.IndexByte(raw, 0) >= 0 {
-		return nil, pipeline.Permanent(fmt.Errorf("email_parser: content holds NUL bytes: not an email"))
-	}
-
+	// is read by the charsets it declares. A message whose header block
+	// holds NUL is not mail; parseEML refuses it, and an mbox skips it.
 	// Detect mbox format: starts with "From " envelope line.
 	trimmed := strings.TrimLeft(raw, "\r\n")
 	if strings.HasPrefix(trimmed, "From ") {
@@ -119,6 +120,9 @@ func (s *EmailParser) Run(_ context.Context, draft *storage.KnowledgeObject) (*s
 	result := make([]map[string]any, 0, len(msgs))
 	for _, m := range msgs {
 		result = append(result, emailToMap(m))
+		if m.CharsetGuessed {
+			draft.Metadata[MetaCharsetGuessed] = true
+		}
 	}
 	draft.Metadata["email_messages"] = result
 	draft.Metadata["email_count"] = len(result)
@@ -184,12 +188,24 @@ func parseEML(raw string, maxBodyBytes int) (EmailMessage, error) {
 	msg.SizeBytes = len(raw)
 	msg.Headers = make(map[string]string)
 
-	m, err := mail.ReadMessage(strings.NewReader(legacyHeaders(raw)))
+	if strings.IndexByte(headerBlock(raw), 0) >= 0 {
+		return msg, fmt.Errorf("header block holds NUL bytes: not an email")
+	}
+	m, err := mail.ReadMessage(strings.NewReader(raw))
 	if err != nil {
 		return msg, fmt.Errorf("parse RFC5322: %w", err)
 	}
 
+	// Each header is decoded on its own: 8-bit bytes that are not UTF-8 in
+	// one header do not change how the others read.
 	h := m.Header
+	for _, vs := range h {
+		for i, v := range vs {
+			c, g := headerText(v)
+			vs[i] = c
+			msg.CharsetGuessed = msg.CharsetGuessed || g
+		}
+	}
 
 	msg.MessageID = cleanEmailHeader(h.Get("Message-Id"))
 	msg.Subject = decodeEmailHeader(h.Get("Subject"))
@@ -249,38 +265,69 @@ func parseEML(raw string, maxBodyBytes int) (EmailMessage, error) {
 
 	bodyBytes, _ := io.ReadAll(m.Body)
 	if len(bodyBytes) > maxBodyBytes {
-		bodyBytes = bodyBytes[:maxBodyBytes]
+		bodyBytes = trimToRuneBoundary(bodyBytes[:maxBodyBytes])
 	}
 
 	// Decode top-level transfer encoding.
 	topCTE := strings.ToLower(h.Get("Content-Transfer-Encoding"))
 	bodyBytes = emailDecodeCTE(topCTE, bodyBytes)
 
-	if err := extractEmailBodies(mediaType, params, bodyBytes, &msg); err != nil {
-		return msg, err
-	}
-
+	extractEmailBodies(mediaType, params, bodyBytes, &msg)
 	return msg, nil
 }
 
-// extractEmailBodies recursively walks multipart structures to collect bodies and attachments.
-// A body is decoded from the charset its part declares; one that cannot
-// be decoded is an error.
-func extractEmailBodies(mediaType string, params map[string]string, bodyBytes []byte, msg *EmailMessage) error {
+// headerBlock is raw up to the blank line that ends its headers.
+func headerBlock(raw string) string {
+	end := len(raw)
+	for _, sep := range []string{"\r\n\r\n", "\n\n"} {
+		if i := strings.Index(raw, sep); i >= 0 && i < end {
+			end = i
+		}
+	}
+	return raw[:end]
+}
+
+// trimToRuneBoundary cuts b back so it does not end inside a multi-byte
+// UTF-8 sequence, which a size cut can leave and which would otherwise
+// read as an invalid byte.
+func trimToRuneBoundary(b []byte) []byte {
+	for back := 1; back <= utf8.UTFMax && back <= len(b); back++ {
+		c := b[len(b)-back]
+		if c < utf8.RuneSelf {
+			return b
+		}
+		if utf8.RuneStart(c) {
+			if r, size := utf8.DecodeRune(b[len(b)-back:]); r == utf8.RuneError && size <= 1 && !utf8.FullRune(b[len(b)-back:]) {
+				return b[:len(b)-back]
+			}
+			return b
+		}
+	}
+	return b
+}
+
+// extractEmailBodies recursively walks multipart structures to collect
+// bodies and attachments. Only text parts (text/*, or any part declaring
+// a charset) are decoded into bodies; every other media type, inline or
+// not, is recorded as an attachment. A part is decoded from the charset
+// it declares, else read as undeclared text. A malformed part (a message
+// cut inside a part header) ends the walk of its multipart and keeps the
+// parts already read.
+func extractEmailBodies(mediaType string, params map[string]string, bodyBytes []byte, msg *EmailMessage) {
 	switch {
 	case strings.HasPrefix(mediaType, "multipart/"):
 		boundary := params["boundary"]
 		if boundary == "" {
-			return nil
+			return
 		}
 		mr := multipart.NewReader(bytes.NewReader(bodyBytes), boundary)
 		for {
 			part, err := mr.NextPart()
-			if errors.Is(err, io.EOF) {
-				break
-			}
 			if err != nil {
-				return fmt.Errorf("multipart part: %w", err)
+				if !errors.Is(err, io.EOF) {
+					slog.Debug("email_parser: malformed multipart part, keeping the parts read", "err", err)
+				}
+				break
 			}
 			partBytes, err := io.ReadAll(part)
 			// ReadAll drained the part, so Close has nothing left to read
@@ -289,11 +336,12 @@ func extractEmailBodies(mediaType string, params map[string]string, bodyBytes []
 			if err != nil {
 				continue
 			}
-			partCT := part.Header.Get("Content-Type")
+			partCT, g := headerText(part.Header.Get("Content-Type"))
+			msg.CharsetGuessed = msg.CharsetGuessed || g
 			if partCT == "" {
 				partCT = mediaTextPlain
 			}
-			partMedia, partParams, err := mime.ParseMediaType(legacyText(partCT))
+			partMedia, partParams, err := mime.ParseMediaType(partCT)
 			if err != nil {
 				partMedia = mediaTextPlain
 				partParams = map[string]string{}
@@ -303,66 +351,68 @@ func extractEmailBodies(mediaType string, params map[string]string, bodyBytes []
 			partCTE := strings.ToLower(part.Header.Get("Content-Transfer-Encoding"))
 			decoded := emailDecodeCTE(partCTE, partBytes)
 
-			// Check disposition for attachments.
-			partDisp := legacyText(part.Header.Get("Content-Disposition"))
+			partDisp, g := headerText(part.Header.Get("Content-Disposition"))
+			msg.CharsetGuessed = msg.CharsetGuessed || g
+			var dispType string
+			var dispParams map[string]string
 			if partDisp != "" {
-				dispType, dispParams, _ := mime.ParseMediaType(partDisp)
-				if strings.EqualFold(dispType, "attachment") {
-					filename := dispParams["filename"]
-					if filename == "" {
-						filename = partParams["name"]
-					}
-					filename = decodeEmailHeader(filename)
-					msg.Attachments = append(msg.Attachments, AttachmentMeta{
-						Filename:    filename,
-						ContentType: partMedia,
-						SizeBytes:   len(partBytes),
-					})
-					continue
-				}
+				dispType, dispParams, _ = mime.ParseMediaType(partDisp)
 			}
 
-			if err := extractEmailBodies(partMedia, partParams, decoded, msg); err != nil {
-				return err
+			if strings.EqualFold(dispType, "attachment") || !isBodyPart(partMedia, partParams) {
+				filename := dispParams["filename"]
+				if filename == "" {
+					filename = partParams["name"]
+				}
+				msg.Attachments = append(msg.Attachments, AttachmentMeta{
+					Filename:    decodeEmailHeader(filename),
+					ContentType: cleanText(partMedia),
+					SizeBytes:   len(partBytes),
+				})
+				continue
 			}
+
+			extractEmailBodies(partMedia, partParams, decoded, msg)
 		}
-		return nil
+
+	case !isBodyPart(mediaType, params):
+		msg.Attachments = append(msg.Attachments, AttachmentMeta{
+			Filename:    decodeEmailHeader(params["name"]),
+			ContentType: cleanText(mediaType),
+			SizeBytes:   len(bodyBytes),
+		})
 
 	case strings.HasPrefix(mediaType, mediaTextHTML):
 		if msg.HTMLBody == "" {
-			s, err := toUTF8(bodyBytes, params["charset"])
-			if err != nil {
-				return fmt.Errorf("html body: %w", err)
-			}
-			msg.HTMLBody = s
+			msg.HTMLBody = decodeBody(bodyBytes, params["charset"], msg)
 		}
 
-	default: // text/plain or anything unrecognized
+	default: // text/plain or another text type
 		if msg.TextBody == "" {
-			s, err := toUTF8(bodyBytes, params["charset"])
-			if err != nil {
-				return fmt.Errorf("text body: %w", err)
-			}
-			msg.TextBody = s
+			msg.TextBody = decodeBody(bodyBytes, params["charset"], msg)
 		}
 	}
-	return nil
 }
 
-// legacyHeaders returns raw with its header block as valid UTF-8: 8-bit
-// header bytes that are not UTF-8 are read as Windows-1252. The body is
-// untouched; its parts declare their own charsets.
-func legacyHeaders(raw string) string {
-	end := len(raw)
-	for _, sep := range []string{"\r\n\r\n", "\n\n"} {
-		if i := strings.Index(raw, sep); i >= 0 && i < end {
-			end = i
-		}
+// isBodyPart reports whether a part is text a body is read from: a text/*
+// or multipart/* media type, or any type that declares a charset. Other
+// media types (images, archives, documents) are never decoded as text.
+func isBodyPart(mediaType string, params map[string]string) bool {
+	return strings.HasPrefix(mediaType, "text/") ||
+		strings.HasPrefix(mediaType, "multipart/") ||
+		params["charset"] != ""
+}
+
+// decodeBody decodes a text part to clean UTF-8 (see decodeText) and
+// notes on msg when a charset was assumed or bytes replaced. A NUL inside
+// text is dropped, not a reason to lose the message.
+func decodeBody(data []byte, charset string, msg *EmailMessage) string {
+	out, guessed := decodeText(data, charset)
+	if strings.IndexByte(out, 0) >= 0 {
+		out, guessed = dropNUL(out), true
 	}
-	if utf8.ValidString(raw[:end]) {
-		return raw
-	}
-	return legacyText(raw[:end]) + raw[end:]
+	msg.CharsetGuessed = msg.CharsetGuessed || guessed
+	return out
 }
 
 // emailDecodeCTE decodes quoted-printable or base64 transfer encoding.
@@ -407,9 +457,9 @@ func decodeEmailHeader(s string) string {
 	dec := mime.WordDecoder{CharsetReader: charsetReader}
 	decoded, err := dec.DecodeHeader(s)
 	if err != nil {
-		return s
+		return cleanText(s)
 	}
-	return decoded
+	return cleanText(decoded)
 }
 
 // emailToMap converts an EmailMessage to a map[string]any for metadata storage.
@@ -435,7 +485,7 @@ func emailToMap(m EmailMessage) map[string]any {
 		headers[k] = v
 	}
 
-	return map[string]any{
+	out := map[string]any{
 		"message_id":   m.MessageID,
 		"subject":      m.Subject,
 		"from":         m.From,
@@ -452,4 +502,8 @@ func emailToMap(m EmailMessage) map[string]any {
 		"size_bytes":   m.SizeBytes,
 		"content_hash": m.ContentHash,
 	}
+	if m.CharsetGuessed {
+		out[MetaCharsetGuessed] = true
+	}
+	return out
 }
