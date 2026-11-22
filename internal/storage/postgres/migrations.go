@@ -499,6 +499,33 @@ var pgMigrations = []pgMigration{
 	{Version: 43, Name: "jobs.payload_encoding", Statements: []string{
 		`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS payload_encoding TEXT NOT NULL DEFAULT ''`,
 	}},
+	// Steward grants (ADR-083 §2), mirroring SQLite migration 063:
+	// steward_grants, the grant half of an approved steward.grant
+	// request, with its frozen scope (JSON in TEXT, as SQLite keeps it),
+	// window and revocation. One grant per request; a revoked grant
+	// carries its revocation and no other does (the check). A new table
+	// and an index only; IF NOT EXISTS makes a replay a no-op.
+	{Version: 44, Name: "steward grants", Statements: []string{
+		`CREATE TABLE IF NOT EXISTS steward_grants (
+			id            TEXT PRIMARY KEY,
+			request_id    TEXT NOT NULL UNIQUE REFERENCES approval_requests(id),
+			steward_id    TEXT NOT NULL REFERENCES principals(id),
+			matter_ref    TEXT NOT NULL DEFAULT '',
+			scope         TEXT NOT NULL,
+			scope_digest  TEXT NOT NULL,
+			status        TEXT NOT NULL CHECK (status IN ('approved', 'revoked')),
+			not_before    TIMESTAMPTZ NOT NULL,
+			expires_at    TIMESTAMPTZ NOT NULL,
+			approved_at   TIMESTAMPTZ NOT NULL,
+			revoked_at    TIMESTAMPTZ,
+			revoked_by    TEXT NOT NULL DEFAULT '',
+			revoke_reason TEXT NOT NULL DEFAULT '',
+			renews_id     TEXT REFERENCES steward_grants(id),
+			CHECK (expires_at > not_before),
+			CHECK ((status = 'revoked') = (revoked_at IS NOT NULL))
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_steward_grants_steward ON steward_grants (steward_id, status)`,
+	}},
 }
 
 // sharingRegistryStatements create the sharing registry and add the

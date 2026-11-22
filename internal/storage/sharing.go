@@ -238,6 +238,9 @@ type SharingStore interface {
 	Policies() SharePolicyStore
 	Grants() ShareGrantStore
 	AccessLog() AccessLogStore
+	// StewardGrants keeps the grant half of the steward grants
+	// (ADR-083 §2): the approved requests' frozen scopes and windows.
+	StewardGrants() StewardGrantStore
 	// DenyClasses returns the principal's ceiling (principals.deny_classes):
 	// the classes it may never see, whatever its grants say. An unknown
 	// principal is ErrNotFound.
