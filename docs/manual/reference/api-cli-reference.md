@@ -27,6 +27,7 @@ ctxt job retry <job_id>
 ctxt job cancel <job_id> --confirm-token=<token>
 # On the dpkms host, against its local store:
 dpkms job list|status|log|retry|cancel
+dpkms audit verify   # check the steward audit chain; fails with the first broken position (tail truncation is not detected)
 ```
 
 ### Retrieval and inspection
