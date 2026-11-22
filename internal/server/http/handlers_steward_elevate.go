@@ -26,6 +26,21 @@ import (
 // API credential, as the security event records it.
 const reasonBrowserOnly = "browser_only"
 
+// reasonElevationActive is the refusal reason of an elevation asked
+// while the session is elevated into another grant.
+const reasonElevationActive = "elevation_active"
+
+// recordRefusal records a refused elevation into grant id and reports
+// whether the caller may answer it; when the entry could not be
+// committed the 503 is written and false returned.
+func (s *stewardRoutes) recordRefusal(w http.ResponseWriter, r *http.Request, p *authn.Principal, id, reason string) bool {
+	if committed, _ := recordRefusedGrant(r, p, id, &sharing.StewardRefusal{Reason: reason}, s.sec, s.audit); !committed {
+		writeAuditUnavailable(w, nil)
+		return false
+	}
+	return true
+}
+
 // elevationRecord answers an elevation: the grant, the session, the
 // matter, when the elevation was last used and when it ends if idle,
 // and when the grant itself ends.
@@ -62,19 +77,38 @@ func (s *stewardRoutes) Elevate(w http.ResponseWriter, r *http.Request) {
 	if !s.browserSession(p) {
 		// An API credential never elevates: a refusal like any other,
 		// recorded before it is answered.
-		if committed, _ := recordRefusedGrant(r, p, id, &sharing.StewardRefusal{Reason: reasonBrowserOnly}, s.sec, s.audit); !committed {
-			writeAuditUnavailable(w, nil)
+		if !s.recordRefusal(w, r, p, id, reasonBrowserOnly) {
 			return
 		}
 		writeBrowserOnly(w)
 		return
 	}
+	// A malformed id names no grant that ever existed: nothing to
+	// record, and no write for a caller's arbitrary text.
+	if !storage.ValidStewardGrantID(id) {
+		WriteError(w, http.StatusNotFound, CodeNotFound, "no such steward grant")
+		return
+	}
 	v, err := s.stewards.Get(ctx, id, p)
+	if errors.Is(err, storage.ErrNotFound) {
+		// Unknown or invisible: recorded, and answered 404 either way,
+		// so the answer does not say which.
+		if !s.recordRefusal(w, r, p, id, sharing.StewardReasonGrantUnknown) {
+			return
+		}
+		writeStewardError(w, r, err)
+		return
+	}
 	if err != nil {
 		writeStewardError(w, r, err)
 		return
 	}
 	if current := p.Meta[authn.MetaStewardGrantID]; current != "" && current != id {
+		// One grant at a time (ADR-083 §3): asking for a second is a
+		// refused elevation.
+		if !s.recordRefusal(w, r, p, id, reasonElevationActive) {
+			return
+		}
 		WriteError(w, http.StatusConflict, codeElevationActive,
 			"this session is elevated into another steward grant; end that elevation first")
 		return

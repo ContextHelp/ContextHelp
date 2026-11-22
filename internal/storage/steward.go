@@ -159,6 +159,21 @@ type StewardGrantStore interface {
 // NewStewardGrantID returns a fresh stg_<ULID>.
 func NewStewardGrantID() string { return "stg_" + NewULID() }
 
+// ValidStewardGrantID reports whether id has the shape of a grant id:
+// stg_ and a 26-character ULID.
+func ValidStewardGrantID(id string) bool {
+	rest, ok := strings.CutPrefix(id, "stg_")
+	if !ok || len(rest) != 26 {
+		return false
+	}
+	for _, c := range rest {
+		if !(c >= '0' && c <= '9' || c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z') {
+			return false
+		}
+	}
+	return true
+}
+
 // StewardGrantStatuses lists the stored statuses.
 var StewardGrantStatuses = []StewardGrantStatus{StewardGrantApproved, StewardGrantRevoked}
 

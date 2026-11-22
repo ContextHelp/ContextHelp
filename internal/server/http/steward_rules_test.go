@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ideacrafterslabs/ctxt/internal/approval"
+	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/steward"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
@@ -186,4 +187,19 @@ func stewardFlowApprovalRules(t *testing.T, f *stewardFlow) {
 	resp = f.approve(sfApprover, own)
 	require.Equal(t, http.StatusOK, resp.StatusCode, errBody(t, resp))
 	assert.Equal(t, approval.StateApproved, decodeBody[decisionResponse](t, resp).State)
+}
+
+// A grant's requester and steward see and revoke it only through a key
+// or session that holds request:steward: a key narrowed below it, the
+// same person's, has no reach, and the grant answers as one that does
+// not exist.
+func stewardFlowNarrowedKeyHasNoReach(t *testing.T, f *stewardFlow) {
+	grant := f.grant()
+	for _, who := range []string{sfSteward, sfRequester} {
+		narrowed := f.mintKey(who, authn.ScopeWriteSelf)
+		assert.Equal(t, http.StatusOK, f.do(who, http.MethodGet, "/api/v1/steward/grants/"+grant, nil).StatusCode, who+" session")
+		assert.Equal(t, http.StatusNotFound, f.do(who, http.MethodGet, "/api/v1/steward/grants/"+grant, nil, narrowed).StatusCode, who+" narrowed")
+		assert.Equal(t, http.StatusNotFound, f.do(who, http.MethodPost, "/api/v1/steward/grants/"+grant+"/revoke", nil, narrowed).StatusCode, who+" narrowed revoke")
+	}
+	assert.Equal(t, http.StatusOK, f.do(sfSteward, http.MethodGet, "/api/v1/steward/grants/"+grant, nil, f.mintKey(sfSteward, authn.ScopeWriteSelf, authn.ScopeRequestSteward)).StatusCode)
 }

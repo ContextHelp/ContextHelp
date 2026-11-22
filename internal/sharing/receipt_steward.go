@@ -89,12 +89,15 @@ func (r *Receipt) Commit(ctx context.Context, w *AuditWriter) error {
 	if r == nil {
 		return nil
 	}
+	// Once: concurrent callers wait for the first one and share its
+	// result.
+	r.commitOnce.Do(func() { r.commitErr = r.commit(ctx, w) })
+	return r.commitErr
+}
+
+// commit is the one real Commit.
+func (r *Receipt) commit(ctx context.Context, w *AuditWriter) error {
 	r.mu.Lock()
-	if r.done {
-		err := r.commitErr
-		r.mu.Unlock()
-		return err
-	}
 	r.done = true
 	e := r.entry()
 	elevated := r.op.StewardGrant != ""
@@ -116,8 +119,12 @@ func (r *Receipt) Commit(ctx context.Context, w *AuditWriter) error {
 	}
 	slog.Error("steward audit: entry not committed, the answer is withheld",
 		"route", e.Route, "principal", e.PrincipalID, "steward_grant", e.StewardGrantID, "err", err)
+	if e.Decision != storage.AccessDecisionAllowed {
+		// Already a refusal or a deferral: its entry would say the same,
+		// so a store that is down is not asked twice.
+		return err
+	}
 	r.mu.Lock()
-	r.commitErr = err
 	r.auditFailed = true
 	r.add(CheckAudit, storage.AccessOutcomeUnknown, ReasonAuditUnavailable)
 	deferred := r.entry()

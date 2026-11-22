@@ -130,6 +130,7 @@ func (f *Fixture) seedStewards(t testing.TB, a *stewardAuth) {
 	if err := driver.Sharing().StewardGrants().Revoke(ctx, grants[NameStewardRevoked].ID, storage.OwnerPrincipal, "matter closed", now); err != nil {
 		t.Fatalf("leaktest: revoke the steward grant: %v", err)
 	}
+	f.seedStewardEntity(t)
 	roles := []string{authn.RoleReader, authn.RoleStewardRequester}
 	for name, g := range grants {
 		token := "leaktest-" + name + "-" + g.ID
@@ -168,3 +169,29 @@ func (f *Fixture) StewardOf(name string) Principal {
 // Grant is the steward grant p is elevated into; "" for every other
 // principal.
 func (p Principal) Grant() string { return p.grant }
+
+// EntityStewardTopic is an entity the steward's scope opens through the
+// contact that mentions it. It has no dot: the backlinks route reads a
+// dotted slug as namespace/id, which names another edge target.
+const EntityStewardTopic = "sw-launch"
+
+// seedStewardEntity seeds EntityStewardTopic, mentioned by the contact
+// the steward's scope opens, so the backlinks reads release an object.
+func (f *Fixture) seedStewardEntity(t testing.TB) {
+	t.Helper()
+	ctx := context.Background()
+	driver := f.Server.Driver
+	at := time.Now().UTC()
+	target := "ctxt://entity/" + EntityStewardTopic
+	if err := driver.Entities().Upsert(ctx, &storage.Entity{Slug: EntityStewardTopic, Title: "Launch", Namespace: "topic", CreatedAt: at, UpdatedAt: at}); err != nil {
+		t.Fatalf("leaktest: seed the steward entity: %v", err)
+	}
+	for _, e := range []*storage.Edge{
+		{ID: "leak-steward-mention", FromType: "object", FromID: ContactSarah, ToType: "entity", ToID: target, EdgeType: storage.EdgeTypeMentions, Weight: 1, CreatedAt: at},
+		{ID: "leak-steward-mentioned-in", FromType: "entity", FromID: target, ToType: "object", ToID: ContactSarah, EdgeType: storage.EdgeTypeMentionedIn, Weight: 1, CreatedAt: at},
+	} {
+		if err := driver.Edges().Create(ctx, e); err != nil {
+			t.Fatalf("leaktest: seed the steward entity edge: %v", err)
+		}
+	}
+}

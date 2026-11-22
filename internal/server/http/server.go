@@ -239,7 +239,7 @@ func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
 // beside /api/v1, behind the same authentication.
 func mountAccessRoutes(r chi.Router, rc RouterConfig, svc *service.Service) {
 	a := accessRoutes{rc: rc, rcv: rc.Access}
-	r.Route("/bos/v1", func(r chi.Router) {
+	r.Route(accessPrefix, func(r chi.Router) {
 		if rc.Auth != nil {
 			r.Use(RequireAuth(rc.Auth, rc.Security, rc.DevCORS, svc.Viewers(), rc.Sessions, rc.Audit))
 		} else {

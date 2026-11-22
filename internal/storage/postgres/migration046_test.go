@@ -55,6 +55,20 @@ func TestPgMigration046_StewardAudit(t *testing.T) {
 	if _, err := db.ExecContext(ctx, `INSERT INTO access_log_chain (id, seq, head) VALUES (2, 0, '')`); err == nil {
 		t.Error("access_log_chain took a second head row")
 	}
+	for name, cols := range map[string]string{
+		"a grant id and no chain position": `steward_grant_id`,
+		"a chain position and no grant id": `chain_seq`,
+	} {
+		val := "'9'"
+		if cols == "chain_seq" {
+			val = "9"
+		}
+		if _, err := db.ExecContext(ctx, `INSERT INTO access_log
+			(id, at, principal_id, route, policy_versions, object_count, entity_count, decision, checks, operation_digest, `+cols+`)
+			VALUES ('acc_half_`+cols+`', NOW(), 'prn_x', 'GET /objects', 'v1', 0, 0, 'allowed', '[]', 'v1:sha256:00', `+val+`)`); err == nil {
+			t.Errorf("access_log took %s", name)
+		}
+	}
 	if err := drv.ReplayStatementsForTest(ctx, 46); err != nil {
 		t.Fatalf("replay 46: %v", err)
 	}

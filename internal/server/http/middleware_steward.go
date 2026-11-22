@@ -20,6 +20,9 @@ import (
 // relative to it.
 const apiPrefix = "/api/v1"
 
+// accessPrefix is where the authority's provisioning routes are mounted.
+const accessPrefix = "/bos/v1"
+
 // refuseElevation answers a request whose steward grant failed a check
 // (ADR-083 §3, §4, §5), in this order:
 //
@@ -141,7 +144,8 @@ func requestRoute(r *http.Request) (string, map[string][]string) {
 	found := chi.NewRouteContext()
 	pattern := rctx.Routes.Find(found, r.Method, r.URL.Path)
 	rel, ok := strings.CutPrefix(pattern, apiPrefix)
-	if pattern == "" || !ok {
+	access := strings.HasPrefix(pattern, accessPrefix+"/")
+	if pattern == "" || (!ok && !access) {
 		return routeKey(r.Method, unmatchedRoute), params
 	}
 	for i, k := range found.URLParams.Keys {
@@ -155,6 +159,11 @@ func requestRoute(r *http.Request) (string, map[string][]string) {
 			v = ""
 		}
 		params["path."+k] = append(params["path."+k], v)
+	}
+	if access {
+		// The authority's routes are keyed whole, as their receipts
+		// name them.
+		return routeKey(r.Method, pattern), params
 	}
 	return routeKey(tableMethod(r.Method, rel), rel), params
 }

@@ -111,10 +111,6 @@ type stewardDataCase struct {
 	Case
 	// objects is whether the answer carries objects, or else entities.
 	objects bool
-	// none marks a read the fixture answers with no rows: the backlinks
-	// route reads the dotted fixture slug as namespace/id, which no edge
-	// names, for every principal. Its entry is still recorded.
-	none bool
 }
 
 // stewardDataCases are the data reads of ADR-083 §5's list, REST and
@@ -123,39 +119,40 @@ type stewardDataCase struct {
 func stewardDataCases() []stewardDataCase {
 	obj := "/objects/" + ContactSarah
 	sarah := "/entities/" + EntitySarah
+	topic := "/entities/" + EntityStewardTopic
 	rpcCall := func(route string, call func(ctx context.Context, f *Fixture, p Principal) (Result, error)) Case {
 		return Case{Route: route, Call: call}
 	}
 	return []stewardDataCase{
-		{getAt("/objects", "/objects?limit=100"), true, false},
-		{getAt("/objects/{id}", obj), true, false},
-		{getAt("/search", "/search?q=type==contact"), true, false},
-		{post("/find", map[string]any{"query": "Sarah", "mode": "fts"}), true, false},
-		{getAt("/search/graph", "/search/graph?q=Sarah"), true, false},
-		{get("/entities"), false, false},
-		{getAt("/entities/{slug}", sarah), false, false},
-		{getAt("/entities/{slug}/backlinks", sarah+"/backlinks"), true, true},
+		{getAt("/objects", "/objects?limit=100"), true},
+		{getAt("/objects/{id}", obj), true},
+		{getAt("/search", "/search?q=type==contact"), true},
+		{post("/find", map[string]any{"query": "Sarah", "mode": "fts"}), true},
+		{getAt("/search/graph", "/search/graph?q=Sarah"), true},
+		{get("/entities"), false},
+		{getAt("/entities/{slug}", sarah), false},
+		{getAt("/entities/{slug}/backlinks", topic+"/backlinks"), true},
 		{rpcCall(pb.QueryService_ListObjects_FullMethodName, func(ctx context.Context, f *Fixture, p Principal) (Result, error) {
 			return rpc(pb.NewQueryServiceClient(f.Conn).ListObjects(f.RPCContext(ctx, p), &pb.ListObjectsRequest{}))
-		}), true, false},
+		}), true},
 		{rpcCall(pb.QueryService_GetObject_FullMethodName, func(ctx context.Context, f *Fixture, p Principal) (Result, error) {
 			return rpc(pb.NewQueryServiceClient(f.Conn).GetObject(f.RPCContext(ctx, p), &pb.GetObjectRequest{Id: ContactSarah}))
-		}), true, false},
+		}), true},
 		{rpcCall(pb.QueryService_Search_FullMethodName, func(ctx context.Context, f *Fixture, p Principal) (Result, error) {
 			return rpc(pb.NewQueryServiceClient(f.Conn).Search(f.RPCContext(ctx, p), &pb.SearchRequest{Query: "type==contact"}))
-		}), true, false},
+		}), true},
 		{rpcCall(pb.QueryService_NodeAwareSearch_FullMethodName, func(ctx context.Context, f *Fixture, p Principal) (Result, error) {
 			return rpc(pb.NewQueryServiceClient(f.Conn).NodeAwareSearch(f.RPCContext(ctx, p), &pb.NodeAwareSearchRequest{Query: "type==contact"}))
-		}), true, false},
+		}), true},
 		{rpcCall(pb.EntityService_ListEntities_FullMethodName, func(ctx context.Context, f *Fixture, p Principal) (Result, error) {
 			return rpc(pb.NewEntityServiceClient(f.Conn).ListEntities(f.RPCContext(ctx, p), &pb.ListEntitiesRequest{}))
-		}), false, false},
+		}), false},
 		{rpcCall(pb.EntityService_GetEntity_FullMethodName, func(ctx context.Context, f *Fixture, p Principal) (Result, error) {
 			return rpc(pb.NewEntityServiceClient(f.Conn).GetEntity(f.RPCContext(ctx, p), &pb.GetEntityRequest{Slug: EntitySarah}))
-		}), false, false},
+		}), false},
 		{rpcCall(pb.EntityService_GetEntityBacklinks_FullMethodName, func(ctx context.Context, f *Fixture, p Principal) (Result, error) {
-			return rpc(pb.NewEntityServiceClient(f.Conn).GetEntityBacklinks(f.RPCContext(ctx, p), &pb.GetEntityBacklinksRequest{Slug: EntitySarah}))
-		}), true, true},
+			return rpc(pb.NewEntityServiceClient(f.Conn).GetEntityBacklinks(f.RPCContext(ctx, p), &pb.GetEntityBacklinksRequest{Slug: EntityStewardTopic}))
+		}), true},
 	}
 }
 
@@ -183,9 +180,7 @@ func stewardDataReadsRecordWhatTheyRelease(t *testing.T, newDriver driverFunc) {
 			r, e := callOnce(t, f, s, c.Case)
 			require.True(t, answered(r), "HTTP %d gRPC %s: %s", r.Status, r.Code, excerpt(r.Body))
 			assert.Equal(t, storage.AccessDecisionAllowed, e.Decision)
-			if c.none {
-				assert.Empty(t, e.ObjectIDs)
-			} else if c.objects {
+			if c.objects {
 				assert.NotEmpty(t, e.ObjectIDs, "the entry names the objects the answer carried")
 				// Who saw an object: every object the answer carries is
 				// named. The entry may name more (a row a handler read

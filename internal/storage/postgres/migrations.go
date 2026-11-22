@@ -550,6 +550,8 @@ var pgMigrations = []pgMigration{
 		`ALTER TABLE access_log ADD COLUMN IF NOT EXISTS prev_digest TEXT`,
 		`ALTER TABLE access_log ADD COLUMN IF NOT EXISTS entry_digest TEXT`,
 		`ALTER TABLE access_log ADD COLUMN IF NOT EXISTS objects_digest TEXT`,
+		`ALTER TABLE access_log DROP CONSTRAINT IF EXISTS access_log_steward_chain_check`,
+		`ALTER TABLE access_log ADD CONSTRAINT access_log_steward_chain_check CHECK ((steward_grant_id IS NULL) = (chain_seq IS NULL))`,
 		`CREATE INDEX IF NOT EXISTS idx_access_log_steward ON access_log (steward_grant_id, at) WHERE steward_grant_id IS NOT NULL`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_access_log_chain_seq ON access_log (chain_seq) WHERE chain_seq IS NOT NULL`,
 		`CREATE TABLE IF NOT EXISTS access_log_chain (

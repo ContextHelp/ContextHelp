@@ -145,7 +145,8 @@ type Receipt struct {
 	// the request failed closed and its decision is deferred.
 	auditFailed bool
 	// commitErr is what the first Commit returned.
-	commitErr error
+	commitErr  error
+	commitOnce sync.Once
 }
 
 // NewReceipt starts the receipt of op. When the request was
@@ -369,26 +370,10 @@ func (r *Receipt) Discard() {
 //
 // An elevated request's entry never goes to the buffer: Finish commits
 // it durably (Commit), after the fact, for a path that did not commit
-// it before its answer. The transports commit it before the answer.
-func (r *Receipt) Finish(w *AuditWriter) {
-	if r == nil {
-		return
-	}
-	if r.Elevated() {
-		_ = r.Commit(context.Background(), w)
-		return
-	}
-	r.mu.Lock()
-	if r.done {
-		r.mu.Unlock()
-		return
-	}
-	r.done = true
-	e := r.entry()
-	r.mu.Unlock()
-	if e != nil {
-		w.Record(e)
-	}
+// it before its answer, and returns the commit's error, which a caller
+// must not discard. The transports commit it before the answer.
+func (r *Receipt) Finish(w *AuditWriter) error {
+	return r.Commit(context.Background(), w)
 }
 
 // entry builds the audit entry; nil when nothing is to be recorded.

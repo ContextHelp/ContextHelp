@@ -50,6 +50,16 @@ func TestMigration065_StewardAudit(t *testing.T) {
 	if err := d.Sharing().AccessLog().AppendSteward(ctx, e); err != nil {
 		t.Fatalf("AppendSteward after 065: %v", err)
 	}
+	for name, cols := range map[string]string{
+		"a grant id and no chain position": `steward_grant_id`,
+		"a chain position and no grant id": `chain_seq`,
+	} {
+		if _, err := d.db.Exec(`INSERT INTO access_log
+			(id, at, principal_id, route, policy_versions, object_count, entity_count, decision, checks, operation_digest, ` + cols + `)
+			VALUES ('acc_half_` + cols + `', 1760529600000, 'prn_x', 'GET /objects', 'v1', 0, 0, 'allowed', '[]', 'v1:sha256:00', 9)`); err == nil {
+			t.Errorf("access_log took %s", name)
+		}
+	}
 	if _, err := d.db.Exec(`INSERT INTO access_log_chain (id, seq, head) VALUES (2, 0, '')`); err == nil {
 		t.Error("access_log_chain took a second head row")
 	}

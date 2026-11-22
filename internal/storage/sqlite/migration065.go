@@ -11,7 +11,7 @@ import (
 // entry, so rows logged before it need no backfill.
 var stewardAuditColumns = []struct{ column, ddl string }{
 	{"steward_grant_id", `TEXT`},
-	{"chain_seq", `INTEGER`},
+	{"chain_seq", `INTEGER CHECK ((steward_grant_id IS NULL) = (chain_seq IS NULL))`},
 	{"prev_digest", `TEXT`},
 	{"entry_digest", `TEXT`},
 	{"objects_digest", `TEXT`},
