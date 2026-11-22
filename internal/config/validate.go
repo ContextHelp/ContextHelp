@@ -66,6 +66,7 @@ func Validate(c *Config) []ValidationError {
 	errs = append(errs, c.Sharing.Validate()...)
 	errs = append(errs, c.Approvals.Validate()...)
 	errs = append(errs, c.Steward.Validate()...)
+	errs = append(errs, c.Daemon.Validate()...)
 	if _, err := c.Fetch.Policy(); err != nil {
 		field, msg, _ := strings.Cut(err.Error(), ": ")
 		errs = append(errs, ValidationError{Field: field, Message: msg})

@@ -1,0 +1,480 @@
+xrr: "1"
+adapter: exec
+fingerprint: 1dde006f
+recorded_at: "2026-11-22T17:58:54Z"
+payload:
+    stdout: |
+        {
+          "tool": "pod",
+          "version": "dev",
+          "schema_version": "1.0",
+          "leaves": [
+            {
+              "path": "pod adapter install",
+              "name": "install",
+              "short": "Install an adapter's prerequisites",
+              "side_effect": "write",
+              "idempotent": "yes",
+              "dry_run_supported": true
+            },
+            {
+              "path": "pod adapter list",
+              "name": "list",
+              "short": "List available adapters and status",
+              "side_effect": "read",
+              "idempotent": "yes",
+              "dry_run_supported": false
+            },
+            {
+              "path": "pod agent",
+              "name": "agent",
+              "short": "Chat with a deployed model",
+              "side_effect": "interactive",
+              "idempotent": "no",
+              "dry_run_supported": false,
+              "flags": [
+                {
+                  "name": "context",
+                  "type": "string",
+                  "description": "path to inject as context (file or directory)"
+                },
+                {
+                  "name": "model",
+                  "type": "string",
+                  "description": "target model name"
+                },
+                {
+                  "name": "pod",
+                  "type": "string",
+                  "description": "explicit pod name"
+                }
+              ]
+            },
+            {
+              "path": "pod capabilities",
+              "name": "capabilities",
+              "short": "Emit the machine-readable command surface",
+              "side_effect": "read",
+              "idempotent": "yes",
+              "dry_run_supported": false,
+              "flags": [
+                {
+                  "name": "help",
+                  "short": "h",
+                  "type": "bool",
+                  "description": "help for capabilities",
+                  "default": "false"
+                }
+              ]
+            },
+            {
+              "path": "pod create",
+              "name": "create",
+              "short": "Create a new pod",
+              "side_effect": "write",
+              "idempotent": "no",
+              "dry_run_supported": true,
+              "flags": [
+                {
+                  "name": "computer-use",
+                  "type": "bool",
+                  "description": "Provision a virtual display an agent can drive",
+                  "default": "false"
+                },
+                {
+                  "name": "cpu",
+                  "type": "int",
+                  "description": "Number of vCPUs",
+                  "default": "0"
+                },
+                {
+                  "name": "disk",
+                  "type": "int",
+                  "description": "Disk size in GB",
+                  "default": "0"
+                },
+                {
+                  "name": "file",
+                  "short": "f",
+                  "type": "string",
+                  "description": "Path to pod.yaml spec file"
+                },
+                {
+                  "name": "gpu",
+                  "type": "string",
+                  "description": "GPU type (e.g. A100, H100)"
+                },
+                {
+                  "name": "gpu-count",
+                  "type": "int",
+                  "description": "Number of GPUs",
+                  "default": "0"
+                },
+                {
+                  "name": "image",
+                  "type": "string",
+                  "description": "Container image"
+                },
+                {
+                  "name": "name",
+                  "type": "string",
+                  "description": "Pod name (overrides spec file)"
+                },
+                {
+                  "name": "note",
+                  "short": "n",
+                  "type": "string",
+                  "description": "Reason note (recorded for audit; future policies may require it)"
+                },
+                {
+                  "name": "provider",
+                  "type": "string",
+                  "description": "Compute provider (skypilot, ssh, mock, daytona, e2b, docker, digitalocean, hetzner, gcp, aws, runloop, sprites, runpod, modal)"
+                },
+                {
+                  "name": "ram",
+                  "type": "int",
+                  "description": "RAM in GB",
+                  "default": "0"
+                },
+                {
+                  "name": "region",
+                  "type": "string",
+                  "description": "Region for the pod (provider-specific)"
+                },
+                {
+                  "name": "supervisor",
+                  "type": "bool",
+                  "description": "Opt in: start/stop/destroy manage the session supervisor (devcontainer runtime)",
+                  "default": "false"
+                },
+                {
+                  "name": "tag",
+                  "type": "stringSlice",
+                  "description": "Pod tag (repeatable, e.g. --tag prod --tag staging)",
+                  "default": "[]"
+                }
+              ]
+            },
+            {
+              "path": "pod destroy",
+              "name": "destroy",
+              "short": "Destroy a pod",
+              "side_effect": "destructive",
+              "idempotent": "yes",
+              "dry_run_supported": true,
+              "flags": [
+                {
+                  "name": "force",
+                  "type": "bool",
+                  "description": "Force destroy without confirmation (implies --confirm=yes)",
+                  "default": "false"
+                },
+                {
+                  "name": "keep-storage",
+                  "type": "bool",
+                  "description": "Preserve attached storage volumes",
+                  "default": "false"
+                },
+                {
+                  "name": "note",
+                  "short": "n",
+                  "type": "string",
+                  "description": "Reason note (recorded for audit; future policies may require it)"
+                }
+              ]
+            },
+            {
+              "path": "pod exec",
+              "name": "exec",
+              "short": "Run a non-interactive command on a pod",
+              "side_effect": "write",
+              "idempotent": "no",
+              "dry_run_supported": true
+            },
+            {
+              "path": "pod forward",
+              "name": "forward",
+              "short": "Forward a local loopback port to a pod port",
+              "side_effect": "interactive",
+              "idempotent": "yes",
+              "dry_run_supported": false
+            },
+            {
+              "path": "pod launch",
+              "name": "launch",
+              "short": "Attach a dev tool to a running pod",
+              "side_effect": "write",
+              "idempotent": "no",
+              "dry_run_supported": true,
+              "flags": [
+                {
+                  "name": "detach",
+                  "type": "bool",
+                  "description": "agent: start the pod-side session without attaching; print how to attach and view",
+                  "default": "false"
+                },
+                {
+                  "name": "local",
+                  "type": "bool",
+                  "description": "agent: run the harness on this machine (port forward + env + local spawn)",
+                  "default": "false"
+                },
+                {
+                  "name": "model",
+                  "type": "string",
+                  "description": "target model name (resolves pod automatically)"
+                },
+                {
+                  "name": "no-open",
+                  "type": "bool",
+                  "description": "viewer: print the view URL instead of opening a browser",
+                  "default": "false"
+                },
+                {
+                  "name": "note",
+                  "short": "n",
+                  "type": "string",
+                  "description": "Reason note (recorded for audit; future policies may require it)"
+                },
+                {
+                  "name": "pod",
+                  "type": "string",
+                  "description": "explicit pod name"
+                },
+                {
+                  "name": "runtime",
+                  "type": "string",
+                  "description": "agent: pod-side runtime (auto, host, devvm, devcontainer; default launch.runtime or auto)"
+                },
+                {
+                  "name": "terminal",
+                  "type": "bool",
+                  "description": "viewer: attach read-only to the agent's tmux session",
+                  "default": "false"
+                }
+              ]
+            },
+            {
+              "path": "pod ps",
+              "name": "ps",
+              "short": "List pods",
+              "side_effect": "read",
+              "idempotent": "yes",
+              "dry_run_supported": false
+            },
+            {
+              "path": "pod secret list",
+              "name": "list",
+              "short": "List declared harness secrets (names only)",
+              "side_effect": "read",
+              "idempotent": "yes",
+              "dry_run_supported": false
+            },
+            {
+              "path": "pod secret rm",
+              "name": "rm",
+              "short": "Remove a declared harness secret",
+              "side_effect": "destructive",
+              "idempotent": "yes",
+              "dry_run_supported": true,
+              "flags": [
+                {
+                  "name": "note",
+                  "short": "n",
+                  "type": "string",
+                  "description": "Reason note (recorded for audit; future policies may require it)"
+                },
+                {
+                  "name": "runtime",
+                  "type": "string",
+                  "description": "sandbox runtime holding the secret (devcontainer)",
+                  "default": "devcontainer"
+                }
+              ]
+            },
+            {
+              "path": "pod secret set",
+              "name": "set",
+              "short": "Provision a declared harness secret into a pod's sandbox",
+              "side_effect": "write",
+              "idempotent": "yes",
+              "dry_run_supported": true,
+              "flags": [
+                {
+                  "name": "from-aps",
+                  "type": "string",
+                  "description": "source: aps profile secret \u003cprofile\u003e/\u003cKEY\u003e"
+                },
+                {
+                  "name": "from-file",
+                  "type": "string",
+                  "description": "source: local 0600 file (absolute path)"
+                },
+                {
+                  "name": "note",
+                  "short": "n",
+                  "type": "string",
+                  "description": "Reason note (recorded for audit; future policies may require it)"
+                },
+                {
+                  "name": "rotate",
+                  "type": "bool",
+                  "description": "replace an existing sandbox secret",
+                  "default": "false"
+                },
+                {
+                  "name": "runtime",
+                  "type": "string",
+                  "description": "sandbox runtime holding the secret (devcontainer)",
+                  "default": "devcontainer"
+                }
+              ]
+            },
+            {
+              "path": "pod show",
+              "name": "show",
+              "short": "Show pod details",
+              "side_effect": "read",
+              "idempotent": "yes",
+              "dry_run_supported": false
+            },
+            {
+              "path": "pod start",
+              "name": "start",
+              "short": "Start a stopped pod",
+              "side_effect": "write",
+              "idempotent": "yes",
+              "dry_run_supported": true,
+              "flags": [
+                {
+                  "name": "note",
+                  "short": "n",
+                  "type": "string",
+                  "description": "Reason note (recorded for audit; future policies may require it)"
+                },
+                {
+                  "name": "recreate",
+                  "type": "bool",
+                  "description": "remove the stopped supervisor container first so it is created again on the configured image (volumes are kept; refused while it runs)",
+                  "default": "false"
+                }
+              ]
+            },
+            {
+              "path": "pod status",
+              "name": "status",
+              "short": "Show kit runtime status (profile, env, workspace, auth, config)",
+              "side_effect": "read",
+              "idempotent": "yes",
+              "dry_run_supported": false
+            },
+            {
+              "path": "pod stop",
+              "name": "stop",
+              "short": "Stop a running pod",
+              "side_effect": "write",
+              "idempotent": "yes",
+              "dry_run_supported": true,
+              "flags": [
+                {
+                  "name": "note",
+                  "short": "n",
+                  "type": "string",
+                  "description": "Reason note (recorded for audit; future policies may require it)"
+                }
+              ]
+            },
+            {
+              "path": "pod supervisor down",
+              "name": "down",
+              "short": "Stop a pod's session supervisor",
+              "side_effect": "destructive",
+              "idempotent": "yes",
+              "dry_run_supported": true,
+              "flags": [
+                {
+                  "name": "note",
+                  "short": "n",
+                  "type": "string",
+                  "description": "Reason note (recorded for audit; future policies may require it)"
+                },
+                {
+                  "name": "runtime",
+                  "type": "string",
+                  "description": "sandbox runtime hosting the supervisor (devcontainer; devvm needs hsd installed in the VM)",
+                  "default": "devcontainer"
+                }
+              ]
+            },
+            {
+              "path": "pod supervisor status",
+              "name": "status",
+              "short": "Report a pod's session supervisor state",
+              "side_effect": "read",
+              "idempotent": "yes",
+              "dry_run_supported": false,
+              "flags": [
+                {
+                  "name": "runtime",
+                  "type": "string",
+                  "description": "sandbox runtime hosting the supervisor (devcontainer; devvm needs hsd installed in the VM)",
+                  "default": "devcontainer"
+                }
+              ]
+            },
+            {
+              "path": "pod supervisor up",
+              "name": "up",
+              "short": "Start a pod's session supervisor",
+              "side_effect": "write",
+              "idempotent": "yes",
+              "dry_run_supported": true,
+              "flags": [
+                {
+                  "name": "note",
+                  "short": "n",
+                  "type": "string",
+                  "description": "Reason note (recorded for audit; future policies may require it)"
+                },
+                {
+                  "name": "recreate",
+                  "type": "bool",
+                  "description": "remove the stopped supervisor container first so it is created again on the configured image (volumes are kept; refused while it runs)",
+                  "default": "false"
+                },
+                {
+                  "name": "runtime",
+                  "type": "string",
+                  "description": "sandbox runtime hosting the supervisor (devcontainer; devvm needs hsd installed in the VM)",
+                  "default": "devcontainer"
+                }
+              ]
+            },
+            {
+              "path": "pod upload",
+              "name": "upload",
+              "short": "Upload a local file to a running pod",
+              "side_effect": "write",
+              "idempotent": "yes",
+              "dry_run_supported": true
+            },
+            {
+              "path": "pod use",
+              "name": "use",
+              "short": "Set the active pod",
+              "side_effect": "write",
+              "idempotent": "yes",
+              "dry_run_supported": true,
+              "flags": [
+                {
+                  "name": "note",
+                  "short": "n",
+                  "type": "string",
+                  "description": "Reason note (recorded for audit; future policies may require it)"
+                }
+              ]
+            }
+          ]
+        }
+    exit_code: 0

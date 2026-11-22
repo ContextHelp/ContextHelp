@@ -1,0 +1,13 @@
+xrr: "1"
+adapter: exec
+fingerprint: 55e0b717
+recorded_at: "2026-11-22T17:58:54Z"
+payload:
+    argv:
+        - pod
+        - show
+        - missing-pod
+        - --format
+        - json
+        - --no-hints
+        - --no-color

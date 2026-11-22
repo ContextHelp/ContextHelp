@@ -1,0 +1,9 @@
+xrr: "1"
+adapter: exec
+fingerprint: 55e0b717
+recorded_at: "2026-11-22T17:58:54Z"
+error: exit status 3
+payload:
+    stdout: ""
+    stderr: "{\n  \"code\": \"NOT_FOUND\",\n  \"message\": \"pod \\\"missing-pod\\\" not found\",\n  \"suggested_fix\": \"run `pod ps` to list known pods\",\n  \"exit_code\": 3\n}\n          \n   ERROR  \n          \n  Not_found: pod \"missing-pod\" not found.                                                                             \n\n"
+    exit_code: 3

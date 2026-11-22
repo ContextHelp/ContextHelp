@@ -46,6 +46,28 @@ func RegistriesSource(bin, cfgFile string, extraPaths []string) (src LayerSource
 	return LayerSource{}, false, nil
 }
 
+// ProjectLayerSets reports whether the project config layer
+// (`.contexthelp/<bin>.yaml`) participating in LoadWithOverrides(bin, cfgFile,
+// extraPaths, ...) sets dotted key (for example "daemon" or "jobs.pod").
+// Unlike RegistriesSource, it inspects the project layer directly even when a
+// higher layer shadows the key, so a cloned repository cannot inject daemon or
+// pod-execution settings.
+func ProjectLayerSets(bin, cfgFile string, extraPaths []string, key string) (path string, found bool, err error) {
+	for _, src := range layerSources(bin, cfgFile, extraPaths) {
+		if src.Kind != LayerProject {
+			continue
+		}
+		l, err := OpenLayer(src.Path)
+		if err != nil {
+			return "", false, err
+		}
+		if l.Has(key) {
+			return src.Path, true, nil
+		}
+	}
+	return "", false, nil
+}
+
 // layerSources lists the files LoadWithOverrides(bin, cfgFile,
 // extraPaths, …) merges, lowest precedence first. A cascade slot whose
 // file does not exist is left out, as the loader skips it.
