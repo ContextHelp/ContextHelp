@@ -265,6 +265,38 @@ the limit on the receiver to take it.
 
 ---
 
+# Daemon Runner Configuration
+
+Both `ctxt` (ambient daemon) and `dpkms` (`serve`, `ps`, `shutdown`) accept an
+opt-in `daemon` block to launch daemons on an existing pod via the standalone
+`pod` CLI:
+
+```yaml
+daemon:
+  runner: local                      # local (default) | pod
+  pod:
+    name: dev-pod
+    autostart: true
+    timeouts:
+      probe: 10s
+      query: 15s
+      exec: 90s
+      lifecycle: 5m
+    ctxd_bin: ctxd                   # ctxt only
+    server_url: https://dpkms.example.net # ctxt only
+    dpkms_bin: dpkms                 # dpkms only
+    data_dir: /workspace/contexthelp # dpkms only; required for runner=pod
+    dpkms_port: 8080                 # dpkms only
+    local_port: 0                    # 0 picks a free loopback port
+```
+
+- When `daemon.runner` is `local` (default), `pod` is never probed or invoked.
+- Project-layer config files (`.contexthelp/ctxt.yaml`, `.contexthelp/dpkms.yaml`)
+  may not set `daemon.*` keys; commands refuse with exit code `2` naming the file.
+- Full lifecycle and flag reference: [../pod-runner.md](../pod-runner.md).
+
+---
+
 # Validation Tools
 
 ```bash
