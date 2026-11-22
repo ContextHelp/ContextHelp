@@ -37,17 +37,13 @@ func declaredCharset(draft *storage.KnowledgeObject) string {
 	return charsetOf(draft.ContentType)
 }
 
-// mostlyUTF8Percent is the share of a text's non-ASCII bytes that may be
-// invalid UTF-8 for the text still to count as UTF-8 with stray bytes
-// (a truncated tail, one pasted Latin-1 character) rather than as a legacy
-// charset. Legacy 8-bit text (Windows-1252, GBK, Shift-JIS) is nearly all
-// invalid as UTF-8, so well above this; UTF-8 text with a few stray bytes
-// is well below it.
-const mostlyUTF8Percent = 10
-
-// mostlyUTF8 reports whether data holds at least one valid multi-byte
-// UTF-8 sequence and no more than mostlyUTF8Percent of its non-ASCII
-// bytes are invalid UTF-8.
+// mostlyUTF8 reports whether data reads as UTF-8 with stray bytes (a
+// truncated tail, a pasted Latin-1 character) rather than as a legacy
+// charset: it holds at least one valid multi-byte UTF-8 sequence and no
+// more invalid bytes than valid multi-byte ones. Legacy 8-bit text
+// (Windows-1252, GBK, Shift-JIS) has no valid multi-byte sequence or is
+// mostly invalid as UTF-8; ASCII with high bytes and no valid sequence is
+// never mostly UTF-8, so it reads as Windows-1252.
 func mostlyUTF8(data []byte) bool {
 	var valid, invalid int
 	for i := 0; i < len(data); {
@@ -63,7 +59,7 @@ func mostlyUTF8(data []byte) bool {
 		}
 		i += size
 	}
-	return valid > 0 && invalid*100 <= (valid+invalid)*mostlyUTF8Percent
+	return valid > 0 && invalid <= valid
 }
 
 // undeclaredUTF8 reads data of no known charset as UTF-8 text. Valid

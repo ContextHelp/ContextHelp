@@ -336,44 +336,11 @@ func extractEmailBodies(mediaType string, params map[string]string, bodyBytes []
 			if err != nil {
 				continue
 			}
-			partCT, g := headerText(part.Header.Get("Content-Type"))
-			msg.CharsetGuessed = msg.CharsetGuessed || g
-			if partCT == "" {
-				partCT = mediaTextPlain
-			}
-			partMedia, partParams, err := mime.ParseMediaType(partCT)
-			if err != nil {
-				partMedia = mediaTextPlain
-				partParams = map[string]string{}
-			}
-
-			// Decode part transfer encoding.
-			partCTE := strings.ToLower(part.Header.Get("Content-Transfer-Encoding"))
-			decoded := emailDecodeCTE(partCTE, partBytes)
-
-			partDisp, g := headerText(part.Header.Get("Content-Disposition"))
-			msg.CharsetGuessed = msg.CharsetGuessed || g
-			var dispType string
-			var dispParams map[string]string
-			if partDisp != "" {
-				dispType, dispParams, _ = mime.ParseMediaType(partDisp)
-			}
-
-			if strings.EqualFold(dispType, "attachment") || !isBodyPart(partMedia, partParams) {
-				filename := dispParams["filename"]
-				if filename == "" {
-					filename = partParams["name"]
-				}
-				msg.Attachments = append(msg.Attachments, AttachmentMeta{
-					Filename:    decodeEmailHeader(filename),
-					ContentType: cleanText(partMedia),
-					SizeBytes:   len(partBytes),
-				})
-				continue
-			}
-
-			extractEmailBodies(partMedia, partParams, decoded, msg)
+			extractPart(part, partBytes, msg)
 		}
+
+	case mediaType == mediaMessageRFC822:
+		extractForwarded(bodyBytes, msg)
 
 	case !isBodyPart(mediaType, params):
 		msg.Attachments = append(msg.Attachments, AttachmentMeta{
@@ -392,6 +359,96 @@ func extractEmailBodies(mediaType string, params map[string]string, bodyBytes []
 			msg.TextBody = decodeBody(bodyBytes, params["charset"], msg)
 		}
 	}
+}
+
+// extractPart reads one multipart part into msg: a text part into a body,
+// a forwarded message into the bodies it carries, a nested multipart
+// recursively, anything else (or any part marked an attachment) into an
+// attachment record.
+func extractPart(part *multipart.Part, partBytes []byte, msg *EmailMessage) {
+	partCT, g := headerText(part.Header.Get("Content-Type"))
+	msg.CharsetGuessed = msg.CharsetGuessed || g
+	if partCT == "" {
+		partCT = mediaTextPlain
+	}
+	partMedia, partParams, err := mime.ParseMediaType(partCT)
+	if err != nil {
+		partMedia = mediaTextPlain
+		partParams = map[string]string{}
+	}
+
+	// Decode part transfer encoding.
+	partCTE := strings.ToLower(part.Header.Get("Content-Transfer-Encoding"))
+	decoded := emailDecodeCTE(partCTE, partBytes)
+
+	partDisp, g := headerText(part.Header.Get("Content-Disposition"))
+	msg.CharsetGuessed = msg.CharsetGuessed || g
+	var dispType string
+	var dispParams map[string]string
+	if partDisp != "" {
+		dispType, dispParams, _ = mime.ParseMediaType(partDisp)
+	}
+
+	if strings.EqualFold(dispType, "attachment") ||
+		(!isBodyPart(partMedia, partParams) && partMedia != mediaMessageRFC822) {
+		filename := dispParams["filename"]
+		if filename == "" {
+			filename = partParams["name"]
+		}
+		msg.Attachments = append(msg.Attachments, AttachmentMeta{
+			Filename:    decodeEmailHeader(filename),
+			ContentType: cleanText(partMedia),
+			SizeBytes:   len(partBytes),
+		})
+		return
+	}
+
+	extractEmailBodies(partMedia, partParams, decoded, msg)
+}
+
+// mediaMessageRFC822 is the media type of an embedded (forwarded) message.
+const mediaMessageRFC822 = "message/rfc822"
+
+// extractForwarded reads an embedded message/rfc822 part: its bodies and
+// attachments join msg's. An outer body that is empty becomes the inner
+// one; otherwise the inner text follows it under a line naming the
+// forwarded From and Subject, so both stay searchable. A part that does
+// not parse as a message is dropped.
+func extractForwarded(raw []byte, msg *EmailMessage) {
+	m, err := mail.ReadMessage(bytes.NewReader(raw))
+	if err != nil {
+		slog.Debug("email_parser: embedded message unreadable, skipped", "err", err)
+		return
+	}
+	var inner EmailMessage
+	ct := m.Header.Get("Content-Type")
+	if ct == "" {
+		ct = mediaTextPlain
+	}
+	mediaType, params, err := mime.ParseMediaType(ct)
+	if err != nil {
+		mediaType, params = mediaTextPlain, map[string]string{}
+	}
+	body, _ := io.ReadAll(m.Body)
+	body = emailDecodeCTE(strings.ToLower(m.Header.Get("Content-Transfer-Encoding")), body)
+	extractEmailBodies(mediaType, params, body, &inner)
+
+	from, g1 := headerText(m.Header.Get("From"))
+	subject, g2 := headerText(m.Header.Get("Subject"))
+	msg.CharsetGuessed = msg.CharsetGuessed || inner.CharsetGuessed || g1 || g2
+
+	if inner.TextBody != "" {
+		if msg.TextBody == "" {
+			msg.TextBody = inner.TextBody
+		} else {
+			msg.TextBody += fmt.Sprintf("\n\n--- Forwarded message ---\nFrom: %s\nSubject: %s\n\n%s",
+				cleanEmailHeader(from), decodeEmailHeader(subject), inner.TextBody)
+		}
+	}
+	if inner.HTMLBody != "" && msg.HTMLBody == "" {
+		msg.HTMLBody = inner.HTMLBody
+	}
+	msg.Attachments = append(msg.Attachments, inner.Attachments...)
 }
 
 // isBodyPart reports whether a part is text a body is read from: a text/*

@@ -110,3 +110,22 @@ func TestEmailParserDecodesEncodedWordInLegacyCharset(t *testing.T) {
 		t.Fatalf("subject = %q", got)
 	}
 }
+
+func TestUndeclaredUTF8StrayBytesVersusLegacy(t *testing.T) {
+	cases := []struct {
+		in      string
+		want    string
+		guessed bool
+	}{
+		{"caf\xc3\xa9 \xe9t\xe9", "café �t�", true},
+		{"hello \xe9", "hello é", true},
+		{"\xe9t\xe9", "été", true},
+		{"caf\xc3\xa9 ok", "café ok", false},
+	}
+	for _, c := range cases {
+		got, guessed := undeclaredUTF8([]byte(c.in))
+		if got != c.want || guessed != c.guessed {
+			t.Errorf("undeclaredUTF8(%q) = %q, %v; want %q, %v", c.in, got, guessed, c.want, c.guessed)
+		}
+	}
+}

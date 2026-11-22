@@ -120,3 +120,15 @@ func TestUndecodableContainerFailsLoudly(t *testing.T) {
 		})
 	}
 }
+
+// A long multi-byte subject is cut to a title on a rune boundary: the
+// mbox completes and its message is stored, not failed on a split rune.
+func TestLongCJKSubjectMboxFansOut(t *testing.T) {
+	subject := "Re: " + strings.Repeat("日本語", 20)
+	mbox := "From a@example.com Mon Jan 01 10:00:00 2024\nFrom: a@example.com\nTo: bob@example.com\nSubject: " + subject +
+		"\nMessage-Id: <cjk@example.com>\nDate: Mon, 01 Jan 2024 10:00:00 +0000\nContent-Type: text/plain; charset=utf-8\n\n" +
+		"A numbat crossed the road.\n\n"
+	requireLegacyFanOut(t, "email.general",
+		fanOutJob{payload: mbox, source: "cjk.mbox", words: []string{"numbat"}},
+		"numbat")
+}

@@ -3,6 +3,7 @@ package steps
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -41,8 +42,7 @@ func requireCleanStrings(t *testing.T, path string, v any) {
 		}
 	case []any:
 		for i, e := range x {
-			requireCleanStrings(t, path, e)
-			_ = i
+			requireCleanStrings(t, fmt.Sprintf("%s[%d]", path, i), e)
 		}
 	case []map[string]any:
 		for _, e := range x {
@@ -325,5 +325,30 @@ func TestLegacyCharsetInputRunsWholeParserChains(t *testing.T) {
 		NewEmailParser(), filter, NewEmailEnqueuer())
 	if n := len(mail.Metadata[itemsToEnqueueKey].([]map[string]any)); n != 1 {
 		t.Errorf("email chain staged %d items, metadata %#v", n, mail.Metadata)
+	}
+}
+
+func TestEmailForwardedMessageBodyIsIndexed(t *testing.T) {
+	inner := "From: carol@example.com\nSubject: Original =?utf-8?q?caf=C3=A9?=\nContent-Type: text/plain\n\nThe numbat census is due."
+	raw := "From: a@example.com\nTo: b@example.com\nSubject: Fwd\nMIME-Version: 1.0\n" +
+		"Content-Type: multipart/mixed; boundary=XX\n\n--XX\nContent-Type: message/rfc822\n\n" + inner + "\n--XX--\n"
+	m := emailMsgs(runEmail(t, raw))[0]
+	body, _ := m["text_body"].(string)
+	if !strings.Contains(body, "The numbat census is due.") {
+		t.Fatalf("text_body = %q", body)
+	}
+	if atts, _ := m["attachments"].([]map[string]any); len(atts) != 0 {
+		t.Errorf("forwarded message recorded as attachment: %#v", atts)
+	}
+
+	// With an outer body, the forwarded text follows it with From/Subject.
+	raw = "From: a@example.com\nTo: b@example.com\nSubject: Fwd\nMIME-Version: 1.0\n" +
+		"Content-Type: multipart/mixed; boundary=XX\n\n--XX\nContent-Type: text/plain\n\nPlease see below.\n" +
+		"--XX\nContent-Type: message/rfc822\n\n" + inner + "\n--XX--\n"
+	body, _ = emailMsgs(runEmail(t, raw))[0]["text_body"].(string)
+	for _, want := range []string{"Please see below.", "carol@example.com", "Original café", "The numbat census is due."} {
+		if !strings.Contains(body, want) {
+			t.Errorf("text_body lacks %q: %q", want, body)
+		}
 	}
 }
