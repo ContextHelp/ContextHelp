@@ -118,6 +118,11 @@ ctxt share template list | install colleagues-network|partners-network
 ctxt share grant <audience> <policy> [--expires 30d]
 ctxt share revoke <grant-id>
 ctxt share ceiling <principal-id> --deny-classes personal,financial
+# steward access (ADR-083), while steward.enabled is on; reading under a grant happens in the web UI only:
+ctxt steward request [--steward <id>] (--scope <file>|- | --as-audience <audience>) --expires 7d --reason <text> [--not-before <when>] [--matter <ref>] [--renews <grant-id>]
+ctxt steward list [--state approved|active|expired|revoked] [--steward <id>] [--limit <n>]
+ctxt steward show <grant-id>
+ctxt steward revoke <grant-id> [--reason <text>]
 ```
 
 ## REST endpoint map (from current spec)
@@ -160,6 +165,8 @@ Invite and sign-in link routes (same guide):
 Principal registry routes (`admin:principals`): `GET`, `POST /api/v1/principals`; `GET /api/v1/principals/{id}`; `POST .../suspend`, `.../revoke`; `GET`, `POST .../identities`, `DELETE .../identities/{identity}`; `GET`, `POST .../keys`, `DELETE .../keys/{key}`. Own credentials (`write:self`): `GET`, `POST /api/v1/self/keys`, `DELETE /api/v1/self/keys/{key}`, `PUT /api/v1/self/keys/{key}/policy`; `GET /api/v1/self/identities`, `DELETE /api/v1/self/identities/{identity}`; `GET /api/v1/self/sessions`, `DELETE /api/v1/self/sessions/{session}`.
 
 Sharing routes (`admin:shares`; see [Share your network](../workflows/sharing.md)): `GET`, `POST /api/v1/share/audiences`, `GET /api/v1/share/audiences/{audience}`, `PUT`, `DELETE .../members/{principal}`; `GET`, `POST /api/v1/share/policies`, `GET`, `PUT /api/v1/share/policies/{policy}`; `GET /api/v1/share/templates`, `POST /api/v1/share/templates/{name}`; `GET`, `POST /api/v1/share/grants`, `DELETE /api/v1/share/grants/{grant}`; `GET`, `PUT /api/v1/principals/{id}/ceiling`; `PUT /api/v1/share/keys/{key}/policy`. Audiences and policies may be named by id or name. A policy document travels as the `document` field of a JSON body (YAML or JSON text), validated on write. An edit bumps the version and never renames. A template installs once. `GET /share/grants?principal=` lists the grants in force for one principal. A non-owner principal with a grant in force sees `shared: {owner, policies}` in `GET /whoami`.
+
+Steward routes: `POST /api/v1/steward/grants` (`request:steward`) files a request and answers `202` with it; `GET /api/v1/steward/grants`, `GET .../grants/{id}` and `POST .../grants/{id}/revoke` (`write:self`) list, show and revoke the grants the caller is party to; `POST` and `DELETE .../grants/{id}/elevate` (`request:steward`, browser sessions only) start and end reading under a grant. Every route answers `404` while `steward.enabled` is off.
 
 Importer routes (story-target contract):
 
