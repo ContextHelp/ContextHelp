@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -99,6 +100,14 @@ type SessionOptions struct {
 	CodeTTL time.Duration
 	// TouchEvery is the minimum gap between two last-seen writes.
 	TouchEvery time.Duration
+	// ElevationIdle ends a session's steward elevation this long after
+	// its last request (steward.elevation_idle); zero means
+	// config.DefaultStewardElevationIdle.
+	ElevationIdle time.Duration
+	// OnElevation, when set, is told of each steward elevation that
+	// starts or ends, after it is stored. It runs on the request's
+	// goroutine and must not block.
+	OnElevation func(ctx context.Context, e ElevationEvent)
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
 }
@@ -115,6 +124,9 @@ func (o SessionOptions) withDefaults() SessionOptions {
 	}
 	if o.TouchEvery <= 0 {
 		o.TouchEvery = DefaultSessionTouchEvery
+	}
+	if o.ElevationIdle <= 0 {
+		o.ElevationIdle = config.DefaultStewardElevationIdle
 	}
 	if o.Now == nil {
 		o.Now = time.Now
@@ -305,7 +317,7 @@ func (s *Sessions) mintFor(ctx context.Context, identityID, principalID, kind st
 	if err := s.store.Create(ctx, sess); err != nil {
 		return nil, err
 	}
-	return &Minted{Secret: secret, Session: sess, Principal: sessionPrincipal(p, scopes, sess)}, nil
+	return &Minted{Secret: secret, Session: sess, Principal: sessionPrincipal(p, scopes, sess, "")}, nil
 }
 
 // ListByPrincipal returns the sessions of principalID, newest first:
@@ -357,7 +369,9 @@ func (s *Sessions) resolve(ctx context.Context, identityID, principalID string) 
 // Anything but an active session whose identity and principal are
 // still active is ErrInvalidCredential. A session the registry has
 // outrun (its identity or principal revoked without the cascade) is
-// revoked on the spot.
+// revoked on the spot. A session elevated into a steward grant names
+// the grant in its principal's Meta and refreshes the elevation; one
+// idle for ElevationIdle ends it and is the ordinary view.
 func (s *Sessions) Authenticate(ctx context.Context, secret string) (*Principal, *storage.UISession, error) {
 	if secret == "" {
 		return nil, nil, ErrNoCredential
@@ -374,7 +388,11 @@ func (s *Sessions) Authenticate(ctx context.Context, secret string) (*Principal,
 		sess.LastSeenAt = now
 		sess.IdleExpiresAt = minTime(now.Add(s.opts.IdleTTL), sess.ExpiresAt)
 	}
-	return sessionPrincipal(p, scopes, sess), sess, nil
+	grant, err := s.elevation(ctx, sess, now)
+	if err != nil {
+		return nil, nil, err
+	}
+	return sessionPrincipal(p, scopes, sess, grant), sess, nil
 }
 
 // Check reports whether the session with secretHash is still active,
@@ -424,14 +442,19 @@ func (s *Sessions) Get(ctx context.Context, id string) (*storage.UISession, erro
 // session kind's fixed set, plus the session-only signout:ui
 // (SessionScopesFor), so a session never holds more than its key, nor
 // more than a browser needs. Plus the session markers the HTTP layer
-// reads.
-func sessionPrincipal(p *storage.Principal, scopes []Scope, sess *storage.UISession) *Principal {
+// reads, and the steward grant the request runs under (ADR-083 §3),
+// when it is elevated: Meta is the server's, built here from the
+// session row, never from anything the request carries.
+func sessionPrincipal(p *storage.Principal, scopes []Scope, sess *storage.UISession, grant string) *Principal {
 	out := registryPrincipal(p, SessionScopesFor(scopes, sess.Scope), MethodSession)
 	out.Meta = map[string]string{
 		MetaVia:         ViaSession,
 		MetaSessionKind: sess.Scope,
 		MetaSessionID:   sess.ID,
 		MetaIdentityID:  sess.IdentityID,
+	}
+	if grant != "" {
+		out.Meta[MetaStewardGrantID] = grant
 	}
 	return out
 }
