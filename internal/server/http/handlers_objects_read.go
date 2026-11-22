@@ -44,6 +44,8 @@ const (
 	maxRelatedDepth     = 3
 	defaultRelatedLimit = 10
 	maxRelatedLimit     = 100
+	defaultTagsLimit    = 20
+	maxTagsLimit        = 100
 )
 
 // paramError is a rejected query parameter.
@@ -356,6 +358,31 @@ func ObjectFacets(svc *service.Service) http.HandlerFunc {
 			return
 		}
 		WriteJSON(w, http.StatusOK, map[string]any{"data": counts})
+	}
+}
+
+// ListTags handles GET /api/v1/tags: the tag labels starting with
+// prefix (ignoring case; absent means all), each with the number of
+// active objects carrying it, most objects first and by label among
+// equals. Counts cover only the objects the viewer may see.
+func ListTags(svc *service.Service) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		if err := checkParams(q, []string{"prefix", "limit"}); err != nil {
+			writeParamError(w, err)
+			return
+		}
+		limit, perr := intParam(q, "limit", defaultTagsLimit, 1, maxTagsLimit)
+		if perr != nil {
+			writeParamError(w, perr)
+			return
+		}
+		tags, err := svc.TagCounts(r.Context(), q.Get("prefix"), limit)
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+			return
+		}
+		WriteJSON(w, http.StatusOK, map[string]any{"data": tags})
 	}
 }
 

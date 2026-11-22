@@ -368,6 +368,9 @@ type corpusObject struct {
 	// derived holds the values of the fields derived from the whole
 	// card (the summary): never shown to a restricted viewer.
 	derived []string
+	// tags are the labels the object carries; the active ones count in
+	// the tag listing.
+	tags []string
 }
 
 // Corpus object ids and the two canaries.
@@ -510,6 +513,7 @@ func (f *Fixture) seed(t testing.TB) {
 	for i, spec := range contacts {
 		o, co := spec.object(at(i + 1))
 		co.seenBy = seen[spec.id]
+		co.tags = spec.tags
 		co.hidden = i >= 2
 		c.objects[spec.id] = co
 		if f.seeds(co.seenBy) {
@@ -523,6 +527,9 @@ func (f *Fixture) seed(t testing.TB) {
 	}
 	for _, o := range hidden {
 		so := corpusObject{id: o.ID, seenBy: seen[o.ID], content: o.RawContent, hidden: true}
+		for _, tag := range o.Tags {
+			so.tags = append(so.tags, tag.Label)
+		}
 		c.objects[o.ID] = so
 		if f.seeds(so.seenBy) {
 			f.create(t, o)
@@ -635,6 +642,18 @@ func (f *Fixture) VisibleObjects(p Principal) []string {
 		}
 		if slices.Contains(o.seenBy, p.Name) {
 			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// VisibleTagCounts is the tag listing p is owed: each label the objects
+// p sees carry, with how many of them carry it.
+func (f *Fixture) VisibleTagCounts(p Principal) map[string]int {
+	out := map[string]int{}
+	for _, id := range f.VisibleObjects(p) {
+		for _, tag := range f.corpus.objects[id].tags {
+			out[tag]++
 		}
 	}
 	return out

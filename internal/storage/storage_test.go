@@ -447,3 +447,7 @@ func (m *mockSearchHistoryStore) Clear(_ context.Context, _ SearchHistoryFilter)
 func (m *mockObjectStore) CountByType(_ context.Context) (map[string]int, error) {
 	return map[string]int{}, nil
 }
+
+func (m *mockObjectStore) TagCounts(_ context.Context, _ TagQuery) ([]TagCount, error) {
+	return nil, nil
+}

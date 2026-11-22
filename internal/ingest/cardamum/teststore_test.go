@@ -96,3 +96,7 @@ func (m *testStore) VectorSearchNodeAware(_ context.Context, _ storage.VectorQue
 func (m *testStore) CountByType(_ context.Context) (map[string]int, error) {
 	return map[string]int{}, nil
 }
+
+func (m *testStore) TagCounts(_ context.Context, _ storage.TagQuery) ([]storage.TagCount, error) {
+	return nil, nil
+}

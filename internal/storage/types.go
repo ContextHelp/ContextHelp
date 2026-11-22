@@ -943,3 +943,17 @@ type SearchHistoryFilter struct {
 	Limit          int
 	Offset         int
 }
+
+// TagQuery selects the tag labels TagCounts counts.
+type TagQuery struct {
+	// Prefix keeps labels starting with it, ignoring case; empty keeps all.
+	Prefix string
+	// Limit caps the rows; zero or less is no cap.
+	Limit int
+}
+
+// TagCount is a tag label and the number of active objects carrying it.
+type TagCount struct {
+	Label string `json:"label"`
+	Count int    `json:"count"`
+}

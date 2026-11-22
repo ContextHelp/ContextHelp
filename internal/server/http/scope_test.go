@@ -301,6 +301,7 @@ var uiSessionRouteSet = []string{
 	"GET /api/v1/whoami",
 	"GET /api/v1/objects",
 	"GET /api/v1/objects/facets",
+	"GET /api/v1/tags",
 	"GET /api/v1/objects/{id}",
 	"GET /api/v1/objects/{id}/related",
 	"GET /api/v1/objects/{id}/edges",

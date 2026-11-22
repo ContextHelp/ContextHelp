@@ -84,6 +84,7 @@ func httpCases() []Case {
 
 		get("/objects"),
 		get("/objects/facets"),
+		get("/tags"),
 		getAt("/objects/{id}", obj),
 		getAt("/objects/{id}/related", obj+"/related"),
 		getAt("/objects/{id}/edges", obj+"/edges"),

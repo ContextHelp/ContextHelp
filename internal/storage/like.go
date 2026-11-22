@@ -12,3 +12,10 @@ var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 func ContainsPattern(q string) string {
 	return "%" + likeEscaper.Replace(strings.ToLower(q)) + "%"
 }
+
+// PrefixPattern returns a LIKE pattern, for use with ESCAPE '\', that
+// matches any value starting with q lower-cased. The caller compares it
+// against a lower-cased column.
+func PrefixPattern(q string) string {
+	return likeEscaper.Replace(strings.ToLower(q)) + "%"
+}

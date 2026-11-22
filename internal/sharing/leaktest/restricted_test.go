@@ -232,6 +232,33 @@ func TestDedupStaysInsideAProfile(t *testing.T) {
 	assert.Contains(t, partner, ContactSarahDup)
 }
 
+// The tag listing counts the objects a viewer sees and nothing more:
+// the colleague never learns the personal tag, nor the owner-only
+// objects' share of the work tag.
+func TestTagsCountOnlyVisibleObjects(t *testing.T) {
+	f := Start(t, storageutil.NewTestDriver(t))
+	tags := func(p Principal, path string) map[string]int {
+		r := fetch(t, f, p, path)
+		require.Equal(t, http.StatusOK, r.Status, "%s: %s", p.Name, r.Body)
+		var out struct {
+			Data []storage.TagCount `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(r.Body, &out))
+		got := map[string]int{}
+		for _, tc := range out.Data {
+			got[tc.Label] = tc.Count
+		}
+		return got
+	}
+	assert.Equal(t, map[string]int{"work": 4, "client": 1, "personal": 2}, tags(f.Owner(), "/tags"))
+	assert.Equal(t, map[string]int{"work": 1, "client": 1, "personal": 2}, tags(f.Partner(), "/tags"))
+	colleague := tags(f.Colleague(), "/tags")
+	assert.Equal(t, map[string]int{"work": 1, "client": 1}, colleague)
+	assert.NotContains(t, colleague, "personal")
+	assert.Empty(t, tags(f.Colleague(), "/tags?prefix=per"), "a prefix reaches no hidden tag either")
+	assert.Equal(t, map[string]int{"personal": 2}, tags(f.Partner(), "/tags?prefix=PER"))
+}
+
 // Revoking the colleague's grant takes effect on the next request:
 // nothing listed, the visible contact gone, no restart, no cache
 // flush.

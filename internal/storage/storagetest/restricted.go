@@ -272,6 +272,15 @@ func restrictedConfObjectLists(t *testing.T, objects storage.ObjectStore, dialec
 	if counts[restrictedVisibleType] != 2 || counts[restrictedHiddenType] != 0 || len(counts) != 1 {
 		t.Errorf("CountByType = %v, want {%s: 2}", counts, restrictedVisibleType)
 	}
+	// The tag every seeded object carries counts the two visible ones:
+	// not the hidden contact, not the inbox note.
+	tags, err := objects.TagCounts(ctx, storage.TagQuery{})
+	if err != nil {
+		t.Fatalf("TagCounts: %v", err)
+	}
+	if !slices.Equal(tags, []storage.TagCount{{Label: "restricted", Count: 2}}) {
+		t.Errorf("TagCounts = %v, want [{restricted 2}]", tags)
+	}
 }
 
 // restrictedConfObjectLookups checks the content-hash and source-key

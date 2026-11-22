@@ -649,6 +649,22 @@ func (s *Service) FacetCounts(ctx context.Context, filter storage.ObjectFilter) 
 	return counts, nil
 }
 
+// TagCounts returns the tag labels starting with prefix (ignoring case;
+// empty matches all) and the number of active objects carrying each,
+// most objects first, at most limit of them. It reads through the
+// viewer's store, so a restricted viewer counts only the objects it may
+// see.
+func (s *Service) TagCounts(ctx context.Context, prefix string, limit int) ([]storage.TagCount, error) {
+	tags, err := s.Store(ctx).Objects().TagCounts(ctx, storage.TagQuery{Prefix: prefix, Limit: limit})
+	if err != nil {
+		return nil, err
+	}
+	if tags == nil {
+		tags = []storage.TagCount{}
+	}
+	return tags, nil
+}
+
 // logOrphans logs each blob a write could not delete once nothing
 // referred to it: its object is written, the blob is left behind.
 func logOrphans(op, id string, orphans []blob.Orphan) {

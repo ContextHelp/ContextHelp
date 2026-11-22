@@ -207,3 +207,7 @@ func TestRunnerSourceKeyFormat(t *testing.T) {
 func (m *memObjectStore) CountByType(_ context.Context) (map[string]int, error) {
 	return map[string]int{}, nil
 }
+
+func (m *memObjectStore) TagCounts(_ context.Context, _ storage.TagQuery) ([]storage.TagCount, error) {
+	return nil, nil
+}

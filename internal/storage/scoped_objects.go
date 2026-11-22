@@ -60,6 +60,13 @@ func (v restrictedObjects) CountByType(ctx context.Context) (map[string]int, err
 	return v.scoped.CountByType(ctx)
 }
 
+func (v restrictedObjects) TagCounts(ctx context.Context, q TagQuery) ([]TagCount, error) {
+	if v.scoped == nil {
+		return nil, refuseRead("Objects", "TagCounts", v.refuse)
+	}
+	return v.scoped.TagCounts(ctx, q)
+}
+
 func (v restrictedObjects) Update(ctx context.Context, obj *KnowledgeObject) error {
 	return v.inner.Update(ctx, obj)
 }

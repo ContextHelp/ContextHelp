@@ -460,3 +460,7 @@ func TestAlternativeEdgeExists_NotFound(t *testing.T) {
 func (s *stubObjectStore) CountByType(_ context.Context) (map[string]int, error) {
 	return map[string]int{}, nil
 }
+
+func (s *stubObjectStore) TagCounts(_ context.Context, _ storage.TagQuery) ([]storage.TagCount, error) {
+	return nil, nil
+}
