@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	psteps "github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
@@ -96,24 +97,12 @@ func hasBlobRef(obj *storage.KnowledgeObject) bool {
 
 // rejectBinaryText refuses an object whose text columns hold binary
 // (invalid UTF-8 or NUL): only content has a blob to go to, so text
-// content, sections and summaries must be text. A binary object's own
+// content, sections and summaries must be text. When the content is
+// binary and externalized by this write (exemptText), the object's own
 // text_content is left to ExternalizeBinary, which empties it.
-func rejectBinaryText(obj *storage.KnowledgeObject) error {
-	bad := func(field string) error {
+func rejectBinaryText(obj *storage.KnowledgeObject, exemptText bool) error {
+	if field := pipeline.NonTextField(obj, exemptText, false); field != "" {
 		return fmt.Errorf("%w: object %s: %s must be text (valid UTF-8, no NUL)", ErrInvalidSubmission, obj.ID, field)
-	}
-	if !blobref.NeedsBlob(obj.RawContent) && blobref.NeedsBlob(obj.TextContent) {
-		return bad("text_content")
-	}
-	for i, s := range obj.Summaries {
-		if blobref.NeedsBlob(s) {
-			return bad(fmt.Sprintf("summaries[%d]", i))
-		}
-	}
-	for i, sec := range obj.Sections {
-		if blobref.NeedsBlob(sec.Title) || blobref.NeedsBlob(sec.Content) {
-			return bad(fmt.Sprintf("sections[%d]", i))
-		}
 	}
 	return nil
 }
@@ -124,7 +113,11 @@ func rejectBinaryText(obj *storage.KnowledgeObject) error {
 // writing back what a read returned never inlines or truncates content.
 // obj itself is left as the caller has it.
 func (s *Service) storable(ctx context.Context, obj *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
-	if err := rejectBinaryText(obj); err != nil {
+	// text_content is exempt only where this write externalizes binary
+	// content (which empties it): a truncated preview swaps its content
+	// for a ref and keeps the text as it is, so it is checked there.
+	previewCut, _ := obj.Metadata[MetaContentTruncated].(bool)
+	if err := rejectBinaryText(obj, !previewCut && blobref.NeedsBlob(obj.RawContent)); err != nil {
 		return nil, err
 	}
 	cp := *obj
