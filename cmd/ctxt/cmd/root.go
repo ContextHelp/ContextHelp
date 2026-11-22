@@ -243,7 +243,7 @@ var commandGroups = map[string]string{
 
 	// INSTANCE — talk to a specific dpkms
 	"instance": "instance", "audit": "instance",
-	"auth": "instance", "principal": "instance",
+	"auth": "instance", "principal": "instance", "steward": "instance",
 
 	// MANAGEMENT — hidden by default; --help-all to show
 	"config": "management", "uri": "management", "version": "management",
