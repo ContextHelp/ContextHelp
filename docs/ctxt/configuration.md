@@ -297,6 +297,32 @@ daemon:
 
 ---
 
+# Job Executor Configuration
+
+`dpkms serve` defaults to in-process job execution (`jobs.executor: local`),
+never probing `pod`. To offload heavy Stage 1 ingestion pipelines to ephemeral
+pods, configure `jobs.executor: pod` and `jobs.pod.*` in user config:
+
+```yaml
+jobs:
+  executor: local                 # local (default) | pod
+  pod:
+    provider: ""                  # empty defers to pod's own config
+    image: ctxt-pod-worker:local
+    dpkms_bin: dpkms
+    max_inflight: 4               # set server.workers >= max_inflight
+    max_pods_per_hour: 120        # 0 = unlimited
+    max_pod_duration: 5m          # must be < jobs.stale_timeout
+    fallback_local: false
+```
+
+- Project-layer `.contexthelp/dpkms.yaml` files may not set `jobs.executor` or
+  `jobs.pod.*` (refused with exit code `2`).
+- Topic routing, cost controls, and benchmark break-even guidance:
+  [../pod-job-execution.md](../pod-job-execution.md).
+
+---
+
 # Validation Tools
 
 ```bash
