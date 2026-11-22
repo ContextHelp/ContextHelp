@@ -92,8 +92,24 @@ func (s *Service) collect(ctx context.Context) (context.Context, *notices) {
 	if s.notify == nil {
 		return ctx, nil
 	}
+	// A call made inside another's collection (Collect) adds to that
+	// collector, which reports once its own transaction has committed.
+	if c, ok := ctx.Value(noticesKey{}).(*notices); ok && c != nil {
+		return ctx, nil
+	}
 	c := &notices{}
 	return context.WithValue(ctx, noticesKey{}, c), c
+}
+
+// Collect makes the notices of the Service calls made with the returned
+// context wait for the returned function, which reports them: call it
+// once the transaction that encloses those calls has committed, and
+// never when it rolled back. A caller that files a request inside a
+// transaction of its own uses this, so no notice leaves for a change
+// that did not commit.
+func (s *Service) Collect(ctx context.Context) (context.Context, func()) {
+	ctx, c := s.collect(ctx)
+	return ctx, func() { s.flush(ctx, c) }
 }
 
 // flush reports c's notices in order; the call's transaction returned
