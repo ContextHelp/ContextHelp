@@ -109,6 +109,7 @@ Specced in ADR-066 to ADR-069, not built:
 
 ## Related
 
+- [`pod-runner.md`](pod-runner.md) — opt-in pod-backed daemon runner for `ctxd` and `dpkms` (`--runner pod --pod <name>`)
 - [`architecture/ambient-capture.md`](architecture/ambient-capture.md) — design reference for the unbuilt daemon
 - [`manual/workflows/mcp-agents.md`](manual/workflows/mcp-agents.md) — agent integration
 - [`diagrams/ambient/`](diagrams/ambient/) — design diagrams (substrate, sessions, MCP, meeting capture)

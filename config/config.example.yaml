@@ -129,6 +129,35 @@
 # Default bearer token for entries without their own.
 #  token: REPLACE_ME
 
+# Opt-in pod-backed daemon runner (ctxt capture --ambient, dpkms serve/ps/shutdown).
+# User config only: project-layer .contexthelp/{ctxt,dpkms}.yaml files may not
+# set daemon.* keys. Default runner is local (pod is never probed when local).
+#daemon:
+# local | pod
+#  runner: local
+#  pod:
+# Existing pod name to adopt (ctxt/dpkms never create or destroy pods here).
+#    name: dev-pod
+# Start a stopped pod automatically before launch (prints provider before starting).
+#    autostart: true
+#    timeouts:
+#      probe: 10s
+#      query: 15s
+#      exec: 90s
+#      lifecycle: 5m
+# Ambient daemon binary on the pod PATH (ctxt only).
+#    ctxd_bin: ctxd
+# dpkms URL as reachable from inside the pod (ctxt only; required if local endpoint is loopback).
+#    server_url: https://dpkms.example.net
+# dpkms binary on the pod PATH (dpkms only).
+#    dpkms_bin: dpkms
+# Persistent data directory inside the pod (dpkms only; required when runner is pod).
+#    data_dir: /workspace/contexthelp
+# Fixed HTTP port bound by dpkms inside the pod (dpkms only).
+#    dpkms_port: 8080
+# Local loopback port for the persistent dpkms forward (0 picks a free port each launch).
+#    local_port: 0
+
 # Job worker pool (dpkms serve).
 #jobs:
 #  poll_interval: 500ms
