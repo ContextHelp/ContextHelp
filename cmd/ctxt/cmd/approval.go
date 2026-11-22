@@ -258,18 +258,28 @@ func renderApprovals(cmd *cobra.Command, w io.Writer, list []approvalReply) erro
 	return nil
 }
 
-func runApprovalList(cmd *cobra.Command, _ []string) error {
+// listQuery builds a listing's query from the string flags named and
+// --limit, refusing a negative limit.
+func listQuery(cmd *cobra.Command, flags ...string) (url.Values, error) {
 	q := url.Values{}
-	for _, name := range []string{"kind", "state"} {
+	for _, name := range flags {
 		if v, _ := cmd.Flags().GetString(name); strings.TrimSpace(v) != "" {
 			q.Set(name, strings.TrimSpace(v))
 		}
 	}
 	if n, _ := cmd.Flags().GetInt("limit"); n != 0 {
 		if n < 0 {
-			return output.UsageError("--limit must be positive")
+			return nil, output.UsageError("--limit must be positive")
 		}
 		q.Set("limit", strconv.Itoa(n))
+	}
+	return q, nil
+}
+
+func runApprovalList(cmd *cobra.Command, _ []string) error {
+	q, err := listQuery(cmd, "kind", "state")
+	if err != nil {
+		return err
 	}
 	client, err := newDpkmsClient(cmd, dpkmsclient.DefaultTimeout)
 	if err != nil {
