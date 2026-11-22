@@ -10,7 +10,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
+	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blobref"
@@ -27,6 +29,12 @@ func runBinaryJob(t *testing.T, driver storage.StorageDriver, id string, bin []b
 // runBinaryJobOn is runBinaryJob under a named pipeline and source.
 func runBinaryJobOn(t *testing.T, driver storage.StorageDriver, id string, bin []byte, pipelineName, source string) *storage.KnowledgeObject {
 	t.Helper()
+	return runBinaryJobIn(t, builtins.Registry(), driver, id, bin, pipelineName, source)
+}
+
+// runBinaryJobIn is runBinaryJobOn against the given pipeline registry.
+func runBinaryJobIn(t *testing.T, reg pipeline.Registry, driver storage.StorageDriver, id string, bin []byte, pipelineName, source string) *storage.KnowledgeObject {
+	t.Helper()
 	q := NewQueue(driver.Jobs())
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -38,7 +46,7 @@ func runBinaryJobOn(t *testing.T, driver storage.StorageDriver, id string, bin [
 	job.Pipeline = pipelineName
 	require.NoError(t, q.Enqueue(ctx, job))
 
-	pool := NewWorkerPool(q, builtins.Registry(), driver, 1, nil, defaultTestJobsCfg())
+	pool := NewWorkerPool(q, reg, driver, 1, nil, defaultTestJobsCfg())
 	go func() {
 		for ctx.Err() == nil {
 			if got, _ := q.Get(ctx, id); got != nil && (got.Status == storage.JobCompleted || got.Status == storage.JobFailed) {
@@ -182,15 +190,28 @@ func TestWorkerBinaryOnTextPipelineLeavesNoBinaryInProjection(t *testing.T) {
 	}
 }
 
+// recordingOCR is an OCR engine that keeps the bytes it was handed.
+type recordingOCR struct{ got []byte }
+
+func (r *recordingOCR) Name() string { return "recording" }
+func (r *recordingOCR) Extract(_ context.Context, data []byte, _ string) (*providers.OCRResult, error) {
+	r.got = append([]byte(nil), data...)
+	return &providers.OCRResult{Text: "invoice total forty two euros", Confidence: 0.99}, nil
+}
+
 // Steps that need the bytes (OCR) still get them, and what they extract
-// is text.
+// is text. The registry carries its own fake engine, so image.ocr is
+// registered whether or not the host has tesseract.
 func TestWorkerBinaryReachesOCRStep(t *testing.T) {
 	driver := storageutil.NewTestDriver(t)
 	bin := pngLike(600)
-	obj := runBinaryJobOn(t, driver, "bin-ocr", bin, "image.ocr", "/tmp/scan.png")
+	ocr := &recordingOCR{}
+	reg := builtins.ConfiguredRegistryWithOpts(builtins.BuildOpts{OCR: ocr})
+	obj := runBinaryJobIn(t, reg, driver, "bin-ocr", bin, "image.ocr", "/tmp/scan.png")
 	requireNoBinaryProjection(t, obj)
 	require.Equal(t, "image/png", obj.ContentType)
-	require.Contains(t, obj.Metadata, "ocr_provider", "the ocr step did not run on the bytes")
+	require.Equal(t, "recording", obj.Metadata["ocr_provider"], "the ocr step did not run on the bytes")
+	require.Equal(t, bin, ocr.got, "the ocr engine did not get the exact bytes")
 }
 
 // The dedup hash is over the bytes, not the blob ref: the same binary
