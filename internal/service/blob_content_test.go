@@ -13,6 +13,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/retrieval"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blobref"
 	"github.com/stretchr/testify/require"
 )
 
@@ -518,4 +519,37 @@ func TestUpdateObjectRejectsBinaryTextFields(t *testing.T) {
 			require.Empty(t, got.Sections)
 		})
 	}
+}
+
+// A binary preview written back with binary text_content is refused: the
+// truncated-preview path swaps content for its ref and never empties the
+// text, so the exemption for binary content must not apply there.
+func TestUpdateObjectFromBinaryPreviewRefusesBinaryText(t *testing.T) {
+	svc := blobTestService(t)
+	ctx := ownerCtx()
+	bin := strings.Repeat("\x89PNG\x00\xff\xfe\x80", 100)
+	draft := &storage.KnowledgeObject{
+		ID: "obj-bin", Type: "image", RawContent: bin, ContentType: "image/png",
+		Source:    "test://obj-bin",
+		CreatedAt: time.Now().UTC().Truncate(time.Second), UpdatedAt: time.Now().UTC().Truncate(time.Second),
+	}
+	out, err := psteps.ExternalizeBinary(ctx, svc.store.Blobs(), draft)
+	require.NoError(t, err)
+	require.NoError(t, svc.store.Objects().Create(ctx, out))
+
+	objs, _, err := svc.ListObjects(ctx, storage.ObjectFilter{Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, objs, 1)
+	preview := objs[0]
+	require.Equal(t, true, preview.Metadata[MetaContentTruncated])
+	require.True(t, blobref.NeedsBlob(preview.RawContent), "preview content is binary")
+
+	preview.TextContent = "\x00\xff\xfe binary text"
+	err = svc.UpdateObject(ctx, preview)
+	require.ErrorIs(t, err, ErrInvalidSubmission)
+	require.Contains(t, err.Error(), "text_content")
+
+	got, err := svc.GetObject(ctx, "obj-bin")
+	require.NoError(t, err)
+	require.Equal(t, bin, got.RawContent)
 }
