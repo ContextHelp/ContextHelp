@@ -117,7 +117,7 @@ func TestUndeclaredUTF8StrayBytesVersusLegacy(t *testing.T) {
 		want    string
 		guessed bool
 	}{
-		{"caf\xc3\xa9 \xe9t\xe9", "café �t�", true},
+		{"caf\xc3\xa9 \xe9t\xe9", "cafÃ© été", true}, // ambiguous: lossless Windows-1252
 		{"hello \xe9", "hello é", true},
 		{"\xe9t\xe9", "été", true},
 		{"caf\xc3\xa9 ok", "café ok", false},
@@ -126,6 +126,32 @@ func TestUndeclaredUTF8StrayBytesVersusLegacy(t *testing.T) {
 		got, guessed := undeclaredUTF8([]byte(c.in))
 		if got != c.want || guessed != c.guessed {
 			t.Errorf("undeclaredUTF8(%q) = %q, %v; want %q, %v", c.in, got, guessed, c.want, c.guessed)
+		}
+	}
+}
+
+// Short legacy CJK text is often half-valid UTF-8 by chance. It must take
+// the Windows-1252 path (one byte, one rune: recoverable), never have its
+// invalid bytes replaced with U+FFFD.
+func TestUndeclaredShortLegacyCJKIsNotReplaced(t *testing.T) {
+	cases := map[string]string{
+		"gbk 说明":        "\xcb\xb5\xc3\xf7",
+		"gbk 日本":        "\xc8\xd5\xb1\xbe",
+		"shift-jis 繁體字": "\x94\xc9\xe9\x93\x8e\x9a",
+		"euc-kr 한글":     "\xc7\xd1\xb1\xdb",
+		"euc-kr 안녕":     "\xbe\xc8\xb3\xe7",
+	}
+	for name, in := range cases {
+		got, guessed := undeclaredUTF8([]byte(in))
+		if strings.ContainsRune(got, utf8.RuneError) {
+			t.Errorf("%s: %q replaced bytes with U+FFFD: %q", name, in, got)
+		}
+		if want := decodeWindows1252([]byte(in)); got != want || !guessed {
+			t.Errorf("%s: got %q, %v; want Windows-1252 %q, true", name, got, guessed, want)
+		}
+		back, err := charmap.Windows1252.NewEncoder().String(got)
+		if err != nil || back != in {
+			t.Errorf("%s: bytes not recoverable: %q, %v", name, back, err)
 		}
 	}
 }

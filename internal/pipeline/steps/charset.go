@@ -39,11 +39,16 @@ func declaredCharset(draft *storage.KnowledgeObject) string {
 
 // mostlyUTF8 reports whether data reads as UTF-8 with stray bytes (a
 // truncated tail, a pasted Latin-1 character) rather than as a legacy
-// charset: it holds at least one valid multi-byte UTF-8 sequence and no
-// more invalid bytes than valid multi-byte ones. Legacy 8-bit text
-// (Windows-1252, GBK, Shift-JIS) has no valid multi-byte sequence or is
-// mostly invalid as UTF-8; ASCII with high bytes and no valid sequence is
-// never mostly UTF-8, so it reads as Windows-1252.
+// charset: it holds at least one valid multi-byte UTF-8 sequence and its
+// invalid bytes are at most 10% of its non-ASCII bytes. Legacy 8-bit text
+// (Windows-1252, GBK, Big5, Shift-JIS, EUC-JP, EUC-KR) has no valid
+// multi-byte sequence or is mostly invalid as UTF-8.
+//
+// The threshold is deliberately strict. Short legacy CJK text is often
+// half-valid by chance, and replacing its invalid bytes with U+FFFD loses
+// them for good, while the Windows-1252 fallback is a one-to-one byte
+// mapping that stays recoverable. When ambiguous, the lossless fallback
+// wins over replacement.
 func mostlyUTF8(data []byte) bool {
 	var valid, invalid int
 	for i := 0; i < len(data); {
@@ -59,7 +64,7 @@ func mostlyUTF8(data []byte) bool {
 		}
 		i += size
 	}
-	return valid > 0 && invalid <= valid
+	return valid > 0 && invalid*10 <= valid+invalid
 }
 
 // undeclaredUTF8 reads data of no known charset as UTF-8 text. Valid

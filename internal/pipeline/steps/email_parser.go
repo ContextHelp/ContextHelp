@@ -272,7 +272,7 @@ func parseEML(raw string, maxBodyBytes int) (EmailMessage, error) {
 	topCTE := strings.ToLower(h.Get("Content-Transfer-Encoding"))
 	bodyBytes = emailDecodeCTE(topCTE, bodyBytes)
 
-	extractEmailBodies(mediaType, params, bodyBytes, &msg)
+	extractEmailBodies(mediaType, params, bodyBytes, &msg, 0)
 	return msg, nil
 }
 
@@ -312,9 +312,18 @@ func trimToRuneBoundary(b []byte) []byte {
 // not, is recorded as an attachment. A part is decoded from the charset
 // it declares, else read as undeclared text. A malformed part (a message
 // cut inside a part header) ends the walk of its multipart and keeps the
-// parts already read.
-func extractEmailBodies(mediaType string, params map[string]string, bodyBytes []byte, msg *EmailMessage) {
+// parts already read. depth counts the multipart and message/rfc822 levels
+// entered; at maxEmailDepth a further one is recorded as an attachment, not
+// walked, so a hostile nesting chain costs bounded memory and time.
+func extractEmailBodies(mediaType string, params map[string]string, bodyBytes []byte, msg *EmailMessage, depth int) {
+	nested := strings.HasPrefix(mediaType, "multipart/") || mediaType == mediaMessageRFC822
 	switch {
+	case nested && depth >= maxEmailDepth:
+		msg.Attachments = append(msg.Attachments, AttachmentMeta{
+			ContentType: cleanText(mediaType),
+			SizeBytes:   len(bodyBytes),
+		})
+
 	case strings.HasPrefix(mediaType, "multipart/"):
 		boundary := params["boundary"]
 		if boundary == "" {
@@ -336,11 +345,11 @@ func extractEmailBodies(mediaType string, params map[string]string, bodyBytes []
 			if err != nil {
 				continue
 			}
-			extractPart(part, partBytes, msg)
+			extractPart(part, partBytes, msg, depth+1)
 		}
 
 	case mediaType == mediaMessageRFC822:
-		extractForwarded(bodyBytes, msg)
+		extractForwarded(bodyBytes, msg, depth+1)
 
 	case !isBodyPart(mediaType, params):
 		msg.Attachments = append(msg.Attachments, AttachmentMeta{
@@ -365,7 +374,7 @@ func extractEmailBodies(mediaType string, params map[string]string, bodyBytes []
 // a forwarded message into the bodies it carries, a nested multipart
 // recursively, anything else (or any part marked an attachment) into an
 // attachment record.
-func extractPart(part *multipart.Part, partBytes []byte, msg *EmailMessage) {
+func extractPart(part *multipart.Part, partBytes []byte, msg *EmailMessage, depth int) {
 	partCT, g := headerText(part.Header.Get("Content-Type"))
 	msg.CharsetGuessed = msg.CharsetGuessed || g
 	if partCT == "" {
@@ -403,8 +412,12 @@ func extractPart(part *multipart.Part, partBytes []byte, msg *EmailMessage) {
 		return
 	}
 
-	extractEmailBodies(partMedia, partParams, decoded, msg)
+	extractEmailBodies(partMedia, partParams, decoded, msg, depth)
 }
+
+// maxEmailDepth caps the nesting of multipart and message/rfc822 levels
+// walked, shared by both so any mix of them is bounded.
+const maxEmailDepth = 12
 
 // mediaMessageRFC822 is the media type of an embedded (forwarded) message.
 const mediaMessageRFC822 = "message/rfc822"
@@ -414,7 +427,7 @@ const mediaMessageRFC822 = "message/rfc822"
 // one; otherwise the inner text follows it under a line naming the
 // forwarded From and Subject, so both stay searchable. A part that does
 // not parse as a message is dropped.
-func extractForwarded(raw []byte, msg *EmailMessage) {
+func extractForwarded(raw []byte, msg *EmailMessage, depth int) {
 	m, err := mail.ReadMessage(bytes.NewReader(raw))
 	if err != nil {
 		slog.Debug("email_parser: embedded message unreadable, skipped", "err", err)
@@ -431,7 +444,7 @@ func extractForwarded(raw []byte, msg *EmailMessage) {
 	}
 	body, _ := io.ReadAll(m.Body)
 	body = emailDecodeCTE(strings.ToLower(m.Header.Get("Content-Transfer-Encoding")), body)
-	extractEmailBodies(mediaType, params, body, &inner)
+	extractEmailBodies(mediaType, params, body, &inner, depth)
 
 	from, g1 := headerText(m.Header.Get("From"))
 	subject, g2 := headerText(m.Header.Get("Subject"))
