@@ -413,7 +413,7 @@ The server never evaluates data to classify: it compares the change against the 
 | same, membership exists | Widening if the new expiry is later than the current one or removes it; narrowing if it is earlier; neutral if equal. | `p` |
 | `DELETE /share/audiences/{a}/members/{p}` | Narrowing. | |
 | `POST /share/policies`, `POST /share/templates/{name}` | Neutral: a policy reaches no viewer until granted. | |
-| `PUT /share/policies/{p}` | Neutral if no grant of `p` is in force; else narrowing or widening by the spec comparison. A pending grant of `p` records `p`'s version as a precondition, so an edit makes it `stale` instead of widening it silently. | Members of every audience holding a grant of `p` in force |
+| `PUT /share/policies/{p}` | Neutral if no grant of `p` is in force and no key is bound to `p` (a bound key sees its principal's view intersected with `p`); else narrowing or widening by the spec comparison. A pending grant of `p` records `p`'s version as a precondition, so an edit makes it `stale` instead of widening it silently; the keys bound to `p` are recorded too, so a bind or unbind while a policy edit is pending makes it `stale`. | Members of every audience holding a grant of `p` in force, and the principal of every key bound to `p` |
 | `POST /share/grants` | **Widening**, always: the audience's members gain the policy's rows, and its fields on every object they already see through another grant that it covers too. | Members of the audience, local and external |
 | `DELETE /share/grants/{g}` | Narrowing. | |
 | `PUT /principals/{id}/ceiling` | Narrowing if the new `deny_classes` is a superset of the current one; neutral if equal; **widening** otherwise. | `id` |

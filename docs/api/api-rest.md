@@ -1087,7 +1087,7 @@ Get registry details and capabilities.
 
 ## Approvals
 
-Some changes take effect only once someone other than the person who asked accepts them (ADR-083 §9). Each one is a request on the approval queue: who filed it, a reason, the operation frozen with a digest, how many approvals it needs and when it expires (`approvals.pending_ttl`, 72 hours by default). One kind is registered, `steward.grant` (ADR-083 §2), and it refuses every request unless `steward.enabled` is set; `approvals.steward.required` sets its approval count (1 by default). `POST /steward/grants` files a `steward.grant` request (see [Steward access](#steward-access) below); each request answers `202 Accepted` with the request record and `Location: /api/v1/approvals/{id}`.
+Some changes take effect only once someone other than the person who asked accepts them (ADR-083 §9). Each one is a request on the approval queue: who filed it, a reason, the operation frozen with a digest, how many approvals it needs and when it expires (`approvals.pending_ttl`, 72 hours by default). Two kinds are registered. `steward.grant` (ADR-083 §2) refuses every request unless `steward.enabled` is set; `approvals.steward.required` sets its approval count (1 by default). `share.change` (ADR-083 §10 B) is a sharing change by an administrator other than the owner that could widen someone's view; `approvals.share.required` sets its approval count (1 by default). `POST /steward/grants` files a `steward.grant` request (see [Steward access](#steward-access) below); each request answers `202 Accepted` with the request record and `Location: /api/v1/approvals/{id}`.
 
 Every route below takes `write:self`, which every role and every browser session holds. Who may see or decide a request is the request's own rule: its requester, its subject, the eligible approvers of its kind, and the owner, while the key or session it acts with holds an approval scope (an owner key narrowed below them sees and decides nothing). A request you may not see answers `404`, the same as one that does not exist.
 
@@ -1095,6 +1095,22 @@ Every route below takes `write:self`, which every role and every browser session
 - `GET /approvals/{id}`: one request.
 - `POST /approvals/{id}/approve` and `POST /approvals/{id}/reject`, body `{"payload_digest": "...", "note": "..."}`: send the digest of the payload you reviewed; a different one is refused. The requester, the subject and anyone the change benefits cannot decide, and each person decides once. The last approval applies the change and answers with `state: approved`; if what the request was filed against changed in the meantime, it ends `stale` instead and nothing is applied. One rejection rejects the request.
 - `DELETE /approvals/{id}`: the requester or the owner withdraws a pending request.
+
+### Sharing changes that wait for approval
+
+The owner's calls always apply at once, and so does `PUT /self/keys/{key}/policy`, since a key never sees more than its own principal. A change the server cannot show to be neutral or narrowing waits, whatever the route. Each route that files a request answers `202 Accepted` with the request record in the body and `Location: /api/v1/approvals/{id}`, and writes nothing until the request is approved. For any other caller, the sharing routes answer as follows.
+
+| Route | Applied at once | Answers `202` and waits |
+|---|---|---|
+| `POST /share/audiences`, `POST /share/policies`, `POST /share/templates/{name}` | always | never |
+| `PUT /share/audiences/{audience}/members/{principal}` | the expiry is the same or earlier than the current one | a new membership, or an expiry that is later or removed |
+| `DELETE /share/audiences/{audience}/members/{principal}`, `DELETE /share/grants/{grant}` | always | never |
+| `PUT /share/policies/{policy}` | no grant of the policy is in force and no key is bound to it, or the new document shows no more | a grant is in force or a key is bound, and the new document shows more |
+| `POST /share/grants` | never | always |
+| `PUT /principals/{id}/ceiling` | the new list includes every class the old one had | a class is dropped from the list |
+| `PUT /share/keys/{key}/policy` | the key was unbound, or the new policy shows no more than the old one | the key is unbound, or the new policy shows more |
+
+A request carries the change as its `payload` (ids, not names) and the state it was filed against as its `preconditions`. Approving it applies the change as the requester's, in the same transaction as the last approval. Approval needs `approve:shares` (or the owner); the requester and anyone the change benefits cannot decide. On an instance with no approval mechanism, a change that would wait answers `501 NOT_IMPLEMENTED` and writes nothing.
 
 | Status | Code | When |
 |---|---|---|
