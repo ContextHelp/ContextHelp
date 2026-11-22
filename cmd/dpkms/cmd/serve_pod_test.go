@@ -8,8 +8,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/viper"
 	"hop.top/kit/go/console/output"
 
+	"github.com/ideacrafterslabs/ctxt/internal/cli/cliformat"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 )
 
@@ -114,6 +116,16 @@ func TestDpkmsPodGuarantee5_ProjectLayerRefused(t *testing.T) {
 }
 
 func TestDpkmsPodL4_FakePodCLI_PSAndShutdown(t *testing.T) {
+	prevFmt := viper.GetString("format")
+	viper.Set("format", "table")
+	if f := rootCmd.PersistentFlags().Lookup("format"); f != nil {
+		prevChanged := f.Changed
+		f.Changed = false
+		t.Cleanup(func() { f.Changed = prevChanged })
+	}
+	cliformat.Bind(rootCmd)
+	t.Cleanup(func() { viper.Set("format", prevFmt) })
+
 	binDir := t.TempDir()
 	fakePod := `#!/bin/sh
 case "$1" in
