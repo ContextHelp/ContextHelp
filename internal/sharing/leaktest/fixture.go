@@ -63,6 +63,9 @@ type Fixture struct {
 	restricted []Principal
 	// admins hold the admin bundle under no grant (fixture_admin.go).
 	admins []Principal
+	// stewards are the steward elevated into each of its grants
+	// (fixture_steward.go); empty unless WithStewards.
+	stewards []Principal
 	// visibleTo, when set, names the principal the fixture was seeded
 	// for: only the rows that principal sees exist. "" seeds everything.
 	visibleTo string
@@ -75,6 +78,7 @@ type Option func(*options)
 type options struct {
 	visibleTo string
 	authority *bosaccess.Peer
+	stewards  bool
 }
 
 // WithAuthority gives the instance the access state of an external
@@ -146,15 +150,26 @@ func Start(t testing.TB, driver storage.StorageDriver, opts ...Option) *Fixture 
 	if o.authority != nil {
 		dopts = append(dopts, dpkmstest.WithAuthority(o.authority))
 	}
+	var stewards *stewardAuth
+	if o.stewards {
+		stewards = newStewardAuth(driver)
+		dopts[0] = dpkmstest.WithAuthMethods(stewards.methods()...)
+	}
 	srv := dpkmstest.Start(t, driver, dopts...)
 	f := &Fixture{
 		Server:    srv,
 		owner:     Principal{Name: NameOwner, ID: storage.OwnerPrincipal, Token: srv.Token(dpkmstest.RoleAdmin)},
 		visibleTo: o.visibleTo,
 	}
+	if stewards != nil {
+		f.owner.Token = mintOwnerKey(t, driver)
+	}
 	f.seedPrincipals(t)
 	f.seedAdmins(t)
 	f.seed(t)
+	if stewards != nil {
+		f.seedStewards(t, stewards)
+	}
 	f.serveGRPC(t)
 	return f
 }
@@ -800,4 +815,15 @@ func RPCResult(msgs []proto.Message, err error) Result {
 		body.WriteString(st.Message())
 	}
 	return Result{Code: st.Code(), Body: body.Bytes()}
+}
+
+// mintOwnerKey mints an owner key for a fixture whose chain the test
+// owns (dpkmstest.WithAuthMethods hands out no tokens).
+func mintOwnerKey(t testing.TB, driver storage.StorageDriver) string {
+	t.Helper()
+	secret, _, err := authn.NewKeysOver(driver.Auth(), nil).Mint(context.Background(), authn.MintKey{PrincipalID: storage.OwnerPrincipal, Name: "leaktest owner"})
+	if err != nil {
+		t.Fatalf("leaktest: mint the owner key: %v", err)
+	}
+	return secret
 }
