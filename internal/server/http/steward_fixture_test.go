@@ -116,6 +116,7 @@ type stewardFlow struct {
 	audit     *sharing.AuditWriter
 	auditDown atomic.Bool
 	ts        *httptest.Server
+	svc       *service.Service
 	// keys holds the API keys of sfOwner and sfDevice; cookies the
 	// browser session secret of each person.
 	keys    map[string]string
@@ -139,6 +140,8 @@ func newStewardFlow(t *testing.T, newDriver func(*testing.T) storage.StorageDriv
 	sec.AddHandler(f.alerts.record)
 
 	svc := service.New(drv, jobs.NewQueue(drv.Jobs()), builtins.Registry(), search.NewEngine(drv), "", nil)
+	svc.Cfg.Server.EventsHeartbeat = 300 * time.Millisecond
+	f.svc = svc
 	svc.Viewers().WithClock(f.clock.now).WithSteward(steward.ResolverOptions(settings))
 	keys := authn.NewKeys(authn.NewLocalKeys(drv.Auth().KV(), f.clock.now), drv.Auth(), f.clock.now)
 	var err error
@@ -214,6 +217,7 @@ func newStewardFlow(t *testing.T, newDriver func(*testing.T) storage.StorageDriv
 		Stewards:      stewards,
 		Audit:         f.audit,
 		StrictSharing: true,
+		SSE:           SSEConfig{RecheckTTL: time.Nanosecond},
 	}))
 	t.Cleanup(f.ts.Close)
 	return f

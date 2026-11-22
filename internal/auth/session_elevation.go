@@ -107,6 +107,15 @@ func (s *Sessions) elevation(ctx context.Context, sess *storage.UISession, now t
 	if grant == "" {
 		return "", nil
 	}
+	if readOnlyElevation(ctx) {
+		// An observer of the elevation (a stream's recheck): it names a
+		// live grant but never refreshes it nor ends an idle one, so
+		// watching does not keep an elevation alive.
+		if sess.StewardActiveAt == nil || !now.Before(sess.StewardActiveAt.Add(s.opts.ElevationIdle)) {
+			return "", nil
+		}
+		return grant, nil
+	}
 	if sess.StewardActiveAt == nil || !now.Before(sess.StewardActiveAt.Add(s.opts.ElevationIdle)) {
 		if _, err := s.endElevation(ctx, sess.PrincipalID, sess.ID, grant, ElevationEndedIdle); err != nil {
 			return "", err
@@ -132,4 +141,19 @@ func (s *Sessions) notify(ctx context.Context, e ElevationEvent) {
 	if s.opts.OnElevation != nil {
 		s.opts.OnElevation(ctx, e)
 	}
+}
+
+type readOnlyElevationKey struct{}
+
+// WithReadOnlyElevation marks ctx so that authenticating a browser
+// session reports its elevation without refreshing or ending it. A
+// long-lived request that re-checks its credential uses it: only a
+// request of the steward's own is activity under the elevation.
+func WithReadOnlyElevation(ctx context.Context) context.Context {
+	return context.WithValue(ctx, readOnlyElevationKey{}, true)
+}
+
+func readOnlyElevation(ctx context.Context) bool {
+	v, _ := ctx.Value(readOnlyElevationKey{}).(bool)
+	return v
 }
