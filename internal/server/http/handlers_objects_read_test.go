@@ -180,6 +180,8 @@ func RunObjectReadSuite(t *testing.T, newDriver func(*testing.T) storage.Storage
 	t.Run("ListChangedAfter", func(t *testing.T) { testListChangedAfter(t, newDriver) })
 	t.Run("Facets", func(t *testing.T) { testFacets(t, env) })
 	t.Run("FacetsRejectsBadParams", func(t *testing.T) { testFacetsRejectsBadParams(t, env) })
+	t.Run("Tags", func(t *testing.T) { testTags(t, env) })
+	t.Run("TagsRejectsBadParams", func(t *testing.T) { testTagsRejectsBadParams(t, env) })
 	t.Run("Related", func(t *testing.T) { testRelated(t, env) })
 	t.Run("RelatedRejectsBadParams", func(t *testing.T) { testRelatedRejectsBadParams(t, env) })
 	t.Run("Roles", func(t *testing.T) { testObjectReadRoles(t, env) })
@@ -470,6 +472,63 @@ func testFacetsRejectsBadParams(t *testing.T, env objectReadEnv) {
 	}
 }
 
+func (e objectReadEnv) tags(t *testing.T, rawQuery string) []storage.TagCount {
+	t.Helper()
+	code, body := e.get(t, "/api/v1/tags?"+rawQuery, dpkmstest.RoleAdmin)
+	require.Equal(t, http.StatusOK, code, "GET /tags?%s: %s", rawQuery, body)
+	var out struct {
+		Data []storage.TagCount `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(body, &out))
+	require.NotNil(t, out.Data, "data must be an array, not null: %s", body)
+	return out.Data
+}
+
+// The corpus's active objects carry api and ux twice, design and
+// "machine learning" once; the inbox, discarded and raw ones no tags.
+func testTags(t *testing.T, env objectReadEnv) {
+	api, ux := storage.TagCount{Label: "api", Count: 2}, storage.TagCount{Label: "ux", Count: 2}
+	design, ml := storage.TagCount{Label: "design", Count: 1}, storage.TagCount{Label: "machine learning", Count: 1}
+	cases := []struct {
+		query string
+		want  []storage.TagCount
+	}{
+		{"", []storage.TagCount{api, ux, design, ml}},
+		{"limit=2", []storage.TagCount{api, ux}},
+		{"limit=3", []storage.TagCount{api, ux, design}},
+		{"limit=100", []storage.TagCount{api, ux, design, ml}},
+		{"prefix=u", []storage.TagCount{ux}},
+		{"prefix=UX", []storage.TagCount{ux}},
+		{"prefix=" + url.QueryEscape("Machine L"), []storage.TagCount{ml}},
+		{"prefix=a&limit=1", []storage.TagCount{api}},
+		{"prefix=x", []storage.TagCount{}},
+		{"prefix=pi", []storage.TagCount{}},
+		{"prefix=" + url.QueryEscape("%"), []storage.TagCount{}},
+	}
+	for _, tc := range cases {
+		assert.Equal(t, tc.want, env.tags(t, tc.query), "tags ?%s", tc.query)
+	}
+	_, body := env.get(t, "/api/v1/tags?prefix=u", dpkmstest.RoleAdmin)
+	assert.JSONEq(t, `{"data":[{"label":"ux","count":2}]}`, string(body))
+}
+
+func testTagsRejectsBadParams(t *testing.T, env objectReadEnv) {
+	cases := []struct{ query, param string }{
+		{"limit=0", "limit"},
+		{"limit=101", "limit"},
+		{"limit=-1", "limit"},
+		{"limit=x", "limit"},
+		{"prefix=", "prefix"},
+		{"prefix=a&prefix=b", "prefix"},
+		{"offset=1", "offset"},
+		{"tagged=ux", "tagged"},
+	}
+	for _, tc := range cases {
+		code, body := env.get(t, "/api/v1/tags?"+tc.query, dpkmstest.RoleAdmin)
+		assertInvalidParam(t, code, body, tc.param)
+	}
+}
+
 func (e objectReadEnv) related(t *testing.T, id, rawQuery string) []string {
 	t.Helper()
 	code, body := e.get(t, "/api/v1/objects/"+id+"/related?"+rawQuery, dpkmstest.RoleAdmin)
@@ -517,6 +576,7 @@ func testObjectReadRoles(t *testing.T, env objectReadEnv) {
 	paths := []string{
 		"/api/v1/objects?tagged=ux",
 		"/api/v1/objects/facets?tagged=ux",
+		"/api/v1/tags?prefix=u",
 		"/api/v1/objects/o-a/related?depth=2",
 	}
 	for _, p := range paths {

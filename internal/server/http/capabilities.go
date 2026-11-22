@@ -71,6 +71,7 @@ var routeAccessTable = map[string]routeAccess{
 
 	"GET /objects":                 routeObjects,
 	"GET /objects/facets":          routeObjects,
+	"GET /tags":                    routeObjects,
 	"GET /objects/{id}":            routeObjects,
 	"GET /objects/{id}/related":    routeObjects,
 	"PATCH /objects/{id}":          routeObjects,

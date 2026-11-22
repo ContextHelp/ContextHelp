@@ -3,6 +3,7 @@ package leaktest
 import (
 	"encoding/json"
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -10,6 +11,7 @@ import (
 
 	grpcserver "github.com/ideacrafterslabs/ctxt/internal/server/grpc"
 	httpserver "github.com/ideacrafterslabs/ctxt/internal/server/http"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 // DefaultCheck is the leak check of every case (ADR-080, "Testing"):
@@ -115,6 +117,25 @@ func AssertNoLeak(t testing.TB, f *Fixture, p Principal, route string, r Result)
 	}
 }
 
+// assertTagCounts checks the tag listing names the labels of the visible
+// objects with their exact counts.
+func assertTagCounts(t testing.TB, f *Fixture, p Principal, route string, r Result) {
+	t.Helper()
+	var out struct {
+		Data []storage.TagCount `json:"data"`
+	}
+	if json.Unmarshal(r.Body, &out) != nil {
+		return
+	}
+	got := map[string]int{}
+	for _, tc := range out.Data {
+		got[tc.Label] = tc.Count
+	}
+	if want := f.VisibleTagCounts(p); !reflect.DeepEqual(got, want) {
+		t.Errorf("%s as %s: tag counts %v, want %v", route, p.Name, got, want)
+	}
+}
+
 // assertTotals checks the routes that count objects count the visible
 // ones exactly.
 func assertTotals(t testing.TB, f *Fixture, p Principal, route string, r Result) {
@@ -142,6 +163,8 @@ func assertTotals(t testing.TB, f *Fixture, p Principal, route string, r Result)
 				t.Errorf("%s as %s: facets sum to %d (%v), want %d", route, p.Name, sum, out.Data, want)
 			}
 		}
+	case HTTPKey(http.MethodGet, "/tags"):
+		assertTagCounts(t, f, p, route, r)
 	case HTTPKey(http.MethodGet, "/stats"):
 		var out struct {
 			Objects int `json:"knowledge_objects"`

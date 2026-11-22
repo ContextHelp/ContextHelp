@@ -124,6 +124,7 @@ Core endpoints:
 - `GET /events` (SSE)
 - `GET /objects`
 - `GET /objects/facets`
+- `GET /tags`
 - `GET /objects/{id}`
 - `GET /objects/{id}/related`
 - `PATCH /objects/{id}`
@@ -437,6 +438,23 @@ Takes the filter parameters of `GET /objects` (`type` through `until`), with the
 ```
 
 No match returns `{"data": {}}`.
+
+### `GET /tags`
+
+Lists the tag labels in use with the number of objects carrying each, for tag autocomplete. Only active objects count, and an object counts once per label. A restricted viewer's counts cover only the objects it may see, as `GET /objects/facets` does, so it never learns a label from an object it cannot. Scope: `read:objects`.
+
+| Parameter | Values | Default |
+|---|---|---|
+| `prefix` | keep labels starting with it, ignoring ASCII case; omit for every label | none |
+| `limit` | 1 to 100 | 20 |
+
+Ordered by count, highest first, then by label (byte order). An empty `prefix`, a `limit` outside 1 to 100, a repeated parameter or an unknown one is 400 `INVALID_PARAM` naming it. Labels are matched and returned as stored, so `Go` and `go` are two entries.
+
+```json
+{"data": [{"label": "api", "count": 2}, {"label": "ux", "count": 2}, {"label": "design", "count": 1}]}
+```
+
+No match returns `{"data": []}`.
 
 ### `GET /objects/{id}/related`
 

@@ -212,6 +212,12 @@ type ObjectStore interface {
 	// CountByType counts every stored object, whatever its status, by
 	// type. Types with no object are absent.
 	CountByType(ctx context.Context) (map[string]int, error)
+	// TagCounts counts the active objects carrying each tag label whose
+	// label starts with q.Prefix, ignoring case, most objects first and
+	// label order among equals, at most q.Limit rows when it is positive.
+	// An object counts once per label. A scoped store counts only the
+	// objects its viewer may see.
+	TagCounts(ctx context.Context, q TagQuery) ([]TagCount, error)
 	Update(ctx context.Context, obj *KnowledgeObject) error
 	// TransitionStatus moves object id from status from to status to and
 	// sets updated_at to at, in one conditional write: nothing changes
