@@ -53,20 +53,22 @@ type fixture struct {
 	svc   *approval.Service
 	kind  *approvaltest.Kind
 	clock *clock
+	// notices records what the service reported after each commit.
+	notices *noticeLog
 
 	owner, requester, alice, bob, carol, target, outsider *auth.Principal
 }
 
 func newFixture(t *testing.T, opts ...func(*approvaltest.Kind)) *fixture {
 	t.Helper()
-	f := &fixture{t: t, drv: storageutil.NewTestDriver(t), clock: &clock{t: time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC)}}
+	f := &fixture{t: t, drv: storageutil.NewTestDriver(t), clock: &clock{t: time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC)}, notices: &noticeLog{}}
 	f.kind = approvaltest.New("test.change", f.drv)
 	for _, o := range opts {
 		o(f.kind)
 	}
 	reg := approval.NewRegistry()
 	require.NoError(t, reg.Register(f.kind.Definition()))
-	svc, err := approval.NewService(f.drv.Approvals(), f.drv.AuditLog(), reg, approval.Options{PendingTTL: ttl, Now: f.clock.now})
+	svc, err := approval.NewService(f.drv.Approvals(), f.drv.AuditLog(), reg, approval.Options{PendingTTL: ttl, Now: f.clock.now, Notify: f.notices.record})
 	require.NoError(t, err)
 	f.svc = svc
 	f.owner = &auth.Principal{ID: storage.OwnerPrincipal, Kind: storage.PrincipalKindOwner, Roles: auth.OwnerRoles, Scopes: auth.ScopesForRoles(auth.OwnerRoles)}

@@ -11,9 +11,9 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
-// A built stack serves the approval queue (ADR-083 §9): an empty one,
-// since no kind is registered; approvals.pending_ttl validates through
-// the config.
+// A built stack serves the approval queue (ADR-083 §9): an empty one
+// until a request is filed; approvals.pending_ttl validates through the
+// config.
 func TestBuildServesTheApprovalQueue(t *testing.T) {
 	cfg := &config.Config{Approvals: config.ApprovalsConfig{PendingTTL: 24 * time.Hour}}
 	st := build(t, cfg, storageutil.NewTestDriver(t))

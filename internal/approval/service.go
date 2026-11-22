@@ -19,6 +19,14 @@ type Options struct {
 	// PendingTTL is how long a request may wait for its approvals
 	// (approvals.pending_ttl); required.
 	PendingTTL time.Duration
+	// Notify, when set, is told of every event the mechanism records
+	// (Event*), in order, once the transaction that recorded it has
+	// returned without error: what rolled back is never reported. A call
+	// made inside a transaction its caller opened (a consumer filing as
+	// part of its own write) reports when the call returns, before that
+	// transaction commits. It runs on the caller's goroutine and must
+	// not block.
+	Notify func(ctx context.Context, n Notice)
 	// Now is the clock; nil is time.Now.
 	Now func() time.Time
 }
@@ -30,6 +38,7 @@ type Service struct {
 	kinds      *Registry
 	now        func() time.Time
 	pendingTTL time.Duration
+	notify     func(context.Context, Notice)
 }
 
 // NewService returns the mechanism over store, recording transitions
@@ -46,7 +55,7 @@ func NewService(store storage.ApprovalStore, audit storage.AuditStore, reg *Regi
 	if now == nil {
 		now = time.Now
 	}
-	return &Service{store: store, audit: audit, kinds: reg, now: now, pendingTTL: opts.PendingTTL}, nil
+	return &Service{store: store, audit: audit, kinds: reg, now: now, pendingTTL: opts.PendingTTL, notify: opts.Notify}, nil
 }
 
 // Kinds is the service's registry.
@@ -68,6 +77,7 @@ func (s *Service) File(ctx context.Context, f Filing) (*storage.ApprovalRequest,
 	if err != nil {
 		return nil, err
 	}
+	ctx, sent := s.collect(ctx)
 	var r *storage.ApprovalRequest
 	err = s.store.InTx(ctx, func(ctx context.Context) error {
 		raw, err := k.Validate(ctx, f)
@@ -98,6 +108,7 @@ func (s *Service) File(ctx context.Context, f Filing) (*storage.ApprovalRequest,
 	if err != nil {
 		return nil, err
 	}
+	s.flush(ctx, sent)
 	return r, nil
 }
 
@@ -151,6 +162,7 @@ type Decided struct {
 // nothing is applied, and the error is CodeStale. A failed apply rolls
 // back the decision with it.
 func (s *Service) Approve(ctx context.Context, id string, approver *auth.Principal, digest, note string) (*Decided, error) {
+	ctx, sent := s.collect(ctx)
 	var out *Decided
 	var refused *storage.ApprovalRequest
 	stale := false
@@ -190,6 +202,7 @@ func (s *Service) Approve(ctx context.Context, id string, approver *auth.Princip
 		s.recordRefusal(ctx, refused, approver, err)
 		return nil, err
 	}
+	s.flush(ctx, sent)
 	if stale {
 		return nil, refuse(CodeStale, "approval request %s is stale: what it was filed against changed, nothing was applied; file it again", id)
 	}
@@ -199,6 +212,7 @@ func (s *Service) Approve(ctx context.Context, id string, approver *auth.Princip
 // Reject records approver's rejection of request id, bound to digest:
 // one rejection by an eligible approver rejects the request.
 func (s *Service) Reject(ctx context.Context, id string, approver *auth.Principal, digest, note string) (*Decided, error) {
+	ctx, sent := s.collect(ctx)
 	var out *Decided
 	var refused *storage.ApprovalRequest
 	err := s.store.InTx(ctx, func(ctx context.Context) error {
@@ -220,11 +234,13 @@ func (s *Service) Reject(ctx context.Context, id string, approver *auth.Principa
 		s.recordRefusal(ctx, refused, approver, err)
 		return nil, err
 	}
+	s.flush(ctx, sent)
 	return out, nil
 }
 
 // Withdraw withdraws request id as actor: its requester, or the owner.
 func (s *Service) Withdraw(ctx context.Context, id string, actor *auth.Principal) (*storage.ApprovalRequest, error) {
+	ctx, sent := s.collect(ctx)
 	var out *storage.ApprovalRequest
 	err := s.store.InTx(ctx, func(ctx context.Context) error {
 		r, err := s.store.GetForUpdate(ctx, id)
@@ -251,6 +267,7 @@ func (s *Service) Withdraw(ctx context.Context, id string, actor *auth.Principal
 	if err != nil {
 		return nil, err
 	}
+	s.flush(ctx, sent)
 	return out, nil
 }
 
