@@ -50,6 +50,24 @@ func TestMigration065_StewardAudit(t *testing.T) {
 	if err := d.Sharing().AccessLog().AppendSteward(ctx, e); err != nil {
 		t.Fatalf("AppendSteward after 065: %v", err)
 	}
+	assertStewardAuditConstraints(t, d)
+
+	if err := migrate065StewardAudit(ctx, d); err != nil {
+		t.Fatalf("re-run 065: %v", err)
+	}
+	head, entries, err = d.Sharing().AccessLog().StewardChain(ctx)
+	if err != nil || head.Seq != 1 || len(entries) != 1 {
+		t.Fatalf("chain after replay = %+v, %d entries, %v; want the append kept", head, len(entries), err)
+	}
+	if err := storage.VerifyAccessChain(head, entries, time.Time{}); err != nil {
+		t.Fatalf("chain after replay: %v", err)
+	}
+}
+
+// assertStewardAuditConstraints checks access_log refuses a half-set
+// chain link and access_log_chain keeps a single head row.
+func assertStewardAuditConstraints(t *testing.T, d *Driver) {
+	t.Helper()
 	for name, cols := range map[string]string{
 		"a grant id and no chain position": `steward_grant_id`,
 		"a chain position and no grant id": `chain_seq`,
@@ -62,16 +80,5 @@ func TestMigration065_StewardAudit(t *testing.T) {
 	}
 	if _, err := d.db.Exec(`INSERT INTO access_log_chain (id, seq, head) VALUES (2, 0, '')`); err == nil {
 		t.Error("access_log_chain took a second head row")
-	}
-
-	if err := migrate065StewardAudit(ctx, d); err != nil {
-		t.Fatalf("re-run 065: %v", err)
-	}
-	head, entries, err = d.Sharing().AccessLog().StewardChain(ctx)
-	if err != nil || head.Seq != 1 || len(entries) != 1 {
-		t.Fatalf("chain after replay = %+v, %d entries, %v; want the append kept", head, len(entries), err)
-	}
-	if err := storage.VerifyAccessChain(head, entries, time.Time{}); err != nil {
-		t.Fatalf("chain after replay: %v", err)
 	}
 }

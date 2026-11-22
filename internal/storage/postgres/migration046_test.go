@@ -4,6 +4,7 @@ package postgres_test
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 	"time"
 
@@ -52,6 +53,23 @@ func TestPgMigration046_StewardAudit(t *testing.T) {
 	if err := log.AppendSteward(ctx, e); err != nil {
 		t.Fatalf("AppendSteward after 46: %v", err)
 	}
+	assertPgStewardAuditConstraints(ctx, t, db)
+	if err := drv.ReplayStatementsForTest(ctx, 46); err != nil {
+		t.Fatalf("replay 46: %v", err)
+	}
+	head, entries, err = log.StewardChain(ctx)
+	if err != nil || head.Seq != 1 || len(entries) != 1 {
+		t.Fatalf("chain after replay = %+v, %d entries, %v; want the append kept", head, len(entries), err)
+	}
+	if err := storage.VerifyAccessChain(head, entries, time.Time{}); err != nil {
+		t.Fatalf("chain after replay: %v", err)
+	}
+}
+
+// assertPgStewardAuditConstraints checks access_log refuses a half-set
+// chain link and access_log_chain keeps a single head row.
+func assertPgStewardAuditConstraints(ctx context.Context, t *testing.T, db *sql.DB) {
+	t.Helper()
 	if _, err := db.ExecContext(ctx, `INSERT INTO access_log_chain (id, seq, head) VALUES (2, 0, '')`); err == nil {
 		t.Error("access_log_chain took a second head row")
 	}
@@ -68,15 +86,5 @@ func TestPgMigration046_StewardAudit(t *testing.T) {
 			VALUES ('acc_half_`+cols+`', NOW(), 'prn_x', 'GET /objects', 'v1', 0, 0, 'allowed', '[]', 'v1:sha256:00', `+val+`)`); err == nil {
 			t.Errorf("access_log took %s", name)
 		}
-	}
-	if err := drv.ReplayStatementsForTest(ctx, 46); err != nil {
-		t.Fatalf("replay 46: %v", err)
-	}
-	head, entries, err = log.StewardChain(ctx)
-	if err != nil || head.Seq != 1 || len(entries) != 1 {
-		t.Fatalf("chain after replay = %+v, %d entries, %v; want the append kept", head, len(entries), err)
-	}
-	if err := storage.VerifyAccessChain(head, entries, time.Time{}); err != nil {
-		t.Fatalf("chain after replay: %v", err)
 	}
 }

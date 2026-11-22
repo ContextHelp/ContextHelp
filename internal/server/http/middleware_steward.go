@@ -90,7 +90,7 @@ func endRefusedElevation(ctx context.Context, princ *authn.Principal, grant stri
 // authMethod is the method that admitted p, as a receipt names it; ""
 // when none did.
 func authMethod(p *authn.Principal) string {
-	if p == nil || p.Provider == "" || p.Provider == "none" {
+	if p == nil || p.Provider == "" || p.Provider == viaNone {
 		return ""
 	}
 	return p.Provider
