@@ -65,15 +65,16 @@ func TestEnqueueIngestJobBinaryTravelsBase64(t *testing.T) {
 }
 
 // An item that cannot be enqueued is reported, not dropped: the other
-// items are still enqueued and the container job fails.
+// items are still enqueued and the container job fails. Here the URL
+// item's pipeline is refused while the text item's is accepted.
 func TestFanOutEnqueueFailureFailsContainer(t *testing.T) {
 	driver := storageutil.NewTestDriver(t)
 	q := NewQueue(driver.Jobs())
 	q.SetPipelineValidator(func(name string) error {
-		if name == "batch.jsonl" {
-			return nil
+		if name == "url.generic" {
+			return errors.New("no such pipeline")
 		}
-		return errors.New("no such pipeline")
+		return nil
 	})
 	pool := NewWorkerPool(q, builtins.Registry(), driver, 1, nil, defaultTestJobsCfg())
 
@@ -83,7 +84,7 @@ func TestFanOutEnqueueFailureFailsContainer(t *testing.T) {
 	job.Type = "ingest:batch.jsonl"
 	job.Pipeline = "batch.jsonl"
 	job.Source = "records.jsonl"
-	job.Payload = `{"content":"first record"}` + "\n" + `{"content":"second record"}` + "\n"
+	job.Payload = `{"content":"https://example.com/one"}` + "\n" + `{"content":"a plain text record"}` + "\n"
 	require.NoError(t, q.Enqueue(ctx, job))
 	go func() {
 		for ctx.Err() == nil {
@@ -100,5 +101,19 @@ func TestFanOutEnqueueFailureFailsContainer(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, storage.JobFailed, got.Status, "container must not complete with items lost")
 	require.Contains(t, got.Error, "fan-out")
-	require.Contains(t, got.Error, "2 of 2")
+	require.Contains(t, got.Error, "1 of 2")
+
+	// The item that could be enqueued was: the failure is partial.
+	jobs, _, err := driver.Jobs().List(context.Background(), storage.JobFilter{Limit: 10})
+	require.NoError(t, err)
+	var items int
+	for _, j := range jobs {
+		if j.Type == "ingest:feed_item" {
+			items++
+			got, err := jobContent(j)
+			require.NoError(t, err)
+			require.Equal(t, "a plain text record", got)
+		}
+	}
+	require.Equal(t, 1, items, "the item whose pipeline is valid is still enqueued")
 }
