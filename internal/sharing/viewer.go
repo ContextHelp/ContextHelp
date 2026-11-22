@@ -61,6 +61,21 @@ func (v Viewer) IdentityID() string {
 	return v.view.identity
 }
 
+// StewardGrantID is the steward grant v is the elevation of (ADR-083
+// §3); "" for every other viewer.
+func (v Viewer) StewardGrantID() string {
+	if v.view == nil {
+		return ""
+	}
+	return v.view.steward
+}
+
+// StrictBackstop reports whether the visibility backstop must refuse a
+// hit rather than strip it for v, whatever the instance's setting: an
+// elevated request must not receive a silently incomplete answer
+// (ADR-083 §3).
+func (v Viewer) StrictBackstop() bool { return v.StewardGrantID() != "" }
+
 // PolicyKey is the cache key of the compiled view: it changes with any
 // grant, policy version, membership, ceiling or key binding. It is
 // "unrestricted" for Unrestricted and empty for the zero viewer.

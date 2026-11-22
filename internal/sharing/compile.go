@@ -30,6 +30,11 @@ type Grant struct {
 	// (the record-level reads of an external authority): a stored policy's
 	// data filter always goes through Policy.DataNode and its field check.
 	Node search.Node
+	// Attest is extra key material for a grant whose policy is derived
+	// rather than stored: a steward grant's scope digest and the
+	// settings applied to it. It joins the policy key, so a change in
+	// what the policy was derived from is a new key.
+	Attest string
 }
 
 // dataNode is the grant's data predicate.
@@ -61,6 +66,11 @@ type Input struct {
 	// evaluates the entries' dates and the set's freshness at the moment of
 	// the read; Compile only turns the result into a predicate.
 	Records []string
+	// StewardGrant names the steward grant this input is the elevation
+	// of (ADR-083 §3); "" for an ordinary viewer. Every one of an
+	// elevation's Grants is that steward grant's (one per spec of its
+	// scope, in order), and there is at least one.
+	StewardGrant string
 }
 
 // GrantPlan is one grant's share of the render plan: what the grant
@@ -158,6 +168,9 @@ type view struct {
 	// nil when none is bound.
 	keyPolicy *Policy
 	keyNode   search.Node
+	// steward is the steward grant this viewer is the elevation of, ""
+	// for an ordinary viewer.
+	steward string
 }
 
 type predicate struct {
@@ -184,6 +197,20 @@ func Compile(in Input) (Viewer, error) {
 	grants := withRecordGrant(in)
 	sort.SliceStable(grants, func(i, j int) bool { return grants[i].ID < grants[j].ID })
 	v.grants = grants
+	if in.StewardGrant != "" {
+		// An elevated viewer is its steward grant and nothing else: never
+		// a merge with the principal's ordinary grants. The grant holds a
+		// Grant per spec of its scope, each with the steward grant's ID.
+		if len(grants) == 0 {
+			return Viewer{}, fmt.Errorf("compile viewer: an elevation to %s holds no grant", in.StewardGrant)
+		}
+		for _, g := range grants {
+			if g.ID != in.StewardGrant {
+				return Viewer{}, fmt.Errorf("compile viewer: an elevation to %s holds only that grant's specs, got grant %s", in.StewardGrant, g.ID)
+			}
+		}
+		v.steward = in.StewardGrant
+	}
 
 	union := make([]search.Node, 0, len(grants))
 	for _, g := range grants {
@@ -414,18 +441,26 @@ func intersectCapabilities(a, b Capabilities) Capabilities {
 	}
 }
 
-// policyKey is the viewer's cache key: the principal, its ceiling, its
-// key policy at its version and every applying grant with its policy
-// version, so any grant, policy edit, membership, ceiling or key change
-// yields a new key.
+// policyKey is the viewer's cache key: the principal, the steward
+// grant an elevation is of, its ceiling, its key policy at its version
+// and every applying grant with its policy version, so any grant,
+// policy edit, membership, ceiling or key change yields a new key, and
+// an ordinary viewer and an elevated one never share a key.
 func policyKey(in Input, grants []Grant) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "principal=%s;deny=%s", in.PrincipalID, strings.Join(storage.NormalizeClasses(in.DenyClasses), ","))
+	fmt.Fprintf(&b, "principal=%s", in.PrincipalID)
+	if in.StewardGrant != "" {
+		fmt.Fprintf(&b, ";steward=%s", in.StewardGrant)
+	}
+	fmt.Fprintf(&b, ";deny=%s", strings.Join(storage.NormalizeClasses(in.DenyClasses), ","))
 	if in.KeyPolicy != nil {
 		fmt.Fprintf(&b, ";key=%s@%d", in.KeyPolicy.Name, in.KeyPolicy.Version)
 	}
 	for _, g := range grants {
 		fmt.Fprintf(&b, ";grant=%s:%s@%d", g.ID, g.Policy.Name, g.Policy.Version)
+		if g.Attest != "" {
+			fmt.Fprintf(&b, "#%s", g.Attest)
+		}
 	}
 	if len(in.Records) > 0 {
 		sum := sha256.Sum256([]byte(strings.Join(in.Records, "\n")))
@@ -466,24 +501,37 @@ func loadInput(ctx context.Context, st storage.SharingStore, principalID, identi
 		}
 		in.Grants = append(in.Grants, Grant{ID: ag.Grant.ID, Audience: ag.Audience.Name, Policy: p})
 	}
-	if identityID != "" {
-		policyID, err := st.IdentityPolicy(ctx, identityID)
-		if err != nil {
-			return Input{}, fmt.Errorf("compile viewer %s: identity %s: %w", principalID, identityID, err)
-		}
-		if policyID != "" {
-			row, err := st.Policies().Get(ctx, policyID)
-			if err != nil {
-				return Input{}, fmt.Errorf("compile viewer %s: key policy %s: %w", principalID, policyID, err)
-			}
-			p, err := PolicyFromSpec(row)
-			if err != nil {
-				return Input{}, fmt.Errorf("compile viewer %s: %w", principalID, err)
-			}
-			in.KeyPolicy = &p
-		}
+	keyPolicy, err := loadKeyPolicy(ctx, st, principalID, identityID)
+	if err != nil {
+		return Input{}, err
 	}
+	in.KeyPolicy = keyPolicy
 	return in, nil
+}
+
+// loadKeyPolicy reads the policy identityID is bound to, nil when
+// identityID is empty or unbound. An unknown identity or policy is
+// storage.ErrNotFound.
+func loadKeyPolicy(ctx context.Context, st storage.SharingStore, principalID, identityID string) (*Policy, error) {
+	if identityID == "" {
+		return nil, nil
+	}
+	policyID, err := st.IdentityPolicy(ctx, identityID)
+	if err != nil {
+		return nil, fmt.Errorf("compile viewer %s: identity %s: %w", principalID, identityID, err)
+	}
+	if policyID == "" {
+		return nil, nil
+	}
+	row, err := st.Policies().Get(ctx, policyID)
+	if err != nil {
+		return nil, fmt.Errorf("compile viewer %s: key policy %s: %w", principalID, policyID, err)
+	}
+	p, err := PolicyFromSpec(row)
+	if err != nil {
+		return nil, fmt.Errorf("compile viewer %s: %w", principalID, err)
+	}
+	return &p, nil
 }
 
 // Key returns the policy key Compile would give in: its principal,

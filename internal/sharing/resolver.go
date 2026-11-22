@@ -38,6 +38,9 @@ type Resolver struct {
 	// records adds the record-level reads an external authority provisions
 	// to each viewer; nil adds none.
 	records RecordSource
+	// steward wires steward grants (WithSteward); nil refuses every
+	// elevation.
+	steward *StewardOptions
 
 	mu    sync.Mutex
 	cache map[string]Viewer
@@ -73,18 +76,25 @@ func (r *Resolver) WithClock(now func() time.Time) *Resolver {
 // without an error. Any other store or compile failure is returned, and
 // the transport refuses the request rather than guess. A nil Resolver
 // resolves the owner and otherwise the zero viewer.
-func (r *Resolver) Resolve(ctx context.Context, principalID, kind, identityID string) (Viewer, error) {
+//
+// With AsSteward the request is an elevated one: the viewer is exactly
+// the named steward grant's compiled scope, and a grant that fails a
+// check is a *StewardRefusal, never the ordinary view (resolveSteward).
+func (r *Resolver) Resolve(ctx context.Context, principalID, kind, identityID string, opts ...ResolveOption) (Viewer, error) {
+	var o resolveOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+	if o.stewardGrant != "" {
+		return r.resolveSteward(ctx, principalID, kind, identityID, o.stewardGrant)
+	}
 	if kind == storage.PrincipalKindOwner {
 		return Unrestricted, nil
 	}
 	if r == nil || r.store == nil {
 		return Viewer{}, nil
 	}
-	now := time.Now
-	if r.now != nil {
-		now = r.now
-	}
-	in, err := loadInput(ctx, r.store, principalID, identityID, now())
+	in, err := loadInput(ctx, r.store, principalID, identityID, r.clock())
 	if errors.Is(err, storage.ErrNotFound) {
 		return Viewer{}, nil
 	}
@@ -115,6 +125,14 @@ func (r *Resolver) Resolve(ctx context.Context, principalID, kind, identityID st
 	r.cache[key] = v
 	r.mu.Unlock()
 	return v, nil
+}
+
+// clock is the resolver's time: its injected clock, else time.Now.
+func (r *Resolver) clock() time.Time {
+	if r.now != nil {
+		return r.now()
+	}
+	return time.Now()
 }
 
 // Invalidate drops every compiled viewer. The next Resolve of each
