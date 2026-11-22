@@ -5,14 +5,16 @@ import (
 	"strconv"
 
 	"github.com/ideacrafterslabs/ctxt/internal/approval"
+	"github.com/ideacrafterslabs/ctxt/internal/auth"
 	"github.com/ideacrafterslabs/ctxt/internal/security"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
 // Every transition of steward access reaches the security emitter
-// (ADR-083 §2, §9), so notification hooks can attach: the request's
-// (ApprovalNotices) and a grant's revocation (Service.Revoke). The
-// alerts carry ids and stable codes, never the request's reason or
+// (ADR-083 §2, §3), so notification hooks can attach: the request's
+// (ApprovalNotices), a grant's revocation (Service.Revoke), and a
+// browser session's elevation (ElevationEvents, RecordElevationRefused).
+// The alerts carry ids and stable codes, never the request's reason or
 // scope. A nil emitter records nothing.
 
 // requestEvents maps the mechanism's transitions of a steward.grant
@@ -48,6 +50,31 @@ func ApprovalNotices(sec *security.Emitter) func(context.Context, approval.Notic
 		}
 		sec.RecordSteward(ctx, event, n.Actor, meta)
 	}
+}
+
+// ElevationEvents returns the session manager's OnElevation hook that
+// records each elevation that starts or ends on sec, the steward the
+// principal.
+func ElevationEvents(sec *security.Emitter) func(context.Context, auth.ElevationEvent) {
+	return func(ctx context.Context, e auth.ElevationEvent) {
+		meta := map[string]string{"grant_id": e.GrantID, "session_id": e.SessionID}
+		event := security.EventStewardElevationStarted
+		if !e.Started {
+			event = security.EventStewardElevationEnded
+			meta["reason"] = e.Reason
+		}
+		sec.RecordSteward(ctx, event, e.PrincipalID, meta)
+	}
+}
+
+// RecordElevationRefused records on sec that principal could not read
+// under grantID: an elevation asked for or a request made under one,
+// refused with reason (a sharing.StewardReason code, or the transport's
+// own), deferred when the cause was unavailability.
+func RecordElevationRefused(ctx context.Context, sec *security.Emitter, principal, grantID, reason string, deferred bool) {
+	sec.RecordSteward(ctx, security.EventStewardElevationRefused, principal, map[string]string{
+		"grant_id": grantID, "reason": reason, "deferred": strconv.FormatBool(deferred),
+	})
 }
 
 // recordRevoked records g's revocation by actor on sec.
