@@ -501,6 +501,12 @@ func TestUpdateObjectRejectsBinaryTextFields(t *testing.T) {
 	cases := map[string]func(o *storage.KnowledgeObject){
 		"text_content": func(o *storage.KnowledgeObject) { o.TextContent = bin },
 		"summaries":    func(o *storage.KnowledgeObject) { o.Summaries = []string{"ok", bin} },
+		"metadata": func(o *storage.KnowledgeObject) {
+			if o.Metadata == nil {
+				o.Metadata = map[string]any{}
+			}
+			o.Metadata["user"] = map[string]any{"k": "a\x00b"}
+		},
 		"sections": func(o *storage.KnowledgeObject) {
 			o.Sections = []storage.Section{{Title: "t", Content: bin}}
 		},

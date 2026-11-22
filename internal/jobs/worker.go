@@ -358,16 +358,6 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 		return
 	}
 
-	// Defense in depth: the store refuses NUL and invalid UTF-8 in text
-	// columns and JSON with a driver error. A step that let either
-	// through fails the job here, permanently and by field, before any
-	// write (create, update by source key, or reinforce). The draft's
-	// content was externalized above, so only text fields remain.
-	if field := pipeline.NonTextField(draft, false, true); field != "" {
-		p.markFailed(ctx, job.ID, fmt.Sprintf("%s holds NUL or invalid UTF-8: refusing to store", field))
-		return
-	}
-
 	draft.UpdatedAt = time.Now()
 
 	durationMs := time.Since(start).Milliseconds()
@@ -376,7 +366,7 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 	// submission as an update, whatever the fetched content hashes to.
 	// It is checked before the content hash, so a submission that carries
 	// a key never lands on another object by a hash match.
-	if p.updateBySourceKey(ctx, job, draft.SourceKey, draft.ProfileID, durationMs) {
+	if p.updateBySourceKey(ctx, job, draft, durationMs) {
 		return
 	}
 
@@ -384,6 +374,9 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 	// content under another profile becomes its own object.
 	existing, err := p.store.Objects().GetByContentHash(ctx, draft.ContentHash, draft.ProfileID)
 	if err == nil && existing != nil {
+		if p.refuseNonText(ctx, job, draft, true) {
+			return
+		}
 		existingID, err := p.store.Objects().Reinforce(ctx, draft.ContentHash, draft)
 		if err != nil {
 			// Reinforce errors are storage contention (SQLITE_BUSY) or a row
@@ -396,6 +389,10 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 		// ones: reinforcing alone would keep the first capture's.
 		p.applySubmission(ctx, job, existingID)
 		p.markCompleted(ctx, job.ID, existingID, durationMs)
+		return
+	}
+
+	if p.refuseNonText(ctx, job, draft, false) {
 		return
 	}
 
@@ -416,7 +413,7 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 		// (in the same profile) concurrently.
 		if errors.Is(err, storage.ErrAlreadyExists) {
 			// Another worker stored this source key first: this is its update.
-			if p.updateBySourceKey(ctx, job, draft.SourceKey, draft.ProfileID, durationMs) {
+			if p.updateBySourceKey(ctx, job, draft, durationMs) {
 				return
 			}
 			existingID, rerr := p.reinforceAfterRace(ctx, draft)
@@ -488,20 +485,46 @@ func submission(job *storage.Job) storageutil.Submission {
 	}
 }
 
+// Defense in depth: the store refuses NUL and invalid UTF-8 in text columns
+// and JSON with a driver error, so a step that let either through fails the
+// job before any write. A create or an update by source key checks every
+// field the store writes; a reinforce only the ones it writes.
+//
+// refuseNonText fails job permanently, by field, when draft holds NUL or
+// invalid UTF-8 where the write about to happen stores text, and reports
+// whether it did. reinforceOnly limits the check to what a reinforce writes.
+func (p *WorkerPool) refuseNonText(ctx context.Context, job *storage.Job, draft *storage.KnowledgeObject, reinforceOnly bool) bool {
+	var field string
+	if reinforceOnly {
+		field = pipeline.ReinforceNonTextField(draft)
+	} else {
+		field = pipeline.NonTextField(draft, false, true)
+	}
+	if field == "" {
+		return false
+	}
+	p.markFailed(ctx, job.ID, fmt.Sprintf("%s holds NUL or invalid UTF-8: refusing to store", field))
+	return true
+}
+
 // updateBySourceKey settles job as an update of the object the submitting
 // profile stored under key (a key in another profile is another source), when there is one, and reports whether it did. A failed lookup
 // settles the job as a retry or failure and reports true.
-func (p *WorkerPool) updateBySourceKey(ctx context.Context, job *storage.Job, key, profileID string, durationMs int64) bool {
+func (p *WorkerPool) updateBySourceKey(ctx context.Context, job *storage.Job, draft *storage.KnowledgeObject, durationMs int64) bool {
+	key := draft.SourceKey
 	if key == "" {
 		return false
 	}
-	stored, err := p.store.Objects().GetBySourceKey(ctx, key, profileID)
+	stored, err := p.store.Objects().GetBySourceKey(ctx, key, draft.ProfileID)
 	if err != nil {
 		p.retryOrFail(ctx, job.ID, job.Claim, fmt.Sprintf("source key lookup: %s", err))
 		return true
 	}
 	if stored == nil {
 		return false
+	}
+	if p.refuseNonText(ctx, job, draft, false) {
+		return true
 	}
 	p.updateStored(ctx, job, stored, durationMs)
 	return true

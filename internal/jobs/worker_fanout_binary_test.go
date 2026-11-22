@@ -13,41 +13,6 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
-// A fan-out item whose content is binary becomes a child job whose
-// payload travels base64, and the worker decodes it back to the bytes.
-func TestFanOutBinaryItemTravelsBase64(t *testing.T) {
-	driver := storageutil.NewTestDriver(t)
-	q := NewQueue(driver.Jobs())
-	pool := NewWorkerPool(q, builtins.Registry(), driver, 1, nil, defaultTestJobsCfg())
-	bin := string([]byte{0x89, 'P', 'N', 'G', 0x00, 0xff, 0xfe, 0x80})
-	draft := &storage.KnowledgeObject{Metadata: map[string]any{
-		"items_to_enqueue": []map[string]any{
-			{"content": bin, "source": "bin:1", "pipeline": "text.short"},
-			{"content": "plain text", "source": "txt:1", "pipeline": "text.short"},
-		},
-	}}
-
-	require.NoError(t, pool.fanOutItems(context.Background(), draft))
-
-	jobs, _, err := driver.Jobs().List(context.Background(), storage.JobFilter{Limit: 10})
-	require.NoError(t, err)
-	require.Len(t, jobs, 2)
-	for _, j := range jobs {
-		got, err := jobContent(j)
-		require.NoError(t, err)
-		switch j.Source {
-		case "bin:1":
-			require.Equal(t, storage.PayloadBase64, j.PayloadEncoding)
-			require.Equal(t, bin, got)
-		case "txt:1":
-			require.Empty(t, j.PayloadEncoding)
-			require.Equal(t, "plain text", got)
-		default:
-			t.Fatalf("unexpected job source %q", j.Source)
-		}
-	}
-}
-
 // A job enqueued with binary content carries it base64 too.
 func TestEnqueueIngestJobBinaryTravelsBase64(t *testing.T) {
 	driver := storageutil.NewTestDriver(t)

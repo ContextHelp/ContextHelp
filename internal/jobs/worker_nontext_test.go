@@ -38,6 +38,16 @@ func TestWorkerFailsJobWhenTextFieldHoldsBinary(t *testing.T) {
 		"section":     {func(d *storage.KnowledgeObject) { d.Sections = []storage.Section{{Title: "t", Content: "a\xffb"}} }, "sections[0]"},
 		"summary":     {func(d *storage.KnowledgeObject) { d.Summaries = []string{"ok", "a\x00"} }, "summaries[1]"},
 		"textcontent": {func(d *storage.KnowledgeObject) { d.TextContent = "\xff" }, "text_content"},
+		"graph node label": {func(d *storage.KnowledgeObject) {
+			d.Graph = &storage.ObjectGraph{Nodes: []storage.GraphNode{{ID: "n", Label: "a\xffb"}}}
+		}, "graph.nodes[0]"},
+		"graph node metadata": {func(d *storage.KnowledgeObject) {
+			d.Graph = &storage.ObjectGraph{Nodes: []storage.GraphNode{{ID: "n", Metadata: map[string]any{"k": "x\x00"}}}}
+		}, "graph.nodes[0].metadata.k"},
+		"inbox note":   {func(d *storage.KnowledgeObject) { d.InboxNote = "n\x00" }, "inbox_note"},
+		"subtype":      {func(d *storage.KnowledgeObject) { d.Subtype = "\xff" }, "subtype"},
+		"content type": {func(d *storage.KnowledgeObject) { d.ContentType = "\xff" }, "content_type"},
+		"profile":      {func(d *storage.KnowledgeObject) { d.ProfileID = "p\x00" }, "profile_id"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -75,6 +85,51 @@ func TestWorkerFailsJobWhenTextFieldHoldsBinary(t *testing.T) {
 			objs, _, err := driver.Objects().List(context.Background(), storage.ObjectFilter{Limit: 10})
 			require.NoError(t, err)
 			require.Empty(t, objs)
+		})
+	}
+}
+
+// A reinforce writes the count, tags and mentions only: a binary field it
+// never writes does not fail the re-submission, and one it writes does.
+func TestReinforceChecksOnlyWhatItWrites(t *testing.T) {
+	for name, tc := range map[string]struct {
+		apply func(*storage.KnowledgeObject)
+		want  storage.JobStatus
+	}{
+		"unwritten summary": {func(d *storage.KnowledgeObject) { d.Summaries = []string{"a\xff"} }, storage.JobCompleted},
+		"unwritten graph": {func(d *storage.KnowledgeObject) {
+			d.Graph = &storage.ObjectGraph{Nodes: []storage.GraphNode{{ID: "n", Label: "\xff"}}}
+		}, storage.JobCompleted},
+		"tag": {func(d *storage.KnowledgeObject) { d.Tags = []storage.Tag{{Label: "a\x00"}} }, storage.JobFailed},
+	} {
+		t.Run(name, func(t *testing.T) {
+			driver := storageutil.NewTestDriver(t)
+			q := NewQueue(driver.Jobs())
+			runs := 0
+			step := &nonTextStep{apply: func(d *storage.KnowledgeObject) {
+				runs++
+				if runs > 1 {
+					tc.apply(d)
+				}
+			}}
+			pipes := pipeline.NewRegistry()
+			pipes.Register("test.reinforce", &pipeline.Pipeline{PipelineName: "test.reinforce", Steps: []pipeline.PipelineStep{step}})
+			pool := NewWorkerPool(q, pipes, driver, 1, nil, defaultTestJobsCfg())
+			for _, id := range []string{"first", "second"} {
+				job := makeJob(id)
+				job.Pipeline = "test.reinforce"
+				job.Payload = "same content"
+				require.NoError(t, q.Enqueue(context.Background(), job))
+				got := runUntilDone(t, pool, q, id)
+				if id == "first" {
+					require.Equal(t, storage.JobCompleted, got.Status, got.Error)
+					continue
+				}
+				require.Equal(t, tc.want, got.Status, got.Error)
+			}
+			objs, _, err := driver.Objects().List(context.Background(), storage.ObjectFilter{Limit: 10})
+			require.NoError(t, err)
+			require.Len(t, objs, 1)
 		})
 	}
 }

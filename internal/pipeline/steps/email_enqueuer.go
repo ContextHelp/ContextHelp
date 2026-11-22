@@ -114,9 +114,7 @@ func (s *EmailEnqueuer) Run(_ context.Context, draft *storage.KnowledgeObject) (
 		if title == "" {
 			title = fmt.Sprintf("Email from %s", from)
 		}
-		if len(title) > 120 {
-			title = title[:120]
-		}
+		title = truncateRunes(title, 120)
 
 		// Determine pipeline from route.
 		pipelineName := s.defaultPipeline

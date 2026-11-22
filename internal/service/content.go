@@ -101,7 +101,7 @@ func hasBlobRef(obj *storage.KnowledgeObject) bool {
 // binary and externalized by this write (exemptText), the object's own
 // text_content is left to ExternalizeBinary, which empties it.
 func rejectBinaryText(obj *storage.KnowledgeObject, exemptText bool) error {
-	if field := pipeline.NonTextField(obj, exemptText, false); field != "" {
+	if field := pipeline.NonTextField(obj, exemptText, true); field != "" {
 		return fmt.Errorf("%w: object %s: %s must be text (valid UTF-8, no NUL)", ErrInvalidSubmission, obj.ID, field)
 	}
 	return nil
