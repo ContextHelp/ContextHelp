@@ -91,6 +91,12 @@ type fxConfig struct {
 	required func() int
 	drv      func(storage.StorageDriver) storage.SharingStore
 	noAppr   bool
+	notify   func(context.Context, approval.Notice)
+}
+
+// withNotify sets the approval mechanism's Notify hook.
+func withNotify(h func(context.Context, approval.Notice)) fxOption {
+	return func(c *fxConfig) { c.notify = h }
 }
 
 // withRequired sets approvals.share.required.
@@ -135,7 +141,7 @@ func newFx(t *testing.T, newDriver driverFunc, opts ...fxOption) *fx {
 	require.NoError(t, err)
 	reg := approval.NewRegistry()
 	require.NoError(t, reg.Register(kind))
-	f.appr, err = approval.NewService(f.drv.Approvals(), f.drv.AuditLog(), reg, approval.Options{PendingTTL: pendingTTL, Now: f.clock.now})
+	f.appr, err = approval.NewService(f.drv.Approvals(), f.drv.AuditLog(), reg, approval.Options{PendingTTL: pendingTTL, Now: f.clock.now, Notify: cfg.notify})
 	require.NoError(t, err)
 	f.svc = &sharechange.Service{Deps: deps, Approvals: f.appr}
 	if cfg.noAppr {

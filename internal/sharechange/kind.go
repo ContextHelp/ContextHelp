@@ -300,6 +300,13 @@ func (k kind) beneficiaries(ctx context.Context, r *storage.ApprovalRequest) ([]
 	if err != nil {
 		return nil, err
 	}
+	// In a decision the state is read under the registry lock, like the
+	// preconditions, so no change slips in between the separation check
+	// and the application. A listing outside a transaction has no lock
+	// to take.
+	if err := k.Sharing.LockRegistry(ctx); err != nil && !errors.Is(err, storage.ErrNotInTransaction) {
+		return nil, err
+	}
 	now := k.now()
 	s, err := sharing.ReadState(ctx, k.Sharing, c, now)
 	if err != nil && !errors.Is(err, storage.ErrNotFound) {
