@@ -108,6 +108,9 @@ func init() {
 		"refuse to start a protected or public instance whose database, WAL, sidecars or blob directory other users can read")
 	serveCmd.Flags().Bool("strict-sharing", false,
 		"answer 500 instead of stripping when the visibility backstop finds data outside a shared viewer's visibility")
+	serveCmd.Flags().String("runner", "", "daemon runner: local (default) or pod (overrides daemon.runner)")
+	serveCmd.Flags().String("pod", "", "existing pod name for --runner pod (overrides daemon.pod.name)")
+	serveCmd.Flags().Bool("stop-on-exit", false, "with --runner pod, shut down the remote dpkms on interrupt instead of leaving it running")
 
 	// No flag is bound to viper: serve reads its settings from cfg, a
 	// passed flag overriding (see resolveServeSettings, serveListenSpecs).
@@ -117,6 +120,12 @@ func init() {
 const loopbackHost = "127.0.0.1"
 
 func runServe(cmd *cobra.Command, args []string) error {
+	// Opt-in pod runner decision runs before --daemon re-exec, storage lock,
+	// or listener binding. When runner=local, pod is never probed or invoked.
+	if handled, err := maybeRunServePod(cmd, args, defaultDpkmsPodDeps); handled || err != nil {
+		return err
+	}
+
 	// --daemon: re-exec self in background, detached from terminal.
 	if daemon, _ := cmd.Flags().GetBool("daemon"); daemon {
 		return daemonize()
