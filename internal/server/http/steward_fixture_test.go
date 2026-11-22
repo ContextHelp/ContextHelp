@@ -117,6 +117,7 @@ type stewardFlow struct {
 	auditDown atomic.Bool
 	ts        *httptest.Server
 	svc       *service.Service
+	keyring   *authn.Keys
 	// keys holds the API keys of sfOwner and sfDevice; cookies the
 	// browser session secret of each person.
 	keys    map[string]string
@@ -144,6 +145,7 @@ func newStewardFlow(t *testing.T, newDriver func(*testing.T) storage.StorageDriv
 	f.svc = svc
 	svc.Viewers().WithClock(f.clock.now).WithSteward(steward.ResolverOptions(settings))
 	keys := authn.NewKeys(authn.NewLocalKeys(drv.Auth().KV(), f.clock.now), drv.Auth(), f.clock.now)
+	f.keyring = keys
 	var err error
 	// Sessions idle for days, so a test can move the clock past a
 	// grant's window and still call as the same browser.
@@ -218,6 +220,7 @@ func newStewardFlow(t *testing.T, newDriver func(*testing.T) storage.StorageDriv
 		Audit:         f.audit,
 		StrictSharing: true,
 		SSE:           SSEConfig{RecheckTTL: time.Nanosecond},
+		Access:        stubAccess{},
 	}))
 	t.Cleanup(f.ts.Close)
 	return f
@@ -367,4 +370,17 @@ func (s switchedAccessLog) AppendSteward(ctx context.Context, e *storage.AccessE
 		return errAuditDown
 	}
 	return s.AccessLogStore.AppendSteward(ctx, e)
+}
+
+// stubAccess is an authority receiver no test calls through: the
+// elevated-session refusal ahead of the guard is what is under test.
+type stubAccess struct{ AccessReceiver }
+
+// mintKey mints an API key for principal narrowed to scopes and returns
+// the request option that sends it.
+func (f *stewardFlow) mintKey(principal string, scopes ...authn.Scope) reqOpt {
+	f.t.Helper()
+	secret, _, err := f.keyring.Mint(ownerCtx(), authn.MintKey{PrincipalID: principal, Name: "narrowed", Scopes: scopes})
+	require.NoError(f.t, err)
+	return withBearer(secret)
 }

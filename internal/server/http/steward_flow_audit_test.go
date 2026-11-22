@@ -28,14 +28,17 @@ func TestStewardFlowAudit(t *testing.T) { runStewardFlowAuditSuite(t, storageuti
 // the store newDriver opens.
 func runStewardFlowAuditSuite(t *testing.T, newDriver func(*testing.T) storage.StorageDriver) {
 	for name, fn := range map[string]func(*testing.T, *stewardFlow){
-		"an elevated read is one chained entry":            stewardAuditElevatedRead,
-		"a revoked grant is refused, recorded and cleared": stewardAuditRevoked,
-		"an audit outage withholds and keeps elevation":    stewardAuditOutage,
-		"a refused elevation leaves an entry and an event": stewardAuditElevateRefused,
-		"an API key naming a grant is recorded refused":    stewardAuditKeyElevate,
-		"an elevated session never reaches the events":     stewardAuditEventsRefused,
-		"a stream open before elevating closes on it":      stewardAuditStreamClosesOnElevation,
-		"a stream never keeps an elevation alive":          stewardAuditStreamDoesNotRefresh,
+		"an elevated read is one chained entry":                  stewardAuditElevatedRead,
+		"a revoked grant is refused, recorded and cleared":       stewardAuditRevoked,
+		"an audit outage withholds and keeps elevation":          stewardAuditOutage,
+		"a refused elevation leaves an entry and an event":       stewardAuditElevateRefused,
+		"an API key naming a grant is recorded refused":          stewardAuditKeyElevate,
+		"an elevated session never reaches the events":           stewardAuditEventsRefused,
+		"an unknown grant is recorded, a malformed id is not":    stewardAuditElevateUnknown,
+		"a second elevation is a recorded refusal":               stewardAuditElevateSecond,
+		"an elevated session is refused at the authority routes": stewardAuditAuthorityRoutes,
+		"a stream open before elevating closes on it":            stewardAuditStreamClosesOnElevation,
+		"a stream never keeps an elevation alive":                stewardAuditStreamDoesNotRefresh,
 	} {
 		t.Run(name, func(t *testing.T) { fn(t, newStewardFlow(t, newDriver)) })
 	}
@@ -376,4 +379,69 @@ func stewardAuditStreamDoesNotRefresh(t *testing.T, f *stewardFlow) {
 	require.Equal(t, http.StatusOK, code)
 	assert.Empty(t, ids, "idle ended the elevation: the ordinary view")
 	assert.Empty(t, f.session(sfSteward).StewardGrantID)
+}
+
+// Elevating into a grant that does not exist, or the caller cannot see,
+// is recorded (grant_unknown) and answered 404 either way. An id of no
+// grant's shape writes nothing.
+func stewardAuditElevateUnknown(t *testing.T, f *stewardFlow) {
+	unknown := storage.NewStewardGrantID()
+	resp := f.elevate(sfSteward, unknown)
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+	got := f.stewardLog(unknown)
+	require.Len(t, got, 1)
+	assert.Equal(t, storage.AccessDecisionDenied, got[0].Decision)
+	assert.Equal(t, storage.AccessCheck{Check: sharing.CheckStewardGrant, Outcome: storage.AccessOutcomeFail, Reason: sharing.StewardReasonGrantUnknown}, got[0].Checks[len(got[0].Checks)-1])
+	assert.Len(t, f.refusals(unknown, 1), 1)
+
+	// A grant the caller may not see answers the same, and is recorded
+	// the same.
+	grant := f.grant()
+	require.Equal(t, http.StatusNotFound, f.elevate(sfOther, grant).StatusCode)
+	got = f.stewardLog(grant)
+	require.Len(t, got, 1)
+	assert.Equal(t, sfOther, got[0].PrincipalID)
+
+	before := f.verifyChain()
+	for _, bad := range []string{"stg_nothing", "stg_" + strings.Repeat("A", 200), "x"} {
+		assert.Equal(t, http.StatusNotFound, f.elevate(sfSteward, bad).StatusCode, bad)
+		assert.Empty(t, f.stewardLog(bad), bad)
+	}
+	assert.Equal(t, before, f.verifyChain(), "a malformed id wrote nothing")
+}
+
+// Asking a session already elevated into one grant for a second is a
+// refused elevation: 409, recorded under the grant asked for with the
+// reason elevation_active, and an event.
+func stewardAuditElevateSecond(t *testing.T, f *stewardFlow) {
+	first, second := f.grant(), f.grant()
+	require.Equal(t, http.StatusOK, f.elevate(sfSteward, first).StatusCode)
+	resp := f.elevate(sfSteward, second)
+	require.Equal(t, http.StatusConflict, resp.StatusCode)
+	got := f.stewardLog(second)
+	require.Len(t, got, 1)
+	assert.Equal(t, storage.AccessDecisionDenied, got[0].Decision)
+	assert.Equal(t, storage.AccessCheck{Check: sharing.CheckStewardGrant, Outcome: storage.AccessOutcomeFail, Reason: reasonElevationActive}, got[0].Checks[len(got[0].Checks)-1])
+	assert.Len(t, f.refusals(second, 1), 1)
+	assert.Equal(t, first, f.session(sfSteward).StewardGrantID, "the first elevation stays")
+}
+
+// The authority's provisioning routes are never an elevation's: the
+// request is recorded under its own route name, then refused, and an
+// audit outage turns the refusal into 503.
+func stewardAuditAuthorityRoutes(t *testing.T, f *stewardFlow) {
+	grant := f.grant()
+	require.Equal(t, http.StatusOK, f.elevate(sfSteward, grant).StatusCode)
+	resp := f.do(sfSteward, http.MethodGet, "/bos/v1/profile", nil)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	got := f.stewardLog(grant)
+	require.Len(t, got, 1)
+	assert.Equal(t, "GET /bos/v1/profile", got[0].Route)
+	assert.Equal(t, storage.AccessDecisionDenied, got[0].Decision)
+	assert.Equal(t, storage.AccessCheck{Check: sharing.CheckRouteAccess, Outcome: storage.AccessOutcomeFail, Reason: sharing.ReasonNotAuthority}, got[0].Checks[len(got[0].Checks)-1])
+
+	f.auditDown.Store(true)
+	resp = f.do(sfSteward, http.MethodGet, "/bos/v1/profile", nil)
+	assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+	assert.Equal(t, sharing.CodeAuditUnavailable, errCode(t, resp))
 }

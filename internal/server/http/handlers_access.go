@@ -87,6 +87,18 @@ func (a accessRoutes) route(method, pattern string, next http.HandlerFunc) http.
 			return
 		}
 		rcpt := sharing.NewReceipt(operationFor(r, route, v))
+		if rcpt.Elevated() {
+			// A steward elevation reads under its grant and nothing
+			// else: it is never the authority. Recorded durably, then
+			// refused; the guard never runs.
+			rcpt.Refuse(sharing.CheckRouteAccess, sharing.ReasonNotAuthority)
+			if err := rcpt.Commit(r.Context(), a.rc.Audit); err != nil {
+				writeAuditUnavailable(w, nil)
+				return
+			}
+			writeAccessError(w, &bosaccess.Error{Code: "forbidden", Message: "not the access authority"})
+			return
+		}
 		defer rcpt.Finish(a.rc.Audit)
 		guarded(w, r.WithContext(sharing.WithReceipt(r.Context(), rcpt)))
 	}

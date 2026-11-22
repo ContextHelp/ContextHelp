@@ -31,6 +31,7 @@ func runStewardFlowSuite(t *testing.T, newDriver func(*testing.T) storage.Storag
 		"filing refusals answer their stable code": stewardFlowFilingRefusals,
 		"the approval rules hold over the API":     stewardFlowApprovalRules,
 		"nothing a client sends elevates":          stewardFlowInjection,
+		"a narrowed key has no reach over a grant": stewardFlowNarrowedKeyHasNoReach,
 	} {
 		t.Run(name, func(t *testing.T) { fn(t, newStewardFlow(t, newDriver)) })
 	}

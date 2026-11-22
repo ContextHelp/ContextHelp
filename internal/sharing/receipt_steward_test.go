@@ -3,6 +3,7 @@ package sharing_test
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -168,4 +169,39 @@ func TestReceiptOrdinaryCommitIsBuffered(t *testing.T) {
 	_, n := store.count()
 	assert.Equal(t, 1, n)
 	assert.NotContains(t, checkIDs(store.batches[0][0]), sharing.CheckStewardGrant)
+}
+
+// Concurrent Commits of one receipt share the first one's result, and
+// write once; a refusal's entry is not asked of a store that is down a
+// second time; Finish returns the commit's error.
+func TestReceiptCommitIsOnceAndFinishReturnsItsError(t *testing.T) {
+	store := &memAccessLog{stewardFails: 1}
+	w := sharing.NewAuditWriter(store, sharing.AuditOptions{Interval: time.Hour})
+	t.Cleanup(func() { _ = w.Close(context.Background()) })
+	r := sharing.NewReceipt(elevatedOp(elevatedViewer(t)))
+	r.Pass(sharing.CheckScope, sharing.ReasonScopeHeld)
+
+	var wg sync.WaitGroup
+	errs := make([]error, 8)
+	for i := range errs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs[i] = r.Commit(context.Background(), w)
+		}()
+	}
+	wg.Wait()
+	for i, err := range errs {
+		assert.ErrorIs(t, err, errStoreDown, "caller %d", i)
+	}
+	assert.Len(t, store.steward, 1)
+	assert.ErrorIs(t, r.Finish(w), errStoreDown, "Finish after a failed Commit returns the first result")
+
+	down := &memAccessLog{stewardFails: 2}
+	w2 := sharing.NewAuditWriter(down, sharing.AuditOptions{Interval: time.Hour})
+	t.Cleanup(func() { _ = w2.Close(context.Background()) })
+	refused := sharing.NewReceipt(elevatedOp(elevatedViewer(t)))
+	refused.Refuse(sharing.CheckScope, sharing.ReasonScopeMissing)
+	require.Error(t, refused.Commit(context.Background(), w2))
+	assert.Equal(t, 1, 2-down.stewardFails, "one attempt for a refusal, not two")
 }

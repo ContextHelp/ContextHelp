@@ -121,8 +121,9 @@ func (s *Service) Revoke(ctx context.Context, id string, actor *auth.Principal, 
 
 // mayAccess reports whether actor may see and revoke g: a holder of
 // approve:steward (the owner holds it by role, a key or session of the
-// owner narrowed below it does not), the request's requester or the
-// steward.
+// owner narrowed below it does not), or the request's requester or the
+// steward, who each also hold request:steward on the key or session
+// they act with: one narrowed below it has no reach over the grant.
 func mayAccess(actor *auth.Principal, g *storage.StewardGrant, req *storage.ApprovalRequest) bool {
 	switch {
 	case actor == nil || actor.ID == "":
@@ -130,5 +131,5 @@ func mayAccess(actor *auth.Principal, g *storage.StewardGrant, req *storage.Appr
 	case actor.HasScope(auth.ScopeApproveSteward):
 		return true
 	}
-	return actor.ID == g.StewardID || actor.ID == req.RequestedBy
+	return (actor.ID == g.StewardID || actor.ID == req.RequestedBy) && actor.HasScope(auth.ScopeRequestSteward)
 }
