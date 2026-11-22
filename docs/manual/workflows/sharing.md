@@ -104,7 +104,7 @@ A ceiling lists the content classes a principal may never see, whatever its gran
 
 ## Keys narrow, never widen
 
-An API key can be bound to a share policy. The key then sees the intersection of its principal's view and that policy, which is how an assistant's key stays narrower than the person it acts for. A principal binds its own keys through `PUT /api/v1/self/keys/{key}/policy` with `{"policy": "<name>"}`; the owner binds anyone's through `PUT /api/v1/share/keys/{key}/policy`. An empty policy unbinds.
+An API key can be bound to a share policy. The key then sees the intersection of its principal's view and that policy, which is how an assistant's key stays narrower than the person it acts for. A principal binds its own keys through `PUT /api/v1/self/keys/{key}/policy` with `{"policy": "<name>"}`; the owner binds anyone's through `PUT /api/v1/share/keys/{key}/policy`. An empty policy unbinds. An admin other than the owner can bind another principal's key too. Unbinding it or loosening its policy waits for approval, like any other widening change.
 
 ## Invite into an audience
 
@@ -168,7 +168,29 @@ Every change to who can see what is written to the audit log, whoever makes it: 
 
 Read the entries as the owner with `ctxt audit list --event-type share.grant.created`. The event types are `share.audience.created`, `share.member.added`, `share.member.removed`, `share.policy.created`, `share.policy.updated`, `share.grant.created`, `share.grant.revoked`, `share.ceiling.set`, `share.key_policy.bound` and `share.invite.minted`. Only the owner reads the audit log.
 
-`admin:shares` manages who sees what, and that includes the holder's own view. If you give it to anyone but yourself, review these entries.
+A change that waits for approval is on the record first as `approval.request.filed`, written by the requester. Once it is approved, the usual `share.*` event follows under the requester's name, with `request_id` and `approvers` in its payload. Nothing else is written while it waits.
+
+`admin:shares` manages who sees what. Its holder cannot widen anyone's view alone: a change that widens it waits for an approver. Changes that narrow access still apply at once, so review these entries when you give `admin:shares` to anyone but yourself.
+
+## Changes by an admin who is not the owner
+
+The owner's changes apply at once. Another admin, a principal holding `admin:shares`, can still make every change that only narrows what people see or alters no one's view, and those apply at once too: creating an audience or a policy, installing a template, removing a member, revoking a grant, shortening a membership, raising a ceiling, binding a key to a policy, editing a policy no grant uses and no key is bound to, and narrowing one a grant or a bound key does use.
+
+A change that could widen what someone sees waits for an approver. That means a new membership or a longer one, a grant, an edit that shows more of a policy already in use (granted, or bound to a key), lowering a ceiling, and unbinding or loosening a key's policy. The server answers `202 Accepted` with the approval request and `Location: /api/v1/approvals/{id}`, and changes nothing. When the server cannot tell whether a change widens (a policy it cannot parse, a filter it cannot compare), it counts as widening.
+
+An approver is the owner, or a principal holding `approve:shares` (the `share-approver` role). Only the owner assigns that role, and no admin role includes it. The requester never approves its own change, and neither does anyone the change benefits: the member being added, the principal whose ceiling is lowered, and every member of the audience a grant reaches, the principal of a key bound to the policy being edited, as they stand when the approver decides. `approvals.share.required` sets how many approvers a request needs (1 by default). The number is fixed when the request is filed, so lowering it never weakens a request that is already pending.
+
+Approving applies the change in one step with the decision. The audit log shows it as the requester's change, with the request id and the approvers. If something the request was filed against has changed in the meantime (the policy was edited, the membership moved, the ceiling changed), the request ends `stale`, nothing is applied, and the requester files it again. A request nobody decides expires after `approvals.pending_ttl` (72 hours by default).
+
+```bash
+ctxt share grant partners partners-network     # as an admin who is not the owner
+# apr_01J...
+# Waiting for approval: apr_01J... (share.grant.create), expires 2026-10-19 09:00.
+ctxt approval show apr_01J...                  # as an approver: the frozen change and its digest
+ctxt approval approve apr_01J...
+```
+
+`ctxt share audience add`, `ctxt share grant`, `ctxt share ceiling` and `ctxt share policy edit` print the request id and exit 0 when a change waits; with `--format json` they print `{"pending": true, "request": ...}`. The Sharing page does not list pending requests yet: use `ctxt approval list --state requested`.
 
 ## The backstop
 
