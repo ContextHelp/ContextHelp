@@ -176,6 +176,7 @@ Core endpoints:
 - `GET|POST /share/grants`, `DELETE /share/grants/{grant}`, `GET|PUT /principals/{id}/ceiling`, `PUT /share/keys/{key}/policy`
 - `GET|POST /self/keys`, `DELETE /self/keys/{key}`, `PUT /self/keys/{key}/policy`, `GET /self/identities`, `DELETE /self/identities/{identity}`, `GET /self/sessions`, `DELETE /self/sessions/{session}`
 - `GET /approvals`, `GET|DELETE /approvals/{id}`, `POST /approvals/{id}/approve`, `POST /approvals/{id}/reject`
+- `GET|POST /steward/grants`, `GET /steward/grants/{id}`, `POST /steward/grants/{id}/revoke`, `POST|DELETE /steward/grants/{id}/elevate`
 
 ---
 
@@ -1086,7 +1087,7 @@ Get registry details and capabilities.
 
 ## Approvals
 
-Some changes take effect only once someone other than the person who asked accepts them (ADR-083 §9). Each one is a request on the approval queue: who filed it, a reason, the operation frozen with a digest, how many approvals it needs and when it expires (`approvals.pending_ttl`, 72 hours by default). One kind is registered, `steward.grant` (ADR-083 §2), and it refuses every request unless `steward.enabled` is set; `approvals.steward.required` sets its approval count (1 by default). No route files a request yet, so the queue stays empty until the features that file requests land.
+Some changes take effect only once someone other than the person who asked accepts them (ADR-083 §9). Each one is a request on the approval queue: who filed it, a reason, the operation frozen with a digest, how many approvals it needs and when it expires (`approvals.pending_ttl`, 72 hours by default). One kind is registered, `steward.grant` (ADR-083 §2), and it refuses every request unless `steward.enabled` is set; `approvals.steward.required` sets its approval count (1 by default). `POST /steward/grants` files a `steward.grant` request (see [Steward access](#steward-access) below); each request answers `202 Accepted` with the request record and `Location: /api/v1/approvals/{id}`.
 
 Every route below takes `write:self`, which every role and every browser session holds. Who may see or decide a request is the request's own rule: its requester, its subject, the eligible approvers of its kind, and the owner, while the key or session it acts with holds an approval scope (an owner key narrowed below them sees and decides nothing). A request you may not see answers `404`, the same as one that does not exist.
 
@@ -1101,6 +1102,32 @@ Every route below takes `write:self`, which every role and every browser session
 | 403 | `REQUESTER_CANNOT_DECIDE`, `BENEFICIARY_CANNOT_DECIDE`, `APPROVER_NOT_ELIGIBLE`, `NOT_REQUESTER`, `OWNER_CANNOT_REQUEST` | The caller may not take that action on this request; the owner files no request (its changes apply at once) |
 | 404 | `NOT_FOUND` | No such request, or one the caller may not see; also when the instance has no approval mechanism |
 | 409 | `APPROVAL_CLOSED`, `APPROVAL_EXPIRED`, `APPROVAL_STALE`, `ALREADY_DECIDED`, `DIGEST_MISMATCH`, `APPROVAL_KIND_UNKNOWN` | The request is no longer pending, the decision does not match it, or (deciding) its kind is no longer registered |
+
+## Steward access
+
+A steward grant lets one named person read beyond their own grants, for a set time and a frozen scope, after approval by someone other than the requester (ADR-083). Every route below answers `404 NOT_FOUND` while `steward.enabled` is off, whatever the caller holds, as if it did not exist. A request is filed here by a person (never a device or another non-person principal) and decided on the approval queue (`POST /approvals/{id}/approve`, which needs the `payload_digest` the approver reviewed); the approval that applies it writes the grant, and the request's `result_ref` names the grant.
+
+- `POST /steward/grants` (`request:steward`), body `{"steward_id", "reason", "matter_ref", "scope" | "as_audience", "not_before", "expires_at", "renews_id"}`, files a `steward.grant` request and answers `202 Accepted` with the request record and `Location: /api/v1/approvals/{id}`. `steward_id` defaults to the caller and must name a person who holds the `steward-requester` role. `scope` is one share-policy spec without `redact`; `as_audience` instead copies the policies an audience holds now. `expires_at` is required, `not_before` defaults to now, and the window may not exceed `steward.max_duration`. A body with an unknown key is refused. The owner files nothing.
+- `GET /steward/grants?state=&steward=&limit=` (`write:self`) lists the grants you are the steward or the requester of, newest first. A holder of `approve:steward` and the owner see them all. `state` is `approved` (the window has not opened yet), `active`, `expired` or `revoked`. Each record is the stored grant plus `state`, `effective_expires_at` (the end under today's `steward.max_duration`) and `requested_by`. `GET /steward/grants/{id}` (`write:self`) answers one grant. One you cannot see is `404`, like one that does not exist.
+- `POST /steward/grants/{id}/revoke` (`write:self`), with an optional `reason` in the body, ends the grant for good and answers with it. The steward, the requester, a holder of `approve:steward` or the owner may revoke; the steward's next request under the grant is refused.
+- `POST /steward/grants/{id}/elevate` (`request:steward`, a web UI browser session only) makes the session read under the grant, and nothing else, from its next request. The grant must pass the same checks every request under it runs, so a grant that would be refused is never stored on the session. The answer is `{grant_id, session_id, matter_ref, active_at, idle_expires_at, expires_at}`. Elevating into the same grant again refreshes it; a session already elevated into another grant is refused. `DELETE /steward/grants/{id}/elevate` ends the elevation and answers `204`, or `404` when the session is not elevated into that grant.
+
+An elevation ends in three ways. The steward ends it. Or no request uses it for `steward.elevation_idle` (15 minutes by default), and the next request gets the ordinary view. Or a request under it is refused because the grant can no longer be used: that request answers the refusal, the elevation ends, and the next request gets the ordinary view. The browser session survives all three. No header, query parameter or body field elevates a request, and an API key never does.
+
+Every request made under an elevation is written to the read audit (`GET /share/audit`) before its answer is sent, refusals included. If that record can't be written, the request is answered `503 AUDIT_UNAVAILABLE` and nothing else, and the elevation stays in place, even when the grant would have been refused. The refusal is recorded, and the elevation ended, at the next request once the audit is back.
+
+A refused elevation is recorded like any request under one: a chained entry in the read audit, written before the refusal is answered, whose `steward_grant` check names the reason (`browser_only` for an API credential), and a `security.steward.elevation.refused` event. The same holds for a request refused under an elevation, and for a gRPC call under a grant that cannot be used. A session elevated into a grant never opens the event stream: `GET /events` answers `403 NOT_SHARED`, and gRPC streams are refused the same way.
+
+Every transition is a security event (`security.steward.request.filed`, `.approved`, `.rejected`, `.withdrawn`, `.stale`; `security.steward.grant.revoked`; `security.steward.elevation.started`, `.ended`, `.refused`), written to the audit log and sent to the configured alert hooks. Each one carries ids and codes, never the reason text. gRPC has no steward routes. A request under a grant that cannot be used is answered there with `PermissionDenied` where HTTP answers `403` and `Unavailable` where it answers `503`, the code leading the message.
+
+| Status | Code | When |
+|---|---|---|
+| 400 | `STEWARD_REQUEST_STEWARD_INELIGIBLE`, `STEWARD_REQUEST_SCOPE_INVALID`, `STEWARD_REQUEST_WINDOW_INVALID`, `STEWARD_REQUEST_WINDOW_TOO_LONG`, `STEWARD_REQUEST_RENEWAL_INVALID`, `APPROVAL_REASON_TOO_SHORT`, `INVALID_REQUEST`, `INVALID_PARAM` | The filing or the listing is refused |
+| 403 | `OWNER_CANNOT_REQUEST`, `STEWARD_REQUEST_REQUESTER_KIND`, `STEWARD_REQUEST_REQUESTER_ROLE`, `STEWARD_ELEVATION_BROWSER_ONLY` | The owner filed, a principal that is not a person filed, the requester lacks `request:steward`, or an API credential asked to elevate |
+| 403 | `STEWARD_GRANT_UNKNOWN`, `STEWARD_NOT_STEWARD`, `STEWARD_GRANT_NOT_ACTIVE`, `STEWARD_GRANT_EXPIRED`, `STEWARD_GRANT_REVOKED`, `STEWARD_ROLE_MISSING`, `STEWARD_SCOPE_CHANGED`, `STEWARD_SCOPE_INVALID`, `STEWARD_STEWARD_DISABLED`, `STEWARD_IDENTITY_UNKNOWN`, `STEWARD_KEY_POLICY_INVALID` | The grant cannot be used: answered to an elevation, and to any request made under one |
+| 409 | `STEWARD_ELEVATION_ACTIVE`, `STEWARD_GRANT_CLOSED` | The session is elevated into another grant, or the grant is already revoked |
+| 503 | `STEWARD_GRANT_UNAVAILABLE` | The grant could not be checked; nothing is served |
+| 503 | `AUDIT_UNAVAILABLE` | A request under an elevation could not be recorded in the read audit; nothing is served and the elevation stays |
 
 ---
 
