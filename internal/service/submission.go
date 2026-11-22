@@ -7,6 +7,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/contentenc"
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -54,6 +55,11 @@ func decodeContent(req AnalyzeRequest) (AnalyzeRequest, error) {
 func validateSubmission(req AnalyzeRequest) error {
 	if len(req.Note) > MaxAnalyzeNoteBytes {
 		return fmt.Errorf("%w: note is %d bytes, the limit is %d", ErrInvalidSubmission, len(req.Note), MaxAnalyzeNoteBytes)
+	}
+	// The note and data are stored as text and JSON: NUL or invalid UTF-8
+	// in either is refused here, not by the store's driver error later.
+	if f := pipeline.SubmissionNonTextField(req.Note, req.Data, nil, nil); f != "" {
+		return fmt.Errorf("%w: %s must be text (valid UTF-8, no NUL)", ErrInvalidSubmission, f)
 	}
 	if len(req.Data) > 0 {
 		b, err := json.Marshal(req.Data)

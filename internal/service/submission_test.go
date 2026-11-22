@@ -79,6 +79,22 @@ func TestAnalyzeRejectsOversizedNoteAndData(t *testing.T) {
 	assert.True(t, errors.Is(err, ErrInvalidSubmission), "enqueue data: %v", err)
 }
 
+func TestAnalyzeAndEnqueueRejectBinaryNoteAndData(t *testing.T) {
+	svc := newTestService(t)
+	ctx := ownerCtx()
+
+	for name, req := range map[string]AnalyzeRequest{
+		"nul note":     {Content: "x", Type: "text", Pipeline: "text.short", Note: "a\x00b"},
+		"invalid note": {Content: "x", Type: "text", Pipeline: "text.short", Note: "\xff\xfe"},
+		"nul data":     {Content: "x", Type: "text", Pipeline: "text.short", Data: map[string]any{"k": "a\x00b"}},
+	} {
+		_, err := svc.Analyze(ctx, req)
+		assert.True(t, errors.Is(err, ErrInvalidSubmission), "analyze %s: %v", name, err)
+		_, err = svc.Enqueue(ctx, req)
+		assert.True(t, errors.Is(err, ErrInvalidSubmission), "enqueue %s: %v", name, err)
+	}
+}
+
 // The silent skip: under duplicates.policy drop, a submission naming a
 // stored source key was answered with the stored object and never
 // reached the worker, so its note and data were lost.

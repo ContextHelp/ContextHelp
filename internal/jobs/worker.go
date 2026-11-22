@@ -374,25 +374,11 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 	// content under another profile becomes its own object.
 	existing, err := p.store.Objects().GetByContentHash(ctx, draft.ContentHash, draft.ProfileID)
 	if err == nil && existing != nil {
-		if p.refuseNonText(ctx, job, draft, true) {
-			return
-		}
-		existingID, err := p.store.Objects().Reinforce(ctx, draft.ContentHash, draft)
-		if err != nil {
-			// Reinforce errors are storage contention (SQLITE_BUSY) or a row
-			// deleted since the lookup; both can succeed on a later attempt.
-			p.retryOrFail(ctx, job.ID, job.Claim, fmt.Sprintf("reinforce: %s", err), existingID)
-			return
-		}
-		p.putVectors(ctx, existingID, draft)
-		// The caller's note and data on a re-submission replace the stored
-		// ones: reinforcing alone would keep the first capture's.
-		p.applySubmission(ctx, job, existingID)
-		p.markCompleted(ctx, job.ID, existingID, durationMs)
+		p.reinforceExisting(ctx, job, draft, durationMs)
 		return
 	}
 
-	if p.refuseNonText(ctx, job, draft, false) {
+	if p.refuseNonText(ctx, job, draft, writeCreate) {
 		return
 	}
 
@@ -412,17 +398,7 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 		// Unique constraint race: another worker inserted the same hash
 		// (in the same profile) concurrently.
 		if errors.Is(err, storage.ErrAlreadyExists) {
-			// Another worker stored this source key first: this is its update.
-			if p.updateBySourceKey(ctx, job, draft, durationMs) {
-				return
-			}
-			existingID, rerr := p.reinforceAfterRace(ctx, draft)
-			if rerr != nil {
-				p.markFailed(ctx, job.ID, fmt.Sprintf("reinforce after race: %s", rerr), draft.ID)
-				return
-			}
-			p.putVectors(ctx, existingID, draft)
-			p.markCompleted(ctx, job.ID, existingID, durationMs)
+			p.settleCreateRace(ctx, job, draft, durationMs)
 			return
 		}
 		p.markFailed(ctx, job.ID, fmt.Sprintf("store: %s", err), draft.ID)
@@ -475,6 +451,44 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 	}
 }
 
+// reinforceExisting settles job as a content-hash reinforce of the object
+// already stored under draft's hash: the count and the draft's tags and
+// mentions are merged, and the caller's note and data replace the stored
+// ones.
+func (p *WorkerPool) reinforceExisting(ctx context.Context, job *storage.Job, draft *storage.KnowledgeObject, durationMs int64) {
+	if p.refuseNonText(ctx, job, draft, writeReinforce) {
+		return
+	}
+	existingID, err := p.store.Objects().Reinforce(ctx, draft.ContentHash, draft)
+	if err != nil {
+		// Reinforce errors are storage contention (SQLITE_BUSY) or a row
+		// deleted since the lookup; both can succeed on a later attempt.
+		p.retryOrFail(ctx, job.ID, job.Claim, fmt.Sprintf("reinforce: %s", err), existingID)
+		return
+	}
+	p.putVectors(ctx, existingID, draft)
+	// The caller's note and data on a re-submission replace the stored
+	// ones: reinforcing alone would keep the first capture's.
+	p.applySubmission(ctx, job, existingID)
+	p.markCompleted(ctx, job.ID, existingID, durationMs)
+}
+
+// settleCreateRace settles job after its create lost to a concurrent
+// insert of the same content hash or source key.
+func (p *WorkerPool) settleCreateRace(ctx context.Context, job *storage.Job, draft *storage.KnowledgeObject, durationMs int64) {
+	// Another worker stored this source key first: this is its update.
+	if p.updateBySourceKey(ctx, job, draft, durationMs) {
+		return
+	}
+	existingID, rerr := p.reinforceAfterRace(ctx, draft)
+	if rerr != nil {
+		p.markFailed(ctx, job.ID, fmt.Sprintf("reinforce after race: %s", rerr), draft.ID)
+		return
+	}
+	p.putVectors(ctx, existingID, draft)
+	p.markCompleted(ctx, job.ID, existingID, durationMs)
+}
+
 // submission is what the job's caller attached to the capture.
 func submission(job *storage.Job) storageutil.Submission {
 	return storageutil.Submission{
@@ -485,20 +499,41 @@ func submission(job *storage.Job) storageutil.Submission {
 	}
 }
 
+// writeKind is what a job is about to write, which decides the fields the
+// text check covers.
+type writeKind int
+
+const (
+	// writeCreate stores a new object: every draft field.
+	writeCreate writeKind = iota
+	// writeReinforce bumps a stored object and merges the draft's tags and
+	// mentions.
+	writeReinforce
+	// writeSourceKeyUpdate writes only the submission onto the stored
+	// object; the draft is not stored.
+	writeSourceKeyUpdate
+)
+
 // Defense in depth: the store refuses NUL and invalid UTF-8 in text columns
 // and JSON with a driver error, so a step that let either through fails the
-// job before any write. A create or an update by source key checks every
-// field the store writes; a reinforce only the ones it writes.
+// job before any write. A create checks every draft field the store
+// writes; a reinforce the ones it writes; an update by source key none of
+// the draft. Every write also checks the caller's submission (note, data,
+// hints, mentions), which all of them store.
 //
-// refuseNonText fails job permanently, by field, when draft holds NUL or
-// invalid UTF-8 where the write about to happen stores text, and reports
-// whether it did. reinforceOnly limits the check to what a reinforce writes.
-func (p *WorkerPool) refuseNonText(ctx context.Context, job *storage.Job, draft *storage.KnowledgeObject, reinforceOnly bool) bool {
+// refuseNonText fails job permanently, by field, when what kind is about
+// to write holds NUL or invalid UTF-8, and reports whether it did.
+func (p *WorkerPool) refuseNonText(ctx context.Context, job *storage.Job, draft *storage.KnowledgeObject, kind writeKind) bool {
 	var field string
-	if reinforceOnly {
+	switch kind {
+	case writeReinforce:
 		field = pipeline.ReinforceNonTextField(draft)
-	} else {
+	case writeCreate:
 		field = pipeline.NonTextField(draft, false, true)
+	}
+	if field == "" {
+		sub := submission(job)
+		field = pipeline.SubmissionNonTextField(sub.Note, sub.Data, sub.Hints, sub.Mentions)
 	}
 	if field == "" {
 		return false
@@ -523,7 +558,7 @@ func (p *WorkerPool) updateBySourceKey(ctx context.Context, job *storage.Job, dr
 	if stored == nil {
 		return false
 	}
-	if p.refuseNonText(ctx, job, draft, false) {
+	if p.refuseNonText(ctx, job, draft, writeSourceKeyUpdate) {
 		return true
 	}
 	p.updateStored(ctx, job, stored, durationMs)

@@ -5,6 +5,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blobref"
+	uri "hop.top/cite/scheme"
 )
 
 // NonTextField names the first text field of obj that holds binary
@@ -134,7 +135,7 @@ func nonTextGraph(g *storage.ObjectGraph, withMetadata bool) string {
 		return ""
 	}
 	for i, n := range g.Nodes {
-		if blobref.NeedsBlob(n.ID) || blobref.NeedsBlob(string(n.NodeType)) ||
+		if blobref.NeedsBlob(n.ID) || blobref.NeedsBlob(n.NodeType) ||
 			blobref.NeedsBlob(n.Label) || blobref.NeedsBlob(n.Content) {
 			return fmt.Sprintf("graph.nodes[%d]", i)
 		}
@@ -146,7 +147,7 @@ func nonTextGraph(g *storage.ObjectGraph, withMetadata bool) string {
 	}
 	for i, e := range g.Edges {
 		if blobref.NeedsBlob(e.ID) || blobref.NeedsBlob(e.FromID) ||
-			blobref.NeedsBlob(e.ToID) || blobref.NeedsBlob(string(e.EdgeType)) {
+			blobref.NeedsBlob(e.ToID) || blobref.NeedsBlob(e.EdgeType) {
 			return fmt.Sprintf("graph.edges[%d]", i)
 		}
 	}
@@ -194,6 +195,15 @@ func nonTextValue(v any) string {
 				return fmt.Sprintf("[%d].%s", i, k)
 			}
 		}
+	default:
+		return nonTextStringMaps(v)
+	}
+	return ""
+}
+
+// nonTextStringMaps is nonTextValue for the string-valued map shapes.
+func nonTextStringMaps(v any) string {
+	switch t := v.(type) {
 	case map[string]string:
 		for k, s := range t {
 			if blobref.NeedsBlob(k) || blobref.NeedsBlob(s) {
@@ -207,6 +217,30 @@ func nonTextValue(v any) string {
 					return fmt.Sprintf("[%d].%s", i, k)
 				}
 			}
+		}
+	}
+	return ""
+}
+
+// SubmissionNonTextField names the first part of a caller's submission
+// (note, data, hints, mentions) that holds binary (invalid UTF-8 or NUL),
+// or "". The note and data are stored on a re-submission, so they must be
+// text whichever write path the job takes.
+func SubmissionNonTextField(note string, data map[string]any, hints []storage.Tag, mentions []uri.URI) string {
+	if blobref.NeedsBlob(note) {
+		return "note"
+	}
+	if k := nonTextIn(data); k != "" {
+		return "data." + k
+	}
+	for i, h := range hints {
+		if blobref.NeedsBlob(h.Label) || blobref.NeedsBlob(h.Source) {
+			return fmt.Sprintf("hints[%d]", i)
+		}
+	}
+	for i, m := range mentions {
+		if blobref.NeedsBlob(m.String()) {
+			return fmt.Sprintf("mentions[%d]", i)
 		}
 	}
 	return ""
