@@ -121,6 +121,7 @@ func TestAmbientPodGuarantees(t *testing.T) {
 	})
 
 	t.Run("L4 black-box fake pod script in PATH reports stopped pod status", func(t *testing.T) {
+		withFormat(t, "table")
 		dir := t.TempDir()
 		podScript := filepath.Join(dir, "pod")
 		body := `#!/bin/sh
