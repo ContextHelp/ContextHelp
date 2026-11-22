@@ -16,6 +16,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/security"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/sharing"
+	"github.com/ideacrafterslabs/ctxt/internal/steward"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/ui"
 	"github.com/ideacrafterslabs/ctxt/internal/watcher"
@@ -113,6 +114,12 @@ type RouterConfig struct {
 	// Approvals is the shared approval mechanism (ADR-083 §9) the
 	// /approvals routes serve. nil = those routes answer 404.
 	Approvals *approval.Service
+	// Stewards is the grant half of steward access (ADR-083 §2): the
+	// grants the /steward routes list, show and revoke, and the
+	// settings that switch the routes on. The routes file their requests
+	// on Approvals and elevate through Sessions. nil, no Approvals, or
+	// steward.enabled off = every /steward route answers 404.
+	Stewards *steward.Service
 }
 
 // NewRouter creates the HTTP router with all routes and middleware.
@@ -262,12 +269,28 @@ func mountAPIRoutes(r chi.Router, routes []apiRoute, rc RouterConfig, viewers *s
 			h = RequireScope(rt.Scope, rc.Security)(h)
 		}
 		h = Visibility(rt.Method, rt.Pattern, rt.Scope, vis)(h)
+		if rt.Gate != nil {
+			h = gated(rt.Gate, h)
+		}
 		if rt.Method == "" {
 			r.Handle(rt.Pattern, h)
 			continue
 		}
 		r.Method(rt.Method, rt.Pattern, h)
 	}
+}
+
+// gated answers 404 NOT_FOUND, as for a path never mounted, while on
+// reports the route's feature off, ahead of every other check of the
+// route (scope, capability, visibility); next serves it otherwise.
+func gated(on func() bool, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !on() {
+			WriteError(w, http.StatusNotFound, CodeNotFound, "resource not found")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // mountMCP constructs the MCP server with handlers wired to the supplied

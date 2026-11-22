@@ -21,6 +21,10 @@ type apiRoute struct {
 	// Scope is the scope a principal needs to reach the route.
 	Scope   authn.Scope
 	Handler http.Handler
+	// Gate, when set, says per request whether the route exists: a
+	// feature that is off answers 404 NOT_FOUND ahead of every other
+	// check, as a path that was never mounted does.
+	Gate func() bool
 }
 
 // RouteSpec is one apiRoutes entry without its handler: method, pattern
@@ -54,6 +58,7 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 	reg := newRegistryRoutes(rc)
 	sh := newShareRoutes(rc)
 	apr := newApprovalRoutes(rc)
+	sw := newStewardRoutes(svc, rc)
 	get, post, put, patch, del := http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete
 	return []apiRoute{
 		// Identity
@@ -286,5 +291,17 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		{Method: post, Pattern: "/approvals/{id}/approve", Scope: authn.ScopeWriteSelf, Handler: http.HandlerFunc(apr.Approve)},
 		{Method: post, Pattern: "/approvals/{id}/reject", Scope: authn.ScopeWriteSelf, Handler: http.HandlerFunc(apr.Reject)},
 		{Method: del, Pattern: "/approvals/{id}", Scope: authn.ScopeWriteSelf, Handler: http.HandlerFunc(apr.Withdraw)},
+
+		// Steward access (ADR-083 §2, §3), absent unless steward.enabled
+		// is on. Filing and elevating take request:steward; reading and
+		// revoking take write:self and the grant's own rule (its
+		// steward, its requester, approve:steward, the owner) decides.
+		// Elevation is a browser session's only.
+		{Method: post, Pattern: "/steward/grants", Scope: authn.ScopeRequestSteward, Handler: http.HandlerFunc(sw.File), Gate: sw.enabled},
+		{Method: get, Pattern: "/steward/grants", Scope: authn.ScopeWriteSelf, Handler: http.HandlerFunc(sw.List), Gate: sw.enabled},
+		{Method: get, Pattern: "/steward/grants/{id}", Scope: authn.ScopeWriteSelf, Handler: http.HandlerFunc(sw.Get), Gate: sw.enabled},
+		{Method: post, Pattern: "/steward/grants/{id}/revoke", Scope: authn.ScopeWriteSelf, Handler: http.HandlerFunc(sw.Revoke), Gate: sw.enabled},
+		{Method: post, Pattern: "/steward/grants/{id}/elevate", Scope: authn.ScopeRequestSteward, Handler: http.HandlerFunc(sw.Elevate), Gate: sw.enabled},
+		{Method: del, Pattern: "/steward/grants/{id}/elevate", Scope: authn.ScopeRequestSteward, Handler: http.HandlerFunc(sw.EndElevation), Gate: sw.enabled},
 	}
 }

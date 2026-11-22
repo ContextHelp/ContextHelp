@@ -15,7 +15,7 @@ import (
 func TestNewUISessions_PrivateHasNone(t *testing.T) {
 	driver := storageutil.NewTestDriver(t)
 	var out bytes.Buffer
-	s, err := newUISessions(context.Background(), &out, driver, nil, config.AccessPrivate, config.UISessionConfig{})
+	s, err := newUISessions(context.Background(), &out, driver, nil, config.AccessPrivate, config.UISessionConfig{}, authn.SessionOptions{})
 	if err != nil || s != nil {
 		t.Fatalf("private instance: sessions = %v, err = %v; want none", s, err)
 	}
@@ -42,12 +42,15 @@ func TestNewUISessions_ProtectedPrunesEndedSessions(t *testing.T) {
 	}
 	var out bytes.Buffer
 	s, err := newUISessions(ctx, &out, driver, authn.NewKeysOver(driver.Auth(), nil), config.AccessProtected,
-		config.UISessionConfig{IdleTTL: time.Hour, MaxTTL: 24 * time.Hour})
+		config.UISessionConfig{IdleTTL: time.Hour, MaxTTL: 24 * time.Hour}, authn.SessionOptions{ElevationIdle: 5 * time.Minute})
 	if err != nil || s == nil {
 		t.Fatalf("protected instance: sessions = %v, err = %v", s, err)
 	}
 	if s.IdleTTL() != time.Hour || s.MaxTTL() != 24*time.Hour {
 		t.Errorf("bounds = %s/%s, want the configured 1h/24h", s.IdleTTL(), s.MaxTTL())
+	}
+	if s.ElevationIdle() != 5*time.Minute {
+		t.Errorf("elevation idle = %s, want the configured 5m", s.ElevationIdle())
 	}
 	if _, err := driver.UISessions().Get(ctx, "uis_old"); err == nil {
 		t.Error("a session that ended 60 days ago survived the start-up prune")

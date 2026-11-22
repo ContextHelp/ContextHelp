@@ -324,15 +324,16 @@ const uiSessionRetention = 30 * 24 * time.Hour
 // newUISessions builds the web UI session manager of a non-private
 // instance over the driver's session store and principal registry, or
 // returns nil (private instances need no sign-in). At start it prunes
-// sessions that ended more than uiSessionRetention ago.
-func newUISessions(ctx context.Context, out io.Writer, driver storage.StorageDriver, keys *authn.Keys, access string, bounds config.UISessionConfig) (*authn.Sessions, error) {
+// sessions that ended more than uiSessionRetention ago. base carries
+// the steward elevation's settings (ADR-083 §3: the idle timeout and
+// the hook its starts and ends are reported to); the session bounds
+// come from bounds.
+func newUISessions(ctx context.Context, out io.Writer, driver storage.StorageDriver, keys *authn.Keys, access string, bounds config.UISessionConfig, base authn.SessionOptions) (*authn.Sessions, error) {
 	if access == config.AccessPrivate {
 		return nil, nil
 	}
-	sessions, err := authn.NewSessions(driver.UISessions(), driver.Auth(), keys, authn.SessionOptions{
-		IdleTTL: bounds.IdleTTL,
-		MaxTTL:  bounds.MaxTTL,
-	})
+	base.IdleTTL, base.MaxTTL = bounds.IdleTTL, bounds.MaxTTL
+	sessions, err := authn.NewSessions(driver.UISessions(), driver.Auth(), keys, base)
 	if err != nil {
 		return nil, fmt.Errorf("web UI sessions: %w", err)
 	}
@@ -349,7 +350,9 @@ func newUISessions(ctx context.Context, out io.Writer, driver storage.StorageDri
 // method, browser sessions behind the session method, chained in the
 // configured order with carried methods first. It refuses an instance
 // with no active owner credential, naming the command that creates one.
-func buildAuth(ctx context.Context, notes io.Writer, driver storage.StorageDriver, cfg *config.Config, access string) (*authn.Chain, *authn.Keys, *authn.Sessions, error) {
+// A browser session's steward elevation ends after
+// steward.elevation_idle, and its starts and ends are reported to sec.
+func buildAuth(ctx context.Context, notes io.Writer, driver storage.StorageDriver, cfg *config.Config, access string, sec *security.Emitter) (*authn.Chain, *authn.Keys, *authn.Sessions, error) {
 	keys := authn.NewKeysOver(driver.Auth(), nil)
 	cfgKeys, err := authn.ConfigKeysFrom(cfg.Server.Auth.Keys)
 	if err != nil {
@@ -362,7 +365,11 @@ func buildAuth(ctx context.Context, notes io.Writer, driver storage.StorageDrive
 	available := []authn.Method{authn.NewAPIKeyMethod(keys, cfgKeys)}
 	var sessions *authn.Sessions
 	if slices.Contains(methods, authn.MethodSession) {
-		if sessions, err = newUISessions(ctx, notes, driver, keys, access, cfg.Server.UI.Session); err != nil {
+		elevation := authn.SessionOptions{
+			ElevationIdle: cfg.Steward.EffectiveElevationIdle(),
+			OnElevation:   steward.ElevationEvents(sec),
+		}
+		if sessions, err = newUISessions(ctx, notes, driver, keys, access, cfg.Server.UI.Session, elevation); err != nil {
 			return nil, nil, nil, err
 		}
 		available = append(available, sessions.Method())
@@ -528,14 +535,15 @@ func Build(in Inputs) (*Stack, error) {
 	if notes == nil {
 		notes = io.Discard
 	}
+	// Auth failures and ACL denials feed the audit log
+	// (event_class=security) plus optional webhook/SMTP alerting. Wired
+	// on every instance: policy denials matter on private ones too. It
+	// comes first: the session manager reports steward elevations to it.
+	s.Security = security.New(security.ConfigFromAlerts(cfg.Security.Alerts), in.Driver.AuditLog())
 	if err := s.wireAuth(in, access, notes); err != nil {
 		s.Close()
 		return nil, err
 	}
-	// Auth failures and ACL denials feed the audit log
-	// (event_class=security) plus optional webhook/SMTP alerting. Wired
-	// on every instance: policy denials matter on private ones too.
-	s.Security = security.New(security.ConfigFromAlerts(cfg.Security.Alerts), in.Driver.AuditLog())
 
 	// Inbound entitlement/metering gate for the entity-serving surface.
 	// Only authenticated instances construct one: grants are
@@ -580,6 +588,7 @@ func Build(in Inputs) (*Stack, error) {
 		Audit:                s.Audit,
 		AuditLog:             in.Driver.AuditLog(),
 		Approvals:            s.Approvals,
+		Stewards:             s.Stewards,
 	}
 	applyAuthorityRoutes(&rcfg, s.Authority, cfg.Sharing.Authority)
 	s.Router = httpserver.NewRouterWithConfig(s.Service, rcfg)
