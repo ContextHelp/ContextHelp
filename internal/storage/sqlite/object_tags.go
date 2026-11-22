@@ -7,6 +7,9 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
+// sqlLimitClause appends a bound row limit to a paged query.
+const sqlLimitClause = " LIMIT ?"
+
 // TagCounts implements storage.ObjectStore. Tags live in the objects
 // table's JSON tags column, so the labels are unnested with json_each
 // over the active, visible objects (the scope predicate runs in the
@@ -28,7 +31,7 @@ func (s *ObjectStore) TagCounts(ctx context.Context, q storage.TagQuery) ([]stor
 	}
 	query += " GROUP BY label ORDER BY n DESC, label ASC"
 	if q.Limit > 0 {
-		query += " LIMIT ?" //nolint:goconst // the same clause in each paged query
+		query += sqlLimitClause
 		args = append(args, q.Limit)
 	}
 	rows, err := s.db.QueryContext(ctx, query, args...)

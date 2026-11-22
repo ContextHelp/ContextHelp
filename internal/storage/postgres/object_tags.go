@@ -28,7 +28,9 @@ func (s *ObjectStore) TagCounts(ctx context.Context, q storage.TagQuery) ([]stor
 	}
 	query += ` GROUP BY t->>'label' ORDER BY n DESC, t->>'label' COLLATE "C" ASC`
 	if q.Limit > 0 {
-		query += fmt.Sprintf(" LIMIT $%d", idx)
+		// #nosec G202 -- only the integer placeholder index is formatted in;
+		// the limit value itself is bound as a query argument.
+		query += fmt.Sprintf(" LIMIT $%d", idx) //nolint:gosec // see #nosec above
 		args = append(args, q.Limit)
 	}
 	rows, err := s.db.QueryContext(ctx, query, args...)

@@ -70,7 +70,7 @@ func (s *ResurfacingQueueStore) List(
 	}
 	query += " ORDER BY score DESC"
 	if f.Limit > 0 {
-		query += " LIMIT ?"
+		query += sqlLimitClause
 		args = append(args, f.Limit)
 	}
 

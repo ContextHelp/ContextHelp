@@ -685,7 +685,7 @@ func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, f
 	FROM objects` + whereClause(pageConditions) + " ORDER BY " + order
 	pageArgs := append(append([]any(nil), args...), orderArgs...)
 	if filter.Limit > 0 {
-		query += " LIMIT ?"
+		query += sqlLimitClause
 		pageArgs = append(pageArgs, filter.Limit)
 	}
 	if filter.Offset > 0 {
