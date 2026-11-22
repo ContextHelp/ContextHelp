@@ -61,7 +61,62 @@ func (s *Service) record(ctx context.Context, event, actor string, r *storage.Ap
 	if err := s.audit.Append(ctx, entry); err != nil {
 		return fmt.Errorf("audit %s: %w", event, err)
 	}
+	if c, ok := ctx.Value(noticesKey{}).(*notices); ok && c != nil {
+		c.list = append(c.list, Notice{Event: event, Actor: actor, Request: *r, At: at})
+	}
 	return nil
+}
+
+// Notice is one event the mechanism recorded, reported to
+// Options.Notify once its transaction returned (Options.Notify).
+type Notice struct {
+	// Event is the audit event (EventFiled, EventDecided, ...).
+	Event string
+	// Actor is who triggered it: the requester, the approver, the
+	// withdrawer.
+	Actor string
+	// Request is the request as it stood when the event was recorded:
+	// its status is the transition's target.
+	Request storage.ApprovalRequest
+	At      time.Time
+}
+
+// noticesKey carries the notices one call collects.
+type noticesKey struct{}
+
+type notices struct{ list []Notice }
+
+// collect returns ctx carrying a fresh collector for one call's
+// notices, when the service reports any.
+func (s *Service) collect(ctx context.Context) (context.Context, *notices) {
+	if s.notify == nil {
+		return ctx, nil
+	}
+	c := &notices{}
+	return context.WithValue(ctx, noticesKey{}, c), c
+}
+
+// flush reports c's notices in order; the call's transaction returned
+// without error. The result is already committed, so a hook that
+// panics is logged and skipped: it never fails the call nor stops the
+// notices after it.
+func (s *Service) flush(ctx context.Context, c *notices) {
+	if c == nil {
+		return
+	}
+	for _, n := range c.list {
+		s.notifyOne(ctx, n)
+	}
+}
+
+// notifyOne reports n, recovering a panic of the hook.
+func (s *Service) notifyOne(ctx context.Context, n Notice) {
+	defer func() {
+		if p := recover(); p != nil {
+			slog.ErrorContext(ctx, "approval: notify hook panicked", "event", n.Event, "request", n.Request.ID, "panic", fmt.Sprint(p))
+		}
+	}()
+	s.notify(ctx, n)
 }
 
 // approverIDs lists the approvers of r's approve decisions, in order.
@@ -94,6 +149,9 @@ func (s *Service) recordRefusal(ctx context.Context, r *storage.ApprovalRequest,
 	if r == nil || !refusedCodes[code] {
 		return
 	}
+	// The refusal is no transition: it reports nothing and collects
+	// nothing into the call's notices, which are never flushed here.
+	ctx = context.WithValue(ctx, noticesKey{}, (*notices)(nil))
 	at := s.clock()
 	entry := &storage.AuditEntry{
 		ID: uuid.New().String(), EventType: EventRefused, Actor: approver.ID, CreatedAt: at,

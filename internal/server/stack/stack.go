@@ -52,6 +52,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/steps"
+	"github.com/ideacrafterslabs/ctxt/internal/steward"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/watcher"
 )
@@ -156,9 +157,11 @@ type Stack struct {
 	// into; the gRPC server the caller builds takes it too. Shutdown
 	// flushes it.
 	Audit *sharing.AuditWriter
-	// Approvals is the shared approval mechanism (ADR-083 §9); its
-	// queue is served on /api/v1/approvals.
+	// Approvals is the shared approval mechanism (ADR-083 §9) with its
+	// kinds registered; its queue is served on /api/v1/approvals.
+	// Stewards is the grant half of steward.grant (revocation, state).
 	Approvals *approval.Service
+	Stewards  *steward.Service
 	// Authority is the access state of an external authority; nil when the
 	// instance takes none.
 	Authority *bosaccess.Peer
