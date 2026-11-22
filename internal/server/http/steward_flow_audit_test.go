@@ -255,7 +255,11 @@ func stewardAuditEventsRefused(t *testing.T, f *stewardFlow) {
 	assert.Equal(t, http.StatusOK, code, "the ordinary view keeps its stream")
 
 	require.Equal(t, http.StatusOK, f.elevate(sfSteward, grant).StatusCode)
-	resp := f.do(sfSteward, http.MethodGet, "/api/v1/events", nil)
+	resp := f.do(sfSteward, http.MethodGet, "/api/v1/events", nil, func(r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		t.Cleanup(cancel)
+		*r = *r.WithContext(ctx)
+	})
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	assert.Equal(t, CodeNotShared, errCode(t, resp))
 	got := f.stewardLog(grant)
