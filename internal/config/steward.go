@@ -55,6 +55,12 @@ type StewardConfig struct {
 	// AllowExport lets a scope open the export capability. Off by
 	// default.
 	AllowExport bool `mapstructure:"allow_export" yaml:"allow_export"`
+	// AuditRetention is how long housekeeping keeps the object id lists
+	// of steward audit entries (ADR-083 §5); the entries, their counts
+	// and their chain always stay, and so do the grants.
+	// sharing.audit.retention never governs them. 0, the default, keeps
+	// the lists for good.
+	AuditRetention time.Duration `mapstructure:"audit_retention" yaml:"audit_retention"`
 }
 
 // EffectiveMaxDuration is MaxDuration, or the default when unset.
@@ -90,6 +96,9 @@ func (s StewardConfig) Validate() []ValidationError {
 	}
 	if s.ElevationIdle < 0 {
 		errs = append(errs, ValidationError{Field: "steward.elevation_idle", Message: fmt.Sprintf("must be a positive duration or 0 for the default (%s); got %s", DefaultStewardElevationIdle, s.ElevationIdle)})
+	}
+	if s.AuditRetention < 0 {
+		errs = append(errs, ValidationError{Field: "steward.audit_retention", Message: fmt.Sprintf("must be a positive duration, or 0 to keep steward audit entries' object lists for good; got %s", s.AuditRetention)})
 	}
 	if s.MinReasonChars < 0 {
 		errs = append(errs, ValidationError{Field: "steward.min_reason_chars", Message: fmt.Sprintf("must be a positive count or 0 for the default (%d); got %d", DefaultStewardMinReasonChars, s.MinReasonChars)})
