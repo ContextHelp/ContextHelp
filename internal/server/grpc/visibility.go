@@ -218,7 +218,9 @@ func (cfg visibilityConfig) check(ctx context.Context, fullMethod string, v shar
 	}
 	if len(res.Hits) > 0 {
 		cfg.record(ctx, fullMethod, v, res.Hits)
-		if cfg.strict {
+		// An elevated request is strict whatever the instance says
+		// (ADR-083 §3).
+		if cfg.strict || v.StrictBackstop() {
 			rcpt.Refuse(sharing.CheckBackstop, sharing.ReasonHitRefused)
 			return nil, status.Error(codes.Internal, "VISIBILITY_BACKSTOP: the response carried data outside the viewer's visibility and was refused")
 		}

@@ -174,7 +174,9 @@ func answer(w http.ResponseWriter, r *http.Request, rec *recorder, run backstopR
 	}
 	if len(res.Hits) > 0 {
 		recordBackstop(r, cfg.Security, run.route, run.viewer, res.Hits)
-		if cfg.Strict {
+		// An elevated request is strict whatever the instance says: it
+		// must not receive a silently incomplete answer (ADR-083 §3).
+		if cfg.Strict || run.viewer.StrictBackstop() {
 			if run.reached {
 				rcpt.Refuse(sharing.CheckBackstop, sharing.ReasonHitRefused)
 			}

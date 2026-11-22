@@ -73,11 +73,24 @@ func authUnaryInterceptor(chain *authn.Chain, sec *security.Emitter, viewers *sh
 // in one step, so no RPC reaches a handler authenticated but unscoped.
 // The owner is Unrestricted; anyone else gets the viewer viewers
 // compiles from its grants, under the identity that authenticated it
-// (ADR-080 §4). A resolution failure is Internal and the RPC refused:
-// a caller is never attached unscoped by mistake.
+// (ADR-080 §4). A principal that names a steward grant (Meta) gets that
+// grant's viewer alone, and a grant that fails a check refuses the RPC:
+// PermissionDenied when the answer is no, Unavailable when a store
+// could not be read (ADR-083 §3), never the ordinary view in its place.
+// Any other resolution failure is Internal and the RPC refused: a
+// caller is never attached unscoped by mistake.
 func attachCaller(ctx context.Context, princ *authn.Principal, viewers *sharing.Resolver) (context.Context, error) {
-	v, err := viewers.Resolve(ctx, princ.ID, princ.Kind, princ.Meta[authn.MetaIdentityID])
+	v, err := viewers.Resolve(ctx, princ.ID, princ.Kind, princ.Meta[authn.MetaIdentityID],
+		sharing.AsSteward(princ.Meta[authn.MetaStewardGrantID]))
 	if err != nil {
+		var refusal *sharing.StewardRefusal
+		if errors.As(err, &refusal) {
+			slog.Warn("grpc auth: steward grant refused", "principal", princ.ID, "reason", refusal.Reason, "deferred", refusal.Deferred, "err", refusal.Err)
+			if refusal.Deferred {
+				return nil, status.Error(codes.Unavailable, refusal.Code()+": the steward grant cannot be checked now")
+			}
+			return nil, status.Error(codes.PermissionDenied, refusal.Code()+": the steward grant cannot be used: "+refusal.Reason)
+		}
 		slog.Error("grpc auth: viewer resolution failed", "principal", princ.ID, "err", err)
 		return nil, status.Error(codes.Internal, "viewer resolution failed")
 	}

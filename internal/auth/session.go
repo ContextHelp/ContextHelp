@@ -38,6 +38,13 @@ const (
 	MetaSessionID = "session_id"
 	// ViaSession is the MetaVia value of a session principal.
 	ViaSession = "session"
+	// MetaStewardGrantID names the steward grant the principal is
+	// elevated into (ADR-083 §3): the id of an approved grant of which
+	// it is the steward. Its absence means the ordinary view. Whatever
+	// authenticator sets it takes it from the session's elevation; the
+	// transports resolve the viewer from it and refuse the request when
+	// the grant fails a check, never falling back to the ordinary view.
+	MetaStewardGrantID = "steward_grant_id"
 )
 
 // Session revocation reasons recorded in the store. The cascades from
