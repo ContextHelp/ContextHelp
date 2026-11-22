@@ -165,6 +165,38 @@
 #  max_retries: 3
 #  max_hops: 5
 #  drain_timeout: 30s
+# local (default) | pod. User config only: project-layer .contexthelp/dpkms.yaml
+# may not set jobs.executor or jobs.pod.*.
+#  executor: local
+#  pod:
+# Optional provider and image; empty defers to pod's own configured defaults.
+#    provider: docker
+#    image: ctxt-pod-worker:local
+#    dpkms_bin: dpkms
+# Max concurrent ephemeral pods (set server.workers >= max_inflight to saturate).
+#    max_inflight: 4
+# Cost ceiling in pods created per sliding hour (0 = unlimited).
+#    max_pods_per_hour: 120
+# Hard per-job pod lifetime (must be shorter than jobs.stale_timeout).
+#    max_pod_duration: 5m
+# Set true to warn and run locally if pod is absent when executor is pod.
+#    fallback_local: false
+# Job types eligible for pod offload (ingest:text stays local by default).
+#    topics:
+#      - ingest:document
+#      - ingest:image
+#      - ingest:audio
+#      - ingest:video
+#      - ingest:url
+#      - ingest:code
+#      - ingest:feed
+#      - ingest:feed_item
+#      - ingest:github_release
+#    timeouts:
+#      probe: 10s
+#      query: 15s
+#      exec: 90s
+#      lifecycle: 5m
 
 # Providers (dpkms serve; ctxt for embeddings and direct-store commands).
 # auto probes for a local tool and falls back to a stub. API keys come from
