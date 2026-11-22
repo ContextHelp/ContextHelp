@@ -88,62 +88,105 @@ func Visibility(method, pattern string, scope authn.Scope, cfg VisibilityConfig)
 			// One receipt per audited request, finished once on every
 			// way out, early refusals included (ADR-080 §9).
 			rcpt := sharing.NewReceipt(operationFor(r, route, v))
-			defer func() { rcpt.Finish(cfg.Audit) }()
 			r = r.WithContext(sharing.WithReceipt(r.Context(), rcpt))
-			if target != "" {
-				pv, refused := viewAs(w, r, cfg.Viewers, v, ok, reads, target)
-				if refused != "" {
-					if restricted {
-						rcpt.Refuse(sharing.CheckViewAs, refused)
-					} else {
-						rcpt.Discard() // the owner's own requests are not logged
-					}
-					return
-				}
-				v, ok = pv, true
-				r = r.WithContext(previewContext(r.Context(), pv, target))
-				p, _ := sharing.PreviewFrom(r.Context())
-				rcpt.SetPreview(p, pv)
+			// A panic below still leaves the entry: Finish commits an
+			// elevated one durably, and does nothing once released.
+			defer func() { rcpt.Finish(cfg.Audit) }()
+			serve := func(w http.ResponseWriter, r *http.Request) {
+				serveAudited(w, r, auditedRun{
+					shape: shape, known: known, route: route, reads: reads, streams: streams, target: target,
+					restricted: restricted, viewer: v, attached: ok, receipt: rcpt,
+				}, cfg, next)
 			}
-			if ok && v.IsUnrestricted() {
-				// The owner previewing the owner is the owner: untouched
-				// and not logged.
-				rcpt.Discard()
-				next.ServeHTTP(w, r)
+			if !rcpt.Elevated() {
+				serve(w, r)
 				return
 			}
-			if streams {
-				// The handler filters each frame for the viewer; a
-				// buffered check would hold the stream until it ends. Its
-				// receipt is written when the stream ends, stamped with
-				// when it began.
-				next.ServeHTTP(w, r)
-				if !rcpt.Refused() {
-					rcpt.SettleStream()
-				}
-				return
-			}
-			if !known {
-				slog.Error("visibility: route declares no response shape", "route", route)
-				rcpt.Refuse(sharing.CheckRouteAccess, sharing.ReasonRouteUnclassified)
-				WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "route declares no response shape")
-				return
-			}
-			ledger := sharing.NewLedger()
-			rcpt.SetLedger(ledger)
-			ctx := sharing.WithLedger(r.Context(), ledger)
-			rec := newRecorder(w)
-			next.ServeHTTP(rec, r.WithContext(ctx))
-			// A check that refused the request ended its trail there: the
-			// handler never ran, and the checks after it are not recorded.
-			// The response is still checked below, whatever its source.
-			reached := !rcpt.Refused()
-			if reached {
-				rcpt.SettlePolicy()
-			}
-			answer(w, r, rec, backstopRun{shape: shape, route: route, viewer: v, ledger: ledger, reached: reached}, cfg, rcpt)
+			// An elevated request (ADR-083 §5, option B): whatever the
+			// answer, a refusal included, it is held until the request's
+			// entry is committed, and replaced by 503 AUDIT_UNAVAILABLE
+			// when the entry cannot be.
+			keep := w.Header().Clone()
+			held := newRecorder(w)
+			serve(held, r)
+			releaseElevated(w, r, held, keep, rcpt, cfg.Audit)
 		})
 	}
+}
+
+// auditedRun is what serveAudited needs of one audited request.
+type auditedRun struct {
+	shape      sharing.Shape
+	known      bool
+	route      string
+	reads      bool
+	streams    bool
+	target     string
+	restricted bool
+	viewer     sharing.Viewer
+	attached   bool
+	receipt    *sharing.Receipt
+}
+
+// serveAudited runs an audited request (a restricted viewer's, or the
+// owner's preview): the view-as swap, then the handler behind the
+// ledger, then the backstop over its buffered answer, written to w.
+func serveAudited(w http.ResponseWriter, r *http.Request, run auditedRun, cfg VisibilityConfig, next http.Handler) {
+	rcpt, v, ok, target, restricted := run.receipt, run.viewer, run.attached, run.target, run.restricted
+	shape, known, route, reads := run.shape, run.known, run.route, run.reads
+	if target != "" {
+		pv, refused := viewAs(w, r, cfg.Viewers, v, ok, reads, target)
+		if refused != "" {
+			if restricted {
+				rcpt.Refuse(sharing.CheckViewAs, refused)
+			} else {
+				rcpt.Discard() // the owner's own requests are not logged
+			}
+			return
+		}
+		v, ok = pv, true
+		r = r.WithContext(previewContext(r.Context(), pv, target))
+		p, _ := sharing.PreviewFrom(r.Context())
+		rcpt.SetPreview(p, pv)
+	}
+	if ok && v.IsUnrestricted() {
+		// The owner previewing the owner is the owner: untouched
+		// and not logged.
+		rcpt.Discard()
+		next.ServeHTTP(w, r)
+		return
+	}
+	if run.streams {
+		// The handler filters each frame for the viewer; a buffered
+		// check would hold the stream until it ends. Its receipt is
+		// written when the stream ends, stamped with when it began. An
+		// elevated request never gets this far: the capability check
+		// refuses it (steward_no_stream) before the handler.
+		next.ServeHTTP(w, r)
+		if !rcpt.Refused() {
+			rcpt.SettleStream()
+		}
+		return
+	}
+	if !known {
+		slog.Error("visibility: route declares no response shape", "route", route)
+		rcpt.Refuse(sharing.CheckRouteAccess, sharing.ReasonRouteUnclassified)
+		WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "route declares no response shape")
+		return
+	}
+	ledger := sharing.NewLedger()
+	rcpt.SetLedger(ledger)
+	ctx := sharing.WithLedger(r.Context(), ledger)
+	rec := newRecorder(w)
+	next.ServeHTTP(rec, r.WithContext(ctx))
+	// A check that refused the request ended its trail there: the
+	// handler never ran, and the checks after it are not recorded.
+	// The response is still checked below, whatever its source.
+	reached := !rcpt.Refused()
+	if reached {
+		rcpt.SettlePolicy()
+	}
+	answer(w, r, rec, backstopRun{shape: shape, route: route, viewer: v, ledger: ledger, reached: reached}, cfg, rcpt)
 }
 
 // backstopRun is what answer needs to check one buffered response.

@@ -42,35 +42,44 @@ func visibilityUnaryInterceptor(cfg visibilityConfig) grpc.UnaryServerIntercepto
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		// One receipt per audited call, finished once on every way out,
 		// early refusals included (ADR-080 §9).
-		restricted := callerRestricted(ctx)
-		if audited(ctx) {
-			var rcpt *sharing.Receipt
-			ctx, rcpt = ensureReceipt(ctx, info.FullMethod, req)
-			defer func() { rcpt.Finish(cfg.audit) }()
+		if !audited(ctx) {
+			return cfg.serveUnary(ctx, req, info, handler)
 		}
-		ctx, v, ok, err := cfg.viewAs(ctx, info.FullMethod, restricted)
-		if err != nil {
-			return nil, err
-		}
-		ctx, err = authorizeCapability(ctx, info.FullMethod)
-		if err != nil {
-			return nil, err
-		}
-		if ok && v.IsUnrestricted() {
-			// The owner previewing the owner is the owner: not logged.
-			sharing.ReceiptFrom(ctx).Discard()
-			return handler(ctx, req)
-		}
-		ledger := sharing.NewLedger()
-		sharing.ReceiptFrom(ctx).SetLedger(ledger)
-		ctx = sharing.WithLedger(ctx, ledger)
-		resp, err := handler(ctx, req)
-		sharing.ReceiptFrom(ctx).SettlePolicy()
-		if err != nil {
-			return resp, err
-		}
-		return cfg.check(ctx, info.FullMethod, v, ledger, resp)
+		ctx, rcpt := ensureReceipt(ctx, info.FullMethod, req)
+		// A panic below still leaves the entry; after a commit this is
+		// a no-op.
+		defer func() { rcpt.Finish(cfg.audit) }()
+		resp, err := cfg.serveUnary(ctx, req, info, handler)
+		return commitElevated(ctx, rcpt, cfg.audit, resp, err)
 	}
+}
+
+// serveUnary runs a unary call behind the view-as swap, the capability
+// check and, for a restricted viewer, the ledger and the backstop.
+func (cfg visibilityConfig) serveUnary(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+	restricted := callerRestricted(ctx)
+	ctx, v, ok, err := cfg.viewAs(ctx, info.FullMethod, restricted)
+	if err != nil {
+		return nil, err
+	}
+	ctx, err = authorizeCapability(ctx, info.FullMethod)
+	if err != nil {
+		return nil, err
+	}
+	if ok && v.IsUnrestricted() {
+		// The owner previewing the owner is the owner: not logged.
+		sharing.ReceiptFrom(ctx).Discard()
+		return handler(ctx, req)
+	}
+	ledger := sharing.NewLedger()
+	sharing.ReceiptFrom(ctx).SetLedger(ledger)
+	ctx = sharing.WithLedger(ctx, ledger)
+	resp, err := handler(ctx, req)
+	sharing.ReceiptFrom(ctx).SettlePolicy()
+	if err != nil {
+		return resp, err
+	}
+	return cfg.check(ctx, info.FullMethod, v, ledger, resp)
 }
 
 // visibilityStreamInterceptor mirrors visibilityUnaryInterceptor for
@@ -83,6 +92,9 @@ func visibilityStreamInterceptor(cfg visibilityConfig) grpc.StreamServerIntercep
 			var rcpt *sharing.Receipt
 			ctx, rcpt = ensureReceipt(ctx, info.FullMethod, nil)
 			defer func() { rcpt.Finish(cfg.audit) }()
+			if rcpt.Elevated() {
+				return refuseElevatedStream(ctx, rcpt, cfg.audit)
+			}
 		}
 		ctx, v, ok, err := cfg.viewAs(ctx, info.FullMethod, restricted)
 		if err != nil {

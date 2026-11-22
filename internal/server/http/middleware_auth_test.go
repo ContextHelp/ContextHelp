@@ -32,7 +32,7 @@ func authedEcho(t *testing.T) http.Handler {
 }
 
 func TestRequireAuthMissingCredential(t *testing.T) {
-	h := RequireAuth(testChain(t), nil, false, nil)(authedEcho(t))
+	h := RequireAuth(testChain(t), nil, false, nil, nil, nil)(authedEcho(t))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/search", nil))
 
@@ -41,7 +41,7 @@ func TestRequireAuthMissingCredential(t *testing.T) {
 }
 
 func TestRequireAuthInvalidBearer(t *testing.T) {
-	h := RequireAuth(testChain(t), nil, false, nil)(authedEcho(t))
+	h := RequireAuth(testChain(t), nil, false, nil, nil, nil)(authedEcho(t))
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/search", nil)
 	req.Header.Set("Authorization", "Bearer nope")
 	rec := httptest.NewRecorder()
@@ -51,7 +51,7 @@ func TestRequireAuthInvalidBearer(t *testing.T) {
 }
 
 func TestRequireAuthValidBearer(t *testing.T) {
-	h := RequireAuth(testChain(t), nil, false, nil)(authedEcho(t))
+	h := RequireAuth(testChain(t), nil, false, nil, nil, nil)(authedEcho(t))
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/search", nil)
 	req.Header.Set("Authorization", "Bearer tok-valid-fixture-0123456789abcdef0123456789")
 	rec := httptest.NewRecorder()
@@ -62,7 +62,7 @@ func TestRequireAuthValidBearer(t *testing.T) {
 }
 
 func TestRequireAuthValidAPIKey(t *testing.T) {
-	h := RequireAuth(testChain(t), nil, false, nil)(authedEcho(t))
+	h := RequireAuth(testChain(t), nil, false, nil, nil, nil)(authedEcho(t))
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/search", nil)
 	req.Header.Set("X-API-Key", "tok-valid-fixture-0123456789abcdef0123456789")
 	rec := httptest.NewRecorder()

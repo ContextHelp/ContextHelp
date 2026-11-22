@@ -38,7 +38,12 @@ const HeaderAPIKey = "X-API-Key"
 //
 // Failures are recorded on the security emitter (nil-safe), keyed by
 // remote host since no principal exists yet.
-func RequireAuth(chain *authn.Chain, sec *security.Emitter, devCORS bool, viewers *sharing.Resolver) func(http.Handler) http.Handler {
+//
+// A principal that names a steward grant the grant's checks refuse is
+// answered here with the check's code (ADR-083 §3); the refusal is a
+// durable read audit entry on audit, committed before the answer, and
+// a security event (refuseElevation).
+func RequireAuth(chain *authn.Chain, sec *security.Emitter, devCORS bool, viewers *sharing.Resolver, sessions *authn.Sessions, audit *sharing.AuditWriter) func(http.Handler) http.Handler {
 	cop := newSessionCOP(devCORS)
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -65,7 +70,7 @@ func RequireAuth(chain *authn.Chain, sec *security.Emitter, devCORS bool, viewer
 			if err != nil {
 				var refusal *sharing.StewardRefusal
 				if errors.As(err, &refusal) {
-					writeStewardRefusal(w, res.Principal, refusal)
+					refuseElevation(w, r, res.Principal, refusal, sec, sessions, audit)
 					return
 				}
 				slog.Error("auth: viewer resolution failed", "principal", res.Principal.ID, "err", err)
@@ -163,7 +168,7 @@ func writeStewardRefusal(w http.ResponseWriter, princ *authn.Principal, refusal 
 		status = http.StatusServiceUnavailable
 		msg = "the steward grant cannot be checked now"
 	}
-	slog.Warn("auth: steward grant refused", "principal", princ.ID, "reason", refusal.Reason, "deferred", refusal.Deferred, "err", refusal.Err)
+	logStewardRefusal(princ, refusal)
 	WriteError(w, status, refusal.Code(), msg)
 }
 

@@ -63,12 +63,15 @@ func ensureReceipt(ctx context.Context, fullMethod string, req any) (context.Con
 
 // finishReceipt hands the call's receipt to w. The owner's own refused
 // calls are not logged (restricted false); a refused preview is one.
-func finishReceipt(ctx context.Context, w *sharing.AuditWriter, restricted bool) {
+// An elevated call's entry is committed durably before it returns, and
+// its error, when it could not be, is returned: the caller then answers
+// AUDIT_UNAVAILABLE.
+func finishReceipt(ctx context.Context, w *sharing.AuditWriter, restricted bool) error {
 	r := sharing.ReceiptFrom(ctx)
 	if !restricted {
 		r.Discard()
 	}
-	r.Finish(w)
+	return r.Commit(ctx, w)
 }
 
 // maxDigestString is the longest string value the operation digest
