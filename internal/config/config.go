@@ -1602,6 +1602,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("steward.withheld_classes", DefaultStewardWithheldClasses)
 	v.SetDefault("steward.allow_withheld", false)
 	v.SetDefault("steward.allow_export", false)
+	v.SetDefault("steward.audit_retention", time.Duration(0))
 	v.SetDefault("jobs.poll_interval", 500*time.Millisecond)
 	v.SetDefault("jobs.stale_timeout", 30*time.Minute)
 	v.SetDefault("jobs.max_retries", 3)

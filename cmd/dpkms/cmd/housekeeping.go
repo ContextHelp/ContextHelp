@@ -163,7 +163,7 @@ var runAllCmd = &cobra.Command{
   3. Purge orphaned blobs (no object refers to them, older than --blob-grace)
   4. Compact embeddings table
   5. Prune jobs history >30 days
-  6. Prune the object id lists of read audit entries older than sharing.audit.retention (90 days by default)
+  6. Prune the object id lists of read audit entries older than sharing.audit.retention (90 days by default); steward entries keep theirs until steward.audit_retention (kept for good by default)
   7. Detect zombie jobs (running but stale)
   8. Print stats summary`,
 	RunE: runAll,
@@ -542,9 +542,14 @@ type housekeepingStats struct {
 	// AuditObjectsPruned counts the read audit object ids pruned past
 	// sharing.audit.retention; the entries and their counts stay.
 	AuditObjectsPruned int64
-	ZombiesFound       int64
-	ZombiesReset       int64
-	OrphanBlobs        int64
+	// StewardAuditObjectsPruned counts the object ids of steward audit
+	// entries pruned past steward.audit_retention (ADR-083 §5); 0 when
+	// it keeps them, the default. The entries, their chain and the
+	// grants stay.
+	StewardAuditObjectsPruned int64
+	ZombiesFound              int64
+	ZombiesReset              int64
+	OrphanBlobs               int64
 	// OrphanBlobsYoung are unreferenced blobs inside the grace period,
 	// kept; OrphanBlobsFailed could not be deleted.
 	OrphanBlobsYoung  int64
@@ -565,16 +570,17 @@ func progress(line string) {
 // precomputed so a caller need not know the page arithmetic.
 func (s housekeepingStats) summary() map[string]any {
 	return map[string]any{
-		"db_size_mb":           s.PagesAfter * s.PageSize / (1024 * 1024),
-		"reclaimed_kb":         (s.PagesBefore - s.PagesAfter) * s.PageSize / 1024,
-		"jobs_pruned":          s.JobsPruned,
-		"audit_objects_pruned": s.AuditObjectsPruned,
-		"zombies_found":        s.ZombiesFound,
-		"zombies_reset":        s.ZombiesReset,
-		"orphan_blobs":         s.OrphanBlobs,
-		"orphan_blobs_young":   s.OrphanBlobsYoung,
-		"orphan_blobs_failed":  s.OrphanBlobsFailed,
-		"embeddings_optim":     s.EmbeddingsOpt,
+		"db_size_mb":                   s.PagesAfter * s.PageSize / (1024 * 1024),
+		"reclaimed_kb":                 (s.PagesBefore - s.PagesAfter) * s.PageSize / 1024,
+		"jobs_pruned":                  s.JobsPruned,
+		"audit_objects_pruned":         s.AuditObjectsPruned,
+		"steward_audit_objects_pruned": s.StewardAuditObjectsPruned,
+		"zombies_found":                s.ZombiesFound,
+		"zombies_reset":                s.ZombiesReset,
+		"orphan_blobs":                 s.OrphanBlobs,
+		"orphan_blobs_young":           s.OrphanBlobsYoung,
+		"orphan_blobs_failed":          s.OrphanBlobsFailed,
+		"embeddings_optim":             s.EmbeddingsOpt,
 	}
 }
 
@@ -617,9 +623,10 @@ func (s housekeepingStats) plan(command string, threshold, grace, retention time
 			Reversible: false, Detail: "prune completed, failed and canceled jobs older than 30 days",
 		},
 		{
-			Kind: "delete", Target: "table:access_log_objects", Count: s.AuditObjectsPruned,
+			Kind: "delete", Target: "table:access_log_objects", Count: s.AuditObjectsPruned + s.StewardAuditObjectsPruned,
 			Reversible: false,
-			Detail:     fmt.Sprintf("prune the object id lists of read audit entries older than %s (sharing.audit.retention); the entries and their counts stay", retention),
+			Detail: fmt.Sprintf("prune the object id lists of read audit entries older than %s (sharing.audit.retention), and of steward entries %s (steward.audit_retention); the entries and their counts stay",
+				retention, stewardRetentionDetail(cfg.Steward.AuditRetention)),
 		},
 		{
 			Kind: "update", Target: "table:jobs", Count: s.ZombiesFound,
@@ -645,6 +652,7 @@ func (s housekeepingStats) print(w *lineWriter) {
 	w.printf("  Space reclaimed: %d KB\n", reclaimedKB)
 	w.printf("  Jobs pruned    : %d\n", s.JobsPruned)
 	w.printf("  Audit ids pruned: %d\n", s.AuditObjectsPruned)
+	w.printf("  Steward audit ids pruned: %d\n", s.StewardAuditObjectsPruned)
 	w.printf("  Zombie jobs    : %d found, %d reset to pending\n", s.ZombiesFound, s.ZombiesReset)
 	w.printf("  Orphan blobs   : %d purged, %d kept (younger than grace), %d failed\n",
 		s.OrphanBlobs, s.OrphanBlobsYoung, s.OrphanBlobsFailed)
@@ -745,10 +753,16 @@ func runAll(cmd *cobra.Command, _ []string) error {
 
 	// 6b. Read audit retention (ADR-080 §9): the object id lists of
 	// entries older than sharing.audit.retention go; the entries and
-	// their counts stay.
+	// their counts stay. Steward entries (ADR-083 §5) are exempt: their
+	// lists follow steward.audit_retention, kept for good by default,
+	// and their chain and the grants always stay.
 	progress("Pruning read audit object lists...")
 	retention := cfg.Sharing.Audit.EffectiveRetention()
 	auditCutoff := time.Now().Add(-retention)
+	var stewardCutoff time.Time
+	if r := cfg.Steward.AuditRetention; r > 0 {
+		stewardCutoff = time.Now().Add(-r)
+	}
 	if !dryRun {
 		n, err := driver.Sharing().AccessLog().Prune(ctx, auditCutoff)
 		if err != nil {
@@ -756,10 +770,23 @@ func runAll(cmd *cobra.Command, _ []string) error {
 		} else {
 			stats.AuditObjectsPruned = n
 		}
+		if !stewardCutoff.IsZero() {
+			n, err := driver.Sharing().AccessLog().PruneSteward(ctx, stewardCutoff)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "warning: prune steward audit: %v\n", err)
+			} else {
+				stats.StewardAuditObjectsPruned = n
+			}
+		}
 	} else {
 		_ = db.QueryRowContext(ctx,
-			"SELECT COUNT(*) FROM access_log_objects WHERE access_id IN (SELECT id FROM access_log WHERE at < ?)",
+			"SELECT COUNT(*) FROM access_log_objects WHERE access_id IN (SELECT id FROM access_log WHERE at < ? AND steward_grant_id IS NULL)",
 			auditCutoff.UnixMilli()).Scan(&stats.AuditObjectsPruned)
+		if !stewardCutoff.IsZero() {
+			_ = db.QueryRowContext(ctx,
+				"SELECT COUNT(*) FROM access_log_objects WHERE access_id IN (SELECT id FROM access_log WHERE at < ? AND steward_grant_id IS NOT NULL)",
+				stewardCutoff.UnixMilli()).Scan(&stats.StewardAuditObjectsPruned)
+		}
 	}
 	progress("done")
 
@@ -800,4 +827,13 @@ func runAll(cmd *cobra.Command, _ []string) error {
 	summary := &lineWriter{w: cmd.OutOrStdout()}
 	stats.print(summary)
 	return summary.err
+}
+
+// stewardRetentionDetail describes steward.audit_retention for the plan:
+// how far back steward lists are kept.
+func stewardRetentionDetail(r time.Duration) string {
+	if r <= 0 {
+		return "never (kept for good)"
+	}
+	return "older than " + r.String()
 }

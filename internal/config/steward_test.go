@@ -22,6 +22,7 @@ func TestStewardConfigDefaults(t *testing.T) {
 	assert.Equal(t, []string{"personal"}, s.WithheldClasses)
 	assert.False(t, s.AllowWithheld)
 	assert.False(t, s.AllowExport)
+	assert.Zero(t, s.AuditRetention, "steward audit entries are kept by default")
 	assert.Equal(t, 1, cfg.Approvals.Steward.EffectiveRequired())
 	assert.Empty(t, Validate(cfg), "the defaults validate")
 }
@@ -38,6 +39,7 @@ steward:
   withheld_classes: [personal, financial]
   allow_withheld: true
   allow_export: true
+  audit_retention: 8760h
 approvals:
   steward:
     required: 2
@@ -51,6 +53,7 @@ approvals:
 	assert.Equal(t, []string{"personal", "financial"}, s.WithheldClasses)
 	assert.True(t, s.AllowWithheld)
 	assert.True(t, s.AllowExport)
+	assert.Equal(t, 365*24*time.Hour, s.AuditRetention)
 	assert.Equal(t, 2, cfg.Approvals.Steward.EffectiveRequired())
 	assert.Empty(t, Validate(cfg))
 
@@ -86,6 +89,7 @@ func TestStewardConfigValidate(t *testing.T) {
 		"negative reason length":  {Config{Steward: StewardConfig{MinReasonChars: -1}}, "steward.min_reason_chars"},
 		"negative elevation idle": {Config{Steward: StewardConfig{ElevationIdle: -time.Minute}}, "steward.elevation_idle"},
 		"bad withheld class":      {Config{Steward: StewardConfig{WithheldClasses: []string{"Not A Class"}}}, "steward.withheld_classes[0]"},
+		"negative retention":      {Config{Steward: StewardConfig{AuditRetention: -time.Hour}}, "steward.audit_retention"},
 		"negative approvers":      {Config{Approvals: ApprovalsConfig{Steward: ApprovalKindConfig{Required: -1}}}, "approvals.steward.required"},
 	} {
 		cfg := c.cfg
