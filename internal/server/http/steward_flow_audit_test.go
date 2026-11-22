@@ -1,10 +1,12 @@
 package http
 
 import (
+	"bufio"
 	"cmp"
 	"context"
 	"net/http"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	authn "github.com/ideacrafterslabs/ctxt/internal/auth"
+	"github.com/ideacrafterslabs/ctxt/internal/events"
 	"github.com/ideacrafterslabs/ctxt/internal/security"
 	"github.com/ideacrafterslabs/ctxt/internal/sharing"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -31,6 +34,8 @@ func runStewardFlowAuditSuite(t *testing.T, newDriver func(*testing.T) storage.S
 		"a refused elevation leaves an entry and an event": stewardAuditElevateRefused,
 		"an API key naming a grant is recorded refused":    stewardAuditKeyElevate,
 		"an elevated session never reaches the events":     stewardAuditEventsRefused,
+		"a stream open before elevating closes on it":      stewardAuditStreamClosesOnElevation,
+		"a stream never keeps an elevation alive":          stewardAuditStreamDoesNotRefresh,
 	} {
 		t.Run(name, func(t *testing.T) { fn(t, newStewardFlow(t, newDriver)) })
 	}
@@ -279,4 +284,96 @@ func stewardAuditEventsRefused(t *testing.T, f *stewardFlow) {
 	// view opened adds none.
 	assert.Len(t, f.stewardLog(grant), 2)
 	assert.Equal(t, int64(2), f.verifyChain())
+}
+
+// openStream opens GET /events as who and returns the data frames it
+// delivers and a channel that closes when the server ends the stream.
+func (f *stewardFlow) openStream(who string) (frames <-chan string, done <-chan struct{}) {
+	f.t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	f.t.Cleanup(cancel)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, f.ts.URL+"/api/v1/events", nil)
+	require.NoError(f.t, err)
+	req.AddCookie(&http.Cookie{Name: SessionCookieName(strings.TrimPrefix(f.ts.URL, "http://")), Value: f.cookies[who]})
+	fromUI(req)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(f.t, err)
+	require.Equal(f.t, http.StatusOK, resp.StatusCode)
+	out, fin := make(chan string, 16), make(chan struct{})
+	go func() {
+		defer close(fin)
+		defer resp.Body.Close()
+		sc := bufio.NewScanner(resp.Body)
+		for sc.Scan() {
+			if line := sc.Text(); strings.HasPrefix(line, "data: ") {
+				out <- line
+			}
+		}
+	}()
+	return out, fin
+}
+
+// publishContactUpdate announces an update of the object only the grant
+// opens.
+func (f *stewardFlow) publishContactUpdate() {
+	f.t.Helper()
+	ctx := context.Background()
+	ev := &storage.OutboxEvent{
+		Topic: string(events.TopicObjectUpdated), Source: "service.objects", Origin: events.OriginAPI, ObjectID: f.contact,
+		Payload: events.ObjectUpdatedPayload{ObjectID: f.contact, Type: "contact", Fields: []string{"tags"}}, OccurredAt: time.Now().UTC(),
+	}
+	require.NoError(f.t, f.svc.Outbox().Append(ctx, ev))
+	require.NoError(f.t, events.Publish(ctx, f.svc.Bus, ev))
+}
+
+// A stream opened before the session elevated must not slide into the
+// grant's view: it closes with nothing delivered, and the closure is
+// recorded like any refused elevated stream (a chained entry whose
+// steward_grant check failed steward_no_stream, and an event).
+func stewardAuditStreamClosesOnElevation(t *testing.T, f *stewardFlow) {
+	grant := f.grant()
+	frames, done := f.openStream(sfSteward)
+	require.Equal(t, http.StatusOK, f.elevate(sfSteward, grant).StatusCode)
+	f.publishContactUpdate()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the stream stayed open under an elevation")
+	}
+	assert.Empty(t, frames, "nothing the grant opens reaches the stream")
+	got := f.stewardLog(grant)
+	require.Len(t, got, 1)
+	assert.Equal(t, "GET /events", got[0].Route)
+	assert.Equal(t, storage.AccessDecisionDenied, got[0].Decision)
+	assert.Equal(t, storage.AccessCheck{Check: sharing.CheckStewardGrant, Outcome: storage.AccessOutcomeFail, Reason: sharing.ReasonStewardNoStream}, got[0].Checks[len(got[0].Checks)-1])
+	events := f.refusals(grant, 1)
+	require.Len(t, events, 1)
+	assert.Equal(t, sharing.ReasonStewardNoStream, events[0].Meta["reason"])
+	assert.Equal(t, int64(1), f.verifyChain())
+}
+
+// Watching is no activity under an elevation: the stream's re-check
+// neither refreshes nor ends it, so the idle timeout still runs while a
+// stream is open, and the session's next ordinary request ends it.
+func stewardAuditStreamDoesNotRefresh(t *testing.T, f *stewardFlow) {
+	grant := f.grant()
+	_, done := f.openStream(sfSteward)
+	require.Equal(t, http.StatusOK, f.elevate(sfSteward, grant).StatusCode)
+	at := f.session(sfSteward).StewardActiveAt
+	require.NotNil(t, at)
+	f.clock.advance(10 * time.Minute)
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the stream stayed open under an elevation")
+	}
+	after := f.session(sfSteward).StewardActiveAt
+	require.NotNil(t, after, "the stream's re-check does not end the elevation")
+	assert.True(t, after.Equal(*at), "the stream's re-check refreshed the elevation: %s -> %s", at, after)
+
+	f.clock.advance(6 * time.Minute) // 16 minutes since the elevation was last used
+	code, ids := f.objects(sfSteward)
+	require.Equal(t, http.StatusOK, code)
+	assert.Empty(t, ids, "idle ended the elevation: the ordinary view")
+	assert.Empty(t, f.session(sfSteward).StewardGrantID)
 }

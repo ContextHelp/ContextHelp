@@ -77,7 +77,7 @@ func RequireAuth(chain *authn.Chain, sec *security.Emitter, devCORS bool, viewer
 				WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "viewer resolution failed")
 				return
 			}
-			ctx = withRecheck(ctx, chain, credentialFromRequest(r), viewers)
+			ctx = withRecheck(ctx, chain, credentialFromRequest(r), viewers, r, sec, audit)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -94,15 +94,28 @@ type recheckKey struct{}
 // start.
 type Recheck func(ctx context.Context) (sharing.Viewer, error)
 
-// withRecheck attaches the Recheck of the credential cred to ctx.
-func withRecheck(ctx context.Context, chain *authn.Chain, cred authn.Credential, viewers *sharing.Resolver) context.Context {
+// errRecheckElevated is the Recheck error of a stream whose session has
+// been elevated into a steward grant since it opened: streams never run
+// elevated, so it ends.
+var errRecheckElevated = errors.New("a steward elevation does not run a stream")
+
+// withRecheck attaches the Recheck of the credential cred to ctx. The
+// recheck only observes a steward elevation (it never refreshes one):
+// a stream whose principal now names a steward grant, any grant, fails
+// and is closed, and that closure is recorded like any refused elevated
+// stream (a chained entry and a security event, steward_no_stream) for
+// the request r that opened it.
+func withRecheck(ctx context.Context, chain *authn.Chain, cred authn.Credential, viewers *sharing.Resolver, r *http.Request, sec *security.Emitter, audit *sharing.AuditWriter) context.Context {
 	rc := Recheck(func(ctx context.Context) (sharing.Viewer, error) {
-		res, err := chain.Authenticate(ctx, cred)
+		res, err := chain.Authenticate(authn.WithReadOnlyElevation(ctx), cred)
 		if err != nil {
 			return sharing.Viewer{}, err
 		}
-		return viewers.Resolve(ctx, res.Principal.ID, res.Principal.Kind, res.Principal.Meta[authn.MetaIdentityID],
-			sharing.AsSteward(res.Principal.Meta[authn.MetaStewardGrantID]))
+		if grant := res.Principal.Meta[authn.MetaStewardGrantID]; grant != "" {
+			recordRefusedGrant(r, res.Principal, grant, &sharing.StewardRefusal{Reason: sharing.ReasonStewardNoStream}, sec, audit)
+			return sharing.Viewer{}, errRecheckElevated
+		}
+		return viewers.Resolve(ctx, res.Principal.ID, res.Principal.Kind, res.Principal.Meta[authn.MetaIdentityID], sharing.AsSteward(""))
 	})
 	return context.WithValue(ctx, recheckKey{}, rc)
 }
