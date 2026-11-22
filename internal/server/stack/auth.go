@@ -19,7 +19,7 @@ func (s *Stack) wireAuth(in Inputs, access string, notes io.Writer) error {
 		s.Keys = authn.NewKeysOver(in.Driver.Auth(), nil)
 		return nil
 	}
-	chain, keys, sessions, err := buildAuth(context.Background(), notes, in.Driver, cfg, access)
+	chain, keys, sessions, err := buildAuth(context.Background(), notes, in.Driver, cfg, access, s.Security)
 	if err != nil {
 		return err
 	}

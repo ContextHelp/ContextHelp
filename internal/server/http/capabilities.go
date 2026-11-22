@@ -240,6 +240,18 @@ var routeAccessTable = map[string]routeAccess{
 	"POST /approvals/{id}/reject":  routeNone,
 	"DELETE /approvals/{id}":       routeNone,
 
+	// Steward access is governed by the steward scopes and each grant's
+	// own rule (its steward, its requester, approve:steward, the owner),
+	// not by share policies: a grant names principals, a window and a
+	// frozen scope, never a knowledge object, and an elevation answers
+	// about the caller's own session (ADR-083 §2, §3).
+	"POST /steward/grants":                routeNone,
+	"GET /steward/grants":                 routeNone,
+	"GET /steward/grants/{id}":            routeNone,
+	"POST /steward/grants/{id}/revoke":    routeNone,
+	"POST /steward/grants/{id}/elevate":   routeNone,
+	"DELETE /steward/grants/{id}/elevate": routeNone,
+
 	// The MCP mount answers tools/call with the search results as a
 	// JSON document inside the answer; the objects shape follows it.
 	"ANY /mcp/": needs(storage.CapabilityMCP, sharing.ShapeObjects),

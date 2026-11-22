@@ -88,9 +88,10 @@ func TestRouteCoverageEveryRouteDeclaresAScope(t *testing.T) {
 // Behavioral half of the coverage check: a principal holding no scope is
 // refused by every route with 403 naming the route's scope, so every
 // route is really mounted behind RequireScope. Handlers never run.
+// Steward access is on, so its routes exist and are checked too.
 func TestRouteCoverageScopelessPrincipalDeniedEverywhere(t *testing.T) {
 	svc := newScopeTestService(t)
-	rc := RouterConfig{Auth: authtest.Fixed(&authn.Principal{ID: "none"})}
+	rc := stewardsOn(t, svc, RouterConfig{Auth: authtest.Fixed(&authn.Principal{ID: "none"})})
 	table := apiRoutes(svc, rc)
 	router := NewRouterWithConfig(svc, rc)
 
@@ -355,6 +356,11 @@ var uiSessionRouteSet = []string{
 	"GET /api/v1/approvals", "GET /api/v1/approvals/{id}",
 	"POST /api/v1/approvals/{id}/approve", "POST /api/v1/approvals/{id}/reject",
 	"DELETE /api/v1/approvals/{id}",
+	// request:steward and write:self: steward access (ADR-083 §2, §3);
+	// a steward elevates from a browser, and only from one.
+	"POST /api/v1/steward/grants", "GET /api/v1/steward/grants", "GET /api/v1/steward/grants/{id}",
+	"POST /api/v1/steward/grants/{id}/revoke",
+	"POST /api/v1/steward/grants/{id}/elevate", "DELETE /api/v1/steward/grants/{id}/elevate",
 }
 
 // The ui scope set, applied to the route table, yields exactly the web

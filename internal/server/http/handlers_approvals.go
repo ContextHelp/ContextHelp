@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/ideacrafterslabs/ctxt/internal/approval"
+	"github.com/ideacrafterslabs/ctxt/internal/steward"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -122,13 +123,17 @@ func writeDecisionError(w http.ResponseWriter, r *http.Request, err error) {
 	writeApprovalError(w, r, err)
 }
 
-// approvalStatus maps a mechanism code to its HTTP status.
+// approvalStatus maps a mechanism code, or a kind's filing code, to its
+// HTTP status.
 func approvalStatus(code string) int {
 	switch code {
-	case approval.CodeInvalid, approval.CodeKindUnknown, approval.CodeReasonTooShort:
+	case approval.CodeInvalid, approval.CodeKindUnknown, approval.CodeReasonTooShort,
+		steward.CodeStewardIneligible, steward.CodeScopeInvalid, steward.CodeWindowInvalid,
+		steward.CodeWindowTooLong, steward.CodeRenewalInvalid:
 		return http.StatusBadRequest
 	case approval.CodeOwnerCannotRequest, approval.CodeRequesterCannotDecide, approval.CodeBeneficiaryCannotDecide,
-		approval.CodeNotEligible, approval.CodeNotRequester:
+		approval.CodeNotEligible, approval.CodeNotRequester,
+		steward.CodeDisabled, steward.CodeRequesterRole:
 		return http.StatusForbidden
 	case approval.CodeClosed, approval.CodeExpired, approval.CodeStale, approval.CodeAlreadyDecided, approval.CodeDigestMismatch:
 		return http.StatusConflict

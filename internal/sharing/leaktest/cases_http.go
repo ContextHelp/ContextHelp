@@ -154,5 +154,10 @@ func httpCases() []Case {
 		// request answers its not-found path.
 		get("/approvals"),
 		getAt("/approvals/{id}", "/approvals/"+none),
+
+		// Steward access (ADR-083 §2): off on the fixture, as on every
+		// instance by default, so both routes are absent and answer 404.
+		get("/steward/grants"),
+		getAt("/steward/grants/{id}", "/steward/grants/"+none),
 	}
 }
