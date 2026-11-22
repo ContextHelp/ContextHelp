@@ -1,12 +1,15 @@
 package stack
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 	"time"
 
+	"github.com/ideacrafterslabs/ctxt/internal/approval"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/sharechange"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
@@ -56,5 +59,18 @@ func TestApprovalKinds_ShareChangeTakesItsApproverCountFromTheConfig(t *testing.
 				t.Errorf("required = %d, want %d", got, tc.want)
 			}
 		})
+	}
+}
+
+// The Notify hook of the approval service runs every kind's reporter,
+// in order, on each notice.
+func TestNotifiers_RunEveryHookInOrder(t *testing.T) {
+	var got []string
+	hook := func(name string) func(context.Context, approval.Notice) {
+		return func(_ context.Context, n approval.Notice) { got = append(got, name+":"+n.Event) }
+	}
+	notifiers(hook("a"), hook("b"))(context.Background(), approval.Notice{Event: approval.EventFiled})
+	if want := []string{"a:" + approval.EventFiled, "b:" + approval.EventFiled}; !slices.Equal(got, want) {
+		t.Fatalf("hooks ran %v, want %v", got, want)
 	}
 }

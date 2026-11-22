@@ -1,8 +1,11 @@
 package stack
 
 import (
+	"context"
+
 	"github.com/ideacrafterslabs/ctxt/internal/approval"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/sharechange"
 	"github.com/ideacrafterslabs/ctxt/internal/steward"
 )
 
@@ -22,7 +25,7 @@ func (s *Stack) wireApprovals(in Inputs, cfg *config.Config) error {
 		return err
 	}
 	s.Approvals, err = approval.NewService(in.Driver.Approvals(), in.Driver.AuditLog(), kinds,
-		approval.Options{PendingTTL: cfg.Approvals.EffectivePendingTTL(), Notify: steward.ApprovalNotices(s.Security)})
+		approval.Options{PendingTTL: cfg.Approvals.EffectivePendingTTL(), Notify: notifiers(steward.ApprovalNotices(s.Security), sharechange.ApprovalNotices(s.Security))})
 	if err != nil {
 		return err
 	}
@@ -39,4 +42,14 @@ func (s *Stack) wireApprovals(in Inputs, cfg *config.Config) error {
 		viewers.WithSteward(steward.ResolverOptions(settings))
 	}
 	return nil
+}
+
+// notifiers returns one Notify hook that runs each of hooks, in order,
+// on every notice; each hook picks the kinds it reports.
+func notifiers(hooks ...func(context.Context, approval.Notice)) func(context.Context, approval.Notice) {
+	return func(ctx context.Context, n approval.Notice) {
+		for _, h := range hooks {
+			h(ctx, n)
+		}
+	}
 }
