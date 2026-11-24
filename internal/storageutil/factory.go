@@ -29,6 +29,7 @@ type OpenOption func(*openOptions)
 type openOptions struct {
 	skipMigrateSnapshot bool
 	keyProvider         keys.Provider
+	pgConfig            config.PostgresStorageConfig
 }
 
 // WithMigrateSnapshot applies storage.migrate_snapshot: whether opening
@@ -43,6 +44,12 @@ func WithMigrateSnapshot(enabled bool) OpenOption {
 // pre-migration snapshots, and database encryption keys.
 func WithKeyProvider(p keys.Provider) OpenOption {
 	return func(o *openOptions) { o.keyProvider = p }
+}
+
+// WithPostgresConfig passes Postgres encryption-at-rest settings (require_tde,
+// column_encryption, fts_on_encrypted) to the Postgres driver.
+func WithPostgresConfig(pg config.PostgresStorageConfig) OpenOption {
+	return func(o *openOptions) { o.pgConfig = pg }
 }
 
 // Open creates the StorageDriver of type typ at path with the blob store
@@ -82,7 +89,16 @@ func NewDriver(typ, path string, blobs storage.BlobStore, opts ...OpenOption) (s
 		}
 		return sqlite.New(path, blobs, sopts...)
 	case typePostgres:
-		return postgres.New(path, blobs)
+		var popts []postgres.Option
+		if o.pgConfig.RequireTDE || o.pgConfig.EffectiveColumnEncryption() != config.ColumnEncryptionOff || o.keyProvider != nil {
+			popts = append(popts, postgres.WithEncryption(postgres.EncryptionConfig{
+				RequireTDE:       o.pgConfig.RequireTDE,
+				ColumnEncryption: o.pgConfig.ColumnEncryption,
+				FTSOnEncrypted:   o.pgConfig.FTSOnEncrypted,
+				KeyProvider:      o.keyProvider,
+			}))
+		}
+		return postgres.New(path, blobs, popts...)
 	default:
 		return nil, fmt.Errorf("unknown storage type: %s", typ)
 	}

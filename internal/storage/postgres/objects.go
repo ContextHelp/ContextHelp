@@ -47,10 +47,11 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 	// generated tsvector columns track both, so no manual index
 	// maintenance is needed beyond writing the bodies.
 	index := projection.ProjectIndex(obj)
-	projectedFTSBody := index.FTSBody
-	if projectedFTSBody != "" {
-		obj.FTSIndexed = true
+	w, err := s.enc.prepareObjectWrite(ctx, obj, &f, graphJSON, index.FTSBody, index.MaskedFTSBody)
+	if err != nil {
+		return fmt.Errorf("create object: %w", err)
 	}
+	obj.FTSIndexed = w.ftsIndexed
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -85,13 +86,13 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		$25, $26, $27, $28, $29,
 		$30, $31, $32, $33, $34, $35, $36
 	)`,
-		obj.ID, obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
-		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
+		obj.ID, obj.Type, obj.Subtype, w.rawContent, obj.ContentType, w.textContent,
+		w.metadata, w.summaries, f.sections, f.tags, f.mentions,
 		f.decisions, f.tasks, obj.Pipeline, obj.Source,
 		f.influences, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
-		obj.CreatedAt.UTC(), obj.UpdatedAt.UTC(), obj.FTSIndexed, obj.Status, obj.InboxNote,
-		f.remindAt, f.remindedAt, graphJSON, obj.SourceKey, projectedFTSBody,
-		indexsig.ProjectionVersion, obj.ProfileID, f.classes, index.MaskedFTSBody, nullSessionID(obj.SessionID), f.expiresAt, obj.ExpiryScope,
+		obj.CreatedAt.UTC(), obj.UpdatedAt.UTC(), w.ftsIndexed, obj.Status, obj.InboxNote,
+		f.remindAt, f.remindedAt, w.graphJSON, obj.SourceKey, w.ftsBody,
+		indexsig.ProjectionVersion, obj.ProfileID, f.classes, w.maskedFTS, nullSessionID(obj.SessionID), f.expiresAt, obj.ExpiryScope,
 	)
 	if err != nil {
 		if errors.Is(constraintErr(err), storage.ErrAlreadyExists) {
@@ -126,7 +127,7 @@ func (s *ObjectStore) Get(ctx context.Context, id string) (*storage.KnowledgeObj
 	clause, sargs := s.andScope(&idx)
 	// #nosec G202 -- clause is compiled SQL whose values are bound in sargs.
 	row := s.db.QueryRowContext(ctx, objectSelectCols+` FROM objects WHERE id = $1`+clause, append([]any{id}, sargs...)...)
-	return scanObjectRow(row)
+	return s.scanRow(ctx, row)
 }
 
 // GetByContentHash returns the object of profileID with content hash
@@ -140,7 +141,7 @@ func (s *ObjectStore) GetByContentHash(ctx context.Context, hash, profileID stri
 	// #nosec G202 -- clause is compiled SQL whose values are bound in sargs.
 	row := s.db.QueryRowContext(ctx, objectSelectCols+` FROM objects WHERE content_hash = $1 AND profile_id = $2`+clause+` LIMIT 1`,
 		append([]any{hash, profileID}, sargs...)...)
-	obj, err := scanObjectRow(row)
+	obj, err := s.scanRow(ctx, row)
 	if errors.Is(err, errObjectNotFound) {
 		return nil, nil
 	}
@@ -155,7 +156,7 @@ func (s *ObjectStore) GetBySourceKey(ctx context.Context, key, profileID string)
 	clause, sargs := s.andScope(&idx)
 	// #nosec G202 -- clause is compiled SQL whose values are bound in sargs.
 	row := s.db.QueryRowContext(ctx, objectSelectCols+` FROM objects WHERE source_key = $1 AND profile_id = $2`+clause+` LIMIT 1`, append([]any{key, profileID}, sargs...)...)
-	obj, err := scanObjectRow(row)
+	obj, err := s.scanRow(ctx, row)
 	if errors.Is(err, errObjectNotFound) {
 		return nil, nil
 	}
@@ -203,7 +204,7 @@ func (s *ObjectStore) List(ctx context.Context, filter storage.ObjectFilter) ([]
 	}
 	defer rows.Close()
 
-	objects, err := rowscan.All(rows, scanObjectRows)
+	objects, err := rowscan.All(rows, func(r *sql.Rows) (*storage.KnowledgeObject, error) { return s.scanRows(ctx, r) })
 	if err != nil {
 		return nil, 0, err
 	}
@@ -301,10 +302,11 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 	// indexed text; the generated tsvector columns track the rewritten
 	// raw and masked bodies.
 	index := projection.ProjectIndex(obj)
-	projectedFTSBody := index.FTSBody
-	if projectedFTSBody != "" {
-		obj.FTSIndexed = true
+	w, err := s.enc.prepareObjectWrite(ctx, obj, &f, graphJSON, index.FTSBody, index.MaskedFTSBody)
+	if err != nil {
+		return fmt.Errorf("update object: %w", err)
 	}
+	obj.FTSIndexed = w.ftsIndexed
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -326,14 +328,14 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		remind_at=$23, reminded_at=$24, graph_json=$25, projected_fts_body=$26,
 		projection_version=$27, profile_id=$28, classes=$29, projected_fts_body_masked=$30, session_id=$31, expires_at=$32, expiry_scope=$33
 	WHERE id=$34`,
-		obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
-		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
+		obj.Type, obj.Subtype, w.rawContent, obj.ContentType, w.textContent,
+		w.metadata, w.summaries, f.sections, f.tags, f.mentions,
 		f.decisions, f.tasks, obj.Pipeline, obj.Source,
 		f.influences, obj.ContentHash,
 		obj.ReinforcementCount, f.lastReinforcedAt,
-		obj.UpdatedAt.UTC(), obj.FTSIndexed, obj.Status, obj.InboxNote,
-		f.remindAt, f.remindedAt, graphJSON, projectedFTSBody,
-		indexsig.ProjectionVersion, obj.ProfileID, f.classes, index.MaskedFTSBody, nullSessionID(obj.SessionID), f.expiresAt, obj.ExpiryScope, obj.ID,
+		obj.UpdatedAt.UTC(), w.ftsIndexed, obj.Status, obj.InboxNote,
+		f.remindAt, f.remindedAt, w.graphJSON, w.ftsBody,
+		indexsig.ProjectionVersion, obj.ProfileID, f.classes, w.maskedFTS, nullSessionID(obj.SessionID), f.expiresAt, obj.ExpiryScope, obj.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("update object: %w", err)
@@ -553,7 +555,7 @@ func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, f
 	}
 	defer rows.Close()
 
-	objects, err := rowscan.All(rows, scanObjectRows)
+	objects, err := rowscan.All(rows, func(r *sql.Rows) (*storage.KnowledgeObject, error) { return s.scanRows(ctx, r) })
 	if err != nil {
 		return nil, 0, err
 	}
@@ -725,7 +727,7 @@ func (s *ObjectStore) VectorSearch(ctx context.Context, q storage.VectorQuery, f
 	var objects []*storage.KnowledgeObject
 	err = queryVectorRows(ctx, s.db, s.caps, func(rows *sql.Rows) error {
 		for rows.Next() {
-			obj, score, err := scanObjectRowWithScore(rows)
+			obj, score, err := s.scanRowWithScore(ctx, rows)
 			if err != nil {
 				return err
 			}
@@ -866,7 +868,7 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 	defer rows.Close()
 
 	return rowscan.All(rows, func(rows *sql.Rows) (*storage.KnowledgeObject, error) {
-		obj, score, err := scanObjectRowWithScore(rows)
+		obj, score, err := s.scanRowWithScore(ctx, rows)
 		if err != nil {
 			return nil, fmt.Errorf("fts search scan: %w", err)
 		}
@@ -1039,6 +1041,34 @@ const objectSelectCols = `SELECT
 	created_at, updated_at, fts_indexed, status, inbox_note,
 	remind_at, reminded_at, graph_json, source_key, profile_id, change_seq, classes, session_id, expires_at, expiry_scope`
 
+func (s *ObjectStore) scanRow(ctx context.Context, row *sql.Row) (*storage.KnowledgeObject, error) {
+	obj, err := scanObjectColumnsWithEnc(ctx, s.enc, row, nil)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, errObjectNotFound
+		}
+		return nil, fmt.Errorf("scan object: %w", err)
+	}
+	return obj, nil
+}
+
+func (s *ObjectStore) scanRows(ctx context.Context, rows *sql.Rows) (*storage.KnowledgeObject, error) {
+	obj, err := scanObjectColumnsWithEnc(ctx, s.enc, rows, nil)
+	if err != nil {
+		return nil, fmt.Errorf("scan object row: %w", err)
+	}
+	return obj, nil
+}
+
+func (s *ObjectStore) scanRowWithScore(ctx context.Context, rows *sql.Rows) (*storage.KnowledgeObject, float64, error) {
+	var score float64
+	obj, err := scanObjectColumnsWithEnc(ctx, s.enc, rows, &score)
+	if err != nil {
+		return nil, 0, fmt.Errorf("scan object+score: %w", err)
+	}
+	return obj, score, nil
+}
+
 func scanObjectRow(row *sql.Row) (*storage.KnowledgeObject, error) {
 	obj, err := scanObjectColumns(row, nil)
 	if err != nil {
@@ -1058,20 +1088,14 @@ func scanObjectRows(rows *sql.Rows) (*storage.KnowledgeObject, error) {
 	return obj, nil
 }
 
-// scanObjectRowWithScore scans base cols + a float64 score appended at the end.
-func scanObjectRowWithScore(rows *sql.Rows) (*storage.KnowledgeObject, float64, error) {
-	var score float64
-	obj, err := scanObjectColumns(rows, &score)
-	if err != nil {
-		return nil, 0, fmt.Errorf("scan object+score: %w", err)
-	}
-	return obj, score, nil
-}
-
 // scanObjectColumns scans objectSelectCols from row, plus the trailing
 // score column when score is non-nil. sql.ErrNoRows passes through for
 // scanObjectRow to map.
 func scanObjectColumns(row interface{ Scan(...any) error }, score *float64) (*storage.KnowledgeObject, error) {
+	return scanObjectColumnsWithEnc(context.Background(), EncryptionConfig{}, row, score)
+}
+
+func scanObjectColumnsWithEnc(ctx context.Context, enc EncryptionConfig, row interface{ Scan(...any) error }, score *float64) (*storage.KnowledgeObject, error) {
 	var obj storage.KnowledgeObject
 	var (
 		metadataJSON, summariesJSON, sectionsJSON, tagsJSON []byte
@@ -1093,6 +1117,9 @@ func scanObjectColumns(row interface{ Scan(...any) error }, score *float64) (*st
 		dest = append(dest, score)
 	}
 	if err := row.Scan(dest...); err != nil {
+		return nil, err
+	}
+	if err := enc.decryptRawColumns(ctx, obj.ID, &obj.RawContent, &obj.TextContent, &metadataJSON, &summariesJSON, &graphJSON); err != nil {
 		return nil, err
 	}
 	if err := unmarshalObjectFields(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,

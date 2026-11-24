@@ -1881,6 +1881,7 @@ func migrateGraphCanonical(ctx context.Context, db *sql.DB) error {
 type ObjectStore struct {
 	db   *sql.DB
 	caps *pgCaps
+	enc  EncryptionConfig
 	// scope, when set, is the restricted viewer's visibility every read
 	// ANDs into its SQL (see scope.go); nil is the driver's own store.
 	scope *storage.Scope
@@ -1898,7 +1899,10 @@ type (
 		// ends the viewer may see (see scope.go).
 		scope *storage.Scope
 	}
-	JobStore      struct{ db *sql.DB }
+	JobStore struct {
+		db  *sql.DB
+		enc EncryptionConfig
+	}
 	PipelineStore struct{ db *sql.DB }
 	StepStore     struct{ db *sql.DB }
 	RegistryStore struct{ db *sql.DB }
