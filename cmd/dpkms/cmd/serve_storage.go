@@ -9,6 +9,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/dblock"
+	"github.com/ideacrafterslabs/ctxt/internal/keys"
 	"github.com/ideacrafterslabs/ctxt/internal/server/stack"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
@@ -36,6 +37,9 @@ func serveStorageTarget(c *config.Config) (typ, path string) {
 
 // openServeStorage opens and migrates the storage driver serve runs on.
 func openServeStorage(ctx context.Context, c *config.Config) (storage.StorageDriver, error) {
+	if _, err := keys.Open(ctx, c.Storage.Encryption, c.Secrets); err != nil {
+		return nil, fmt.Errorf("unlock storage encryption keys: %w", err)
+	}
 	storageType, storagePath := serveStorageTarget(c)
 	driver, err := storageutil.Open(storageType, storagePath, c.Storage.Blob,
 		storageutil.WithMigrateSnapshot(c.Storage.MigrateSnapshot))

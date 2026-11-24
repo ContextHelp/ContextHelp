@@ -1,9 +1,11 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"hop.top/kit/go/core/uxp"
@@ -11,6 +13,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/accessmarker"
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/keys"
 )
 
 var doctorCmd = &cobra.Command{
@@ -61,6 +64,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	d := uxp.NewDoctor()
 	d.Add(func() uxp.Check { return accessCheck(cfg) })
 	d.Add(func() uxp.Check { return permissionsCheck(cfg, strict) })
+	d.Add(func() uxp.Check { return encryptionCheck(cfg) })
 	results := d.Run()
 
 	checks := make([]doctorCheck, len(results))
@@ -99,6 +103,34 @@ func effectiveClass(configured string, m accessmarker.Marker) string {
 		return m.Access
 	}
 	return configured
+}
+
+func encryptionCheck(c *config.Config) uxp.Check {
+	ck := uxp.Check{Name: "encryption"}
+	if !c.Storage.Encryption.Enabled {
+		ck.Status = uxp.StatusSkip
+		ck.Message = "storage encryption at rest is disabled"
+		return ck
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	p, err := keys.Open(ctx, c.Storage.Encryption, c.Secrets)
+	if err != nil {
+		ck.Status = uxp.StatusFail
+		ck.Message = fmt.Sprintf("key provider %q unavailable", c.Storage.Encryption.Provider)
+		ck.Detail = err.Error()
+		return ck
+	}
+	cur, cerr := p.Current(ctx)
+	if cerr != nil {
+		ck.Status = uxp.StatusFail
+		ck.Message = fmt.Sprintf("key provider %q current key unreadable", c.Storage.Encryption.Provider)
+		ck.Detail = cerr.Error()
+		return ck
+	}
+	ck.Status = uxp.StatusOK
+	ck.Message = fmt.Sprintf("provider %s ready (current key %s)", c.Storage.Encryption.Provider, cur)
+	return ck
 }
 
 func accessCheck(c *config.Config) uxp.Check {
