@@ -27,7 +27,7 @@ func TestMigrateSnapshot_EncryptedAtRest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d, err := New(dbPath, bs, WithKeyProvider(p))
+	d, err := New(dbPath, bs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,6 +35,7 @@ func TestMigrateSnapshot_EncryptedAtRest(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = d.Close(ctx) }()
+	d.keyProvider = p
 
 	const sentinel = "MIGRATE-SNAPSHOT-SECRET-SENTINEL-9081"
 	now := time.Now().UTC().Truncate(time.Second)

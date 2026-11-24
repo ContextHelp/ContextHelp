@@ -16,7 +16,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/keys"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	blobfactory "github.com/ideacrafterslabs/ctxt/internal/storage/blob"
-	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
 )
 
 // BackupOpts configures a backup operation.
@@ -119,7 +119,7 @@ func writeBackupContents(ctx context.Context, tw *tar.Writer, opts BackupOpts, r
 	tmpDB := filepath.Join(os.TempDir(), fmt.Sprintf("ctxt-snap-%d.db", time.Now().UnixNano()))
 	defer os.Remove(tmpDB) //nolint:errcheck
 
-	if err := storageutil.SQLiteSnapshot(opts.DBPath, tmpDB); err != nil {
+	if err := sqlite.SnapshotDatabase(ctx, opts.DBPath, tmpDB, opts.KeyProvider); err != nil {
 		return fmt.Errorf("backup: snapshot db: %w", err)
 	}
 
@@ -131,6 +131,11 @@ func writeBackupContents(ctx context.Context, tw *tar.Writer, opts BackupOpts, r
 
 	if err := addFileToTar(tw, tmpDB, "ctxt-backup/ctxt.db"); err != nil {
 		return fmt.Errorf("backup: tar db: %w", err)
+	}
+	if sqlite.HasKeyEnvelope(opts.DBPath) {
+		if err := addFileToTar(tw, sqlite.KeyEnvelopePath(opts.DBPath), "ctxt-backup/ctxt.db.key"); err != nil {
+			return fmt.Errorf("backup: tar db key envelope: %w", err)
+		}
 	}
 
 	// 1b. Optional config.yaml — non-fatal if missing.
