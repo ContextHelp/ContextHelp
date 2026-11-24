@@ -26,7 +26,7 @@ const CodeInvalidParam = "INVALID_PARAM"
 // objectFilterParams select objects. GET /objects and GET
 // /objects/facets both take them.
 var objectFilterParams = []string{
-	"type", "subtype", "tagged", "mention", "pipeline", "status",
+	"type", "subtype", "tagged", "mention", "pipeline", "status", "source_key",
 	"since", "until",
 	"meta_type", "topic", "person", "source_type", "mentioned_since", "mentioned_until",
 }
@@ -111,6 +111,7 @@ func parseObjectFilter(q url.Values) (storage.ObjectFilter, *paramError) {
 		Subtype:        q.Get("subtype"),
 		Mention:        q.Get("mention"),
 		Pipeline:       q.Get("pipeline"),
+		SourceKey:      q.Get("source_key"),
 		MetadataType:   q.Get("meta_type"),
 		MetadataTopic:  q.Get("topic"),
 		MetadataPerson: q.Get("person"),

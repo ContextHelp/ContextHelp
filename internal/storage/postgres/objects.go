@@ -58,6 +58,16 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 	}
 	defer tx.Rollback()
 
+	if obj.SourceKey != "" {
+		var tombCount int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(1) FROM erasure_tombstones WHERE source_key = $1`, obj.SourceKey).Scan(&tombCount); err != nil {
+			return fmt.Errorf("create object: check tombstone: %w", err)
+		}
+		if tombCount > 0 {
+			return fmt.Errorf("create object %s: %w", obj.SourceKey, storage.ErrSourceErased)
+		}
+	}
+
 	_, err = tx.ExecContext(ctx, `INSERT INTO objects (
 		id, type, subtype, raw_content, content_type, text_content,
 		metadata, summaries, sections, tags, mentions,
@@ -250,6 +260,11 @@ func objectListConditionsPG(filter storage.ObjectFilter, start int, scope *stora
 		args = append(args, filter.ProfileID)
 		idx++
 	}
+	if filter.SourceKey != "" {
+		conditions = append(conditions, fmt.Sprintf("source_key = $%d", idx))
+		args = append(args, filter.SourceKey)
+		idx++
+	}
 	cc, ca := createdConditionsPG(filter, &idx)
 	conditions = append(conditions, cc...)
 	args = append(args, ca...)
@@ -360,6 +375,9 @@ func (s *ObjectStore) Delete(ctx context.Context, id string) error {
 		return fmt.Errorf("delete object: begin tx: %w", err)
 	}
 	defer tx.Rollback()
+	if err := purgeObjectSecondaryTx(ctx, tx, id); err != nil {
+		return fmt.Errorf("delete object secondary data: %w", err)
+	}
 	result, err := tx.ExecContext(ctx, "DELETE FROM objects WHERE id = $1", id)
 	if err != nil {
 		return fmt.Errorf("delete object: %w", err)
@@ -373,6 +391,28 @@ func (s *ObjectStore) Delete(ctx context.Context, id string) error {
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("delete object: commit: %w", err)
+	}
+	return nil
+}
+
+func purgeObjectSecondaryTx(ctx context.Context, tx *sql.Tx, id string) error {
+	stmts := []struct {
+		query string
+		args  []any
+	}{
+		{"DELETE FROM attachments WHERE object_id = $1", []any{id}},
+		{"DELETE FROM embeddings WHERE object_id = $1", []any{id}},
+		{"DELETE FROM object_proximity WHERE object_a = $1 OR object_b = $2", []any{id, id}},
+		{"DELETE FROM watch_file_records WHERE object_id = $1", []any{id}},
+		{"DELETE FROM feed_items WHERE object_id = $1", []any{id}},
+		{"DELETE FROM aliases WHERE object_id = $1", []any{id}},
+		{"DELETE FROM jobs WHERE result_id = $1 AND status IN ('pending', 'queued')", []any{id}},
+		{"UPDATE jobs SET payload = '', user_data = NULL, user_note = NULL, user_hints = NULL, user_ambient = NULL WHERE result_id = $1", []any{id}},
+	}
+	for _, st := range stmts {
+		if _, err := tx.ExecContext(ctx, st.query, st.args...); err != nil {
+			return err
+		}
 	}
 	return nil
 }

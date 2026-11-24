@@ -248,6 +248,7 @@ type ObjectFilter struct {
 	Mention   string
 	Pipeline  string
 	ProfileID string // non-empty → restrict to this profile; empty → no profile scope
+	SourceKey string // non-empty → exact match on source_key
 	// After and Before bound created_at half-open: After <= created < Before.
 	After  *time.Time
 	Before *time.Time

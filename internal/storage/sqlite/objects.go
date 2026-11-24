@@ -66,6 +66,16 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 	}
 	defer tx.Rollback()
 
+	if obj.SourceKey != "" {
+		var tombCount int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(1) FROM erasure_tombstones WHERE source_key = ?`, obj.SourceKey).Scan(&tombCount); err != nil {
+			return fmt.Errorf("create object: check tombstone: %w", err)
+		}
+		if tombCount > 0 {
+			return fmt.Errorf("create object %s: %w", obj.SourceKey, storage.ErrSourceErased)
+		}
+	}
+
 	_, err = tx.ExecContext(ctx, `INSERT INTO objects (
 		id, type, subtype, raw_content, content_type, text_content,
 		metadata, summaries, sections, tags, mentions,
@@ -338,6 +348,10 @@ func objectListConditions(filter storage.ObjectFilter, page bool, scope *storage
 		conditions = append(conditions, "profile_id = ?")
 		args = append(args, filter.ProfileID)
 	}
+	if filter.SourceKey != "" {
+		conditions = append(conditions, "source_key = ?")
+		args = append(args, filter.SourceKey)
+	}
 	// created_at holds RFC 3339 text in whatever offset the writer used
 	// (the daemon stamps its local zone), so the bounds compare as
 	// instants: datetime() normalizes both sides to UTC. A plain text
@@ -471,6 +485,12 @@ func (s *ObjectStore) Delete(ctx context.Context, id string) error {
 	if _, err := tx.ExecContext(ctx, "DELETE FROM attachments WHERE object_id = ?", id); err != nil {
 		return fmt.Errorf("delete object attachments: %w", err)
 	}
+	// Secondary tables without FK cascades: embeddings, proximity,
+	// watch records, feed items, aliases, and job payloads referencing
+	// this object must leave no residue on delete/erasure.
+	if err := purgeObjectSecondaryTx(ctx, tx, id); err != nil {
+		return fmt.Errorf("delete object secondary data: %w", err)
+	}
 	result, err := tx.ExecContext(ctx, "DELETE FROM objects WHERE id = ?", id)
 	if err != nil {
 		return fmt.Errorf("delete object: %w", err)
@@ -484,6 +504,27 @@ func (s *ObjectStore) Delete(ctx context.Context, id string) error {
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("delete object: commit: %w", err)
+	}
+	return nil
+}
+
+func purgeObjectSecondaryTx(ctx context.Context, tx *sql.Tx, id string) error {
+	stmts := []struct {
+		query string
+		args  []any
+	}{
+		{"DELETE FROM embeddings WHERE object_id = ?", []any{id}},
+		{"DELETE FROM object_proximity WHERE object_a = ? OR object_b = ?", []any{id, id}},
+		{"DELETE FROM watch_file_records WHERE object_id = ?", []any{id}},
+		{"DELETE FROM feed_items WHERE object_id = ?", []any{id}},
+		{"DELETE FROM aliases WHERE object_id = ?", []any{id}},
+		{"DELETE FROM jobs WHERE result_id = ? AND status IN ('pending', 'queued')", []any{id}},
+		{"UPDATE jobs SET payload = '', user_data = NULL, user_note = NULL, user_hints = NULL, user_ambient = NULL WHERE result_id = ?", []any{id}},
+	}
+	for _, st := range stmts {
+		if _, err := tx.ExecContext(ctx, st.query, st.args...); err != nil {
+			return err
+		}
 	}
 	return nil
 }

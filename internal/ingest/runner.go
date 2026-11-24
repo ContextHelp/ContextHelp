@@ -14,8 +14,9 @@ import (
 
 // Runner executes an adapter and persists results.
 type Runner struct {
-	store    storage.ObjectStore
-	classify Classifier
+	store      storage.ObjectStore
+	classify   Classifier
+	tombstones storage.TombstoneStore
 }
 
 // Classifier returns the content classes of an object about to be
@@ -29,6 +30,12 @@ type RunnerOption func(*Runner)
 // the class rules on a sharing instance.
 func WithClassifier(c Classifier) RunnerOption {
 	return func(r *Runner) { r.classify = c }
+}
+
+// WithTombstones attaches an erasure tombstone store so Runner refuses
+// to re-ingest any source_key that has been erased.
+func WithTombstones(t storage.TombstoneStore) RunnerOption {
+	return func(r *Runner) { r.tombstones = t }
 }
 
 // NewRunner creates a runner wired to the given object store.
@@ -110,6 +117,15 @@ func keyOf(source string, obj Object) string {
 func (r *Runner) upsert(
 	ctx context.Context, source, sourceKey string, obj Object,
 ) error {
+	if r.tombstones != nil && sourceKey != "" {
+		erased, err := r.tombstones.Exists(ctx, sourceKey)
+		if err != nil {
+			return err
+		}
+		if erased {
+			return nil // erased source_key must never be resurrected
+		}
+	}
 	existing, err := r.store.GetBySourceKey(ctx, sourceKey, "")
 	if err != nil {
 		return err
