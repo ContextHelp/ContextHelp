@@ -1,0 +1,31 @@
+{
+  "name": "ContextHelp CLI Skill",
+  "slug": "ctxt",
+  "description": "Intent-driven progressive-discovery skill for operating the ctxt knowledge brain and dpkms infrastructure substrate CLIs.",
+  "category": "skills",
+  "author": {
+    "name": "Jadb",
+    "github": "jadb"
+  },
+  "version": "1.0.0",
+  "requires": {
+    "ctxt": true,
+    "dpkms": true,
+    "tools": ["ctxt", "dpkms"]
+  },
+  "provides": {
+    "commands": [
+      "ctxt capture",
+      "ctxt analyze",
+      "ctxt find",
+      "ctxt list",
+      "ctxt show",
+      "ctxt compose",
+      "dpkms serve",
+      "dpkms job",
+      "dpkms pipeline"
+    ]
+  },
+  "tags": ["cli", "ctxt", "dpkms", "knowledge", "retrieval", "agent", "skill"],
+  "difficulty": "beginner"
+}
