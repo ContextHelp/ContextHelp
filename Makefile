@@ -1,4 +1,4 @@
-.PHONY: all build build-ctxt build-dpkms clean install deps preflight test test-unit test-integration test-integration-services test-smoke test-e2e test-all test-cover test-gate test-docker toolchain-check goreleaser-check lint gosec fmt help docs docs-dev docker-build docker-dev docker-prod docker-down docker-logs docker-ps docker-shell services-up services-down services-clean security-scan install-hooks install-gitleaks secret-scan-local vuln-scan trivy-scan eva check ben ben-text-short ben-vector ben-install ben-adapter
+.PHONY: all build build-ctxt build-dpkms build-encrypted test-encrypted clean install deps preflight test test-unit test-integration test-integration-services test-smoke test-e2e test-all test-cover test-gate test-docker toolchain-check goreleaser-check lint gosec fmt help docs docs-dev docker-build docker-dev docker-prod docker-down docker-logs docker-ps docker-shell services-up services-down services-clean security-scan install-hooks install-gitleaks secret-scan-local vuln-scan trivy-scan eva check ben ben-text-short ben-vector ben-install ben-adapter
 
 # Version information
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -83,6 +83,27 @@ build-dpkms:
 	@mkdir -p $(BUILD_DIR)
 	go build $(BUILD_TAGS) $(LDFLAGS) -o $(DPKMS_BINARY) $(DPKMS_MAIN)
 	@echo "✓ Built: $(DPKMS_BINARY)"
+
+SQLITE3MC_DIR := $(CURDIR)/build/sqlite3mc
+SQLITE3MC_LIB := $(SQLITE3MC_DIR)/lib/libsqlite3.a
+
+$(SQLITE3MC_LIB): scripts/ci/sqlite3mc.sh
+	@scripts/ci/sqlite3mc.sh $(SQLITE3MC_DIR)
+
+## build-encrypted: Build ctxt and dpkms linked against SQLite3MultipleCiphers for SQLite encryption at rest
+build-encrypted: $(SQLITE3MC_LIB)
+	@echo "Building encrypted binaries (SQLite3MultipleCiphers)..."
+	@mkdir -p $(BUILD_DIR)
+	CGO_CFLAGS="-O2 -g -I$(SQLITE3MC_DIR)/include" CGO_LDFLAGS="-L$(SQLITE3MC_DIR)/lib -lsqlite3 -lm" \
+		go build -tags "libsqlite3 fts5" $(LDFLAGS) -o $(CTXT_BINARY) $(CTXT_MAIN)
+	CGO_CFLAGS="-O2 -g -I$(SQLITE3MC_DIR)/include" CGO_LDFLAGS="-L$(SQLITE3MC_DIR)/lib -lsqlite3 -lm" \
+		go build -tags "libsqlite3 fts5" $(LDFLAGS) -o $(DPKMS_BINARY) $(DPKMS_MAIN)
+	@echo "✓ Built encrypted: $(CTXT_BINARY) $(DPKMS_BINARY)"
+
+## test-encrypted: Run SQLite encryption-at-rest integration tests against SQLite3MultipleCiphers
+test-encrypted: $(SQLITE3MC_LIB)
+	CGO_CFLAGS="-O2 -g -I$(SQLITE3MC_DIR)/include" CGO_LDFLAGS="-L$(SQLITE3MC_DIR)/lib -lsqlite3 -lm" \
+		go test -race -count=1 -tags "libsqlite3 fts5" ./internal/storage/sqlite/... ./internal/service -run 'TestSQLiteEncryption|TestMigrateSnapshot|TestBackup'
 
 ## install: Install both binaries to $GOPATH/bin
 install: build

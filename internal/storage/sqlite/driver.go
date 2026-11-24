@@ -88,7 +88,7 @@ var ErrReadOnly = errors.New("sqlite: database opened read-only")
 // if they are missing, as SQLite needs them to read it, but the
 // database file itself is not written. A missing path is an error, not
 // a new database.
-func NewReadOnly(path string, blobs storage.BlobStore) (*Driver, error) {
+func NewReadOnly(path string, blobs storage.BlobStore, opts ...Option) (*Driver, error) {
 	if blobs == nil {
 		return nil, ErrNoBlobStore
 	}
@@ -99,15 +99,26 @@ func NewReadOnly(path string, blobs storage.BlobStore) (*Driver, error) {
 		return nil, fmt.Errorf("open sqlite database %s read-only: %w", path, err)
 	}
 	dsn := "file:" + path + "?mode=ro&_query_only=true&_foreign_keys=ON&_cache_size=-64000&_busy_timeout=5000"
-	return open(path, dsn, blobs, true)
+	return open(path, dsn, blobs, true, opts...)
 }
 
 // open opens dsn, checks it is reachable and capable, and builds the
 // driver over it.
 func open(path, dsn string, blobs storage.BlobStore, readOnly bool, opts ...Option) (*Driver, error) {
-	sqlite_vec.Auto()
-	db, err := sql.Open("sqlite3", dsn)
+	d := &Driver{path: path, readOnly: readOnly}
+	for _, o := range opts {
+		o(d)
+	}
+
+	resolvedDSN, createdKey, err := resolveSQLiteDSN(context.Background(), path, dsn, readOnly, d.keyProvider)
 	if err != nil {
+		return nil, err
+	}
+
+	sqlite_vec.Auto()
+	db, err := sql.Open("sqlite3", resolvedDSN)
+	if err != nil {
+		cleanupCreatedKeyEnvelope(path, createdKey)
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
 
@@ -118,10 +129,17 @@ func open(path, dsn string, blobs storage.BlobStore, readOnly bool, opts ...Opti
 	// engine feature.
 	if err := db.PingContext(context.Background()); err != nil {
 		openErr := fmt.Errorf("open sqlite database %s: %w", path, err)
-		if cerr := db.Close(); cerr != nil {
-			return nil, fmt.Errorf("%w; close: %w", openErr, cerr)
-		}
+		_ = db.Close()
+		cleanupCreatedKeyEnvelope(path, createdKey)
 		return nil, openErr
+	}
+
+	if d.keyProvider != nil && !IsMemoryPath(path) {
+		if err := verifySQLiteCodec(context.Background(), db); err != nil {
+			_ = db.Close()
+			cleanupCreatedKeyEnvelope(path, createdKey)
+			return nil, err
+		}
 	}
 
 	// Probe engine capabilities before any migration runs, so a degraded build
@@ -130,13 +148,11 @@ func open(path, dsn string, blobs storage.BlobStore, readOnly bool, opts ...Opti
 		if cerr := db.Close(); cerr != nil {
 			return nil, fmt.Errorf("%w; close: %w", err, cerr)
 		}
+		cleanupCreatedKeyEnvelope(path, createdKey)
 		return nil, err
 	}
 
-	d := &Driver{db: db, path: path, readOnly: readOnly}
-	for _, o := range opts {
-		o(d)
-	}
+	d.db = db
 	d.objects = &ObjectStore{db: db}
 	d.objects.emb = d.Embeddings()
 	d.entities = &EntityStore{db: db}
