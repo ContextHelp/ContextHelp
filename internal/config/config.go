@@ -656,6 +656,10 @@ type StorageConfig struct {
 	// before an open applies pending schema migrations. Default: true.
 	// Postgres is never snapshotted.
 	MigrateSnapshot bool `mapstructure:"migrate_snapshot" yaml:"migrate_snapshot"`
+	// Encryption configures encryption at rest and KEK custody.
+	Encryption StorageEncryptionConfig `mapstructure:"encryption" yaml:"encryption"`
+	// Postgres configures Postgres-specific encryption-at-rest posture.
+	Postgres PostgresStorageConfig `mapstructure:"postgres" yaml:"postgres"`
 }
 
 // Names of the default entries under the data directory.
@@ -1644,6 +1648,11 @@ func setDefaults(v *viper.Viper) {
 	// the merged data dir after load (StorageConfig.resolveDataPaths).
 	v.SetDefault("storage.type", "sqlite")
 	v.SetDefault("storage.migrate_snapshot", true)
+	v.SetDefault("storage.encryption.enabled", false)
+	v.SetDefault("storage.encryption.secret_name", "storage_kek")
+	v.SetDefault("storage.postgres.require_tde", false)
+	v.SetDefault("storage.postgres.column_encryption", ColumnEncryptionOff)
+	v.SetDefault("storage.postgres.fts_on_encrypted", FTSOnEncryptedOmit)
 
 	// Blob storage defaults
 	v.SetDefault("storage.blob.backend", blobBackendLocal)

@@ -43,6 +43,7 @@ func Validate(c *Config) []ValidationError {
 	}
 	errs = append(errs, validateServerPorts(&c.Server)...)
 	errs = append(errs, validateBlob(c.Storage.Blob, "storage.blob")...)
+	errs = append(errs, c.Storage.ValidateEncryption()...)
 	errs = append(errs, validateAccess(c)...)
 	errs = append(errs, validateAuth(c)...)
 	errs = append(errs, validateQuotas(c)...)
