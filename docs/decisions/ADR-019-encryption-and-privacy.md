@@ -1,11 +1,11 @@
 # ADR-019 – Encryption and Privacy Model
 
-> **Status:** Accepted
+> **Status:** Superseded (storage encryption and blind-index model superseded by ADR-085; encrypted backup bundles remain active)
 > **Date:** 2026-01-26
 > **Author:** @jadb
 > **Applies to:** dPKMS
 > **Supersedes:** None
-> **Superseded by:** N/A
+> **Superseded by:** ADR-085 (Encryption at Rest and Search Indexing)
 
 ---
 

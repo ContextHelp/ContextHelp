@@ -564,6 +564,12 @@ Serving operator verbs through kit's command projection beside the resource rout
 - **Why.** The route table is the single place routes and their scope and capability gates are declared; a projection would need re-wiring, a second error envelope and lax unknown-query handling, for MCP access nobody wants.
 - **Revisit if.** Agents need admin verbs over MCP, or kit closes the error-envelope and unknown-parameter gaps.
 
+### **ADR-085 – Encryption at Rest and Search Indexing**
+Supersedes ADR-019's unimplemented selective-encryption and blind-index storage model with a layered, fail-closed architecture anchored on a single `internal/keys.KeyProvider` port:
+- **SQLite:** Whole-database page encryption (driver empirically gated on FTS5 + `vec0` + cross-compile + zero-plaintext WAL/SHM byte scans) so local full-text and vector search remain intact inside the unlocked envelope.
+- **Non-DB disk surfaces:** `KeyProvider`-backed AEAD envelope encryption for `BlobStore` (local + S3), pre-migration snapshots, ambient event spool, and mandatory encrypted backup archives.
+- **PostgreSQL:** Configurable orthogonal controls (`require_tde`, `column_encryption: off | sensitive | all`, `fts_on_encrypted: omit | require_tde`) supporting TDE-only, envelope-only, or both with zero silent plaintext `tsvector` leakage.
+
 ---
 
 ## Purpose of This Directory
