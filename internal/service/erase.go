@@ -135,7 +135,7 @@ func (s *Service) EraseBySourceKey(ctx context.Context, opts EraseBySourceOption
 	if opts.Tombstone && drv.Tombstones() != nil {
 		src := opts.Source
 		if src == "" {
-			src = "operator"
+			src = defaultOperatorSource
 		}
 		erasedBy := opts.ErasedBy
 		if erasedBy == "" {
@@ -372,7 +372,7 @@ func (s *Service) logErasureAudit(ctx context.Context, opts EraseBySourceOptions
 		actor = opts.Source
 	}
 	if actor == "" {
-		actor = "operator"
+		actor = defaultOperatorSource
 	}
 	entry := &storage.AuditEntry{
 		ID:        uuid.New().String(),

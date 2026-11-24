@@ -12,7 +12,15 @@ import (
 
 // SetReminder sets remind_at on the object (clears reminded_at).
 func (s *ObjectStore) SetReminder(ctx context.Context, id string, at time.Time) error {
-	result, err := s.db.ExecContext(ctx,
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("set reminder: begin tx: %w", err)
+	}
+	defer tx.Rollback()
+	if err := assertNotHeldTx(ctx, tx, id); err != nil {
+		return err
+	}
+	result, err := tx.ExecContext(ctx,
 		`UPDATE objects SET remind_at=$1, reminded_at=NULL, updated_at=$2 WHERE id=$3`,
 		at.UTC(), time.Now().UTC(), id,
 	)
@@ -23,12 +31,20 @@ func (s *ObjectStore) SetReminder(ctx context.Context, id string, at time.Time) 
 	if n == 0 {
 		return fmt.Errorf("object %s not found", id)
 	}
-	return nil
+	return tx.Commit()
 }
 
 // ClearReminder removes remind_at and reminded_at from the object.
 func (s *ObjectStore) ClearReminder(ctx context.Context, id string) error {
-	result, err := s.db.ExecContext(ctx,
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("clear reminder: begin tx: %w", err)
+	}
+	defer tx.Rollback()
+	if err := assertNotHeldTx(ctx, tx, id); err != nil {
+		return err
+	}
+	result, err := tx.ExecContext(ctx,
 		`UPDATE objects SET remind_at=NULL, reminded_at=NULL, updated_at=$1 WHERE id=$2`,
 		time.Now().UTC(), id,
 	)
@@ -39,16 +55,26 @@ func (s *ObjectStore) ClearReminder(ctx context.Context, id string) error {
 	if n == 0 {
 		return fmt.Errorf("object %s not found", id)
 	}
-	return nil
+	return tx.Commit()
 }
 
 // MarkReminded records that the reminder was delivered.
 func (s *ObjectStore) MarkReminded(ctx context.Context, id string, now time.Time) error {
-	_, err := s.db.ExecContext(ctx,
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("mark reminded: begin tx: %w", err)
+	}
+	defer tx.Rollback()
+	if err := assertNotHeldTx(ctx, tx, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx,
 		`UPDATE objects SET reminded_at=$1, updated_at=$2 WHERE id=$3`,
 		now.UTC(), now.UTC(), id,
-	)
-	return err
+	); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // ListDueReminders returns objects whose remind_at <= now and reminded_at IS NULL.

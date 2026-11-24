@@ -68,6 +68,10 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		{Method: get, Pattern: "/objects", Scope: authn.ScopeReadObjects, Handler: ListObjects(svc)},
 		{Method: get, Pattern: "/objects/facets", Scope: authn.ScopeReadObjects, Handler: ObjectFacets(svc)},
 		{Method: del, Pattern: "/objects/by-source", Scope: authn.ScopeDeleteObjects, Handler: DeleteBySource(svc)},
+		// Legal and administrative holds.
+		{Method: get, Pattern: "/holds", Scope: authn.ScopeDeleteObjects, Handler: ListHolds(svc)},
+		{Method: post, Pattern: "/holds", Scope: authn.ScopeDeleteObjects, Handler: PlaceHold(svc)},
+		{Method: del, Pattern: "/holds/{hold_id}", Scope: authn.ScopeDeleteObjects, Handler: ReleaseHold(svc)},
 		{Method: get, Pattern: "/tags", Scope: authn.ScopeReadObjects, Handler: ListTags(svc)},
 		{Method: get, Pattern: "/objects/{id}", Scope: authn.ScopeReadObjects, Handler: GetObject(svc)},
 		{Method: get, Pattern: "/objects/{id}/related", Scope: authn.ScopeReadObjects, Handler: RelatedObjects(svc)},
