@@ -235,20 +235,31 @@ func NewRouterWithConfig(svc *service.Service, rc RouterConfig) chi.Router {
 	return r
 }
 
-// mountAccessRoutes mounts the access provisioning routes of the authority
-// beside /api/v1, behind the same authentication.
+// mountAccessRoutes mounts the access provisioning and obligations routes of
+// the authority beside /api/v1, behind the same authentication.
 func mountAccessRoutes(r chi.Router, rc RouterConfig, svc *service.Service) {
 	a := accessRoutes{rc: rc, rcv: rc.Access}
-	r.Route(accessPrefix, func(r chi.Router) {
+	ob := newObligationRoutes(svc)
+	authMiddleware := func(r chi.Router) {
 		if rc.Auth != nil {
 			r.Use(RequireAuth(rc.Auth, rc.Security, rc.DevCORS, svc.Viewers(), rc.Sessions, rc.Audit))
 		} else {
 			r.Use(WithViewer(sharing.Unrestricted))
 		}
+	}
+	r.Route(accessPrefix, func(r chi.Router) {
+		authMiddleware(r)
 		r.Get("/profile", a.route(http.MethodGet, "/profile", a.profile))
 		r.Put("/access/{business}", a.route(http.MethodPut, "/access/{business}", a.apply))
 		r.Patch("/access/{business}", a.route(http.MethodPatch, "/access/{business}", a.apply))
 		r.Get("/access/{business}/state", a.route(http.MethodGet, "/access/{business}/state", a.state))
+		r.Post("/obligations", a.route(http.MethodPost, "/obligations", ob.submit))
+		r.Get("/obligations/{id}", a.route(http.MethodGet, "/obligations/{id}", ob.status))
+	})
+	// Well-known peer profile discovery alias (bos.peer/v1).
+	r.Group(func(r chi.Router) {
+		authMiddleware(r)
+		r.Get("/.well-known/bos-peer", a.route(http.MethodGet, "/profile", a.profile))
 	})
 }
 
