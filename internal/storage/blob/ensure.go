@@ -38,6 +38,9 @@ func Ensure(ctx context.Context, store storage.BlobStore, obj *storage.Knowledge
 			continue
 		}
 		contentType, _ := obj.Metadata["blob_content_type"].(string)
+		if o, ok := OriginalOf(obj); ok && o.Key == key {
+			contentType = o.ContentType
+		}
 		if err := store.Put(ctx, key, strings.NewReader(content), storage.BlobMeta{
 			ContentType: contentType,
 			Size:        int64(len(content)),

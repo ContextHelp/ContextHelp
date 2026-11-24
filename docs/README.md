@@ -61,6 +61,7 @@ docs/
 │
 ├── Development
 │   ├── development.md              # Development workflow
+│   ├── testing-media-cassettes.md  # Media provider cassettes
 │   ├── development-infrastructure.md  # Dev environment setup
 │   ├── dependencies.md            # Dependency management
 │   ├── cli-implementation.md      # CLI implementation details
@@ -260,6 +261,7 @@ Contributing to the codebase:
 - [developer-quickstart.md](developer-quickstart.md) - Developer onboarding
 - [cli-quickstart.md](cli-quickstart.md) - CLI quickstart
 - [development.md](development.md) - Development workflow
+- [testing-media-cassettes.md](testing-media-cassettes.md) - Record and replay media provider cassettes
 - [development-infrastructure.md](development-infrastructure.md) - Dev environment setup
 - [design.md](design.md) - Design philosophy
 - [decisions/](decisions/) - Architectural decisions (ADRs)
@@ -339,6 +341,7 @@ Managing secrets, compliance, and secure deployments:
 - [developer-quickstart.md](developer-quickstart.md) - Developer onboarding
 - [cli-quickstart.md](cli-quickstart.md) - CLI quickstart
 - [development.md](development.md) - Development workflow
+- [testing-media-cassettes.md](testing-media-cassettes.md) - Record and replay media provider cassettes
 - [development-infrastructure.md](development-infrastructure.md) - Dev environment setup
 - [dependencies.md](dependencies.md) - Dependency management
 - [cli-implementation.md](cli-implementation.md) - CLI implementation

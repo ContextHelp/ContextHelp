@@ -1,0 +1,14 @@
+xrr: "1"
+adapter: exec
+fingerprint: 6cfa3e78
+recorded_at: "2026-11-22T18:26:15Z"
+payload:
+    argv:
+        - ffprobe
+        - -v
+        - quiet
+        - -print_format
+        - json
+        - -show_format
+        - -show_streams
+        - <file:947d305e.mp4>

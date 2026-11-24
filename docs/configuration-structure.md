@@ -89,7 +89,7 @@ jobs:
 
 providers:
   llm:
-    backend: auto
+    backend: auto             # auto = local Ollama; hosted only when named
     endpoint: http://localhost:11434
   embedding:
     backend: ollama
@@ -115,7 +115,9 @@ written, so `token: ${X}` sets the literal string `${X}`. Keep secrets
 out of the shared config file:
 
 - **Provider API keys**: in the secrets store (`dpkms secret set
-  OPENAI_API_KEY`) or the env var of the same name; the store wins.
+  OPENAI_API_KEY`) or the env var of the same name; the store wins. A key
+  is used only by a backend that config names (`backend: openai`); `auto`
+  never reads it.
 - **S3 blob credentials**: `CTXT_BLOB_S3_ACCESS_KEY` /
   `CTXT_BLOB_S3_SECRET_KEY`.
 - **Everything else** (`server.auth.keys` hashes, `federations[].token`):

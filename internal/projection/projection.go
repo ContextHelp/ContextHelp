@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/representation"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blobref"
 )
@@ -23,19 +24,28 @@ func ProjectDocument(ko *storage.KnowledgeObject) storage.DocumentProjection {
 		}
 	}
 	sections := make([]storage.Section, 0, len(ko.Graph.Nodes))
-	for _, n := range ko.Graph.Nodes {
+	// Same reading order as the index projection; summaries are not sections.
+	for _, n := range representation.Ordered(ko.Graph) {
 		if n.NodeType != storage.NodeTypeSection {
 			continue
 		}
-		sections = append(sections, storage.Section{
+		sec := storage.Section{
 			Title:   n.Label,
 			Content: n.Content,
 			Order:   n.Order,
+		}
+		if _, ok := representation.MetaOf(n); ok {
+			// Anchors and provenance let a viewer show the timestamp or
+			// page of a representation.
+			sec.Metadata = n.Metadata
+		}
+		sections = append(sections, sec)
+	}
+	if !representation.Has(ko.Graph) {
+		sort.SliceStable(sections, func(i, j int) bool {
+			return sections[i].Order < sections[j].Order
 		})
 	}
-	sort.SliceStable(sections, func(i, j int) bool {
-		return sections[i].Order < sections[j].Order
-	})
 	return storage.DocumentProjection{Sections: sections}
 }
 
@@ -60,10 +70,15 @@ func rawIndexProjection(ko *storage.KnowledgeObject) storage.IndexProjection {
 	var tags []storage.Tag
 	var mentions []string
 
+	// Text nodes are read in representation order (see representation.Ordered):
+	// plain sections in graph order, then representation nodes by kind and
+	// anchor. Graph order alone would index a late summary after the text it
+	// summarises and ignore frame order.
+	for _, n := range representation.Ordered(ko.Graph) {
+		parts.add(n.Content)
+	}
 	for _, n := range ko.Graph.Nodes {
 		switch n.NodeType {
-		case storage.NodeTypeSummary, storage.NodeTypeSection:
-			parts.add(n.Content)
 		case storage.NodeTypeTag:
 			label := n.Label
 			if label == "" {

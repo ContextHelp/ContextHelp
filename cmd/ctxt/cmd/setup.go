@@ -19,7 +19,10 @@ var setupCmd = &cobra.Command{
 	Long: `Run the ctxt setup wizard to configure your installation.
 
 The wizard prompts for:
-  - AI provider and API key (OpenAI, Anthropic, or skip)
+  - AI provider: local Ollama (default), OpenAI, Anthropic, or skip. A
+    hosted provider is used only when you choose it here; store its API key
+    with "dpkms secret set <KEY>". A backend already in your config is the
+    default, and non-interactive runs never replace it.
   - Storage path (default: ~/.local/share/ctxt)
   - Default pipeline (text / url / auto)
 
@@ -58,17 +61,19 @@ func init() {
 	setupCmd.Flags().Bool("non-interactive", false, "skip all prompts and write defaults (also triggered by CI=true)")
 }
 
-// Wizard answers: no AI provider yet, and automatic pipeline detection
-// (also the inbox pipeline that choice writes).
+// Wizard answers: local Ollama (the default), no AI provider yet, and
+// automatic pipeline detection (also the inbox pipeline that choice
+// writes).
 const (
-	providerSkip = "skip"
-	pipelineAuto = "auto"
+	providerOllama = "ollama"
+	providerSkip   = "skip"
+	pipelineAuto   = "auto"
 )
 
 // wizardAnswers holds the values collected (or defaulted) by the wizard.
 type wizardAnswers struct {
-	Provider    string // "openai" | "anthropic" | "skip"
-	APIKey      string
+	Provider    string // "ollama" | "openai" | "anthropic" | "skip"
+	Existing    string // providers.llm.backend already in the file, "" if unset
 	StoragePath string
 	Pipeline    string // "text" | "url" | "auto"
 }
@@ -84,6 +89,10 @@ func runSetup(cmd *cobra.Command, args []string) error {
 	var answers wizardAnswers
 	if nonInteractive {
 		answers = defaultAnswers()
+		if answers.Existing = existingLLMBackend(cfgPath); answers.Existing != "" {
+			// A backend already set is never replaced by a default.
+			answers.Provider = providerSkip
+		}
 	} else {
 		_, statErr := os.Stat(cfgPath)
 		a, proceed, err := runWizard(cmd, cfgPath, statErr == nil)
@@ -94,6 +103,7 @@ func runSetup(cmd *cobra.Command, args []string) error {
 			fmt.Fprintln(cmd.OutOrStdout(), "Aborted.")
 			return nil
 		}
+		a.Existing = existingLLMBackend(cfgPath)
 		answers = a
 	}
 
@@ -117,8 +127,7 @@ func runSetup(cmd *cobra.Command, args []string) error {
 func defaultAnswers() wizardAnswers {
 	home, _ := os.UserHomeDir()
 	return wizardAnswers{
-		Provider:    providerSkip,
-		APIKey:      "",
+		Provider:    providerOllama,
 		StoragePath: filepath.Join(home, ".local", "share", "ctxt"),
 		Pipeline:    pipelineAuto,
 	}
@@ -128,7 +137,6 @@ func defaultAnswers() wizardAnswers {
 const (
 	stepUpdate   = "update"
 	stepProvider = "provider"
-	stepAPIKey   = "api_key"
 	stepStorage  = "storage_path"
 	stepPipeline = "pipeline"
 )
@@ -139,7 +147,6 @@ func setupSteps(defaults wizardAnswers, cfgPath string, confirmUpdate bool) []wi
 	// proceed gates the questions on the update confirmation; without
 	// that step its result is absent and every question is asked.
 	proceed := func(v any) bool { b, ok := v.(bool); return !ok || b }
-	needsKey := func(v any) bool { return v == "openai" || v == "anthropic" }
 
 	var steps []wizard.Step
 	if confirmUpdate {
@@ -149,14 +156,12 @@ func setupSteps(defaults wizardAnswers, cfgPath string, confirmUpdate bool) []wi
 	}
 	return append(steps,
 		wizard.Select(stepProvider, "AI provider", []wizard.Option{
-			{Value: "openai", Label: "OpenAI"},
-			{Value: "anthropic", Label: "Anthropic"},
+			{Value: providerOllama, Label: "Ollama (local, recommended)"},
+			{Value: "openai", Label: "OpenAI (cloud)"},
+			{Value: "anthropic", Label: "Anthropic (cloud)"},
 			{Value: providerSkip, Label: "Skip (configure later)"},
-		}).WithDefault(providerSkip).WithGroup("Step 1/3 — AI provider").
+		}).WithDefault(defaults.Provider).WithGroup("Step 1/3 — AI provider").
 			WithWhen(stepUpdate, proceed),
-		wizard.TextInput(stepAPIKey, "API key").
-			WithGroup("Step 1/3 — AI provider").
-			WithWhen(stepProvider, needsKey),
 		wizard.TextInput(stepStorage, "Path").
 			WithDefault(defaults.StoragePath).WithGroup("Step 2/3 — Storage path").
 			WithWhen(stepUpdate, proceed),
@@ -178,6 +183,7 @@ func setupSteps(defaults wizardAnswers, cfgPath string, confirmUpdate bool) []wi
 func runWizard(cmd *cobra.Command, cfgPath string, confirmUpdate bool) (a wizardAnswers, proceed bool, err error) {
 	out := cmd.OutOrStdout()
 	defaults := defaultAnswers()
+	defaults.Provider = providerDefault(existingLLMBackend(cfgPath))
 
 	w, err := wizard.New(setupSteps(defaults, cfgPath, confirmUpdate)...)
 	if err != nil {
@@ -207,7 +213,6 @@ func runWizard(cmd *cobra.Command, cfgPath string, confirmUpdate bool) (a wizard
 	}
 	a = wizardAnswers{
 		Provider:    wizard.Choice(r, stepProvider),
-		APIKey:      wizard.String(r, stepAPIKey),
 		StoragePath: wizard.String(r, stepStorage),
 		Pipeline:    wizard.Choice(r, stepPipeline),
 	}
@@ -232,14 +237,47 @@ func setupEdits(a wizardAnswers) []setupEdit {
 		{[]string{"storage", "blob", "local", "path"}, filepath.Join(a.StoragePath, "blobs")},
 		{[]string{"inbox", "pipeline"}, pipelineToInboxValue(a.Pipeline)},
 	}
-	// A chosen provider with a key selects that LLM backend; the key
-	// itself stays in the environment. Embeddings stay on the resolver
-	// defaults: there is no OpenAI embedding backend.
-	if a.APIKey != "" && (a.Provider == "openai" || a.Provider == "anthropic") {
+	// Choosing a provider is the opt-in: it names the LLM backend, so a
+	// hosted provider runs only after this choice. Keys never pass through
+	// the wizard; the summary says where to store one. Skip writes nothing.
+	switch a.Provider {
+	case providerOllama, "openai", "anthropic":
 		edits = append(edits, setupEdit{[]string{"providers", "llm", "backend"}, a.Provider})
 	}
 	return edits
 }
+
+// existingLLMBackend is the providers.llm.backend the config file at path
+// already sets, or "".
+func existingLLMBackend(path string) string {
+	l, err := config.OpenLayer(path)
+	if err != nil {
+		return ""
+	}
+	var backend string
+	if ok, err := l.Decode(&backend, "providers", "llm", "backend"); err != nil || !ok {
+		return ""
+	}
+	return backend
+}
+
+// providerDefault is the wizard's default provider answer given the
+// backend already configured: that backend when the wizard offers it,
+// local Ollama when unset, and skip (leave it alone) otherwise, which
+// keeps an existing auto as it is.
+func providerDefault(existing string) string {
+	switch existing {
+	case "", providerOllama:
+		return providerOllama
+	case "openai", "anthropic":
+		return existing
+	default:
+		return providerSkip
+	}
+}
+
+// hostedKeyNames maps a hosted provider to its API key's secrets name.
+var hostedKeyNames = map[string]string{"openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY"}
 
 // pipelineToInboxValue maps wizard choice to an inbox pipeline name.
 func pipelineToInboxValue(p string) string {
@@ -262,10 +300,22 @@ func printSummary(cmd *cobra.Command, cfgPath string, a wizardAnswers) {
 	fmt.Fprintf(out, "  Storage path: %s\n", a.StoragePath)
 	fmt.Fprintf(out, "  Pipeline:     %s\n", a.Pipeline)
 	providerLine := a.Provider
-	if a.Provider == providerSkip {
-		providerLine = "none (configure later)"
+	switch a.Provider {
+	case providerOllama:
+		providerLine = "ollama (local)"
+	case providerSkip:
+		providerLine = "unchanged (unset means auto: local Ollama)"
+		if a.Existing != "" {
+			providerLine = a.Existing + " (kept)"
+			if a.Existing == "auto" {
+				providerLine = "auto (kept; local Ollama)"
+			}
+		}
 	}
 	fmt.Fprintf(out, "  AI provider:  %s\n", providerLine)
+	if key, ok := hostedKeyNames[a.Provider]; ok {
+		fmt.Fprintf(out, "  API key:      store it with: dpkms secret set %s\n", key)
+	}
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Run 'ctxt --help' to explore available commands.")
 }

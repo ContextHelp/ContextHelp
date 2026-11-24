@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: 6376a7c6
+recorded_at: "2026-11-22T18:23:59Z"
+payload:
+    method: POST
+    url: http://127.0.0.1:11434/api/generate
+    body: '{"model":"qwen3:4b-instruct-2507-q4_K_M","prompt":"Reply with the single word: pong","stream":false}'

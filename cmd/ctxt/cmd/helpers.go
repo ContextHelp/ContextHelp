@@ -23,6 +23,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
+	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/secrets"
@@ -34,6 +35,7 @@ import (
 	kitcli "hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/output"
 	kitstyles "hop.top/kit/go/console/tui/styles"
+	"hop.top/kit/go/storage/secret"
 )
 
 // storageTypeSQLite is the storage.type value naming the SQLite backend,
@@ -121,7 +123,13 @@ func openService(cmd *cobra.Command, readOnly bool, warn io.Writer) (*service.Se
 	driver := h.Driver
 
 	queue := jobs.NewQueue(driver.Jobs())
-	pipes := builtins.ConfiguredRegistryWithOpts(registryBuildOptsTo(driver, warn))
+	pipes, err := builtins.ConfiguredRegistryWithOpts(registryBuildOptsTo(driver, warn, readOnly))
+	if err != nil {
+		if cerr := h.Close(context.Background()); cerr != nil {
+			fmt.Fprintf(warn, "Warning: failed to close storage: %v\n", cerr)
+		}
+		return nil, nil, err
+	}
 	engine := search.NewEngine(driver)
 
 	// Wire pipeline preflight validation into the queue.
@@ -210,11 +218,13 @@ func dbPathForInstance(nameOrPort string) (string, error) {
 // store and storage.blob.threshold, without which externalize_content
 // is pruned.
 func registryBuildOpts(driver storage.StorageDriver) builtins.BuildOpts {
-	return registryBuildOptsTo(driver, os.Stderr)
+	return registryBuildOptsTo(driver, os.Stderr, false)
 }
 
 // registryBuildOptsTo is registryBuildOpts with its warning sent to warn.
-func registryBuildOptsTo(driver storage.StorageDriver, warn io.Writer) builtins.BuildOpts {
+// A read-only open builds no provider factory: a read command runs no
+// pipeline, so it neither probes media providers nor fails on their config.
+func registryBuildOptsTo(driver storage.StorageDriver, warn io.Writer, readOnly bool) builtins.BuildOpts {
 	opts := embeddingBuildOptsTo(driver, warn)
 	opts.BlobStore = driver.Blobs()
 	if cfg != nil {
@@ -223,21 +233,50 @@ func registryBuildOptsTo(driver storage.StorageDriver, warn io.Writer) builtins.
 		opts.ClassRules = builtins.ClassRulesFromConfig(cfg.Sharing)
 	}
 	opts.FetchGuard = config.FetchGuard(cfg)
-	opts.GitHub = githubClient(warn)
+	store := secretStore(warn)
+	opts.GitHub = githubClientWith(store)
+	if !readOnly {
+		opts.Factory = providerFactoryWith(store)
+	}
 	return opts
 }
 
-// githubClient builds the GitHub REST client from github.* config, its
-// token secrets read through the configured secrets backend. A backend
-// that fails to open (reported on warn) leaves the environment as the
-// token source.
-func githubClient(warn io.Writer) *github.Client {
+// secretStore opens the configured secrets backend, once per registry
+// build. A backend that fails to open is reported on warn and leaves the
+// environment as the source of keys and tokens (nil store).
+func secretStore(warn io.Writer) secret.Store {
 	if cfg == nil {
 		return nil
 	}
 	store, err := secrets.New(cfg.Secrets)
 	if err != nil {
-		fmt.Fprintf(warn, "Warning: secrets backend unavailable; GitHub tokens read from the environment: %v\n", err)
+		fmt.Fprintf(warn, "Warning: secrets backend unavailable; API keys and tokens read from the environment: %v\n", err)
+		return nil
+	}
+	return store
+}
+
+// providerFactoryWith builds the configured provider factory over store.
+// No config, no factory: no media provider runs.
+func providerFactoryWith(store secret.Store) *providers.Factory {
+	if cfg == nil {
+		return nil
+	}
+	return providers.NewFactory(cfg.Providers, store)
+}
+
+// githubClient builds the GitHub REST client from github.* config, its
+// token secrets read through the configured secrets backend.
+func githubClient(warn io.Writer) *github.Client {
+	return githubClientWith(secretStore(warn))
+}
+
+// githubClientWith is githubClient over an opened store (nil: environment).
+func githubClientWith(store secret.Store) *github.Client {
+	if cfg == nil {
+		return nil
+	}
+	if store == nil {
 		return github.NewClientFromConfig(cfg.GitHub, nil)
 	}
 	return github.NewClientFromConfig(cfg.GitHub, secrets.Getter(store))

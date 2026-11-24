@@ -43,16 +43,12 @@ func (p *GolibDocumentProvider) ExtractPDF(ctx context.Context, pdfPath string) 
 	if p.pdfProvider != nil {
 		return p.pdfProvider.ExtractPDF(ctx, pdfPath)
 	}
-	// No pure-Go PDF extraction available yet; try pdftotext if available.
-	if _, err := LookupTool(pdftotextTool); err == nil {
-		fallback := NewPdftotextDocumentProvider()
-		return fallback.ExtractPDF(ctx, pdfPath)
+	// No pure-Go PDF extraction exists: pdftotext does it. Without it the
+	// job fails with the install hint; no placeholder text is returned.
+	if _, err := LookupToolContext(ctx, pdftotextTool); err != nil {
+		return nil, err
 	}
-	return &DocumentResult{
-		FullText:  "[PDF extraction requires pdftotext CLI tool]",
-		PageCount: 0,
-		Metadata:  map[string]string{"error": "no PDF backend available"},
-	}, nil
+	return NewPdftotextDocumentProvider().ExtractPDF(ctx, pdfPath)
 }
 
 // ExtractOffice extracts the text of a .docx; any other format is an

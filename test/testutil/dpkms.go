@@ -290,9 +290,12 @@ func startDpkms(t testing.TB, opts ...DpkmsOption) (*Dpkms, error) {
 // config builds the instance's dpkms config.
 func (d *Dpkms) config(o dpkmsOptions, dataHome string) map[string]any {
 	providers := map[string]any{}
-	for _, k := range []string{"video", "document", "ocr", "transcription", "vision", "diarization", "llm"} {
+	for _, k := range []string{"video", "document", "ocr", "transcription", "vision", "diarization", "frames", "summarization", "llm"} {
 		providers[k] = map[string]any{"backend": "stub"}
 	}
+	// golib is the pure-Go document provider: real and hermetic. The
+	// url.generic and doc.* pipelines are unavailable on a stub.
+	providers["document"] = map[string]any{"backend": "golib"}
 	server := map[string]any{"access": "private"}
 	if !o.private {
 		// Credentials live in the registry (mintKeys). The instance mints

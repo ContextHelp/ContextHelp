@@ -18,6 +18,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
+	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/secrets"
@@ -114,7 +115,11 @@ func newService(cmd *cobra.Command) (*service.Service, func(), error) {
 	readOnly := cliconv.ReadsOnly(cmd)
 
 	queue := jobs.NewQueue(driver.Jobs())
-	pipes := builtins.ConfiguredRegistryWithOpts(registryBuildOpts(driver))
+	pipes, err := builtins.ConfiguredRegistryWithOpts(registryBuildOptsFor(driver, readOnly))
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
 	engine := search.NewEngine(driver)
 
 	queue.SetPipelineValidator(func(name string) error {
@@ -148,6 +153,13 @@ func newService(cmd *cobra.Command) (*service.Service, func(), error) {
 // store and storage.blob.threshold, without which externalize_content
 // is pruned.
 func registryBuildOpts(driver storage.StorageDriver) builtins.BuildOpts {
+	return registryBuildOptsFor(driver, false)
+}
+
+// registryBuildOptsFor is registryBuildOpts for a read-only or write open.
+// A read-only open builds no provider factory: a read command runs no
+// pipeline, so it neither probes media providers nor fails on their config.
+func registryBuildOptsFor(driver storage.StorageDriver, readOnly bool) builtins.BuildOpts {
 	opts := embeddingBuildOpts(driver, newEmbeddingResolver())
 	opts.BlobStore = driver.Blobs()
 	if cfg != nil {
@@ -156,7 +168,26 @@ func registryBuildOpts(driver storage.StorageDriver) builtins.BuildOpts {
 		opts.ClassRules = builtins.ClassRulesFromConfig(cfg.Sharing)
 	}
 	opts.FetchGuard = config.FetchGuard(cfg)
+	if !readOnly {
+		opts.Factory = providerFactory()
+	}
 	return opts
+}
+
+// providerFactory builds the configured provider factory, its API keys
+// read through the configured secrets backend as the daemon's is. A
+// backend that fails to open leaves the environment as the key source.
+// No config, no factory: no media provider runs.
+func providerFactory() *providers.Factory {
+	if cfg == nil {
+		return nil
+	}
+	store, err := secrets.New(cfg.Secrets)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: secrets backend unavailable; provider keys read from the environment: %v\n", err)
+		store = nil
+	}
+	return providers.NewFactory(cfg.Providers, store)
 }
 
 // embeddingBuildOpts is the dpkms CLI's embedding write path for the

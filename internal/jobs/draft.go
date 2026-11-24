@@ -2,7 +2,6 @@ package jobs
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blobref"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
@@ -52,6 +52,10 @@ func (e *LocalExecutor) Execute(ctx context.Context, job *storage.Job) (*storage
 // metadata, and computes DraftContentHash. It performs no database or blob
 // writes, making it safe to execute either in-process or inside a stateless pod.
 func RunDraft(ctx context.Context, reg pipeline.Registry, job *storage.Job, maxHops int) (*storage.KnowledgeObject, error) {
+	return runDraft(ctx, reg, nil, job, maxHops)
+}
+
+func runDraft(ctx context.Context, reg pipeline.Registry, blobs storage.BlobStore, job *storage.Job, maxHops int) (*storage.KnowledgeObject, error) {
 	if maxHops <= 0 {
 		maxHops = 5
 	}
@@ -81,7 +85,18 @@ func RunDraft(ctx context.Context, reg pipeline.Registry, job *storage.Job, maxH
 		draft.Metadata = map[string]any{storageutil.MetadataDataKey: job.UserData}
 	}
 
-	draft, err = runPipelineSteps(ctx, pipe, draft)
+	// Binary content is an original: kept as bytes, content-addressed,
+	// before any step runs, so a step that replaces RawContent with
+	// text cannot lose it. When blobs is nil (stateless pod), attach the
+	// deterministic original metadata so representation nodes still wire
+	// derives_from -> artifact/0; the host stores the blob.
+	if blobref.NeedsBlob(content) {
+		if err := keepOriginal(ctx, blobs, draft, content); err != nil {
+			return nil, err
+		}
+	}
+
+	draft, err = pipeline.RunSteps(ctx, pipe, draft)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +116,7 @@ func RunDraft(ctx context.Context, reg pipeline.Registry, job *storage.Job, maxH
 			slog.Debug("jobs: hop pipeline not found, stopping hops", "pipeline", next)
 			break
 		}
-		draft, err = runPipelineSteps(ctx, nextPipe, draft)
+		draft, err = pipeline.RunSteps(ctx, nextPipe, draft)
 		if err != nil {
 			return nil, err
 		}
@@ -109,24 +124,5 @@ func RunDraft(ctx context.Context, reg pipeline.Registry, job *storage.Job, maxH
 
 	storageutil.ApplyAmbient(draft, job.UserAmbient)
 	draft.ContentHash = storageutil.DraftContentHash(pipeline.ContentBytes(draft), draft.Source, draft.Metadata)
-	return draft, nil
-}
-
-func runPipelineSteps(ctx context.Context, pipe *pipeline.Pipeline, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
-	var err error
-	for _, step := range pipe.Steps {
-		if pipeline.SkipsBinary(step, draft) {
-			slog.Debug("jobs: binary content, step skipped", "step", step.Name())
-			continue
-		}
-		draft, err = step.Run(ctx, draft)
-		if err != nil {
-			if errors.Is(err, pipeline.ErrDelegate) {
-				slog.Debug("jobs: step delegated, skipping", "step", step.Name())
-				continue
-			}
-			return nil, fmt.Errorf("step %s: %w", step.Name(), err)
-		}
-	}
 	return draft, nil
 }

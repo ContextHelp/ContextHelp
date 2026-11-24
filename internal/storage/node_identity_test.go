@@ -81,3 +81,23 @@ func TestParseNodeURI_MissingPrefix(t *testing.T) {
 		t.Fatal("expected error for missing ctxt:node/ prefix")
 	}
 }
+
+func TestNextOrdinalIsMaxPlusOneNeverACount(t *testing.T) {
+	g := &storage.ObjectGraph{Nodes: []storage.GraphNode{{ID: "o/section/5", NodeType: storage.NodeTypeSection}, {NodeType: storage.NodeTypeSection, Order: 7}}}
+	if got := storage.NextOrdinal(g, storage.NodeTypeSection); got != 8 {
+		t.Errorf("got %d want 8", got)
+	}
+	if got := storage.NextOrdinal(nil, storage.NodeTypeSection); got != 0 {
+		t.Errorf("nil graph: %d", got)
+	}
+}
+
+func TestNextOrdinalReservesArtifactZero(t *testing.T) {
+	if got := storage.NextOrdinal(nil, storage.NodeTypeArtifact); got != 1 {
+		t.Errorf("empty graph: artifact ordinal %d, want 1 (0 is the original's)", got)
+	}
+	g := &storage.ObjectGraph{Nodes: []storage.GraphNode{{ID: "o/artifact/0", NodeType: storage.NodeTypeArtifact}, {ID: "o/artifact/1", NodeType: storage.NodeTypeArtifact}}}
+	if got := storage.NextOrdinal(g, storage.NodeTypeArtifact); got != 2 {
+		t.Errorf("got %d want 2", got)
+	}
+}

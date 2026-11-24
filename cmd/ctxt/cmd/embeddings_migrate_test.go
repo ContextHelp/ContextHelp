@@ -107,11 +107,14 @@ func newMigrateEnv(t *testing.T, bodies ...string) *migrateEnv {
 func (e *migrateEnv) ingest(t *testing.T, bodies ...string) {
 	t.Helper()
 	drv := e.db.Driver
-	pipes := builtins.ConfiguredRegistryWithOpts(builtins.BuildOpts{
+	pipes, regErr := builtins.ConfiguredRegistryWithOpts(builtins.BuildOpts{
 		Models:     registryOf(t, e.db),
 		Resolver:   e.resolver,
 		Embeddings: drv.Embeddings(),
 	})
+	if regErr != nil {
+		t.Fatal(regErr)
+	}
 	q := jobs.NewQueue(drv.Jobs())
 	var ids []string
 	for _, body := range bodies {

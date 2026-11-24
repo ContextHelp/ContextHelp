@@ -30,7 +30,7 @@ func TestStubVideoProbe(t *testing.T) {
 
 func TestStubVideoExtractAudio(t *testing.T) {
 	p := NewStubVideoProvider()
-	audio, err := p.ExtractAudio(context.Background(), "/tmp/test.mp4")
+	audio, err := p.ExtractAudio(context.Background(), "/tmp/test.mp4", "/scratch")
 	if err != nil {
 		t.Fatalf("ExtractAudio: %v", err)
 	}
@@ -42,24 +42,5 @@ func TestStubVideoExtractAudio(t *testing.T) {
 	}
 	if audio.SampleRate != 44100 {
 		t.Errorf("SampleRate: got %d", audio.SampleRate)
-	}
-}
-
-func TestStubVideoSampleFrames(t *testing.T) {
-	p := NewStubVideoProvider()
-	frames, err := p.SampleFrames(context.Background(), "/tmp/test.mp4", 5)
-	if err != nil {
-		t.Fatalf("SampleFrames: %v", err)
-	}
-	if len(frames) != 5 {
-		t.Fatalf("frame count: got %d, want 5", len(frames))
-	}
-	for i, f := range frames {
-		if f.Index != i {
-			t.Errorf("frame %d: Index=%d", i, f.Index)
-		}
-		if f.ContentType != "image/png" {
-			t.Errorf("frame %d: ContentType=%q", i, f.ContentType)
-		}
 	}
 }

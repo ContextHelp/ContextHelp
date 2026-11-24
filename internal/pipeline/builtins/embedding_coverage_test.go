@@ -125,7 +125,7 @@ func stubProvidersWithDocument(backend string) *providers.Factory {
 	stub := config.ProviderBackendConfig{Backend: "stub"}
 	return providers.NewFactory(config.ProvidersConfig{
 		Video: stub, Document: config.ProviderBackendConfig{Backend: backend}, OCR: stub,
-		Transcription: stub, Vision: stub, Diarization: stub, LLM: stub,
+		Transcription: stub, Vision: stub, Diarization: stub, Frames: stub, Summarization: stub, LLM: stub,
 	}, nil)
 }
 
@@ -247,8 +247,10 @@ func requireVectors(t *testing.T, name string, d Def, tc coverageCase, opts Buil
 		opts.Factory = stubProvidersWithDocument(tc.document)
 	}
 	draft := tc.draft(t, name)
+	ctx, scratch := pipeline.WithScratch(context.Background())
+	defer func() { scratch.Cleanup(draft) }()
 	for _, s := range buildForCoverage(t, name, d, opts) {
-		out, err := s.Run(context.Background(), draft)
+		out, err := s.Run(ctx, draft)
 		if err != nil {
 			if errors.Is(err, pipeline.ErrDelegate) {
 				continue

@@ -5,9 +5,13 @@ package vision
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 )
+
+// ErrModelNotConfigured reports a local backend with no model to run.
+var ErrModelNotConfigured = errors.New("model not configured")
 
 // Result holds the output of a vision analysis.
 type Result struct {

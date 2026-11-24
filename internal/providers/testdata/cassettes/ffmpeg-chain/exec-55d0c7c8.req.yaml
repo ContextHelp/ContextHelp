@@ -1,0 +1,18 @@
+xrr: "1"
+adapter: exec
+fingerprint: 55d0c7c8
+recorded_at: "2026-11-22T18:26:15Z"
+payload:
+    argv:
+        - ffmpeg
+        - -i
+        - <file:947d305e.mp4>
+        - -vn
+        - -acodec
+        - pcm_s16le
+        - -ar
+        - "16000"
+        - -ac
+        - "1"
+        - -y
+        - <tmp>/clip.mp4.audio.wav

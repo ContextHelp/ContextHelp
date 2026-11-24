@@ -56,11 +56,11 @@ func TestOCRExtractorLowConfidence(t *testing.T) {
 
 func TestOCRExtractorEmitsGraphNodes(t *testing.T) {
 	step := NewOCRExtractor()
-	draft := &storage.KnowledgeObject{
+	draft := withOriginal(t, &storage.KnowledgeObject{
 		ID:          "obj-ocr-001",
 		RawContent:  "fake image bytes",
 		ContentType: "image/png",
-	}
+	}, "fake image bytes")
 	got, err := step.Run(context.Background(), draft)
 	if err != nil {
 		t.Fatalf("run: %v", err)
@@ -84,8 +84,13 @@ func TestOCRExtractorEmitsGraphNodes(t *testing.T) {
 	} else if sectionNode.Label != "OCR Text" {
 		t.Errorf("section label: got %q", sectionNode.Label)
 	}
-	if len(got.Graph.Edges) == 0 {
-		t.Error("expected edge from artifact to section")
+	if sectionNode != nil && sectionNode.Metadata["representation"] != "ocr" {
+		t.Errorf("section metadata: %v", sectionNode.Metadata)
+	}
+	// derives_from points from the representation to the artifact.
+	if len(got.Graph.Edges) != 1 || got.Graph.Edges[0].ToID != artifactID ||
+		got.Graph.Edges[0].FromID != storage.NewNodeID("obj-ocr-001", storage.NodeTypeSection, 0) {
+		t.Errorf("edges: %+v", got.Graph.Edges)
 	}
 }
 

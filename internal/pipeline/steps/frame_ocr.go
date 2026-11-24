@@ -7,6 +7,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
+	"github.com/ideacrafterslabs/ctxt/internal/representation"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -28,9 +29,10 @@ func WithFrameOCRProvider(p providers.OCRProvider) FrameOCROption {
 func NewFrameOCR(opts ...FrameOCROption) *FrameOCR {
 	f := &FrameOCR{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
-			Binary:   true,
-			Requires: []string{},
-			Produces: []string{},
+			Binary:       true,
+			Requires:     []string{},
+			Produces:     []string{},
+			Capabilities: []string{"ocr"},
 		}),
 		provider: providers.NewStubOCRProvider(),
 	}
@@ -53,15 +55,34 @@ func (s *FrameOCR) Run(ctx context.Context, draft *storage.KnowledgeObject) (*st
 		return draft, nil
 	}
 
+	// frame_ms, when a frame step set it, is each frame's timestamp.
+	frameMS, _ := draft.Metadata["frame_ms"].([]int64)
 	var texts []string
-	for _, path := range paths {
+	for i, path := range paths {
 		result, err := s.provider.Extract(ctx, []byte(path), "image/png")
 		if err != nil {
 			return nil, fmt.Errorf("frame_ocr: frame %s: %w", path, err)
 		}
-		if result.Text != "" {
-			texts = append(texts, result.Text)
+		if result.Text == "" {
+			continue
 		}
+		texts = append(texts, result.Text)
+		if draft.ID == "" {
+			continue
+		}
+		anchor := representation.Anchor{}.WithFrameIndex(i)
+		if i < len(frameMS) {
+			anchor = anchor.WithFrame(i, max(frameMS[i], 0))
+		}
+		emitLenient(draft, representation.Spec{
+			Kind:       representation.FrameOCR,
+			Label:      fmt.Sprintf("Frame %d OCR", i+1),
+			Content:    result.Text,
+			Anchor:     anchor,
+			Provider:   s.provider.Name(),
+			Model:      representation.ModelOf(s.provider),
+			Confidence: representation.ConfidenceOf(result.Confidence),
+		})
 	}
 
 	draft.Metadata["frame_ocr_text"] = strings.Join(texts, "\n")

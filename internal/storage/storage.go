@@ -235,7 +235,8 @@ type ObjectStore interface {
 	Delete(ctx context.Context, id string) error
 	// CountBlobRefs counts the objects that refer to blob key: their
 	// raw_content or text_content is its blob:// ref, or metadata.blob_key
-	// names it. Keys are content hashes, so objects can share one.
+	// or metadata.original_blob_key names it. Keys are content hashes, so
+	// objects can share one.
 	CountBlobRefs(ctx context.Context, key string) (int, error)
 	// ListBySQL lists the objects List(filter) would return that also
 	// satisfy where, a raw predicate over the objects table in the

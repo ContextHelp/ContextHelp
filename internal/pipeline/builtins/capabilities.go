@@ -11,15 +11,8 @@ import (
 
 // ensureToolPath augments the system PATH with common local tool directories.
 func ensureToolPath() {
-	home, _ := os.UserHomeDir()
-	extraPaths := []string{
-		"/opt/homebrew/bin",
-		"/usr/local/bin",
-		filepath.Join(home, ".local", "bin"),
-	}
-
 	path := os.Getenv("PATH")
-	for _, p := range extraPaths {
+	for _, p := range providers.ExtraToolDirs() {
 		if !contains(path, p) {
 			path = p + string(os.PathListSeparator) + path
 		}
@@ -39,43 +32,100 @@ func contains(path, sub string) bool {
 }
 
 // CapabilitiesFromFactory builds a CapabilitySet by checking which providers
-// resolve to real (non-stub) implementations.
+// resolve to real implementations: neither a stub nor a failed provider
+// (a named backend that cannot run) counts. It resolves each role once.
 func CapabilitiesFromFactory(f *providers.Factory) pipeline.CapabilitySet {
+	var r *providers.Resolved
+	if f != nil {
+		r = f.Resolve()
+	}
+	return capabilitiesFromResolved(r)
+}
+
+// capabilitiesFromResolved is CapabilitiesFromFactory over roles already
+// resolved, so the check and the step constructors share one provider.
+func capabilitiesFromResolved(r *providers.Resolved) pipeline.CapabilitySet {
 	ensureToolPath()
 	caps := make(pipeline.CapabilitySet)
 
 	// io is always available (filesystem access is not provider-dependent).
 	caps["io"] = true
 
-	if f == nil {
+	if r == nil {
 		return caps
 	}
 
-	if _, isStub := f.LLM().(*providers.StubLLMProvider); !isStub {
+	if !isStubLLM(r.LLM) {
 		caps["llm"] = true
 	}
-	if _, isStub := f.OCR().(*providers.StubOCRProvider); !isStub {
+	if !isStubOCR(r.OCR) && !providers.IsFailed(r.OCR) {
 		caps["ocr"] = true
 	}
-	if _, isStub := f.Vision().(*vision.StubProvider); !isStub {
+	if !isStubVision(r.Vision) {
 		caps["vision"] = true
 	}
-	if _, isStub := f.Transcription().(*providers.StubTranscriptionProvider); !isStub {
+	if !isStubTranscription(r.Transcription) && !providers.IsFailed(r.Transcription) {
 		caps["transcription"] = true
 	}
-	if _, isStub := f.Diarization().(*providers.StubDiarizationProvider); !isStub {
+	if !isStubVideo(r.Video) && !providers.IsFailed(r.Video) {
+		caps["video"] = true
+	}
+	if !isStubFrames(r.Frames) && !providers.IsFailed(r.Frames) {
+		caps["frames"] = true
+	}
+	if !isStubSummarization(r.Summarization) && !providers.IsFailed(r.Summarization) {
+		caps["summarization"] = true
+	}
+	if !isStubDocument(r.Document) && !providers.IsFailed(r.Document) {
+		caps["document"] = true
+	}
+	if !isStubDiarization(r.Diarization) && !providers.IsFailed(r.Diarization) {
 		caps["diarization"] = true
 	}
 
 	return caps
 }
 
+func isStubLLM(p providers.LLMProvider) bool { _, ok := p.(*providers.StubLLMProvider); return ok }
+func isStubOCR(p providers.OCRProvider) bool { _, ok := p.(*providers.StubOCRProvider); return ok }
+func isStubVision(p vision.Provider) bool    { _, ok := p.(*vision.StubProvider); return ok }
+func isStubTranscription(p providers.TranscriptionProvider) bool {
+	_, ok := p.(*providers.StubTranscriptionProvider)
+	return ok
+}
+func isStubVideo(p providers.VideoProvider) bool {
+	_, ok := p.(*providers.StubVideoProvider)
+	return ok
+}
+func isStubFrames(p providers.FrameProvider) bool {
+	_, ok := p.(*providers.StubFrameProvider)
+	return ok
+}
+func isStubSummarization(p providers.SummarizationProvider) bool {
+	_, ok := p.(*providers.StubSummarizationProvider)
+	return ok
+}
+func isStubDocument(p providers.DocumentProvider) bool {
+	_, ok := p.(*providers.StubDocumentProvider)
+	return ok
+}
+func isStubDiarization(p providers.DiarizationProvider) bool {
+	_, ok := p.(*providers.StubDiarizationProvider)
+	return ok
+}
+
 // CapabilitiesFromOpts builds a CapabilitySet from BuildOpts, including
 // provider capabilities and blob-externalize if a BlobStore is configured.
 func CapabilitiesFromOpts(opts BuildOpts) pipeline.CapabilitySet {
-	caps := CapabilitiesFromFactory(opts.Factory)
+	r := opts.resolved
+	if r == nil && opts.Factory != nil {
+		r = opts.Factory.Resolve()
+	}
+	caps := capabilitiesFromResolved(r)
 	if opts.Factory == nil {
-		probeToolCapabilities(caps)
+		// Without a factory no provider runs, except document extraction:
+		// its pure-Go provider needs no tool (see resolveStep).
+		caps["document"] = true
 	}
 	if opts.OCR != nil {
 		caps["ocr"] = true
@@ -87,36 +137,4 @@ func CapabilitiesFromOpts(opts BuildOpts) pipeline.CapabilitySet {
 		caps["browser"] = true
 	}
 	return caps
-}
-
-// probeToolCapabilities sets capability flags by checking whether the
-// required CLI tools or API keys are present. Used when no factory is available.
-func probeToolCapabilities(caps pipeline.CapabilitySet) {
-	// ocr: tesseract
-	if _, err := providers.LookupTool("tesseract"); err == nil {
-		caps["ocr"] = true
-	}
-	// transcription: whisper or whisper-cpp
-	for _, name := range []string{"whisper-cpp", "whisper"} {
-		if _, err := providers.LookupTool(name); err == nil {
-			caps["transcription"] = true
-			break
-		}
-	}
-	// diarization: pyannote-audio binary or python module
-	if _, err := providers.LookupTool("pyannote-audio"); err == nil {
-		caps["diarization"] = true
-	} else if _, err := providers.LookupTool("pyannote"); err == nil {
-		caps["diarization"] = true
-	}
-	// vision: any API key or local ollama binary = capable
-	for _, env := range []string{"OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY"} {
-		if os.Getenv(env) != "" {
-			caps["vision"] = true
-			break
-		}
-	}
-	if _, err := providers.LookupTool("ollama"); err == nil {
-		caps["vision"] = true
-	}
 }

@@ -9,9 +9,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	kitbus "hop.top/kit/go/runtime/bus"
 
@@ -27,6 +31,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blobref"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/ideacrafterslabs/ctxt/pkg/taxonomy"
 )
@@ -114,6 +119,10 @@ func NewWorkerPool(queue *Queue, pipelines pipeline.Registry, store storage.Stor
 // SetFanOut installs a post-ingest fan-out callback.
 func (p *WorkerPool) SetFanOut(fn FanOutFunc) { p.fanOut = fn }
 
+// staleScratchAge is how old a scratch dir must be before start-up
+// removes it; a live run finishes long before.
+const staleScratchAge = 24 * time.Hour
+
 // SetExecutor installs an optional Stage 1 pipeline executor (for example, the
 // opt-in pod job executor router). Passing nil restores the default in-process
 // execution path.
@@ -123,6 +132,8 @@ func (p *WorkerPool) SetExecutor(exec PipelineExecutor) { p.executor = exec }
 // On cancellation, in-flight jobs are given drainTimeout to finish before
 // returning. Pass a drainTimeout of 0 to use the default (30s).
 func (p *WorkerPool) Start(ctx context.Context) error {
+	// Scratch files of a run that died before cleaning up.
+	pipeline.SweepStaleScratch(staleScratchAge)
 	drain := p.drainTimeout
 	if drain == 0 {
 		// Default must exceed any realistic server uptime. The previous
@@ -180,6 +191,12 @@ func (p *WorkerPool) workerLoop(acquireCtx, jobCtx context.Context) error {
 	}
 }
 
+// runSteps executes all steps in a pipeline on draft, skipping any step that
+// returns ErrDelegate and failing on any other error.
+func (p *WorkerPool) runSteps(ctx context.Context, pipe *pipeline.Pipeline, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
+	return pipeline.RunSteps(ctx, pipe, draft)
+}
+
 // jobObjectType is the object type an ingest job asks for, from its
 // "ingest:<type>[:nofanout]" type. Blank means the pipeline decides:
 // text and auto name no kind, and job kinds that are not object types
@@ -216,13 +233,152 @@ func seedType(jobType, pipelineName string) string {
 // (draft.Metadata["next_pipeline"]) up to maxHops total runs, then externalizes
 // binary content to the blob store.
 func (p *WorkerPool) processWithHops(ctx context.Context, job *storage.Job) (*storage.KnowledgeObject, error) {
-	draft, err := RunDraft(ctx, p.pipelines, job, p.maxHops)
+	draft, err := runDraft(ctx, p.pipelines, p.store.Blobs(), job, p.maxHops)
 	if err != nil {
 		return nil, err
 	}
 	// Binary content cannot live in the row (a TEXT column), whether or
 	// not the pipeline externalizes: it goes to the blob store here.
 	return steps.ExternalizeBinary(ctx, p.store.Blobs(), draft)
+}
+
+// executeWithExecutor runs Stage 1 through the installed PipelineExecutor,
+// keeping binary originals in the host blob store before execution and
+// externalizing any remaining binary content afterward.
+func (p *WorkerPool) executeWithExecutor(ctx context.Context, job *storage.Job) (*storage.KnowledgeObject, error) {
+	var (
+		orig        blob.Original
+		origContent string
+		hasOrig     bool
+	)
+	if content, err := jobContent(job); err == nil && blobref.NeedsBlob(content) {
+		o, err := blob.PutOriginal(ctx, p.store.Blobs(), content, sniffContentType(content), originalFileName(job.Source))
+		if err != nil {
+			return nil, err
+		}
+		orig, origContent, hasOrig = o, content, true
+	}
+	draft, err := p.executor.Execute(ctx, job)
+	if err != nil {
+		return nil, err
+	}
+	if hasOrig {
+		if err := blob.AttachOriginal(draft, orig, origContent); err != nil {
+			return nil, err
+		}
+	}
+	return steps.ExternalizeBinary(ctx, p.store.Blobs(), draft)
+}
+
+func sniffContentType(content string) string {
+	head := content
+	if len(head) > 512 { // all http.DetectContentType reads
+		head = head[:512]
+	}
+	return strings.TrimSpace(strings.SplitN(http.DetectContentType([]byte(head)), ";", 2)[0])
+}
+
+func describeOriginal(content, source string) blob.Original {
+	key := blob.OriginalKey(content)
+	return blob.Original{
+		Key:         key,
+		SHA256:      key,
+		ContentType: sniffContentType(content),
+		FileName:    originalFileName(source),
+		Size:        int64(len(content)),
+	}
+}
+
+// keepOriginal stores content, the original media bytes, in blobs (when
+// non-nil) and records it on draft (blob.AttachOriginal).
+func keepOriginal(ctx context.Context, blobs storage.BlobStore, draft *storage.KnowledgeObject, content string) error {
+	if blobs == nil {
+		return blob.AttachOriginal(draft, describeOriginal(content, draft.Source), "")
+	}
+	o, err := blob.PutOriginal(ctx, blobs, content, sniffContentType(content), originalFileName(draft.Source))
+	if err != nil {
+		return err
+	}
+	return blob.AttachOriginal(draft, o, content)
+}
+
+// isDriveSource reports whether source starts with a Windows drive
+// path (C:\dir, C:/dir), which url.Parse would take for a scheme.
+func isDriveSource(source string) bool {
+	if len(source) < 3 || source[1] != ':' || (source[2] != '\\' && source[2] != '/') {
+		return false
+	}
+	c := source[0] | 0x20
+	return c >= 'a' && c <= 'z'
+}
+
+// maxFileNameLen caps an original's file_name, in bytes.
+const maxFileNameLen = 255
+
+// originalFileName is the display name of an original: the last path
+// segment of source, with control and format characters removed and the
+// length capped. A source counts as a path only when it holds a
+// separator, or is a file: URL, a URL with a host, or a watcher source
+// (watch:<mode>:<relpath>); labels (cli, stdin, v1.2, user@example.com),
+// other schemes (mailto:, ambient:) and sources ending in a separator
+// give "". Source is never opened as a path.
+func originalFileName(source string) string {
+	path, ok := sourcePath(source)
+	if !ok {
+		return ""
+	}
+	path = strings.Map(func(r rune) rune {
+		if r < 0x20 || (r >= 0x7f && r <= 0x9f) || unicode.Is(unicode.Cf, r) {
+			return -1 // C0, DEL, C1, bidi overrides and other format characters
+		}
+		return r
+	}, path)
+	return lastSegment(path)
+}
+
+// sourcePath is the path part of source, and whether source names a path
+// at all (see originalFileName for what counts).
+func sourcePath(source string) (string, bool) {
+	if rest, ok := strings.CutPrefix(source, "watch:"); ok {
+		// the watcher's "watch:<mode>:<relpath>": a relative path, a
+		// bare name included
+		if _, rel, found := strings.Cut(rest, ":"); found {
+			source = "/" + rel
+		}
+	}
+	if !isDriveSource(source) {
+		if u, err := url.Parse(source); err == nil && u.Scheme != "" {
+			if u.Scheme != "file" && u.Host == "" {
+				return "", false
+			}
+			source = u.Path
+		}
+	}
+	return source, strings.ContainsAny(source, `/\`)
+}
+
+// lastSegment is the final path segment of path, capped at maxFileNameLen
+// bytes without splitting a rune; "" for a path that ends in a separator
+// or in "." or "..".
+func lastSegment(path string) string {
+	if strings.HasSuffix(path, "/") || strings.HasSuffix(path, `\`) {
+		return ""
+	}
+	segs := strings.FieldsFunc(path, func(r rune) bool { return r == '/' || r == '\\' })
+	if len(segs) == 0 {
+		return ""
+	}
+	name := segs[len(segs)-1]
+	if name == "." || name == ".." {
+		return ""
+	}
+	if len(name) > maxFileNameLen {
+		name = name[:maxFileNameLen]
+		for !utf8.ValidString(name) { // do not leave half a rune
+			name = name[:len(name)-1]
+		}
+	}
+	return name
 }
 
 // jobContent is the content job carries: its payload, decoded under the
@@ -255,10 +411,7 @@ func (p *WorkerPool) process(ctx context.Context, job *storage.Job) {
 	var draft *storage.KnowledgeObject
 	var err error
 	if p.executor != nil {
-		draft, err = p.executor.Execute(ctx, job)
-		if err == nil {
-			draft, err = steps.ExternalizeBinary(ctx, p.store.Blobs(), draft)
-		}
+		draft, err = p.executeWithExecutor(ctx, job)
 	} else {
 		draft, err = p.processWithHops(ctx, job)
 	}

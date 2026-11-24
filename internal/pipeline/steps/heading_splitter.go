@@ -63,6 +63,7 @@ func (s *HeadingSplitter) Run(ctx context.Context, draft *storage.KnowledgeObjec
 		return draft, nil
 	}
 
+	firstNew := len(draft.Sections) // sections added by this Run
 	for i, match := range matches {
 		level := len(content[match[2]:match[3]])
 		title := strings.TrimSpace(content[match[4]:match[5]])
@@ -93,22 +94,11 @@ func (s *HeadingSplitter) Run(ctx context.Context, draft *storage.KnowledgeObjec
 	if draft.Graph == nil {
 		draft.Graph = &storage.ObjectGraph{}
 	}
-	rootID := storage.NewNodeID(draft.ID, storage.NodeTypeSummary, 0)
-	if draft.Graph.FindNode(rootID) == nil {
-		draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
-			ID:       rootID,
-			NodeType: storage.NodeTypeSummary,
-			Label:    "root",
-			Content:  draft.RawContent,
-			Order:    0,
-		})
-	}
+	rootID := ensureRoot(draft, "root", draft.RawContent)
 	// Only append nodes for newly added sections (those added in this Run call).
-	for i, sec := range draft.Sections {
-		secID := storage.NewNodeID(draft.ID, storage.NodeTypeSection, i)
-		if draft.Graph.FindNode(secID) != nil {
-			continue
-		}
+	for i := firstNew; i < len(draft.Sections); i++ {
+		sec := draft.Sections[i]
+		secID := storage.NewNodeID(draft.ID, storage.NodeTypeSection, storage.NextOrdinal(draft.Graph, storage.NodeTypeSection))
 		draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
 			ID:       secID,
 			NodeType: storage.NodeTypeSection,

@@ -38,6 +38,9 @@ func (p *AnthropicProvider) WithHTTPClient(c *http.Client) *AnthropicProvider {
 
 func (p *AnthropicProvider) Name() string { return "anthropic" }
 
+// Model is the model the provider calls; provenance on derived text records it.
+func (p *AnthropicProvider) Model() string { return p.model }
+
 func (p *AnthropicProvider) Analyze(ctx context.Context, imageData []byte, contentType string) (*Result, error) {
 	if p.apiKey == "" {
 		return nil, fmt.Errorf("ANTHROPIC_API_KEY not set in the secrets store or environment")

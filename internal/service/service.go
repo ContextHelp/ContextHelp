@@ -311,6 +311,17 @@ func (s *Service) pipelineExists(ctx context.Context, name string) bool {
 	return err == nil && p != nil
 }
 
+// pipelineNotFoundError is the ErrPipelineNotFound error for op. For a
+// built-in pipeline left unregistered it names the missing provider
+// role(s) and how to install them.
+func (s *Service) pipelineNotFoundError(op, contentType, pipelineName string) error {
+	if reason, ok := pipeline.UnavailableReason(s.Pipes, pipelineName); ok {
+		return fmt.Errorf("%s: %w: type=%q pipeline=%q: %s", op, ErrPipelineNotFound, contentType, pipelineName, reason)
+	}
+	return fmt.Errorf("%s: %w: type=%q pipeline=%q (no pipeline registered for this content type)",
+		op, ErrPipelineNotFound, contentType, pipelineName)
+}
+
 // Analyze enqueues a content analysis job and returns the job ID.
 // When req.Raw is true, skips AI enrichment and stores the object immediately
 // with Status "raw"; returns the object ID (not a job ID).
@@ -365,8 +376,7 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 	// when no document.* pipeline is registered) would be enqueued and the
 	// worker would silently fail to dispatch — data lost, no signal.
 	if !s.pipelineExists(ctx, pipelineName) {
-		return "", fmt.Errorf("analyze: %w: type=%q pipeline=%q (no pipeline registered for this content type)",
-			ErrPipelineNotFound, req.Type, pipelineName)
+		return "", s.pipelineNotFoundError("analyze", req.Type, pipelineName)
 	}
 	if s.pipelineArchived(ctx, pipelineName) {
 		return "", fmt.Errorf("analyze: %w: pipeline=%q", ErrPipelineArchived, pipelineName)
@@ -1031,8 +1041,7 @@ func (s *Service) Enqueue(ctx context.Context, req AnalyzeRequest) (string, erro
 
 	// Same existence check as Analyze. See note above.
 	if !s.pipelineExists(ctx, pipelineName) {
-		return "", fmt.Errorf("enqueue: %w: type=%q pipeline=%q (no pipeline registered for this content type)",
-			ErrPipelineNotFound, req.Type, pipelineName)
+		return "", s.pipelineNotFoundError("enqueue", req.Type, pipelineName)
 	}
 	if s.pipelineArchived(ctx, pipelineName) {
 		return "", fmt.Errorf("enqueue: %w: pipeline=%q", ErrPipelineArchived, pipelineName)

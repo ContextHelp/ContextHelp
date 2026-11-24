@@ -67,11 +67,14 @@ func modelIDs(vs []storage.ObjectVector) []string {
 // A registry built with the embedding dependencies runs a real pipeline
 // whose embedding step writes one vector per populating model.
 func TestConfiguredRegistryEmbeddingStepEmbedsPerModel(t *testing.T) {
-	reg := ConfiguredRegistryWithOpts(BuildOpts{
+	reg, regErr := ConfiguredRegistryWithOpts(BuildOpts{
 		Models:     wiringModels(),
 		Resolver:   wiringResolver(t),
 		Embeddings: embeddingtest.NewMemStore(),
 	})
+	if regErr != nil {
+		t.Fatal(regErr)
+	}
 	p, err := reg.Get("text.long")
 	if err != nil {
 		t.Fatal(err)

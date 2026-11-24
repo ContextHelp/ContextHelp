@@ -43,7 +43,7 @@ func newDedupEnv(t *testing.T, policy string) *dedupEnv {
 	store := driver.Embeddings()
 	embeddingtest.RequireEmbeddingStore(t, store, embeddings.SpecFor(snowDefault))
 
-	pipes := builtins.ConfiguredRegistryWithOpts(builtins.BuildOpts{
+	pipes, regErr := builtins.ConfiguredRegistryWithOpts(builtins.BuildOpts{
 		Models:     reg,
 		Resolver:   ollamaResolver(t),
 		Embeddings: store,
@@ -54,6 +54,9 @@ func newDedupEnv(t *testing.T, policy string) *dedupEnv {
 			CheckSimilar:        true,
 		},
 	})
+	if regErr != nil {
+		t.Fatal(regErr)
+	}
 	q := NewQueue(driver.Jobs())
 	return &dedupEnv{
 		driver: driver,

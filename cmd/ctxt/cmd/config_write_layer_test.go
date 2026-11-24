@@ -393,7 +393,7 @@ func TestSetupEditsOnlyWizardKeys(t *testing.T) {
 	want := edit(t, e.targetStart(), "  path: "+e.db+"\n",
 		"  path: "+filepath.Join(data, "db.sqlite")+"\n"+
 			"  blob:\n    backend: local\n    local:\n      path: "+filepath.Join(data, "blobs")+"\n")
-	want += "inbox:\n  pipeline: auto\n"
+	want += "inbox:\n  pipeline: auto\nproviders:\n  llm:\n    backend: ollama\n"
 	e.assertTarget(t, want)
 }
 
@@ -414,7 +414,8 @@ func TestSetupCreatesMissingUserFile(t *testing.T) {
 		"  type: sqlite\n"+
 		"  path: "+filepath.Join(data, "db.sqlite")+"\n"+
 		"  blob:\n    backend: local\n    local:\n      path: "+filepath.Join(data, "blobs")+"\n"+
-		"inbox:\n  pipeline: auto\n")
+		"inbox:\n  pipeline: auto\n"+
+		"providers:\n  llm:\n    backend: ollama\n")
 }
 
 // TestProfileDefaultDropsContradictingInlineFlag: a profile's inline

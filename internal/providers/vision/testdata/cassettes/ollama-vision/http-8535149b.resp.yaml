@@ -1,0 +1,9 @@
+xrr: "1"
+adapter: http
+fingerprint: 8535149b
+recorded_at: "2026-11-22T18:24:00Z"
+payload:
+    status: 200
+    headers:
+        Content-Type: application/json; charset=utf-8
+    body: '{"model":"qwen2.5vl:3b","created_at":"2026-11-22T18:24:00.925682Z","response":"The image contains the following elements:\n\n1. **Text**: The main text in the image reads \"Cassette fixture invoice 4821.\"\n2. **Colors**: The text is in black color.\n3. **Overall Scene**: The image appears to be a simple text-based image with no additional graphics or background elements.\n\nThe detected labels are:\n- Cassette fixture\n- invoice\n- 4821","done":true,"done_reason":"stop","context":[151644,8948,198,2610,525,264,10950,17847,13,151645,198,151644,872,198,58,1892,12,15,60,74785,419,2168,304,7716,13,1759,279,1887,6171,11,1467,11,7987,11,323,8084,6109,13,5005,1140,16507,9201,438,264,31683,72692,1140,1283,364,23674,25,4427,151645,198,151644,77091,198,785,2168,5610,279,2701,5424,1447,16,13,3070,1178,95518,576,1887,1467,304,279,2168,15804,330,34,395,6535,12507,24615,220,19,23,17,16,10040,17,13,3070,13108,95518,576,1467,374,304,3691,1894,624,18,13,3070,27489,17494,95518,576,2168,7952,311,387,264,4285,1467,5980,2168,448,902,5107,14181,476,4004,5424,382,785,16507,9201,525,510,12,25442,6535,12507,198,12,24615,198,12,220,19,23,17,16],"total_duration":2871592500,"load_duration":809664917,"prompt_eval_count":1078,"prompt_eval_cached_count":0,"prompt_eval_duration":1420422000,"eval_count":87,"eval_duration":632643000}'

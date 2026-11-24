@@ -38,6 +38,66 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
+// realHome is the developer's home directory as it was before any isolation
+// moved HOME, read at package init, ahead of every TestMain. It is not
+// exported: a test must never be able to reach the real config through it.
+// (A child process started under an already isolated HOME captures that
+// isolated path instead, which scrubs nothing real and is harmless.)
+var realHome = func() string {
+	h, _ := os.UserHomeDir()
+	return cleanHome(h)
+}()
+
+// homeCaseInsensitive makes ScrubHome match the home path regardless of
+// case: the default file systems on macOS and Windows are case-insensitive.
+var homeCaseInsensitive = runtime.GOOS == "darwin" || runtime.GOOS == "windows"
+
+// cleanHome normalises a home path: os.UserHomeDir returns $HOME as set, so
+// a trailing slash would otherwise stop ScrubHome matching anything.
+func cleanHome(h string) string {
+	if h == "" {
+		return ""
+	}
+	return filepath.Clean(h)
+}
+
+// ScrubHome replaces the developer's real home directory in s with "<home>",
+// so recordings carry no machine path. It matches whole path components:
+// "/Users/jad" does not rewrite "/Users/jadb2".
+func ScrubHome(s string) string {
+	h := realHome
+	if h == "" || h == "/" || h == "//" {
+		return s
+	}
+	hay, needle := s, h
+	if homeCaseInsensitive {
+		hay, needle = strings.ToLower(s), strings.ToLower(h)
+		if len(hay) != len(s) || len(needle) != len(h) {
+			hay, needle = s, h // non-ASCII case folding changed lengths
+		}
+	}
+	var b strings.Builder
+	for {
+		i := strings.Index(hay, needle)
+		if i < 0 {
+			b.WriteString(s)
+			return b.String()
+		}
+		end := i + len(h)
+		if end < len(s) && isPathNameByte(s[end]) {
+			b.WriteString(s[:end])
+		} else {
+			b.WriteString(s[:i])
+			b.WriteString("<home>")
+		}
+		s, hay = s[end:], hay[end:]
+	}
+}
+
+func isPathNameByte(c byte) bool {
+	return c == '_' || c == '-' || c == '.' || c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= 0x80
+}
+
 // ClosedServerURL is the server.urls entry tests get when they configure nothing.
 // Port 1 (tcpmux) is never served on a developer machine or CI runner, so
 // any request fails fast with connection-refused.

@@ -16,8 +16,8 @@ a provider is the key it sends. **Never commit them to version control.**
 
 | Env var | Used by |
 |---------|---------|
-| `OPENAI_API_KEY` | `openai` LLM and vision backends |
-| `ANTHROPIC_API_KEY` | `anthropic` LLM and vision backends |
+| `OPENAI_API_KEY` | `openai` LLM, vision and summarization backends |
+| `ANTHROPIC_API_KEY` | `anthropic` LLM, vision and summarization backends |
 | `GEMINI_API_KEY` | `gemini` vision backend |
 | `OPENROUTER_API_KEY` | `openrouter` vision backend |
 
@@ -31,37 +31,167 @@ ANTHROPIC_API_KEY=sk-ant-...
 OPENAI_API_KEY=$(vault kv get -field=key secret/openai)
 ```
 
-With `backend: auto` (the default), a key found in either place also
-selects the provider:
-the LLM tries Anthropic, then OpenAI, then falls back to Ollama; vision
-tries a local Ollama first, then OpenAI, Anthropic, Gemini, OpenRouter.
+A key never selects a provider. `backend: auto` (the default) resolves to
+a local backend only: the LLM to Ollama, vision to Ollama when it answers
+and a vision model is configured, otherwise unavailable. A hosted backend
+runs only when `providers.<role>.backend` (or a per-pipeline override in
+`pipelines.overrides`) names it, so a key sitting in the environment sends
+nothing anywhere until you opt in. A named hosted backend whose key does
+not resolve is a configuration error naming the key; a named `ollama`
+backend of `vision`, `llm` or `summarization` with no `model` is one too
+(`providers.<role>.model`). `auto` never errors on either.
+
+Vision `auto` needs the model to be installed: it must appear in
+`ollama list` (`qwen2.5vl:7b` by default; `:latest` is implied for a bare
+name). The check runs once per process, so restart `dpkms serve` after
+pulling a model or starting Ollama.
+
+Backend names are exact and case-sensitive: `Anthropic` is not
+`anthropic`. `ctxt config validate` and `dpkms serve` reject an unknown
+name and list the valid ones.
+
+### Per-pipeline overrides
+
+`pipelines.overrides.<pipeline>.providers.<role>` takes any role, `frames`
+and `summarization` included, and is merged onto `providers.<role>` field
+by field: a field the override leaves empty is inherited. A bare
+`{backend: auto}` therefore keeps the base model and endpoint. The
+exception is a backend change across the hosted/local line, or to a
+different hosted backend (`ollama` to `anthropic`, `openai` to
+`anthropic`, `anthropic` to `auto`): the override then drops the base's
+`model`, `endpoint`, `language` and `num_ctx`, since values written for
+one backend mean nothing to another. Settings that do not depend on the
+backend (`prompt_template`, the frame selection keys) are still
+inherited. Set `model` in the override when the new backend needs one, for
+example `{backend: ollama, model: llama3.2}`. The merged config is
+validated like the base: an override that leaves a pipeline's role
+unavailable fails startup.
 
 ---
 
 ## Backend, model and endpoint
 
 No env vars. Set them per provider kind (`llm`, `vision`, `ocr`,
-`transcription`, `video`, `document`, `diarization`) in the config file, or
+`transcription`, `video`, `document`, `diarization`, `frames`,
+`summarization`) in the config file, or
 with `-c`:
 
 ```yaml
 providers:
   llm:
-    backend: auto                    # auto | anthropic | openai | ollama | stub
-    model: ""                        # empty = backend default
+    backend: auto                    # auto (= local ollama) | anthropic | openai | ollama | stub
+    model: llama3                    # local default; a hosted backend left on it uses its own default
     endpoint: http://localhost:11434 # Ollama URL
   vision:
-    backend: auto                    # auto | ollama | openai | anthropic | gemini | openrouter | stub
-    model: llava
+    backend: auto                    # auto (= local ollama) | ollama | openai | anthropic | gemini | openrouter | stub
+    model: qwen2.5vl:7b
     endpoint: http://localhost:11434
 ```
 
-LLM defaults when `model` is empty: `claude-haiku-4-5-20251001`
-(Anthropic), `gpt-4o-mini` (OpenAI), `llama3` (Ollama).
+The built-in defaults `llama3` (LLM) and `qwen2.5vl:7b` (vision) are local
+Ollama models. A hosted backend left on its built-in default model uses its
+own. LLM: `claude-haiku-4-5-20251001` (Anthropic), `gpt-4o-mini` (OpenAI).
+Vision: `gpt-4o` (OpenAI), `claude-3-5-sonnet-20241022` (Anthropic),
+`gemini-2.0-flash` (Gemini), `google/gemini-2.0-flash-lite` (OpenRouter). Ollama
+has no model default beyond config: an empty `model` is a configuration error
+(the call fails with "model not configured") and vision `auto` is unavailable.
 
 ```bash
 dpkms serve -c providers.llm.backend=ollama -c providers.llm.model=mistral
 ```
+
+### Frames
+
+`providers.frames` selects the video frames a pipeline looks at. Scene
+detection picks frames at visual cuts; the rate bounds shape the result.
+No two frames are closer than `1/max_fps` seconds, and none further apart
+than `1/min_fps` seconds (gaps are filled with evenly spaced frames).
+Without scene detection, frames are evenly spaced at `min_fps`, or at
+`max_fps` when `min_fps` is unset.
+
+`max_frames` caps the result and wins over `min_fps`: a longer plan is
+thinned to at most one frame per 1/`max_frames` of the video's length (a
+scene cut wins its slot over a filler frame; the first slot keeps the frame
+at 0), so a long video is sampled across its whole length and stays
+bounded. Frames are scaled down to `max_dimension` pixels on the longest
+side; `-1` turns scaling off. Each bound takes its default on its own:
+setting only `max_fps` keeps the default `min_fps`, unless the default
+would contradict it (a `max_fps` at or below 0.1 leaves `min_fps` unset,
+and a `min_fps` at or above 1 leaves `max_fps` unset).
+
+```yaml
+providers:
+  frames:
+    backend: auto          # auto | ffmpeg | stub
+    min_fps: 0.1           # default 0.1
+    max_fps: 1             # default 1
+    scene_detection: true  # default true
+    scene_threshold: 0.3   # 0..1; 0 = backend default
+    max_frames: 200        # default 200, at most 10000
+    max_dimension: 1280    # default 1280, at most 16384; -1 = no scaling
+```
+
+`scene_threshold` is relative to the backend's own change score: the same
+value can select different frames on different backends. Rates must be 0
+(unset) or in (0, 1000], and `min_fps` and `max_fps` must leave a valid
+spacing (`min_fps: 0.3` with `max_fps: 0.3` does not). `dpkms config
+validate` checks the block.
+
+`ffmpeg` is the local default. With `auto` and no ffmpeg installed, frames
+are unavailable: `video.full` is not registered and answers `422
+PIPELINE_NOT_FOUND` with the install hint, never placeholder frames. A
+named `ffmpeg` that is missing is a configuration error at startup. Media
+paths must be
+absolute. A video with only cover art has no frames, and an unusable
+duration in the file header fails the job without retries.
+
+Extracted frames and the audio track of a video go to a scratch
+directory, never beside the source. It is `ctxt/scratch` under your
+cache directory: `$XDG_CACHE_HOME` or `~/.cache` on Linux,
+`$XDG_CACHE_HOME` or `~/Library/Caches` on macOS, `%LOCALAPPDATA%` on
+Windows. It is never under a shared temp dir.
+
+The pipeline run removes its scratch files when it ends, on success and
+on failure; a pipeline that hops to another pipeline cleans up after
+each run. When the worker starts it also removes scratch older than a
+day, left by a killed run.
+
+On Linux and macOS the scratch root must be a plain directory (not a
+symlink) owned by you. A root of yours with looser permissions is
+tightened to `0700`. Anything else is refused with a message saying
+what to fix, and the job fails without retries. The sweep skips entries
+that are not plain directories. Windows reports no usable mode bits, so
+the per-user `%LOCALAPPDATA%` permissions are the protection there.
+
+### Summarization
+
+`providers.summarization` produces summaries from a transcript or text.
+`auto` and `ollama` use a local Ollama chat model; no model is built in, so
+set `model`: without one, summarizing fails with "no model configured".
+`openai` and `anthropic` run only when named here. An unknown backend is a
+config error.
+
+```yaml
+providers:
+  summarization:
+    backend: auto          # auto | ollama | openai | anthropic | stub
+    model: ""              # required for ollama; hosted backends have defaults
+    endpoint: http://localhost:11434
+    num_ctx: 0             # Ollama context window in tokens; 0 = the model's
+    prompt_template: ""    # empty = built-in prompt per medium
+```
+
+Ollama's default context window is small and truncates a long transcript
+from the front; set `num_ctx` to fit the transcripts you summarize. The
+built-in prompts put their instructions after the text for the same reason.
+
+`prompt_template` is a Go `text/template` with `.Text`, `.Medium`
+(`meeting`, `video`, `audio` or empty) and `.Language`. It must place the
+text with a plain `{{.Text}}` outside any `if`, `range` or `with`, and it
+is run for every medium and language. `dpkms config validate` and `ctxt config
+validate` reject a template that fails either check. A bad template that
+is not validated first makes every summary fail with the template error;
+nothing falls back to the built-in prompt.
 
 ---
 

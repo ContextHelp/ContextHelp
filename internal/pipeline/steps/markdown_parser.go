@@ -95,20 +95,11 @@ func (s *MarkdownParser) Run(ctx context.Context, draft *storage.KnowledgeObject
 	if draft.Graph == nil {
 		draft.Graph = &storage.ObjectGraph{}
 	}
-	rootID := storage.NewNodeID(draft.ID, storage.NodeTypeSummary, 0)
-	if draft.Graph.FindNode(rootID) == nil {
-		draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
-			ID:       rootID,
-			NodeType: storage.NodeTypeSummary,
-			Label:    "root",
-			Content:  draft.RawContent,
-			Order:    0,
-		})
-	}
+	rootID := ensureRoot(draft, "root", draft.RawContent)
 	for i, sec := range draft.Sections {
-		secID := storage.NewNodeID(draft.ID, storage.NodeTypeSection, i)
-		if draft.Graph.FindNode(secID) != nil {
-			continue
+		secID := storage.NewNodeID(draft.ID, storage.NodeTypeSection, storage.NextOrdinal(draft.Graph, storage.NodeTypeSection))
+		if hasSectionNode(draft.Graph, sec, i) {
+			continue // already emitted by an earlier run of this step
 		}
 		draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
 			ID:       secID,
@@ -127,4 +118,15 @@ func (s *MarkdownParser) Run(ctx context.Context, draft *storage.KnowledgeObject
 	}
 
 	return draft, nil
+}
+
+// hasSectionNode reports whether g already holds the section node sec at
+// position order.
+func hasSectionNode(g *storage.ObjectGraph, sec storage.Section, order int) bool {
+	for _, n := range g.Nodes {
+		if n.NodeType == storage.NodeTypeSection && n.Order == order && n.Label == sec.Title && n.Content == sec.Content {
+			return true
+		}
+	}
+	return false
 }

@@ -3,9 +3,11 @@ package steps
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
+	"github.com/ideacrafterslabs/ctxt/internal/representation"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -72,46 +74,27 @@ func (s *OCRExtractor) Run(ctx context.Context, draft *storage.KnowledgeObject) 
 	draft.RawContent = result.Text
 
 	// Emit canonical graph nodes when ID is set.
-	// OCR produces: one artifact node (image ref) + one section node (extracted text).
+	// The ocr representation derives from the stored original when the graph has one.
 	if draft.ID == "" {
 		return draft, nil
 	}
 	if draft.Graph == nil {
 		draft.Graph = &storage.ObjectGraph{}
 	}
-	artifactID := storage.NewNodeID(draft.ID, storage.NodeTypeArtifact, 0)
-	if draft.Graph.FindNode(artifactID) == nil {
-		draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
-			ID:       artifactID,
-			NodeType: storage.NodeTypeArtifact,
-			Label:    "source-image",
-			Content:  draft.ContentType,
-			Order:    0,
-		})
+	// Text that is empty has no representation; nothing stands in for it.
+	if strings.TrimSpace(result.Text) == "" {
+		return draft, nil
 	}
-	secOrdinal := 0
-	for _, n := range draft.Graph.Nodes {
-		if n.NodeType == storage.NodeTypeSection {
-			secOrdinal++
-		}
+	if _, err := representation.Emit(draft, representation.Spec{
+		Kind:       representation.OCR,
+		Label:      "OCR Text",
+		Content:    result.Text,
+		Provider:   s.provider.Name(),
+		Model:      representation.ModelOf(s.provider),
+		Confidence: representation.ConfidenceOf(result.Confidence),
+	}); err != nil {
+		return nil, fmt.Errorf("ocr_extractor: %w", err)
 	}
-	secID := storage.NewNodeID(draft.ID, storage.NodeTypeSection, secOrdinal)
-	draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
-		ID:       secID,
-		NodeType: storage.NodeTypeSection,
-		Label:    "OCR Text",
-		Content:  result.Text,
-		Order:    0,
-		Metadata: map[string]any{
-			"ocr_confidence": result.Confidence,
-		},
-	})
-	draft.Graph.Edges = append(draft.Graph.Edges, storage.GraphEdge{
-		ID:       fmt.Sprintf("%s->%s", artifactID, secID),
-		FromID:   artifactID,
-		ToID:     secID,
-		EdgeType: storage.EdgeTypeDerivedFrom,
-	})
 
 	return draft, nil
 }

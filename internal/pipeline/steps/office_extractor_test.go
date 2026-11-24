@@ -52,9 +52,10 @@ func TestOfficeExtractorEmitsGraphNodes(t *testing.T) {
 	if got.Graph == nil {
 		t.Fatal("graph is nil; expected nodes")
 	}
-	rootID := storage.NewNodeID("obj-office-001", storage.NodeTypeSummary, 0)
-	if got.Graph.FindNode(rootID) == nil {
-		t.Errorf("root summary node %q not found", rootID)
+	for _, n := range got.Graph.Nodes {
+		if n.NodeType == storage.NodeTypeSummary {
+			t.Errorf("unexpected summary node %+v: the extracted text lives in the page nodes", n)
+		}
 	}
 	var sections []*storage.GraphNode
 	for i := range got.Graph.Nodes {
@@ -63,10 +64,10 @@ func TestOfficeExtractorEmitsGraphNodes(t *testing.T) {
 		}
 	}
 	if len(sections) == 0 {
-		t.Error("expected at least one section node")
+		t.Fatal("expected at least one section node")
 	}
-	if len(got.Graph.Edges) == 0 {
-		t.Error("expected edges between root and section nodes")
+	if sections[0].Metadata["representation"] != "extracted_text" || sections[0].Metadata["page_number"] == nil {
+		t.Errorf("section metadata: %v", sections[0].Metadata)
 	}
 }
 

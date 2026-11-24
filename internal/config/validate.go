@@ -48,6 +48,7 @@ func Validate(c *Config) []ValidationError {
 	errs = append(errs, validateQuotas(c)...)
 	errs = append(errs, validateDuplicates(c.Duplicates)...)
 	errs = append(errs, validateGitHub(c.GitHub)...)
+	errs = append(errs, ValidateProviders(c.Providers)...)
 	errs = append(errs, c.Pipelines.Validate()...)
 	errs = append(errs, validateFederations(c.Federations)...)
 	if n := c.Federation.MaxRequestBytes; n != 0 && n < MinFederationMaxRequestBytes {
@@ -668,6 +669,23 @@ func (p PipelinesConfig) Validate() []ValidationError {
 	for _, name := range names {
 		o := p.Overrides[name]
 		base := "pipelines.overrides." + name
+		roles := make([]string, 0, len(o.Providers))
+		for role := range o.Providers {
+			roles = append(roles, role)
+		}
+		slices.Sort(roles)
+		for _, role := range roles {
+			if role == "frames" || role == "summarization" {
+				continue // checked whole below
+			}
+			errs = append(errs, validateProviderBackend(base+".providers."+role+".backend", role, o.Providers[role].Backend)...)
+		}
+		if bc, ok := o.Providers["frames"]; ok {
+			errs = append(errs, validateFramesRole(bc, base+".providers.frames")...)
+		}
+		if bc, ok := o.Providers["summarization"]; ok {
+			errs = append(errs, validateSummarizationRole(bc, base+".providers.summarization")...)
+		}
 		for i, s := range o.SkipSteps {
 			if strings.TrimSpace(s) == "" {
 				errs = append(errs, ValidationError{Field: fmt.Sprintf("%s.skip_steps[%d]", base, i), Message: "empty step name"})

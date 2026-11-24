@@ -44,7 +44,7 @@ func (p *WhisperTranscriptionProvider) Transcribe(ctx context.Context, audioPath
 	}
 
 	result, err := RunCommand(ctx, p.binary, args...)
-	if err != nil {
+	if err != nil && !IsCommandNotRecorded(err) {
 		// Whisper CLI variants have different flag conventions.
 		// Try alternative flags.
 		args = []string{
@@ -55,9 +55,9 @@ func (p *WhisperTranscriptionProvider) Transcribe(ctx context.Context, audioPath
 			args = append(args, "--language", opts.Language)
 		}
 		result, err = RunCommand(ctx, p.binary, args...)
-		if err != nil {
-			return nil, fmt.Errorf("whisper: %w", err)
-		}
+	}
+	if err != nil {
+		return nil, fmt.Errorf("whisper: %w", err)
 	}
 
 	// Parse JSON output.

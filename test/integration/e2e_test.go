@@ -60,7 +60,10 @@ func startTestEnvWith(t *testing.T, tune func(*builtins.BuildOpts)) *testEnv {
 	if tune != nil {
 		tune(&opts)
 	}
-	pipes := builtins.ConfiguredRegistryWithOpts(opts)
+	pipes, regErr := builtins.ConfiguredRegistryWithOpts(opts)
+	if regErr != nil {
+		t.Fatal(regErr)
+	}
 	queue.SetPipelineValidator(func(name string) error {
 		// Check in-memory registry first, then DB-stored pipelines.
 		if _, err := pipes.Get(name); err == nil {

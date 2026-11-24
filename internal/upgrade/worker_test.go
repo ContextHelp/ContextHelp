@@ -3,6 +3,7 @@ package upgrade
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -226,5 +227,37 @@ func TestWorker_AlreadyInProgress(t *testing.T) {
 	err = w.Run(context.Background(), sel, WorkerOpts{})
 	if !errors.Is(err, ErrAlreadyInProgress) {
 		t.Fatalf("err = %v, want ErrAlreadyInProgress", err)
+	}
+}
+
+// An object that cannot be re-run (lost content, lost original, nothing
+// to run on) is skipped; the run goes on to the others and completes.
+func TestWorker_SkipsObjectsThatCannotBeReanalyzed(t *testing.T) {
+	db := fixtureDB(t)
+	sel, err := ParseSelector("pipeline=text.short@v0")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	mgr := NewManager("")
+	fake := &fakeReanalyzer{errs: []error{fmt.Errorf("object x: %w", ErrCannotReanalyze)}}
+	w := NewWorker(db, fake, mgr, nil)
+	if err := w.Run(context.Background(), sel, WorkerOpts{}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := mgr.Snapshot().State; got != StateIdle {
+		t.Errorf("state = %q, want idle (completed)", got)
+	}
+	if fake.CallCount() < 2 {
+		t.Errorf("run stopped after the skipped object: %d calls", fake.CallCount())
+	}
+}
+
+// Any other error still ends the run.
+func TestWorker_OtherErrorsStillEndTheRun(t *testing.T) {
+	db := fixtureDB(t)
+	sel, _ := ParseSelector("pipeline=text.short@v0")
+	fake := &fakeReanalyzer{errs: []error{errors.New("boom")}}
+	if err := NewWorker(db, fake, NewManager(""), nil).Run(context.Background(), sel, WorkerOpts{}); err == nil {
+		t.Fatal("want error")
 	}
 }

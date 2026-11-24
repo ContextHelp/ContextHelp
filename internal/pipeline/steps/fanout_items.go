@@ -57,7 +57,6 @@ func stageItems(draft *storage.KnowledgeObject, items []fanOutItem) {
 		if p == "" {
 			p = itemPipeline(it.Content)
 		}
-		ordinal := len(pending)
 		pending = append(pending, map[string]any{
 			"title":    it.Title,
 			"content":  it.Content,
@@ -70,12 +69,14 @@ func stageItems(draft *storage.KnowledgeObject, items []fanOutItem) {
 		if draft.Graph == nil {
 			draft.Graph = &storage.ObjectGraph{}
 		}
-		nodeID := storage.NewNodeID(draft.ID, storage.NodeTypeArtifact, ordinal)
+		// Artifact ordinal 0 is the stored original's; items take the next free one.
+		nodeOrdinal := storage.NextOrdinal(draft.Graph, storage.NodeTypeArtifact)
+		nodeID := storage.NewNodeID(draft.ID, storage.NodeTypeArtifact, nodeOrdinal)
 		draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
 			ID:       nodeID,
 			NodeType: storage.NodeTypeArtifact,
 			Label:    it.Title,
-			Order:    ordinal,
+			Order:    nodeOrdinal,
 			Metadata: map[string]any{"source": it.Source, "pipeline": p},
 		})
 		draft.Graph.Edges = append(draft.Graph.Edges, storage.GraphEdge{

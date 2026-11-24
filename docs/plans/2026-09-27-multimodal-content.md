@@ -119,9 +119,9 @@ Each media-to-text process is a role, per the [overarching principle](#overarchi
 | `vision` (captions only) | `vision.Provider` (exists) | Ollama `qwen2.5vl:7b` | OpenAI, Anthropic, Gemini, OpenRouter (exist) | exists; `auto` must stop reading cloud keys |
 | `transcription` | `TranscriptionProvider` (exists) | whisper.cpp `whisper-cli` with `large-v3-turbo` | none today | exists; the whisper.cpp and openai-whisper invocations must be fixed |
 | `diarization` | `DiarizationProvider` (exists) | pyannote, run locally; opt-in per pipeline | none today | exists; the pyannote invocation must be fixed |
-| `frames` (keyframe selection and extraction) | **new** `FrameProvider` | **the owner's frame-extraction package** (details pending); ffmpeg scene detection as the interim local default | none | new; split from `VideoProvider.SampleFrames` |
+| `frames` (keyframe selection and extraction) | **new** `FrameProvider` | **the owner's frame-extraction package** (details pending); ffmpeg scene detection as the interim local default | none | built: `FrameProvider` (`ExtractFrames(ctx, MediaSource, FrameOptions, yield)`, which yields each frame as it is produced), ffmpeg interim backend; `SampleFrames` removed from `VideoProvider` |
 | `video` (probe, audio track) | `VideoProvider` (exists, minus frame sampling) | ffmpeg | none | exists |
-| `summarization` | **new** `SummarizationProvider` | local Ollama chat model with a built-in prompt | OpenAI, Anthropic through the `llm` backends, opt-in | new; see [Summaries](#summaries) |
+| `summarization` | **new** `SummarizationProvider` | local Ollama chat model with a built-in prompt | OpenAI, Anthropic through the `llm` backends, opt-in | built: `SummarizationProvider` (`Summarize(ctx, SummarizeRequest)`), Ollama `/api/chat` default, hosted through `LLMSummarizer`; the `summarizer` step is separate; see [Summaries](#summaries) |
 | `llm` (tagger, sectioner, other enrichment) | `LLMProvider` (exists) | local Ollama | OpenAI, Anthropic (exist) | exists; `auto` must stop preferring cloud keys |
 | `document` | `DocumentProvider` (exists) | golib, with pdftotext for PDF | none | exists |
 

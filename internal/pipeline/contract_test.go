@@ -277,3 +277,41 @@ func equalSorted(a, b []string) bool {
 	}
 	return true
 }
+
+type capStep struct {
+	BaseContract
+}
+
+func (capStep) Name() string { return "cap_step" }
+func (capStep) Run(_ context.Context, d *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
+	return d, nil
+}
+
+// A binary step reads the media itself when it needs a media capability;
+// a text step, or a binary one with only non-media capabilities, does not.
+func TestReadsMediaBytes(t *testing.T) {
+	cases := []struct {
+		caps   []string
+		binary bool
+		want   bool
+	}{
+		{[]string{"ocr"}, true, true},
+		{[]string{"vision"}, true, true},
+		{[]string{"transcription"}, true, true},
+		{[]string{"diarization"}, true, true},
+		{[]string{"video"}, true, true},
+		{[]string{"frames"}, true, true},
+		{[]string{"document"}, true, true},
+		{[]string{"llm"}, true, false},
+		{[]string{"io"}, true, false},
+		{nil, true, false},
+		{[]string{"video"}, false, false},
+		{[]string{"document"}, false, false},
+	}
+	for _, tc := range cases {
+		step := capStep{NewBaseContract(StepContract{Binary: tc.binary, Capabilities: tc.caps})}
+		if got := ReadsMediaBytes(step); got != tc.want {
+			t.Errorf("caps %v binary %v: ReadsMediaBytes = %v, want %v", tc.caps, tc.binary, got, tc.want)
+		}
+	}
+}

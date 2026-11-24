@@ -19,9 +19,9 @@ Get up and running with **dPKMS + `ctxt`** development in under 5 minutes.
 
 ### Media Processing Dependencies
 
-Without these, the system falls back to stubs that return placeholder data.
+Without a tool, the pipeline that needs it is not registered. Capturing that type answers `422 PIPELINE_NOT_FOUND`, naming the pipeline, the missing role and how to install it. A backend named in config (`providers.<role>.backend: tesseract`) whose tool is missing, or a backend name the role does not know, stops startup with a configuration error. Nothing falls back to a stub or another backend. Diarization (`pyannote`) is optional enrichment: audio and video transcription work without it.
 
-**FFmpeg** — Video frame extraction, audio extraction, format probing
+**FFmpeg** — Video frame extraction (`providers.frames`), audio extraction and format probing (`providers.video`)
 
 ```bash
 # macOS
@@ -51,22 +51,21 @@ sudo apt install tesseract-ocr-fra   # Ubuntu (French, etc.)
 tesseract --version
 ```
 
-**Whisper** — Audio and video transcription
+**whisper.cpp** — Audio and video transcription
 
 ```bash
-# macOS (whisper.cpp via Homebrew)
+# macOS (whisper.cpp via Homebrew; installs the whisper-cli binary)
 brew install whisper-cpp
 
-# Or via pip (slower but easier)
-pip install openai-whisper
-
 # Verify
-whisper-cpp --help
-# or
-whisper --help
+whisper-cli --help
 ```
 
-**pdftotext** — PDF text extraction (faster than pure-Go fallback)
+whisper-cli cannot run without a model file. Download a whisper.cpp model
+(ggml format) and set `providers.transcription.model` to its path; until
+then transcription is unavailable.
+
+**pdftotext** — PDF text extraction (required: there is no pure-Go PDF extractor)
 
 ```bash
 # macOS
@@ -96,7 +95,7 @@ python -c "import pyannote.audio; print('ok')"
 curl -fsSL https://ollama.com/install.sh | sh
 
 # Pull required models
-ollama pull llava          # Vision analysis
+ollama pull qwen2.5vl:7b   # Vision analysis
 ollama pull nomic-embed-text  # Embeddings
 ollama pull llama3         # LLM (tagging, summaries)
 
@@ -108,13 +107,15 @@ ollama list
 
 | Feature | Without deps | With deps |
 |---------|-------------|-----------|
-| Video frame extraction | stub (no frames) | FFmpeg |
-| Image OCR | stub (placeholder text) | Tesseract |
-| Audio/video transcription | stub (placeholder text) | Whisper |
-| PDF text extraction | pure-Go (golib) | pdftotext |
-| Speaker diarization | stub | pyannote |
-| Vision analysis | stub | Ollama + llava |
-| Embeddings | stub | Ollama + nomic-embed-text |
+| Video (audio track) | `video.*` pipelines unavailable (422) | FFmpeg |
+| Video frames | `video.full` unavailable (422) | FFmpeg |
+| Image OCR | `image.ocr` unavailable (422) | Tesseract |
+| Audio/video transcription | `audio.transcribe`, `video.*` unavailable (422) | whisper-cli + `providers.transcription.model` |
+| PDF text extraction | PDF capture fails with the install hint | pdftotext |
+| Speaker diarization | skipped (optional) | pyannote |
+| Vision analysis | `image.analysis` unavailable (422) | Ollama + a vision model |
+| Summaries | summarization unavailable | Ollama + `providers.summarization.model` |
+| Embeddings | embedding step needs a model | Ollama + nomic-embed-text |
 
 ---
 

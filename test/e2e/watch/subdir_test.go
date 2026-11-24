@@ -73,11 +73,13 @@ browser:
   enabled: false
 providers:
   video: {backend: stub}
-  document: {backend: stub}
+  document: {backend: golib}
   ocr: {backend: stub}
   transcription: {backend: stub}
   vision: {backend: stub}
   diarization: {backend: stub}
+  frames: {backend: stub}
+  summarization: {backend: stub}
   llm: {backend: stub}
 `, filepath.Join(dataDir, "db.sqlite")))
 

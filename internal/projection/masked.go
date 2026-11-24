@@ -3,6 +3,7 @@ package projection
 import (
 	"strings"
 
+	"github.com/ideacrafterslabs/ctxt/internal/representation"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -29,15 +30,12 @@ func RegisterSearchableText(typ string, fn SearchableText) {
 // class. withheld reports whether any node was dropped; when none was,
 // the masked projection is the raw one and callers reuse it.
 func maskedParts(ko *storage.KnowledgeObject) (parts segments, withheld bool) {
-	for _, n := range ko.Graph.Nodes {
-		switch n.NodeType {
-		case storage.NodeTypeSummary, storage.NodeTypeSection:
-			if len(storage.NodeClasses(n)) > 0 {
-				withheld = true
-				continue
-			}
-			parts.add(n.Content)
+	for _, n := range representation.Ordered(ko.Graph) {
+		if len(storage.NodeClasses(n)) > 0 {
+			withheld = true
+			continue
 		}
+		parts.add(n.Content)
 	}
 	return parts, withheld
 }

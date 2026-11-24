@@ -1272,7 +1272,17 @@ type I18nConfig struct {
 	TranslateTags      bool     `mapstructure:"translate_tags" yaml:"translate_tags"`
 }
 
+// Built-in local Ollama models for the LLM and vision roles. They are
+// defaults for local backends only: a hosted backend never receives them
+// as its model name.
+const (
+	DefaultLLMModel    = "llama3"
+	DefaultVisionModel = "qwen2.5vl:7b"
+)
+
 // ProvidersConfig controls backend selection for each provider type.
+// "auto" means local: a local backend, or unavailable. Hosted backends
+// (openai, anthropic, gemini, openrouter) run only when named.
 type ProvidersConfig struct {
 	Video         ProviderBackendConfig   `mapstructure:"video" yaml:"video"`
 	Document      ProviderBackendConfig   `mapstructure:"document" yaml:"document"`
@@ -1280,6 +1290,8 @@ type ProvidersConfig struct {
 	Transcription ProviderBackendConfig   `mapstructure:"transcription" yaml:"transcription"`
 	Vision        ProviderBackendConfig   `mapstructure:"vision" yaml:"vision"`
 	Diarization   ProviderBackendConfig   `mapstructure:"diarization" yaml:"diarization"`
+	Frames        ProviderBackendConfig   `mapstructure:"frames" yaml:"frames"`
+	Summarization ProviderBackendConfig   `mapstructure:"summarization" yaml:"summarization"`
 	LLM           ProviderBackendConfig   `mapstructure:"llm" yaml:"llm"`
 	Embedding     EmbeddingProviderConfig `mapstructure:"embedding" yaml:"embedding"`
 }
@@ -1314,6 +1326,89 @@ type ProviderBackendConfig struct {
 	Endpoint string `mapstructure:"endpoint,omitempty" yaml:"endpoint,omitempty" secret:"dsn"`
 	// Language sets a default language hint (e.g. for OCR, transcription).
 	Language string `mapstructure:"language,omitempty" yaml:"language,omitempty"`
+	// The fields below belong to one role each (prompt_template and num_ctx
+	// to summarization; the rest to frames) and are ignored on any other.
+	//
+	// PromptTemplate replaces the built-in prompt of a summarization
+	// backend. text/template with .Text, .Medium and .Language; it must
+	// use .Text.
+	PromptTemplate string `mapstructure:"prompt_template,omitempty" yaml:"prompt_template,omitempty"`
+	// MinFPS and MaxFPS bound the frame rate of the frames role; 0 means
+	// unset. When both are unset the built-in bounds apply.
+	MinFPS float64 `mapstructure:"min_fps,omitempty" yaml:"min_fps,omitempty"`
+	MaxFPS float64 `mapstructure:"max_fps,omitempty" yaml:"max_fps,omitempty"`
+	// SceneDetection turns scene-change frame selection on or off for the
+	// frames role; unset means on.
+	SceneDetection *bool `mapstructure:"scene_detection,omitempty" yaml:"scene_detection,omitempty"`
+	// SceneThreshold is the change score, 0 to 1, that counts as a scene
+	// change; 0 means the backend's default. The scale is the backend's
+	// own: one value can select different frames on different backends.
+	SceneThreshold float64 `mapstructure:"scene_threshold,omitempty" yaml:"scene_threshold,omitempty"`
+	// MaxFrames caps the frames of the frames role; 0 means 200.
+	MaxFrames int `mapstructure:"max_frames,omitempty" yaml:"max_frames,omitempty"`
+	// MaxDimension scales frames down to this many pixels on the longest
+	// side; 0 means 1280.
+	MaxDimension int `mapstructure:"max_dimension,omitempty" yaml:"max_dimension,omitempty"`
+	// NumCtx is the context window, in tokens, a summarization backend
+	// asks Ollama for; 0 leaves it to the model.
+	NumCtx int `mapstructure:"num_ctx,omitempty" yaml:"num_ctx,omitempty"`
+}
+
+// hostedBackends are the backends that send data to a hosted API. Their
+// model names and endpoints mean nothing to a local backend and the other
+// way round.
+var hostedBackends = []string{"openai", "anthropic", "gemini", "openrouter"}
+
+// Overlay returns b with every non-empty field of o applied: a
+// per-pipeline override changes only what it sets and inherits the rest.
+// Exception: an override that moves the role across the hosted/local
+// line, or to a different hosted backend, drops the base's model,
+// endpoint, language and num_ctx, so they are not sent to a backend they
+// were not written for. Backend-independent settings (prompt template,
+// frame selection) are still inherited.
+func (b ProviderBackendConfig) Overlay(o ProviderBackendConfig) ProviderBackendConfig {
+	if o.Backend != "" && o.Backend != b.Backend &&
+		(slices.Contains(hostedBackends, o.Backend) || slices.Contains(hostedBackends, b.Backend)) {
+		b.Model, b.Endpoint, b.Language, b.NumCtx = "", "", "", 0
+	}
+	if o.Backend != "" {
+		b.Backend = o.Backend
+	}
+	if o.Model != "" {
+		b.Model = o.Model
+	}
+	if o.Endpoint != "" {
+		b.Endpoint = o.Endpoint
+	}
+	if o.Language != "" {
+		b.Language = o.Language
+	}
+	if o.PromptTemplate != "" {
+		b.PromptTemplate = o.PromptTemplate
+	}
+	if o.MinFPS != 0 {
+		b.MinFPS = o.MinFPS
+	}
+	if o.MaxFPS != 0 {
+		b.MaxFPS = o.MaxFPS
+	}
+	if o.SceneDetection != nil {
+		v := *o.SceneDetection
+		b.SceneDetection = &v
+	}
+	if o.SceneThreshold != 0 {
+		b.SceneThreshold = o.SceneThreshold
+	}
+	if o.MaxFrames != 0 {
+		b.MaxFrames = o.MaxFrames
+	}
+	if o.MaxDimension != 0 {
+		b.MaxDimension = o.MaxDimension
+	}
+	if o.NumCtx != 0 {
+		b.NumCtx = o.NumCtx
+	}
+	return b
 }
 
 // Load loads the configuration from file and environment variables.
@@ -1581,18 +1676,22 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("i18n.auto_translate", false)
 	v.SetDefault("i18n.translate_tags", false)
 
-	// Provider defaults — "auto" probes for tools, falls back to stub
+	// Provider defaults. "auto" resolves to a local backend or to
+	// unavailable (a stub); it never selects a hosted backend. A hosted
+	// backend runs only when providers.<role>.backend names it.
 	v.SetDefault("providers.video.backend", "auto")
 	v.SetDefault("providers.document.backend", "auto")
 	v.SetDefault("providers.ocr.backend", "auto")
 	v.SetDefault("providers.transcription.backend", "auto")
 	v.SetDefault("providers.vision.backend", "auto")
 	v.SetDefault("providers.vision.endpoint", "http://localhost:11434")
-	v.SetDefault("providers.vision.model", "llava")
+	v.SetDefault("providers.vision.model", DefaultVisionModel)
 	v.SetDefault("providers.diarization.backend", "auto")
+	v.SetDefault("providers.frames.backend", "auto")
+	v.SetDefault("providers.summarization.backend", "auto")
 	v.SetDefault("providers.llm.backend", "auto")
 	v.SetDefault("providers.llm.endpoint", "http://localhost:11434")
-	v.SetDefault("providers.llm.model", "")
+	v.SetDefault("providers.llm.model", DefaultLLMModel)
 
 	// Jobs defaults (reproduce current hardcoded values)
 	v.SetDefault("sharing.audit.retention", DefaultAuditRetention)

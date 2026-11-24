@@ -67,15 +67,18 @@ func ownerKey(t *testing.T, driver storage.StorageDriver) string {
 	return secret
 }
 
-// stubProviders pins every provider backend of cfg to its stub and
-// returns cfg.
+// stubProviders pins every provider backend of cfg to its stub, except
+// document (golib, pure Go), and returns cfg.
 func stubProviders(cfg *config.Config) *config.Config {
 	for _, b := range []*config.ProviderBackendConfig{
-		&cfg.Providers.Video, &cfg.Providers.Document, &cfg.Providers.OCR, &cfg.Providers.Transcription,
+		&cfg.Providers.Video, &cfg.Providers.OCR, &cfg.Providers.Transcription,
 		&cfg.Providers.Vision, &cfg.Providers.Diarization, &cfg.Providers.LLM,
+		&cfg.Providers.Frames, &cfg.Providers.Summarization,
 	} {
 		b.Backend = "stub"
 	}
+	// golib is the pure-Go document provider: real, and hermetic.
+	cfg.Providers.Document.Backend = "golib"
 	return cfg
 }
 

@@ -151,7 +151,7 @@ func olderThanGrace(ctx context.Context, store storage.BlobStore, key string) (b
 }
 
 // Keys returns the blob keys obj refers to, each once: its content refs
-// and metadata.blob_key.
+// metadata.blob_key and metadata.original_blob_key.
 func Keys(obj *storage.KnowledgeObject) []string {
 	var keys []string
 	add := func(key string) {
@@ -170,8 +170,10 @@ func Keys(obj *storage.KnowledgeObject) []string {
 			add(key)
 		}
 	}
-	if key, ok := obj.Metadata["blob_key"].(string); ok {
-		add(key)
+	for _, k := range []string{"blob_key", MetaOriginalBlobKey} {
+		if key, ok := obj.Metadata[k].(string); ok {
+			add(key)
+		}
 	}
 	return keys
 }

@@ -13,6 +13,9 @@ type registry struct {
 	pipelines map[string]*Pipeline
 	selectors Selectors
 	detectors []Detector
+	// unavailable maps a built-in pipeline that was left unregistered to
+	// why (the missing roles and how to install them).
+	unavailable map[string]string
 }
 
 // NewRegistry creates an empty pipeline registry.
@@ -36,6 +39,40 @@ func (r *registry) Register(name string, p *Pipeline) error {
 	return nil
 }
 
+// SetUnavailable records why a built-in pipeline is not registered, so a
+// lookup of it can say what is missing instead of just "not found".
+func (r *registry) SetUnavailable(name, reason string) {
+	if r.unavailable == nil {
+		r.unavailable = make(map[string]string)
+	}
+	r.unavailable[name] = reason
+}
+
+// Unavailable reports why name was left unregistered, if it was.
+func (r *registry) Unavailable(name string) (string, bool) {
+	reason, ok := r.unavailable[name]
+	return reason, ok
+}
+
+// MarkUnavailable records on r why the pipeline name is not registered.
+// It is a no-op for registries that do not track this.
+func MarkUnavailable(r Registry, name, reason string) {
+	if m, ok := r.(interface{ SetUnavailable(name, reason string) }); ok {
+		m.SetUnavailable(name, reason)
+	}
+}
+
+// UnavailableReason reports why the pipeline name is not registered when
+// it is a built-in pipeline left out for a missing provider.
+func UnavailableReason(r Registry, name string) (string, bool) {
+	if u, ok := r.(interface {
+		Unavailable(name string) (string, bool)
+	}); ok {
+		return u.Unavailable(name)
+	}
+	return "", false
+}
+
 func (r *registry) Upsert(name string, p *Pipeline) {
 	r.pipelines[name] = p
 }
@@ -53,7 +90,7 @@ func (r *registry) Get(name string) (*Pipeline, error) {
 	//     was explicitly registered (legacy registrations are implicitly v0).
 	parsed, version, ok := ParseVersionedName(name)
 	if !ok {
-		return nil, fmt.Errorf("pipeline %q not found", name)
+		return nil, r.notFound(name)
 	}
 	if !strings.Contains(name, "@") {
 		// Bare name → try the @v0 alias.
@@ -66,7 +103,21 @@ func (r *registry) Get(name string) (*Pipeline, error) {
 			return p, nil
 		}
 	}
-	return nil, fmt.Errorf("pipeline %q not found", name)
+	return nil, r.notFound(name)
+}
+
+// notFound is the Get error for name, with the reason a built-in
+// pipeline is unavailable when there is one.
+func (r *registry) notFound(name string) error {
+	// Versioned lookups (image.ocr@v0) carry the reason of the bare name.
+	bare := name
+	if parsed, _, ok := ParseVersionedName(name); ok {
+		bare = parsed
+	}
+	if reason, ok := r.unavailable[bare]; ok {
+		return fmt.Errorf("pipeline %q not found: %s", name, reason)
+	}
+	return fmt.Errorf("pipeline %q not found", name)
 }
 
 func (r *registry) List() []string {

@@ -30,6 +30,8 @@ import (
 
 	"hop.top/xrr"
 	xhttp "hop.top/xrr/adapters/http"
+
+	"github.com/ideacrafterslabs/ctxt/internal/testguard"
 )
 
 // DefaultOllamaUpstream is the Ollama recorded against when
@@ -94,13 +96,7 @@ func (c *OllamaCalls) add(u string, body []byte) {
 func OllamaClient(t testing.TB, cassetteDir string) (*http.Client, *OllamaCalls) {
 	t.Helper()
 
-	mode := xrr.ModeReplay
-	if os.Getenv(xrr.EnvMode) == string(xrr.ModeRecord) {
-		mode = xrr.ModeRecord
-		if err := os.MkdirAll(cassetteDir, 0o750); err != nil {
-			t.Fatalf("mkdir %s: %v", cassetteDir, err)
-		}
-	}
+	mode := modeFromEnv(t, cassetteDir)
 	upstream := os.Getenv("XRR_OLLAMA_UPSTREAM")
 	if upstream == "" {
 		upstream = DefaultOllamaUpstream
@@ -150,7 +146,7 @@ func OllamaClient(t testing.TB, cassetteDir string) (*http.Client, *OllamaCalls)
 			if ct := r.Header.Get("Content-Type"); ct != "" {
 				hdr["Content-Type"] = ct
 			}
-			return &xhttp.Response{Status: r.StatusCode, Headers: hdr, Body: string(rb)}, nil
+			return &xhttp.Response{Status: r.StatusCode, Headers: hdr, Body: testguard.ScrubHome(string(rb))}, nil
 		})
 		if err != nil {
 			return nil, err

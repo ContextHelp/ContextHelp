@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blobref"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
 
@@ -122,6 +124,8 @@ func (p *RemotePusher) Advance(ctx context.Context, seq int64) error {
 // not modified. A blob the store does not hold is an *ObjectError; any
 // other read failure is the store's, not the object's.
 func (p *RemotePusher) encodeInline(ctx context.Context, o storage.KnowledgeObject) (json.RawMessage, error) {
+	// The wire has no blob channel: originals stay on the source.
+	o = blob.WithoutOriginal(o)
 	raw, err := blob.Content(ctx, p.blobs, o.RawContent)
 	if err != nil {
 		return nil, objectBlobError(o.ID, err)
@@ -129,6 +133,22 @@ func (p *RemotePusher) encodeInline(ctx context.Context, o storage.KnowledgeObje
 	text, err := blob.Content(ctx, p.blobs, o.TextContent)
 	if err != nil {
 		return nil, objectBlobError(o.ID, err)
+	}
+	// Binary content (the original itself, when RawContent refers to it)
+	// cannot ride in JSON text: send none, and none of its key either.
+	if blobref.NeedsBlob(raw) || blobref.NeedsBlob(text) {
+		if key, ok := blobref.Key(o.RawContent); ok {
+			o.Metadata = maps.Clone(o.Metadata)
+			if o.Metadata["blob_key"] == key {
+				delete(o.Metadata, "blob_key")
+			}
+		}
+		if blobref.NeedsBlob(raw) {
+			raw = ""
+		}
+		if blobref.NeedsBlob(text) {
+			text = ""
+		}
 	}
 	o.RawContent, o.TextContent = raw, text
 	// Capture-side ambient data stays on the source instance.

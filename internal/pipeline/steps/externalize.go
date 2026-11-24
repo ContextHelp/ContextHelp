@@ -8,6 +8,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
+	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blobref"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 )
@@ -59,23 +60,44 @@ func (e *Externalizer) Run(ctx context.Context, draft *storage.KnowledgeObject) 
 		return draft, nil
 	}
 
-	hash := storageutil.ContentHash(draft.RawContent, draft.Source)
+	// Binary is an original: keyed by its exact bytes, so it shares a
+	// blob with the original stored before any step ran. Text keeps the
+	// normalised dedup hash.
+	hash := blob.OriginalKey(draft.RawContent)
+	if !binary {
+		hash = storageutil.ContentHash(draft.RawContent, draft.Source)
+	}
 
-	err := e.store.Put(ctx, hash, strings.NewReader(draft.RawContent), storage.BlobMeta{
-		ContentType: draft.ContentType,
-		Size:        int64(len(draft.RawContent)),
-		ContentHash: hash,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("externalize: blob put: %w", err)
+	// The original stored before the steps ran is already in the store
+	// under this key, with its own content type: do not put it again
+	// (blob.Ensure still covers a racing delete, from BlobContent).
+	orig, isOrig := blob.OriginalOf(draft)
+	isOrig = isOrig && orig.Key == hash
+	contentType := draft.ContentType
+	if !binary && !strings.HasPrefix(contentType, "text/") {
+		// text externalized from a PDF, office file or medium is text,
+		// not that file's type
+		contentType = "text/plain; charset=utf-8"
+	}
+	if isOrig {
+		contentType = orig.ContentType
+	} else {
+		err := e.store.Put(ctx, hash, strings.NewReader(draft.RawContent), storage.BlobMeta{
+			ContentType: contentType,
+			Size:        int64(len(draft.RawContent)),
+			ContentHash: hash,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("externalize: blob put: %w", err)
+		}
 	}
 
 	if draft.Metadata == nil {
 		draft.Metadata = make(map[string]any)
 	}
-	draft.Metadata["blob_key"] = hash
+	draft.Metadata[blob.MetaBlobKey] = hash
 	draft.Metadata["blob_original_size"] = int64(len(draft.RawContent))
-	draft.Metadata["blob_content_type"] = draft.ContentType
+	draft.Metadata["blob_content_type"] = contentType
 
 	// text_content is what search and embeddings index, so it must stay
 	// text: when it is the content (empty or equal), keep a prefix of at

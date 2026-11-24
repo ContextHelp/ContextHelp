@@ -39,10 +39,6 @@ func TestAudioTranscriberEmitsGraphNodes(t *testing.T) {
 	if got.Graph == nil {
 		t.Fatal("graph is nil; expected nodes")
 	}
-	rootID := storage.NewNodeID("obj-audio-001", storage.NodeTypeSummary, 0)
-	if got.Graph.FindNode(rootID) == nil {
-		t.Errorf("root summary node %q not found", rootID)
-	}
 	var sections []*storage.GraphNode
 	for i := range got.Graph.Nodes {
 		if got.Graph.Nodes[i].NodeType == storage.NodeTypeSection {
@@ -50,7 +46,10 @@ func TestAudioTranscriberEmitsGraphNodes(t *testing.T) {
 		}
 	}
 	if len(sections) == 0 {
-		t.Error("expected at least one section node for transcript segments")
+		t.Fatal("expected at least one section node for transcript segments")
+	}
+	if sections[0].Metadata["representation"] != "transcript" {
+		t.Errorf("section representation: %v", sections[0].Metadata)
 	}
 	if sections[0].Label == "" {
 		t.Error("section node label should not be empty")

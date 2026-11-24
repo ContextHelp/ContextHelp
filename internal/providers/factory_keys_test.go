@@ -2,6 +2,7 @@ package providers
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -58,12 +59,17 @@ func newFakeAPI(t *testing.T) *fakeAPI {
 	return a
 }
 
-// client returns an HTTP client that sends every request, whatever its
-// host, to the fake server, so no request can leave the machine.
+// client returns an HTTP client that sends every request for a non-local
+// host to the fake server, so no request can leave the machine. A request
+// to a loopback host (a local Ollama, or a closed port) goes there as it
+// is: the client also carries the factory's local-backend requests.
 func (a *fakeAPI) client() *http.Client {
 	target, _ := url.Parse(a.srv.URL)
 	base := a.srv.Client().Transport
 	return &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if ip := net.ParseIP(r.URL.Hostname()); (ip != nil && ip.IsLoopback()) || r.URL.Hostname() == "localhost" {
+			return base.RoundTrip(r)
+		}
 		r = r.Clone(r.Context())
 		r.URL.Scheme, r.URL.Host, r.Host = target.Scheme, target.Host, ""
 		return base.RoundTrip(r)
@@ -85,16 +91,15 @@ type hostedTarget struct {
 	kind    string // "llm" or "vision"
 	backend string
 	keyName string
-	auto    bool // auto mode picks this backend when only its key is set
 }
 
 var hostedTargets = []hostedTarget{
-	{"llm", "anthropic", "ANTHROPIC_API_KEY", true},
-	{"llm", "openai", "OPENAI_API_KEY", true},
-	{"vision", "openai", "OPENAI_API_KEY", true},
-	{"vision", "anthropic", "ANTHROPIC_API_KEY", true},
-	{"vision", "gemini", "GEMINI_API_KEY", true},
-	{"vision", "openrouter", "OPENROUTER_API_KEY", true},
+	{"llm", "anthropic", "ANTHROPIC_API_KEY"},
+	{"llm", "openai", "OPENAI_API_KEY"},
+	{"vision", "openai", "OPENAI_API_KEY"},
+	{"vision", "anthropic", "ANTHROPIC_API_KEY"},
+	{"vision", "gemini", "GEMINI_API_KEY"},
+	{"vision", "openrouter", "OPENROUTER_API_KEY"},
 }
 
 // keyFactory builds a factory over a memory secrets store holding
@@ -149,19 +154,14 @@ func TestFactoryHostedClientsCarryResolvedKey(t *testing.T) {
 	}
 	for _, tg := range hostedTargets {
 		for _, sc := range scenarios {
-			for _, mode := range []string{tg.backend, "auto"} {
-				if mode == "auto" && !tg.auto {
-					continue
-				}
-				t.Run(tg.kind+"/"+tg.backend+"/"+mode+"/"+sc.name, func(t *testing.T) {
-					a := newFakeAPI(t)
-					f := keyFactory(t, a, tg.kind, mode, sc.storeKeys(tg.keyName), sc.envKeys(tg.keyName))
-					name, err := call(t, f, tg.kind)
-					require.NoError(t, err)
-					assert.Equal(t, tg.backend, name)
-					assert.Equal(t, []string{sc.want}, a.received())
-				})
-			}
+			t.Run(tg.kind+"/"+tg.backend+"/"+sc.name, func(t *testing.T) {
+				a := newFakeAPI(t)
+				f := keyFactory(t, a, tg.kind, tg.backend, sc.storeKeys(tg.keyName), sc.envKeys(tg.keyName))
+				name, err := call(t, f, tg.kind)
+				require.NoError(t, err)
+				assert.Equal(t, tg.backend, name)
+				assert.Equal(t, []string{sc.want}, a.received())
+			})
 		}
 	}
 }
@@ -181,7 +181,7 @@ func TestFactoryHostedClientsWithoutKey(t *testing.T) {
 		f := keyFactory(t, newFakeAPI(t), "llm", "auto", nil, nil)
 		assert.Equal(t, "ollama", f.LLM().Name())
 	})
-	t.Run("vision/auto falls back to stub", func(t *testing.T) {
+	t.Run("vision/auto without a local model is unavailable", func(t *testing.T) {
 		f := keyFactory(t, newFakeAPI(t), "vision", "auto", nil, nil)
 		_, isStub := f.Vision().(*vision.StubProvider)
 		assert.True(t, isStub)

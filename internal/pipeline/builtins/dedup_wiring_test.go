@@ -74,13 +74,16 @@ func newDedupEnv(t *testing.T, dup config.DuplicatesConfig, defaultModel bool) *
 	if err := drv.Embeddings().EnsureIndex(ctx, embeddings.SpecFor(dedupSnowflake)); err != nil {
 		t.Fatal(err)
 	}
-	pipes := ConfiguredRegistryWithOpts(BuildOpts{
+	pipes, regErr := ConfiguredRegistryWithOpts(BuildOpts{
 		Models:     reg,
 		Resolver:   wiringResolver(t),
 		Embeddings: drv.Embeddings(),
 		Audit:      drv.AuditLog(),
 		Duplicates: dup,
 	})
+	if regErr != nil {
+		t.Fatal(regErr)
+	}
 	q := jobs.NewQueue(drv.Jobs())
 	svc := service.New(drv, q, pipes, search.NewEngine(drv), "", nil, config.Config{Duplicates: dup})
 	return &dedupEnv{drv: drv, svc: svc, q: q}

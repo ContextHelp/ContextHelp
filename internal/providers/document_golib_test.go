@@ -2,6 +2,7 @@ package providers
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -47,17 +48,17 @@ func TestGolibParseMarkdownNoHeadings(t *testing.T) {
 	}
 }
 
+// Without pdftotext, PDF extraction is an error carrying the install
+// hint, never placeholder text. The host's own tools are hidden.
 func TestGolibExtractPDFWithoutTool(t *testing.T) {
-	p := NewGolibDocumentProvider()
-	result, err := p.ExtractPDF(context.Background(), "/nonexistent.pdf")
-	if err != nil {
-		// If pdftotext is installed, it will fail on a non-existent file.
-		// That's fine — we're testing the provider doesn't panic.
-		return
+	noTools(t)
+	result, err := NewGolibDocumentProvider().ExtractPDF(context.Background(), "/nonexistent.pdf")
+	var toolErr *ToolNotInstalledError
+	if !errors.As(err, &toolErr) || toolErr.Tool != pdftotextTool {
+		t.Fatalf("ExtractPDF err = %v, want *ToolNotInstalledError for pdftotext (result %+v)", err, result)
 	}
-	// If pdftotext is not installed, we get an informative result.
-	if result.FullText == "" {
-		t.Error("expected non-empty FullText")
+	if toolErr.Hint == "" {
+		t.Error("error carries no install hint")
 	}
 }
 

@@ -33,7 +33,7 @@ type Def struct {
 	ContentTest func(string) bool                // optional content-based selector
 	Priority    int                              // ContentTest ordering: lower = higher priority (default 0)
 	Steps       []string                         // step names, resolved to constructors at build time
-	Providers   []string                         // provider types needed: "ocr", "vision", "transcription", "diarization"
+	Providers   []string                         // provider types needed: "ocr", "vision", "transcription", "video", "frames", ...
 	Overrides   map[string]pipeline.StepOverride // per-step contract overrides, keyed by step name
 }
 
@@ -151,6 +151,9 @@ var blobStepConstructors = map[string]func(storage.BlobStore, int64) pipeline.Pi
 // BuildOpts carries optional dependencies for registry construction.
 type BuildOpts struct {
 	Factory *providers.Factory
+	// resolved is Factory's roles, resolved once per registry build and
+	// shared by the capability check and the step constructors.
+	resolved *providers.Resolved
 	// OCR, when set, replaces the OCR provider ocr_extractor runs and
 	// counts as an available ocr capability. Tests use it to put a fake
 	// engine behind the builtin image.ocr pipeline.
@@ -268,48 +271,48 @@ var embeddingStepConstructors = map[string]func(BuildOpts) pipeline.PipelineStep
 }
 
 // providerStepConstructors maps step names to provider-aware constructors.
-var providerStepConstructors = map[string]func(*providers.Factory) pipeline.PipelineStep{
-	"ocr_extractor": func(f *providers.Factory) pipeline.PipelineStep {
-		return steps.NewOCRExtractor(steps.WithOCRProvider(f.OCR()))
+var providerStepConstructors = map[string]func(*providers.Resolved) pipeline.PipelineStep{
+	"ocr_extractor": func(f *providers.Resolved) pipeline.PipelineStep {
+		return steps.NewOCRExtractor(steps.WithOCRProvider(f.OCR))
 	},
-	"vision_analyzer": func(f *providers.Factory) pipeline.PipelineStep {
-		return steps.NewVisionAnalyzer(steps.WithVisionProvider(f.Vision()))
+	"vision_analyzer": func(f *providers.Resolved) pipeline.PipelineStep {
+		return steps.NewVisionAnalyzer(steps.WithVisionProvider(f.Vision))
 	},
-	"audio_transcriber": func(f *providers.Factory) pipeline.PipelineStep {
-		return steps.NewAudioTranscriber(steps.WithTranscriptionProvider(f.Transcription()))
+	"audio_transcriber": func(f *providers.Resolved) pipeline.PipelineStep {
+		return steps.NewAudioTranscriber(steps.WithTranscriptionProvider(f.Transcription))
 	},
-	"speaker_diarizer": func(f *providers.Factory) pipeline.PipelineStep {
-		return steps.NewSpeakerDiarizer(false, steps.WithDiarizationProvider(f.Diarization()))
+	"speaker_diarizer": func(f *providers.Resolved) pipeline.PipelineStep {
+		return steps.NewSpeakerDiarizer(false, steps.WithDiarizationProvider(f.Diarization))
 	},
-	"tagger": func(f *providers.Factory) pipeline.PipelineStep {
-		return steps.NewTaggerWithLLM(f.LLM())
+	"tagger": func(f *providers.Resolved) pipeline.PipelineStep {
+		return steps.NewTaggerWithLLM(f.LLM)
 	},
-	"sectioner": func(f *providers.Factory) pipeline.PipelineStep {
-		return steps.NewSectionerWithLLM(f.LLM())
+	"sectioner": func(f *providers.Resolved) pipeline.PipelineStep {
+		return steps.NewSectionerWithLLM(f.LLM)
 	},
-	"entity_extractor": func(f *providers.Factory) pipeline.PipelineStep {
-		return steps.NewEntityExtractorWithLLM(f.LLM())
+	"entity_extractor": func(f *providers.Resolved) pipeline.PipelineStep {
+		return steps.NewEntityExtractorWithLLM(f.LLM)
 	},
-	"graph_extractor": func(f *providers.Factory) pipeline.PipelineStep {
-		return steps.NewGraphExtractorWithLLM(f.LLM())
+	"graph_extractor": func(f *providers.Resolved) pipeline.PipelineStep {
+		return steps.NewGraphExtractorWithLLM(f.LLM)
 	},
-	"structured_metadata": func(f *providers.Factory) pipeline.PipelineStep {
-		return steps.NewStructuredMetadataExtractorWithLLM(f.LLM())
+	"structured_metadata": func(f *providers.Resolved) pipeline.PipelineStep {
+		return steps.NewStructuredMetadataExtractorWithLLM(f.LLM)
 	},
-	"audio_extractor": func(f *providers.Factory) pipeline.PipelineStep {
-		return steps.NewAudioExtractor(steps.WithVideoProvider(f.Video()))
+	"audio_extractor": func(f *providers.Resolved) pipeline.PipelineStep {
+		return steps.NewAudioExtractor(steps.WithVideoProvider(f.Video))
 	},
-	"frame_sampler": func(f *providers.Factory) pipeline.PipelineStep {
-		return steps.NewFrameSampler(steps.WithFrameSamplerVideoProvider(f.Video()))
+	"frame_sampler": func(f *providers.Resolved) pipeline.PipelineStep {
+		return steps.NewFrameSampler(steps.WithFrameProvider(f.Frames), steps.WithFrameOptions(f.FrameOptions))
 	},
-	"frame_ocr": func(f *providers.Factory) pipeline.PipelineStep {
-		return steps.NewFrameOCR(steps.WithFrameOCRProvider(f.OCR()))
+	"frame_ocr": func(f *providers.Resolved) pipeline.PipelineStep {
+		return steps.NewFrameOCR(steps.WithFrameOCRProvider(f.OCR))
 	},
-	"pdf_extractor": func(f *providers.Factory) pipeline.PipelineStep {
-		return steps.NewPDFExtractor(steps.WithDocumentProvider(f.Document()))
+	"pdf_extractor": func(f *providers.Resolved) pipeline.PipelineStep {
+		return steps.NewPDFExtractor(steps.WithDocumentProvider(f.Document))
 	},
-	"office_extractor": func(f *providers.Factory) pipeline.PipelineStep {
-		return steps.NewOfficeExtractor(steps.WithOfficeDocumentProvider(f.Document()))
+	"office_extractor": func(f *providers.Resolved) pipeline.PipelineStep {
+		return steps.NewOfficeExtractor(steps.WithOfficeDocumentProvider(f.Document))
 	},
 }
 
@@ -323,7 +326,11 @@ func resolveStep(name string, opts BuildOpts) (pipeline.PipelineStep, error) {
 	}
 	if opts.Factory != nil {
 		if ctor, ok := providerStepConstructors[name]; ok {
-			return ctor(opts.Factory), nil
+			r := opts.resolved
+			if r == nil {
+				r = opts.Factory.Resolve()
+			}
+			return ctor(r), nil
 		}
 	}
 	guard := opts.FetchGuard
@@ -349,36 +356,20 @@ func resolveStep(name string, opts BuildOpts) (pipeline.PipelineStep, error) {
 	if ctor, ok := stepConstructors[name]; ok {
 		return ctor(), nil
 	}
-	if step, ok := fallbackStep(name); ok {
-		return step, nil
+	if opts.Factory == nil {
+		// Document extraction has a pure-Go provider that needs no tool.
+		switch name {
+		case "pdf_extractor":
+			return steps.NewPDFExtractor(steps.WithDocumentProvider(providers.NewGolibDocumentProvider())), nil
+		case "office_extractor":
+			return steps.NewOfficeExtractor(steps.WithOfficeDocumentProvider(providers.NewGolibDocumentProvider())), nil
+		}
+	}
+	if _, ok := providerStepConstructors[name]; ok {
+		// Never a stub: a provider step without its provider cannot be built.
+		return nil, fmt.Errorf("builtins: step %q needs a provider and no provider factory is configured", name)
 	}
 	return nil, fmt.Errorf("builtins: unknown step %q", name)
-}
-
-// fallbackStep builds a provider step without a factory: the zero-arg
-// fallback (stub providers).
-func fallbackStep(name string) (pipeline.PipelineStep, bool) {
-	switch name {
-	case "ocr_extractor":
-		return steps.NewOCRExtractor(), true
-	case "vision_analyzer":
-		return steps.NewVisionAnalyzer(), true
-	case "audio_transcriber":
-		return steps.NewAudioTranscriber(), true
-	case "speaker_diarizer":
-		return steps.NewSpeakerDiarizer(false), true
-	case "audio_extractor":
-		return steps.NewAudioExtractor(), true
-	case "frame_sampler":
-		return steps.NewFrameSampler(), true
-	case "frame_ocr":
-		return steps.NewFrameOCR(), true
-	case "pdf_extractor":
-		return steps.NewPDFExtractor(), true
-	case "office_extractor":
-		return steps.NewOfficeExtractor(), true
-	}
-	return nil, false
 }
 
 // githubStep builds name when it is a GitHub API step; a nil
@@ -413,13 +404,13 @@ func specsOf(names []string) []stepSpec {
 // buildPipeline constructs a Pipeline from a Def, optionally injecting providers.
 // If strict is true, unsatisfied capabilities cause an error; otherwise they are pruned.
 func buildPipeline(name string, d Def, opts BuildOpts, strict bool) (*pipeline.Pipeline, error) {
-	return buildPipelineSpecs(name, d, specsOf(d.Steps), opts, strict)
+	return buildPipelineSpecs(name, d, specsOf(d.Steps), opts, CapabilitiesFromOpts(opts), strict)
 }
 
 // buildPipelineSpecs is buildPipeline over an explicit step list: a
 // built-in step resolves through the constructor tables, an installed
 // one through opts.External.
-func buildPipelineSpecs(name string, d Def, specs []stepSpec, opts BuildOpts, strict bool) (*pipeline.Pipeline, error) {
+func buildPipelineSpecs(name string, d Def, specs []stepSpec, opts BuildOpts, caps pipeline.CapabilitySet, strict bool) (*pipeline.Pipeline, error) {
 	pipelineSteps := make([]pipeline.PipelineStep, 0, len(specs))
 	for _, spec := range specs {
 		var s pipeline.PipelineStep
@@ -440,14 +431,26 @@ func buildPipelineSpecs(name string, d Def, specs []stepSpec, opts BuildOpts, st
 	}
 
 	// Capability check: prune or reject steps with unsatisfied capabilities.
-	caps := CapabilitiesFromOpts(opts)
 	unsatisfied := pipeline.ValidateCapabilities(pipelineSteps, caps)
 	if len(unsatisfied) > 0 {
 		if strict {
 			return nil, fmt.Errorf("pipeline %q: steps at indices %v require unavailable capabilities", name, unsatisfied)
 		}
+		var fatal []string
 		for _, idx := range unsatisfied {
-			log.Printf("builtins: pipeline %q: pruning step %q (missing capability)", name, pipelineSteps[idx].Name())
+			step := pipelineSteps[idx]
+			missing := missingCapabilities(step, caps)
+			if media := mediaCapabilities(missing); len(media) > 0 {
+				fatal = append(fatal, fmt.Sprintf("step %q needs %s", step.Name(), strings.Join(media, ", ")))
+				continue
+			}
+			log.Printf("builtins: pipeline %q: pruning step %q (missing capability)", name, step.Name())
+		}
+		// A media step is never pruned: the raw bytes would be embedded
+		// as text. Optional enrichment (diarization), llm, browser and
+		// blob steps are pruned as before.
+		if len(fatal) > 0 {
+			return nil, fmt.Errorf("pipeline %q: %s: media steps are never pruned; fix providers.* config or install the tool", name, strings.Join(fatal, "; "))
 		}
 		pipelineSteps = pipeline.RemoveIndices(pipelineSteps, unsatisfied)
 	}
@@ -569,26 +572,32 @@ func selectByContent(selectors []selector, content string) string {
 	return pipeline.TextShort
 }
 
-// Registry builds a pipeline.Registry from all registered defs (no providers).
-// Steps with unsatisfied capabilities are pruned silently.
+// Registry builds a pipeline.Registry from all registered defs with no
+// providers: media pipelines are left unregistered. It panics on a build
+// error, which only a coding error can cause here; it is for tests.
 func Registry() pipeline.Registry {
-	return buildRegistry(BuildOpts{}, false)
+	r, err := buildRegistry(BuildOpts{}, false)
+	if err != nil {
+		panic(fmt.Sprintf("builtins: %v", err))
+	}
+	return r
 }
 
 // ConfiguredRegistry builds a pipeline.Registry with real providers injected.
-// Steps with unsatisfied capabilities are pruned silently.
-func ConfiguredRegistry(f *providers.Factory) pipeline.Registry {
+// Steps with unsatisfied non-media capabilities are pruned; a media step
+// never is. A missing explicitly named backend is an error.
+func ConfiguredRegistry(f *providers.Factory) (pipeline.Registry, error) {
 	return buildRegistry(BuildOpts{Factory: f}, false)
 }
 
 // ConfiguredRegistryWithOpts builds a pipeline.Registry with full BuildOpts (providers + blob store).
-func ConfiguredRegistryWithOpts(opts BuildOpts) pipeline.Registry {
+func ConfiguredRegistryWithOpts(opts BuildOpts) (pipeline.Registry, error) {
 	return buildRegistry(opts, false)
 }
 
 // ConfiguredRegistryStrict builds a pipeline.Registry that rejects pipelines
 // with unsatisfied capabilities instead of pruning them.
-func ConfiguredRegistryStrict(f *providers.Factory) pipeline.Registry {
+func ConfiguredRegistryStrict(f *providers.Factory) (pipeline.Registry, error) {
 	return buildRegistry(BuildOpts{Factory: f}, true)
 }
 
@@ -620,60 +629,64 @@ func ConfiguredRegistryWithPipelineOverrides(
 	r := pipeline.NewRegistry()
 	selectors := buildSelectors()
 
-	// Pre-compute capabilities to skip pipelines with unsatisfied providers.
+	// The base providers config is validated once, here: bad names and
+	// settings, and a named backend that cannot run, are config errors.
+	if base.Factory != nil {
+		if err := base.Factory.Validate(); err != nil {
+			return nil, fmt.Errorf("invalid providers config: %w", err)
+		}
+	}
+
+	// Resolve each role once: the capability check and the step
+	// constructors share the result.
+	if base.Factory != nil {
+		base.resolved = base.Factory.Resolve()
+	}
 	baseCaps := CapabilitiesFromOpts(base)
 
 	for name, d := range defs {
-		if !defProvidersSatisfied(d, baseCaps) {
-			log.Printf("builtins: skipping pipeline %q (required provider(s) %v not available)", name, d.Providers)
+		opts := base
+		caps := baseCaps
+		override, hasOverride := pipelinesCfg.Overrides[name]
+
+		// A provider override changes the roles this pipeline sees, so the
+		// availability check runs on them: an override can enable a
+		// pipeline the base config lacks, and cannot break one it has.
+		overridden := false
+		if hasOverride && len(override.Providers) > 0 {
+			merged := overlayProviders(name, baseCfg, override.Providers)
+			// Same secrets store as the base factory: keys resolve identically.
+			opts.Factory = base.Factory.WithConfig(merged)
+			if err := opts.Factory.Validate(); err != nil {
+				return nil, fmt.Errorf("pipeline %q: invalid providers override: %w", name, err)
+			}
+			opts.resolved = opts.Factory.Resolve()
+			caps = CapabilitiesFromOpts(opts)
+			overridden = true
+		}
+
+		if !defProvidersSatisfied(d, caps) {
+			if overridden && defProvidersSatisfied(d, baseCaps) {
+				return nil, fmt.Errorf("pipeline %q: providers override leaves %s unavailable", name, strings.Join(missingRoles(d, caps), ", "))
+			}
+			log.Printf("builtins: skipping pipeline %q (required provider(s) %v not available)", name, missingRoles(d, caps))
+			pipeline.MarkUnavailable(r, name, unavailableReason(d, caps))
 			continue
 		}
 
-		opts := base
 		d.Steps = InjectClassRulesStep(InjectDedupStep(d.Steps, base.Duplicates), base.Access)
 		specs := specsOf(d.Steps)
-
-		if override, ok := pipelinesCfg.Overrides[name]; ok {
-			// 1. Structural overrides: skip_steps, then insert_steps.
+		if hasOverride {
+			// Structural overrides: skip_steps, then insert_steps.
 			var problems []config.ValidationError
 			specs, problems = applyStructuralOverrides(name, specs, override, nil)
 			if len(problems) > 0 {
 				return nil, errors.New("invalid pipelines config: " + problems[0].Error())
 			}
-
-			// 2. Handle provider overrides.
-			if len(override.Providers) > 0 {
-				merged := baseCfg
-				for role, bc := range override.Providers {
-					switch role {
-					case "llm":
-						merged.LLM = bc
-					case "embedding":
-						// Each registered model's entry decides its
-						// provider (ADR-071); a pipeline cannot.
-						log.Printf("builtins: pipeline %q: provider role \"embedding\" cannot be overridden per pipeline (ignored); the embedding model's registry entry decides its provider", name)
-					case "ocr":
-						merged.OCR = bc
-					case "vision":
-						merged.Vision = bc
-					case "transcription":
-						merged.Transcription = bc
-					case "diarization":
-						merged.Diarization = bc
-					case "video":
-						merged.Video = bc
-					case "document":
-						merged.Document = bc
-					default:
-						log.Printf("builtins: pipeline %q: unknown provider role %q in override (ignored)", name, role)
-					}
-				}
-				// Same secrets store as the base factory: keys resolve identically.
-				opts.Factory = base.Factory.WithConfig(merged)
-			}
 		}
+		stepCaps := caps
 
-		p, err := buildPipelineSpecs(name, d, specs, opts, false)
+		p, err := buildPipelineSpecs(name, d, specs, opts, stepCaps, false)
 		if err != nil {
 			return nil, err
 		}
@@ -685,6 +698,33 @@ func ConfiguredRegistryWithPipelineOverrides(
 	r.SetSelectors(builtinSelectors(selectors))
 
 	return r, nil
+}
+
+// overlayProviders returns base with each role of overrides overlaid, field
+// by field (config.ProviderBackendConfig.Overlay). The embedding role is
+// not per-pipeline, and an unknown role is not a role: both are logged and
+// ignored.
+func overlayProviders(pipelineName string, base config.ProvidersConfig, overrides map[string]config.ProviderBackendConfig) config.ProvidersConfig {
+	merged := base
+	roles := map[string]*config.ProviderBackendConfig{
+		"llm": &merged.LLM, "ocr": &merged.OCR, "vision": &merged.Vision,
+		"transcription": &merged.Transcription, "diarization": &merged.Diarization,
+		"video": &merged.Video, "frames": &merged.Frames,
+		"summarization": &merged.Summarization, "document": &merged.Document,
+	}
+	for role, bc := range overrides {
+		switch target, ok := roles[role]; {
+		case ok:
+			*target = target.Overlay(bc)
+		case role == "embedding":
+			// Each registered model's entry decides its provider
+			// (ADR-071); a pipeline cannot.
+			log.Printf("builtins: pipeline %q: provider role \"embedding\" cannot be overridden per pipeline (ignored); the embedding model's registry entry decides its provider", pipelineName)
+		default:
+			log.Printf("builtins: pipeline %q: unknown provider role %q in override (ignored)", pipelineName, role)
+		}
+	}
+	return merged
 }
 
 // ValidateOverrides checks every pipelines.overrides entry against the
@@ -835,6 +875,62 @@ func IsStepName(name string) bool {
 	return false
 }
 
+// mediaRoles are the provider roles whose steps turn a non-text medium
+// into text. A step that needs one is never pruned. Summarization and llm
+// are not media roles: their steps may be pruned.
+var mediaRoles = []string{"ocr", "vision", "transcription", "diarization", "video", "frames", "document"}
+
+// optionalCapabilities are enrichment roles: their steps may be pruned.
+var optionalCapabilities = map[string]bool{"diarization": true}
+
+// mediaCapabilities returns the capabilities of capabilities that are
+// media roles and not optional.
+func mediaCapabilities(capabilities []string) []string {
+	var out []string
+	for _, c := range capabilities {
+		if slices.Contains(mediaRoles, c) && !optionalCapabilities[c] {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// missingCapabilities lists the capabilities step needs that caps lacks.
+func missingCapabilities(step pipeline.PipelineStep, caps pipeline.CapabilitySet) []string {
+	var out []string
+	for _, c := range step.Contract().Capabilities {
+		if !caps[c] {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// missingRoles lists the roles of d that caps lacks.
+func missingRoles(d Def, caps pipeline.CapabilitySet) []string {
+	var out []string
+	for _, p := range d.Providers {
+		if !caps[p] {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// unavailableReason says which roles a pipeline needs and how to get
+// each, for the 422 a capture of its type gets.
+func unavailableReason(d Def, caps pipeline.CapabilitySet) string {
+	roles := missingRoles(d, caps)
+	parts := make([]string, len(roles))
+	for i, role := range roles {
+		parts[i] = role
+		if hint := providers.InstallHint(role); hint != "" {
+			parts[i] += " (" + hint + ")"
+		}
+	}
+	return "needs " + strings.Join(parts, ", ")
+}
+
 // defProvidersSatisfied returns true if all providers listed in d.Providers
 // are present in caps. An empty Providers list is always satisfied.
 func defProvidersSatisfied(d Def, caps pipeline.CapabilitySet) bool {
@@ -846,30 +942,39 @@ func defProvidersSatisfied(d Def, caps pipeline.CapabilitySet) bool {
 	return true
 }
 
-func buildRegistry(opts BuildOpts, strict bool) pipeline.Registry {
+func buildRegistry(opts BuildOpts, strict bool) (pipeline.Registry, error) {
 	r := pipeline.NewRegistry()
 	selectors := buildSelectors()
+	if opts.Factory != nil {
+		if err := opts.Factory.Validate(); err != nil {
+			return nil, fmt.Errorf("invalid providers config: %w", err)
+		}
+	}
+	if opts.Factory != nil {
+		opts.resolved = opts.Factory.Resolve()
+	}
 	caps := CapabilitiesFromOpts(opts)
 
 	for name, d := range defs {
 		if !defProvidersSatisfied(d, caps) {
-			log.Printf("builtins: skipping pipeline %q (required provider(s) %v not available)", name, d.Providers)
+			log.Printf("builtins: skipping pipeline %q (required provider(s) %v not available)", name, missingRoles(d, caps))
+			pipeline.MarkUnavailable(r, name, unavailableReason(d, caps))
 			continue
 		}
 		d.Steps = InjectClassRulesStep(InjectDedupStep(d.Steps, opts.Duplicates), opts.Access)
 
-		p, err := buildPipeline(name, d, opts, strict)
+		p, err := buildPipelineSpecs(name, d, specsOf(d.Steps), opts, caps, strict)
 		if err != nil {
-			panic(fmt.Sprintf("builtins: %v", err))
+			return nil, err
 		}
 		if err := r.Register(name, p); err != nil {
-			panic(fmt.Sprintf("builtins: %v", err))
+			return nil, err
 		}
 	}
 
 	r.SetSelectors(builtinSelectors(selectors))
 
-	return r
+	return r, nil
 }
 
 // newDefaultEmailFilter creates an EmailFilter using the built-in default ruleset.
