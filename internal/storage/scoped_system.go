@@ -342,3 +342,66 @@ func (v restrictedWatches) DeleteFileRecord(_ context.Context, _ string, _ strin
 func (v restrictedWatches) ListFileRecords(_ context.Context, _ string) ([]*WatchFileRecord, error) {
 	return nil, restrictedRead("Watches", "ListFileRecords")
 }
+
+// restrictedHolds fails closed for restricted viewers: legal holds are owner/authority only.
+type restrictedHolds struct{ inner HoldStore }
+
+var _ HoldStore = restrictedHolds{}
+
+func (v restrictedHolds) Place(_ context.Context, _ *ObjectHold) error {
+	return restrictedWrite("Holds", "Place")
+}
+
+func (v restrictedHolds) Release(_ context.Context, _, _, _, _ string, _ time.Time) (bool, error) {
+	return false, restrictedWrite("Holds", "Release")
+}
+
+func (v restrictedHolds) ListActive(_ context.Context, _ string) ([]ObjectHold, error) {
+	return nil, restrictedRead("Holds", "ListActive")
+}
+
+func (v restrictedHolds) ListActiveBySourceKey(_ context.Context, _ string) ([]ObjectHold, error) {
+	return nil, restrictedRead("Holds", "ListActiveBySourceKey")
+}
+
+func (v restrictedHolds) ListAllActive(_ context.Context, _ HoldFilter) ([]ObjectHold, error) {
+	return nil, restrictedRead("Holds", "ListAllActive")
+}
+
+func (v restrictedHolds) IsHeld(_ context.Context, _ string) (bool, error) {
+	return false, restrictedRead("Holds", "IsHeld")
+}
+
+// restrictedTombstones fails closed for restricted viewers: erasure tombstones are owner/authority only.
+type restrictedTombstones struct{ inner TombstoneStore }
+
+var _ TombstoneStore = restrictedTombstones{}
+
+func (v restrictedTombstones) Put(_ context.Context, _ *ErasureTombstone) error {
+	return restrictedWrite("Tombstones", "Put")
+}
+
+func (v restrictedTombstones) Exists(_ context.Context, _ string) (bool, error) {
+	return false, restrictedRead("Tombstones", "Exists")
+}
+
+func (v restrictedTombstones) Get(_ context.Context, _ string) (*ErasureTombstone, error) {
+	return nil, restrictedRead("Tombstones", "Get")
+}
+
+func (v restrictedTombstones) List(_ context.Context, _, _ int) ([]ErasureTombstone, error) {
+	return nil, restrictedRead("Tombstones", "List")
+}
+
+// restrictedObligations fails closed for restricted viewers: bos obligations are authority only.
+type restrictedObligations struct{ inner ObligationStore }
+
+var _ ObligationStore = restrictedObligations{}
+
+func (v restrictedObligations) Get(_ context.Context, _ string) (*ObligationRecord, error) {
+	return nil, restrictedRead("Obligations", "Get")
+}
+
+func (v restrictedObligations) Save(_ context.Context, _ *ObligationRecord) error {
+	return restrictedWrite("Obligations", "Save")
+}

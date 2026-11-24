@@ -41,6 +41,9 @@ func (m *mockDriver) UISessions() UISessionStore          { return nil }
 func (m *mockDriver) Auth() AuthStore                     { return nil }
 func (m *mockDriver) Sharing() SharingStore               { return nil }
 func (m *mockDriver) Approvals() ApprovalStore            { return nil }
+func (m *mockDriver) Holds() HoldStore                    { return nil }
+func (m *mockDriver) Tombstones() TombstoneStore          { return nil }
+func (m *mockDriver) Obligations() ObligationStore        { return nil }
 func (m *mockDriver) Health(ctx context.Context) error    { return nil }
 
 type mockWatermarkStore struct{}

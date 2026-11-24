@@ -204,6 +204,9 @@ func (d *Driver) UISessions() storage.UISessionStore          { return &uiSessio
 func (d *Driver) Auth() storage.AuthStore                     { return &authStore{db: d.db} }
 func (d *Driver) Sharing() storage.SharingStore               { return &sharingStore{db: d.db} }
 func (d *Driver) Approvals() storage.ApprovalStore            { return &approvalStore{db: d.db} }
+func (d *Driver) Holds() storage.HoldStore                    { return &holdStore{db: d.db} }
+func (d *Driver) Tombstones() storage.TombstoneStore          { return &tombstoneStore{db: d.db} }
+func (d *Driver) Obligations() storage.ObligationStore        { return &obligationStore{db: d.db} }
 
 func (d *Driver) Health(ctx context.Context) error {
 	return d.db.PingContext(ctx)

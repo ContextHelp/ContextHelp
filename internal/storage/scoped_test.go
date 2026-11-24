@@ -64,6 +64,9 @@ func (nilDriver) UISessions() UISessionStore          { return nil }
 func (nilDriver) Auth() AuthStore                     { return nil }
 func (nilDriver) Sharing() SharingStore               { return nil }
 func (nilDriver) Approvals() ApprovalStore            { return nil }
+func (nilDriver) Holds() HoldStore                    { return nil }
+func (nilDriver) Tombstones() TombstoneStore          { return nil }
+func (nilDriver) Obligations() ObligationStore        { return nil }
 
 var driverType = reflect.TypeOf((*StorageDriver)(nil)).Elem()
 
@@ -181,6 +184,7 @@ func TestRestrictedReadsNameStoreMethods(t *testing.T) {
 var ownerOnlyStores = []string{
 	"Jobs", "Pipelines", "Steps", "Registries", "Entitlements", "Metering",
 	"Feeds", "FeedItems", "Batches", "Detectors", "Watches",
+	"Holds", "Tombstones", "Obligations",
 }
 
 // Every method of an owner-only store is classified as a refused read

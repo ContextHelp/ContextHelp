@@ -254,6 +254,15 @@ func (s scopedDriver) Watermarks() WatermarkStore {
 func (s scopedDriver) UISessions() UISessionStore {
 	return restrictedUISessions{inner: s.StorageDriver.UISessions()}
 }
+func (s scopedDriver) Holds() HoldStore {
+	return restrictedHolds{inner: s.StorageDriver.Holds()}
+}
+func (s scopedDriver) Tombstones() TombstoneStore {
+	return restrictedTombstones{inner: s.StorageDriver.Tombstones()}
+}
+func (s scopedDriver) Obligations() ObligationStore {
+	return restrictedObligations{inner: s.StorageDriver.Obligations()}
+}
 
 // accessorKind says what ScopedDriver does with one StorageDriver
 // method.
@@ -319,6 +328,9 @@ var scopedAccessors = map[string]accessorKind{
 	"SearchHistory":   accessorScoped,
 	"Watermarks":      accessorScoped,
 	"UISessions":      accessorScoped,
+	"Holds":           accessorScoped,
+	"Tombstones":      accessorScoped,
+	"Obligations":     accessorScoped,
 }
 
 // restrictedReads names, per scoped accessor, the store methods that
@@ -343,15 +355,18 @@ var restrictedReads = map[string][]string{
 	"Entitlements":    {"Get", "List"},
 	"FeedItems":       {"ExistsByGUID"},
 	"Feeds":           {"Get", "GetByURL", "List"},
+	"Holds":           {"ListActive", "ListActiveBySourceKey", "ListAllActive", "IsHeld"},
 	"Jobs":            {"Get", "GetByIdempotencyKey", "List"},
 	"Metering":        {"Aggregate", "List"},
 	"Objects":         {"CountBlobRefs", "ListDueReminders", "ListPendingReminders"},
+	"Obligations":     {"Get"},
 	"PendingEntities": {"List", "Get"},
 	"Pipelines":       {"Get", "List"},
 	"Proximity":       {"FindStale", "Stats"},
 	"Registries":      {"GetCachedManifest", "List"},
 	"Reminders":       {"Get", "List"},
 	"Steps":           {"Get", "List"},
+	"Tombstones":      {"Exists", "Get", "List"},
 	"UISessions":      {"Lookup", "Get", "List"},
 	"Watches":         {"GetWatch", "ListWatches", "GetFileRecord", "ListFileRecords"},
 	"Watermarks":      {"GetWatermark"},
@@ -376,11 +391,14 @@ var restrictedWrites = map[string][]string{
 	"Entitlements": {"Upsert", "Delete"},
 	"FeedItems":    {"Create"},
 	"Feeds":        {"Create", "Update", "Delete"},
+	"Holds":        {"Place", "Release"},
 	"Jobs":         {"Create", "AcquireNext", "Complete", "Fail", "Retry", "Requeue", "Cancel", "RecoverStale", "ExtendLease", "ReleaseLease"},
 	"Metering":     {"Record", "RecordCapped"},
+	"Obligations":  {"Save"},
 	"Pipelines":    {"Create", "Update", "Delete", "Archive", "Unarchive"},
 	"Registries":   {"CacheManifest", "UpdateETag", "Delete"},
 	"Steps":        {"Create", "Unregister", "Update"},
+	"Tombstones":   {"Put"},
 	"Watches":      {"CreateWatch", "UpdateWatch", "DeleteWatch", "UpsertFileRecord", "DeleteFileRecord"},
 }
 

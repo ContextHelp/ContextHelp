@@ -561,6 +561,42 @@ var pgMigrations = []pgMigration{
 		)`,
 		`INSERT INTO access_log_chain (id, seq, head) VALUES (1, 0, '') ON CONFLICT (id) DO NOTHING`,
 	}},
+	// Migration 47 (mirrors SQLite 066): object_holds, erasure_tombstones, bos_obligations.
+	{Version: 47, Name: "governance holds tombstones obligations", Statements: []string{
+		`CREATE TABLE IF NOT EXISTS object_holds (
+			id             TEXT PRIMARY KEY,
+			object_id      TEXT NOT NULL,
+			source_key     TEXT NOT NULL DEFAULT '',
+			hold_id        TEXT NOT NULL,
+			source         TEXT NOT NULL,
+			reason         TEXT NOT NULL DEFAULT '',
+			placed_by      TEXT NOT NULL,
+			placed_at      TIMESTAMPTZ NOT NULL,
+			released_by    TEXT NOT NULL DEFAULT '',
+			released_at    TIMESTAMPTZ,
+			release_reason TEXT NOT NULL DEFAULT ''
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_object_holds_active_pair ON object_holds(object_id, hold_id) WHERE released_at IS NULL`,
+		`CREATE INDEX IF NOT EXISTS idx_object_holds_active_object ON object_holds(object_id) WHERE released_at IS NULL`,
+		`CREATE INDEX IF NOT EXISTS idx_object_holds_active_hold ON object_holds(hold_id) WHERE released_at IS NULL`,
+		`CREATE INDEX IF NOT EXISTS idx_object_holds_active_source_key ON object_holds(source_key) WHERE released_at IS NULL AND source_key != ''`,
+		`CREATE TABLE IF NOT EXISTS erasure_tombstones (
+			source_key    TEXT PRIMARY KEY,
+			source        TEXT NOT NULL,
+			obligation_id TEXT NOT NULL DEFAULT '',
+			erased_at     TIMESTAMPTZ NOT NULL,
+			erased_by     TEXT NOT NULL DEFAULT ''
+		)`,
+		`CREATE TABLE IF NOT EXISTS bos_obligations (
+			id             TEXT PRIMARY KEY,
+			kind           TEXT NOT NULL,
+			request_sha256 TEXT NOT NULL,
+			state          TEXT NOT NULL,
+			status_json    TEXT NOT NULL,
+			created_at     TIMESTAMPTZ NOT NULL,
+			updated_at     TIMESTAMPTZ NOT NULL
+		)`,
+	}},
 }
 
 // sharingRegistryStatements create the sharing registry and add the
