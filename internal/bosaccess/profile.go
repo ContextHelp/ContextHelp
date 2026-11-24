@@ -13,11 +13,12 @@ type Profile struct {
 	Auth        []string `json:"auth,omitempty"`
 }
 
-// Can is what the peer can do for the obligations contract; ctxt lists none
-// of it yet.
+// Can is what the peer can do for the obligations contract.
 type Can struct {
-	Erase bool `json:"erase"`
-	Hold  bool `json:"hold"`
+	Erase        bool `json:"erase"`
+	Hold         bool `json:"hold"`
+	Anonymize    bool `json:"anonymize"`
+	EraseDerived bool `json:"erase_derived"`
 }
 
 // Listed is one entry of a profile's contracts list.
@@ -71,19 +72,29 @@ func (p Profile) Supports(req string) bool {
 // has not seen confirmed for a day stops allowing.
 const DefaultMaxStalenessSeconds = 86400
 
+// ObligationsContract is the contract id of bos.obligations/v1.
+const ObligationsContract = "bos.obligations/v1"
+
 // DeclaredProfile is what ctxt declares to the authority: bos.access/v1 with
-// the features record_access and principal_identities, and the shapes it
-// enforces: type grants with an end (type_grant, expiry) and the record
-// entries (row_relation for an assignment, record_grant for a single
-// record). It lists no field exclusion or direction limit: a grant that
-// needs one is not enforced and the authority lists it as not representable.
-// Entry dates (valid_from, valid_until) are part of the feature.
+// the features record_access and principal_identities, bos.obligations/v1
+// (erase, hold, erase_derived; anonymize unsupported), and the shapes it
+// enforces.
 func DeclaredProfile(version string) Profile {
 	return Profile{
 		Tool:        "ctxt",
 		ToolVersion: version,
-		Contracts:   []Listed{{ID: "bos.peer/v1", Level: "complete"}, {ID: Contract, Level: "partial", Features: []string{FeatureRecordAccess, FeaturePrincipalIdentities}}},
-		Represents:  []string{ShapeTypeGrant, ShapeExpiry, ShapeRowRelation, ShapeRecordGrant},
-		Limits:      Limits{MaxStalenessSeconds: DefaultMaxStalenessSeconds},
+		Contracts: []Listed{
+			{ID: "bos.peer/v1", Level: "complete"},
+			{ID: Contract, Level: "partial", Features: []string{FeatureRecordAccess, FeaturePrincipalIdentities}},
+			{ID: ObligationsContract, Level: "complete"},
+		},
+		Represents: []string{ShapeTypeGrant, ShapeExpiry, ShapeRowRelation, ShapeRecordGrant},
+		Can: Can{
+			Erase:        true,
+			Hold:         true,
+			Anonymize:    false,
+			EraseDerived: true,
+		},
+		Limits: Limits{MaxStalenessSeconds: DefaultMaxStalenessSeconds},
 	}
 }
