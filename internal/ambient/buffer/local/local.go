@@ -39,6 +39,7 @@ import (
 	kitlocal "hop.top/kit/go/storage/blob/local"
 
 	"github.com/ideacrafterslabs/ctxt/internal/ambient"
+	"github.com/ideacrafterslabs/ctxt/internal/keys"
 )
 
 // Defaults per ADR-066 §Decision item 5.
@@ -58,6 +59,9 @@ type Config struct {
 	MaxGB int
 	// Now overrides the wall clock; tests use a fake.
 	Now func() time.Time
+	// KeyProvider, when non-nil, encrypts every spooled event at rest with
+	// AES-256-GCM envelope encryption bound to the event key.
+	KeyProvider keys.Provider
 }
 
 // Buffer is the local-filesystem ambient.Buffer.
@@ -134,11 +138,27 @@ func (b *Buffer) Append(ctx context.Context, ev ambient.RawEvent) error {
 		return fmt.Errorf("marshal event: %w", err)
 	}
 	key := keyForEvent(ev, b.cfg.Now())
-	if err := b.store.Put(ctx, key, bytes.NewReader(body), "application/json"); err != nil {
+	contentType := "application/json"
+	if b.cfg.KeyProvider != nil {
+		sealed, serr := keys.SealEnvelope(ctx, b.cfg.KeyProvider, body, []byte("ambient:"+key))
+		if serr != nil {
+			return fmt.Errorf("encrypt %s: %w", key, serr)
+		}
+		body = sealed
+		contentType = "application/octet-stream"
+	}
+	if err := b.store.Put(ctx, key, bytes.NewReader(body), contentType); err != nil {
 		return fmt.Errorf("put %s: %w", key, err)
 	}
 	b.appendedTotal.Add(1)
 	return nil
+}
+
+func (b *Buffer) decodeBody(ctx context.Context, key string, raw []byte) ([]byte, error) {
+	if b.cfg.KeyProvider == nil {
+		return raw, nil
+	}
+	return keys.OpenEnvelope(ctx, b.cfg.KeyProvider, raw, []byte("ambient:"+key))
 }
 
 // Pop implements ambient.Buffer.
@@ -160,10 +180,14 @@ func (b *Buffer) Pop(ctx context.Context) (ambient.RawEvent, error) {
 	if err != nil {
 		return ambient.RawEvent{}, fmt.Errorf("get %s: %w", oldest.Key, err)
 	}
-	body, err := io.ReadAll(rc)
+	raw, err := io.ReadAll(rc)
 	rc.Close()
 	if err != nil {
 		return ambient.RawEvent{}, fmt.Errorf("read %s: %w", oldest.Key, err)
+	}
+	body, err := b.decodeBody(ctx, oldest.Key, raw)
+	if err != nil {
+		return ambient.RawEvent{}, fmt.Errorf("decrypt %s: %w", oldest.Key, err)
 	}
 	var ev ambient.RawEvent
 	if err := json.Unmarshal(body, &ev); err != nil {
@@ -191,10 +215,14 @@ func (b *Buffer) Range(ctx context.Context, fn func(ambient.RawEvent) bool) erro
 		if err != nil {
 			continue
 		}
-		body, err := io.ReadAll(rc)
+		raw, err := io.ReadAll(rc)
 		rc.Close()
 		if err != nil {
 			continue
+		}
+		body, err := b.decodeBody(ctx, obj.Key, raw)
+		if err != nil {
+			return fmt.Errorf("decrypt %s: %w", obj.Key, err)
 		}
 		var ev ambient.RawEvent
 		if json.Unmarshal(body, &ev) != nil {

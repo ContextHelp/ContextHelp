@@ -37,12 +37,16 @@ func serveStorageTarget(c *config.Config) (typ, path string) {
 
 // openServeStorage opens and migrates the storage driver serve runs on.
 func openServeStorage(ctx context.Context, c *config.Config) (storage.StorageDriver, error) {
-	if _, err := keys.Open(ctx, c.Storage.Encryption, c.Secrets); err != nil {
+	kp, err := keys.Open(ctx, c.Storage.Encryption, c.Secrets)
+	if err != nil {
 		return nil, fmt.Errorf("unlock storage encryption keys: %w", err)
 	}
 	storageType, storagePath := serveStorageTarget(c)
-	driver, err := storageutil.Open(storageType, storagePath, c.Storage.Blob,
-		storageutil.WithMigrateSnapshot(c.Storage.MigrateSnapshot))
+	opts := []storageutil.OpenOption{storageutil.WithMigrateSnapshot(c.Storage.MigrateSnapshot)}
+	if kp != nil {
+		opts = append(opts, storageutil.WithKeyProvider(kp))
+	}
+	driver, err := storageutil.Open(storageType, storagePath, c.Storage.Blob, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("init storage: %w", err)
 	}

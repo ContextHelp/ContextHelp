@@ -9,8 +9,10 @@ import (
 	"fmt"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/keys"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
+	encryptedblob "github.com/ideacrafterslabs/ctxt/internal/storage/blob/encrypted"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/sqlite"
 )
@@ -26,6 +28,7 @@ type OpenOption func(*openOptions)
 
 type openOptions struct {
 	skipMigrateSnapshot bool
+	keyProvider         keys.Provider
 }
 
 // WithMigrateSnapshot applies storage.migrate_snapshot: whether opening
@@ -36,14 +39,30 @@ func WithMigrateSnapshot(enabled bool) OpenOption {
 	return func(o *openOptions) { o.skipMigrateSnapshot = !enabled }
 }
 
+// WithKeyProvider attaches a KEK provider used to encrypt the blob store,
+// pre-migration snapshots, and database encryption keys.
+func WithKeyProvider(p keys.Provider) OpenOption {
+	return func(o *openOptions) { o.keyProvider = p }
+}
+
 // Open creates the StorageDriver of type typ at path with the blob store
 // that blobCfg (storage.blob) configures. Every command that opens the
 // configured store goes through it, so content above
 // storage.blob.threshold always reaches a real blob store.
 func Open(typ, path string, blobCfg config.BlobConfig, opts ...OpenOption) (storage.StorageDriver, error) {
+	var o openOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
 	blobs, err := blob.New(blobCfg)
 	if err != nil {
 		return nil, fmt.Errorf("open blob store: %w", err)
+	}
+	if o.keyProvider != nil {
+		blobs, err = encryptedblob.New(blobs, o.keyProvider)
+		if err != nil {
+			return nil, fmt.Errorf("open encrypted blob store: %w", err)
+		}
 	}
 	return NewDriver(typ, path, blobs, opts...)
 }
@@ -57,7 +76,11 @@ func NewDriver(typ, path string, blobs storage.BlobStore, opts ...OpenOption) (s
 	}
 	switch typ {
 	case typeSQLite:
-		return sqlite.New(path, blobs, sqlite.WithMigrateSnapshot(!o.skipMigrateSnapshot))
+		sopts := []sqlite.Option{sqlite.WithMigrateSnapshot(!o.skipMigrateSnapshot)}
+		if o.keyProvider != nil {
+			sopts = append(sopts, sqlite.WithKeyProvider(o.keyProvider))
+		}
+		return sqlite.New(path, blobs, sopts...)
 	case typePostgres:
 		return postgres.New(path, blobs)
 	default:

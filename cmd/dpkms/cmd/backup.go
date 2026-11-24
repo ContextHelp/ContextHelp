@@ -17,6 +17,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/directopen"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
+	"github.com/ideacrafterslabs/ctxt/internal/keys"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
@@ -142,17 +143,28 @@ func runBackup(cmd *cobra.Command, _ []string) error {
 	configPath := resolveConfigPath()
 	configDir := filepath.Dir(configPath)
 
+	var keyProvider keys.Provider
+	if cfg.Storage.Encryption.Enabled {
+		kp, kerr := keys.Open(context.Background(), cfg.Storage.Encryption, cfg.Secrets)
+		if kerr != nil {
+			return fmt.Errorf("backup: unlock storage encryption keys: %w", kerr)
+		}
+		keyProvider = kp
+	}
+
 	// Sync: run directly.
 	opts := service.BackupOpts{
-		DBPath:         dbPath,
-		BlobCfg:        cfg.Storage.Blob,
-		IncludeBlobs:   includeBlobs,
-		OutputDir:      outDir,
-		SkipBlobErrors: skipBlobErrors,
-		ConfigPath:     configPath,
-		IncludeConfigs: includeConfigs,
-		ConfigDir:      configDir,
-		EmbeddingInfo:  backupEmbeddingInfo(),
+		DBPath:            dbPath,
+		BlobCfg:           cfg.Storage.Blob,
+		IncludeBlobs:      includeBlobs,
+		OutputDir:         outDir,
+		SkipBlobErrors:    skipBlobErrors,
+		ConfigPath:        configPath,
+		IncludeConfigs:    includeConfigs,
+		ConfigDir:         configDir,
+		EmbeddingInfo:     backupEmbeddingInfo(),
+		EncryptionEnabled: cfg.Storage.Encryption.Enabled,
+		KeyProvider:       keyProvider,
 	}
 
 	fmt.Fprintf(os.Stderr, "-> snapshot db...\n")
