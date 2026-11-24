@@ -85,6 +85,8 @@ ctxt analyze "Pricing experiment notes" --type text \
 | `--raw` | Store without AI enrichment |
 | `--ttl <dur>` / `--expires <time>` | Auto-expire capture (e.g. `7d`, `24h`, RFC3339, `"next friday"`) |
 | `--expires-scope <desc>` | Natural-language subset to redact at expiry instead of deleting whole object |
+| `--encrypt` | Encrypt captured content with the configured `KeyProvider` (fails closed if unconfigured) |
+| `--encrypt-scope <desc>` | Natural-language subset to seal inline (e.g. `"emails and phone numbers"`, `"raw content, keep summary"`) |
 
 ### Expiry, Holds & Source Erasure
 
@@ -101,6 +103,19 @@ ctxt hold place --object-id <id> --reason "litigation hold"
 ctxt hold list
 ctxt hold release <hold-id>
 ctxt delete --source-key "bos://core.documents/doc_123" --tombstone
+```
+
+### Encryption at Rest & Selective Capture Encryption
+
+```bash
+# Per-capture and per-watch encryption (requires storage.encryption.enabled: true)
+ctxt capture "confidential board notes" --encrypt
+ctxt capture "Call alice@example.com (555-867-5309)" --encrypt-scope "emails and phone numbers"
+ctxt watch start ./sensitive --encrypt --encrypt-scope "raw content, keep summary"
+
+# SQLite whole-database encryption migration & rotation (built via make build-encrypted)
+dpkms storage encrypt
+dpkms storage rekey
 ```
 
 ---

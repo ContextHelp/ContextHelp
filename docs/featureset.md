@@ -137,9 +137,11 @@ First-class retention and erasure primitives built directly into the storage lay
 - **Peer obligations (`bos.obligations/v1`):** Conforming HTTP receiver (`GET /.well-known/bos-peer`, `POST /bos/v1/obligations`, `GET /bos/v1/obligations/{id}`) executing idempotent hold, release, and erase obligations from external governance authorities.
 
 ## Security + Encryption (Sovereign by Design)
-Encryption at rest and in transit with pluggable key management, controlled sharing
-handshakes, and an optional privacy-preserving search mode that supports filtering
-and retrieval without exposing plaintext content.
+Configurable, fail-closed encryption at rest anchored on a unified `KeyProvider` port (`keyring`, `agefile`, `file`, `env`, and OpenBao/Vault `transit` — [ADR-085](decisions/ADR-085-encryption-at-rest-and-search-indexing.md)):
+- **Whole-database SQLite encryption:** `SQLite3MultipleCiphers` (`make build-encrypted`) encrypts `.sqlite`, `-wal`, and `-shm` pages while keeping full `FTS5` and `vec0` search intact once unlocked, with crash-safe plaintext migration (`dpkms storage encrypt`) and key rotation (`dpkms storage rekey`).
+- **PostgreSQL controls:** Orthogonal `require_tde`, application-layer `column_encryption` (`off|sensitive|all`), and `fts_on_encrypted` (`omit|require_tde`) settings.
+- **Non-database surfaces:** Encrypted `BlobStore` (local & S3), encrypted pre-migration snapshots, encrypted local ambient spool, and mandatory encrypted backups.
+- **Per-capture & per-watch selective encryption:** Opt-in `--encrypt` and natural-language `--encrypt-scope` (e.g. `"emails and phone numbers"`, `"raw content, keep summary"`, or custom instructions via `SpanLocator`) sealing whole fields or inline spans (`«ctxt:enc:v1:...»`) while keeping unencrypted context searchable, transparently decrypted on read.
 
 ## Authentication + Authorization (Capability-Scoped)
 Built-in support for local-only mode, token-based access, scoped permissions for
