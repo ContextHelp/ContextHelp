@@ -219,6 +219,7 @@ func sealBackupArchive(ctx context.Context, p keys.Provider, plainTemp, archiveP
 	if serr != nil {
 		return fmt.Errorf("backup: encrypt archive: %w", serr)
 	}
+	// #nosec G703 -- archivePath is filepath.Join(outDir, archiveName) with a generated UTC timestamp name.
 	if werr := os.WriteFile(archivePath, env, 0o600); werr != nil { //nolint:gosec // archivePath is validated under outDir
 		return fmt.Errorf("backup: write encrypted archive: %w", werr)
 	}
