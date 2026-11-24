@@ -57,6 +57,9 @@ func (m *mockStore) UISessions() storage.UISessionStore          { return nil }
 func (m *mockStore) Auth() storage.AuthStore                     { return nil }
 func (m *mockStore) Sharing() storage.SharingStore               { return nil }
 func (m *mockStore) Approvals() storage.ApprovalStore            { return nil }
+func (m *mockStore) Holds() storage.HoldStore                    { return nil }
+func (m *mockStore) Tombstones() storage.TombstoneStore          { return nil }
+func (m *mockStore) Obligations() storage.ObligationStore        { return nil }
 func (m *mockStore) Health(_ context.Context) error              { return nil }
 
 // mockObjectStore2 is a simple in-memory object store for tests.

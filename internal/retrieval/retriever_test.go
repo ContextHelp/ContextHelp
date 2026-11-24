@@ -160,6 +160,9 @@ func (n *naStore) UISessions() storage.UISessionStore          { return nil }
 func (n *naStore) Auth() storage.AuthStore                     { return nil }
 func (n *naStore) Sharing() storage.SharingStore               { return nil }
 func (n *naStore) Approvals() storage.ApprovalStore            { return nil }
+func (n *naStore) Holds() storage.HoldStore                    { return nil }
+func (n *naStore) Tombstones() storage.TombstoneStore          { return nil }
+func (n *naStore) Obligations() storage.ObligationStore        { return nil }
 func (n *naStore) Health(_ context.Context) error              { return nil }
 
 // TestRagRetrieve_NodeAwareFilterRoutesThroughNodeAwarePath verifies that when a

@@ -119,6 +119,13 @@ type StorageDriver interface {
 	// Approvals is the approval mechanism's store (ADR-083 §9):
 	// requests and their decisions.
 	Approvals() ApprovalStore
+	// Holds persists legal and administrative holds on objects.
+	Holds() HoldStore
+	// Tombstones records erased source keys so feed replay or re-import
+	// never resurrects them.
+	Tombstones() TombstoneStore
+	// Obligations stores bos.obligations/v1 idempotency records and status/receipts.
+	Obligations() ObligationStore
 	Health(ctx context.Context) error
 }
 

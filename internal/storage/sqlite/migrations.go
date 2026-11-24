@@ -365,6 +365,8 @@ var migrations = []migration{
 	// Columns, indexes and a new table only; nothing is an FTS input,
 	// so no re-projection follows. A replay is a no-op.
 	{Version: 65, fn: migrate065StewardAudit},
+	// Migration 066: object_holds, erasure_tombstones, bos_obligations.
+	{Version: 66, fn: migrate066GovernanceHoldsAndObligations},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,
