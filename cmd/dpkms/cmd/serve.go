@@ -197,7 +197,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	_, dbPath := serveStorageTarget(cfg)
-	driver, err := openServeStorage(context.Background(), cfg)
+	driver, keyProvider, err := openServeStorageWithKeys(context.Background(), cfg)
 	if err != nil {
 		return err
 	}
@@ -320,6 +320,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	st, err := stack.Build(stack.Inputs{
 		Config:        cfg,
 		Driver:        driver,
+		KeyProvider:   keyProvider,
 		Access:        access,
 		PolicyBus:     hubBus,
 		Embeddings:    embResolver,
@@ -399,6 +400,9 @@ func runServe(cmd *cobra.Command, args []string) error {
 	pool := jobs.NewWorkerPool(queue, pipes, storage.System(driver), workers, svc.Bus, cfg.Jobs)
 	if installJobExecutor != nil {
 		installJobExecutor(pool, pipes)
+	}
+	if keyProvider != nil {
+		pool.SetKeyProvider(keyProvider, nil)
 	}
 	handleEmbeddingsMigrate(pool, storage.System(driver), upgradeMgr, svc.Bus)
 	handleReproject(pool, storage.System(driver), upgradeMgr, svc.Bus, cfg.Storage.Blob.Threshold)

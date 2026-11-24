@@ -53,11 +53,11 @@ type SecretWarning struct {
 // Validate already rejects them because config never expands them.
 func ScanSecrets(cfg *Config) []SecretWarning {
 	var warnings []SecretWarning
-	walkStrings(reflect.ValueOf(cfg), "", func(path, val string) {
+	walkStringsTagged(reflect.ValueOf(cfg), "", false, func(path, val string, nonSecret bool) {
 		if isEnvRef(val) {
 			return
 		}
-		if reason := secretReason(path, val); reason != "" {
+		if reason := secretReason(path, val, nonSecret); reason != "" {
 			warnings = append(warnings, SecretWarning{
 				Field:  path,
 				Hint:   RedactSecret(val),
@@ -71,7 +71,13 @@ func ScanSecrets(cfg *Config) []SecretWarning {
 // walkStrings recursively walks v and calls fn with the dot-separated
 // config path of every non-empty string value. Slice elements carry
 // their index: server.urls[0].token.
+//
+//nolint:unparam // root callers pass ""; parameter retained for path-prefixed calls
 func walkStrings(v reflect.Value, path string, fn func(path, val string)) {
+	walkStringsTagged(v, path, false, func(p, val string, _ bool) { fn(p, val) })
+}
+
+func walkStringsTagged(v reflect.Value, path string, nonSecret bool, fn func(path, val string, nonSecret bool)) {
 	// Dereference pointers.
 	for v.Kind() == reflect.Pointer {
 		if v.IsNil() {
@@ -93,13 +99,14 @@ func walkStrings(v reflect.Value, path string, fn func(path, val string)) {
 			if path != "" {
 				childPath = path + "." + name
 			}
+			fieldNonSecret := nonSecret || field.Tag.Get("secret") == "false"
 
-			walkStrings(fieldVal, childPath, fn)
+			walkStringsTagged(fieldVal, childPath, fieldNonSecret, fn)
 		}
 
 	case reflect.String:
 		if val := v.String(); val != "" {
-			fn(path, val)
+			fn(path, val, nonSecret)
 		}
 
 	case reflect.Map:
@@ -109,17 +116,17 @@ func walkStrings(v reflect.Value, path string, fn func(path, val string)) {
 			if path != "" {
 				childPath = path + "." + keyStr
 			}
-			walkStrings(v.MapIndex(key), childPath, fn)
+			walkStringsTagged(v.MapIndex(key), childPath, nonSecret, fn)
 		}
 
 	case reflect.Slice:
 		for i := 0; i < v.Len(); i++ {
-			walkStrings(v.Index(i), fmt.Sprintf("%s[%d]", path, i), fn)
+			walkStringsTagged(v.Index(i), fmt.Sprintf("%s[%d]", path, i), nonSecret, fn)
 		}
 
 	case reflect.Interface:
 		if !v.IsNil() {
-			walkStrings(v.Elem(), path, fn)
+			walkStringsTagged(v.Elem(), path, nonSecret, fn)
 		}
 	}
 }
@@ -140,12 +147,16 @@ func fieldNameFromTag(f reflect.StructField) string {
 
 // secretReason returns the reason string if the field looks like a secret,
 // or empty string if it's safe.
-func secretReason(fieldPath, value string) string {
+func secretReason(fieldPath, value string, nonSecret bool) string {
 	// Check value against known secret prefixes.
 	for _, re := range secretPatterns {
 		if re.MatchString(value) {
 			return "value matches known secret pattern"
 		}
+	}
+
+	if nonSecret {
+		return ""
 	}
 
 	// Check field name for secret-looking substrings.

@@ -607,6 +607,15 @@ var pgMigrations = []pgMigration{
 		`ALTER TABLE watches ADD COLUMN IF NOT EXISTS expiry_ttl TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE watches ADD COLUMN IF NOT EXISTS expiry_scope TEXT NOT NULL DEFAULT ''`,
 	}},
+	// Migration 49 (mirrors SQLite 068): per-capture & per-watch encryption metadata columns.
+	{Version: 49, Name: "per-capture and per-watch encryption columns", Statements: []string{
+		`ALTER TABLE objects ADD COLUMN IF NOT EXISTS encrypted BOOLEAN NOT NULL DEFAULT FALSE`,
+		`ALTER TABLE objects ADD COLUMN IF NOT EXISTS encrypt_scope TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS user_encrypt BOOLEAN NOT NULL DEFAULT FALSE`,
+		`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS user_encrypt_scope TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE watches ADD COLUMN IF NOT EXISTS encrypt BOOLEAN NOT NULL DEFAULT FALSE`,
+		`ALTER TABLE watches ADD COLUMN IF NOT EXISTS encrypt_scope TEXT NOT NULL DEFAULT ''`,
+	}},
 }
 
 // sharingRegistryStatements create the sharing registry and add the

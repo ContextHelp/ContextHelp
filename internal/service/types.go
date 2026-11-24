@@ -32,7 +32,13 @@ type AnalyzeRequest struct {
 	// when non-empty only the described data is redacted in place.
 	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
 	ExpiryScope string     `json:"expiry_scope,omitempty"`
-	Force       bool       `json:"force,omitempty"` // bypass duplicate detection
+	// Encrypt requests per-capture encryption at rest for this object.
+	// EncryptScope optionally describes in natural language which data to
+	// encrypt (e.g. "PII and phone numbers", "raw content, keep summary");
+	// empty encrypts the whole capture content. Setting EncryptScope implies Encrypt.
+	Encrypt      bool   `json:"encrypt,omitempty"`
+	EncryptScope string `json:"encrypt_scope,omitempty"`
+	Force        bool   `json:"force,omitempty"` // bypass duplicate detection
 	// Mentions are caller-asserted @namespace.slug strings. They
 	// are merged with auto-extracted mentions during pipeline execution and
 	// become real mention edges + thin entity rows. Caller-supplied wins on
@@ -109,9 +115,11 @@ type InboxCaptureRequest struct {
 	// Profile is the focus-profile slug the operator pinned at capture
 	// time. Populates KnowledgeObject.ProfileID so the inbox
 	// item is partitioned to that profile from the start.
-	Profile     string
-	ExpiresAt   *time.Time
-	ExpiryScope string
+	Profile      string
+	ExpiresAt    *time.Time
+	ExpiryScope  string
+	Encrypt      bool
+	EncryptScope string
 }
 
 // InboxFilter specifies criteria for listing inbox items.

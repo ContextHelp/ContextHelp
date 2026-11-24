@@ -30,6 +30,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/events"
 	"github.com/ideacrafterslabs/ctxt/internal/expiry"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
+	"github.com/ideacrafterslabs/ctxt/internal/keys"
 	"github.com/ideacrafterslabs/ctxt/internal/mentions"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	pipesteps "github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
@@ -95,6 +96,10 @@ type Service struct {
 	// expiryLocator optionally resolves free-form natural-language
 	// expiry_scope instructions when deterministic rules do not match.
 	expiryLocator expiry.SpanLocator
+	// keyProvider and encryptLocator implement opt-in per-capture / per-watch
+	// encryption (whole content or natural-language scope).
+	keyProvider    keys.Provider
+	encryptLocator keys.SpanLocator
 }
 
 func utcTimePtr(t *time.Time) *time.Time {
@@ -379,20 +384,9 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 		return jobID, nil
 	}
 
-	pipelineName := req.Pipeline
-	if pipelineName == "" {
-		pipelineName = s.detectPipeline(jobSource, req.Type, req.Content)
-	}
-
-	// validate the resolved pipeline exists in the registry. Without
-	// this, a job referencing a non-existent pipeline (e.g. `--type document`
-	// when no document.* pipeline is registered) would be enqueued and the
-	// worker would silently fail to dispatch — data lost, no signal.
-	if !s.pipelineExists(ctx, pipelineName) {
-		return "", s.pipelineNotFoundError("analyze", req.Type, pipelineName)
-	}
-	if s.pipelineArchived(ctx, pipelineName) {
-		return "", fmt.Errorf("analyze: %w: pipeline=%q", ErrPipelineArchived, pipelineName)
+	pipelineName, err := s.resolveAnalyzePipeline(ctx, req, jobSource)
+	if err != nil {
+		return "", err
 	}
 
 	// Duplicate detection (exact match only at analyze time; embeddings not yet computed).
@@ -406,6 +400,11 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 		}
 	}
 
+	wantEncrypt, encryptScope, err := s.resolveAnalyzeEncryption(req)
+	if err != nil {
+		return "", err
+	}
+
 	payload, encoding := jobs.Payload(req.Content)
 	jobType := "ingest:" + detectedType
 	if req.NoFanout {
@@ -413,27 +412,28 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 	}
 
 	job := &storage.Job{
-		ID:              uuid.New().String(),
-		Type:            jobType,
-		Status:          storage.JobPending,
-		Payload:         payload,
-		PayloadEncoding: encoding,
-		Pipeline:        pipelineName,
-		Source:          jobSource,
-		MaxRetries:      3,
-		CreatedAt:       now,
-		UpdatedAt:       now,
-		UserMentions:    req.Mentions, // forwarded to draft.Mentions in worker.
-		UserHints:       req.Hints,    // forwarded to draft.Tags (Source:"user") in worker.
-		UserProfile:     req.Profile,  // forwarded to draft.ProfileID in worker.
-		UserNote:        req.Note,     // forwarded to draft.InboxNote in worker.
-		UserData:        req.Data,     // forwarded to draft.Metadata["data"] in worker.
-
-		UserSourceKey:   req.SourceKey, // forwarded to draft.SourceKey in worker.
-		UserExpiresAt:   utcTimePtr(req.ExpiresAt),
-		UserExpiryScope: strings.TrimSpace(req.ExpiryScope),
-		UserAmbient:     req.ambientContext(), // forwarded to draft metadata + SessionID in worker.
-		IdempotencyKey:  req.IdempotencyKey,
+		ID:               uuid.New().String(),
+		Type:             jobType,
+		Status:           storage.JobPending,
+		Payload:          payload,
+		PayloadEncoding:  encoding,
+		Pipeline:         pipelineName,
+		Source:           jobSource,
+		MaxRetries:       3,
+		CreatedAt:        now,
+		UpdatedAt:        now,
+		UserMentions:     req.Mentions,  // forwarded to draft.Mentions in worker.
+		UserHints:        req.Hints,     // forwarded to draft.Tags (Source:"user") in worker.
+		UserProfile:      req.Profile,   // forwarded to draft.ProfileID in worker.
+		UserNote:         req.Note,      // forwarded to draft.InboxNote in worker.
+		UserData:         req.Data,      // forwarded to draft.Metadata["data"] in worker.
+		UserSourceKey:    req.SourceKey, // forwarded to draft.SourceKey in worker.
+		UserExpiresAt:    utcTimePtr(req.ExpiresAt),
+		UserExpiryScope:  strings.TrimSpace(req.ExpiryScope),
+		UserEncrypt:      wantEncrypt,
+		UserEncryptScope: encryptScope,
+		UserAmbient:      req.ambientContext(), // forwarded to draft metadata + SessionID in worker.
+		IdempotencyKey:   req.IdempotencyKey,
 	}
 
 	if err := s.Queue.Enqueue(ctx, job); err != nil {
@@ -447,6 +447,29 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 	}
 	_ = s.Bus.Publish(ctx, kitbus.NewEvent(events.TopicJobEnqueued, "service.analyze", job))
 	return job.ID, nil
+}
+
+func (s *Service) resolveAnalyzePipeline(ctx context.Context, req AnalyzeRequest, jobSource string) (string, error) {
+	pipelineName := req.Pipeline
+	if pipelineName == "" {
+		pipelineName = s.detectPipeline(jobSource, req.Type, req.Content)
+	}
+	if !s.pipelineExists(ctx, pipelineName) {
+		return "", s.pipelineNotFoundError("analyze", req.Type, pipelineName)
+	}
+	if s.pipelineArchived(ctx, pipelineName) {
+		return "", fmt.Errorf("analyze: %w: pipeline=%q", ErrPipelineArchived, pipelineName)
+	}
+	return pipelineName, nil
+}
+
+func (s *Service) resolveAnalyzeEncryption(req AnalyzeRequest) (bool, string, error) {
+	scope := strings.TrimSpace(req.EncryptScope)
+	want := req.Encrypt || scope != ""
+	if want && s.keyProvider == nil {
+		return false, "", fmt.Errorf("analyze: per-capture encryption requested but %w", keys.ErrUnavailable)
+	}
+	return want, scope, nil
 }
 
 // analyzeRaw persists req's content as a raw object, bypassing the
@@ -493,6 +516,12 @@ func (s *Service) analyzeRaw(ctx context.Context, req AnalyzeRequest, detectedTy
 	// the blob store whatever its size, the row keeps the ref.
 	if _, err := pipesteps.ExternalizeBinary(ctx, s.Store(ctx).Blobs(), obj); err != nil {
 		return "", fmt.Errorf("analyze raw: %w", err)
+	}
+	encryptScope := strings.TrimSpace(req.EncryptScope)
+	if req.Encrypt || encryptScope != "" {
+		if err := EncryptObject(ctx, s.keyProvider, obj, encryptScope, s.encryptLocator); err != nil {
+			return "", fmt.Errorf("analyze raw: %w", err)
+		}
 	}
 	cctx, rawEv := s.announce(ctx, events.TopicObjectRawStored, "service.analyze", obj.ID, obj)
 	if err := s.Store(cctx).Objects().Create(cctx, obj); err != nil {
@@ -638,6 +667,11 @@ func (s *Service) GetObject(ctx context.Context, id string) (*storage.KnowledgeO
 	}
 	if err := s.resolveContent(ctx, obj); err != nil {
 		return nil, err
+	}
+	if obj.Encrypted {
+		if err := s.DecryptObject(ctx, obj); err != nil {
+			return nil, err
+		}
 	}
 	return obj, nil
 }

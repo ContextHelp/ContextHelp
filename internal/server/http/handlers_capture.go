@@ -12,36 +12,42 @@ import (
 
 // capturePageRequest is the body for POST /api/v1/capture/page.
 type capturePageRequest struct {
-	URL         string     `json:"url"`
-	Title       string     `json:"title"`
-	Content     string     `json:"content"`
-	Pipeline    string     `json:"pipeline,omitempty"`
-	AuthState   string     `json:"auth_state,omitempty"`
-	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
-	ExpiryScope string     `json:"expiry_scope,omitempty"`
+	URL          string     `json:"url"`
+	Title        string     `json:"title"`
+	Content      string     `json:"content"`
+	Pipeline     string     `json:"pipeline,omitempty"`
+	AuthState    string     `json:"auth_state,omitempty"`
+	ExpiresAt    *time.Time `json:"expires_at,omitempty"`
+	ExpiryScope  string     `json:"expiry_scope,omitempty"`
+	Encrypt      bool       `json:"encrypt,omitempty"`
+	EncryptScope string     `json:"encrypt_scope,omitempty"`
 }
 
 // captureSelectionRequest is the body for POST /api/v1/capture/selection.
 type captureSelectionRequest struct {
-	URL         string     `json:"url"`
-	Title       string     `json:"title"`
-	Selection   string     `json:"selection"`
-	Pipeline    string     `json:"pipeline,omitempty"`
-	AuthState   string     `json:"auth_state,omitempty"`
-	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
-	ExpiryScope string     `json:"expiry_scope,omitempty"`
+	URL          string     `json:"url"`
+	Title        string     `json:"title"`
+	Selection    string     `json:"selection"`
+	Pipeline     string     `json:"pipeline,omitempty"`
+	AuthState    string     `json:"auth_state,omitempty"`
+	ExpiresAt    *time.Time `json:"expires_at,omitempty"`
+	ExpiryScope  string     `json:"expiry_scope,omitempty"`
+	Encrypt      bool       `json:"encrypt,omitempty"`
+	EncryptScope string     `json:"encrypt_scope,omitempty"`
 }
 
 // captureElementRequest is the body for POST /api/v1/capture/element.
 type captureElementRequest struct {
-	URL         string     `json:"url"`
-	Title       string     `json:"title"`
-	Selector    string     `json:"selector"`
-	Content     string     `json:"content"`
-	Pipeline    string     `json:"pipeline,omitempty"`
-	AuthState   string     `json:"auth_state,omitempty"`
-	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
-	ExpiryScope string     `json:"expiry_scope,omitempty"`
+	URL          string     `json:"url"`
+	Title        string     `json:"title"`
+	Selector     string     `json:"selector"`
+	Content      string     `json:"content"`
+	Pipeline     string     `json:"pipeline,omitempty"`
+	AuthState    string     `json:"auth_state,omitempty"`
+	ExpiresAt    *time.Time `json:"expires_at,omitempty"`
+	ExpiryScope  string     `json:"expiry_scope,omitempty"`
+	Encrypt      bool       `json:"encrypt,omitempty"`
+	EncryptScope string     `json:"encrypt_scope,omitempty"`
 }
 
 // CapturePage handles POST /api/v1/capture/page.
@@ -63,14 +69,16 @@ func CapturePage(svc *service.Service) http.HandlerFunc {
 			content = req.URL
 		}
 		enqueueCapture(w, r, svc, service.AnalyzeRequest{
-			Content:     content,
-			Type:        "url",
-			Pipeline:    req.Pipeline,
-			Source:      req.URL,
-			SourceTitle: req.Title,
-			AuthState:   req.AuthState,
-			ExpiresAt:   req.ExpiresAt,
-			ExpiryScope: req.ExpiryScope,
+			Content:      content,
+			Type:         "url",
+			Pipeline:     req.Pipeline,
+			Source:       req.URL,
+			SourceTitle:  req.Title,
+			AuthState:    req.AuthState,
+			ExpiresAt:    req.ExpiresAt,
+			ExpiryScope:  req.ExpiryScope,
+			Encrypt:      req.Encrypt,
+			EncryptScope: req.EncryptScope,
 		}, "url.generic")
 	}
 }
@@ -90,14 +98,16 @@ func CaptureSelection(svc *service.Service) http.HandlerFunc {
 		}
 
 		enqueueCapture(w, r, svc, service.AnalyzeRequest{
-			Content:     req.Selection,
-			Type:        "text",
-			Pipeline:    req.Pipeline,
-			Source:      req.URL,
-			SourceTitle: req.Title,
-			AuthState:   req.AuthState,
-			ExpiresAt:   req.ExpiresAt,
-			ExpiryScope: req.ExpiryScope,
+			Content:      req.Selection,
+			Type:         "text",
+			Pipeline:     req.Pipeline,
+			Source:       req.URL,
+			SourceTitle:  req.Title,
+			AuthState:    req.AuthState,
+			ExpiresAt:    req.ExpiresAt,
+			ExpiryScope:  req.ExpiryScope,
+			Encrypt:      req.Encrypt,
+			EncryptScope: req.EncryptScope,
 		}, "text.default")
 	}
 }
@@ -117,14 +127,16 @@ func CaptureElement(svc *service.Service) http.HandlerFunc {
 		}
 
 		enqueueCapture(w, r, svc, service.AnalyzeRequest{
-			Content:     req.Content,
-			Type:        "text",
-			Pipeline:    req.Pipeline,
-			Source:      req.URL,
-			SourceTitle: req.Title,
-			AuthState:   req.AuthState,
-			ExpiresAt:   req.ExpiresAt,
-			ExpiryScope: req.ExpiryScope,
+			Content:      req.Content,
+			Type:         "text",
+			Pipeline:     req.Pipeline,
+			Source:       req.URL,
+			SourceTitle:  req.Title,
+			AuthState:    req.AuthState,
+			ExpiresAt:    req.ExpiresAt,
+			ExpiryScope:  req.ExpiryScope,
+			Encrypt:      req.Encrypt,
+			EncryptScope: req.EncryptScope,
 		}, "text.default")
 	}
 }

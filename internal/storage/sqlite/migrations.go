@@ -369,6 +369,8 @@ var migrations = []migration{
 	{Version: 66, fn: migrate066GovernanceHoldsAndObligations},
 	// Migration 067: objects.expires_at + jobs.user_expires_at for capture expiry.
 	{Version: 67, fn: migrate067ObjectExpiry},
+	// Migration 068: per-capture & per-watch encryption metadata columns.
+	{Version: 68, fn: migrate068CaptureEncryption},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,

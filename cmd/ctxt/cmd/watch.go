@@ -124,6 +124,8 @@ func init() {
 
 	watchStartCmd.Flags().String("ttl", "", "expire every watched capture after this duration (e.g. 24h, 7d)")
 	watchStartCmd.Flags().String("expires-scope", "", "optional natural-language description of what to expire on watched captures")
+	watchStartCmd.Flags().Bool("encrypt", false, "encrypt every watched capture at rest using the configured key provider")
+	watchStartCmd.Flags().String("encrypt-scope", "", "optional natural-language description of what to encrypt on watched captures; implies --encrypt")
 
 	// start blocks running watchers; treat as a Write effect (it
 	// enqueues ingestion jobs while running).
@@ -265,8 +267,19 @@ func runWatchStart(cmd *cobra.Command, _ []string) error {
 	} else if watchExpiryScope != "" {
 		return fmt.Errorf("--expires-scope requires --ttl (or watch.expiry_ttl in config)")
 	}
+	watchEncrypt, _ := cmd.Flags().GetBool("encrypt")
+	if !cmd.Flags().Changed("encrypt") {
+		watchEncrypt = cfg.Watch.Encrypt
+	}
+	watchEncryptScope, _ := cmd.Flags().GetString("encrypt-scope")
+	if watchEncryptScope == "" {
+		watchEncryptScope = cfg.Watch.EncryptScope
+	}
+	if watchEncryptScope != "" {
+		watchEncrypt = true
+	}
 
-	ing := watchIngester{c: client, profile: activeProfileName(cmd), expiryTTL: watchTTL, expiryScope: watchExpiryScope}
+	ing := watchIngester{c: client, profile: activeProfileName(cmd), expiryTTL: watchTTL, expiryScope: watchExpiryScope, encrypt: watchEncrypt, encryptScope: watchEncryptScope}
 	records := loggedRecords{FileRecords: store, w: errOut}
 	fmt.Fprintf(out, "Watching for instance %s (%s)\n", r.Key, client.URL())
 	fmt.Fprintf(out, "State file: %s\n", store.Path())
@@ -307,6 +320,8 @@ func runWatchStart(cmd *cobra.Command, _ []string) error {
 			Status:          "active",
 			ExpiryTTL:       watchTTLStr,
 			ExpiryScope:     watchExpiryScope,
+			Encrypt:         watchEncrypt,
+			EncryptScope:    watchEncryptScope,
 		})
 		fmt.Fprintf(out, "Directory watcher: %s (mode=%s)\n", dir, mode)
 	}

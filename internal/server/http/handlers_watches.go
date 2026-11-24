@@ -27,6 +27,8 @@ func CreateWatch(svc *service.Service, mgr *watcher.Manager) http.HandlerFunc {
 			PipelineOverride string   `json:"pipeline_override"`
 			ExpiryTTL        string   `json:"expiry_ttl,omitempty"`
 			ExpiryScope      string   `json:"expiry_scope,omitempty"`
+			Encrypt          bool     `json:"encrypt,omitempty"`
+			EncryptScope     string   `json:"encrypt_scope,omitempty"`
 			Paused           bool     `json:"paused"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -68,6 +70,8 @@ func CreateWatch(svc *service.Service, mgr *watcher.Manager) http.HandlerFunc {
 			PipelineOverride: req.PipelineOverride,
 			ExpiryTTL:        strings.TrimSpace(req.ExpiryTTL),
 			ExpiryScope:      strings.TrimSpace(req.ExpiryScope),
+			Encrypt:          req.Encrypt || strings.TrimSpace(req.EncryptScope) != "",
+			EncryptScope:     strings.TrimSpace(req.EncryptScope),
 			CreatedAt:        now,
 			UpdatedAt:        now,
 		}
@@ -132,6 +136,8 @@ func UpdateWatch(svc *service.Service, mgr *watcher.Manager) http.HandlerFunc {
 			PipelineOverride *string   `json:"pipeline_override"`
 			ExpiryTTL        *string   `json:"expiry_ttl"`
 			ExpiryScope      *string   `json:"expiry_scope"`
+			Encrypt          *bool     `json:"encrypt"`
+			EncryptScope     *string   `json:"encrypt_scope"`
 		}
 		if err := decodeOptionalBody(r, &patch); err != nil {
 			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid JSON body")
@@ -161,6 +167,15 @@ func UpdateWatch(svc *service.Service, mgr *watcher.Manager) http.HandlerFunc {
 		}
 		if patch.ExpiryScope != nil {
 			cfg.ExpiryScope = strings.TrimSpace(*patch.ExpiryScope)
+		}
+		if patch.Encrypt != nil {
+			cfg.Encrypt = *patch.Encrypt
+		}
+		if patch.EncryptScope != nil {
+			cfg.EncryptScope = strings.TrimSpace(*patch.EncryptScope)
+			if cfg.EncryptScope != "" {
+				cfg.Encrypt = true
+			}
 		}
 		cfg.UpdatedAt = time.Now()
 		if err := svc.Store(r.Context()).Watches().UpdateWatch(r.Context(), cfg); err != nil {

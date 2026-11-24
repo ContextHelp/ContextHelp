@@ -32,6 +32,8 @@ type AnalyzeRequest struct {
 	SourceKey       string     `json:"source_key,omitempty"`
 	ExpiresAt       *time.Time `json:"expires_at,omitempty"`
 	ExpiryScope     string     `json:"expiry_scope,omitempty"`
+	Encrypt         bool       `json:"encrypt,omitempty"`
+	EncryptScope    string     `json:"encrypt_scope,omitempty"`
 	Force           bool       `json:"force,omitempty"`
 	Mentions        []string   `json:"mentions,omitempty"`
 	Hints           []string   `json:"hints,omitempty"`

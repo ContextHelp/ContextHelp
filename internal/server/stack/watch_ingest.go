@@ -22,6 +22,7 @@ func (s serviceIngester) Analyze(ctx context.Context, req watcher.Request) (stri
 		Content: req.Content, Type: req.Type, Source: req.Source,
 		Pipeline: req.Pipeline, KnownHash: req.KnownHash,
 		ExpiresAt: req.ExpiresAt, ExpiryScope: req.ExpiryScope,
+		Encrypt: req.Encrypt, EncryptScope: req.EncryptScope,
 	})
 }
 
