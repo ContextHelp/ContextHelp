@@ -44,11 +44,16 @@ type KnowledgeObject struct {
 	// the object should be expired/redacted when ExpiresAt is reached (e.g.
 	// "PII and phone numbers" or "raw content, keep summary"). Empty means
 	// erase the entire object.
-	ExpiryScope string    `json:"expiry_scope,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	FTSIndexed  bool      `json:"fts_indexed"`
-	ProfileID   string    `json:"profile_id,omitempty"` // owning profile; empty = global
+	ExpiryScope string `json:"expiry_scope,omitempty"`
+	// Encrypted marks objects that carry per-capture field or selective-span
+	// encryption (ctxt:enc:v1:... / «ctxt:enc:v1:...»). EncryptScope records
+	// the optional natural-language scope applied (empty = whole content).
+	Encrypted    bool      `json:"encrypted,omitempty"`
+	EncryptScope string    `json:"encrypt_scope,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	FTSIndexed   bool      `json:"fts_indexed"`
+	ProfileID    string    `json:"profile_id,omitempty"` // owning profile; empty = global
 	// SessionID groups objects captured in one work session (ADR-067): an
 	// opaque id the ambient daemon cuts client-side. Soft FK, no sessions
 	// row is required; empty for non-ambient captures. First capture wins
@@ -420,6 +425,10 @@ type Job struct {
 	// UserExpiryScope is the optional natural-language description of what
 	// data to expire when UserExpiresAt is reached.
 	UserExpiryScope string `json:"user_expiry_scope,omitempty"`
+	// UserEncrypt / UserEncryptScope request per-capture encryption on the
+	// resulting KnowledgeObject (whole content or natural-language scope).
+	UserEncrypt      bool   `json:"user_encrypt,omitempty"`
+	UserEncryptScope string `json:"user_encrypt_scope,omitempty"`
 	// UserAmbient is the ambient-capture context the enqueue client sent
 	// (ADR-066/067): source, fingerprint, session id and free-form client
 	// metadata. The worker lands it on the draft. Stored as one JSON
@@ -843,6 +852,8 @@ type WatchConfig struct {
 	PipelineOverride string    `json:"pipeline_override"`
 	ExpiryTTL        string    `json:"expiry_ttl,omitempty"`
 	ExpiryScope      string    `json:"expiry_scope,omitempty"`
+	Encrypt          bool      `json:"encrypt,omitempty"`
+	EncryptScope     string    `json:"encrypt_scope,omitempty"`
 	LastError        string    `json:"last_error"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`

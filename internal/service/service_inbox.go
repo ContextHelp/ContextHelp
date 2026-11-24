@@ -65,6 +65,13 @@ func (s *Service) CaptureToInbox(ctx context.Context, req InboxCaptureRequest) (
 		UpdatedAt:   now,
 	}
 
+	encryptScope := strings.TrimSpace(req.EncryptScope)
+	if req.Encrypt || encryptScope != "" {
+		if err := EncryptObject(ctx, s.keyProvider, obj, encryptScope, s.encryptLocator); err != nil {
+			return nil, fmt.Errorf("capture to inbox: %w", err)
+		}
+	}
+
 	if err := s.Store(ctx).Objects().Create(ctx, obj); err != nil {
 		return nil, fmt.Errorf("capture to inbox: %w", err)
 	}
@@ -132,9 +139,11 @@ func (s *Service) TriageInbox(ctx context.Context, id string, req TriageRequest)
 		// auto-tagger merge preserves them as Tag{Source:"user"}.
 		UserHints: req.Hints,
 		// the item's profile attributes the processed object too.
-		UserProfile:     obj.ProfileID,
-		UserExpiresAt:   obj.ExpiresAt,
-		UserExpiryScope: obj.ExpiryScope,
+		UserProfile:      obj.ProfileID,
+		UserExpiresAt:    obj.ExpiresAt,
+		UserExpiryScope:  obj.ExpiryScope,
+		UserEncrypt:      obj.Encrypted,
+		UserEncryptScope: obj.EncryptScope,
 	}
 	if err := s.Queue.Enqueue(ctx, job); err != nil {
 		// Compensate: return the item to the inbox.

@@ -21,12 +21,14 @@ var storageCmd = &cobra.Command{
 var storageEncryptCmd = &cobra.Command{
 	Use:   "encrypt",
 	Short: "Encrypt an existing plaintext SQLite database and local blobs at rest",
+	Long:  "Migrate an existing plaintext SQLite database (via crash-safe VACUUM INTO) and any plaintext local blobs to encrypted at-rest storage using the configured storage.encryption key provider.",
 	RunE:  runStorageEncrypt,
 }
 
 var storageRekeyCmd = &cobra.Command{
 	Use:   "rekey",
 	Short: "Rotate storage encryption keys (KEK rewrap or full SQLite DEK rekey)",
+	Long:  "Rotate the key-encryption key wrapping the SQLite database key envelope (default, O(1)) or rekey the database pages with a fresh data-encryption key (--rewrap-only=false).",
 	RunE:  runStorageRekey,
 }
 
@@ -36,7 +38,22 @@ func init() {
 	storageRekeyCmd.Flags().Bool("rewrap-only", true, "rotate KEK envelope only without rewriting SQLite pages")
 	storageRekeyCmd.Flags().String("to-key", "", "target KEK id (defaults to provider current key)")
 	cliconv.WithSideEffect(storageEncryptCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(storageEncryptCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(storageEncryptCmd, []cliconv.Example{
+		{Title: "Encrypt existing SQLite database and blobs", Command: "dpkms storage encrypt"},
+	})
+	cliconv.WithNextSteps(storageEncryptCmd, []cliconv.NextStep{
+		{When: "after migration", Suggest: "dpkms doctor", Reason: "verify encryption health and key provider unlock"},
+	})
 	cliconv.WithSideEffect(storageRekeyCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(storageRekeyCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(storageRekeyCmd, []cliconv.Example{
+		{Title: "Rotate KEK envelope (O(1))", Command: "dpkms storage rekey --to-key k2"},
+		{Title: "Full SQLite DEK rekey", Command: "dpkms storage rekey --rewrap-only=false"},
+	})
+	cliconv.WithNextSteps(storageRekeyCmd, []cliconv.NextStep{
+		{When: "after rekeying", Suggest: "dpkms doctor", Reason: "confirm the daemon unlocks cleanly with the rotated key"},
+	})
 }
 
 func runStorageEncrypt(cmd *cobra.Command, _ []string) error {

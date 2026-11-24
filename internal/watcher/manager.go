@@ -491,6 +491,10 @@ func (m *Manager) processFile(ctx context.Context, cfg *WatchConfig, absPath str
 			return
 		}
 	}
+	if scope := strings.TrimSpace(cfg.EncryptScope); cfg.Encrypt || scope != "" {
+		req.Encrypt = true
+		req.EncryptScope = scope
+	}
 
 	jobID, err := m.ingester.Analyze(ctx, req)
 	if err != nil {

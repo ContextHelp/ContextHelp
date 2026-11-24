@@ -101,6 +101,8 @@ func init() {
 	captureCmd.Flags().String("expires", "", "auto-expire capture at this time (RFC3339, date, or expression like 'in 7d', 'tomorrow 9am')")
 	captureCmd.Flags().String("ttl", "", "auto-expire capture after this duration (e.g. 30m, 24h, 7d, 2w)")
 	captureCmd.Flags().String("expires-scope", "", "optional natural-language description of what to expire (e.g. 'PII and phone numbers', 'raw content, keep summary'); default expires whole object")
+	captureCmd.Flags().Bool("encrypt", false, "encrypt this capture's data at rest using the configured key provider")
+	captureCmd.Flags().String("encrypt-scope", "", "optional natural-language description of which data to encrypt (e.g. 'PII and phone numbers', 'raw content, keep summary'); implies --encrypt")
 	captureCmd.Flags().Bool("wait", false, "block until job completes")
 
 	// --- Track 2 / ambient daemon flags ---
@@ -323,6 +325,15 @@ func captureOnce(ctx context.Context, cmd *cobra.Command, args []string) error {
 			reqBody["expiry_scope"] = expiryScope
 		}
 	}
+	encryptFlag, _ := cmd.Flags().GetBool("encrypt")
+	encryptScope, _ := cmd.Flags().GetString("encrypt-scope")
+	encryptScope = strings.TrimSpace(encryptScope)
+	if encryptFlag || encryptScope != "" {
+		reqBody["encrypt"] = true
+		if encryptScope != "" {
+			reqBody["encrypt_scope"] = encryptScope
+		}
+	}
 
 	if inbox {
 		// The inbox endpoint takes no content_encoding: binary would
@@ -330,7 +341,7 @@ func captureOnce(ctx context.Context, cmd *cobra.Command, args []string) error {
 		if contentEncoding != "" {
 			return fmt.Errorf("binary content is not supported with --inbox; capture it without --inbox")
 		}
-		return postInboxCapture(ctx, client, content, source, contentType, hints, mentions, expiresAt, expiryScope, cmd)
+		return postInboxCapture(ctx, client, content, source, contentType, hints, mentions, expiresAt, expiryScope, encryptFlag || encryptScope != "", encryptScope, cmd)
 	}
 
 	var result struct {
@@ -361,6 +372,8 @@ func postInboxCapture(
 	hints, mentions []string,
 	expiresAt *time.Time,
 	expiryScope string,
+	encrypt bool,
+	encryptScope string,
 	cmd *cobra.Command,
 ) error {
 	body := map[string]any{
@@ -373,6 +386,12 @@ func postInboxCapture(
 		body["expires_at"] = expiresAt.Format(time.RFC3339)
 		if expiryScope != "" {
 			body["expiry_scope"] = expiryScope
+		}
+	}
+	if encrypt {
+		body["encrypt"] = true
+		if encryptScope != "" {
+			body["encrypt_scope"] = encryptScope
 		}
 	}
 	if note, _ := cmd.Flags().GetString("note"); note != "" {

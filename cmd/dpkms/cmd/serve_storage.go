@@ -37,9 +37,16 @@ func serveStorageTarget(c *config.Config) (typ, path string) {
 
 // openServeStorage opens and migrates the storage driver serve runs on.
 func openServeStorage(ctx context.Context, c *config.Config) (storage.StorageDriver, error) {
+	drv, _, err := openServeStorageWithKeys(ctx, c)
+	return drv, err
+}
+
+// openServeStorageWithKeys opens and migrates the storage driver and returns
+// the unlocked keys.Provider (nil when storage.encryption.enabled is false).
+func openServeStorageWithKeys(ctx context.Context, c *config.Config) (storage.StorageDriver, keys.Provider, error) {
 	kp, err := keys.Open(ctx, c.Storage.Encryption, c.Secrets)
 	if err != nil {
-		return nil, fmt.Errorf("unlock storage encryption keys: %w", err)
+		return nil, nil, fmt.Errorf("unlock storage encryption keys: %w", err)
 	}
 	storageType, storagePath := serveStorageTarget(c)
 	opts := []storageutil.OpenOption{
@@ -51,13 +58,13 @@ func openServeStorage(ctx context.Context, c *config.Config) (storage.StorageDri
 	}
 	driver, err := storageutil.Open(storageType, storagePath, c.Storage.Blob, opts...)
 	if err != nil {
-		return nil, fmt.Errorf("init storage: %w", err)
+		return nil, nil, fmt.Errorf("init storage: %w", err)
 	}
 	if err := driver.Init(ctx); err != nil {
 		_ = driver.Close(ctx)
-		return nil, fmt.Errorf("init storage: %w", err)
+		return nil, nil, fmt.Errorf("init storage: %w", err)
 	}
-	return driver, nil
+	return driver, kp, nil
 }
 
 // serveLockBudget is how long serve keeps retrying a held database lock

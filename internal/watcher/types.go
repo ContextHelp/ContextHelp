@@ -18,13 +18,15 @@ type WatchConfig = storage.WatchConfig
 // The package keeps its own type so a watcher links neither the service
 // layer nor the HTTP client: the Ingester behind it decides.
 type Request struct {
-	Content     string
-	Type        string
-	Source      string
-	Pipeline    string
-	KnownHash   string
-	ExpiresAt   *time.Time
-	ExpiryScope string
+	Content      string
+	Type         string
+	Source       string
+	Pipeline     string
+	KnownHash    string
+	ExpiresAt    *time.Time
+	ExpiryScope  string
+	Encrypt      bool
+	EncryptScope string
 }
 
 // Analyzer enqueues content and returns the ID of the dpkms job that will

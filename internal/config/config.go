@@ -2185,6 +2185,11 @@ type WatchConfig struct {
 	// ExpiryScope optionally describes in natural language which data to expire
 	// when ExpiryTTL elapses (empty = erase the entire object).
 	ExpiryScope string `mapstructure:"expiry_scope" yaml:"expiry_scope"`
+	// Encrypt requests per-capture encryption for every item ingested by this watch.
+	Encrypt bool `mapstructure:"encrypt" yaml:"encrypt"`
+	// EncryptScope optionally describes in natural language which data to encrypt
+	// on watched captures (empty = whole content). Implies Encrypt when non-empty.
+	EncryptScope string `mapstructure:"encrypt_scope" yaml:"encrypt_scope"`
 	// Clipboard configures the clipboard watcher.
 	Clipboard ClipboardWatchConfig `mapstructure:"clipboard" yaml:"clipboard"`
 }

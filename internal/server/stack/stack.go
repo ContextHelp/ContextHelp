@@ -39,6 +39,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/github"
 	"github.com/ideacrafterslabs/ctxt/internal/ingest"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
+	"github.com/ideacrafterslabs/ctxt/internal/keys"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/policy"
@@ -64,6 +65,9 @@ type Inputs struct {
 	Config *config.Config
 	// Driver is the initialized storage driver the stack serves.
 	Driver storage.StorageDriver
+	// KeyProvider is the optional unlocked storage KEK provider for
+	// per-capture / per-watch encryption.
+	KeyProvider keys.Provider
 	// Access is the effective access class (config.Access*), as
 	// ResolveInboundAuth returns it.
 	Access string
@@ -513,16 +517,7 @@ func Build(in Inputs) (*Stack, error) {
 	if s.Authority, err = openAuthority(in, cfg); err != nil {
 		return nil, err
 	}
-	svcOpts := []service.Option{
-		service.WithPolicyPublisher(pol.Publisher()),
-		service.WithReservedStepNames(builtins.IsStepName),
-		// A server has no login keychain: registry tokens come from
-		// secrets.backend under registry/<name>.
-		service.WithRegistryTokens(registry.SecretTokens(func() (secret.Store, error) { return secretsStore, nil })),
-	}
-	if s.Authority != nil {
-		svcOpts = append(svcOpts, service.WithAuthorityAccess(s.Authority))
-	}
+	svcOpts := buildServiceOptions(in, pol, secretsStore, s.Authority)
 	s.Service = service.NewWithOptions(
 		in.Driver, s.Queue, s.Pipelines, s.Engine, in.StepsPath, bus, svcOpts, *cfg,
 	)
@@ -598,3 +593,20 @@ func Build(in Inputs) (*Stack, error) {
 
 // scopeID is the part of a scope address after the last slash.
 func scopeID(addr string) string { return addr[strings.LastIndex(addr, "/")+1:] }
+
+func buildServiceOptions(in Inputs, pol *policy.Bootstrap, secretsStore secret.Store, auth *bosaccess.Peer) []service.Option {
+	opts := []service.Option{
+		service.WithPolicyPublisher(pol.Publisher()),
+		service.WithReservedStepNames(builtins.IsStepName),
+		// A server has no login keychain: registry tokens come from
+		// secrets.backend under registry/<name>.
+		service.WithRegistryTokens(registry.SecretTokens(func() (secret.Store, error) { return secretsStore, nil })),
+	}
+	if auth != nil {
+		opts = append(opts, service.WithAuthorityAccess(auth))
+	}
+	if in.KeyProvider != nil {
+		opts = append(opts, service.WithKeyProvider(in.KeyProvider))
+	}
+	return opts
+}

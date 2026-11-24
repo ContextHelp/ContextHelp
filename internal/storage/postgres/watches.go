@@ -22,13 +22,13 @@ func (s *WatchStore) CreateWatch(ctx context.Context, w *storage.WatchConfig) er
 		return fmt.Errorf("marshal exclude_patterns: %w", err)
 	}
 	_, err = s.db.ExecContext(ctx, `INSERT INTO watches
-		(id, path, mode, include_patterns, exclude_patterns, debounce_ms, status, pipeline_override, last_error, created_at, updated_at, expiry_ttl, expiry_scope)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+		(id, path, mode, include_patterns, exclude_patterns, debounce_ms, status, pipeline_override, last_error, created_at, updated_at, expiry_ttl, expiry_scope, encrypt, encrypt_scope)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
 		w.ID, w.Path, w.Mode,
 		inclJSON, exclJSON,
 		w.DebounceMS, w.Status, w.PipelineOverride, w.LastError,
 		w.CreatedAt.UTC(), w.UpdatedAt.UTC(),
-		w.ExpiryTTL, w.ExpiryScope,
+		w.ExpiryTTL, w.ExpiryScope, w.Encrypt, w.EncryptScope,
 	)
 	if err != nil {
 		return fmt.Errorf("create watch: %w", err)
@@ -38,13 +38,13 @@ func (s *WatchStore) CreateWatch(ctx context.Context, w *storage.WatchConfig) er
 
 func (s *WatchStore) GetWatch(ctx context.Context, id string) (*storage.WatchConfig, error) {
 	row := s.db.QueryRowContext(ctx, `SELECT
-		id, path, mode, include_patterns, exclude_patterns, debounce_ms, status, pipeline_override, last_error, created_at, updated_at, expiry_ttl, expiry_scope
+		id, path, mode, include_patterns, exclude_patterns, debounce_ms, status, pipeline_override, last_error, created_at, updated_at, expiry_ttl, expiry_scope, encrypt, encrypt_scope
 		FROM watches WHERE id = $1`, id)
 	return scanWatch(row)
 }
 
 func (s *WatchStore) ListWatches(ctx context.Context, status string) ([]*storage.WatchConfig, error) {
-	query := `SELECT id, path, mode, include_patterns, exclude_patterns, debounce_ms, status, pipeline_override, last_error, created_at, updated_at, expiry_ttl, expiry_scope FROM watches`
+	query := `SELECT id, path, mode, include_patterns, exclude_patterns, debounce_ms, status, pipeline_override, last_error, created_at, updated_at, expiry_ttl, expiry_scope, encrypt, encrypt_scope FROM watches`
 	var args []any
 	if status != "" {
 		query += " WHERE status = $1"
@@ -72,11 +72,11 @@ func (s *WatchStore) UpdateWatch(ctx context.Context, w *storage.WatchConfig) er
 	}
 	result, err := s.db.ExecContext(ctx, `UPDATE watches SET
 		path=$1, mode=$2, include_patterns=$3, exclude_patterns=$4, debounce_ms=$5,
-		status=$6, pipeline_override=$7, last_error=$8, updated_at=$9, expiry_ttl=$10, expiry_scope=$11
-		WHERE id=$12`,
+		status=$6, pipeline_override=$7, last_error=$8, updated_at=$9, expiry_ttl=$10, expiry_scope=$11, encrypt=$12, encrypt_scope=$13
+		WHERE id=$14`,
 		w.Path, w.Mode, inclJSON, exclJSON, w.DebounceMS,
 		w.Status, w.PipelineOverride, w.LastError, w.UpdatedAt.UTC(),
-		w.ExpiryTTL, w.ExpiryScope,
+		w.ExpiryTTL, w.ExpiryScope, w.Encrypt, w.EncryptScope,
 		w.ID,
 	)
 	if err != nil {
@@ -162,7 +162,7 @@ func scanWatch(row *sql.Row) (*storage.WatchConfig, error) {
 		&w.ID, &w.Path, &w.Mode,
 		&inclJSON, &exclJSON,
 		&w.DebounceMS, &w.Status, &w.PipelineOverride, &w.LastError,
-		&w.CreatedAt, &w.UpdatedAt, &w.ExpiryTTL, &w.ExpiryScope,
+		&w.CreatedAt, &w.UpdatedAt, &w.ExpiryTTL, &w.ExpiryScope, &w.Encrypt, &w.EncryptScope,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -186,7 +186,7 @@ func scanWatchRow(rows *sql.Rows) (*storage.WatchConfig, error) {
 		&w.ID, &w.Path, &w.Mode,
 		&inclJSON, &exclJSON,
 		&w.DebounceMS, &w.Status, &w.PipelineOverride, &w.LastError,
-		&w.CreatedAt, &w.UpdatedAt, &w.ExpiryTTL, &w.ExpiryScope,
+		&w.CreatedAt, &w.UpdatedAt, &w.ExpiryTTL, &w.ExpiryScope, &w.Encrypt, &w.EncryptScope,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("scan watch row: %w", err)

@@ -20,9 +20,11 @@ import (
 type watchIngester struct {
 	c *dpkmsclient.Client
 	// profile attributes what the watcher submits; "" attributes none.
-	profile     string
-	expiryTTL   time.Duration
-	expiryScope string
+	profile      string
+	expiryTTL    time.Duration
+	expiryScope  string
+	encrypt      bool
+	encryptScope string
 }
 
 var _ watcher.Ingester = watchIngester{}
@@ -37,10 +39,19 @@ func (w watchIngester) Analyze(ctx context.Context, req watcher.Request) (string
 			expiryScope = w.expiryScope
 		}
 	}
+	enc := req.Encrypt || w.encrypt
+	scope := req.EncryptScope
+	if scope == "" {
+		scope = w.encryptScope
+	}
+	if scope != "" {
+		enc = true
+	}
 	return w.c.Analyze(ctx, dpkmsclient.AnalyzeRequest{
 		Content: req.Content, Type: req.Type, Source: req.Source,
 		Pipeline: req.Pipeline, KnownHash: req.KnownHash, Profile: w.profile,
 		ExpiresAt: expiresAt, ExpiryScope: expiryScope,
+		Encrypt: enc, EncryptScope: scope,
 	})
 }
 

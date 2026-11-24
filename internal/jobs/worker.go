@@ -26,6 +26,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/events"
+	"github.com/ideacrafterslabs/ctxt/internal/keys"
 	"github.com/ideacrafterslabs/ctxt/internal/mentions"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
@@ -80,22 +81,24 @@ type FanOutFunc func(ctx context.Context, objectID string) error
 
 // WorkerPool runs pipeline jobs from the queue.
 type WorkerPool struct {
-	queue        *Queue
-	pipelines    pipeline.Registry
-	store        storage.StorageDriver
-	bus          kitbus.Bus
-	workers      int
-	staleTimeout time.Duration
-	pollInterval time.Duration
-	drainTimeout time.Duration
-	maxHops      int
-	maxRetries   int
-	fanOut       FanOutFunc
-	executor     PipelineExecutor       // optional Stage 1 pipeline executor (nil = in-process)
-	handlers     map[string]TaskHandler // task job type -> handler (tasks.go)
-	inflight     sync.Map               // task job ID -> *taskClaim, running in this pool
-	leaseTTL     time.Duration          // task job lease; renewed every leaseTTL/3
-	recoverEvery time.Duration          // stale recovery interval
+	queue          *Queue
+	pipelines      pipeline.Registry
+	store          storage.StorageDriver
+	bus            kitbus.Bus
+	workers        int
+	staleTimeout   time.Duration
+	pollInterval   time.Duration
+	drainTimeout   time.Duration
+	maxHops        int
+	maxRetries     int
+	fanOut         FanOutFunc
+	executor       PipelineExecutor       // optional Stage 1 pipeline executor (nil = in-process)
+	handlers       map[string]TaskHandler // task job type -> handler (tasks.go)
+	inflight       sync.Map               // task job ID -> *taskClaim, running in this pool
+	keyProvider    keys.Provider
+	encryptLocator keys.SpanLocator
+	leaseTTL       time.Duration // task job lease; renewed every leaseTTL/3
+	recoverEvery   time.Duration // stale recovery interval
 }
 
 // NewWorkerPool creates a worker pool.
@@ -239,7 +242,124 @@ func (p *WorkerPool) processWithHops(ctx context.Context, job *storage.Job) (*st
 	}
 	// Binary content cannot live in the row (a TEXT column), whether or
 	// not the pipeline externalizes: it goes to the blob store here.
-	return steps.ExternalizeBinary(ctx, p.store.Blobs(), draft)
+	draft, err = steps.ExternalizeBinary(ctx, p.store.Blobs(), draft)
+	if err != nil {
+		return nil, err
+	}
+	if job.UserEncrypt || strings.TrimSpace(job.UserEncryptScope) != "" {
+		if err := p.sealDraft(ctx, draft, strings.TrimSpace(job.UserEncryptScope)); err != nil {
+			return nil, fmt.Errorf("encrypt capture draft: %w", err)
+		}
+	}
+	return draft, nil
+}
+
+// SetKeyProvider configures the KEK provider (and optional NL span locator)
+// used when a job requests per-capture encryption.
+func (p *WorkerPool) SetKeyProvider(kp keys.Provider, locator keys.SpanLocator) {
+	p.keyProvider = kp
+	p.encryptLocator = locator
+}
+
+func (p *WorkerPool) sealDraft(ctx context.Context, obj *storage.KnowledgeObject, scope string) error {
+	if p.keyProvider == nil {
+		return fmt.Errorf("worker key provider: %w", keys.ErrUnavailable)
+	}
+	plan := keys.ClassifyEncryptScope(scope)
+	if obj.TextContent == "" && obj.RawContent != "" && !strings.HasPrefix(obj.RawContent, "blob://") {
+		obj.TextContent = obj.RawContent
+	}
+	sealer := draftSealer{ctx: ctx, p: p.keyProvider, id: obj.ID, scope: scope, plan: plan, locator: p.encryptLocator}
+	if err := sealer.sealBodies(obj); err != nil {
+		return err
+	}
+	if err := sealer.sealSummaries(obj); err != nil {
+		return err
+	}
+	if err := sealer.sealInboxNote(obj); err != nil {
+		return err
+	}
+	obj.Encrypted = true
+	obj.EncryptScope = scope
+	return nil
+}
+
+type draftSealer struct {
+	ctx     context.Context
+	p       keys.Provider
+	id      string
+	scope   string
+	plan    keys.EncryptScopePlan
+	locator keys.SpanLocator
+}
+
+func (s draftSealer) hasSelective() bool {
+	return len(s.plan.Patterns) > 0 || s.plan.NeedsLLM
+}
+
+func (s draftSealer) sealField(f, val string) (string, error) {
+	return keys.SealFieldText(s.ctx, s.p, val, []byte("object:"+s.id+":"+f))
+}
+
+func (s draftSealer) sealSpans(f, val string) (string, error) {
+	out, _, err := keys.SealSelectiveText(s.ctx, s.p, val, s.scope, []byte("object:"+s.id+":"+f+":span"), s.plan, s.locator)
+	return out, err
+}
+
+func (s draftSealer) sealBodies(obj *storage.KnowledgeObject) error {
+	var fn func(string, string) (string, error)
+	switch {
+	case s.plan.WholeContent || s.plan.RawContent:
+		fn = s.sealField
+	case s.hasSelective():
+		fn = s.sealSpans
+	default:
+		return nil
+	}
+	var err error
+	if obj.RawContent, err = fn("raw_content", obj.RawContent); err != nil {
+		return err
+	}
+	obj.TextContent, err = fn("text_content", obj.TextContent)
+	return err
+}
+
+func (s draftSealer) sealSummaries(obj *storage.KnowledgeObject) error {
+	var fn func(string, string) (string, error)
+	switch {
+	case s.plan.WholeContent || s.plan.Summaries:
+		fn = s.sealField
+	case !s.plan.RawContent && s.hasSelective():
+		fn = s.sealSpans
+	default:
+		return nil
+	}
+	for i, sum := range obj.Summaries {
+		enc, err := fn("summaries", sum)
+		if err != nil {
+			return err
+		}
+		obj.Summaries[i] = enc
+	}
+	return nil
+}
+
+func (s draftSealer) sealInboxNote(obj *storage.KnowledgeObject) error {
+	var fn func(string, string) (string, error)
+	switch {
+	case s.plan.WholeContent || s.plan.InboxNote:
+		fn = s.sealField
+	case !s.plan.RawContent && obj.InboxNote != "" && s.hasSelective():
+		fn = s.sealSpans
+	default:
+		return nil
+	}
+	enc, err := fn("inbox_note", obj.InboxNote)
+	if err != nil {
+		return err
+	}
+	obj.InboxNote = enc
+	return nil
 }
 
 // executeWithExecutor runs Stage 1 through the installed PipelineExecutor,

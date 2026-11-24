@@ -76,7 +76,7 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
 		remind_at, reminded_at, graph_json, source_key, projected_fts_body,
-		projection_version, profile_id, classes, projected_fts_body_masked, session_id, expires_at, expiry_scope
+		projection_version, profile_id, classes, projected_fts_body_masked, session_id, expires_at, expiry_scope, encrypted, encrypt_scope
 	) VALUES (
 		$1, $2, $3, $4, $5, $6,
 		$7, $8, $9, $10, $11,
@@ -84,7 +84,7 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		$16, $17, $18, $19,
 		$20, $21, $22, $23, $24,
 		$25, $26, $27, $28, $29,
-		$30, $31, $32, $33, $34, $35, $36
+		$30, $31, $32, $33, $34, $35, $36, $37, $38
 	)`,
 		obj.ID, obj.Type, obj.Subtype, w.rawContent, obj.ContentType, w.textContent,
 		w.metadata, w.summaries, f.sections, f.tags, f.mentions,
@@ -92,7 +92,7 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		f.influences, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.CreatedAt.UTC(), obj.UpdatedAt.UTC(), w.ftsIndexed, obj.Status, obj.InboxNote,
 		f.remindAt, f.remindedAt, w.graphJSON, obj.SourceKey, w.ftsBody,
-		indexsig.ProjectionVersion, obj.ProfileID, f.classes, w.maskedFTS, nullSessionID(obj.SessionID), f.expiresAt, obj.ExpiryScope,
+		indexsig.ProjectionVersion, obj.ProfileID, f.classes, w.maskedFTS, nullSessionID(obj.SessionID), f.expiresAt, obj.ExpiryScope, obj.Encrypted, obj.EncryptScope,
 	)
 	if err != nil {
 		if errors.Is(constraintErr(err), storage.ErrAlreadyExists) {
@@ -326,8 +326,8 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		reinforcement_count=$17, last_reinforced_at=$18,
 		updated_at=$19, fts_indexed=$20, status=$21, inbox_note=$22,
 		remind_at=$23, reminded_at=$24, graph_json=$25, projected_fts_body=$26,
-		projection_version=$27, profile_id=$28, classes=$29, projected_fts_body_masked=$30, session_id=$31, expires_at=$32, expiry_scope=$33
-	WHERE id=$34`,
+		projection_version=$27, profile_id=$28, classes=$29, projected_fts_body_masked=$30, session_id=$31, expires_at=$32, expiry_scope=$33, encrypted=$34, encrypt_scope=$35
+	WHERE id=$36`,
 		obj.Type, obj.Subtype, w.rawContent, obj.ContentType, w.textContent,
 		w.metadata, w.summaries, f.sections, f.tags, f.mentions,
 		f.decisions, f.tasks, obj.Pipeline, obj.Source,
@@ -335,7 +335,7 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.UpdatedAt.UTC(), w.ftsIndexed, obj.Status, obj.InboxNote,
 		f.remindAt, f.remindedAt, w.graphJSON, w.ftsBody,
-		indexsig.ProjectionVersion, obj.ProfileID, f.classes, w.maskedFTS, nullSessionID(obj.SessionID), f.expiresAt, obj.ExpiryScope, obj.ID,
+		indexsig.ProjectionVersion, obj.ProfileID, f.classes, w.maskedFTS, nullSessionID(obj.SessionID), f.expiresAt, obj.ExpiryScope, obj.Encrypted, obj.EncryptScope, obj.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("update object: %w", err)
@@ -1039,7 +1039,7 @@ const objectSelectCols = `SELECT
 	decisions, tasks, pipeline, source,
 	registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 	created_at, updated_at, fts_indexed, status, inbox_note,
-	remind_at, reminded_at, graph_json, source_key, profile_id, change_seq, classes, session_id, expires_at, expiry_scope`
+	remind_at, reminded_at, graph_json, source_key, profile_id, change_seq, classes, session_id, expires_at, expiry_scope, encrypted, encrypt_scope`
 
 func (s *ObjectStore) scanRow(ctx context.Context, row *sql.Row) (*storage.KnowledgeObject, error) {
 	obj, err := scanObjectColumnsWithEnc(ctx, s.enc, row, nil)
@@ -1103,7 +1103,7 @@ func scanObjectColumnsWithEnc(ctx context.Context, enc EncryptionConfig, row int
 		influencesJSON, classesJSON                         []byte
 		lastReinforcedAt, remindAt, remindedAt, expiresAt   sql.NullTime
 		graphJSON                                           []byte
-		sourceKey, sessionID, expiryScope                   sql.NullString
+		sourceKey, sessionID, expiryScope, encryptScope     sql.NullString
 	)
 	dest := []any{
 		&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType, &obj.TextContent,
@@ -1111,7 +1111,7 @@ func scanObjectColumnsWithEnc(ctx context.Context, enc EncryptionConfig, row int
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.Status, &obj.InboxNote,
-		&remindAt, &remindedAt, &graphJSON, &sourceKey, &obj.ProfileID, &obj.ChangeSeq, &classesJSON, &sessionID, &expiresAt, &expiryScope,
+		&remindAt, &remindedAt, &graphJSON, &sourceKey, &obj.ProfileID, &obj.ChangeSeq, &classesJSON, &sessionID, &expiresAt, &expiryScope, &obj.Encrypted, &encryptScope,
 	}
 	if score != nil {
 		dest = append(dest, score)
@@ -1146,6 +1146,9 @@ func scanObjectColumnsWithEnc(ctx context.Context, enc EncryptionConfig, row int
 	}
 	if expiryScope.Valid {
 		obj.ExpiryScope = expiryScope.String
+	}
+	if encryptScope.Valid {
+		obj.EncryptScope = encryptScope.String
 	}
 	return &obj, nil
 }
