@@ -38,6 +38,9 @@ func (p *OpenAILLMProvider) WithHTTPClient(c *http.Client) *OpenAILLMProvider {
 
 func (p *OpenAILLMProvider) Name() string { return backendOpenAI }
 
+// Model is the model the provider calls; provenance on derived text records it.
+func (p *OpenAILLMProvider) Model() string { return p.model }
+
 func (p *OpenAILLMProvider) Generate(ctx context.Context, prompt string) (string, error) {
 	if p.apiKey == "" {
 		return "", fmt.Errorf("OPENAI_API_KEY not set in the secrets store or environment")

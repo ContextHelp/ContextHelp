@@ -40,7 +40,10 @@ func TestRegistry_ContentClassesOnSharingInstances(t *testing.T) {
 		want   bool
 	}{{config.AccessPrivate, false}, {config.AccessProtected, true}, {config.AccessPublic, true}} {
 		t.Run(tc.access, func(t *testing.T) {
-			reg := ConfiguredRegistryWithOpts(BuildOpts{Access: tc.access, ClassRules: sharing.DefaultClassRules()})
+			reg, regErr := ConfiguredRegistryWithOpts(BuildOpts{Access: tc.access, ClassRules: sharing.DefaultClassRules()})
+			if regErr != nil {
+				t.Fatal(regErr)
+			}
 			for _, name := range []string{"text.short", "text.long"} {
 				names := stepNames(t, reg, name)
 				i := slices.Index(names, "content_classes")

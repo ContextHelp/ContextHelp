@@ -1,0 +1,9 @@
+xrr: "1"
+adapter: http
+fingerprint: 6376a7c6
+recorded_at: "2026-11-22T18:23:59Z"
+payload:
+    status: 200
+    headers:
+        Content-Type: application/json; charset=utf-8
+    body: '{"model":"qwen3:4b-instruct-2507-q4_K_M","created_at":"2026-11-22T18:23:59.902628Z","response":"pong","done":true,"done_reason":"stop","context":[151644,872,198,20841,448,279,3175,3409,25,77622,151645,198,151644,77091,198,59102],"total_duration":1486751583,"load_duration":1227776167,"prompt_eval_count":15,"prompt_eval_cached_count":0,"prompt_eval_duration":167440000,"eval_count":2,"eval_duration":89939000}'

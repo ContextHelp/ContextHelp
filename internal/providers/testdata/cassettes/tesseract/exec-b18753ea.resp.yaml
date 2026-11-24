@@ -1,0 +1,11 @@
+xrr: "1"
+adapter: exec
+fingerprint: b18753ea
+recorded_at: "2026-11-22T18:38:26Z"
+payload:
+    stdout: |
+        Cassette fixture
+        invoice 4821
+    stderr: |
+        Estimating resolution as 352
+    exit_code: 0

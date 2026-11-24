@@ -1,0 +1,7 @@
+1
+00:00:00,000 --> 00:00:04,410
+Welcome to the weekly review. The launch date moved to March.
+
+2
+00:00:04,910 --> 00:00:08,367
+Understood. I will update the schedule today.

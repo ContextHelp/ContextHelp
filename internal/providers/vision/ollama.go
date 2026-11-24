@@ -11,17 +11,28 @@ import (
 	"strings"
 )
 
-// OllamaProvider uses Ollama's API with a multimodal model (e.g. llava).
+// OllamaProvider uses Ollama's API with a multimodal model (set by providers.vision.model).
 type OllamaProvider struct {
 	endpoint string
 	model    string
+	client   *http.Client
 }
 
 func NewOllamaProvider(endpoint, model string) *OllamaProvider {
 	return &OllamaProvider{endpoint: endpoint, model: model}
 }
 
+// WithHTTPClient sets the client used for requests; the default is
+// http.DefaultClient. Tests inject a recorded-cassette client.
+func (p *OllamaProvider) WithHTTPClient(c *http.Client) *OllamaProvider {
+	p.client = c
+	return p
+}
+
 func (p *OllamaProvider) Name() string { return "ollama" }
+
+// Model is the model the provider calls; provenance on derived text records it.
+func (p *OllamaProvider) Model() string { return p.model }
 
 // ollamaGenerateRequest is the request body for Ollama's /api/generate endpoint.
 type ollamaGenerateRequest struct {
@@ -38,6 +49,9 @@ type ollamaGenerateResponse struct {
 }
 
 func (p *OllamaProvider) Analyze(ctx context.Context, imageData []byte, contentType string) (*Result, error) {
+	if p.model == "" {
+		return nil, fmt.Errorf("ollama vision: %w (set providers.vision.model)", ErrModelNotConfigured)
+	}
 	b64 := base64.StdEncoding.EncodeToString(imageData)
 
 	reqBody := ollamaGenerateRequest{
@@ -59,7 +73,11 @@ func (p *OllamaProvider) Analyze(ctx context.Context, imageData []byte, contentT
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	client := p.client
+	if client == nil {
+		client = http.DefaultClient
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("ollama vision: %w", err)
 	}

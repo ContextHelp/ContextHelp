@@ -13,8 +13,8 @@ func init() {
 			Description: "PDF text extraction",
 		},
 		deps.Dep{
-			Binary:      "whisper",
-			PipPkg:      "openai-whisper",
+			Binary:      backendWhisper,
+			BrewPkg:     "whisper-cpp",
 			Description: "audio transcription",
 		},
 		deps.Dep{

@@ -124,7 +124,12 @@ func (g *GraphExtractor) Run(ctx context.Context, ko *storage.KnowledgeObject) (
 
 	// Helper to append a node + EdgeTypeContains from root.
 	addNode := func(nodeType, label, content string) {
-		nodeID := storage.NewNodeID(rootID, nodeType, ordinal)
+		nodeOrdinal := ordinal
+		if nodeType == storage.NodeTypeArtifact {
+			// Artifact ordinal 0 is the stored original's.
+			nodeOrdinal = storage.NextOrdinal(ko.Graph, nodeType)
+		}
+		nodeID := storage.NewNodeID(rootID, nodeType, nodeOrdinal)
 		if ko.Graph.FindNode(nodeID) != nil {
 			return
 		}

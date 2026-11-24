@@ -194,7 +194,7 @@ func runContainer(t *testing.T, driver storage.StorageDriver, name string, tc fa
 			t.Fatalf("EnsureIndex(%s): %v", m.ModelID, err)
 		}
 	}
-	pipes := ConfiguredRegistryWithOpts(BuildOpts{
+	pipes, regErr := ConfiguredRegistryWithOpts(BuildOpts{
 		Models:     reg,
 		Resolver:   wiringResolver(t),
 		Embeddings: driver.Embeddings(),
@@ -202,6 +202,9 @@ func runContainer(t *testing.T, driver storage.StorageDriver, name string, tc fa
 		// guard refuses.
 		FetchGuard: safefetch.New(safefetch.Options{Policy: safefetch.Policy{AllowPrivate: true}}),
 	})
+	if regErr != nil {
+		t.Fatal(regErr)
+	}
 	q := jobs.NewQueue(driver.Jobs())
 	now := time.Now().Truncate(time.Second)
 	payload, encoding := jobs.Payload(tc.payload)

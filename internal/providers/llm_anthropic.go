@@ -37,6 +37,9 @@ func (p *AnthropicLLMProvider) WithHTTPClient(c *http.Client) *AnthropicLLMProvi
 
 func (p *AnthropicLLMProvider) Name() string { return backendAnthropic }
 
+// Model is the model the provider calls; provenance on derived text records it.
+func (p *AnthropicLLMProvider) Model() string { return p.model }
+
 func (p *AnthropicLLMProvider) Generate(ctx context.Context, prompt string) (string, error) {
 	if p.apiKey == "" {
 		return "", fmt.Errorf("ANTHROPIC_API_KEY not set in the secrets store or environment")

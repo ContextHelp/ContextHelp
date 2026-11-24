@@ -113,6 +113,62 @@ Edge types (intra-object only): `contains`, `references`, `resolves_to`, `derive
 Stable node ID format: `<objectID>/<nodeType>/<ordinal>` (0-indexed per type)
 Node URI scheme: `ctxt:node/<objectID>/<nodeType>/<ordinal>`
 
+### Representation nodes (media text)
+
+Text derived from an image, audio, video, document or meeting original is stored as a
+*representation node* (ADR-076). A `summary` representation is a `summary` node; every other
+representation is a `section` node. The node's metadata carries `representation` (the kind) plus
+provenance keys. Schema: `schemas/representation_node.json`. Go: `internal/representation`.
+
+| Key | Meaning |
+|---|---|
+| `representation` | `caption`, `ocr`, `transcript`, `frame_caption`, `frame_ocr`, `summary` or `extracted_text` |
+| `start_ms`, `end_ms` | time span within the original; `0` is a valid start |
+| `speaker` | diarized speaker label; absent when not diarized |
+| `page_number` | page within a document |
+| `frame_index`, `frame_ms` | selected video frame and its timestamp; `frame_index` is required for `frame_caption` and `frame_ocr` |
+| `image_index` | image embedded in a document |
+| `provider`, `model` | backend and model that produced the text |
+| `confidence` | 0-1, when the producer reports one |
+| `origin` | `sidecar` for imported subtitles; absent otherwise |
+
+Rules:
+
+- Producers write nodes through `representation.Emit`, which allocates the next free ordinal for the
+  node type (shared by all steps) and refuses unknown kinds, empty text, out-of-range values and
+  reserved keys in `Extra`. A producer that returned nothing emits nothing.
+- Each node has a `derives_from` edge **from the representation to the artifact node** of the stored
+  original, when the graph has one. The original is `artifact/0`, owned by `blob.AttachOriginal`
+  (which refuses to overwrite a node there that is not an original); steps never create artifact
+  nodes for it. Later artifacts (kept frames, fan-out items, detected dependencies) take ordinals from 1
+  up. Node ordinals are allocated by `storage.NextOrdinal` in `representation.Emit` and in the steps that
+  add section, summary or artifact nodes (`sectioner`, `heading_splitter`, `markdown_parser`,
+  `feed_parser`, `fanout_items`, `dependency_enricher`, and `graph_extractor` for artifacts); steps that
+  add other node types (tags, mentions, decisions, tasks) keep their own per-type counters.
+- A summary representation at `summary/0` is not the object's root summary: `sectioner`,
+  `heading_splitter` and `markdown_parser` hang their sections off the first plain summary instead
+  (creating one at the next free ordinal), and `textcleaner` does not add a second `summary/0`.
+- `Emit` is idempotent: a node with the same kind, anchor and content (speaker aside) is not added twice.
+- A producer clamps invalid anchors (negative values become 0, an end before the start becomes the
+  start) and skips a representation `Emit` still refuses, recording the reason as
+  `<representation>_error` in object metadata. `Emit` itself is strict.
+- `model` is recorded when the provider reports one (an optional `Model()` method; the Ollama, OpenAI,
+  Anthropic, Gemini and OpenRouter vision and LLM providers do). `confidence` of 0 is treated as
+  "none" and omitted.
+- No root summary holds the whole text of a media object: the representation nodes are the text.
+  The root `summary` node and its `contains` edges no longer exist for audio, PDF and DOCX objects, so
+  graph queries filtered with `node_types=[summary]` or `edge_types=[contains]` return different
+  results for these objects: transcript, page and caption nodes are `section` nodes, and a `summary`
+  node appears only for the `summary` representation.
+- The index projection, the document projection and the masked projection read text in the same
+  order: plain summary and section nodes first, in graph order, then representation nodes: the `summary`
+  kind, then the content kinds by node `order`, then frame kinds by `frame_index` (caption before OCR).
+  Flat `sections` are never read when graph nodes exist.
+- `sectioner` and `textcleaner` leave the graph of a draft that already holds a content representation
+  node (any kind but `summary`) alone. `textcleaner` still cleans `RawContent`.
+- Labels are 1-based for humans (`Segment 1`, `Frame 1 OCR`, `Page 1`); `frame_index`, `image_index`
+  and ordinals are 0-based.
+
 Flat fields (`sections`, `tags`, `decisions`, `tasks`) in the JSON below are projection caches
 populated by the storage layer from `graph_json` on read. Do not treat them as write targets.
 

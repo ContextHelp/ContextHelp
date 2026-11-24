@@ -92,7 +92,7 @@ func (s *FeedParser) Run(_ context.Context, draft *storage.KnowledgeObject) (*st
 		guid, _ := item["guid"].(string)
 		published, _ := item["published"].(string)
 
-		secID := storage.NewNodeID(draft.ID, storage.NodeTypeSection, i)
+		secID := storage.NewNodeID(draft.ID, storage.NodeTypeSection, storage.NextOrdinal(draft.Graph, storage.NodeTypeSection))
 		draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
 			ID:       secID,
 			NodeType: storage.NodeTypeSection,

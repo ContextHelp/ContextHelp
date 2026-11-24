@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: 1916acaa
+recorded_at: "2026-11-22T18:15:01Z"
+payload:
+    method: POST
+    url: http://127.0.0.1:11434/api/embed
+    body: '{"model":"snowflake-arctic-embed2","input":"[Page 1 content]\n[Page 2 content]\n[Page 3 content]","truncate":false,"options":{"num_ctx":8192,"num_batch":8192}}'

@@ -3,9 +3,11 @@ package steps
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/providers/vision"
+	"github.com/ideacrafterslabs/ctxt/internal/representation"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -57,42 +59,32 @@ func (s *VisionAnalyzer) Run(ctx context.Context, draft *storage.KnowledgeObject
 	})
 
 	// Emit canonical graph nodes when ID is set.
-	// Vision analysis produces: one artifact node (image ref) + one summary node (description).
+	// The caption representation derives from the stored original when the graph has one.
 	if draft.ID == "" {
 		return draft, nil
 	}
 	if draft.Graph == nil {
 		draft.Graph = &storage.ObjectGraph{}
 	}
-	artifactID := storage.NewNodeID(draft.ID, storage.NodeTypeArtifact, 0)
-	if draft.Graph.FindNode(artifactID) == nil {
-		draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
-			ID:       artifactID,
-			NodeType: storage.NodeTypeArtifact,
-			Label:    "source-image",
-			Content:  draft.ContentType,
-			Order:    0,
-		})
+	// Text that is empty has no representation; nothing stands in for it.
+	if strings.TrimSpace(result.Description) == "" {
+		return draft, nil
 	}
-	summaryID := storage.NewNodeID(draft.ID, storage.NodeTypeSummary, 0)
-	if draft.Graph.FindNode(summaryID) == nil {
-		draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
-			ID:       summaryID,
-			NodeType: storage.NodeTypeSummary,
-			Label:    "vision-description",
-			Content:  result.Description,
-			Order:    0,
-			Metadata: map[string]any{
-				"labels":     result.Labels,
-				"confidence": result.Confidence,
-			},
-		})
-		draft.Graph.Edges = append(draft.Graph.Edges, storage.GraphEdge{
-			ID:       fmt.Sprintf("%s->%s", artifactID, summaryID),
-			FromID:   artifactID,
-			ToID:     summaryID,
-			EdgeType: storage.EdgeTypeDerivedFrom,
-		})
+	conf := representation.ConfidenceOf(result.Confidence)
+	extra := map[string]any{}
+	if len(result.Labels) > 0 {
+		extra["labels"] = result.Labels
+	}
+	if _, err := representation.Emit(draft, representation.Spec{
+		Kind:       representation.Caption,
+		Label:      "Vision Analysis",
+		Content:    result.Description,
+		Provider:   s.provider.Name(),
+		Model:      representation.ModelOf(s.provider),
+		Confidence: conf,
+		Extra:      extra,
+	}); err != nil {
+		return nil, fmt.Errorf("vision_analyzer: %w", err)
 	}
 
 	return draft, nil

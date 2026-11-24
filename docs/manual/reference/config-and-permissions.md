@@ -359,7 +359,7 @@ dpkms pipeline step registry list
 
 | Key | Value |
 |---|---|
-| `providers.<role>` | Backend for this pipeline only: `llm`, `ocr`, `vision`, `transcription`, `diarization`, `video`, `document`. `embedding` is ignored: each embedding model's registry entry decides its provider. |
+| `providers.<role>` | Backend for this pipeline only: `llm`, `ocr`, `vision`, `transcription`, `diarization`, `video`, `frames`, `summarization`, `document`. `embedding` is ignored: each embedding model's registry entry decides its provider. |
 | `skip_steps` | Step names to drop. Each must be in the pipeline (`dedup` counts when `duplicates.check_similar` adds it). |
 | `insert_steps[].step` | Step to insert: a built-in step, or one installed with `dpkms pipeline step install`. |
 | `insert_steps[].before`, `insert_steps[].after` | A step in the pipeline once `skip_steps` and earlier inserts apply, named exactly once. Set one or neither; neither appends. |

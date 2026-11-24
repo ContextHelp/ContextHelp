@@ -6,6 +6,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
+	"github.com/ideacrafterslabs/ctxt/internal/representation"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -27,9 +28,10 @@ func WithDocumentProvider(p providers.DocumentProvider) PDFExtractorOption {
 func NewPDFExtractor(opts ...PDFExtractorOption) *PDFExtractor {
 	e := &PDFExtractor{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
-			Binary:   true,
-			Requires: []string{},
-			Produces: []string{"RawContent", "Sections"},
+			Binary:       true,
+			Requires:     []string{},
+			Produces:     []string{"RawContent", "Sections"},
+			Capabilities: []string{"document"},
 		}),
 		provider: providers.NewStubDocumentProvider(),
 	}
@@ -80,34 +82,19 @@ func (s *PDFExtractor) Run(ctx context.Context, draft *storage.KnowledgeObject) 
 	if draft.Graph == nil {
 		draft.Graph = &storage.ObjectGraph{}
 	}
-	rootID := storage.NewNodeID(draft.ID, storage.NodeTypeSummary, 0)
-	if draft.Graph.FindNode(rootID) == nil {
-		draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
-			ID:       rootID,
-			NodeType: storage.NodeTypeSummary,
-			Label:    "root",
-			Content:  result.FullText,
-			Order:    0,
-		})
-	}
-	for i, page := range result.Pages {
-		secID := storage.NewNodeID(draft.ID, storage.NodeTypeSection, i)
-		draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
-			ID:       secID,
-			NodeType: storage.NodeTypeSection,
+	for _, page := range result.Pages {
+		text := collapseWhitespace(page.Content)
+		if text == "" {
+			continue
+		}
+		emitLenient(draft, representation.Spec{
+			Kind:     representation.ExtractedText,
 			Label:    fmt.Sprintf("Page %d", page.Number),
-			Content:  page.Content,
-			Order:    i,
-			Metadata: map[string]any{
-				"type":        "page",
-				"page_number": page.Number,
-			},
-		})
-		draft.Graph.Edges = append(draft.Graph.Edges, storage.GraphEdge{
-			ID:       fmt.Sprintf("%s->%s", rootID, secID),
-			FromID:   rootID,
-			ToID:     secID,
-			EdgeType: storage.EdgeTypeContains,
+			Content:  text,
+			Anchor:   representation.Anchor{}.WithPage(clampNonNeg(page.Number)),
+			Provider: s.provider.Name(),
+			Model:    representation.ModelOf(s.provider),
+			Extra:    map[string]any{"type": "page"},
 		})
 	}
 

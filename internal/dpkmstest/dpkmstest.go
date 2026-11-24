@@ -320,7 +320,7 @@ func mintKeys(t testing.TB, driver storage.StorageDriver) map[string]string {
 // providerKeys are the providers.* sections pinned to their stub
 // backend. "auto" would probe a local Ollama and pick up API keys from
 // the environment while the pipeline registry is built.
-var providerKeys = []string{"video", "document", "ocr", "transcription", "vision", "diarization", "llm"}
+var providerKeys = []string{"video", "document", "ocr", "transcription", "vision", "diarization", "frames", "summarization", "llm"}
 
 // writeConfig writes the instance's dpkms config and returns its path.
 // A protected instance names publicURL as its server.public_url.
@@ -330,6 +330,9 @@ func writeConfig(t testing.TB, dir string, protected bool, publicURL string) str
 	for _, k := range providerKeys {
 		providers[k] = map[string]any{"backend": "stub"}
 	}
+	// document is golib, the pure-Go provider: real, hermetic, and the
+	// url.generic and doc.* pipelines are unavailable on a stub.
+	providers["document"] = map[string]any{"backend": "golib"}
 	server := map[string]any{"access": config.AccessPrivate}
 	if protected {
 		server = map[string]any{"access": config.AccessProtected, "public_url": publicURL}

@@ -2,8 +2,11 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -13,6 +16,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings/embeddingtest"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
+	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/providers/providertest"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
@@ -48,7 +52,7 @@ func (d *reanalyzeDriver) Embeddings() storage.EmbeddingStore { return d.emb }
 func reanalyzeService(t *testing.T, driver storage.StorageDriver, models embeddings.ModelSource, store storage.EmbeddingStore) *Service {
 	t.Helper()
 	client, _ := providertest.OllamaClient(t, reanalyzeCassettes)
-	pipes := builtins.ConfiguredRegistryWithOpts(builtins.BuildOpts{
+	pipes, regErr := builtins.ConfiguredRegistryWithOpts(builtins.BuildOpts{
 		Models: models,
 		Resolver: embeddings.NewProviderResolver(&embeddings.Resolver{
 			LookupEnv:  func(string) (string, bool) { return "", false },
@@ -56,6 +60,9 @@ func reanalyzeService(t *testing.T, driver storage.StorageDriver, models embeddi
 		}),
 		Embeddings: store,
 	})
+	if regErr != nil {
+		t.Fatal(regErr)
+	}
 	d := &reanalyzeDriver{StorageDriver: driver, emb: store}
 	return New(d, jobs.NewQueue(driver.Jobs()), pipes, search.NewEngine(driver), "", nil)
 }
@@ -249,5 +256,68 @@ func TestReanalyzeObject_KeepsSessionAndAmbientMetadata(t *testing.T) {
 	}
 	if c, _ := got.Metadata["client"].(map[string]any); c["app_name"] != "Terminal" {
 		t.Errorf("metadata.client lost: %v", got.Metadata)
+	}
+}
+
+// scratchStep writes a file into a scratch dir and points metadata at it,
+// like frame_sampler does.
+type reanalyzeScratchStep struct {
+	pipeline.BaseContract
+	dir *string
+}
+
+func (reanalyzeScratchStep) Name() string { return "scratchy" }
+func (s reanalyzeScratchStep) Run(ctx context.Context, d *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
+	dir, err := pipeline.ScratchDir(ctx, "ctxt-reanalyze-test-*", "frame_paths")
+	if err != nil {
+		return nil, err
+	}
+	*s.dir = dir
+	f := filepath.Join(dir, "frame.0.png")
+	if err := os.WriteFile(f, []byte("png"), 0o600); err != nil {
+		return nil, err
+	}
+	if d.Metadata == nil {
+		d.Metadata = map[string]any{}
+	}
+	d.Metadata["frame_paths"] = []string{f}
+	d.Metadata["frame_count"] = 1
+	return d, nil
+}
+
+// A reanalysis removes the scratch files its steps made and stores no
+// path into them.
+func TestReanalyzeObject_RemovesScratchAndStoresNoTempPaths(t *testing.T) {
+	driver := storageutil.NewTestDriver(t)
+	now := time.Now().Truncate(time.Second)
+	if err := driver.Objects().Create(ownerCtx(), &storage.KnowledgeObject{
+		ID: "re-scratch", Type: "text", RawContent: "wombat burrows on the nullarbor",
+		Pipeline: "scratchy@v0", CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	svc := reanalyzeService(t, driver, embeddingtest.Models{reDefault}, embeddingtest.NewMemStore())
+	var dir string
+	svc.Pipes.Upsert("scratchy", &pipeline.Pipeline{PipelineName: "scratchy", Steps: []pipeline.PipelineStep{
+		reanalyzeScratchStep{pipeline.NewBaseContract(pipeline.StepContract{}), &dir},
+	}})
+
+	if _, _, err := svc.ReanalyzeObject(ownerCtx(), "re-scratch"); err != nil {
+		t.Fatalf("reanalyze: %v", err)
+	}
+	if dir == "" {
+		t.Fatal("the step did not run")
+	}
+	if _, err := os.Stat(dir); err == nil {
+		t.Errorf("scratch dir %s survived the reanalysis", dir)
+	}
+	got, err := driver.Objects().Get(ownerCtx(), "re-scratch")
+	if err != nil || got == nil {
+		t.Fatalf("get: %v", err)
+	}
+	for _, k := range []string{"frame_paths", "scratch_dirs"} {
+		if _, ok := got.Metadata[k]; ok {
+			t.Errorf("stored row carries %q: %v", k, got.Metadata)
+		}
 	}
 }

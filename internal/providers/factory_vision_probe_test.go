@@ -69,6 +69,7 @@ func TestTryOllamaVision_ClosesRejectedProbeBody(t *testing.T) {
 
 	var cfg config.ProvidersConfig
 	cfg.Vision.Endpoint = srv.URL
+	cfg.Vision.Model = "probe-model" // a model must be set, or the probe is skipped
 	if p := NewFactory(cfg, memory.New()).tryOllamaVision(); p != nil {
 		t.Fatalf("tryOllamaVision on a 503 endpoint = %T, want nil", p)
 	}

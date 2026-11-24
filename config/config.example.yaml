@@ -199,22 +199,25 @@
 #      lifecycle: 5m
 
 # Providers (dpkms serve; ctxt for embeddings and direct-store commands).
-# auto probes for a local tool and falls back to a stub. API keys come from
-# the secrets store (dpkms secret set OPENAI_API_KEY) or the env var of the
-# same name: OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY.
+# auto is local-only: a local backend, or unavailable (a stub). It never
+# selects a hosted backend; name one per role to opt in. API keys for a
+# named hosted backend come from the secrets store (dpkms secret set
+# OPENAI_API_KEY) or the env var of the same name: OPENAI_API_KEY,
+# ANTHROPIC_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY.
 #providers:
-# auto | openai | anthropic | ollama | stub. auto picks Anthropic, then
-# OpenAI, when a key is set, else Ollama at endpoint. Empty model: the
-# backend's default (llama3, gpt-4o-mini, claude-haiku-4-5-20251001).
+# auto | openai | anthropic | ollama | stub. auto is Ollama at endpoint,
+# whatever API keys are set. model is an Ollama model; a hosted backend left
+# on the default uses its own (gpt-4o-mini, claude-haiku-4-5-20251001).
 #  llm:
 #    backend: auto
 #    endpoint: http://localhost:11434
 #    model: llama3
-# auto | ollama | openai | anthropic | gemini | openrouter | stub
+# auto | ollama | openai | anthropic | gemini | openrouter | stub. auto is
+# Ollama when it answers (with model), else unavailable.
 #  vision:
 #    backend: auto
 #    endpoint: http://localhost:11434
-#    model: llava
+#    model: qwen2.5vl:7b
 # auto | golib | pdftotext | stub
 #  document:
 #    backend: auto
@@ -222,12 +225,30 @@
 #  ocr:
 #    backend: auto
 #    language: eng
-# auto | whisper-cli | ollama | stub
+# auto | whisper-cli | stub. model: path to a whisper.cpp model file (required).
 #  transcription:
 #    backend: auto
+#    model: /path/to/ggml-base.bin
 # auto | ffmpeg | stub
 #  video:
 #    backend: auto
+# auto | ffmpeg | stub. Video frame selection: rates in frames per second.
+#  frames:
+#    backend: auto
+#    min_fps: 0.1
+#    max_fps: 1
+#    scene_detection: true
+#    scene_threshold: 0.3
+#    max_frames: 200
+#    max_dimension: 1280
+# auto | ollama | openai | anthropic | stub. auto is Ollama at endpoint;
+# model is required for ollama. prompt_template: text/template with .Text,
+# .Medium and .Language.
+#  summarization:
+#    backend: auto
+#    endpoint: http://localhost:11434
+#    model: ""
+#    num_ctx: 0
 # auto | pyannote | stub
 #  diarization:
 #    backend: auto

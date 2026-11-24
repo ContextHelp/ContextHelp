@@ -38,11 +38,11 @@ repos:
         # Generated viewer and web UI bundles (whitespace inside template
         # literals is content; drift gates compare them byte for byte) and
         # vendored XML schemas (byte-identical to upstream).
-        exclude: ^(e2e/conformance/cassettes/|internal/searchgraph/viewer/dist/|internal/ui/dist/|internal/searchgraph/testdata/schemas/)
+        exclude: ^(e2e/conformance/cassettes/|internal/searchgraph/viewer/dist/|internal/ui/dist/|internal/searchgraph/testdata/schemas/|.*/testdata/cassettes/)
       - id: trailing-whitespace
         # Same: kit's error blocks are space-padded, and stripping that
         # padding corrupts the capture (see e2e/conformance/README.md).
-        exclude: ^(e2e/conformance/cassettes/|internal/searchgraph/viewer/dist/|internal/ui/dist/|internal/searchgraph/testdata/schemas/)
+        exclude: ^(e2e/conformance/cassettes/|internal/searchgraph/viewer/dist/|internal/ui/dist/|internal/searchgraph/testdata/schemas/|.*/testdata/cassettes/)
       - id: check-executables-have-shebangs
       - id: check-shebang-scripts-are-executable
       - id: check-merge-conflict

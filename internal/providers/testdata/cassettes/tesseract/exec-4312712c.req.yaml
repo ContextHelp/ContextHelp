@@ -1,0 +1,12 @@
+xrr: "1"
+adapter: exec
+fingerprint: 4312712c
+recorded_at: "2026-11-22T18:38:26Z"
+payload:
+    argv:
+        - tesseract
+        - <file:c4018549.png>
+        - stdout
+        - -l
+        - eng
+        - tsv

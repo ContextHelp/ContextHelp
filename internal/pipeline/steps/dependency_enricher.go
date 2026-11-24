@@ -78,10 +78,8 @@ func (s *DependencyEnricher) Run(_ context.Context, draft *storage.KnowledgeObje
 			draft.Graph = &storage.ObjectGraph{}
 		}
 		for i, dep := range deps {
-			nodeID := storage.NewNodeID(draft.ID, storage.NodeTypeArtifact, i)
-			if draft.Graph.FindNode(nodeID) != nil {
-				continue
-			}
+			// Artifact ordinal 0 is the stored original's.
+			nodeID := storage.NewNodeID(draft.ID, storage.NodeTypeArtifact, storage.NextOrdinal(draft.Graph, storage.NodeTypeArtifact))
 			draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
 				ID:       nodeID,
 				NodeType: storage.NodeTypeArtifact,

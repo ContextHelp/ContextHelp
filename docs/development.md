@@ -13,6 +13,7 @@ Comprehensive guide for developing **dPKMS + `ctxt`**.
 - [Code Quality](#code-quality)
 - [Database & Migrations](#database--migrations)
 - [Adding a Pipeline Step](#adding-a-pipeline-step)
+- [Adding a Provider Backend](#adding-a-provider-backend)
 - [Debugging](#debugging)
 - [Performance Optimization](#performance-optimization)
 - [Release Process](#release-process)
@@ -564,6 +565,41 @@ writes `{"object": ...}` (the fields it changed, each replaced whole) and/or
 `dpkms pipeline step install` (ADR-058; example in `examples/steps/pii-mask`).
 
 ---
+
+## Adding a Provider Backend
+
+Every media-to-text process is a role with a Go interface in
+`internal/providers` (`OCRProvider`, `vision.Provider`,
+`TranscriptionProvider`, `DiarizationProvider`, `FrameProvider`,
+`VideoProvider`, `SummarizationProvider`, `LLMProvider`,
+`DocumentProvider`). Backends are picked by `providers.<role>.backend` in
+`Factory`; there is no plugin mechanism.
+
+Each role has one contract suite in `internal/providers/contracttest`, and
+`internal/providers/contract_test.go` lists every backend per role. To add
+a backend, add a case to its role's table and make the suite pass
+unchanged. The tests stay hermetic: hosted backends answer from an
+in-memory `http.RoundTripper` with canned responses, CLI backends run
+fixture scripts placed first on `PATH`.
+
+`FrameProvider` reads its input through `MediaSource` and yields each
+frame to a callback as it is produced, so a long video is never held in
+memory. A frame has `Index` (stored as the `frame_index` provenance key)
+and `TimestampMS` (stored as `frame_ms`), plus image bytes and a content
+type. Backends honour `FrameOptions`: min and max frame rate, scene
+detection, a frame cap and a frame size. Callers go through
+`providers.StreamFrames`, which checks every yielded frame against the
+contract. Nothing in the interface names ffmpeg, so another extractor can
+replace the ffmpeg backend without changing callers.
+
+Steps that write intermediate files (extracted frames, extracted audio)
+get a directory from `pipeline.ScratchDir(ctx, ...)`. The runner,
+`pipeline.RunSteps`, owns it and removes it when the run ends; the worker
+and reanalysis both go through `RunSteps`. Never keep scratch paths in
+draft metadata beyond the keys passed to `ScratchDir`, which the runner
+removes from the stored draft. The directories live under a per-user
+root that is opened once as an `*os.Root`, so creating and removing
+cannot be redirected by swapping a path component.
 
 ## Debugging
 

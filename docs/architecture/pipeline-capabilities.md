@@ -36,24 +36,43 @@ regardless of `--verbose`).
 |---|---|---|
 | `io` | `filereader` | Always true — filesystem access is assumed available |
 | `ocr` | `ocr_extractor`, `frame_ocr` | `tesseract` binary on PATH |
-| `transcription` | `audio_transcriber` | `whisper-cpp` or `whisper` binary on PATH |
+| `transcription` | `audio_transcriber` | `whisper-cli` (or `whisper-cpp`) binary on PATH **and** `providers.transcription.model` naming a whisper.cpp model file |
+| `video` | `audio_extractor` | `ffmpeg` and `ffprobe` on PATH |
+| `frames` | `frame_sampler` | `ffmpeg` and `ffprobe` on PATH (the `ffmpeg` frames backend) |
+| `document` | `pdf_extractor`, `office_extractor` | The pure-Go `golib` provider (PDF text also needs `pdftotext`) |
 | `diarization` | `speaker_diarizer` | `pyannote-audio` / `pyannote` binary **or** `python3 -c "import pyannote.audio"` succeeds |
-| `vision` | `vision_analyzer` | Ollama reachable at endpoint **or** any of `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY` set |
-| `llm` | `graph_extractor`, `structured_metadata` | `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` set **or** Ollama reachable |
+| `vision` | `vision_analyzer` | Ollama reachable at the endpoint with the configured vision model installed, **or** a hosted vision backend named in config. API keys alone never satisfy it |
+| `llm` | `graph_extractor`, `structured_metadata` | A local Ollama LLM (the `auto` default), **or** a hosted backend named in config. API keys alone never select one |
+| `summarization` | none yet | A local Ollama summarizer (the `auto` default), **or** a hosted backend named in config |
 | `blob-externalize` | `externalize_content` | A `BlobStore` is configured (non-nil) |
+
+The media capabilities (`ocr`, `vision`, `transcription`, `video`, `frames`,
+`document`) are never pruned: a step that needs one makes its pipeline
+unavailable (422) instead. `diarization`, `llm`, `summarization`, `browser`
+and `blob-externalize` steps are pruned. A stub or a failed provider (a
+named backend that cannot run) never grants a capability.
 
 ### Auto-detection order
 
-**Vision** — Ollama first (GET `/api/tags`, 2 s timeout), then API keys in this
-order: OpenAI → Anthropic → Gemini → OpenRouter.
+`auto` is local-only for every role. No step, role or probe reads a hosted
+API key to decide what runs; a hosted backend runs only when
+`providers.<role>.backend` (or a per-pipeline override) names it.
 
-**LLM** — API keys first (Anthropic → OpenAI), then Ollama at
-`http://localhost:11434` (always attempted as last resort; returns stub only
-when explicitly configured `backend: stub`).
+**Vision** — local Ollama only: GET `/api/tags` (2 s timeout) must answer
+and list the configured model (`providers.vision.model`). Otherwise the
+role is unavailable. The result is resolved once per process.
 
-**OCR / Transcription / Diarization** — binary lookup via `exec.LookPath` plus
-the common directories `/opt/homebrew/bin`, `/usr/local/bin`,
-`~/.local/bin`.
+**LLM** — local Ollama at the configured endpoint (default
+`http://localhost:11434`). The call fails with "model not configured" when
+`providers.llm.model` is empty.
+
+**Summarization** — local Ollama like the LLM; the call fails with "no model
+configured" when `providers.summarization.model` is empty.
+
+**OCR / Transcription / Diarization / Video / Frames** — binary lookup via
+`exec.LookPath` plus the common directories `/opt/homebrew/bin`,
+`/usr/local/bin`, `~/.local/bin`. A named backend whose tool is missing is
+a configuration error at startup, not a missing capability.
 
 ---
 
@@ -71,13 +90,16 @@ builtins: pipeline "audio.transcript": pruning step "audio_transcriber" (missing
 which tesseract
 
 # Transcription
-which whisper-cpp || which whisper
+which whisper-cli || which whisper-cpp
+
+# Video and frames
+which ffmpeg && which ffprobe
 
 # Diarization
 which pyannote-audio || python3 -c "import pyannote.audio"
 
-# Vision / LLM — check env
-printenv OPENAI_API_KEY ANTHROPIC_API_KEY GEMINI_API_KEY OPENROUTER_API_KEY
+# Vision / LLM — is Ollama up and the model installed?
+ollama list
 
 # Vision via Ollama
 curl -s http://localhost:11434/api/tags | head -c 80
@@ -89,7 +111,7 @@ curl -s http://localhost:11434/api/tags | head -c 80
 
 ```bash
 tesseract --version
-whisper-cpp --help
+whisper-cli --help
 ```
 
 4. If the tool works but the step is still pruned, the PATH visible to the

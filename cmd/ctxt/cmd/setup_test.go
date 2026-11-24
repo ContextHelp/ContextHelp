@@ -86,8 +86,8 @@ func TestSetupWritesValidYAML(t *testing.T) {
 
 func TestSetupDefaultAnswers(t *testing.T) {
 	a := defaultAnswers()
-	if a.Provider != "skip" {
-		t.Errorf("default provider should be skip, got %s", a.Provider)
+	if a.Provider != "ollama" {
+		t.Errorf("default provider should be local ollama, got %s", a.Provider)
 	}
 	if a.Pipeline != "auto" {
 		t.Errorf("default pipeline should be auto, got %s", a.Pipeline)
@@ -157,8 +157,8 @@ func TestSetupPipedAnswersEachLand(t *testing.T) {
 	t.Setenv("CI", "")
 	storage := filepath.Join(dir, "store")
 
-	// provider=anthropic, key, storage path, pipeline=text
-	out, err := executeSetupWithInput(t, "2\nsk-test\n"+storage+"\n1\n")
+	// provider=anthropic (3rd choice), storage path, pipeline=text
+	out, err := executeSetupWithInput(t, "3\n"+storage+"\n1\n")
 	if err != nil {
 		t.Fatalf("setup: %v\n%s", err, out)
 	}
@@ -197,7 +197,7 @@ func TestSetupPipedAnswersAfterOverwriteConfirm(t *testing.T) {
 	}
 	storage := filepath.Join(dir, "store")
 
-	out, err := executeSetupWithInput(t, "y\n3\n"+storage+"\n2\n")
+	out, err := executeSetupWithInput(t, "y\n4\n"+storage+"\n2\n")
 	if err != nil {
 		t.Fatalf("setup: %v\n%s", err, out)
 	}
@@ -252,5 +252,183 @@ func TestSetupInputEndsEarly(t *testing.T) {
 	}
 	if _, statErr := os.Stat(cfgPath); !os.IsNotExist(statErr) {
 		t.Errorf("config written despite aborted setup: %v", statErr)
+	}
+}
+
+// Local Ollama is the first choice and the default: an empty answer
+// names it for the LLM role and needs no key; cloud stays explicit.
+func TestSetupDefaultProviderIsLocalOllama(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	t.Setenv("CTXT_CONFIG", cfgPath)
+	t.Setenv("CI", "")
+	storage := filepath.Join(dir, "store")
+
+	// provider: default, storage path, pipeline: default
+	out, err := executeSetupWithInput(t, "\n"+storage+"\n\n")
+	if err != nil {
+		t.Fatalf("setup: %v\n%s", err, out)
+	}
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if !strings.Contains(string(data), "backend: ollama") {
+		t.Errorf("config missing local llm backend:\n%s", data)
+	}
+	if strings.Contains(string(data), "anthropic") || strings.Contains(string(data), "openai") {
+		t.Errorf("config names a hosted backend:\n%s", data)
+	}
+}
+
+func TestSetupEditsNameBackendOnlyWhenChosen(t *testing.T) {
+	has := func(a wizardAnswers, want string) bool {
+		for _, e := range setupEdits(a) {
+			if len(e.keys) == 3 && e.keys[0] == "providers" && e.keys[1] == "llm" && e.value == want {
+				return true
+			}
+		}
+		return false
+	}
+	base := defaultAnswers()
+	if !has(base, "ollama") {
+		t.Error("default answers do not name ollama")
+	}
+	skip := base
+	skip.Provider = providerSkip
+	for _, name := range []string{"ollama", "openai", "anthropic"} {
+		if has(skip, name) {
+			t.Errorf("skip names backend %s", name)
+		}
+	}
+	// Choosing a hosted provider is the opt-in: it is written with no key.
+	for _, name := range []string{"openai", "anthropic"} {
+		cloud := base
+		cloud.Provider = name
+		if !has(cloud, name) || has(cloud, "ollama") {
+			t.Errorf("explicit %s choice must name %s only", name, name)
+		}
+	}
+}
+
+func writeCfg(t *testing.T, body string) string {
+	t.Helper()
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+	t.Setenv("CTXT_CONFIG", cfgPath)
+	t.Setenv("CI", "")
+	if err := os.WriteFile(cfgPath, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return cfgPath
+}
+
+// Picking a cloud provider writes the backend with no key typed, and
+// the summary says how to store the key.
+func TestSetupCloudChoiceWritesBackendAndKeyHint(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+	t.Setenv("CTXT_CONFIG", cfgPath)
+	t.Setenv("CI", "")
+	out, err := executeSetupWithInput(t, "2\n"+t.TempDir()+"\n\n")
+	if err != nil {
+		t.Fatalf("setup: %v\n%s", err, out)
+	}
+	data, _ := os.ReadFile(cfgPath)
+	if !strings.Contains(string(data), "backend: openai") {
+		t.Errorf("openai choice not written:\n%s", data)
+	}
+	if !strings.Contains(out, "dpkms secret set OPENAI_API_KEY") {
+		t.Errorf("summary lacks key hint:\n%s", out)
+	}
+}
+
+// Re-running with defaults never replaces a backend already set.
+func TestSetupKeepsExistingBackend(t *testing.T) {
+	const existing = "providers:\n  llm:\n    backend: anthropic\n"
+	t.Run("interactive Enter-through", func(t *testing.T) {
+		cfgPath := writeCfg(t, existing)
+		// confirm update, provider default, storage default, pipeline default
+		out, err := executeSetupWithInput(t, "y\n\n\n\n")
+		if err != nil {
+			t.Fatalf("setup: %v\n%s", err, out)
+		}
+		data, _ := os.ReadFile(cfgPath)
+		if !strings.Contains(string(data), "backend: anthropic") || strings.Contains(string(data), "ollama") {
+			t.Errorf("existing backend replaced:\n%s", data)
+		}
+	})
+	for _, mode := range []string{"--non-interactive", "CI"} {
+		t.Run(mode, func(t *testing.T) {
+			cfgPath := writeCfg(t, existing)
+			var out string
+			var err error
+			if mode == "CI" {
+				t.Setenv("CI", "true")
+				out, err = executeCommand("setup")
+			} else {
+				out, err = executeCommand("setup", "--non-interactive")
+			}
+			if err != nil {
+				t.Fatalf("setup: %v\n%s", err, out)
+			}
+			data, _ := os.ReadFile(cfgPath)
+			if !strings.Contains(string(data), "backend: anthropic") || strings.Contains(string(data), "ollama") {
+				t.Errorf("existing backend replaced:\n%s", data)
+			}
+		})
+	}
+}
+
+// Skip leaves the backend unset, which means auto: local Ollama.
+func TestSetupSkipSummaryDescribesAuto(t *testing.T) {
+	writeCfg(t, "")
+	out, err := executeSetupWithInput(t, "y\n4\n"+t.TempDir()+"\n\n")
+	if err != nil {
+		t.Fatalf("setup: %v\n%s", err, out)
+	}
+	if strings.Contains(out, "none (configure later)") || !strings.Contains(out, "local Ollama") {
+		t.Errorf("skip summary wrong:\n%s", out)
+	}
+}
+
+// An existing auto is not rewritten to ollama by Enter-through or a
+// non-interactive run, and the summary names the kept backend.
+func TestSetupKeepsExistingAuto(t *testing.T) {
+	const existing = "providers:\n  llm:\n    backend: auto\n"
+	check := func(t *testing.T, cfgPath, out string) {
+		t.Helper()
+		data, _ := os.ReadFile(cfgPath)
+		if !strings.Contains(string(data), "backend: auto") || strings.Contains(string(data), "ollama") {
+			t.Errorf("auto rewritten:\n%s", data)
+		}
+		if !strings.Contains(out, "auto (kept") {
+			t.Errorf("summary does not name the kept backend:\n%s", out)
+		}
+	}
+	t.Run("interactive", func(t *testing.T) {
+		cfgPath := writeCfg(t, existing)
+		out, err := executeSetupWithInput(t, "y\n\n\n\n")
+		if err != nil {
+			t.Fatalf("setup: %v\n%s", err, out)
+		}
+		check(t, cfgPath, out)
+	})
+	t.Run("non-interactive", func(t *testing.T) {
+		cfgPath := writeCfg(t, existing)
+		out, err := executeCommand("setup", "--non-interactive")
+		if err != nil {
+			t.Fatalf("setup: %v\n%s", err, out)
+		}
+		check(t, cfgPath, out)
+	})
+}
+
+func TestSetupSummaryNamesKeptBackend(t *testing.T) {
+	writeCfg(t, "providers:\n  llm:\n    backend: anthropic\n")
+	out, err := executeCommand("setup", "--non-interactive")
+	if err != nil {
+		t.Fatalf("setup: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "anthropic (kept") {
+		t.Errorf("summary does not name the kept backend:\n%s", out)
 	}
 }

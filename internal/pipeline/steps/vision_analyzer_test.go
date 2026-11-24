@@ -33,11 +33,11 @@ func TestVisionAnalyzerAddsSection(t *testing.T) {
 
 func TestVisionAnalyzerEmitsGraphNodes(t *testing.T) {
 	step := NewVisionAnalyzer()
-	draft := &storage.KnowledgeObject{
+	draft := withOriginal(t, &storage.KnowledgeObject{
 		ID:          "obj-vision-001",
 		RawContent:  "fake image",
 		ContentType: "image/png",
-	}
+	}, "fake image")
 	got, err := step.Run(context.Background(), draft)
 	if err != nil {
 		t.Fatalf("run: %v", err)
@@ -49,12 +49,16 @@ func TestVisionAnalyzerEmitsGraphNodes(t *testing.T) {
 	if got.Graph.FindNode(artifactID) == nil {
 		t.Errorf("artifact node %q not found", artifactID)
 	}
-	summaryID := storage.NewNodeID("obj-vision-001", storage.NodeTypeSummary, 0)
-	if got.Graph.FindNode(summaryID) == nil {
-		t.Errorf("summary node %q not found", summaryID)
+	capID := storage.NewNodeID("obj-vision-001", storage.NodeTypeSection, 0)
+	capNode := got.Graph.FindNode(capID)
+	if capNode == nil {
+		t.Fatalf("caption node %q not found", capID)
 	}
-	if len(got.Graph.Edges) == 0 {
-		t.Error("expected edge from artifact to summary")
+	if capNode.Metadata["representation"] != "caption" || capNode.Metadata["provider"] != "stub" {
+		t.Errorf("caption metadata: %v", capNode.Metadata)
+	}
+	if len(got.Graph.Edges) != 1 || got.Graph.Edges[0].FromID != capID || got.Graph.Edges[0].ToID != artifactID {
+		t.Errorf("derives_from must point caption -> artifact: %+v", got.Graph.Edges)
 	}
 }
 

@@ -1,0 +1,19 @@
+xrr: "1"
+adapter: exec
+fingerprint: 4312712c
+recorded_at: "2026-11-22T18:38:26Z"
+payload:
+    stdout: |
+        level	page_num	block_num	par_num	line_num	word_num	left	top	width	height	conf	text
+        1	1	0	0	0	0	0	0	560	140	-1	
+        2	1	1	0	0	0	26	31	272	85	-1	
+        3	1	1	1	0	0	26	31	272	85	-1	
+        4	1	1	1	1	0	26	31	272	31	-1	
+        5	1	1	1	1	1	26	32	151	30	96.461746	Cassette
+        5	1	1	1	1	2	189	31	109	31	96.571762	fixture
+        4	1	1	1	2	0	26	86	222	30	-1	
+        5	1	1	1	2	1	26	87	125	29	96.779694	invoice
+        5	1	1	1	2	2	163	86	85	30	96.296928	4821
+    stderr: |
+        Estimating resolution as 352
+    exit_code: 0

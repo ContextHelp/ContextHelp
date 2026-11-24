@@ -23,6 +23,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"hop.top/kit/go/runtime/bus"
@@ -44,6 +45,11 @@ type reanalyzer interface {
 // WorkerOpts.BudgetUSD. The manager state goes to "failed" with this as
 // the LastError.
 var ErrBudgetExceeded = errors.New("upgrade run: LLM budget exceeded")
+
+// ErrCannotReanalyze marks an object that cannot be re-run: its content
+// or original blob is lost, or it has nothing to run on. The worker
+// logs it, skips the object and goes on; it does not end the run.
+var ErrCannotReanalyze = errors.New("object cannot be re-analyzed")
 
 // ErrAlreadyInProgress signals that another upgrade run is already in
 // flight on this Manager — the worker refuses to start a second one.
@@ -208,6 +214,7 @@ type reingestRun struct {
 	total   int
 	done    int
 	costUSD float64
+	skipped int // objects that could not be re-analyzed
 }
 
 // step reanalyzes one object, charges its cost against the budget and
@@ -215,6 +222,11 @@ type reingestRun struct {
 // failure event already record it.
 func (r *reingestRun) step(ctx context.Context, id string, opts WorkerOpts, progressEvery int) error {
 	_, cost, err := r.w.svc.ReanalyzeObject(ctx, id)
+	if errors.Is(err, ErrCannotReanalyze) {
+		slog.Warn("upgrade run: skipping object", "object", id, "reason", err)
+		r.skipped++
+		err = nil
+	}
 	if err != nil {
 		r.fail(ctx, err, err.Error())
 		return fmt.Errorf("upgrade run: reanalyze %s: %w", id, err)

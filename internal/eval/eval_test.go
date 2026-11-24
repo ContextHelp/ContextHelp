@@ -84,7 +84,10 @@ func TestEvalSuite(t *testing.T) {
 		label := providerLabel(provCfg)
 		t.Run(label, func(t *testing.T) {
 			factory := providers.NewFactory(provCfg, nil)
-			reg := builtins.ConfiguredRegistry(factory)
+			reg, regErr := builtins.ConfiguredRegistry(factory)
+			if regErr != nil {
+				t.Fatal(regErr)
+			}
 
 			for pipelineName, fixturePath := range fixtureFiles {
 				pipelineName, fixturePath := pipelineName, fixturePath

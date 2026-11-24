@@ -5,5 +5,6 @@ func init() {
 		Description: "Office document pipeline (docx)",
 		Extensions:  []string{".docx"},
 		Steps:       []string{"filereader", "formatdetector", "office_extractor", "textcleaner", "sectioner", "tagger", "embedding"},
+		Providers:   []string{"document"},
 	})
 }

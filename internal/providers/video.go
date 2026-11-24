@@ -2,7 +2,7 @@ package providers
 
 import (
 	"context"
-	"fmt"
+	"path/filepath"
 	"time"
 )
 
@@ -26,20 +26,13 @@ type ExtractedAudio struct {
 	ContentType string
 }
 
-// SampledFrame holds a single extracted keyframe.
-type SampledFrame struct {
-	Index       int
-	Timestamp   time.Duration
-	Path        string
-	ContentType string
-}
-
 // VideoProvider handles video file operations.
 type VideoProvider interface {
 	Name() string
 	ProbeMetadata(ctx context.Context, videoPath string) (*VideoMetadata, error)
-	ExtractAudio(ctx context.Context, videoPath string) (*ExtractedAudio, error)
-	SampleFrames(ctx context.Context, videoPath string, count int) ([]SampledFrame, error)
+	// ExtractAudio writes the audio track into outDir, which the caller
+	// owns and removes.
+	ExtractAudio(ctx context.Context, videoPath, outDir string) (*ExtractedAudio, error)
 }
 
 // StubVideoProvider returns placeholder results for testing.
@@ -61,26 +54,12 @@ func (p *StubVideoProvider) ProbeMetadata(_ context.Context, videoPath string) (
 	}, nil
 }
 
-func (p *StubVideoProvider) ExtractAudio(_ context.Context, videoPath string) (*ExtractedAudio, error) {
+func (p *StubVideoProvider) ExtractAudio(_ context.Context, videoPath, outDir string) (*ExtractedAudio, error) {
 	return &ExtractedAudio{
-		Path:        videoPath + ".audio.wav",
+		Path:        filepath.Join(outDir, filepath.Base(videoPath)+".audio.wav"),
 		Format:      "wav",
 		Duration:    2*time.Minute + 30*time.Second,
 		SampleRate:  44100,
 		ContentType: "audio/wav",
 	}, nil
-}
-
-func (p *StubVideoProvider) SampleFrames(_ context.Context, videoPath string, count int) ([]SampledFrame, error) {
-	frames := make([]SampledFrame, count)
-	interval := (2*time.Minute + 30*time.Second) / time.Duration(count)
-	for i := range frames {
-		frames[i] = SampledFrame{
-			Index:       i,
-			Timestamp:   time.Duration(i) * interval,
-			Path:        fmt.Sprintf("%s.frame.%d.png", videoPath, i),
-			ContentType: "image/png",
-		}
-	}
-	return frames, nil
 }

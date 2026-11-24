@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 )
@@ -62,20 +61,25 @@ func estimateConfidence(ctx context.Context, imagePath, language string) float64
 		return 0.0
 	}
 
-	// TSV output has columns: level, page_num, block_num, par_num, line_num, word_num, left, top, width, height, conf, text
-	lines := strings.Split(result.Stdout, "\n")
-	var total, count float64
-	confPattern := regexp.MustCompile(`\t(\d+)\t[^\t]*$`)
+	return meanWordConfidence(result.Stdout)
+}
 
-	for _, line := range lines[1:] { // skip header
-		if m := confPattern.FindStringSubmatch(line); len(m) > 1 {
-			if c, err := strconv.ParseFloat(m[1], 64); err == nil && c >= 0 {
-				total += c
-				count++
-			}
+// meanWordConfidence averages the confidence of the words in tesseract tsv
+// output, as 0.0 to 1.0. Columns: level, page_num, block_num, par_num,
+// line_num, word_num, left, top, width, height, conf, text. Only word rows
+// (level 5, non-empty text, conf >= 0) count; structural rows report conf -1.
+func meanWordConfidence(tsv string) float64 {
+	var total, count float64
+	for _, line := range strings.Split(tsv, "\n")[1:] { // skip header
+		f := strings.Split(strings.TrimRight(line, "\r"), "\t")
+		if len(f) < 12 || f[0] != "5" || strings.TrimSpace(f[11]) == "" {
+			continue
+		}
+		if c, err := strconv.ParseFloat(f[10], 64); err == nil && c >= 0 {
+			total += c
+			count++
 		}
 	}
-
 	if count == 0 {
 		return 0.0
 	}

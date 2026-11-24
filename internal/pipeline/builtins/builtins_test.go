@@ -33,7 +33,7 @@ func TestAllDefsRegistered(t *testing.T) {
 func TestAllStepsResolve(t *testing.T) {
 	for name, d := range Defs() {
 		for _, step := range d.Steps {
-			s, err := resolveStep(step, BuildOpts{})
+			s, err := resolveStep(step, BuildOpts{Factory: stubProviders()})
 			if err != nil {
 				t.Errorf("pipeline %q: step %q failed to resolve: %v", name, step, err)
 				continue

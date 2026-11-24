@@ -3,9 +3,11 @@ package steps
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
+	"github.com/ideacrafterslabs/ctxt/internal/representation"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -57,44 +59,38 @@ func (s *AudioTranscriber) Run(ctx context.Context, draft *storage.KnowledgeObje
 	draft.Metadata["transcription_confidence"] = result.Confidence
 	draft.Metadata["_raw_segments"] = result.Segments
 
-	// Emit canonical graph nodes when ID is set.
+	if m := representation.ModelOf(s.provider); m != "" {
+		draft.Metadata["transcription_model"] = m
+	}
+
+	// Emit one transcript representation node per segment when ID is set.
+	// There is no root summary holding the full text: the segments are the
+	// text, and a copy of it would be indexed twice.
 	if draft.ID == "" {
 		return draft, nil
 	}
-	if draft.Graph == nil {
-		draft.Graph = &storage.ObjectGraph{}
-	}
-	rootID := storage.NewNodeID(draft.ID, storage.NodeTypeSummary, 0)
-	if draft.Graph.FindNode(rootID) == nil {
-		draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
-			ID:       rootID,
-			NodeType: storage.NodeTypeSummary,
-			Label:    "root",
-			Content:  result.FullText,
-			Order:    0,
-		})
-	}
-	for i, seg := range result.Segments {
-		secID := storage.NewNodeID(draft.ID, storage.NodeTypeSection, i)
-		draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
-			ID:       secID,
-			NodeType: storage.NodeTypeSection,
-			Label:    fmt.Sprintf("Segment %d", i+1),
-			Content:  seg.Text,
-			Order:    i,
-			Metadata: map[string]any{
-				"start_ms": seg.StartTime.Milliseconds(),
-				"end_ms":   seg.EndTime.Milliseconds(),
-				"speaker":  seg.Speaker,
-			},
-		})
-		draft.Graph.Edges = append(draft.Graph.Edges, storage.GraphEdge{
-			ID:       fmt.Sprintf("%s->%s", rootID, secID),
-			FromID:   rootID,
-			ToID:     secID,
-			EdgeType: storage.EdgeTypeContains,
-		})
-	}
-
+	emitTranscript(draft, result.Segments, s.provider.Name(),
+		representation.ModelOf(s.provider), representation.ConfidenceOf(result.Confidence))
 	return draft, nil
+}
+
+// emitTranscript writes one transcript node per non-empty segment. A
+// segment whose anchors are invalid is clamped; one Emit still refuses is
+// skipped and recorded as transcript_error.
+func emitTranscript(draft *storage.KnowledgeObject, segs []providers.TranscriptSegment, provider, model string, conf *float64) {
+	for i, seg := range segs {
+		if strings.TrimSpace(seg.Text) == "" {
+			continue
+		}
+		start, end := clampSpan(seg.StartTime.Milliseconds(), seg.EndTime.Milliseconds())
+		emitLenient(draft, representation.Spec{
+			Kind:       representation.Transcript,
+			Label:      fmt.Sprintf("Segment %d", i+1),
+			Content:    seg.Text,
+			Anchor:     representation.Anchor{}.WithSpan(start, end).WithSpeaker(seg.Speaker),
+			Provider:   provider,
+			Model:      model,
+			Confidence: conf,
+		})
+	}
 }

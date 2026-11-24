@@ -166,7 +166,69 @@ only two values and fails startup on anything else.
 Both drivers keep `mentions` as a JSON column on the object row (`JSON` on
 SQLite, `JSONB` on PostgreSQL). Content above `storage.blob.threshold` is
 written to the blob store set by `storage.blob.backend`: `local` (default),
-`s3`, or `garage` (S3 with Garage defaults).
+`s3`, or `garage` (S3 with Garage defaults). `local` stores under
+`storage.blob.local.path`, which defaults to `blobs/` in the data directory.
+Every storage open (dpkms, and the CLI's direct paths) builds the store
+through `blob.New`; there is no no-op blob store.
+
+### Originals
+
+Binary captures that reach the worker as a job payload (content that is not
+valid UTF-8 or holds a NUL byte: images, audio, video, office and PDF files,
+and legacy-charset text) are kept as originals, with no size cap. Point
+`storage.blob` at S3-compatible storage if the local disk cannot hold them.
+Not covered today: content a pipeline fetches itself (URL fetch) and the file
+reader paths; those get no original.
+
+- The worker stores the bytes in the blob store before any pipeline step
+  runs, including steps that mask or scrub text. The stored original is the
+  captured bytes, unmodified; only derived text passes through those steps.
+- The blob key is the hex SHA-256 of the exact bytes. Identical originals
+  share one blob, whatever their source.
+- An `artifact` node (ordinal 0) records the original: `blob_key`,
+  `content_type`, `size_bytes`, `sha256`, `file_name`. `content_type` is
+  sniffed from the first 512 bytes. `file_name` is the last path segment of
+  the capture's source, for display only. A source counts as a path when it
+  holds a `/` or `\`, is a `file:` URL or a URL with a host, or is a watcher
+  source (`watch:<mode>:<relpath>`, a bare name included). Labels (cli,
+  stdin, clipboard, `v1.2`, an email address), other schemes (`mailto:`,
+  `ambient:`) and sources ending in a separator give an empty name. Control
+  characters (C0, C1, DEL) and Unicode format characters (including the
+  bidi overrides) are removed, and the name is capped at 255 bytes.
+- `metadata.original_blob_key` names the same blob at object level. It is
+  separate from `metadata.blob_key`, which holds the key of externalized
+  text; delete, update and sweep count references through both.
+- The OCR and vision steps write a `derives_from` edge from their
+  representation node to the artifact node. Other representation steps do
+  not write that edge yet.
+- Re-analysis runs the pipeline on the original's bytes and keeps the
+  original.
+- Deleting an object removes the original when no other object refers to
+  it, together with the object's graph nodes and chunks. A blob younger than
+  the one-hour sweep grace is left for `Sweep`, so it can outlive the delete
+  by up to an hour.
+- A re-capture that is reinforced as a duplicate, or updated by source key,
+  does not replace the stored original.
+- Federation: a local (file) push copies originals into the target's blob
+  store with the content blobs. A remote push has no blob channel, so it
+  strips `original_blob_key` and the artifact node's `blob_key` and
+  `sha256`: originals stay on the source instance.
+- Federation (local push) of an object whose original blob is missing at
+  the source writes the object without the original, with a warning; a
+  missing content blob still fails the push. A remote push sends no
+  content for binary RawContent (the original's own ref), only text.
+- Re-analysis whose original blob is missing logs a warning and runs on the
+  stored text, keeping the recorded keys, unless the pipeline has a step
+  that reads the media (OCR, vision, transcription, diarization). Then, and
+  when the content blob is lost or there is neither text nor an original,
+  re-analysis returns `upgrade.ErrCannotReanalyze`: the upgrade run logs it,
+  skips that object and goes on. The PDF, office and audio extractors do not
+  declare a media capability yet, so they are not recognised as such.
+- Read an original with `blob.OriginalOf(obj)`, then
+  `store.Get(ctx, original.Key)`.
+
+Text above `storage.blob.threshold` is keyed by the normalised content hash
+instead.
 
 There is no JSON-file backend, no LEANN backend and no custom-backend hook:
 adding a backend means adding a case to the factory. See

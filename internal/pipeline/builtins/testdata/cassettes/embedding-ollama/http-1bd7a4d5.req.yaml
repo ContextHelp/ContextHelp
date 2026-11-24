@@ -1,0 +1,8 @@
+xrr: "1"
+adapter: http
+fingerprint: 1bd7a4d5
+recorded_at: "2026-11-22T18:15:02Z"
+payload:
+    method: POST
+    url: http://127.0.0.1:11434/api/embed
+    body: '{"model":"snowflake-arctic-embed2","input":"[Transcribed audio content]\n[OCR text extracted from image]","truncate":false,"options":{"num_ctx":8192,"num_batch":8192}}'

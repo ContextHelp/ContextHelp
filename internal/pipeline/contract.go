@@ -26,6 +26,24 @@ func SkipsBinary(step PipelineStep, draft *storage.KnowledgeObject) bool {
 	return draft != nil && !step.Contract().Binary && HoldsBinary(draft)
 }
 
+// ReadsMediaBytes reports whether step reads the captured media itself
+// (OCR, vision, speech recognition, diarization, video, frames, document
+// extraction): given text where the image, audio, video or document should
+// be, it fails or invents output.
+func ReadsMediaBytes(step PipelineStep) bool {
+	c := step.Contract()
+	if !c.Binary {
+		return false
+	}
+	for _, cap := range c.Capabilities {
+		switch cap {
+		case "ocr", "vision", "transcription", "diarization", "video", "frames", "document":
+			return true
+		}
+	}
+	return false
+}
+
 // HoldsBinary reports whether draft's content is binary: held in
 // RawContent, or externalized by an earlier step to a blob the draft
 // still carries (BlobContent), where RawContent is only its ref.

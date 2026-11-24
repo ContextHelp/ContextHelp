@@ -37,16 +37,12 @@ func NewLocalPusher(name, targetPath string, targetBlob *config.BlobConfig, blob
 	return &LocalPusher{name: name, targetPath: targetPath, targetBlob: targetBlob, blobs: blobs}
 }
 
-// copyBlobs copies the blobs obj's content refs name from src to dst,
-// skipping those dst already holds. A blob src does not hold is an
-// *ObjectError; any other read failure is the store's, not the
-// object's.
+// copyBlobs copies the blobs obj refers to (blob.Keys: its content refs
+// and its original) from src to dst, skipping those dst already holds.
+// A blob src does not hold is an *ObjectError; any other read failure
+// is the store's, not the object's.
 func copyBlobs(ctx context.Context, src, dst storage.BlobStore, obj *storage.KnowledgeObject) error {
-	for _, content := range []string{obj.RawContent, obj.TextContent} {
-		key, ok := blob.BlobKey(content)
-		if !ok {
-			continue
-		}
+	for _, key := range blob.Keys(obj) {
 		if have, err := dst.Exists(ctx, key); err != nil {
 			return fmt.Errorf("object %q: blob %s: check target: %w", obj.ID, key, err)
 		} else if have {
@@ -78,6 +74,10 @@ func copyBlobs(ctx context.Context, src, dst storage.BlobStore, obj *storage.Kno
 // second copy finds the row and puts it back (blob.Ensure has the same
 // contract on ingest).
 func writeObject(ctx context.Context, objs storage.ObjectStore, src, dst storage.BlobStore, obj *storage.KnowledgeObject) error {
+	obj, err := dropLostOriginal(ctx, src, dst, obj)
+	if err != nil {
+		return err
+	}
 	if err := copyBlobs(ctx, src, dst, obj); err != nil {
 		return err
 	}
@@ -85,6 +85,40 @@ func writeObject(ctx context.Context, objs storage.ObjectStore, src, dst storage
 		return fmt.Errorf("create object %q: %w", obj.ID, err)
 	}
 	return copyBlobs(ctx, src, dst, obj)
+}
+
+// dropLostOriginal returns obj without its original when neither src
+// nor dst holds the original's blob and no content ref names it: the
+// object lands without it, with a warning, instead of being dropped.
+// Missing content blobs still fail the push (copyBlobs).
+func dropLostOriginal(ctx context.Context, src, dst storage.BlobStore, obj *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
+	o, ok := blob.OriginalOf(obj)
+	if !ok {
+		return obj, nil
+	}
+	for _, content := range []string{obj.RawContent, obj.TextContent} {
+		if key, isRef := blob.BlobKey(content); isRef && key == o.Key {
+			return obj, nil // content, not just an original: copyBlobs decides
+		}
+	}
+	if have, err := dst.Exists(ctx, o.Key); err != nil {
+		return nil, fmt.Errorf("object %q: blob %s: check target: %w", obj.ID, o.Key, err)
+	} else if have {
+		return obj, nil
+	}
+	if src != nil {
+		have, err := src.Exists(ctx, o.Key)
+		if err != nil {
+			return nil, fmt.Errorf("object %q: blob %s: check source: %w", obj.ID, o.Key, err)
+		}
+		if have {
+			return obj, nil
+		}
+	}
+	slog.Warn("federation: original blob missing at source, pushing without it",
+		"object", obj.ID, "blob", o.Key)
+	stripped := blob.WithoutOriginal(*obj)
+	return &stripped, nil
 }
 
 // ErrLocalTargetNotPrivate is wrapped by every refusal to push into a

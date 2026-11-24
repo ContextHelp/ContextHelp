@@ -7,6 +7,7 @@ import (
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
+	"github.com/ideacrafterslabs/ctxt/internal/representation"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -34,6 +35,13 @@ func NewSectionerWithLLM(llm providers.LLMProvider) *Sectioner {
 func (s *Sectioner) Name() string { return "sectioner" }
 
 func (s *Sectioner) Run(ctx context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
+	// A draft whose media steps emitted content representation nodes (any
+	// kind but summary) is already sectioned: the nodes are the text. Splitting RawContent again would
+	// index it a second time and reuse node ordinals.
+	if representation.HasContent(draft.Graph) {
+		return draft, nil
+	}
+
 	content := draft.RawContent
 
 	// Split on markdown headings (## ...).
@@ -113,19 +121,9 @@ func (s *Sectioner) Run(ctx context.Context, draft *storage.KnowledgeObject) (*s
 	if draft.Graph == nil {
 		draft.Graph = &storage.ObjectGraph{}
 	}
-	rootID := storage.NewNodeID(draft.ID, storage.NodeTypeSummary, 0)
-	// Only add root if not already present (textcleaner may have added it).
-	if draft.Graph.FindNode(rootID) == nil {
-		draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
-			ID:       rootID,
-			NodeType: storage.NodeTypeSummary,
-			Label:    "root",
-			Content:  draft.RawContent,
-			Order:    0,
-		})
-	}
+	rootID := ensureRoot(draft, "root", draft.RawContent)
 	for i, sec := range sections {
-		secID := storage.NewNodeID(draft.ID, storage.NodeTypeSection, i)
+		secID := storage.NewNodeID(draft.ID, storage.NodeTypeSection, storage.NextOrdinal(draft.Graph, storage.NodeTypeSection))
 		draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
 			ID:       secID,
 			NodeType: storage.NodeTypeSection,

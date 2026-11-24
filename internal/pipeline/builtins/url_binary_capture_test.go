@@ -21,9 +21,12 @@ import (
 func captureURL(t *testing.T, srv *httptest.Server) (storage.StorageDriver, *storage.KnowledgeObject) {
 	t.Helper()
 	driver := storageutil.NewTestDriver(t)
-	pipes := ConfiguredRegistryWithOpts(BuildOpts{
+	pipes, regErr := ConfiguredRegistryWithOpts(BuildOpts{
 		FetchGuard: safefetch.New(safefetch.Options{Policy: safefetch.Policy{AllowPrivate: true}}),
 	})
+	if regErr != nil {
+		t.Fatal(regErr)
+	}
 	q := jobs.NewQueue(driver.Jobs())
 	now := time.Now().Truncate(time.Second)
 	if err := q.Enqueue(context.Background(), &storage.Job{

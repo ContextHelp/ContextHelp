@@ -206,7 +206,10 @@ func TestWorkerBinaryReachesOCRStep(t *testing.T) {
 	driver := storageutil.NewTestDriver(t)
 	bin := pngLike(600)
 	ocr := &recordingOCR{}
-	reg := builtins.ConfiguredRegistryWithOpts(builtins.BuildOpts{OCR: ocr})
+	reg, regErr := builtins.ConfiguredRegistryWithOpts(builtins.BuildOpts{OCR: ocr})
+	if regErr != nil {
+		t.Fatal(regErr)
+	}
 	obj := runBinaryJobIn(t, reg, driver, "bin-ocr", bin, "image.ocr", "/tmp/scan.png")
 	requireNoBinaryProjection(t, obj)
 	require.Equal(t, "image/png", obj.ContentType)

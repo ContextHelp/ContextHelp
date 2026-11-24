@@ -129,6 +129,17 @@ func blobDeleteCount(t *testing.T, fx *blobDeleteFx) {
 	if n := fx.count(t, bk("cntkey")); n != 3 {
 		t.Errorf("CountBlobRefs(cntkey) = %d, want 3 (raw, text and metadata refs)", n)
 	}
+	// An original's key has its own slot: a text blob_key beside it
+	// must not hide it, and each key counts the object once.
+	fx.create(t, &storage.KnowledgeObject{ID: "bref-orig", RawContent: "ocr text", Metadata: map[string]any{
+		"original_blob_key": bk("cntorig"), "blob_key": bk("cnttext"),
+	}})
+	if n := fx.count(t, bk("cntorig")); n != 1 {
+		t.Errorf("CountBlobRefs(cntorig) = %d, want 1 (metadata.original_blob_key)", n)
+	}
+	if n := fx.count(t, bk("cnttext")); n != 1 {
+		t.Errorf("CountBlobRefs(cnttext) = %d, want 1 (metadata.blob_key beside an original)", n)
+	}
 	if n := fx.count(t, "absent"); n != 0 {
 		t.Errorf("CountBlobRefs(absent) = %d, want 0", n)
 	}

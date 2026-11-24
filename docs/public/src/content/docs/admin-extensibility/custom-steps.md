@@ -107,7 +107,7 @@ pipelines:
           after: html_cleaner
 ```
 
-Place the step before the first step that sends content to a provider: `tagger`, `sectioner`, `entity_extractor`, `graph_extractor`, `structured_metadata` (when an LLM is configured), or `embedding`. Also place it before `externalize_content`, which moves large content to the blob store. Storage and the full-text index happen after the last step, so any position before them is covered.
+Place the step before the first step that sends content to a provider: `tagger`, `sectioner`, `entity_extractor`, `graph_extractor`, `structured_metadata` (when an LLM is configured), or `embedding`. Also place it before `externalize_content`, which moves large text to the blob store. Binary captures (images, audio, video, office files) are different: the worker stores their original bytes in the blob store before any step runs, so an inserted step masks the text derived from the media but never the stored original. Storage and the full-text index happen after the last step, so any position before them is covered.
 
 For text pipelines, inserting first is simplest. In URL pipelines the content only exists after `url_fetcher` and `html_cleaner`, so insert after `html_cleaner`.
 

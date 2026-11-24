@@ -150,6 +150,7 @@ Representation nodes use these metadata keys. The existing keys are reused, not 
 
 ## Implementation Notes
 
+- Representation kinds, provenance keys, the node writer, and the projection order live in `internal/representation`; the shared ordinal allocator is `storage.NextOrdinal` and the artifact metadata keys are `storage.ArtifactMeta*`; the node-metadata schema is `schemas/representation_node.json`.
 - The provider roles, their local defaults, the files where cloud-preferring `auto` is removed, the increments and the test gates are in the plan.
 - The frame-extraction provider's default is the owner's own package. Its integration details are pending; ffmpeg serves as the interim local default behind the same interface.
 - Every defect listed in the plan's survey gets a regression test that fails on the code at `2b57f39`.

@@ -30,6 +30,9 @@ type chatProvider struct {
 
 func (p *chatProvider) Name() string { return p.api.name }
 
+// Model is the model the provider calls; provenance on derived text records it.
+func (p *chatProvider) Model() string { return p.model }
+
 func (p *chatProvider) Analyze(ctx context.Context, imageData []byte, contentType string) (*Result, error) {
 	return p.api.analyze(ctx, p.client, p.apiKey, p.model, imageData, contentType)
 }

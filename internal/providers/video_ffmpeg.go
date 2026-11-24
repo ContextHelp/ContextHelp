@@ -41,12 +41,15 @@ type ffprobeFormat struct {
 }
 
 func (p *FFmpegVideoProvider) ProbeMetadata(ctx context.Context, videoPath string) (*VideoMetadata, error) {
+	if err := requireAbsMediaPath(videoPath); err != nil {
+		return nil, err
+	}
 	result, err := RunCommand(ctx, "ffprobe",
 		"-v", "quiet",
 		"-print_format", "json",
 		"-show_format",
 		"-show_streams",
-		videoPath,
+		ffmpegInput(videoPath),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("ffprobe: %w", err)
@@ -83,10 +86,13 @@ func (p *FFmpegVideoProvider) ProbeMetadata(ctx context.Context, videoPath strin
 	return meta, nil
 }
 
-func (p *FFmpegVideoProvider) ExtractAudio(ctx context.Context, videoPath string) (*ExtractedAudio, error) {
-	outPath := videoPath + ".audio.wav"
+func (p *FFmpegVideoProvider) ExtractAudio(ctx context.Context, videoPath, outDir string) (*ExtractedAudio, error) {
+	if err := requireAbsMediaPath(videoPath); err != nil {
+		return nil, err
+	}
+	outPath := filepath.Join(outDir, filepath.Base(videoPath)+".audio.wav")
 	_, err := RunCommand(ctx, toolFFmpeg,
-		"-i", videoPath,
+		"-i", ffmpegInput(videoPath),
 		"-vn",
 		"-acodec", "pcm_s16le",
 		"-ar", "16000",
@@ -104,48 +110,6 @@ func (p *FFmpegVideoProvider) ExtractAudio(ctx context.Context, videoPath string
 		SampleRate:  16000,
 		ContentType: "audio/wav",
 	}, nil
-}
-
-func (p *FFmpegVideoProvider) SampleFrames(ctx context.Context, videoPath string, count int) ([]SampledFrame, error) {
-	if count <= 0 {
-		return nil, nil
-	}
-
-	// Get duration first.
-	meta, err := p.ProbeMetadata(ctx, videoPath)
-	if err != nil {
-		return nil, err
-	}
-
-	interval := meta.Duration / time.Duration(count)
-	dir := filepath.Dir(videoPath)
-	base := filepath.Base(videoPath)
-
-	frames := make([]SampledFrame, 0, count)
-	for i := 0; i < count; i++ {
-		ts := time.Duration(i) * interval
-		outPath := filepath.Join(dir, fmt.Sprintf("%s.frame.%d.png", base, i))
-
-		_, err := RunCommand(ctx, toolFFmpeg,
-			"-ss", formatDuration(ts),
-			"-i", videoPath,
-			"-frames:v", "1",
-			"-y",
-			outPath,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("ffmpeg sample frame %d: %w", i, err)
-		}
-
-		frames = append(frames, SampledFrame{
-			Index:       i,
-			Timestamp:   ts,
-			Path:        outPath,
-			ContentType: "image/png",
-		})
-	}
-
-	return frames, nil
 }
 
 // parseFrameRate parses ffprobe's r_frame_rate (e.g. "30000/1001" or "30/1").

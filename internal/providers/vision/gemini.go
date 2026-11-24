@@ -38,6 +38,9 @@ func (p *GeminiProvider) WithHTTPClient(c *http.Client) *GeminiProvider {
 
 func (p *GeminiProvider) Name() string { return "gemini" }
 
+// Model is the model the provider calls; provenance on derived text records it.
+func (p *GeminiProvider) Model() string { return p.model }
+
 func (p *GeminiProvider) Analyze(ctx context.Context, imageData []byte, contentType string) (*Result, error) {
 	if p.apiKey == "" {
 		return nil, fmt.Errorf("GEMINI_API_KEY not set in the secrets store or environment")

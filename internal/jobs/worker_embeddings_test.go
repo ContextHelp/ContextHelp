@@ -99,11 +99,14 @@ func (l *lockedBuffer) String() string {
 func ingest(t *testing.T, driver storage.StorageDriver, models embeddings.ModelSource, store storage.EmbeddingStore, id, body string) *storage.Job {
 	t.Helper()
 	d := &embeddingsDriver{StorageDriver: driver, emb: store}
-	pipes := builtins.ConfiguredRegistryWithOpts(builtins.BuildOpts{
+	pipes, regErr := builtins.ConfiguredRegistryWithOpts(builtins.BuildOpts{
 		Models:     models,
 		Resolver:   ollamaResolver(t),
 		Embeddings: store,
 	})
+	if regErr != nil {
+		t.Fatal(regErr)
+	}
 	q := NewQueue(d.Jobs())
 	job := makeJob(id)
 	job.Payload = body

@@ -215,7 +215,8 @@ export CTXT_PROFILE="founder"
 # dPKMS worker count
 export DPKMS_WORKERS=8
 
-# OpenAI API key (if using AI features)
+# OpenAI API key. A key alone does nothing: also set providers.llm.backend
+# to openai (auto always means local Ollama and never reads keys).
 export OPENAI_API_KEY="your-api-key-here"
 ```
 

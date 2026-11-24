@@ -19,7 +19,7 @@ Providers are compiled into dpkms and picked by config (`providers.<role>.backen
 | LLM | `anthropic`, `openai`, `ollama`, `stub` (`auto` picks Anthropic, then OpenAI by available key, else Ollama) |
 | Vision | `ollama`, `openai`, `anthropic`, `gemini`, `openrouter`, `stub` |
 | Embeddings | `ollama`, `stub` |
-| Transcription | `whisper-cli`, `ollama`, `stub` |
+| Transcription | `whisper-cli`, `stub` |
 | OCR / documents / video / diarization | `tesseract`; `pdftotext`, `golib`; `ffmpeg`; `pyannote` (each with `stub`) |
 
 Configuration and keys: [../environment-variables/ai-providers.md](../environment-variables/ai-providers.md).

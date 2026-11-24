@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
+	"github.com/ideacrafterslabs/ctxt/internal/representation"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -54,8 +55,11 @@ func (s *TimelineAssembler) Run(ctx context.Context, draft *storage.KnowledgeObj
 		}
 	}
 
-	// Append frame OCR text as a section if present.
-	if ocrText, ok := draft.Metadata["frame_ocr_text"].(string); ok && ocrText != "" {
+	// Append frame OCR text as a flat section if present. With frame_ocr
+	// nodes in the graph the text is already indexed per frame, and the
+	// graph-first projection ignores flat sections, so none is added.
+	if ocrText, ok := draft.Metadata["frame_ocr_text"].(string); ok && ocrText != "" &&
+		!representation.Has(draft.Graph, representation.FrameOCR) {
 		assembled = append(assembled, storage.Section{
 			Title:   "Frame OCR",
 			Content: ocrText,

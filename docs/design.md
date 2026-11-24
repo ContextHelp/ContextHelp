@@ -651,13 +651,25 @@ There is no `aiProvider`, `embeddingProvider` or `nlqNormalizer` key.
 
 | Kind | Backends | Empty / `auto` |
 |---|---|---|
-| `llm` | `openai`, `anthropic`, `ollama`, `stub` | Anthropic if `ANTHROPIC_API_KEY` resolves, else OpenAI if `OPENAI_API_KEY` resolves, else Ollama at `http://localhost:11434` |
-| `vision` | `ollama`, `openai`, `anthropic`, `gemini`, `openrouter`, `stub` | Ollama if reachable, else the first hosted key that resolves (OpenAI, Anthropic, Gemini, OpenRouter), else `stub` |
-| `transcription` | `whisper-cli`, `ollama`, `stub` | `whisper-cli` if installed, else `stub` |
-| `ocr` | `tesseract`, `stub` | `tesseract` if installed, else `stub` |
-| `document` | `pdftotext`, `golib`, `stub` | `golib` (pure Go) |
-| `video` | `ffmpeg`, `stub` | `ffmpeg` if installed, else `stub` |
-| `diarization` | `pyannote`, `stub` | `pyannote` if installed, else `stub` |
+| `llm` | `openai`, `anthropic`, `ollama`, `stub` | Ollama at the configured endpoint (default `http://localhost:11434`), whatever API keys are set |
+| `vision` | `ollama`, `openai`, `anthropic`, `gemini`, `openrouter`, `stub` | Ollama if reachable and the configured model is installed, else unavailable. Never a hosted backend |
+| `transcription` | `whisper-cli`, `stub` | `whisper-cli` if installed and `providers.transcription.model` names a model file, else unavailable |
+| `ocr` | `tesseract`, `stub` | `tesseract` if installed, else unavailable |
+| `document` | `pdftotext`, `golib`, `stub` | `golib` (pure Go: markdown and .docx; PDF needs `pdftotext` and fails with an install hint without it) |
+| `video` | `ffmpeg`, `stub` | `ffmpeg` if installed, else unavailable |
+| `frames` | `ffmpeg`, `stub` | `ffmpeg` if installed, else unavailable |
+| `summarization` | `ollama`, `openai`, `anthropic`, `stub` | Ollama at the configured endpoint, whatever API keys are set |
+| `diarization` | `pyannote`, `stub` | `pyannote` if installed, else skipped (optional) |
+
+A backend name a kind does not know, a named CLI backend (`tesseract`,
+`ffmpeg`, `pdftotext`, `whisper-cli`, `pyannote`) that is not installed, a
+named `ollama` backend of `vision`, `llm` or `summarization` with no
+`model`, or a named hosted backend (`openai`, `anthropic`, `gemini`,
+`openrouter`) whose API key does not resolve, is a configuration error at
+startup that names the key and the valid values, install hint or missing
+setting. Nothing falls back to a stub or another backend; `auto` picks a
+local backend or leaves the kind unavailable, and never errors for these. A media pipeline whose required
+kind is unavailable is not registered and answers `422 PIPELINE_NOT_FOUND`.
 
 `providers.embedding` takes `backend`, `model`, `endpoint`, `api_key_env` (the
 name of the env var holding the key) and `dimension`; the effective embedding
