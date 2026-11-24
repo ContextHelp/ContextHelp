@@ -75,7 +75,7 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
 		remind_at, reminded_at, graph_json, source_key, projected_fts_body,
-		projection_version, profile_id, classes, projected_fts_body_masked, session_id
+		projection_version, profile_id, classes, projected_fts_body_masked, session_id, expires_at, expiry_scope
 	) VALUES (
 		$1, $2, $3, $4, $5, $6,
 		$7, $8, $9, $10, $11,
@@ -83,7 +83,7 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		$16, $17, $18, $19,
 		$20, $21, $22, $23, $24,
 		$25, $26, $27, $28, $29,
-		$30, $31, $32, $33, $34
+		$30, $31, $32, $33, $34, $35, $36
 	)`,
 		obj.ID, obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
@@ -91,7 +91,7 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		f.influences, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.CreatedAt.UTC(), obj.UpdatedAt.UTC(), obj.FTSIndexed, obj.Status, obj.InboxNote,
 		f.remindAt, f.remindedAt, graphJSON, obj.SourceKey, projectedFTSBody,
-		indexsig.ProjectionVersion, obj.ProfileID, f.classes, index.MaskedFTSBody, nullSessionID(obj.SessionID),
+		indexsig.ProjectionVersion, obj.ProfileID, f.classes, index.MaskedFTSBody, nullSessionID(obj.SessionID), f.expiresAt, obj.ExpiryScope,
 	)
 	if err != nil {
 		if errors.Is(constraintErr(err), storage.ErrAlreadyExists) {
@@ -324,8 +324,8 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		reinforcement_count=$17, last_reinforced_at=$18,
 		updated_at=$19, fts_indexed=$20, status=$21, inbox_note=$22,
 		remind_at=$23, reminded_at=$24, graph_json=$25, projected_fts_body=$26,
-		projection_version=$27, profile_id=$28, classes=$29, projected_fts_body_masked=$30, session_id=$31
-	WHERE id=$32`,
+		projection_version=$27, profile_id=$28, classes=$29, projected_fts_body_masked=$30, session_id=$31, expires_at=$32, expiry_scope=$33
+	WHERE id=$34`,
 		obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
 		f.decisions, f.tasks, obj.Pipeline, obj.Source,
@@ -333,7 +333,7 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.UpdatedAt.UTC(), obj.FTSIndexed, obj.Status, obj.InboxNote,
 		f.remindAt, f.remindedAt, graphJSON, projectedFTSBody,
-		indexsig.ProjectionVersion, obj.ProfileID, f.classes, index.MaskedFTSBody, nullSessionID(obj.SessionID), obj.ID,
+		indexsig.ProjectionVersion, obj.ProfileID, f.classes, index.MaskedFTSBody, nullSessionID(obj.SessionID), f.expiresAt, obj.ExpiryScope, obj.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("update object: %w", err)
@@ -415,7 +415,6 @@ func purgeObjectSecondaryTx(ctx context.Context, tx *sql.Tx, id string) error {
 		query string
 		args  []any
 	}{
-		{"DELETE FROM attachments WHERE object_id = $1", []any{id}},
 		{"DELETE FROM embeddings WHERE object_id = $1", []any{id}},
 		{"DELETE FROM object_proximity WHERE object_a = $1 OR object_b = $2", []any{id, id}},
 		{"DELETE FROM watch_file_records WHERE object_id = $1", []any{id}},
@@ -1038,7 +1037,7 @@ const objectSelectCols = `SELECT
 	decisions, tasks, pipeline, source,
 	registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 	created_at, updated_at, fts_indexed, status, inbox_note,
-	remind_at, reminded_at, graph_json, source_key, profile_id, change_seq, classes, session_id`
+	remind_at, reminded_at, graph_json, source_key, profile_id, change_seq, classes, session_id, expires_at, expiry_scope`
 
 func scanObjectRow(row *sql.Row) (*storage.KnowledgeObject, error) {
 	obj, err := scanObjectColumns(row, nil)
@@ -1078,9 +1077,9 @@ func scanObjectColumns(row interface{ Scan(...any) error }, score *float64) (*st
 		metadataJSON, summariesJSON, sectionsJSON, tagsJSON []byte
 		mentionsJSON, decisionsJSON, tasksJSON              []byte
 		influencesJSON, classesJSON                         []byte
-		lastReinforcedAt, remindAt, remindedAt              sql.NullTime
+		lastReinforcedAt, remindAt, remindedAt, expiresAt   sql.NullTime
 		graphJSON                                           []byte
-		sourceKey, sessionID                                sql.NullString
+		sourceKey, sessionID, expiryScope                   sql.NullString
 	)
 	dest := []any{
 		&obj.ID, &obj.Type, &obj.Subtype, &obj.RawContent, &obj.ContentType, &obj.TextContent,
@@ -1088,7 +1087,7 @@ func scanObjectColumns(row interface{ Scan(...any) error }, score *float64) (*st
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&obj.CreatedAt, &obj.UpdatedAt, &obj.FTSIndexed, &obj.Status, &obj.InboxNote,
-		&remindAt, &remindedAt, &graphJSON, &sourceKey, &obj.ProfileID, &obj.ChangeSeq, &classesJSON, &sessionID,
+		&remindAt, &remindedAt, &graphJSON, &sourceKey, &obj.ProfileID, &obj.ChangeSeq, &classesJSON, &sessionID, &expiresAt, &expiryScope,
 	}
 	if score != nil {
 		dest = append(dest, score)
@@ -1098,7 +1097,7 @@ func scanObjectColumns(row interface{ Scan(...any) error }, score *float64) (*st
 	}
 	if err := unmarshalObjectFields(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
 		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON,
-		lastReinforcedAt, remindAt, remindedAt); err != nil {
+		lastReinforcedAt, remindAt, remindedAt, expiresAt); err != nil {
 		return nil, err
 	}
 	var err error
@@ -1118,6 +1117,9 @@ func scanObjectColumns(row interface{ Scan(...any) error }, score *float64) (*st
 	if sessionID.Valid {
 		obj.SessionID = sessionID.String
 	}
+	if expiryScope.Valid {
+		obj.ExpiryScope = expiryScope.String
+	}
 	return &obj, nil
 }
 
@@ -1134,7 +1136,7 @@ func unmarshalObjectFields(obj *storage.KnowledgeObject,
 	metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
 	mentionsJSON, decisionsJSON, tasksJSON,
 	influencesJSON []byte,
-	lastReinforcedAt, remindAt, remindedAt sql.NullTime,
+	lastReinforcedAt, remindAt, remindedAt, expiresAt sql.NullTime,
 ) error {
 	for _, col := range []struct {
 		raw  []byte
@@ -1170,14 +1172,18 @@ func unmarshalObjectFields(obj *storage.KnowledgeObject,
 		t := remindedAt.Time
 		obj.RemindedAt = &t
 	}
+	if expiresAt.Valid {
+		t := expiresAt.Time.UTC()
+		obj.ExpiresAt = &t
+	}
 	return nil
 }
 
 type objectFields struct {
-	metadata, summaries, sections, tags    string
-	mentions, decisions, tasks             string
-	influences, classes                    string
-	lastReinforcedAt, remindAt, remindedAt sql.NullTime
+	metadata, summaries, sections, tags               string
+	mentions, decisions, tasks                        string
+	influences, classes                               string
+	lastReinforcedAt, remindAt, remindedAt, expiresAt sql.NullTime
 }
 
 func marshalObjectFields(obj *storage.KnowledgeObject) (objectFields, error) {
@@ -1250,6 +1256,9 @@ func marshalObjectFields(obj *storage.KnowledgeObject) (objectFields, error) {
 	}
 	if obj.RemindedAt != nil {
 		f.remindedAt = sql.NullTime{Time: *obj.RemindedAt, Valid: true}
+	}
+	if obj.ExpiresAt != nil {
+		f.expiresAt = sql.NullTime{Time: obj.ExpiresAt.UTC(), Valid: true}
 	}
 	return f, firstErr
 }

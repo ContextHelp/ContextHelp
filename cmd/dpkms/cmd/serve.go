@@ -33,6 +33,7 @@ import (
 	httpserver "github.com/ideacrafterslabs/ctxt/internal/server/http"
 	"github.com/ideacrafterslabs/ctxt/internal/server/stack"
 	wsserver "github.com/ideacrafterslabs/ctxt/internal/server/ws"
+	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/indexsig"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/postgres"
@@ -516,6 +517,13 @@ func runServe(cmd *cobra.Command, args []string) error {
 		},
 	}
 	checker := remind.NewChecker(reminderBackend, reminderInterval)
+	expirySweeper := &service.ExpirySweeper{
+		Interval: reminderInterval,
+		Sweep: func(ctx context.Context, now time.Time) error {
+			_, err := svc.SweepExpired(asSystem(ctx), now, 100)
+			return err
+		},
+	}
 
 	// Event outbox retention (server.events_retention): prune rows past
 	// the window now and hourly.
@@ -550,6 +558,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 			{name: "workers", run: pool.Start},
 			{name: "watcher", run: watchMgr.Start},
 			{name: "reminders", run: checker.Run},
+			{name: "expiry", run: expirySweeper.Run},
 			// Federation async workers (US-0319): one goroutine per async
 			// target; Stop drains them within its own bound.
 			{name: "federation", run: func(ctx context.Context) error {

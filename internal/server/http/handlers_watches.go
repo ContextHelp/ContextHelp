@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/ideacrafterslabs/ctxt/internal/expiry"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/watcher"
@@ -24,6 +25,8 @@ func CreateWatch(svc *service.Service, mgr *watcher.Manager) http.HandlerFunc {
 			ExcludePatterns  []string `json:"exclude_patterns"`
 			DebounceMS       int      `json:"debounce_ms"`
 			PipelineOverride string   `json:"pipeline_override"`
+			ExpiryTTL        string   `json:"expiry_ttl,omitempty"`
+			ExpiryScope      string   `json:"expiry_scope,omitempty"`
 			Paused           bool     `json:"paused"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -32,6 +35,15 @@ func CreateWatch(svc *service.Service, mgr *watcher.Manager) http.HandlerFunc {
 		}
 		if req.Path == "" {
 			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "path is required")
+			return
+		}
+		if strings.TrimSpace(req.ExpiryTTL) != "" {
+			if _, err := expiry.ParseTTL(req.ExpiryTTL); err != nil {
+				WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid expiry_ttl: "+err.Error())
+				return
+			}
+		} else if strings.TrimSpace(req.ExpiryScope) != "" {
+			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "expiry_scope requires expiry_ttl")
 			return
 		}
 		if req.Mode == "" {
@@ -54,6 +66,8 @@ func CreateWatch(svc *service.Service, mgr *watcher.Manager) http.HandlerFunc {
 			DebounceMS:       req.DebounceMS,
 			Status:           watchStatus,
 			PipelineOverride: req.PipelineOverride,
+			ExpiryTTL:        strings.TrimSpace(req.ExpiryTTL),
+			ExpiryScope:      strings.TrimSpace(req.ExpiryScope),
 			CreatedAt:        now,
 			UpdatedAt:        now,
 		}
@@ -116,6 +130,8 @@ func UpdateWatch(svc *service.Service, mgr *watcher.Manager) http.HandlerFunc {
 			ExcludePatterns  *[]string `json:"exclude_patterns"`
 			DebounceMS       *int      `json:"debounce_ms"`
 			PipelineOverride *string   `json:"pipeline_override"`
+			ExpiryTTL        *string   `json:"expiry_ttl"`
+			ExpiryScope      *string   `json:"expiry_scope"`
 		}
 		if err := decodeOptionalBody(r, &patch); err != nil {
 			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid JSON body")
@@ -132,6 +148,19 @@ func UpdateWatch(svc *service.Service, mgr *watcher.Manager) http.HandlerFunc {
 		}
 		if patch.PipelineOverride != nil {
 			cfg.PipelineOverride = *patch.PipelineOverride
+		}
+		if patch.ExpiryTTL != nil {
+			ttl := strings.TrimSpace(*patch.ExpiryTTL)
+			if ttl != "" {
+				if _, err := expiry.ParseTTL(ttl); err != nil {
+					WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid expiry_ttl: "+err.Error())
+					return
+				}
+			}
+			cfg.ExpiryTTL = ttl
+		}
+		if patch.ExpiryScope != nil {
+			cfg.ExpiryScope = strings.TrimSpace(*patch.ExpiryScope)
 		}
 		cfg.UpdatedAt = time.Now()
 		if err := svc.Store(r.Context()).Watches().UpdateWatch(r.Context(), cfg); err != nil {

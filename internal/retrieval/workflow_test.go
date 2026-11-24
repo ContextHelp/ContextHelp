@@ -147,6 +147,13 @@ func (m *mockObjectStore2) MarkReminded(_ context.Context, _ string, _ time.Time
 func (m *mockObjectStore2) ListPendingReminders(_ context.Context) ([]*storage.KnowledgeObject, error) {
 	return nil, nil
 }
+func (m *mockObjectStore2) SetExpiry(_ context.Context, _ string, _ time.Time, _ string) error {
+	return nil
+}
+func (m *mockObjectStore2) ClearExpiry(_ context.Context, _ string) error { return nil }
+func (m *mockObjectStore2) ListExpired(_ context.Context, _ time.Time, _ int) ([]*storage.KnowledgeObject, error) {
+	return nil, nil
+}
 
 // fixedSemantic is a SemanticSource whose default model ("fixed-3", dimension
 // 3) embeds every query as {1, 0, 0}. The tier tests only need a query

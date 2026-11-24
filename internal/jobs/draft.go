@@ -69,17 +69,19 @@ func runDraft(ctx context.Context, reg pipeline.Registry, blobs storage.BlobStor
 		return nil, &pipeline.PermanentError{Err: err}
 	}
 	draft := &storage.KnowledgeObject{
-		ID:         uuid.New().String(),
-		Type:       seedType(job.Type, job.Pipeline),
-		RawContent: content,
-		Pipeline:   job.Pipeline,
-		Source:     job.Source,
-		CreatedAt:  time.Now(),
-		Mentions:   parseUserMentions(job.UserMentions),
-		Tags:       parseUserHints(job.UserHints),
-		ProfileID:  job.UserProfile,
-		InboxNote:  job.UserNote,
-		SourceKey:  job.UserSourceKey,
+		ID:          uuid.New().String(),
+		Type:        seedType(job.Type, job.Pipeline),
+		RawContent:  content,
+		Pipeline:    job.Pipeline,
+		Source:      job.Source,
+		CreatedAt:   time.Now(),
+		Mentions:    parseUserMentions(job.UserMentions),
+		Tags:        parseUserHints(job.UserHints),
+		ProfileID:   job.UserProfile,
+		InboxNote:   job.UserNote,
+		SourceKey:   job.UserSourceKey,
+		ExpiresAt:   job.UserExpiresAt,
+		ExpiryScope: job.UserExpiryScope,
 	}
 	if len(job.UserData) > 0 {
 		draft.Metadata = map[string]any{storageutil.MetadataDataKey: job.UserData}

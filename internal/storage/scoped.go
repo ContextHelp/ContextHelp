@@ -358,7 +358,7 @@ var restrictedReads = map[string][]string{
 	"Holds":           {"ListActive", "ListActiveBySourceKey", "ListAllActive", "IsHeld"},
 	"Jobs":            {"Get", "GetByIdempotencyKey", "List"},
 	"Metering":        {"Aggregate", "List"},
-	"Objects":         {"CountBlobRefs", "ListDueReminders", "ListPendingReminders"},
+	"Objects":         {"CountBlobRefs", "ListDueReminders", "ListPendingReminders", "ListExpired"},
 	"Obligations":     {"Get"},
 	"PendingEntities": {"List", "Get"},
 	"Pipelines":       {"Get", "List"},

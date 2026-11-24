@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -11,30 +12,36 @@ import (
 
 // capturePageRequest is the body for POST /api/v1/capture/page.
 type capturePageRequest struct {
-	URL       string `json:"url"`
-	Title     string `json:"title"`
-	Content   string `json:"content"`
-	Pipeline  string `json:"pipeline,omitempty"`
-	AuthState string `json:"auth_state,omitempty"`
+	URL         string     `json:"url"`
+	Title       string     `json:"title"`
+	Content     string     `json:"content"`
+	Pipeline    string     `json:"pipeline,omitempty"`
+	AuthState   string     `json:"auth_state,omitempty"`
+	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
+	ExpiryScope string     `json:"expiry_scope,omitempty"`
 }
 
 // captureSelectionRequest is the body for POST /api/v1/capture/selection.
 type captureSelectionRequest struct {
-	URL       string `json:"url"`
-	Title     string `json:"title"`
-	Selection string `json:"selection"`
-	Pipeline  string `json:"pipeline,omitempty"`
-	AuthState string `json:"auth_state,omitempty"`
+	URL         string     `json:"url"`
+	Title       string     `json:"title"`
+	Selection   string     `json:"selection"`
+	Pipeline    string     `json:"pipeline,omitempty"`
+	AuthState   string     `json:"auth_state,omitempty"`
+	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
+	ExpiryScope string     `json:"expiry_scope,omitempty"`
 }
 
 // captureElementRequest is the body for POST /api/v1/capture/element.
 type captureElementRequest struct {
-	URL       string `json:"url"`
-	Title     string `json:"title"`
-	Selector  string `json:"selector"`
-	Content   string `json:"content"`
-	Pipeline  string `json:"pipeline,omitempty"`
-	AuthState string `json:"auth_state,omitempty"`
+	URL         string     `json:"url"`
+	Title       string     `json:"title"`
+	Selector    string     `json:"selector"`
+	Content     string     `json:"content"`
+	Pipeline    string     `json:"pipeline,omitempty"`
+	AuthState   string     `json:"auth_state,omitempty"`
+	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
+	ExpiryScope string     `json:"expiry_scope,omitempty"`
 }
 
 // CapturePage handles POST /api/v1/capture/page.
@@ -62,6 +69,8 @@ func CapturePage(svc *service.Service) http.HandlerFunc {
 			Source:      req.URL,
 			SourceTitle: req.Title,
 			AuthState:   req.AuthState,
+			ExpiresAt:   req.ExpiresAt,
+			ExpiryScope: req.ExpiryScope,
 		}, "url.generic")
 	}
 }
@@ -87,6 +96,8 @@ func CaptureSelection(svc *service.Service) http.HandlerFunc {
 			Source:      req.URL,
 			SourceTitle: req.Title,
 			AuthState:   req.AuthState,
+			ExpiresAt:   req.ExpiresAt,
+			ExpiryScope: req.ExpiryScope,
 		}, "text.default")
 	}
 }
@@ -112,6 +123,8 @@ func CaptureElement(svc *service.Service) http.HandlerFunc {
 			Source:      req.URL,
 			SourceTitle: req.Title,
 			AuthState:   req.AuthState,
+			ExpiresAt:   req.ExpiresAt,
+			ExpiryScope: req.ExpiryScope,
 		}, "text.default")
 	}
 }

@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+
+	"github.com/ideacrafterslabs/ctxt/internal/expiry"
 )
 
 // Manager owns all active directory-watch goroutines.
@@ -477,6 +479,16 @@ func (m *Manager) processFile(ctx context.Context, cfg *WatchConfig, absPath str
 		if parsed, perr := ParseFile(absPath, cfg.Mode, cfg.Path); perr == nil {
 			parsed.Pipeline = cfg.PipelineOverride
 			req = parsed
+		}
+	}
+	if ttlStr := strings.TrimSpace(cfg.ExpiryTTL); ttlStr != "" {
+		if d, perr := expiry.ParseTTL(ttlStr); perr == nil {
+			exp := time.Now().UTC().Add(d).Truncate(time.Second)
+			req.ExpiresAt = &exp
+			req.ExpiryScope = strings.TrimSpace(cfg.ExpiryScope)
+		} else {
+			m.fail(ctx, cfg, fmt.Errorf("invalid watch expiry_ttl %q: %w", ttlStr, perr))
+			return
 		}
 	}
 

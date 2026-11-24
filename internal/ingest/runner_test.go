@@ -98,6 +98,13 @@ func (m *memObjectStore) MarkReminded(_ context.Context, _ string, _ time.Time) 
 func (m *memObjectStore) ListPendingReminders(_ context.Context) ([]*storage.KnowledgeObject, error) {
 	return nil, nil
 }
+func (m *memObjectStore) SetExpiry(_ context.Context, _ string, _ time.Time, _ string) error {
+	return nil
+}
+func (m *memObjectStore) ClearExpiry(_ context.Context, _ string) error { return nil }
+func (m *memObjectStore) ListExpired(_ context.Context, _ time.Time, _ int) ([]*storage.KnowledgeObject, error) {
+	return nil, nil
+}
 
 func (m *memObjectStore) VectorSearch(_ context.Context, _ storage.VectorQuery, _ storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
 	return nil, nil

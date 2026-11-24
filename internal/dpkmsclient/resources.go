@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -19,20 +20,22 @@ type AnalyzeRequest struct {
 	Content string `json:"content"`
 	// ContentEncoding is "" (UTF-8 text) or "base64". Analyze sets it
 	// itself when Content is not valid UTF-8; callers leave it empty.
-	ContentEncoding string   `json:"content_encoding,omitempty"`
-	Type            string   `json:"type"`
-	Pipeline        string   `json:"pipeline,omitempty"`
-	Source          string   `json:"source,omitempty"`
-	KnownHash       string   `json:"known_hash,omitempty"`
-	SourceTitle     string   `json:"source_title,omitempty"`
-	AuthState       string   `json:"auth_state,omitempty"`
-	Raw             bool     `json:"raw,omitempty"`
-	NoFanout        bool     `json:"no_fanout,omitempty"`
-	SourceKey       string   `json:"source_key,omitempty"`
-	Force           bool     `json:"force,omitempty"`
-	Mentions        []string `json:"mentions,omitempty"`
-	Hints           []string `json:"hints,omitempty"`
-	Profile         string   `json:"profile,omitempty"`
+	ContentEncoding string     `json:"content_encoding,omitempty"`
+	Type            string     `json:"type"`
+	Pipeline        string     `json:"pipeline,omitempty"`
+	Source          string     `json:"source,omitempty"`
+	KnownHash       string     `json:"known_hash,omitempty"`
+	SourceTitle     string     `json:"source_title,omitempty"`
+	AuthState       string     `json:"auth_state,omitempty"`
+	Raw             bool       `json:"raw,omitempty"`
+	NoFanout        bool       `json:"no_fanout,omitempty"`
+	SourceKey       string     `json:"source_key,omitempty"`
+	ExpiresAt       *time.Time `json:"expires_at,omitempty"`
+	ExpiryScope     string     `json:"expiry_scope,omitempty"`
+	Force           bool       `json:"force,omitempty"`
+	Mentions        []string   `json:"mentions,omitempty"`
+	Hints           []string   `json:"hints,omitempty"`
+	Profile         string     `json:"profile,omitempty"`
 	// IdempotencyKey identifies one logical submission. dpkms answers a
 	// replayed key with the job it already created. Analyze mints one
 	// when it is empty.

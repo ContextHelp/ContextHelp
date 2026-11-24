@@ -16,6 +16,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/contentenc"
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
+	"github.com/ideacrafterslabs/ctxt/internal/expiry"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/spf13/cobra"
 )
@@ -97,6 +98,9 @@ func init() {
 	captureCmd.Flags().Bool("no-fanout", false, "skip post-ingest fan-out enrichment")
 	captureCmd.Flags().Bool("no-dedup", false, "skip duplicate detection")
 	captureCmd.Flags().String("source-key", "", "external dedup key (Slack ts, tweet ID, etc.)")
+	captureCmd.Flags().String("expires", "", "auto-expire capture at this time (RFC3339, date, or expression like 'in 7d', 'tomorrow 9am')")
+	captureCmd.Flags().String("ttl", "", "auto-expire capture after this duration (e.g. 30m, 24h, 7d, 2w)")
+	captureCmd.Flags().String("expires-scope", "", "optional natural-language description of what to expire (e.g. 'PII and phone numbers', 'raw content, keep summary'); default expires whole object")
 	captureCmd.Flags().Bool("wait", false, "block until job completes")
 
 	// --- Track 2 / ambient daemon flags ---
@@ -134,7 +138,46 @@ func validateCaptureFlags(cmd *cobra.Command, args []string) error {
 	if stdin && len(args) > 0 {
 		return fmt.Errorf("cannot combine --stdin with a positional source")
 	}
+	expiresExpr, _ := cmd.Flags().GetString("expires")
+	ttlExpr, _ := cmd.Flags().GetString("ttl")
+	expiresScope, _ := cmd.Flags().GetString("expires-scope")
+	if strings.TrimSpace(expiresExpr) != "" && strings.TrimSpace(ttlExpr) != "" {
+		return fmt.Errorf("cannot combine --expires and --ttl")
+	}
+	if strings.TrimSpace(expiresScope) != "" && strings.TrimSpace(expiresExpr) == "" && strings.TrimSpace(ttlExpr) == "" {
+		return fmt.Errorf("--expires-scope requires --expires or --ttl")
+	}
+	if _, _, err := resolveCaptureExpiry(cmd, time.Now()); err != nil {
+		return err
+	}
 	return nil
+}
+
+func resolveCaptureExpiry(cmd *cobra.Command, now time.Time) (*time.Time, string, error) {
+	expiresExpr, _ := cmd.Flags().GetString("expires")
+	ttlExpr, _ := cmd.Flags().GetString("ttl")
+	scope, _ := cmd.Flags().GetString("expires-scope")
+	scope = strings.TrimSpace(scope)
+	switch {
+	case strings.TrimSpace(ttlExpr) != "":
+		d, err := expiry.ParseTTL(ttlExpr)
+		if err != nil {
+			return nil, "", fmt.Errorf("invalid --ttl: %w", err)
+		}
+		t := now.UTC().Add(d).Truncate(time.Second)
+		return &t, scope, nil
+	case strings.TrimSpace(expiresExpr) != "":
+		t, err := expiry.ParseExpiry(expiresExpr, now)
+		if err != nil {
+			return nil, "", fmt.Errorf("invalid --expires: %w", err)
+		}
+		if !t.After(now.UTC()) {
+			return nil, "", fmt.Errorf("--expires time %s must be in the future", t.Format(time.RFC3339))
+		}
+		return &t, scope, nil
+	default:
+		return nil, "", nil
+	}
 }
 
 // captureTimeout bounds each capture-side request to dpkms, so an
@@ -270,6 +313,16 @@ func captureOnce(ctx context.Context, cmd *cobra.Command, args []string) error {
 	if len(mentions) > 0 {
 		reqBody["mentions"] = mentions
 	}
+	expiresAt, expiryScope, err := resolveCaptureExpiry(cmd, time.Now())
+	if err != nil {
+		return err
+	}
+	if expiresAt != nil {
+		reqBody["expires_at"] = expiresAt.Format(time.RFC3339)
+		if expiryScope != "" {
+			reqBody["expiry_scope"] = expiryScope
+		}
+	}
 
 	if inbox {
 		// The inbox endpoint takes no content_encoding: binary would
@@ -277,7 +330,7 @@ func captureOnce(ctx context.Context, cmd *cobra.Command, args []string) error {
 		if contentEncoding != "" {
 			return fmt.Errorf("binary content is not supported with --inbox; capture it without --inbox")
 		}
-		return postInboxCapture(ctx, client, content, source, contentType, hints, mentions, cmd)
+		return postInboxCapture(ctx, client, content, source, contentType, hints, mentions, expiresAt, expiryScope, cmd)
 	}
 
 	var result struct {
@@ -306,6 +359,8 @@ func postInboxCapture(
 	client *dpkmsclient.Client,
 	content, source, contentType string,
 	hints, mentions []string,
+	expiresAt *time.Time,
+	expiryScope string,
 	cmd *cobra.Command,
 ) error {
 	body := map[string]any{
@@ -313,6 +368,12 @@ func postInboxCapture(
 		"type":     contentType,
 		"source":   source,
 		"mentions": mentions,
+	}
+	if expiresAt != nil {
+		body["expires_at"] = expiresAt.Format(time.RFC3339)
+		if expiryScope != "" {
+			body["expiry_scope"] = expiryScope
+		}
 	}
 	if note, _ := cmd.Flags().GetString("note"); note != "" {
 		body["inbox_note"] = note

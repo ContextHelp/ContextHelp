@@ -214,7 +214,7 @@ type renderObjects struct {
 var renderedReads = []string{
 	"Get", "GetByContentHash", "GetBySourceKey", "List", "ListBySQL",
 	"VectorSearch", "FTSSearch", "FTSSearchNodeAware", "VectorSearchNodeAware",
-	"ListDueReminders", "ListPendingReminders",
+	"ListDueReminders", "ListPendingReminders", "ListExpired",
 }
 
 func (s renderObjects) Get(ctx context.Context, id string) (*storage.KnowledgeObject, error) {
@@ -307,6 +307,14 @@ func (s renderObjects) ListDueReminders(ctx context.Context, now time.Time) ([]*
 
 func (s renderObjects) ListPendingReminders(ctx context.Context) ([]*storage.KnowledgeObject, error) {
 	objs, err := s.ObjectStore.ListPendingReminders(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return s.d.renderAll(ctx, objs)
+}
+
+func (s renderObjects) ListExpired(ctx context.Context, now time.Time, limit int) ([]*storage.KnowledgeObject, error) {
+	objs, err := s.ObjectStore.ListExpired(ctx, now, limit)
 	if err != nil {
 		return nil, err
 	}

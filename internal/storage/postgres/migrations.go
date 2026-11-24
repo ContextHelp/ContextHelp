@@ -597,6 +597,16 @@ var pgMigrations = []pgMigration{
 			updated_at     TIMESTAMPTZ NOT NULL
 		)`,
 	}},
+	// Migration 48 (mirrors SQLite 067): capture & watch expiry columns.
+	{Version: 48, Name: "objects.expires_at, expiry_scope, jobs and watches expiry", Statements: []string{
+		`ALTER TABLE objects ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ`,
+		`ALTER TABLE objects ADD COLUMN IF NOT EXISTS expiry_scope TEXT NOT NULL DEFAULT ''`,
+		`CREATE INDEX IF NOT EXISTS idx_objects_expires_at ON objects(expires_at) WHERE expires_at IS NOT NULL`,
+		`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS user_expires_at TIMESTAMPTZ`,
+		`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS user_expiry_scope TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE watches ADD COLUMN IF NOT EXISTS expiry_ttl TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE watches ADD COLUMN IF NOT EXISTS expiry_scope TEXT NOT NULL DEFAULT ''`,
+	}},
 }
 
 // sharingRegistryStatements create the sharing registry and add the

@@ -15,6 +15,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/cli/cliconv"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/dpkmsclient"
+	"github.com/ideacrafterslabs/ctxt/internal/expiry"
 	"github.com/ideacrafterslabs/ctxt/internal/watcher"
 	"github.com/ideacrafterslabs/ctxt/internal/watcher/watchstate"
 )
@@ -120,6 +121,9 @@ func init() {
 	watchCmd.AddCommand(watchStatusCmd)
 	watchCmd.AddCommand(watchEnableCmd)
 	watchCmd.AddCommand(watchDisableCmd)
+
+	watchStartCmd.Flags().String("ttl", "", "expire every watched capture after this duration (e.g. 24h, 7d)")
+	watchStartCmd.Flags().String("expires-scope", "", "optional natural-language description of what to expire on watched captures")
 
 	// start blocks running watchers; treat as a Write effect (it
 	// enqueues ingestion jobs while running).
@@ -243,7 +247,26 @@ func runWatchStart(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	ing := watchIngester{c: client, profile: activeProfileName(cmd)}
+	watchTTLStr, _ := cmd.Flags().GetString("ttl")
+	if watchTTLStr == "" {
+		watchTTLStr = cfg.Watch.ExpiryTTL
+	}
+	watchExpiryScope, _ := cmd.Flags().GetString("expires-scope")
+	if watchExpiryScope == "" {
+		watchExpiryScope = cfg.Watch.ExpiryScope
+	}
+	var watchTTL time.Duration
+	if watchTTLStr != "" {
+		var terr error
+		watchTTL, terr = expiry.ParseTTL(watchTTLStr)
+		if terr != nil {
+			return fmt.Errorf("invalid watch expiry ttl %q: %w", watchTTLStr, terr)
+		}
+	} else if watchExpiryScope != "" {
+		return fmt.Errorf("--expires-scope requires --ttl (or watch.expiry_ttl in config)")
+	}
+
+	ing := watchIngester{c: client, profile: activeProfileName(cmd), expiryTTL: watchTTL, expiryScope: watchExpiryScope}
 	records := loggedRecords{FileRecords: store, w: errOut}
 	fmt.Fprintf(out, "Watching for instance %s (%s)\n", r.Key, client.URL())
 	fmt.Fprintf(out, "State file: %s\n", store.Path())
@@ -282,6 +305,8 @@ func runWatchStart(cmd *cobra.Command, _ []string) error {
 			IncludePatterns: cfg.Watch.Patterns,
 			DebounceMS:      debounce,
 			Status:          "active",
+			ExpiryTTL:       watchTTLStr,
+			ExpiryScope:     watchExpiryScope,
 		})
 		fmt.Fprintf(out, "Directory watcher: %s (mode=%s)\n", dir, mode)
 	}

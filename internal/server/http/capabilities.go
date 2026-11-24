@@ -75,6 +75,8 @@ var routeAccessTable = map[string]routeAccess{
 	"GET /objects/{id}":            routeObjects,
 	"GET /objects/{id}/related":    routeObjects,
 	"PATCH /objects/{id}":          routeObjects,
+	"PUT /objects/{id}/expiry":     routeNone,
+	"DELETE /objects/{id}/expiry":  routeNone,
 	"DELETE /objects/{id}":         routeNone,
 	"DELETE /objects/by-source":    routeNone,
 	"GET /holds":                   routeNone,
