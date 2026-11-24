@@ -43,6 +43,7 @@ type Driver struct {
 	metering      *MeteringStore
 	savedSearches *SavedSearchStore
 	searchHistory *SearchHistoryStore
+	enc           EncryptionConfig
 }
 
 // ErrNoBlobStore is returned by New when it is given no blob store.
@@ -53,8 +54,8 @@ var ErrNoBlobStore = errors.New("postgres: blob store is required")
 // New creates a Postgres driver for connStr. blobs is where externalized
 // content lives: build it with blob.New from storage.blob, or open both
 // through storageutil.Open.
-func New(connStr string, blobs storage.BlobStore) (*Driver, error) {
-	return open(connStr, blobs, false)
+func New(connStr string, blobs storage.BlobStore, opts ...Option) (*Driver, error) {
+	return open(connStr, blobs, false, opts...)
 }
 
 // ErrReadOnly is returned by Init on a driver NewReadOnly opened: a
@@ -99,7 +100,7 @@ func readOnlyConfig(connStr string) (pq.Config, error) {
 }
 
 // open opens connStr and builds the driver over it.
-func open(connStr string, blobs storage.BlobStore, readOnly bool) (*Driver, error) {
+func open(connStr string, blobs storage.BlobStore, readOnly bool, opts ...Option) (*Driver, error) {
 	if blobs == nil {
 		return nil, ErrNoBlobStore
 	}
@@ -107,21 +108,29 @@ func open(connStr string, blobs storage.BlobStore, readOnly bool) (*Driver, erro
 	if err != nil {
 		return nil, fmt.Errorf("open postgres: %w", err)
 	}
-	return build(db, connStr, blobs, readOnly), nil
+	d := build(db, connStr, blobs, readOnly, opts...)
+	if err := d.enc.Validate(); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	return d, nil
 }
 
 // build wires the driver's stores over db.
-func build(db *sql.DB, connStr string, blobs storage.BlobStore, readOnly bool) *Driver {
+func build(db *sql.DB, connStr string, blobs storage.BlobStore, readOnly bool, opts ...Option) *Driver {
 
 	db.SetMaxOpenConns(25)
 	db.SetMaxIdleConns(5)
 
 	d := &Driver{db: db, connStr: connStr, readOnly: readOnly}
+	for _, opt := range opts {
+		opt(d)
+	}
 	d.caps = &pgCaps{}
-	d.objects = &ObjectStore{db: db, caps: d.caps}
+	d.objects = &ObjectStore{db: db, caps: d.caps, enc: d.enc}
 	d.entities = &EntityStore{db: db}
 	d.edges = &EdgeStore{db: db}
-	d.jobs = &JobStore{db: db}
+	d.jobs = &JobStore{db: db, enc: d.enc}
 	d.pipelines = &PipelineStore{db: db}
 	d.steps = &StepStore{db: db}
 	d.registries = &RegistryStore{db: db}
@@ -154,6 +163,9 @@ func (d *Driver) Init(ctx context.Context) error {
 	}
 	if err := d.db.PingContext(ctx); err != nil {
 		return fmt.Errorf("ping postgres: %w", err)
+	}
+	if err := d.enc.VerifyTDE(ctx, d.db); err != nil {
+		return err
 	}
 	return d.Migrate(ctx)
 }

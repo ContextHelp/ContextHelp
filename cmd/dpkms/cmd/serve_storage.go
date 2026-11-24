@@ -42,7 +42,10 @@ func openServeStorage(ctx context.Context, c *config.Config) (storage.StorageDri
 		return nil, fmt.Errorf("unlock storage encryption keys: %w", err)
 	}
 	storageType, storagePath := serveStorageTarget(c)
-	opts := []storageutil.OpenOption{storageutil.WithMigrateSnapshot(c.Storage.MigrateSnapshot)}
+	opts := []storageutil.OpenOption{
+		storageutil.WithMigrateSnapshot(c.Storage.MigrateSnapshot),
+		storageutil.WithPostgresConfig(c.Storage.Postgres),
+	}
 	if kp != nil {
 		opts = append(opts, storageutil.WithKeyProvider(kp))
 	}

@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/rowscan"
 )
@@ -38,12 +39,20 @@ func (jobNotFoundError) Is(target error) bool {
 }
 
 func (s *JobStore) Create(ctx context.Context, job *storage.Job) error {
+	payload := job.Payload
+	if s.enc.columnMode() != config.ColumnEncryptionOff && payload != "" {
+		enc, err := sealTextColumn(ctx, s.enc.KeyProvider, "jobs", job.ID, "payload", payload)
+		if err != nil {
+			return fmt.Errorf("create job: %w", err)
+		}
+		payload = enc
+	}
 	_, err := s.db.ExecContext(ctx, `INSERT INTO jobs (
 		id, type, status, payload, pipeline, source, result_id, error,
 		retry_count, max_retries, created_at, updated_at, started_at, completed_at,
 		user_mentions, user_hints, user_profile, user_note, idempotency_key, user_data, user_source_key, user_ambient, payload_encoding, user_expires_at, user_expiry_scope
 	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)`,
-		job.ID, job.Type, string(job.Status), job.Payload, job.Pipeline, job.Source,
+		job.ID, job.Type, string(job.Status), payload, job.Pipeline, job.Source,
 		job.ResultID, job.Error, job.RetryCount, job.MaxRetries,
 		job.CreatedAt.UTC(), job.UpdatedAt.UTC(),
 		nullableTime(job.StartedAt), nullableTime(job.CompletedAt),
@@ -144,7 +153,14 @@ func (s *JobStore) Get(ctx context.Context, id string) (*storage.Job, error) {
 		retry_count, max_retries, created_at, updated_at, started_at, completed_at,
 		user_mentions, user_hints, user_profile, user_note, idempotency_key, user_data, user_source_key, user_ambient, payload_encoding, user_expires_at, user_expiry_scope
 	FROM jobs WHERE id = $1`, id)
-	return scanJob(row)
+	j, err := scanJob(row)
+	if err != nil {
+		return nil, err
+	}
+	if j.Payload, err = openTextColumn(ctx, s.enc.KeyProvider, "jobs", j.ID, "payload", j.Payload); err != nil {
+		return nil, err
+	}
+	return j, nil
 }
 
 func (s *JobStore) List(ctx context.Context, filter storage.JobFilter) ([]*storage.Job, int, error) {
