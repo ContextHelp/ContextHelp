@@ -171,6 +171,18 @@ func (s *tombstoneStore) Put(ctx context.Context, t *storage.ErasureTombstone) e
 	if err != nil {
 		return fmt.Errorf("put tombstone: %w", err)
 	}
+	// Cancel queued/pending jobs and scrub payloads of completed jobs for
+	// the erased source_key so no queued task resurrects it or retains PII.
+	if _, err := conn(ctx, s.db).ExecContext(ctx,
+		`DELETE FROM jobs WHERE user_source_key = ? AND status IN ('pending', 'queued')`, t.SourceKey,
+	); err != nil {
+		return fmt.Errorf("put tombstone: cancel queued jobs: %w", err)
+	}
+	if _, err := conn(ctx, s.db).ExecContext(ctx,
+		`UPDATE jobs SET payload = '', user_data = NULL, user_note = NULL, user_hints = NULL, user_ambient = NULL WHERE user_source_key = ?`, t.SourceKey,
+	); err != nil {
+		return fmt.Errorf("put tombstone: scrub jobs: %w", err)
+	}
 	return nil
 }
 

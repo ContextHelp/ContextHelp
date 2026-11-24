@@ -68,6 +68,8 @@ func init() {
 
 	// Selector flags
 	deleteCmd.Flags().String("id", "", "delete specific knowledge object")
+	deleteCmd.Flags().String("source-key", "", "erase all objects (and derived data) matching this source_key")
+	deleteCmd.Flags().Bool("tombstone", false, "with --source-key, record an erasure tombstone so the source_key cannot be re-ingested")
 	deleteCmd.Flags().String("tagged", "", "delete the objects carrying this one tag (a literal label: no list, no leading + or -; may hold spaces)")
 	deleteCmd.Flags().String("mention", "", "delete by mention")
 	deleteCmd.Flags().String("type", "", "delete by type")
@@ -80,8 +82,8 @@ func init() {
 
 // deleteSelector is what one delete invocation selects.
 type deleteSelector struct {
-	id, tag, mention, typ string
-	all                   bool
+	id, sourceKey, tag, mention, typ string
+	all, tombstone                   bool
 }
 
 func deleteSelection(cmd *cobra.Command) deleteSelector {
@@ -90,11 +92,20 @@ func deleteSelection(cmd *cobra.Command) deleteSelector {
 		return strings.TrimSpace(v)
 	}
 	all, _ := cmd.Flags().GetBool("all")
-	return deleteSelector{id: str("id"), tag: str("tagged"), mention: str("mention"), typ: str("type"), all: all}
+	tombstone, _ := cmd.Flags().GetBool("tombstone")
+	return deleteSelector{
+		id:        str("id"),
+		sourceKey: str("source-key"),
+		tag:       str("tagged"),
+		mention:   str("mention"),
+		typ:       str("type"),
+		all:       all,
+		tombstone: tombstone,
+	}
 }
 
 func (s deleteSelector) empty() bool {
-	return s.id == "" && s.tag == "" && s.mention == "" && s.typ == "" && !s.all
+	return s.id == "" && s.sourceKey == "" && s.tag == "" && s.mention == "" && s.typ == "" && !s.all
 }
 
 // validate refuses a --tagged that is not one literal tag. Delete is
@@ -341,6 +352,9 @@ func deleteTargets(ctx context.Context, client *dpkmsclient.Client, sel deleteSe
 
 	var filter dpkmsclient.ObjectFilter
 	switch {
+	case sel.sourceKey != "":
+		filter = dpkmsclient.ObjectFilter{SourceKey: sel.sourceKey, Status: "all"}
+		describe = "matched --source-key " + sel.sourceKey
 	case sel.all:
 		describe = "matched --all"
 	case sel.tag != "" || sel.mention != "" || sel.typ != "":
@@ -440,6 +454,19 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	}
 	ctx := cmd.Context()
 	w := cmd.OutOrStdout()
+
+	if sel.sourceKey != "" {
+		if !skipConfirmation && !confirmDelete(w, fmt.Sprintf("Erase objects with source_key %s? (y/N): ", sel.sourceKey)) {
+			fmt.Fprintln(w, "Deletion cancelled.")
+			return nil
+		}
+		res, err := client.DeleteBySource(ctx, sel.sourceKey, sel.tombstone)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(w, "Erased %d object(s) for source_key %s (tombstone=%v)\n", len(res.DeletedIDs), res.SourceKey, res.TombstoneWritten)
+		return nil
+	}
 
 	if sel.id != "" {
 		if !skipConfirmation && !confirmDelete(w, fmt.Sprintf("Delete object %s? (y/N): ", sel.id)) {

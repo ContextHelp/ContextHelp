@@ -20,6 +20,14 @@ type Orphan struct {
 
 func (o Orphan) String() string { return fmt.Sprintf("%s: %v", o.Key, o.Err) }
 
+// DeleteOptions controls hard-delete behavior.
+type DeleteOptions struct {
+	// Immediate bypasses DefaultSweepGrace when deleting unreferenced blobs,
+	// while still performing the post-delete reference recount and put-back
+	// guard against concurrent ingests. Used by erasure.
+	Immediate bool
+}
+
 // DeleteObject hard-deletes object id: its edges, its row, then each
 // blob its content is externalized to that no other object still refers
 // to (keys are content hashes, so objects can share one) and that is
@@ -39,6 +47,22 @@ func (o Orphan) String() string { return fmt.Sprintf("%s: %v", o.Key, o.Err) }
 // content has just put and whose row is not written yet (see
 // deleteUnreferenced).
 func DeleteObject(ctx context.Context, drv storage.StorageDriver, id string) (orphans []Orphan, err error) {
+	return DeleteObjectWithOptions(ctx, drv, id, DeleteOptions{})
+}
+
+// DeleteObjectWithOptions hard-deletes object id using opts.
+// If an active hold exists on id, it refuses with storage.ErrObjectHeld
+// before deleting edges or the object row.
+func DeleteObjectWithOptions(ctx context.Context, drv storage.StorageDriver, id string, opts DeleteOptions) (orphans []Orphan, err error) {
+	if holds := drv.Holds(); holds != nil {
+		held, herr := holds.IsHeld(ctx, id)
+		if herr != nil && !errors.Is(herr, storage.ErrRestrictedViewer) {
+			return nil, fmt.Errorf("delete object %s: check hold: %w", id, herr)
+		}
+		if held {
+			return nil, fmt.Errorf("delete object %s: %w", id, storage.ErrObjectHeld)
+		}
+	}
 	obj, err := drv.Objects().Get(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("delete object %s: %w", id, err)
@@ -51,7 +75,7 @@ func DeleteObject(ctx context.Context, drv storage.StorageDriver, id string) (or
 		return nil, err
 	}
 	for _, key := range keys {
-		if err := deleteUnreferenced(ctx, drv, key); err != nil {
+		if err := deleteUnreferenced(ctx, drv, key, opts.Immediate); err != nil {
 			orphans = append(orphans, Orphan{Key: key, Err: err})
 		}
 	}
@@ -59,7 +83,7 @@ func DeleteObject(ctx context.Context, drv storage.StorageDriver, id string) (or
 }
 
 // deleteUnreferenced deletes blob key when no object refers to it and
-// it was last written more than DefaultSweepGrace ago.
+// (unless immediate is true) it was last written more than DefaultSweepGrace ago.
 //
 // Ingest puts a blob before it writes the row that refers to it, and an
 // ingest of content another object holds puts that blob again. The age
@@ -68,7 +92,7 @@ func DeleteObject(ctx context.Context, drv storage.StorageDriver, id string) (or
 // counts references again. A blob of unknown age is left too. An ingest
 // putting the blob between the age read and the delete is caught by
 // remove.
-func deleteUnreferenced(ctx context.Context, drv storage.StorageDriver, key string) error {
+func deleteUnreferenced(ctx context.Context, drv storage.StorageDriver, key string, immediate bool) error {
 	n, err := drv.Objects().CountBlobRefs(ctx, key)
 	if err != nil {
 		return err
@@ -80,9 +104,11 @@ func deleteUnreferenced(ctx context.Context, drv storage.StorageDriver, key stri
 	if store == nil {
 		return ErrNoStore
 	}
-	old, err := olderThanGrace(ctx, store, key)
-	if err != nil || !old {
-		return err
+	if !immediate {
+		old, err := olderThanGrace(ctx, store, key)
+		if err != nil || !old {
+			return err
+		}
 	}
 	_, err = remove(ctx, drv.Objects(), store, key)
 	return err

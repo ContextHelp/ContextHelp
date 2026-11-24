@@ -27,13 +27,19 @@ func GetObject(svc *service.Service) http.HandlerFunc {
 }
 
 // writeObjectError answers a failed object operation: 404 for a missing
-// object, 500 otherwise.
+// object, 409 for an active hold, 410 for an erased/tombstoned source key,
+// 500 otherwise.
 func writeObjectError(w http.ResponseWriter, err error) {
-	if errors.Is(err, storage.ErrNotFound) {
+	switch {
+	case errors.Is(err, storage.ErrNotFound):
 		WriteError(w, http.StatusNotFound, CodeNotFound, "object not found")
-		return
+	case errors.Is(err, storage.ErrObjectHeld):
+		WriteError(w, http.StatusConflict, "hold_in_force", err.Error())
+	case errors.Is(err, storage.ErrSourceErased):
+		WriteError(w, http.StatusGone, "source_erased", err.Error())
+	default:
+		WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 	}
-	WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 }
 
 // decodeStrict decodes a JSON body into v, rejecting unknown fields and
@@ -79,7 +85,7 @@ func UpdateObject(svc *service.Service) http.HandlerFunc {
 }
 
 // DeleteObject handles DELETE /api/v1/objects/{id}: the object and its
-// edges. A missing object is a 404.
+// edges. A missing object is a 404; a held object is a 409.
 func DeleteObject(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
@@ -88,6 +94,37 @@ func DeleteObject(svc *service.Service) http.HandlerFunc {
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// DeleteBySource handles DELETE /api/v1/objects/by-source?source_key=...&tombstone=true|false.
+func DeleteBySource(svc *service.Service) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		sourceKey := q.Get("source_key")
+		if sourceKey == "" {
+			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "source_key query parameter is required")
+			return
+		}
+		tombstone := false
+		if raw := q.Get("tombstone"); raw != "" {
+			b, err := strconv.ParseBool(raw)
+			if err != nil {
+				WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "tombstone must be true or false")
+				return
+			}
+			tombstone = b
+		}
+		res, err := svc.EraseBySourceKey(r.Context(), service.EraseBySourceOptions{
+			SourceKey: sourceKey,
+			Tombstone: tombstone,
+			Source:    q.Get("source"),
+		})
+		if err != nil {
+			writeObjectError(w, err)
+			return
+		}
+		WriteJSON(w, http.StatusOK, res)
 	}
 }
 

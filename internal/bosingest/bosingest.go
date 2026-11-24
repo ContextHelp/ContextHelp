@@ -35,30 +35,41 @@ type ContentReader interface {
 	Read(ctx context.Context, address string, revision int64) (Record, error)
 }
 
+// Eraser performs full source-key erasure (derived objects, blobs, pages,
+// tombstones). Wired to service.Service in production; when nil, Sink falls
+// back to Store.Delete for lightweight tests.
+type Eraser interface {
+	EraseBySource(ctx context.Context, sourceKey string, tombstone bool) error
+}
+
 // Sink is a feed sink that ingests and retracts records.
 type Sink struct {
 	Reader ContentReader
 	Store  storage.ObjectStore
 	Runner *ingest.Runner
+	Eraser Eraser
 }
 
 // Apply handles one change event: upserted and the rechecking changes
 // (refreshed, scope_changed, access_changed, any unknown value) fetch the
-// record and store it when it is not held; deleted and erased retract it;
-// held and released change nothing.
+// record and store it when it is not held; deleted retracts without tombstone;
+// erased retracts with an erasure tombstone; held and released change nothing
+// (holds are enforced via bos.obligations/v1).
 func (s *Sink) Apply(ctx context.Context, ev bosaccess.Event) error {
 	switch ev.Data.Change {
 	case "held", "released":
 		return nil
-	case "deleted", "erased":
-		return s.retract(ctx, ev.Subject)
+	case "erased":
+		return s.retract(ctx, ev.Subject, true)
+	case "deleted":
+		return s.retract(ctx, ev.Subject, false)
 	}
 	rec, err := s.Reader.Read(ctx, ev.Subject, ev.Data.Revision)
 	if errors.Is(err, ErrUnmapped) {
 		return nil
 	}
 	if errors.Is(err, ErrNoAccess) {
-		return s.retract(ctx, ev.Subject)
+		return s.retract(ctx, ev.Subject, false)
 	}
 	if err != nil {
 		return err
@@ -80,8 +91,11 @@ func (s *Sink) Apply(ctx context.Context, ev bosaccess.Event) error {
 	return nil
 }
 
-// retract removes the object held for the address, when there is one.
-func (s *Sink) retract(ctx context.Context, address string) error {
+// retract removes the object(s) held for the address, when there is one.
+func (s *Sink) retract(ctx context.Context, address string, tombstone bool) error {
+	if s.Eraser != nil {
+		return s.Eraser.EraseBySource(ctx, address, tombstone)
+	}
 	o, err := s.Store.GetBySourceKey(ctx, address, "")
 	if err != nil || o == nil {
 		return err

@@ -33,9 +33,10 @@ type ObjectFilter struct {
 	// Tagged selects by tag (internal/tagfilter): one of, or every
 	// required one; optional tags rank higher. The zero value selects
 	// all.
-	Tagged   tagfilter.Filter
-	Mention  string
-	Pipeline string
+	Tagged    tagfilter.Filter
+	Mention   string
+	Pipeline  string
+	SourceKey string
 	// Status is active (the API's default when empty), inbox, discarded,
 	// raw or all.
 	Status string
@@ -75,7 +76,7 @@ func (f ObjectFilter) filterQuery() url.Values {
 	q := url.Values{}
 	for k, v := range map[string]string{
 		"type": f.Type, "subtype": f.Subtype, "tagged": f.Tagged.String(), "mention": f.Mention,
-		"pipeline": f.Pipeline, "status": f.Status, "since": f.Since, "until": f.Until,
+		"pipeline": f.Pipeline, "source_key": f.SourceKey, "status": f.Status, "since": f.Since, "until": f.Until,
 		"meta_type": f.MetaType, "topic": f.Topic, "person": f.Person, "source_type": f.SourceType,
 		"mentioned_since": f.MentionedSince, "mentioned_until": f.MentionedUntil,
 	} {
@@ -183,6 +184,33 @@ func (c *Client) UpdateObject(ctx context.Context, id string, p ObjectPatch) (*s
 // hold). A missing object is a NOT_FOUND error (exit 3).
 func (c *Client) DeleteObject(ctx context.Context, id string) error {
 	return c.Do(ctx, Request{Method: http.MethodDelete, Path: objectPath(id)}, nil)
+}
+
+// EraseResult is the response of DELETE /api/v1/objects/by-source.
+type EraseResult struct {
+	SourceKey          string   `json:"source_key"`
+	MatchedIDs         []string `json:"matched_ids"`
+	DeletedIDs         []string `json:"deleted_ids"`
+	DerivedDeletedIDs  []string `json:"derived_deleted_ids,omitempty"`
+	ScrubbedPages      int      `json:"scrubbed_pages"`
+	DeletedPages       int      `json:"deleted_pages"`
+	ScrubbedTopicIndex bool     `json:"scrubbed_topic_index"`
+	TombstoneWritten   bool     `json:"tombstone_written"`
+}
+
+// DeleteBySource erases all objects with sourceKey and their derived data
+// (DELETE /api/v1/objects/by-source, scope delete:objects).
+func (c *Client) DeleteBySource(ctx context.Context, sourceKey string, tombstone bool) (*EraseResult, error) {
+	q := url.Values{}
+	q.Set("source_key", sourceKey)
+	if tombstone {
+		q.Set("tombstone", "true")
+	}
+	var out EraseResult
+	if err := c.Do(ctx, Request{Method: http.MethodDelete, Path: "/api/v1/objects/by-source", Query: q}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 // ReprocessObject enqueues a dpkms job that re-runs one enrichment step

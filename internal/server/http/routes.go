@@ -67,6 +67,7 @@ func apiRoutes(svc *service.Service, rc RouterConfig) []apiRoute {
 		// Objects
 		{Method: get, Pattern: "/objects", Scope: authn.ScopeReadObjects, Handler: ListObjects(svc)},
 		{Method: get, Pattern: "/objects/facets", Scope: authn.ScopeReadObjects, Handler: ObjectFacets(svc)},
+		{Method: del, Pattern: "/objects/by-source", Scope: authn.ScopeDeleteObjects, Handler: DeleteBySource(svc)},
 		{Method: get, Pattern: "/tags", Scope: authn.ScopeReadObjects, Handler: ListTags(svc)},
 		{Method: get, Pattern: "/objects/{id}", Scope: authn.ScopeReadObjects, Handler: GetObject(svc)},
 		{Method: get, Pattern: "/objects/{id}/related", Scope: authn.ScopeReadObjects, Handler: RelatedObjects(svc)},

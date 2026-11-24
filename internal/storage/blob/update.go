@@ -2,6 +2,7 @@ package blob
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -21,6 +22,15 @@ import (
 // deleted by a concurrent delete and could not be put back from
 // obj.BlobContent (see Ensure), the row updated then.
 func UpdateObject(ctx context.Context, drv storage.StorageDriver, obj *storage.KnowledgeObject) (orphans []Orphan, err error) {
+	if holds := drv.Holds(); holds != nil {
+		held, herr := holds.IsHeld(ctx, obj.ID)
+		if herr != nil && !errors.Is(herr, storage.ErrRestrictedViewer) {
+			return nil, fmt.Errorf("update object %s: check hold: %w", obj.ID, herr)
+		}
+		if held {
+			return nil, fmt.Errorf("update object %s: %w", obj.ID, storage.ErrObjectHeld)
+		}
+	}
 	old, err := drv.Objects().Get(ctx, obj.ID)
 	if err != nil {
 		return nil, fmt.Errorf("update object %s: %w", obj.ID, err)
@@ -36,7 +46,7 @@ func UpdateObject(ctx context.Context, drv storage.StorageDriver, obj *storage.K
 		if slices.Contains(kept, key) {
 			continue
 		}
-		if err := deleteUnreferenced(ctx, drv, key); err != nil {
+		if err := deleteUnreferenced(ctx, drv, key, false); err != nil {
 			orphans = append(orphans, Orphan{Key: key, Err: err})
 		}
 	}
