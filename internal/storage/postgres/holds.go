@@ -126,6 +126,42 @@ func (s *holdStore) IsHeld(ctx context.Context, objectID string) (bool, error) {
 	return n > 0, nil
 }
 
+type holdQuerier interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
+// assertNotHeldTx enforces the single storage-layer hold guard inside an active
+// transaction (or db handle). Any active hold on objectID causes it to return
+// *storage.HoldError wrapping storage.ErrObjectHeld.
+func assertNotHeldTx(ctx context.Context, q holdQuerier, objectID string) error {
+	if objectID == "" {
+		return nil
+	}
+	rows, err := q.QueryContext(ctx,
+		`SELECT `+holdColumns+` FROM object_holds WHERE object_id = $1 AND released_at IS NULL ORDER BY placed_at ASC, id ASC`,
+		objectID,
+	)
+	if err != nil {
+		return fmt.Errorf("check hold on %s: %w", objectID, err)
+	}
+	defer rows.Close()
+	active := []storage.ObjectHold{}
+	for rows.Next() {
+		h, serr := scanHold(rows)
+		if serr != nil {
+			return fmt.Errorf("scan hold on %s: %w", objectID, serr)
+		}
+		active = append(active, h)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate holds on %s: %w", objectID, err)
+	}
+	if len(active) > 0 {
+		return &storage.HoldError{ObjectID: objectID, Holds: active}
+	}
+	return nil
+}
+
 func (s *holdStore) queryHolds(ctx context.Context, query string, args ...any) ([]storage.ObjectHold, error) {
 	rows, err := conn(ctx, s.db).QueryContext(ctx, query, args...)
 	if err != nil {

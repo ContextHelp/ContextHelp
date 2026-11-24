@@ -21,15 +21,26 @@ func (s *AttachmentStore) SaveAttachment(
 	objectID, filename, mimeType string,
 	data []byte,
 ) (string, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return "", fmt.Errorf("attachment save: begin tx: %w", err)
+	}
+	defer tx.Rollback()
+	if err := assertNotHeldTx(ctx, tx, objectID); err != nil {
+		return "", err
+	}
 	id := "att_" + uuid.New().String()
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := s.db.ExecContext(ctx,
+	_, err = tx.ExecContext(ctx,
 		`INSERT INTO attachments (id, object_id, filename, mime_type, size_bytes, data, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		id, objectID, filename, mimeType, int64(len(data)), data, now,
 	)
 	if err != nil {
 		return "", fmt.Errorf("attachment save: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return "", fmt.Errorf("attachment save: commit: %w", err)
 	}
 	return id, nil
 }
@@ -73,11 +84,25 @@ func (s *AttachmentStore) ListAttachments(ctx context.Context, objectID string) 
 
 // DeleteAttachment removes an attachment by ID.
 func (s *AttachmentStore) DeleteAttachment(ctx context.Context, attachmentID string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM attachments WHERE id = ?`, attachmentID)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
+		return fmt.Errorf("attachment delete: begin tx: %w", err)
+	}
+	defer tx.Rollback()
+	var objectID string
+	err = tx.QueryRowContext(ctx, `SELECT object_id FROM attachments WHERE id = ?`, attachmentID).Scan(&objectID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("attachment delete: lookup: %w", err)
+	}
+	if objectID != "" {
+		if err := assertNotHeldTx(ctx, tx, objectID); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM attachments WHERE id = ?`, attachmentID); err != nil {
 		return fmt.Errorf("attachment delete: %w", err)
 	}
-	return nil
+	return tx.Commit()
 }
 
 // scanAttachment reads a full attachment row (including data blob).

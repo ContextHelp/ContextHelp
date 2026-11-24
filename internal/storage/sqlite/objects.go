@@ -402,6 +402,10 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 	}
 	defer tx.Rollback()
 
+	if err := assertNotHeldTx(ctx, tx, obj.ID); err != nil {
+		return err
+	}
+
 	// Drop the old FTS entries while the content row still holds the old
 	// bodies; the new bodies are indexed after the UPDATE below.
 	if err := deleteObjectFTSTx(ctx, tx, obj.ID); err != nil {
@@ -451,7 +455,15 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 // TransitionStatus implements storage.ObjectStore. Status is not part of
 // the FTS projection, so the index is left alone.
 func (s *ObjectStore) TransitionStatus(ctx context.Context, id, from, to string, at time.Time) error {
-	result, err := s.db.ExecContext(ctx,
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("transition object %s to %s: begin tx: %w", id, to, err)
+	}
+	defer tx.Rollback()
+	if err := assertNotHeldTx(ctx, tx, id); err != nil {
+		return err
+	}
+	result, err := tx.ExecContext(ctx,
 		`UPDATE objects SET status=?, updated_at=? WHERE id=? AND status=?`,
 		to, at.Format(time.RFC3339), id, from)
 	if err != nil {
@@ -464,6 +476,9 @@ func (s *ObjectStore) TransitionStatus(ctx context.Context, id, from, to string,
 	if n == 0 {
 		return fmt.Errorf("object %s with status %s: %w", id, from, storage.ErrNotFound)
 	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("transition object %s to %s: commit: %w", id, to, err)
+	}
 	return nil
 }
 
@@ -473,6 +488,10 @@ func (s *ObjectStore) Delete(ctx context.Context, id string) error {
 		return fmt.Errorf("delete object: begin tx: %w", err)
 	}
 	defer tx.Rollback()
+
+	if err := assertNotHeldTx(ctx, tx, id); err != nil {
+		return err
+	}
 
 	// FTS entry first: objects_fts has no FK cascade and FTS5 needs the
 	// content row alive to compute the tokens it must drop.
@@ -601,6 +620,9 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 	)
 	if err != nil {
 		return "", fmt.Errorf("reinforce: lookup: %w", err)
+	}
+	if err := assertNotHeldTx(ctx, tx, obj.ID); err != nil {
+		return "", err
 	}
 
 	// Decode failures must not be swallowed here: the merged result is

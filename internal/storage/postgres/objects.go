@@ -312,6 +312,10 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 	}
 	defer tx.Rollback()
 
+	if err := assertNotHeldTx(ctx, tx, obj.ID); err != nil {
+		return err
+	}
+
 	result, err := tx.ExecContext(ctx, `UPDATE objects SET
 		type=$1, subtype=$2, raw_content=$3, content_type=$4, text_content=$5,
 		metadata=$6, summaries=$7, sections=$8, tags=$9, mentions=$10,
@@ -353,7 +357,15 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 // TransitionStatus implements storage.ObjectStore. The FTS tsvector
 // derives from projected_fts_body, which a status change leaves alone.
 func (s *ObjectStore) TransitionStatus(ctx context.Context, id, from, to string, at time.Time) error {
-	result, err := s.db.ExecContext(ctx,
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("transition object %s to %s: begin tx: %w", id, to, err)
+	}
+	defer tx.Rollback()
+	if err := assertNotHeldTx(ctx, tx, id); err != nil {
+		return err
+	}
+	result, err := tx.ExecContext(ctx,
 		`UPDATE objects SET status=$1, updated_at=$2 WHERE id=$3 AND status=$4`,
 		to, at.UTC(), id, from)
 	if err != nil {
@@ -366,7 +378,7 @@ func (s *ObjectStore) TransitionStatus(ctx context.Context, id, from, to string,
 	if n == 0 {
 		return fmt.Errorf("object %s with status %s: %w", id, from, storage.ErrNotFound)
 	}
-	return nil
+	return tx.Commit()
 }
 
 func (s *ObjectStore) Delete(ctx context.Context, id string) error {
@@ -375,6 +387,9 @@ func (s *ObjectStore) Delete(ctx context.Context, id string) error {
 		return fmt.Errorf("delete object: begin tx: %w", err)
 	}
 	defer tx.Rollback()
+	if err := assertNotHeldTx(ctx, tx, id); err != nil {
+		return err
+	}
 	if err := purgeObjectSecondaryTx(ctx, tx, id); err != nil {
 		return fmt.Errorf("delete object secondary data: %w", err)
 	}
@@ -437,6 +452,9 @@ func (s *ObjectStore) Reinforce(ctx context.Context, hash string, mergeData *sto
 		Scan(&obj.ID, &tagsJSON, &mentionsJSON)
 	if err != nil {
 		return "", fmt.Errorf("reinforce: lookup: %w", err)
+	}
+	if err := assertNotHeldTx(ctx, tx, obj.ID); err != nil {
+		return "", err
 	}
 
 	// Decode failures must not be swallowed here: the merged result is

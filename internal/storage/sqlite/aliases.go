@@ -19,7 +19,15 @@ type aliasStore struct {
 }
 
 func (s *aliasStore) Create(ctx context.Context, a *storage.Alias) error {
-	_, err := s.db.ExecContext(ctx,
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("alias create: begin tx: %w", err)
+	}
+	defer tx.Rollback()
+	if err := assertNotHeldTx(ctx, tx, a.ObjectID); err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx,
 		`INSERT INTO aliases (alias, object_id, scope, profile, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?)`,
 		a.Alias, a.ObjectID, a.Scope, a.Profile,
@@ -29,7 +37,7 @@ func (s *aliasStore) Create(ctx context.Context, a *storage.Alias) error {
 	if err != nil {
 		return fmt.Errorf("alias create: %w", err)
 	}
-	return nil
+	return tx.Commit()
 }
 
 // Resolve checks profile-scope first, then global scope. A miss wraps
@@ -104,7 +112,26 @@ func (s *aliasStore) List(ctx context.Context, filter storage.AliasFilter) ([]*s
 
 // Delete removes one alias by its full key. A miss wraps storage.ErrNotFound.
 func (s *aliasStore) Delete(ctx context.Context, alias, scope, profile string) error {
-	res, err := s.db.ExecContext(ctx,
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("alias delete: begin tx: %w", err)
+	}
+	defer tx.Rollback()
+	var objectID string
+	err = tx.QueryRowContext(ctx,
+		`SELECT object_id FROM aliases WHERE alias=? AND scope=? AND profile=?`,
+		alias, scope, profile,
+	).Scan(&objectID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("alias %q: %w", alias, storage.ErrNotFound)
+	}
+	if err != nil {
+		return fmt.Errorf("alias delete: lookup: %w", err)
+	}
+	if err := assertNotHeldTx(ctx, tx, objectID); err != nil {
+		return err
+	}
+	res, err := tx.ExecContext(ctx,
 		`DELETE FROM aliases WHERE alias=? AND scope=? AND profile=?`,
 		alias, scope, profile,
 	)
@@ -118,5 +145,5 @@ func (s *aliasStore) Delete(ctx context.Context, alias, scope, profile string) e
 	if n == 0 {
 		return fmt.Errorf("alias %q: %w", alias, storage.ErrNotFound)
 	}
-	return nil
+	return tx.Commit()
 }

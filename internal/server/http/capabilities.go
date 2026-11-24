@@ -77,6 +77,9 @@ var routeAccessTable = map[string]routeAccess{
 	"PATCH /objects/{id}":          routeObjects,
 	"DELETE /objects/{id}":         routeNone,
 	"DELETE /objects/by-source":    routeNone,
+	"GET /holds":                   routeNone,
+	"POST /holds":                  routeNone,
+	"DELETE /holds/{hold_id}":      routeNone,
 	"POST /objects/{id}/reprocess": routeNone,
 
 	"POST /edges":             routeNone,

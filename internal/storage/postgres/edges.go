@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -19,8 +20,33 @@ type edgeExecer interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
+func assertEdgeNotHeldTx(ctx context.Context, q holdQuerier, fromType, fromID, toType, toID string) error {
+	if fromType == "object" {
+		if err := assertNotHeldTx(ctx, q, fromID); err != nil {
+			return err
+		}
+	}
+	if toType == "object" && toID != fromID {
+		if err := assertNotHeldTx(ctx, q, toID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *EdgeStore) Create(ctx context.Context, edge *storage.Edge) error {
-	return insertEdge(ctx, s.db, edge)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("create edge: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := assertEdgeNotHeldTx(ctx, tx, edge.FromType, edge.FromID, edge.ToType, edge.ToID); err != nil {
+		return err
+	}
+	if err := insertEdge(ctx, tx, edge); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // CreateAll stores every edge in one transaction.
@@ -34,6 +60,9 @@ func (s *EdgeStore) CreateAll(ctx context.Context, edges []*storage.Edge) error 
 	}
 	defer func() { _ = tx.Rollback() }()
 	for _, e := range edges {
+		if err := assertEdgeNotHeldTx(ctx, tx, e.FromType, e.FromID, e.ToType, e.ToID); err != nil {
+			return err
+		}
 		if err := insertEdge(ctx, tx, e); err != nil {
 			return err
 		}
@@ -57,6 +86,9 @@ func (s *EdgeStore) CreateMissing(ctx context.Context, edges []*storage.Edge) (i
 	defer func() { _ = tx.Rollback() }()
 	stored := 0
 	for _, e := range edges {
+		if err := assertEdgeNotHeldTx(ctx, tx, e.FromType, e.FromID, e.ToType, e.ToID); err != nil {
+			return 0, err
+		}
 		n, err := insertMissingEdge(ctx, tx, e)
 		if err != nil {
 			return 0, err
@@ -84,6 +116,9 @@ func (s *EdgeStore) DeleteMatching(ctx context.Context, matches []storage.EdgeMa
 	defer func() { _ = tx.Rollback() }()
 	deleted := 0
 	for _, m := range matches {
+		if err := assertEdgeNotHeldTx(ctx, tx, m.FromType, m.FromID, m.ToType, m.ToID); err != nil {
+			return 0, err
+		}
 		res, err := tx.ExecContext(ctx, `DELETE FROM edges
 			WHERE from_type = $1 AND from_id = $2 AND to_type = $3 AND to_id = $4
 			AND edge_type = ANY($5)`,
@@ -171,7 +206,24 @@ func (s *EdgeStore) ListTo(ctx context.Context, toType, toID string) ([]*storage
 }
 
 func (s *EdgeStore) Delete(ctx context.Context, id string) error {
-	result, err := s.db.ExecContext(ctx, "DELETE FROM edges WHERE id = $1", id)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("delete edge: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	var fromType, fromID, toType, toID string
+	err = tx.QueryRowContext(ctx, "SELECT from_type, from_id, to_type, to_id FROM edges WHERE id = $1", id).
+		Scan(&fromType, &fromID, &toType, &toID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("edge %s not found", id)
+	}
+	if err != nil {
+		return fmt.Errorf("delete edge: lookup: %w", err)
+	}
+	if err := assertEdgeNotHeldTx(ctx, tx, fromType, fromID, toType, toID); err != nil {
+		return err
+	}
+	result, err := tx.ExecContext(ctx, "DELETE FROM edges WHERE id = $1", id)
 	if err != nil {
 		return fmt.Errorf("delete edge: %w", err)
 	}
@@ -179,17 +231,25 @@ func (s *EdgeStore) Delete(ctx context.Context, id string) error {
 	if n == 0 {
 		return fmt.Errorf("edge %s not found", id)
 	}
-	return nil
+	return tx.Commit()
 }
 
 func (s *EdgeStore) DeleteByObject(ctx context.Context, objectID string) error {
-	_, err := s.db.ExecContext(ctx,
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("delete edges by object: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := assertNotHeldTx(ctx, tx, objectID); err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx,
 		"DELETE FROM edges WHERE (from_type = 'object' AND from_id = $1) OR (to_type = 'object' AND to_id = $1)",
 		objectID)
 	if err != nil {
 		return fmt.Errorf("delete edges by object: %w", err)
 	}
-	return nil
+	return tx.Commit()
 }
 
 // CountMentionsTo returns the count of edges pointing to the given node
