@@ -46,11 +46,12 @@ ContextHelp is built as two independent but cooperating packages:
 **The execution and data layer**
 - Transactional job queue, storage backends, knowledge graph, query engine.
 - Built-in compliance controls: source-reference erasure with tombstones, transactional legal holds, timed capture/watch expiry (whole-object or natural-language scope), and a `bos.obligations/v1` peer receiver ([docs/featureset.md](./docs/featureset.md)).
+- Configurable, fail-closed encryption at rest (`storage.encryption`, [ADR-085](./docs/decisions/ADR-085-encryption-at-rest-and-search-indexing.md)): whole-database SQLite encryption (`make build-encrypted`, `dpkms storage encrypt|rekey`), PostgreSQL TDE & column envelope encryption, encrypted blobs/snapshots/ambient spool/backups, and pluggable KEK providers (`keyring`, `agefile`, `file`, `env`, Vault/OpenBao `transit`).
 - **Binary:** `dpkms` | **Focus:** Durability, correctness, sovereignty
 
 ### ctxt (Brain)
 **The intelligence and behavior layer**
-- Pipeline definitions, AI integrations, focus profiles, multi-source retrieval, capture/watch retention (`--ttl`, `--expires`, `--expires-scope`, `ctxt expire`, `ctxt hold`, `ctxt delete --source-key`).
+- Pipeline definitions, AI integrations, focus profiles, multi-source retrieval, capture/watch retention (`--ttl`, `--expires`, `--expires-scope`, `ctxt expire`, `ctxt hold`, `ctxt delete --source-key`), and opt-in per-capture/watch selective encryption (`--encrypt`, `--encrypt-scope "<natural language>"`).
 - **Binary:** `ctxt` | **Focus:** Intelligence, usability, actionability
 
 ---

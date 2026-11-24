@@ -862,7 +862,7 @@ ci-build-verify:
 # Every target that compiles Go (build, test, vet, lint, gosec, govulncheck).
 # scripts/cgo_include_test.go fails when a target whose recipe runs go or
 # golangci-lint is missing here.
-CGO_TARGETS := build-ctxt build-dpkms install test-unit test-integration test-smoke \
+CGO_TARGETS := build-ctxt build-dpkms build-encrypted test-encrypted install test-unit test-integration test-smoke \
 	test-e2e test-cover test-gate test-docker vuln-scan govulncheck lint gosec lint-new \
 	ci-lint-full ci-vet ci-gowork-off ci-windows-vet ci-windows-build ci-test-unit ci-test-e2e ci-test-e2e-tagged \
 	$(CI_INTEGRATION_STEPS) ci-build-dpkms ci-build-ctxt $(BEN_BINARY) $(BEN_ADAPTER)
