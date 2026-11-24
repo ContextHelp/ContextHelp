@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"time"
 
 	"hop.top/kit/go/console/output"
 
@@ -19,15 +20,27 @@ import (
 type watchIngester struct {
 	c *dpkmsclient.Client
 	// profile attributes what the watcher submits; "" attributes none.
-	profile string
+	profile     string
+	expiryTTL   time.Duration
+	expiryScope string
 }
 
 var _ watcher.Ingester = watchIngester{}
 
 func (w watchIngester) Analyze(ctx context.Context, req watcher.Request) (string, error) {
+	expiresAt := req.ExpiresAt
+	expiryScope := req.ExpiryScope
+	if expiresAt == nil && w.expiryTTL > 0 {
+		t := time.Now().UTC().Add(w.expiryTTL).Truncate(time.Second)
+		expiresAt = &t
+		if expiryScope == "" {
+			expiryScope = w.expiryScope
+		}
+	}
 	return w.c.Analyze(ctx, dpkmsclient.AnalyzeRequest{
 		Content: req.Content, Type: req.Type, Source: req.Source,
 		Pipeline: req.Pipeline, KnownHash: req.KnownHash, Profile: w.profile,
+		ExpiresAt: expiresAt, ExpiryScope: expiryScope,
 	})
 }
 

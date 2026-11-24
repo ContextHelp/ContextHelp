@@ -279,6 +279,16 @@ type ObjectStore interface {
 	MarkReminded(ctx context.Context, id string, now time.Time) error
 	// ListPendingReminders returns all objects with a non-null remind_at.
 	ListPendingReminders(ctx context.Context) ([]*KnowledgeObject, error)
+	// SetExpiry sets expires_at (UTC) and optional natural-language expiry_scope
+	// on the object identified by id. Empty scope expires the whole object.
+	// Refuses with ErrObjectHeld if the object carries an active hold.
+	SetExpiry(ctx context.Context, id string, at time.Time, scope string) error
+	// ClearExpiry removes expires_at from the object identified by id.
+	// Refuses with ErrObjectHeld if the object carries an active hold.
+	ClearExpiry(ctx context.Context, id string) error
+	// ListExpired returns up to limit objects whose expires_at <= now across
+	// all statuses, ordered earliest expiry first. limit <= 0 returns all.
+	ListExpired(ctx context.Context, now time.Time, limit int) ([]*KnowledgeObject, error)
 	// VectorSearch returns objects ranked by q.ModelID's index (cosine
 	// distance, closest first), filtered by filter (its StatusScope
 	// included) and capped at filter.Limit. Each result carries

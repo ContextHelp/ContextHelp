@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"time"
 
 	kitbus "hop.top/kit/go/runtime/bus"
@@ -57,9 +58,11 @@ func (s *Service) CaptureToInbox(ctx context.Context, req InboxCaptureRequest) (
 		Tags: userHintsToTags(req.Hints),
 		// caller-asserted profile partitions the inbox item from
 		// the start so list/find queries scoped to a profile see it.
-		ProfileID: req.Profile,
-		CreatedAt: now,
-		UpdatedAt: now,
+		ProfileID:   req.Profile,
+		ExpiresAt:   utcTimePtr(req.ExpiresAt),
+		ExpiryScope: strings.TrimSpace(req.ExpiryScope),
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	}
 
 	if err := s.Store(ctx).Objects().Create(ctx, obj); err != nil {
@@ -129,7 +132,9 @@ func (s *Service) TriageInbox(ctx context.Context, id string, req TriageRequest)
 		// auto-tagger merge preserves them as Tag{Source:"user"}.
 		UserHints: req.Hints,
 		// the item's profile attributes the processed object too.
-		UserProfile: obj.ProfileID,
+		UserProfile:     obj.ProfileID,
+		UserExpiresAt:   obj.ExpiresAt,
+		UserExpiryScope: obj.ExpiryScope,
 	}
 	if err := s.Queue.Enqueue(ctx, job); err != nil {
 		// Compensate: return the item to the inbox.

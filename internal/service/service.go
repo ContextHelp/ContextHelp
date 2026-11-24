@@ -28,6 +28,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/composition"
 	"github.com/ideacrafterslabs/ctxt/internal/config"
 	"github.com/ideacrafterslabs/ctxt/internal/events"
+	"github.com/ideacrafterslabs/ctxt/internal/expiry"
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/mentions"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
@@ -90,6 +91,18 @@ type Service struct {
 	// store's sharing registry (ADR-080 §4); the transports call it
 	// after authentication. nil without a store.
 	viewers *sharing.Resolver
+
+	// expiryLocator optionally resolves free-form natural-language
+	// expiry_scope instructions when deterministic rules do not match.
+	expiryLocator expiry.SpanLocator
+}
+
+func utcTimePtr(t *time.Time) *time.Time {
+	if t == nil || t.IsZero() {
+		return nil
+	}
+	u := t.UTC()
+	return &u
 }
 
 // Option configures a Service at construction time. Existing call
@@ -416,9 +429,11 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (string, erro
 		UserNote:        req.Note,     // forwarded to draft.InboxNote in worker.
 		UserData:        req.Data,     // forwarded to draft.Metadata["data"] in worker.
 
-		UserSourceKey:  req.SourceKey,        // forwarded to draft.SourceKey in worker.
-		UserAmbient:    req.ambientContext(), // forwarded to draft metadata + SessionID in worker.
-		IdempotencyKey: req.IdempotencyKey,
+		UserSourceKey:   req.SourceKey, // forwarded to draft.SourceKey in worker.
+		UserExpiresAt:   utcTimePtr(req.ExpiresAt),
+		UserExpiryScope: strings.TrimSpace(req.ExpiryScope),
+		UserAmbient:     req.ambientContext(), // forwarded to draft metadata + SessionID in worker.
+		IdempotencyKey:  req.IdempotencyKey,
 	}
 
 	if err := s.Queue.Enqueue(ctx, job); err != nil {
@@ -455,8 +470,10 @@ func (s *Service) analyzeRaw(ctx context.Context, req AnalyzeRequest, detectedTy
 		// caller-asserted profile and note flow directly onto
 		// the KnowledgeObject so partitioning + audit-note capture
 		// work even on the raw path (no pipeline to plumb through).
-		ProfileID: req.Profile,
-		InboxNote: req.Note,
+		ProfileID:   req.Profile,
+		InboxNote:   req.Note,
+		ExpiresAt:   utcTimePtr(req.ExpiresAt),
+		ExpiryScope: strings.TrimSpace(req.ExpiryScope),
 	}
 	if len(req.Data) > 0 {
 		obj.Metadata = map[string]any{storageutil.MetadataDataKey: req.Data}
@@ -504,6 +521,11 @@ func (s *Service) updateRawBySourceKey(ctx context.Context, stored *storage.Know
 		Hints:    userHintsToTags(req.Hints),
 		Mentions: mentions.ParseSlice(req.Mentions),
 	}.Apply(stored)
+	if req.ExpiresAt != nil {
+		stored.ExpiresAt = utcTimePtr(req.ExpiresAt)
+		stored.ExpiryScope = strings.TrimSpace(req.ExpiryScope)
+		fields = append(fields, "expires_at")
+	}
 	if len(fields) > 0 {
 		stored.UpdatedAt = time.Now().Truncate(time.Second)
 		uctx, upEv := s.announce(ctx, events.TopicObjectUpdated, "service.analyze", stored.ID, events.ObjectUpdatedPayload{

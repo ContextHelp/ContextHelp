@@ -59,20 +59,26 @@ func (s *JobStore) Create(ctx context.Context, job *storage.Job) error {
 		completedAt = &v
 	}
 
+	var userExpiresAt *string
+	if job.UserExpiresAt != nil {
+		v := job.UserExpiresAt.UTC().Format(time.RFC3339)
+		userExpiresAt = &v
+	}
+
 	userMentions := encodeUserStrings(job.UserMentions)
 	userHints := encodeUserStrings(job.UserHints)
 
 	_, err := s.db.ExecContext(ctx, `INSERT INTO jobs (
 		id, type, status, payload, pipeline, source, result_id, error,
 		retry_count, max_retries, created_at, updated_at, started_at, completed_at,
-		user_mentions, user_hints, user_profile, user_note, idempotency_key, user_data, user_source_key, user_ambient, payload_encoding
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		user_mentions, user_hints, user_profile, user_note, idempotency_key, user_data, user_source_key, user_ambient, payload_encoding, user_expires_at, user_expiry_scope
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		job.ID, job.Type, string(job.Status), job.Payload, job.Pipeline, job.Source,
 		job.ResultID, job.Error, job.RetryCount, job.MaxRetries,
 		job.CreatedAt.Format(time.RFC3339), job.UpdatedAt.Format(time.RFC3339),
 		startedAt, completedAt, userMentions, userHints, job.UserProfile, job.UserNote,
 		job.IdempotencyKey, encodeUserData(job.UserData), job.UserSourceKey,
-		encodeUserAmbient(job.UserAmbient), job.PayloadEncoding,
+		encodeUserAmbient(job.UserAmbient), job.PayloadEncoding, userExpiresAt, job.UserExpiryScope,
 	)
 	if err != nil {
 		return fmt.Errorf("create job: %w", err)
@@ -163,7 +169,7 @@ func (s *JobStore) Get(ctx context.Context, id string) (*storage.Job, error) {
 	row := s.db.QueryRowContext(ctx, `SELECT
 		id, type, status, payload, pipeline, source, result_id, error,
 		retry_count, max_retries, created_at, updated_at, started_at, completed_at,
-		user_mentions, user_hints, user_profile, user_note, idempotency_key, user_data, user_source_key, user_ambient, payload_encoding
+		user_mentions, user_hints, user_profile, user_note, idempotency_key, user_data, user_source_key, user_ambient, payload_encoding, user_expires_at, user_expiry_scope
 	FROM jobs WHERE id = ?`, id)
 	return scanJob(row)
 }
@@ -195,7 +201,7 @@ func (s *JobStore) List(ctx context.Context, filter storage.JobFilter) ([]*stora
 	query := `SELECT
 		id, type, status, payload, pipeline, source, result_id, error,
 		retry_count, max_retries, created_at, updated_at, started_at, completed_at,
-		user_mentions, user_hints, user_profile, user_note, idempotency_key, user_data, user_source_key, user_ambient, payload_encoding
+		user_mentions, user_hints, user_profile, user_note, idempotency_key, user_data, user_source_key, user_ambient, payload_encoding, user_expires_at, user_expiry_scope
 	FROM jobs ` + where + orderNewestFirst
 
 	if filter.Limit > 0 {
@@ -245,7 +251,7 @@ func (s *JobStore) AcquireNext(ctx context.Context) (*storage.Job, error) {
 		) AND status = 'pending'
 		RETURNING id, type, status, payload, pipeline, source, result_id, error,
 		          retry_count, max_retries, created_at, updated_at, started_at, completed_at,
-		          user_mentions, user_hints, user_profile, user_note, idempotency_key, user_data, user_source_key, user_ambient, payload_encoding`,
+		          user_mentions, user_hints, user_profile, user_note, idempotency_key, user_data, user_source_key, user_ambient, payload_encoding, user_expires_at, user_expiry_scope`,
 		now, now, claim)
 
 	j, err := scanJob(row)
@@ -388,11 +394,11 @@ func scanJob(row *sql.Row) (*storage.Job, error) {
 	var j storage.Job
 	var status, createdAt, updatedAt string
 	var startedAt, completedAt sql.NullString
-	var userMentions, userHints, userProfile, userNote, idemKey, userData, userSourceKey, userAmbient, payloadEncoding sql.NullString
+	var userMentions, userHints, userProfile, userNote, idemKey, userData, userSourceKey, userAmbient, payloadEncoding, userExpiresAt, userExpiryScope sql.NullString
 
 	err := row.Scan(&j.ID, &j.Type, &status, &j.Payload, &j.Pipeline, &j.Source,
 		&j.ResultID, &j.Error, &j.RetryCount, &j.MaxRetries,
-		&createdAt, &updatedAt, &startedAt, &completedAt, &userMentions, &userHints, &userProfile, &userNote, &idemKey, &userData, &userSourceKey, &userAmbient, &payloadEncoding)
+		&createdAt, &updatedAt, &startedAt, &completedAt, &userMentions, &userHints, &userProfile, &userNote, &idemKey, &userData, &userSourceKey, &userAmbient, &payloadEncoding, &userExpiresAt, &userExpiryScope)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, errJobNotFound
@@ -438,6 +444,13 @@ func scanJob(row *sql.Row) (*storage.Job, error) {
 	if payloadEncoding.Valid {
 		j.PayloadEncoding = payloadEncoding.String
 	}
+	if userExpiresAt.Valid {
+		t, _ := time.Parse(time.RFC3339, userExpiresAt.String)
+		j.UserExpiresAt = &t
+	}
+	if userExpiryScope.Valid {
+		j.UserExpiryScope = userExpiryScope.String
+	}
 	return &j, nil
 }
 
@@ -445,11 +458,11 @@ func scanJobFromRows(rows *sql.Rows) (*storage.Job, error) {
 	var j storage.Job
 	var status, createdAt, updatedAt string
 	var startedAt, completedAt sql.NullString
-	var userMentions, userHints, userProfile, userNote, idemKey, userData, userSourceKey, userAmbient, payloadEncoding sql.NullString
+	var userMentions, userHints, userProfile, userNote, idemKey, userData, userSourceKey, userAmbient, payloadEncoding, userExpiresAt, userExpiryScope sql.NullString
 
 	err := rows.Scan(&j.ID, &j.Type, &status, &j.Payload, &j.Pipeline, &j.Source,
 		&j.ResultID, &j.Error, &j.RetryCount, &j.MaxRetries,
-		&createdAt, &updatedAt, &startedAt, &completedAt, &userMentions, &userHints, &userProfile, &userNote, &idemKey, &userData, &userSourceKey, &userAmbient, &payloadEncoding)
+		&createdAt, &updatedAt, &startedAt, &completedAt, &userMentions, &userHints, &userProfile, &userNote, &idemKey, &userData, &userSourceKey, &userAmbient, &payloadEncoding, &userExpiresAt, &userExpiryScope)
 	if err != nil {
 		return nil, fmt.Errorf("scan job row: %w", err)
 	}
@@ -492,6 +505,13 @@ func scanJobFromRows(rows *sql.Rows) (*storage.Job, error) {
 	if payloadEncoding.Valid {
 		j.PayloadEncoding = payloadEncoding.String
 	}
+	if userExpiresAt.Valid {
+		t, _ := time.Parse(time.RFC3339, userExpiresAt.String)
+		j.UserExpiresAt = &t
+	}
+	if userExpiryScope.Valid {
+		j.UserExpiryScope = userExpiryScope.String
+	}
 	return &j, nil
 }
 
@@ -522,7 +542,7 @@ func (s *JobStore) GetByIdempotencyKey(ctx context.Context, key string) (*storag
 	row := s.db.QueryRowContext(ctx, `SELECT
 		id, type, status, payload, pipeline, source, result_id, error,
 		retry_count, max_retries, created_at, updated_at, started_at, completed_at,
-		user_mentions, user_hints, user_profile, user_note, idempotency_key, user_data, user_source_key, user_ambient, payload_encoding
+		user_mentions, user_hints, user_profile, user_note, idempotency_key, user_data, user_source_key, user_ambient, payload_encoding, user_expires_at, user_expiry_scope
 	FROM jobs WHERE idempotency_key = ?`, key)
 	j, err := scanJob(row)
 	if err != nil {

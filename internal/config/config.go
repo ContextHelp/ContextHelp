@@ -2170,6 +2170,12 @@ type WatchConfig struct {
 	Debounce time.Duration `mapstructure:"debounce" yaml:"debounce"`
 	// Patterns is a list of glob patterns to include (e.g. "*.md").
 	Patterns []string `mapstructure:"patterns" yaml:"patterns"`
+	// ExpiryTTL optionally expires every object captured by this watch after
+	// the given duration (e.g. "7d", "24h").
+	ExpiryTTL string `mapstructure:"expiry_ttl" yaml:"expiry_ttl"`
+	// ExpiryScope optionally describes in natural language which data to expire
+	// when ExpiryTTL elapses (empty = erase the entire object).
+	ExpiryScope string `mapstructure:"expiry_scope" yaml:"expiry_scope"`
 	// Clipboard configures the clipboard watcher.
 	Clipboard ClipboardWatchConfig `mapstructure:"clipboard" yaml:"clipboard"`
 }

@@ -135,6 +135,7 @@ func httpCases() []Case {
 		getAt("/saved-searches/{name}", "/saved-searches/"+none),
 		get("/search-history"),
 		get("/audit-log"),
+		get("/holds"),
 
 		mcp("/mcp/"),
 		mcp("/mcp"),

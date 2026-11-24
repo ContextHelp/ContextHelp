@@ -83,8 +83,8 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
 		remind_at, reminded_at, profile_id, graph_json, projected_fts_body, source_key,
-		projection_version, classes, projected_fts_body_masked, session_id
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		projection_version, classes, projected_fts_body_masked, session_id, expires_at, expiry_scope
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		obj.ID, obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
 		f.decisions, f.tasks, obj.Pipeline, obj.Source,
@@ -92,7 +92,7 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		obj.CreatedAt.Format(time.RFC3339), obj.UpdatedAt.Format(time.RFC3339),
 		boolToInt(obj.FTSIndexed), obj.Status, obj.InboxNote,
 		f.remindAt, f.remindedAt, obj.ProfileID, graphJSON, projectedFTSBody, obj.SourceKey,
-		indexsig.ProjectionVersion, f.classes, index.MaskedFTSBody, nullSessionID(obj.SessionID),
+		indexsig.ProjectionVersion, f.classes, index.MaskedFTSBody, nullSessionID(obj.SessionID), f.expiresAt, obj.ExpiryScope,
 	)
 	if err != nil {
 		if errors.Is(constraintErr(err), storage.ErrAlreadyExists) {
@@ -144,7 +144,7 @@ func (s *ObjectStore) Get(ctx context.Context, id string) (*storage.KnowledgeObj
 		decisions, tasks, pipeline, source,
 		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
-		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq, classes, session_id
+		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq, classes, session_id, expires_at, expiry_scope
 	FROM objects WHERE id = ?`+s.andScope(), append([]any{id}, s.scopeArgs()...)...)
 	obj, err := scanObject(row)
 	if err != nil {
@@ -200,7 +200,7 @@ func (s *ObjectStore) GetByContentHash(ctx context.Context, hash, profileID stri
 		decisions, tasks, pipeline, source,
 		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
-		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq, classes, session_id
+		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq, classes, session_id, expires_at, expiry_scope
 	FROM objects WHERE content_hash = ? AND profile_id = ?`+s.andScope()+` LIMIT 1`,
 		append([]any{hash, profileID}, s.scopeArgs()...)...)
 	obj, err := scanObject(row)
@@ -221,7 +221,7 @@ func (s *ObjectStore) GetBySourceKey(ctx context.Context, key, profileID string)
 		decisions, tasks, pipeline, source,
 		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
-		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq, classes, session_id
+		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq, classes, session_id, expires_at, expiry_scope
 	FROM objects WHERE source_key = ? AND profile_id = ?`+s.andScope()+` LIMIT 1`, append([]any{key, profileID}, s.scopeArgs()...)...)
 	obj, err := scanObject(row)
 	if errors.Is(err, errObjectNotFound) {
@@ -270,7 +270,7 @@ func objectListSQL(filter storage.ObjectFilter, scope *storage.Scope) (countSQL,
 		decisions, tasks, pipeline, source,
 		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
-		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq, classes, session_id
+		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq, classes, session_id, expires_at, expiry_scope
 	FROM objects%s ORDER BY %s`, whereClause(pageConditions), order)
 	if filter.Limit > 0 {
 		pageSQL += fmt.Sprintf(" LIMIT %d", filter.Limit)
@@ -419,7 +419,7 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		registry_influences=?, content_hash=?, reinforcement_count=?, last_reinforced_at=?,
 		updated_at=?, fts_indexed=?, status=?, inbox_note=?,
 		remind_at=?, reminded_at=?, profile_id=?, graph_json=?, projected_fts_body=?, source_key=?,
-		projection_version=?, classes=?, projected_fts_body_masked=?, session_id=?
+		projection_version=?, classes=?, projected_fts_body_masked=?, session_id=?, expires_at=?, expiry_scope=?
 	WHERE id=?`,
 		obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
@@ -428,7 +428,7 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		obj.UpdatedAt.Format(time.RFC3339),
 		boolToInt(obj.FTSIndexed), obj.Status, obj.InboxNote,
 		f.remindAt, f.remindedAt, obj.ProfileID, graphJSON, projectedFTSBody, obj.SourceKey,
-		indexsig.ProjectionVersion, f.classes, index.MaskedFTSBody, nullSessionID(obj.SessionID), obj.ID,
+		indexsig.ProjectionVersion, f.classes, index.MaskedFTSBody, nullSessionID(obj.SessionID), f.expiresAt, obj.ExpiryScope, obj.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("update object: %w", err)
@@ -744,7 +744,7 @@ func (s *ObjectStore) ListBySQL(ctx context.Context, where string, args []any, f
 		decisions, tasks, pipeline, source,
 		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
-		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq, classes, session_id
+		remind_at, reminded_at, profile_id, graph_json, source_key, change_seq, classes, session_id, expires_at, expiry_scope
 	FROM objects` + whereClause(pageConditions) + " ORDER BY " + order
 	pageArgs := append(append([]any(nil), args...), orderArgs...)
 	if filter.Limit > 0 {
@@ -804,9 +804,9 @@ func scanObjectRow(row interface{ Scan(...any) error }) (*storage.KnowledgeObjec
 		influencesJSON, classesJSON                         string
 		createdAt, updatedAt                                string
 		ftsIndexed                                          int
-		lastReinforcedAt, remindAt, remindedAt              sql.NullString
+		lastReinforcedAt, remindAt, remindedAt, expiresAt   sql.NullString
 		graphJSON                                           sql.NullString
-		sourceKey, sessionID                                sql.NullString
+		sourceKey, sessionID, expiryScope                   sql.NullString
 	)
 
 	err := row.Scan(
@@ -815,7 +815,7 @@ func scanObjectRow(row interface{ Scan(...any) error }) (*storage.KnowledgeObjec
 		&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 		&influencesJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 		&createdAt, &updatedAt, &ftsIndexed, &obj.Status, &obj.InboxNote,
-		&remindAt, &remindedAt, &obj.ProfileID, &graphJSON, &sourceKey, &obj.ChangeSeq, &classesJSON, &sessionID,
+		&remindAt, &remindedAt, &obj.ProfileID, &graphJSON, &sourceKey, &obj.ChangeSeq, &classesJSON, &sessionID, &expiresAt, &expiryScope,
 	)
 	if err != nil {
 		return nil, err
@@ -824,7 +824,7 @@ func scanObjectRow(row interface{ Scan(...any) error }) (*storage.KnowledgeObjec
 	if err := unmarshalObjectJSON(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
 		mentionsJSON, decisionsJSON, tasksJSON, influencesJSON,
 		createdAt, updatedAt, ftsIndexed, lastReinforcedAt,
-		remindAt, remindedAt); err != nil {
+		remindAt, remindedAt, expiresAt); err != nil {
 		return nil, err
 	}
 	if obj.Classes, err = storage.ParseClassesJSON(classesJSON); err != nil {
@@ -842,6 +842,9 @@ func scanObjectRow(row interface{ Scan(...any) error }) (*storage.KnowledgeObjec
 	}
 	if sessionID.Valid {
 		obj.SessionID = sessionID.String
+	}
+	if expiryScope.Valid {
+		obj.ExpiryScope = expiryScope.String
 	}
 	return &obj, nil
 }
@@ -861,7 +864,7 @@ func unmarshalObjectJSON(obj *storage.KnowledgeObject,
 	influencesJSON,
 	createdAt, updatedAt string,
 	ftsIndexed int,
-	lastReinforcedAt, remindAt, remindedAt sql.NullString,
+	lastReinforcedAt, remindAt, remindedAt, expiresAt sql.NullString,
 ) error {
 	for _, col := range []struct {
 		raw  string
@@ -900,14 +903,18 @@ func unmarshalObjectJSON(obj *storage.KnowledgeObject,
 		t, _ := time.Parse(time.RFC3339, remindedAt.String)
 		obj.RemindedAt = &t
 	}
+	if expiresAt.Valid {
+		t, _ := time.Parse(time.RFC3339, expiresAt.String)
+		obj.ExpiresAt = &t
+	}
 	return nil
 }
 
 type objectFields struct {
-	metadata, summaries, sections, tags    string
-	mentions, decisions, tasks             string
-	influences, classes                    string
-	lastReinforcedAt, remindAt, remindedAt sql.NullString
+	metadata, summaries, sections, tags               string
+	mentions, decisions, tasks                        string
+	influences, classes                               string
+	lastReinforcedAt, remindAt, remindedAt, expiresAt sql.NullString
 }
 
 func marshalObjectFields(obj *storage.KnowledgeObject) (objectFields, error) {
@@ -945,6 +952,9 @@ func marshalObjectFields(obj *storage.KnowledgeObject) (objectFields, error) {
 	}
 	if obj.RemindedAt != nil {
 		f.remindedAt = sql.NullString{String: obj.RemindedAt.Format(time.RFC3339), Valid: true}
+	}
+	if obj.ExpiresAt != nil {
+		f.expiresAt = sql.NullString{String: obj.ExpiresAt.UTC().Format(time.RFC3339), Valid: true}
 	}
 
 	return f, err
@@ -1207,7 +1217,7 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 		       o.decisions, o.tasks, o.pipeline, o.source,
 		       o.registry_influences, o.content_hash, o.reinforcement_count, o.last_reinforced_at,
 		       o.created_at, o.updated_at, o.fts_indexed, o.status, o.inbox_note,
-		       o.remind_at, o.reminded_at, o.profile_id, o.graph_json,
+		       o.remind_at, o.reminded_at, o.profile_id, o.graph_json, o.expires_at, o.expiry_scope,
 		       bm25(%[1]s) AS score
 		FROM %[1]s
 		JOIN objects o ON %[1]s.id = o.id
@@ -1284,8 +1294,8 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 			influencesJSON                                      string
 			createdAt, updatedAt                                string
 			ftsIndexed                                          int
-			lastReinforcedAt, remindAt, remindedAt              sql.NullString
-			graphJSON                                           sql.NullString
+			lastReinforcedAt, remindAt, remindedAt, expiresAt   sql.NullString
+			graphJSON, expiryScope                              sql.NullString
 			score                                               float64
 		)
 		err := rows.Scan(
@@ -1294,7 +1304,7 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 			&decisionsJSON, &tasksJSON, &obj.Pipeline, &obj.Source,
 			&influencesJSON, &obj.ContentHash, &obj.ReinforcementCount, &lastReinforcedAt,
 			&createdAt, &updatedAt, &ftsIndexed, &obj.Status, &obj.InboxNote,
-			&remindAt, &remindedAt, &obj.ProfileID, &graphJSON,
+			&remindAt, &remindedAt, &obj.ProfileID, &graphJSON, &expiresAt, &expiryScope,
 			&score,
 		)
 		if err != nil {
@@ -1303,8 +1313,11 @@ func (s *ObjectStore) FTSSearch(ctx context.Context, query string, filter storag
 		if err := unmarshalObjectJSON(&obj, metadataJSON, summariesJSON, sectionsJSON, tagsJSON,
 			mentionsJSON, decisionsJSON, tasksJSON, influencesJSON,
 			createdAt, updatedAt, ftsIndexed, lastReinforcedAt,
-			remindAt, remindedAt); err != nil {
+			remindAt, remindedAt, expiresAt); err != nil {
 			return nil, fmt.Errorf("fts search scan: %w", err)
+		}
+		if expiryScope.Valid {
+			obj.ExpiryScope = expiryScope.String
 		}
 		if graphJSON.Valid {
 			g, err := unmarshalGraph(graphJSON.String)

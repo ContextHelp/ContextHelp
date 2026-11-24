@@ -19,6 +19,7 @@ var holdCmd = &cobra.Command{
 var holdListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List active holds",
+	Long:  "List active legal and administrative holds, optionally filtered by object ID, source_key, or hold ID.",
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		objectID, _ := cmd.Flags().GetString("object")
 		sourceKey, _ := cmd.Flags().GetString("source-key")
@@ -46,6 +47,7 @@ var holdListCmd = &cobra.Command{
 var holdPlaceCmd = &cobra.Command{
 	Use:   "place",
 	Short: "Place a hold on an object or source_key",
+	Long:  "Place an active hold on an object or every object matching a source_key so no mutation or deletion can alter or remove it until released.",
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		objectID, _ := cmd.Flags().GetString("object")
 		sourceKey, _ := cmd.Flags().GetString("source-key")
@@ -73,6 +75,7 @@ var holdPlaceCmd = &cobra.Command{
 var holdReleaseCmd = &cobra.Command{
 	Use:   "release",
 	Short: "Release an active operator hold",
+	Long:  "Release an active operator-placed hold by hold ID so protected objects may be modified or deleted again.",
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		objectID, _ := cmd.Flags().GetString("object")
 		sourceKey, _ := cmd.Flags().GetString("source-key")
@@ -96,8 +99,26 @@ func init() {
 	holdCmd.AddCommand(holdListCmd, holdPlaceCmd, holdReleaseCmd)
 
 	cliconv.WithSideEffect(holdListCmd, cliconv.SideEffectRead)
+	cliconv.WithExamples(holdListCmd, []cliconv.Example{
+		{Title: "List all active holds", Command: "ctxt hold list"},
+		{Title: "Filter holds for one object", Command: "ctxt hold list --object obj_123"},
+	})
 	cliconv.WithSideEffect(holdPlaceCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(holdPlaceCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(holdPlaceCmd, []cliconv.Example{
+		{Title: "Place a hold on one object", Command: "ctxt hold place --object obj_123 --hold-id lit-2026 --reason \"litigation hold\""},
+	})
+	cliconv.WithNextSteps(holdPlaceCmd, []cliconv.NextStep{
+		{When: "after placing a hold", Suggest: "ctxt hold list", Reason: "confirm the active hold is recorded"},
+	})
 	cliconv.WithSideEffect(holdReleaseCmd, cliconv.SideEffectWrite)
+	cliconv.WithIdempotency(holdReleaseCmd, cliconv.IdempotencyYes)
+	cliconv.WithExamples(holdReleaseCmd, []cliconv.Example{
+		{Title: "Release an operator hold", Command: "ctxt hold release --hold-id lit-2026 --object obj_123 --reason \"matter closed\""},
+	})
+	cliconv.WithNextSteps(holdReleaseCmd, []cliconv.NextStep{
+		{When: "after releasing a hold", Suggest: "ctxt hold list", Reason: "confirm the hold is no longer active"},
+	})
 
 	holdListCmd.Flags().String("object", "", "filter by object ID")
 	holdListCmd.Flags().String("source-key", "", "filter by source_key")

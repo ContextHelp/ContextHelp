@@ -80,6 +80,13 @@ func (s *stubObjectStore) MarkReminded(_ context.Context, _ string, _ time.Time)
 func (s *stubObjectStore) ListPendingReminders(_ context.Context) ([]*storage.KnowledgeObject, error) {
 	return nil, nil
 }
+func (s *stubObjectStore) SetExpiry(_ context.Context, _ string, _ time.Time, _ string) error {
+	return nil
+}
+func (s *stubObjectStore) ClearExpiry(_ context.Context, _ string) error { return nil }
+func (s *stubObjectStore) ListExpired(_ context.Context, _ time.Time, _ int) ([]*storage.KnowledgeObject, error) {
+	return nil, nil
+}
 
 func (s *stubObjectStore) VectorSearch(_ context.Context, _ storage.VectorQuery, _ storage.ObjectFilter) ([]*storage.KnowledgeObject, error) {
 	return nil, nil

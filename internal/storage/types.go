@@ -36,10 +36,19 @@ type KnowledgeObject struct {
 	LastReinforcedAt   *time.Time     `json:"last_reinforced_at,omitempty"`
 	RemindAt           *time.Time     `json:"remind_at,omitempty"`
 	RemindedAt         *time.Time     `json:"reminded_at,omitempty"`
-	CreatedAt          time.Time      `json:"created_at"`
-	UpdatedAt          time.Time      `json:"updated_at"`
-	FTSIndexed         bool           `json:"fts_indexed"`
-	ProfileID          string         `json:"profile_id,omitempty"` // owning profile; empty = global
+	// ExpiresAt is an optional UTC timestamp after which the daemon expiry
+	// sweeper erases the object (or redacts ExpiryScope if non-empty), unless
+	// an active hold prevents mutation/deletion. Nil means no automatic expiration.
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	// ExpiryScope optionally describes in natural language which data inside
+	// the object should be expired/redacted when ExpiresAt is reached (e.g.
+	// "PII and phone numbers" or "raw content, keep summary"). Empty means
+	// erase the entire object.
+	ExpiryScope string    `json:"expiry_scope,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	FTSIndexed  bool      `json:"fts_indexed"`
+	ProfileID   string    `json:"profile_id,omitempty"` // owning profile; empty = global
 	// SessionID groups objects captured in one work session (ADR-067): an
 	// opaque id the ambient daemon cuts client-side. Soft FK, no sessions
 	// row is required; empty for non-ambient captures. First capture wins
@@ -404,6 +413,13 @@ type Job struct {
 	// as KnowledgeObject.SourceKey, so a later submission of the same key
 	// updates that object instead of creating another.
 	UserSourceKey string `json:"user_source_key,omitempty"`
+	// UserExpiresAt is the caller-supplied capture expiry timestamp
+	// (`ctxt capture --expires` / `--ttl`). The worker persists it as
+	// KnowledgeObject.ExpiresAt.
+	UserExpiresAt *time.Time `json:"user_expires_at,omitempty"`
+	// UserExpiryScope is the optional natural-language description of what
+	// data to expire when UserExpiresAt is reached.
+	UserExpiryScope string `json:"user_expiry_scope,omitempty"`
 	// UserAmbient is the ambient-capture context the enqueue client sent
 	// (ADR-066/067): source, fingerprint, session id and free-form client
 	// metadata. The worker lands it on the draft. Stored as one JSON
@@ -825,6 +841,8 @@ type WatchConfig struct {
 	DebounceMS       int       `json:"debounce_ms"`
 	Status           string    `json:"status"` // "active" | "paused"
 	PipelineOverride string    `json:"pipeline_override"`
+	ExpiryTTL        string    `json:"expiry_ttl,omitempty"`
+	ExpiryScope      string    `json:"expiry_scope,omitempty"`
 	LastError        string    `json:"last_error"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`

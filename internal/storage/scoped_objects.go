@@ -114,6 +114,18 @@ func (v restrictedObjects) ListPendingReminders(_ context.Context) ([]*Knowledge
 	return nil, restrictedRead("Objects", "ListPendingReminders")
 }
 
+func (v restrictedObjects) SetExpiry(ctx context.Context, id string, at time.Time, scope string) error {
+	return v.inner.SetExpiry(ctx, id, at, scope)
+}
+
+func (v restrictedObjects) ClearExpiry(ctx context.Context, id string) error {
+	return v.inner.ClearExpiry(ctx, id)
+}
+
+func (v restrictedObjects) ListExpired(_ context.Context, _ time.Time, _ int) ([]*KnowledgeObject, error) {
+	return nil, restrictedRead("Objects", "ListExpired")
+}
+
 func (v restrictedObjects) VectorSearch(ctx context.Context, q VectorQuery, filter ObjectFilter) ([]*KnowledgeObject, error) {
 	if v.scoped == nil {
 		return nil, refuseRead("Objects", "VectorSearch", v.refuse)

@@ -27,7 +27,12 @@ type AnalyzeRequest struct {
 	Raw             bool   `json:"raw,omitempty"`          // skip AI enrichment; store object immediately in raw state
 	NoFanout        bool   `json:"no_fanout,omitempty"`    // skip post-ingest fan-out enrichment
 	SourceKey       string `json:"source_key,omitempty"`   // external dedup key (Slack ts, tweet ID, etc.)
-	Force           bool   `json:"force,omitempty"`        // bypass duplicate detection
+	// ExpiresAt optionally schedules automatic expiration (UTC) for the
+	// captured object. When ExpiryScope is empty the whole object is erased;
+	// when non-empty only the described data is redacted in place.
+	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
+	ExpiryScope string     `json:"expiry_scope,omitempty"`
+	Force       bool       `json:"force,omitempty"` // bypass duplicate detection
 	// Mentions are caller-asserted @namespace.slug strings. They
 	// are merged with auto-extracted mentions during pipeline execution and
 	// become real mention edges + thin entity rows. Caller-supplied wins on
@@ -104,7 +109,9 @@ type InboxCaptureRequest struct {
 	// Profile is the focus-profile slug the operator pinned at capture
 	// time. Populates KnowledgeObject.ProfileID so the inbox
 	// item is partitioned to that profile from the start.
-	Profile string
+	Profile     string
+	ExpiresAt   *time.Time
+	ExpiryScope string
 }
 
 // InboxFilter specifies criteria for listing inbox items.

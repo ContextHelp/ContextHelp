@@ -129,6 +129,13 @@ func (m *mockObjectStore) MarkReminded(ctx context.Context, id string, now time.
 func (m *mockObjectStore) ListPendingReminders(ctx context.Context) ([]*KnowledgeObject, error) {
 	return nil, nil
 }
+func (m *mockObjectStore) SetExpiry(_ context.Context, _ string, _ time.Time, _ string) error {
+	return nil
+}
+func (m *mockObjectStore) ClearExpiry(_ context.Context, _ string) error { return nil }
+func (m *mockObjectStore) ListExpired(_ context.Context, _ time.Time, _ int) ([]*KnowledgeObject, error) {
+	return nil, nil
+}
 
 type mockEntityStore struct{}
 

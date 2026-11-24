@@ -19,13 +19,15 @@ import (
 func CaptureInbox(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			Content   string   `json:"content"`
-			Type      string   `json:"type"`
-			Source    string   `json:"source"`
-			InboxNote string   `json:"inbox_note"`
-			Hints     []string `json:"hints"`
-			Mentions  []string `json:"mentions"`
-			Profile   string   `json:"profile"`
+			Content     string     `json:"content"`
+			Type        string     `json:"type"`
+			Source      string     `json:"source"`
+			InboxNote   string     `json:"inbox_note"`
+			Hints       []string   `json:"hints"`
+			Mentions    []string   `json:"mentions"`
+			Profile     string     `json:"profile"`
+			ExpiresAt   *time.Time `json:"expires_at,omitempty"`
+			ExpiryScope string     `json:"expiry_scope,omitempty"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid JSON body")
@@ -43,13 +45,15 @@ func CaptureInbox(svc *service.Service) http.HandlerFunc {
 			return
 		}
 		captureReq := service.InboxCaptureRequest{
-			Content:   req.Content,
-			Type:      req.Type,
-			Source:    req.Source,
-			InboxNote: req.InboxNote,
-			Hints:     req.Hints,
-			Mentions:  mentions.ParseSlice(req.Mentions),
-			Profile:   req.Profile,
+			Content:     req.Content,
+			Type:        req.Type,
+			Source:      req.Source,
+			InboxNote:   req.InboxNote,
+			Hints:       req.Hints,
+			Mentions:    mentions.ParseSlice(req.Mentions),
+			Profile:     req.Profile,
+			ExpiresAt:   req.ExpiresAt,
+			ExpiryScope: req.ExpiryScope,
 		}
 		obj, err := svc.CaptureToInbox(r.Context(), captureReq)
 		if err != nil {

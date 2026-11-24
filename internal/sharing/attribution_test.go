@@ -280,7 +280,7 @@ func TestScopedRendersEachObjectThroughItsGrants(t *testing.T) {
 		"VectorSearchNodeAware": nodes(objects.VectorSearchNodeAware(ctx, storage.VectorQuery{}, all, storage.NodeAwareFilter{})),
 	}
 	for _, name := range sharing.RenderedReads() {
-		if name == "ListDueReminders" || name == "ListPendingReminders" {
+		if name == "ListDueReminders" || name == "ListPendingReminders" || name == "ListExpired" {
 			continue // refused for a restricted viewer
 		}
 		objs, ok := reads[name]
