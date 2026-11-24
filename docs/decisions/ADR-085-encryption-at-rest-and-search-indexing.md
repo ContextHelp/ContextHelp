@@ -96,4 +96,20 @@ This supports three honest deployment postures without silent leakage:
 
 ## Empirical SQLite Spike Findings
 
-*(Appended upon completion of the SQLite encryption driver spike.)*
+Empirically evaluated the candidate SQLite whole-DB encryption stacks against `ctxt`'s real schema requirements (external-content FTS5, `sqlite-vec` `vec0` cosine ANN virtual tables, WAL mode, wrong-key refusal, rekeying, and plaintext-to-encrypted migration):
+
+### Candidate Matrix
+
+| Candidate | Version / Release Age | License | `rsx analyze` | FTS5 + `vec0` | WAL/SHM Zero-Plaintext | Verdict |
+|---|---|---|---|---|---|---|
+| `utelle/SQLite3MultipleCiphers` + `mattn/go-sqlite3` (`-tags libsqlite3,fts5`) + `sqlite-vec-go-bindings/cgo` | `v2.6.1` (SQLite 3.54.0, released 2026-10-12, 43d old) | MIT / BSD / Apache-2.0 | PASS (6.7/10) | PASS (`sqlite=3.54.0`, `vec=v0.1.6`, `cipher=chacha20`, FTS5 `MATCH` + `vec0` cosine KNN verified) | PASS (`enc.sqlite`, `-wal`, `-shm` all scanned: 0 plaintext bytes, 0 `"SQLite format 3"` headers) | **SELECTED** |
+| `ncruces/go-sqlite3` + `vfs/adiantum` + `sqlite-vec-go-bindings/ncruces` | `v0.37.0` (17d old) / `v0.25.2` | MIT | PASS (5.7/10) | **FAIL** (`v0.37.0`: compile error `undefined: sqlite3.Binary`; `v0.25.2`: runtime wazero failure `i32.atomic.store invalid as feature "" is disabled` from stale 2024 `sqlite3.wasm` in `sqlite-vec-go-bindings@v0.1.6`) | N/A | **REJECTED** |
+| `sqlcipher/sqlcipher` | `v4.20.0` (28d old) | BSD-3-Clause | PASS (6.4/10) | Requires OpenSSL/CommonCrypto external linkage and custom amalgamation build | — | **REJECTED** (higher cross-platform build friction than self-contained `sqlite3mc` amalgamation) |
+
+### Key Technical Findings (`SQLite3MultipleCiphers` v2.6.1)
+
+1. **URI-level keying (`?cipher=chacha20&hexkey=<64-hex>`)**: Passing `cipher=chacha20` and the 32-byte raw DEK via `hexkey` in the SQLite URI ensures `sqlite3mc` configures the codec inside `sqlite3_open_v2` *before* `mattn/go-sqlite3` executes connection pragmas (`_journal_mode=WAL`, `_foreign_keys=ON`, `_busy_timeout=5000`), and applies uniformly to every pooled `database/sql` connection.
+2. **Cipher selection**: `chacha20` (authenticated ChaCha20-Poly1305 per page with 16-byte Poly1305 tag, no external OpenSSL dependency) encrypts the database file, WAL (`-wal`), and leaves no plaintext in `-shm`.
+3. **Fail-closed verification**: Opening an encrypted database with an incorrect or missing key fails immediately with `file is not a database`.
+4. **Crash-safe plaintext→encrypted migration and DEK rekey**: `VACUUM INTO 'file:<tmp>?cipher=chacha20&hexkey=<new>'` followed by close, WAL/SHM cleanup, and atomic rename cleanly migrates plaintext WAL databases to encrypted databases and rotates DEKs while preserving FTS5 and `vec0` virtual tables.
+5. **Zero driver churn**: Linking `sqlite3mc` via `-tags "libsqlite3 fts5"` preserves 100% compatibility with existing `mattn/go-sqlite3` DSNs, `sqlite3.Error` handling, and `sqlite-vec-go-bindings/cgo`.
