@@ -72,8 +72,16 @@ ctxt analyze --file ./doc.md --type text --wait   # --wait blocks; returns objec
 # REST
 curl -X POST http://127.0.0.1:8080/analyze \
   -H "Content-Type: application/json" \
-  -d '{"content":"...","type":"text"}'
+  -d '{"content":"...","type":"text","ttl":"7d","expiry_scope":"emails and phone numbers"}'
 # → {"job_id":"<id>"}
+
+# Expiry, holds & source-key erasure (REST)
+PUT    /api/v1/objects/{id}/expiry   # {"ttl":"7d","expiry_scope":"pii"}
+DELETE /api/v1/objects/{id}/expiry
+GET    /api/v1/holds
+POST   /api/v1/holds                 # {"object_id":"...","reason":"..."}
+DELETE /api/v1/holds/{hold_id}
+DELETE /api/v1/objects/by-source?source_key=<key>&tombstone=true
 ```
 
 ---

@@ -83,6 +83,25 @@ ctxt analyze "Pricing experiment notes" --type text \
 | `--pipeline <name>` | Force a specific pipeline |
 | `--wait` | Block until job completes; returns object ID |
 | `--raw` | Store without AI enrichment |
+| `--ttl <dur>` / `--expires <time>` | Auto-expire capture (e.g. `7d`, `24h`, RFC3339, `"next friday"`) |
+| `--expires-scope <desc>` | Natural-language subset to redact at expiry instead of deleting whole object |
+
+### Expiry, Holds & Source Erasure
+
+```bash
+# Auto-expire a capture or watch (whole object or natural-language scope)
+ctxt capture "temp notes" --ttl 7d
+ctxt capture "Call alice@example.com (555-867-5309)" --ttl 30d --expires-scope "emails and phone numbers"
+ctxt watch start ./inbox --ttl 14d --expires-scope "raw content, keep summary"
+ctxt expire set <id> --ttl 7d --scope "pii"
+ctxt expire clear <id>
+
+# Legal holds & source-key erasure
+ctxt hold place --object-id <id> --reason "litigation hold"
+ctxt hold list
+ctxt hold release <hold-id>
+ctxt delete --source-key "bos://core.documents/doc_123" --tombstone
+```
 
 ---
 
