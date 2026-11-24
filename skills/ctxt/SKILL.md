@@ -5,8 +5,9 @@ description: |
   (decentralized personal knowledge substrate).
 
   Use when: capturing, importing, searching, filtering, composing, curating, or
-  organizing knowledge with ctxt; or operating the dpkms daemon, job queue,
-  pipelines, detectors, backups, housekeeping, or secrets.
+  organizing knowledge with ctxt; operating the dpkms daemon, job queue,
+  pipelines, detectors, backups, housekeeping, or secrets; or running an agent
+  memory and retrieval loop with provenance.
 ---
 
 # ContextHelp (`ctxt` + `dpkms`)
@@ -17,6 +18,9 @@ Two binaries, one local-first system:
 |---|---|---|
 | `ctxt` | **Knowledge brain** — capture, import, search, list, compose, curate, organize, profile, federate | [references/ctxt.md](references/ctxt.md) |
 | `dpkms` | **Infrastructure substrate** — daemon lifecycle, jobs, pipelines, detectors, backups, housekeeping, secrets, keys, plugin dev | [references/dpkms.md](references/dpkms.md) |
+
+For multi-step agent memory and deterministic-first retrieval with provenance:
+- [references/workflows/agent-memory.md](references/workflows/agent-memory.md) (taxonomy & presets: [references/workflows/memory-taxonomy.md](references/workflows/memory-taxonomy.md))
 
 ## How to navigate this skill
 

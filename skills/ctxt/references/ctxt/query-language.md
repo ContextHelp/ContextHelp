@@ -58,4 +58,4 @@ ctxt list --q 'type==text;similar=="rate limit"' --format json
 
 ## Next Steps
 
-- Full `list` flags: [list.md](list.md) · Semantic/hybrid search: [find.md](find.md)
+- Full `list` flags: [list.md](list.md) · Semantic/hybrid search: [find.md](find.md) · Agent memory presets: [../workflows/memory-taxonomy.md](../workflows/memory-taxonomy.md)

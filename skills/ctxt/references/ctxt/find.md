@@ -67,5 +67,5 @@ ctxt find "onboarding" --facets
 ## Gotchas & Next Steps
 
 - `--since`/`--until` filter `dates_mentioned` inside metadata, not object creation time (use `ctxt list --after/--before` for creation timestamps).
-- For deterministic, reproducible queries, prefer `ctxt list` first and fall back to `ctxt find`.
+- For deterministic agent loops, prefer `ctxt list` first and fall back to `ctxt find` ([../workflows/agent-memory.md](../workflows/agent-memory.md)).
 - Next: inspect a result ([show.md](show.md)), refine with structured queries ([list.md](list.md), [query-language.md](query-language.md)), or synthesize ([compose.md](compose.md)).
