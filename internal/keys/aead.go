@@ -154,10 +154,12 @@ func encodeEnvelope(keyID string, wrappedDEK, ct []byte) ([]byte, error) {
 	off := 0
 	out[off] = EnvelopeVersion
 	off++
+	// #nosec G115 -- keyID length is verified <= 0xffff above.
 	binary.BigEndian.PutUint16(out[off:], uint16(len(keyID))) //nolint:gosec // length checked <= 0xffff above
 	off += 2
 	copy(out[off:], keyID)
 	off += len(keyID)
+	// #nosec G115 -- wrappedDEK length is verified <= 0xffff above.
 	binary.BigEndian.PutUint16(out[off:], uint16(len(wrappedDEK))) //nolint:gosec // length checked <= 0xffff above
 	off += 2
 	copy(out[off:], wrappedDEK)

@@ -50,6 +50,7 @@ func packBlob(meta storage.BlobMeta, data []byte) ([]byte, error) {
 	}
 	out := make([]byte, len(blobMagic)+2+len(mb)+len(data))
 	off := copy(out, blobMagic)
+	// #nosec G115 -- mb length is verified <= 0xffff above.
 	binary.BigEndian.PutUint16(out[off:], uint16(len(mb))) //nolint:gosec // checked <= 0xffff above
 	off += 2
 	off += copy(out[off:], mb)
