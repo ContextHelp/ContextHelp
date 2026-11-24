@@ -10,6 +10,7 @@ import (
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 	_ "github.com/mattn/go-sqlite3"
 
+	"github.com/ideacrafterslabs/ctxt/internal/keys"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -43,6 +44,7 @@ type Driver struct {
 	metering      *MeteringStore
 	savedSearches *SavedSearchStore
 	searchHistory *SearchHistoryStore
+	keyProvider   keys.Provider
 }
 
 // ErrNoBlobStore is returned by New when it is given no blob store.

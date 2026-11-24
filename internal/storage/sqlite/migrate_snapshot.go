@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/ideacrafterslabs/ctxt/internal/keys"
 )
 
 // Option configures a Driver at New.
@@ -23,6 +25,12 @@ type Option func(*Driver)
 // (storage.migrate_snapshot). It is on unless this option turns it off.
 func WithMigrateSnapshot(enabled bool) Option {
 	return func(d *Driver) { d.skipMigrateSnapshot = !enabled }
+}
+
+// WithKeyProvider attaches a storage KEK provider used to encrypt
+// pre-migration snapshots (and SQLite database key material).
+func WithKeyProvider(p keys.Provider) Option {
+	return func(d *Driver) { d.keyProvider = p }
 }
 
 const (
@@ -40,9 +48,9 @@ const (
 )
 
 // snapshotNameRE matches the files writeMigrateSnapshot produces:
-// pre-migrate-v<from>-v<to>-<UTC timestamp>[-<n>].sqlite. Retention
+// pre-migrate-v<from>-v<to>-<UTC timestamp>[-<n>].sqlite[.enc]. Retention
 // only ever touches names that match it.
-var snapshotNameRE = regexp.MustCompile(`^pre-migrate-v(\d+)-v(\d+)-(\d{8}T\d{6}Z)(?:-(\d+))?\.sqlite$`)
+var snapshotNameRE = regexp.MustCompile(`^pre-migrate-v(\d+)-v(\d+)-(\d{8}T\d{6}Z)(?:-(\d+))?\.sqlite(?:\.enc)?$`)
 
 // SnapshotDir returns the directory pre-migration snapshots of the
 // database at dbPath are written to: backups/ beside the database file.
@@ -138,14 +146,53 @@ func writeMigrateSnapshot(ctx context.Context, d *Driver, dir string, from, to i
 	if _, err := d.db.ExecContext(ctx, "VACUUM INTO ?", tmp); err != nil {
 		return "", fmt.Errorf("vacuum into: %w", err)
 	}
-	if err := syncPath(tmp); err != nil {
-		return "", fmt.Errorf("fsync snapshot: %w", err)
-	}
 
-	final, err := freeSnapshotName(dir, from, to, now)
+	suffix := ".sqlite"
+	if d.keyProvider != nil {
+		suffix = ".sqlite.enc"
+	}
+	final, err := freeSnapshotName(dir, from, to, now, suffix)
 	if err != nil {
 		return "", err
 	}
+
+	if d.keyProvider != nil {
+		raw, rerr := os.ReadFile(tmp)
+		if rerr != nil {
+			return "", fmt.Errorf("read snapshot for encryption: %w", rerr)
+		}
+		env, serr := keys.SealEnvelope(ctx, d.keyProvider, raw, snapshotAAD(final))
+		if serr != nil {
+			return "", fmt.Errorf("encrypt snapshot: %w", serr)
+		}
+		encTmpf, cerr := os.CreateTemp(dir, ".pre-migrate-enc-*.partial")
+		if cerr != nil {
+			return "", fmt.Errorf("create encrypted snapshot temp: %w", cerr)
+		}
+		encTmp := encTmpf.Name()
+		if _, werr := encTmpf.Write(env); werr != nil {
+			_ = encTmpf.Close()
+			_ = os.Remove(encTmp)
+			return "", fmt.Errorf("write encrypted snapshot: %w", werr)
+		}
+		if cerr := encTmpf.Sync(); cerr != nil {
+			_ = encTmpf.Close()
+			_ = os.Remove(encTmp)
+			return "", fmt.Errorf("fsync encrypted snapshot: %w", cerr)
+		}
+		if cerr := encTmpf.Close(); cerr != nil {
+			_ = os.Remove(encTmp)
+			return "", fmt.Errorf("close encrypted snapshot: %w", cerr)
+		}
+		// Remove the unencrypted VACUUM temp file before publishing.
+		_ = os.Remove(tmp)
+		tmp = encTmp
+	} else {
+		if err := syncPath(tmp); err != nil {
+			return "", fmt.Errorf("fsync snapshot: %w", err)
+		}
+	}
+
 	if err := os.Rename(tmp, final); err != nil {
 		return "", fmt.Errorf("rename snapshot: %w", err)
 	}
@@ -158,14 +205,25 @@ func writeMigrateSnapshot(ctx context.Context, d *Driver, dir string, from, to i
 	return final, nil
 }
 
+func snapshotAAD(path string) []byte { return []byte("sqlite-snapshot:" + filepath.Base(path)) }
+
+// ReadMigrateSnapshot decrypts an encrypted pre-migration snapshot using p.
+func ReadMigrateSnapshot(ctx context.Context, path string, p keys.Provider) ([]byte, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read snapshot %s: %w", path, err)
+	}
+	return keys.OpenEnvelope(ctx, p, raw, snapshotAAD(path))
+}
+
 // freeSnapshotName returns the first snapshot path in dir for this
 // migration and time that no file holds yet.
-func freeSnapshotName(dir string, from, to int, now time.Time) (string, error) {
+func freeSnapshotName(dir string, from, to int, now time.Time, suffix string) (string, error) {
 	base := fmt.Sprintf("pre-migrate-v%d-v%d-%s", from, to, now.UTC().Format(snapshotTimeLayout))
 	for i := 0; i < 1000; i++ {
-		name := base + ".sqlite"
+		name := base + suffix
 		if i > 0 {
-			name = base + "-" + strconv.Itoa(i) + ".sqlite"
+			name = base + "-" + strconv.Itoa(i) + suffix
 		}
 		p := filepath.Join(dir, name)
 		if _, err := os.Lstat(p); errors.Is(err, fs.ErrNotExist) {

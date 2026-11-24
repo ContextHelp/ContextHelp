@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
+	"github.com/ideacrafterslabs/ctxt/internal/keys"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	blobfactory "github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
@@ -20,15 +21,17 @@ import (
 
 // BackupOpts configures a backup operation.
 type BackupOpts struct {
-	DBPath         string            // path to sqlite file
-	BlobCfg        config.BlobConfig // blob backend config
-	IncludeBlobs   bool
-	OutputDir      string // directory to write archive; cwd if empty
-	SkipBlobErrors bool
-	ConfigPath     string        // optional: path to config.yaml to include in archive
-	IncludeConfigs bool          // include config.yaml + keys/ + other config files
-	ConfigDir      string        // config directory (e.g. ~/.config/contexthelp)
-	EmbeddingInfo  EmbeddingInfo // current embedding model for manifest
+	DBPath            string            // path to sqlite file
+	BlobCfg           config.BlobConfig // blob backend config
+	IncludeBlobs      bool
+	OutputDir         string // directory to write archive; cwd if empty
+	SkipBlobErrors    bool
+	ConfigPath        string        // optional: path to config.yaml to include in archive
+	IncludeConfigs    bool          // include config.yaml + keys/ + other config files
+	ConfigDir         string        // config directory (e.g. ~/.config/contexthelp)
+	EmbeddingInfo     EmbeddingInfo // current embedding model for manifest
+	EncryptionEnabled bool          // when true, backup MUST be encrypted (fail closed if KeyProvider nil)
+	KeyProvider       keys.Provider // KEK provider used when EncryptionEnabled is true
 }
 
 // EmbeddingInfo records the embedding backend used when creating a backup.
@@ -46,10 +49,14 @@ type BackupResult struct {
 	Duration  time.Duration
 }
 
-// Backup creates a timestamped .tar.gz archive containing the SQLite database
-// snapshot and optionally blob files. Cleans up a partial archive on error.
+// Backup creates a timestamped .tar.gz archive (or .tar.gz.enc when
+// EncryptionEnabled is true) containing the SQLite database snapshot and
+// optionally blob files. Cleans up a partial archive on error.
 func Backup(ctx context.Context, opts BackupOpts) (BackupResult, error) {
 	start := time.Now()
+	if opts.EncryptionEnabled && opts.KeyProvider == nil {
+		return BackupResult{}, fmt.Errorf("backup: storage encryption enabled but %w", keys.ErrUnavailable)
+	}
 
 	outDir, err := prepareBackupDir(opts.OutputDir)
 	if err != nil {
@@ -58,89 +65,33 @@ func Backup(ctx context.Context, opts BackupOpts) (BackupResult, error) {
 
 	ts := time.Now().UTC().Format("2006-01-02T15-04-05Z")
 	archiveName := fmt.Sprintf("ctxt-backup-%s.tar.gz", ts)
+	if opts.EncryptionEnabled {
+		archiveName += ".enc"
+	}
 	archivePath := filepath.Join(outDir, archiveName)
 
-	f, err := os.Create(archivePath)
+	f, plainTemp, writePath, err := openBackupTarget(outDir, archivePath, opts.EncryptionEnabled)
 	if err != nil {
-		return BackupResult{}, fmt.Errorf("backup: create archive: %w", err)
+		return BackupResult{}, err
 	}
 
 	var result BackupResult
 	result.Path = archivePath
 
 	abort := func(cause error) error {
-		f.Close()
-		os.Remove(archivePath) //nolint:errcheck
+		_ = f.Close()
+		_ = os.Remove(writePath)
+		if opts.EncryptionEnabled {
+			_ = os.Remove(archivePath)
+		}
 		return cause
 	}
 
 	gz := gzip.NewWriter(f)
 	tw := tar.NewWriter(gz)
 
-	// 1. SQLite snapshot into temp file.
-	tmpDB := filepath.Join(os.TempDir(), fmt.Sprintf("ctxt-snap-%d.db", time.Now().UnixNano()))
-	defer os.Remove(tmpDB) //nolint:errcheck
-
-	if err := storageutil.SQLiteSnapshot(opts.DBPath, tmpDB); err != nil {
-		return BackupResult{}, abort(fmt.Errorf("backup: snapshot db: %w", err))
-	}
-
-	dbInfo, err := os.Stat(tmpDB)
-	if err != nil {
-		return BackupResult{}, abort(fmt.Errorf("backup: stat snapshot: %w", err))
-	}
-	result.DBSize = dbInfo.Size()
-
-	if err := addFileToTar(tw, tmpDB, "ctxt-backup/ctxt.db"); err != nil {
-		return BackupResult{}, abort(fmt.Errorf("backup: tar db: %w", err))
-	}
-
-	// 1b. Optional config.yaml — non-fatal if missing.
-	activeConfig, err := archiveActiveConfig(tw, opts.ConfigPath)
-	if err != nil {
+	if err := writeBackupContents(ctx, tw, opts, &result); err != nil {
 		return BackupResult{}, abort(err)
-	}
-	configIncluded := activeConfig != nil
-
-	// 1c. Optional full config dir (keys/, etc.).
-	if opts.IncludeConfigs && opts.ConfigDir != "" {
-		if err := archiveConfigDir(tw, opts.ConfigDir, activeConfig); err != nil {
-			return BackupResult{}, abort(err)
-		}
-	}
-
-	// 2. Optional blobs (local backend only; blob.New reads an empty
-	// backend as local).
-	if opts.IncludeBlobs && (opts.BlobCfg.Backend == "" || opts.BlobCfg.Backend == "local") {
-		n, err := archiveBlobs(ctx, tw, opts.BlobCfg, opts.SkipBlobErrors)
-		if err != nil {
-			return BackupResult{}, abort(err)
-		}
-		result.BlobCount = n
-	}
-
-	// 3. manifest.json — written last; its presence signals a complete backup.
-	manifest := map[string]any{
-		"schema_version":  2,
-		"created_at":      time.Now().UTC().Format(time.RFC3339),
-		"db_size":         result.DBSize,
-		"blob_count":      result.BlobCount,
-		"config_included": configIncluded,
-		"configs_dir":     opts.IncludeConfigs,
-		"embedding":       opts.EmbeddingInfo,
-	}
-	manifestBytes, _ := json.Marshal(manifest)
-	hdr := &tar.Header{
-		Name:    "ctxt-backup/manifest.json",
-		Size:    int64(len(manifestBytes)),
-		Mode:    0644,
-		ModTime: time.Now(),
-	}
-	if err := tw.WriteHeader(hdr); err != nil {
-		return BackupResult{}, abort(fmt.Errorf("backup: tar manifest header: %w", err))
-	}
-	if _, err := tw.Write(manifestBytes); err != nil {
-		return BackupResult{}, abort(fmt.Errorf("backup: tar manifest: %w", err))
 	}
 
 	if err := tw.Close(); err != nil {
@@ -153,8 +104,134 @@ func Backup(ctx context.Context, opts BackupOpts) (BackupResult, error) {
 		return BackupResult{}, abort(fmt.Errorf("backup: close file: %w", err))
 	}
 
+	if opts.EncryptionEnabled {
+		if err := sealBackupArchive(ctx, opts.KeyProvider, plainTemp, archivePath, archiveName); err != nil {
+			return BackupResult{}, err
+		}
+	}
+
 	result.Duration = time.Since(start)
 	return result, nil
+}
+
+func writeBackupContents(ctx context.Context, tw *tar.Writer, opts BackupOpts, result *BackupResult) error {
+	// 1. SQLite snapshot into temp file.
+	tmpDB := filepath.Join(os.TempDir(), fmt.Sprintf("ctxt-snap-%d.db", time.Now().UnixNano()))
+	defer os.Remove(tmpDB) //nolint:errcheck
+
+	if err := storageutil.SQLiteSnapshot(opts.DBPath, tmpDB); err != nil {
+		return fmt.Errorf("backup: snapshot db: %w", err)
+	}
+
+	dbInfo, err := os.Stat(tmpDB)
+	if err != nil {
+		return fmt.Errorf("backup: stat snapshot: %w", err)
+	}
+	result.DBSize = dbInfo.Size()
+
+	if err := addFileToTar(tw, tmpDB, "ctxt-backup/ctxt.db"); err != nil {
+		return fmt.Errorf("backup: tar db: %w", err)
+	}
+
+	// 1b. Optional config.yaml — non-fatal if missing.
+	activeConfig, err := archiveActiveConfig(tw, opts.ConfigPath)
+	if err != nil {
+		return err
+	}
+	configIncluded := activeConfig != nil
+
+	// 1c. Optional full config dir (keys/, etc.).
+	if opts.IncludeConfigs && opts.ConfigDir != "" {
+		if err := archiveConfigDir(tw, opts.ConfigDir, activeConfig); err != nil {
+			return err
+		}
+	}
+
+	// 2. Optional blobs (local backend only; blob.New reads an empty
+	// backend as local).
+	if opts.IncludeBlobs && (opts.BlobCfg.Backend == "" || opts.BlobCfg.Backend == "local") {
+		n, err := archiveBlobs(ctx, tw, opts.BlobCfg, opts.SkipBlobErrors)
+		if err != nil {
+			return err
+		}
+		result.BlobCount = n
+	}
+
+	// 3. manifest.json — written last; its presence signals a complete backup.
+	return writeBackupManifest(tw, *result, configIncluded, opts)
+}
+
+func writeBackupManifest(tw *tar.Writer, result BackupResult, configIncluded bool, opts BackupOpts) error {
+	manifest := map[string]any{
+		"schema_version":  2,
+		"created_at":      time.Now().UTC().Format(time.RFC3339),
+		"db_size":         result.DBSize,
+		"blob_count":      result.BlobCount,
+		"config_included": configIncluded,
+		"configs_dir":     opts.IncludeConfigs,
+		"embedding":       opts.EmbeddingInfo,
+		"encrypted":       opts.EncryptionEnabled,
+	}
+	manifestBytes, _ := json.Marshal(manifest)
+	hdr := &tar.Header{
+		Name:    "ctxt-backup/manifest.json",
+		Size:    int64(len(manifestBytes)),
+		Mode:    0644,
+		ModTime: time.Now(),
+	}
+	if err := tw.WriteHeader(hdr); err != nil {
+		return fmt.Errorf("backup: tar manifest header: %w", err)
+	}
+	if _, err := tw.Write(manifestBytes); err != nil {
+		return fmt.Errorf("backup: tar manifest: %w", err)
+	}
+	return nil
+}
+
+func openBackupTarget(outDir, archivePath string, encrypted bool) (f *os.File, plainTemp, writePath string, err error) {
+	if encrypted {
+		tf, terr := os.CreateTemp(outDir, ".ctxt-backup-plain-*.tar.gz")
+		if terr != nil {
+			return nil, "", "", fmt.Errorf("backup: create temp archive: %w", terr)
+		}
+		name := tf.Name()
+		return tf, name, name, nil
+	}
+	cf, cerr := os.OpenFile(archivePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600) //nolint:gosec // archivePath is validated under outDir
+	if cerr != nil {
+		return nil, "", "", fmt.Errorf("backup: create archive: %w", cerr)
+	}
+	return cf, "", archivePath, nil
+}
+
+func sealBackupArchive(ctx context.Context, p keys.Provider, plainTemp, archivePath, archiveName string) error {
+	raw, rerr := os.ReadFile(plainTemp) //nolint:gosec // temp file created by openBackupTarget
+	_ = os.Remove(plainTemp)
+	if rerr != nil {
+		return fmt.Errorf("backup: read archive for encryption: %w", rerr)
+	}
+	env, serr := keys.SealEnvelope(ctx, p, raw, backupAAD(archiveName))
+	if serr != nil {
+		return fmt.Errorf("backup: encrypt archive: %w", serr)
+	}
+	if werr := os.WriteFile(archivePath, env, 0o600); werr != nil { //nolint:gosec // archivePath is validated under outDir
+		return fmt.Errorf("backup: write encrypted archive: %w", werr)
+	}
+	return nil
+}
+
+func backupAAD(archiveName string) []byte { return []byte("ctxt-backup:" + archiveName) }
+
+// DecryptBackup decrypts an encrypted .tar.gz.enc backup produced by Backup.
+func DecryptBackup(ctx context.Context, encPath string, p keys.Provider) ([]byte, error) {
+	if p == nil {
+		return nil, fmt.Errorf("decrypt backup: %w", keys.ErrUnavailable)
+	}
+	raw, err := os.ReadFile(encPath)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt backup: read: %w", err)
+	}
+	return keys.OpenEnvelope(ctx, p, raw, backupAAD(filepath.Base(encPath)))
 }
 
 // prepareBackupDir resolves the archive's directory (the working
