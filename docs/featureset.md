@@ -129,6 +129,13 @@ Unicode-safe and RTL-safe storage and indexing support mixed-language knowledge
 without hacks, including localized entity labels, aliases, and language-aware
 querying across Arabic/English/French content.
 
+## Compliance, Legal Holds & Timed Expiry
+First-class retention and erasure primitives built directly into the storage layer:
+- **Source-key erasure & tombstones:** Erase all objects and derived artifacts (embeddings, entity pages, topic indexes, blobs, pending jobs) by `source_key` via `DELETE /api/v1/objects/by-source` or `ctxt delete --source-key --tombstone`, blocking re-ingestion of erased sources.
+- **Transactional legal holds:** Storage-layer hold guard (`assertNotHeldTx`) enforced inside write transactions across SQLite and Postgres mutations, managed via `/api/v1/holds` and `ctxt hold place|release|list`.
+- **Capture & watch expiry (with optional natural-language scope):** Set `expires_at` / `--ttl` / `--expires` and optional `--expires-scope` (e.g. `"emails and phone numbers"`, `"raw content, keep summary"`, or free-form natural language via a pluggable `SpanLocator`) on captures, watches, and existing objects (`ctxt expire set|clear`, `PUT/DELETE /api/v1/objects/{id}/expiry`). The daemon's background `ExpirySweeper` erases or selectively redacts expired captures while respecting active holds.
+- **Peer obligations (`bos.obligations/v1`):** Conforming HTTP receiver (`GET /.well-known/bos-peer`, `POST /bos/v1/obligations`, `GET /bos/v1/obligations/{id}`) executing idempotent hold, release, and erase obligations from external governance authorities.
+
 ## Security + Encryption (Sovereign by Design)
 Encryption at rest and in transit with pluggable key management, controlled sharing
 handshakes, and an optional privacy-preserving search mode that supports filtering

@@ -45,11 +45,12 @@ ContextHelp is built as two independent but cooperating packages:
 ### dPKMS (Substrate)
 **The execution and data layer**
 - Transactional job queue, storage backends, knowledge graph, query engine.
+- Built-in compliance controls: source-reference erasure with tombstones, transactional legal holds, timed capture/watch expiry (whole-object or natural-language scope), and a `bos.obligations/v1` peer receiver ([docs/featureset.md](./docs/featureset.md)).
 - **Binary:** `dpkms` | **Focus:** Durability, correctness, sovereignty
 
 ### ctxt (Brain)
 **The intelligence and behavior layer**
-- Pipeline definitions, AI integrations, focus profiles, multi-source retrieval.
+- Pipeline definitions, AI integrations, focus profiles, multi-source retrieval, capture/watch retention (`--ttl`, `--expires`, `--expires-scope`, `ctxt expire`, `ctxt hold`, `ctxt delete --source-key`).
 - **Binary:** `ctxt` | **Focus:** Intelligence, usability, actionability
 
 ---
