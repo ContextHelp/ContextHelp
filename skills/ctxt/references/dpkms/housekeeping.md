@@ -9,9 +9,9 @@ Run database maintenance, search index rebuilds, storage compaction, old-data pr
 
 | Subcommand | Side effect | Idempotency |
 |---|---|---|
-| `vacuum` / `reindex` / `compact` | `write` | `yes` |
+| `vacuum` / `reindex` / `compact` | `destructive` | `yes` |
 | `prune` | `destructive` | `yes` |
-| `run` | `write` / `destructive` (all maintenance tasks; supports global `--dry-run`) | `yes` |
+| `run` | `destructive` (all maintenance tasks; supports global `--dry-run`) | `yes` |
 
 ## Subcommands & Flags
 

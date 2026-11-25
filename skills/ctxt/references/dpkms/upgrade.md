@@ -10,7 +10,8 @@ Check release notes, check availability, snooze prompts, or self-upgrade the `dp
 | Subcommand | Side effect | Idempotency |
 |---|---|---|
 | `check`, `notes` | `read` | `yes` |
-| `install`, `snooze` | `write` | `yes` |
+| `install` | `destructive` | `yes` |
+| `snooze` | `write` | `yes` |
 
 ## Subcommands
 

@@ -7,7 +7,8 @@ Manage the full embedding-model lifecycle: inspect resolved provider, register c
 | Subcommand | Side effect | Idempotency | Confirmation |
 |---|---|---|---|
 | `list` / `provider` | `read` | `yes` | — |
-| `register` / `migrate` | `write-shared` | `no` | — |
+| `register` | `write-shared` | `no` | — |
+| `migrate` | `write-shared` | `yes` | — |
 | `set-default` | `write-shared` | `yes` | — |
 | `deprecate` / `purge` | `destructive-shared` | `yes` | `--confirm=yes --confirm-token=<sha>` |
 

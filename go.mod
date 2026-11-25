@@ -48,6 +48,7 @@ require (
 	hop.top/c12n v0.1.0-alpha.1
 	hop.top/cite v0.1.1
 	hop.top/kit v0.5.0-beta.16
+	hop.top/sdg v0.0.0-20261125041620-83e1adc115ce
 	hop.top/xrr v0.1.0-alpha.5
 )
 

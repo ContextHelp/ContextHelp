@@ -7,7 +7,8 @@ Manage focus profiles (domain/role lenses scoping ranking, surfacing, and pipeli
 | Subcommand | Side effect | Idempotency | Confirmation |
 |---|---|---|---|
 | `list` / `view` / `schema show` | `read` | `yes` | — |
-| `create` / `set` / `unset` | `write` | `yes` | — |
+| `create` | `write` | `no` | — |
+| `set` / `unset` | `write` | `yes` | — |
 | `rm` | `destructive` | `yes` | `--confirm=yes --confirm-token=<sha>` |
 | `schema add-type` / `add-topic` / `add-rule` | `write` | `no` | — |
 | `schema evolve` | `write` | `yes` | — |

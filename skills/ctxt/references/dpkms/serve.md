@@ -6,7 +6,7 @@ Alias: `dpkms start`.
 
 ## Execution Profile
 
-- **Side effect**: `write` (opens/unlocks DB, binds ports, processes queued jobs)
+- **Side effect**: `interactive` (opens/unlocks DB, binds ports, processes queued jobs)
 - **Idempotency**: `no` (check `dpkms ps` / `dpkms healthcheck` before launching)
 
 ## Usage & Flags

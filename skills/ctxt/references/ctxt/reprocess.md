@@ -8,7 +8,7 @@ Re-run a specific AI enrichment step on an existing knowledge object without re-
 ## Execution Profile
 
 - **Side effect**: `write`
-- **Idempotency**: `conditional`
+- **Idempotency**: `yes`
 
 ## Usage & Flags
 

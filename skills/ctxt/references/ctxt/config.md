@@ -6,8 +6,8 @@ Inspect, locate, validate, lint, edit, back up (with optional encryption), and r
 
 | Subcommand | Side effect | Idempotency | Confirmation |
 |---|---|---|---|
-| `show`, `path`, `paths` | `read` | `yes` | — |
-| `validate`, `doctor`, `edit` | `write-local` | `yes` | — |
+| `show`, `path`, `paths`, `validate` | `read` | `yes` | — |
+| `doctor`, `edit` | `write-local` | `yes` | — |
 | `backup` | `write-local` | `no` | — |
 | `restore <bundle.zip>` | `destructive-local` | `no` | `--confirm=yes --confirm-token=<sha>` |
 
