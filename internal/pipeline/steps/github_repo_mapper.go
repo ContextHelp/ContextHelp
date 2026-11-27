@@ -27,7 +27,8 @@ const (
 //
 //   - Type "repo", Subtype "github"; Source becomes the canonical repository
 //     URL, so every spelling of it names one object.
-//   - RawContent: "# owner/name", description, topics, README. Text for
+//   - RawContent: "# owner/name", description, topics, distilled README
+//     (see distillREADME). Text for
 //     sectioning, tagging and embedding; the structured facts below are
 //     metadata, not page text.
 //   - Metadata: forge, forge_id (owner/name, GitHub's casing; the content
@@ -113,8 +114,8 @@ func repoText(s *github.RepoSnapshot) string {
 	if len(s.Topics) > 0 {
 		b.WriteString("\nTopics: " + strings.Join(s.Topics, ", ") + "\n")
 	}
-	if s.README != "" {
-		b.WriteString("\n" + s.README + "\n")
+	if r := distillREADME(s.README, s.Name); r != "" {
+		b.WriteString("\n" + r + "\n")
 	}
 	return b.String()
 }
