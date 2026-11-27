@@ -273,6 +273,32 @@ All processing happens inside worker context.
 
 The worker writes the final output once pipeline execution succeeds.
 
+### Re-analysis Runs on Stored Content
+
+Re-analysis (`ctxt upgrade run`) re-runs an object's pipeline over its stored
+content and updates the same object.
+
+- The network fetch steps, the cleaners of a freshly fetched response and
+  the dedup step are not run. A library caller can allow the fetch steps;
+  there is no CLI flag for it.
+- Kept as stored: the inbox note, reminders, expiry, tags and mentions a
+  step did not produce (user, manual and imported ones), the caller's
+  structured data and the ambient capture metadata. The type, subtype and
+  content type are kept when the content did not change.
+- A step's own tags, sections, summaries and graph nodes are replaced by
+  the new run.
+- If an LLM or vision call fails, or its reply is unusable (empty, or not
+  the JSON a step requires), the object fails and nothing is written. A
+  well-formed reply with nothing in it is a valid result.
+- The content hash is recomputed. If it equals another object's hash in the
+  same profile, both objects are kept: the re-analysed object stores no
+  hash and records `metadata.duplicate_of`.
+- An object that is encrypted or held, or whose pipeline stages items,
+  needs a fetch that is not run, or reads its source file, is refused with
+  `upgrade.ErrCannotReanalyze`. See [storage](storage.md) for originals.
+- The write emits `object.updated`, rewrites the mention edges and runs
+  fan-out when it is enabled.
+
 ### Pipelines May Enqueue Jobs
 
 This is essential for:

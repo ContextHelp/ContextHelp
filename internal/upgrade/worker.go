@@ -6,7 +6,7 @@
 //	mgr.Start(BucketReingestSelective, total)
 //	for id := range sel.IterateMatching(ctx, db):
 //	    cost, err := svc.ReanalyzeObject(ctx, id)
-//	    if err: mgr.Fail(err); return
+//	    if err: record the object as failed, go on (cancel ends the run)
 //	    if running cost > BudgetUSD: mgr.Fail(ErrBudgetExceeded); return
 //	    mgr.Tick(done)
 //	    publish progress event every total/100 objects
@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"time"
 
 	"hop.top/kit/go/runtime/bus"
@@ -62,10 +63,12 @@ var ErrAlreadyInProgress = errors.New("upgrade run: another upgrade is already i
 // iterator owns one) and no timers beyond the rate-limit sleep. Cancellation
 // is via the ctx passed to Run.
 type Worker struct {
-	db  *sql.DB
-	svc reanalyzer
-	mgr *Manager
-	bus bus.Bus
+	db   *sql.DB
+	svc  reanalyzer
+	mgr  *Manager
+	bus  bus.Bus
+	last RunSummary
+	ran  bool // a run started (Start succeeded) since Run was last called
 }
 
 // NewWorker constructs a Worker. db must be the same *sql.DB the storage
@@ -107,6 +110,7 @@ type WorkerOpts struct {
 // Returns a non-nil error in every failure case so the caller sees the
 // concrete reason.
 func (w *Worker) Run(ctx context.Context, sel *Selector, opts WorkerOpts) error {
+	w.last, w.ran = RunSummary{}, false
 	if sel == nil {
 		return errors.New("upgrade run: nil selector")
 	}
@@ -151,6 +155,8 @@ func (w *Worker) Run(ctx context.Context, sel *Selector, opts WorkerOpts) error 
 	}
 
 	run := &reingestRun{w: w, sel: sel, total: total}
+	w.ran = true
+	defer func() { w.last = run.summary() }()
 	ids, iterErrs, err := sel.IterateMatching(ctx, w.db)
 	if err != nil {
 		run.fail(ctx, fmt.Errorf("iterate: %w", err), err.Error())
@@ -194,7 +200,8 @@ completed:
 		run.fail(ctx, iterErr, iterErr.Error())
 		return fmt.Errorf("upgrade run: iterate: %w", iterErr)
 	}
-	if err := w.mgr.Complete(); err != nil {
+	summary := run.summary()
+	if err := w.mgr.CompleteRun(summary); err != nil {
 		return fmt.Errorf("upgrade run: complete: %w", err)
 	}
 	w.publish(ctx, events.TopicDpkmsUpgradeReingestCompleted, events.UpgradeReingestCompletedPayload{
@@ -202,6 +209,9 @@ completed:
 		Done:       run.done,
 		Total:      total,
 		CostUSD:    run.costUSD,
+		Failed:     run.failed,
+		Skipped:    run.skipped,
+		Failures:   run.failures,
 		DurationMs: time.Since(startedAt).Milliseconds(),
 	})
 	return nil
@@ -209,16 +219,62 @@ completed:
 
 // reingestRun is one Run's progress, carried into its events.
 type reingestRun struct {
-	w       *Worker
-	sel     *Selector
-	total   int
-	done    int
-	costUSD float64
-	skipped int // objects that could not be re-analyzed
+	w        *Worker
+	sel      *Selector
+	total    int
+	done     int
+	costUSD  float64
+	skipped  int                           // objects that could not be re-analyzed
+	failed   int                           // objects whose re-analysis failed; the run went on
+	failures []events.UpgradeObjectFailure // the first maxRecordedFailures of them
 }
 
+// RunSummary is what a completed run did: Processed objects were
+// re-analyzed, Failed ones failed (and were left as stored), Skipped ones
+// could not be re-analyzed (lost content, encrypted, held, ...).
+type RunSummary struct {
+	Processed int `json:"processed"`
+	Failed    int `json:"failed"`
+	Skipped   int `json:"skipped"`
+}
+
+func (r *reingestRun) summary() RunSummary {
+	return RunSummary{Processed: r.done - r.failed - r.skipped, Failed: r.failed, Skipped: r.skipped}
+}
+
+// LastRun is the summary of the most recent run, however it ended: an
+// interrupted or over-budget run reports the counts it reached.
+// ran is false when the last Run returned before a run started (nil
+// selector, a failed count, another run in progress, a dry run): there is
+// then no summary to report.
+func (w *Worker) LastRun() (sum RunSummary, ran bool) { return w.last, w.ran }
+
+// maxFailureReason bounds the reason kept for a failed object.
+const maxFailureReason = 300
+
+var (
+	urlUserinfo = regexp.MustCompile(`(?i)([a-z][a-z0-9+.-]*://)[^/\s@"'<>]+@`)
+	urlQuery    = regexp.MustCompile(`(?i)([a-z][a-z0-9+.-]*://[^\s?#"'<>]+)[?#][^\s"'<>]*`)
+)
+
+// failureReason is err's text with the userinfo, query string and fragment
+// of every URL in it removed (fetch errors embed signed URLs), cut to
+// maxFailureReason runes.
+func failureReason(err error) string {
+	r := []rune(urlQuery.ReplaceAllString(urlUserinfo.ReplaceAllString(err.Error(), "$1"), "$1"))
+	if len(r) > maxFailureReason {
+		return string(r[:maxFailureReason]) + "..."
+	}
+	return string(r)
+}
+
+// maxRecordedFailures caps the per-object failures a run keeps for its
+// completion event; Failed counts all of them.
+const maxRecordedFailures = 100
+
 // step reanalyzes one object, charges its cost against the budget and
-// reports progress. A non-nil error ends the run; the manager and the
+// reports progress. An object that fails is recorded and counted, not fatal.
+// A non-nil error ends the run (cancel, budget, progress write); the manager and the
 // failure event already record it.
 func (r *reingestRun) step(ctx context.Context, id string, opts WorkerOpts, progressEvery int) error {
 	_, cost, err := r.w.svc.ReanalyzeObject(ctx, id)
@@ -227,9 +283,19 @@ func (r *reingestRun) step(ctx context.Context, id string, opts WorkerOpts, prog
 		r.skipped++
 		err = nil
 	}
+	if err != nil && ctx.Err() != nil {
+		// The run was cancelled under the object: that ends it.
+		r.fail(ctx, fmt.Errorf("context cancelled: %w", ctx.Err()), ctx.Err().Error())
+		return ctx.Err()
+	}
 	if err != nil {
-		r.fail(ctx, err, err.Error())
-		return fmt.Errorf("upgrade run: reanalyze %s: %w", id, err)
+		// One object's failure is recorded and counted; the others go on.
+		reason := failureReason(err)
+		slog.Warn("upgrade run: object failed", "object", id, "reason", reason)
+		r.failed++
+		if len(r.failures) < maxRecordedFailures {
+			r.failures = append(r.failures, events.UpgradeObjectFailure{ObjectID: id, Reason: reason})
+		}
 	}
 	r.costUSD += cost
 	r.done++
@@ -239,7 +305,7 @@ func (r *reingestRun) step(ctx context.Context, id string, opts WorkerOpts, prog
 		return ErrBudgetExceeded
 	}
 
-	if err := r.w.mgr.Tick(r.done); err != nil {
+	if err := r.w.mgr.TickFailed(r.done, r.failed); err != nil {
 		// ErrNotRunning here means the manager was forcibly
 		// reset out from under us — bail rather than silently
 		// continuing without progress reporting.

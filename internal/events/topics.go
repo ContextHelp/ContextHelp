@@ -220,6 +220,18 @@ type UpgradeReingestCompletedPayload struct {
 	Total      int     `json:"total"`
 	CostUSD    float64 `json:"cost_usd,omitempty"`
 	DurationMs int64   `json:"duration_ms"`
+	// Failed counts the objects whose re-analysis failed and was skipped;
+	// Done counts every object handled. Failures names the first of them.
+	Failed int `json:"failed,omitempty"`
+	// Skipped counts the objects that could not be re-analyzed at all.
+	Skipped  int                    `json:"skipped,omitempty"`
+	Failures []UpgradeObjectFailure `json:"failures,omitempty"`
+}
+
+// UpgradeObjectFailure is one object a reingest run could not re-analyze.
+type UpgradeObjectFailure struct {
+	ObjectID string `json:"object_id"`
+	Reason   string `json:"reason"`
 }
 
 // UpgradeReingestFailedPayload is fired when a reingest run aborts.

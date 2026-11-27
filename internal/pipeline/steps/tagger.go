@@ -197,6 +197,9 @@ func (t *Tagger) addLLMTags(ctx context.Context, raw string, tags []storage.Tag)
 		for _, tag := range tags {
 			existing[strings.ToLower(tag.Label)] = true
 		}
+		if strings.TrimSpace(resp) == "" {
+			providers.ReportUnusableReply(ctx, "tagger", "empty tag list")
+		}
 		for _, part := range strings.Split(resp, ",") {
 			label := strings.ToLower(strings.TrimSpace(part))
 			if label != "" && !existing[label] {

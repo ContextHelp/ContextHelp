@@ -217,13 +217,22 @@ reader paths; those get no original.
   the source writes the object without the original, with a warning; a
   missing content blob still fails the push. A remote push sends no
   content for binary RawContent (the original's own ref), only text.
+- Re-analysis runs on the stored content: the network fetch steps, the
+  steps that clean a freshly fetched response and the dedup step are not
+  run. It returns `upgrade.ErrCannotReanalyze` and writes nothing for an
+  object that is encrypted or held, and for a pipeline that:
+  - stages or enqueues items (feed, mailbox, folder and import pipelines,
+    batch files, `url.github.starred`);
+  - needs the output of a fetch step that is not run (`url.github.repo`);
+  - reads its source file by path instead of the stored bytes: the PDF and
+    office extractors, and the audio and video steps.
+
+  The upgrade run logs a refused object, counts it as skipped and goes on.
 - Re-analysis whose original blob is missing logs a warning and runs on the
   stored text, keeping the recorded keys, unless the pipeline has a step
   that reads the media (OCR, vision, transcription, diarization). Then, and
   when the content blob is lost or there is neither text nor an original,
-  re-analysis returns `upgrade.ErrCannotReanalyze`: the upgrade run logs it,
-  skips that object and goes on. The PDF, office and audio extractors do not
-  declare a media capability yet, so they are not recognised as such.
+  it returns `upgrade.ErrCannotReanalyze` and the object is skipped.
 - Read an original with `blob.OriginalOf(obj)`, then
   `store.Get(ctx, original.Key)`.
 
