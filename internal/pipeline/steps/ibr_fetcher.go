@@ -48,6 +48,7 @@ func NewIBRFetcher(client *browser.Client, opts ...IBRFetcherOption) *IBRFetcher
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
 			Requires:     []string{"Source"},
 			Produces:     []string{"RawContent", "Metadata"},
+			Resources:    []string{pipeline.ResourceNetwork},
 			Capabilities: []string{"browser"},
 		}),
 		client: client,

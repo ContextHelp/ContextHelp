@@ -382,6 +382,9 @@ func (p *WorkerPool) executeWithExecutor(ctx context.Context, job *storage.Job) 
 	if err != nil {
 		return nil, err
 	}
+	// The host decides the signature: an executor (a pod) may run a
+	// registry that differs from this one.
+	draft.DerivationSig = p.pipelineSignature(job.Pipeline)
 	if hasOrig {
 		if err := blob.AttachOriginal(draft, orig, origContent); err != nil {
 			return nil, err
@@ -1069,4 +1072,14 @@ func (p *WorkerPool) recoverStaleLoop(ctx context.Context) error {
 			}
 		}
 	}
+}
+
+// pipelineSignature is the derivation signature of the named pipeline in
+// this pool's registry; empty when it is unknown or unsigned.
+func (p *WorkerPool) pipelineSignature(name string) string {
+	pipe, err := p.pipelines.Get(name)
+	if err != nil {
+		return ""
+	}
+	return pipe.Signature
 }

@@ -83,8 +83,8 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
 		remind_at, reminded_at, profile_id, graph_json, projected_fts_body, source_key,
-		projection_version, classes, projected_fts_body_masked, session_id, expires_at, expiry_scope, encrypted, encrypt_scope
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		projection_version, classes, projected_fts_body_masked, session_id, expires_at, expiry_scope, encrypted, encrypt_scope, derivation_sig
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		obj.ID, obj.Type, obj.Subtype, obj.RawContent, obj.ContentType, obj.TextContent,
 		f.metadata, f.summaries, f.sections, f.tags, f.mentions,
 		f.decisions, f.tasks, obj.Pipeline, obj.Source,
@@ -92,7 +92,7 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		obj.CreatedAt.Format(time.RFC3339), obj.UpdatedAt.Format(time.RFC3339),
 		boolToInt(obj.FTSIndexed), obj.Status, obj.InboxNote,
 		f.remindAt, f.remindedAt, obj.ProfileID, graphJSON, projectedFTSBody, obj.SourceKey,
-		indexsig.ProjectionVersion, f.classes, index.MaskedFTSBody, nullSessionID(obj.SessionID), f.expiresAt, obj.ExpiryScope, boolToInt(obj.Encrypted), obj.EncryptScope,
+		indexsig.ProjectionVersion, f.classes, index.MaskedFTSBody, nullSessionID(obj.SessionID), f.expiresAt, obj.ExpiryScope, boolToInt(obj.Encrypted), obj.EncryptScope, obj.DerivationSig,
 	)
 	if err != nil {
 		if errors.Is(constraintErr(err), storage.ErrAlreadyExists) {

@@ -27,8 +27,9 @@ type EntityExtractor struct {
 func NewEntityExtractor() *EntityExtractor {
 	return &EntityExtractor{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
-			Requires: []string{"RawContent"},
-			Produces: []string{"Mentions", "Graph"},
+			Requires:  []string{"RawContent"},
+			Produces:  []string{"Mentions", "Graph"},
+			Resources: []string{pipeline.ResourceLLM},
 		}),
 	}
 }

@@ -45,8 +45,9 @@ func WithGitHubREADMEBytes(n int) GitHubRepoFetcherOption {
 func NewGitHubRepoFetcher(client *github.Client, opts ...GitHubRepoFetcherOption) *GitHubRepoFetcher {
 	f := &GitHubRepoFetcher{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
-			Requires: []string{"Source"},
-			Produces: []string{"Metadata"},
+			Requires:  []string{"Source"},
+			Produces:  []string{"Metadata"},
+			Resources: []string{pipeline.ResourceNetwork},
 		}),
 		client:      client,
 		readmeBytes: defaultREADMEBytes,

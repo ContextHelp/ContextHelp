@@ -55,3 +55,10 @@ func TestMigrateProjectionVersion_InvalidatesFTSSignature(t *testing.T) {
 		t.Errorf("second run cleared the signature again: %+v", res)
 	}
 }
+
+// TestConformance_DerivationStore runs the cross-driver derivation
+// signature contract against a fresh SQLite database.
+func TestConformance_DerivationStore(t *testing.T) {
+	d := newTestDriver(t)
+	storagetest.DerivationStoreConformance(t, d, storagetest.ProjectionDB{DB: d.db, Dialect: indexsig.DialectSQLite})
+}

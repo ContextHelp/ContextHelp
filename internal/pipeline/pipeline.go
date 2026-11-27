@@ -21,6 +21,13 @@ type Pipeline struct {
 	PipelineName string
 	Description  string
 	Steps        []PipelineStep
+	// Signature is the derivation signature of the configured step list,
+	// computed before capability pruning (see Signature). Empty for a
+	// pipeline built by hand.
+	Signature string
+	// BaselineSignature is BaselineSignature over the same steps: what
+	// objects derived before signatures were recorded are taken to carry.
+	BaselineSignature string
 }
 
 // SourceSelectorFunc routes by where content came from: URL patterns match a

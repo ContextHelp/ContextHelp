@@ -757,3 +757,12 @@ func (f *Factory) mustPyannote() DiarizationProvider {
 	}
 	return failedDiarization{failed{backendError("diarization", pyannoteName, f.missingTool(pyannoteName))}}
 }
+
+// Config returns the providers config f was built from: the configured
+// strings, not what a role resolved to.
+func (f *Factory) Config() config.ProvidersConfig {
+	if f == nil {
+		return config.ProvidersConfig{}
+	}
+	return f.cfg
+}

@@ -47,8 +47,9 @@ func WithFeedClientBridge(b *ClientBridge) FeedFetcherOption {
 func NewFeedFetcher(opts ...FeedFetcherOption) *FeedFetcher {
 	f := &FeedFetcher{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
-			Requires: []string{"Source"},
-			Produces: []string{"RawContent", "Metadata"},
+			Requires:  []string{"Source"},
+			Produces:  []string{"RawContent", "Metadata"},
+			Resources: []string{pipeline.ResourceNetwork},
 		}),
 		bridge: NewClientBridge(),
 	}

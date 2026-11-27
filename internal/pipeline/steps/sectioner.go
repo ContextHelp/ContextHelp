@@ -19,8 +19,9 @@ type Sectioner struct {
 func NewSectioner() *Sectioner {
 	return &Sectioner{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
-			Requires: []string{"RawContent"},
-			Produces: []string{"Sections"},
+			Requires:  []string{"RawContent"},
+			Produces:  []string{"Sections"},
+			Resources: []string{pipeline.ResourceLLM},
 		}),
 	}
 }

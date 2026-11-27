@@ -76,7 +76,7 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		registry_influences, content_hash, reinforcement_count, last_reinforced_at,
 		created_at, updated_at, fts_indexed, status, inbox_note,
 		remind_at, reminded_at, graph_json, source_key, projected_fts_body,
-		projection_version, profile_id, classes, projected_fts_body_masked, session_id, expires_at, expiry_scope, encrypted, encrypt_scope
+		projection_version, profile_id, classes, projected_fts_body_masked, session_id, expires_at, expiry_scope, encrypted, encrypt_scope, derivation_sig
 	) VALUES (
 		$1, $2, $3, $4, $5, $6,
 		$7, $8, $9, $10, $11,
@@ -84,7 +84,7 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		$16, $17, $18, $19,
 		$20, $21, $22, $23, $24,
 		$25, $26, $27, $28, $29,
-		$30, $31, $32, $33, $34, $35, $36, $37, $38
+		$30, $31, $32, $33, $34, $35, $36, $37, $38, $39
 	)`,
 		obj.ID, obj.Type, obj.Subtype, w.rawContent, obj.ContentType, w.textContent,
 		w.metadata, w.summaries, f.sections, f.tags, f.mentions,
@@ -92,7 +92,7 @@ func (s *ObjectStore) Create(ctx context.Context, obj *storage.KnowledgeObject) 
 		f.influences, obj.ContentHash, obj.ReinforcementCount, f.lastReinforcedAt,
 		obj.CreatedAt.UTC(), obj.UpdatedAt.UTC(), w.ftsIndexed, obj.Status, obj.InboxNote,
 		f.remindAt, f.remindedAt, w.graphJSON, obj.SourceKey, w.ftsBody,
-		indexsig.ProjectionVersion, obj.ProfileID, f.classes, w.maskedFTS, nullSessionID(obj.SessionID), f.expiresAt, obj.ExpiryScope, obj.Encrypted, obj.EncryptScope,
+		indexsig.ProjectionVersion, obj.ProfileID, f.classes, w.maskedFTS, nullSessionID(obj.SessionID), f.expiresAt, obj.ExpiryScope, obj.Encrypted, obj.EncryptScope, obj.DerivationSig,
 	)
 	if err != nil {
 		if errors.Is(constraintErr(err), storage.ErrAlreadyExists) {

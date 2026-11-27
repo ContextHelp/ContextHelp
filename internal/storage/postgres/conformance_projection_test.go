@@ -62,3 +62,10 @@ func TestPostgresMigrateProjectionVersion_InvalidatesFTSSignature(t *testing.T) 
 		t.Fatalf("replay cleared the signature again: %+v, %v", res, err)
 	}
 }
+
+// TestConformance_DerivationStore runs the cross-driver derivation
+// signature contract against a fresh Postgres database.
+func TestConformance_DerivationStore(t *testing.T) {
+	drv, _ := freshIntegrationDriver(t)
+	storagetest.DerivationStoreConformance(t, drv, storagetest.ProjectionDB{DB: drv.DB(), Dialect: indexsig.DialectPostgres})
+}

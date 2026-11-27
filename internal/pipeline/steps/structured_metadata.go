@@ -86,6 +86,7 @@ func NewStructuredMetadataExtractor() *StructuredMetadataExtractor {
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
 			Requires:     []string{"RawContent"},
 			Produces:     []string{"Metadata"},
+			Resources:    []string{pipeline.ResourceLLM},
 			Capabilities: []string{"llm"},
 		}),
 	}

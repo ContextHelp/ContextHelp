@@ -35,8 +35,9 @@ type Tagger struct {
 func NewTagger() *Tagger {
 	return &Tagger{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
-			Requires: []string{"RawContent"},
-			Produces: []string{"Tags"},
+			Requires:  []string{"RawContent"},
+			Produces:  []string{"Tags"},
+			Resources: []string{pipeline.ResourceLLM},
 		}),
 		maxTags: 10,
 	}
