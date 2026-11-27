@@ -226,7 +226,7 @@ Processes a GitHub repository URL through the GitHub REST API (no HTML scrape).
 **Outputs**
 
 - Type `repo`, subtype `github`; `source` is the canonical repository URL.
-- Text: `# owner/repo`, description, topics and README.
+- Text: `# owner/repo`, description, topics and the distilled README. Distilling keeps headings, prose, lists, tables and code, and turns HTML into its text (`<h1>`..`<h6>` become Markdown headings, `<pre>` a code block). It drops images, badges, unused link reference definitions, and the sections titled sponsor, sponsors, backers, supporters, community, license, contributing, contributors, star history, stargazers, acknowledgements, code of conduct, `support`, `support us`, `support the project`, `support this project`, `support development` or `support <repo name>`, plus sections left empty. A level-1 title that opens the README is never dropped.
 - Metadata: `forge` (`github`), `forge_id` (`owner/repo`, GitHub's casing), `repo_url`, `owner`, `name`, `description`, `language`, `topics`, `license` (SPDX id), `homepage`, `stars`, `forks`, `open_issues`, `archived`, `is_fork`, `default_branch`, `created_at`, `updated_at`, `pushed_at` (RFC 3339), `releases` (when fetched).
 - Tags (source `github`, kept by `tagger`): `lang:<language>`, each topic, and `archived` for an archived repository.
 
