@@ -141,10 +141,11 @@ Rules:
   original, when the graph has one. The original is `artifact/0`, owned by `blob.AttachOriginal`
   (which refuses to overwrite a node there that is not an original); steps never create artifact
   nodes for it. Later artifacts (kept frames, fan-out items, detected dependencies) take ordinals from 1
-  up. Node ordinals are allocated by `storage.NextOrdinal` in `representation.Emit` and in the steps that
-  add section, summary or artifact nodes (`sectioner`, `heading_splitter`, `markdown_parser`,
-  `feed_parser`, `fanout_items`, `dependency_enricher`, and `graph_extractor` for artifacts); steps that
-  add other node types (tags, mentions, decisions, tasks) keep their own per-type counters.
+  up. Node ordinals are allocated by `storage.FreeOrdinal` (the lowest free ordinal of the type at or above
+  the step's own position) in `representation.Emit` and in every step that adds nodes (`sectioner`,
+  `heading_splitter`, `markdown_parser`, `textcleaner`, `feed_parser`, `fanout_items`,
+  `dependency_enricher`, `tagger`, `entity_extractor`, `comment_extractor`, `language_detector`,
+  `graph_extractor`).
 - A summary representation at `summary/0` is not the object's root summary: `sectioner`,
   `heading_splitter` and `markdown_parser` hang their sections off the first plain summary instead
   (creating one at the next free ordinal), and `textcleaner` does not add a second `summary/0`.

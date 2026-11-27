@@ -32,7 +32,7 @@ func NewOCRExtractor(opts ...OCRExtractorOption) *OCRExtractor {
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
 			Binary:       true,
 			Requires:     []string{"RawContent", "ContentType"},
-			Produces:     []string{"RawContent", "Sections", "Metadata"},
+			Produces:     []string{"RawContent", "Sections", "Metadata", "Graph"},
 			Capabilities: []string{"ocr"},
 		}),
 		provider:            providers.NewStubOCRProvider(),

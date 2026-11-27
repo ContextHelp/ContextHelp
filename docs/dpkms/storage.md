@@ -220,7 +220,9 @@ reader paths; those get no original.
 - Re-analysis runs on the stored content: the network fetch steps, the
   steps that clean a freshly fetched response and the dedup step are not
   run. It returns `upgrade.ErrCannotReanalyze` and writes nothing for an
-  object that is encrypted or held, and for a pipeline that:
+  object that is encrypted or held, that no pipeline ever derived (empty
+  `pipeline`: an adapter import, a raw or inbox capture), and for a pipeline
+  that:
   - stages or enqueues items (feed, mailbox, folder and import pipelines,
     batch files, `url.github.starred`);
   - needs the output of a fetch step that is not run (`url.github.repo`);

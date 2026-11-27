@@ -101,37 +101,18 @@ func ParseNodeURI(uri string) (NodeRef, error) {
 	return ParseNodeID(strings.TrimPrefix(uri, prefix))
 }
 
-// NextOrdinal is the next free ordinal for nodeType in g: one past the
-// highest ordinal any node of that type holds (read from its ID, or its Order
-// when the ID is unset). Steps that add nodes of a type other steps also add
-// (sections, summaries, artifacts) allocate through it, so IDs do not collide
-// whichever step ran first. It is derived from the graph, not
-// counted, so gaps cannot cause reuse.
-//
-// Artifact ordinal 0 is reserved for the stored original (blob.AttachOriginal
-// takes it by name), so NextOrdinal never returns 0 for an artifact.
-func NextOrdinal(g *ObjectGraph, nodeType string) int {
-	next := 0
+// FreeOrdinal is the lowest ordinal of nodeType, at or above from, that no
+// node of g holds as an ID of objectID. Steps allocate through it with their
+// own running index as from, so an ordinal depends on the nodes in its way
+// and not on how many nodes or how high an ordinal the graph holds.
+// Artifact ordinal 0 is reserved for the stored original.
+func FreeOrdinal(g *ObjectGraph, objectID, nodeType string, from int) int {
+	o := max(from, 0)
 	if nodeType == NodeTypeArtifact {
-		next = 1
+		o = max(o, 1)
 	}
-	if g == nil {
-		return next
+	for g.FindNode(NewNodeID(objectID, nodeType, o)) != nil {
+		o++
 	}
-	for _, n := range g.Nodes {
-		if n.NodeType != nodeType {
-			continue
-		}
-		if o := nodeOrdinal(n); o+1 > next {
-			next = o + 1
-		}
-	}
-	return next
-}
-
-func nodeOrdinal(n GraphNode) int {
-	if ref, err := ParseNodeID(n.ID); err == nil {
-		return ref.Ordinal
-	}
-	return n.Order
+	return o
 }

@@ -2,6 +2,7 @@ package steps
 
 import (
 	"context"
+	"slices"
 	"sort"
 	"strings"
 	"unicode"
@@ -36,7 +37,7 @@ func NewTagger() *Tagger {
 	return &Tagger{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
 			Requires:  []string{"RawContent"},
-			Produces:  []string{"Tags"},
+			Produces:  []string{"Tags", "Graph"},
 			Resources: []string{pipeline.ResourceLLM},
 		}),
 		maxTags: 10,
@@ -136,11 +137,12 @@ func (t *Tagger) Run(ctx context.Context, draft *storage.KnowledgeObject) (*stor
 		if draft.Graph == nil {
 			draft.Graph = &storage.ObjectGraph{}
 		}
+		pre := slices.Clone(draft.Graph.Nodes)
 		for i, tag := range merged {
-			tagID := storage.NewNodeID(draft.ID, storage.NodeTypeTag, i)
-			if draft.Graph.FindNode(tagID) != nil {
+			if ownNode(pre, storage.NodeTypeTag, tag.Label, "tagger") {
 				continue
 			}
+			tagID := freeNodeID(draft.Graph, draft.ID, storage.NodeTypeTag, i)
 			draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
 				ID:       tagID,
 				NodeType: storage.NodeTypeTag,

@@ -31,7 +31,7 @@ func NewFrameOCR(opts ...FrameOCROption) *FrameOCR {
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
 			Binary:       true,
 			Requires:     []string{},
-			Produces:     []string{},
+			Produces:     []string{"Metadata", "Graph"},
 			Capabilities: []string{"ocr"},
 		}),
 		provider: providers.NewStubOCRProvider(),

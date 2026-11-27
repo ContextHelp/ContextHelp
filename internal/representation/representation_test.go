@@ -122,18 +122,6 @@ func TestEmitSharedOrdinalAllocator(t *testing.T) {
 	}
 }
 
-func TestNextOrdinalReadsIDsNotCounts(t *testing.T) {
-	g := &storage.ObjectGraph{Nodes: []storage.GraphNode{
-		{ID: "o/section/5", NodeType: storage.NodeTypeSection},
-	}}
-	if got := storage.NextOrdinal(g, storage.NodeTypeSection); got != 6 {
-		t.Errorf("got %d want 6 (max ordinal + 1, never a count)", got)
-	}
-	if got := storage.NextOrdinal(nil, storage.NodeTypeSection); got != 0 {
-		t.Errorf("nil graph: got %d", got)
-	}
-}
-
 func TestEmitRefusesBadSpecs(t *testing.T) {
 	bad := 1.5
 	neg := int64(-1)

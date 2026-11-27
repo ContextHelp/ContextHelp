@@ -21,7 +21,7 @@ func NewAudioTranscriber(opts ...func(*AudioTranscriber)) *AudioTranscriber {
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
 			Binary:       true,
 			Requires:     []string{"Source", "ContentType"},
-			Produces:     []string{"RawContent", "Metadata"},
+			Produces:     []string{"RawContent", "Metadata", "Graph"},
 			Capabilities: []string{"transcription"},
 		}),
 		provider: providers.NewStubTranscriptionProvider(),

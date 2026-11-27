@@ -37,7 +37,7 @@ func NewFrameSampler(opts ...FrameSamplerOption) *FrameSampler {
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
 			Binary:       true,
 			Requires:     []string{},
-			Produces:     []string{},
+			Produces:     []string{"Metadata"},
 			Capabilities: []string{"frames"},
 		}),
 		provider: providers.NewStubFrameProvider(),

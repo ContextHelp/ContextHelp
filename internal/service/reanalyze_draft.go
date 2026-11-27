@@ -40,10 +40,14 @@ var reanalyzeDerivedMetadata = []string{"blob_key", psteps.MetaTextTruncated, Me
 // other source (user, manual, import, registry, none) is kept.
 var stepTagSources = []string{"auto", "llm", "ocr", "github", "step"}
 
-// refuseReanalyze reports why obj must not be re-run, or nil. An encrypted
-// object holds ciphertext the steps would index as text; a held object
-// may not be changed.
+// refuseReanalyze reports why obj must not be re-run, or nil. An object no
+// pipeline derived (an import, a raw or inbox capture) has nothing to re-run;
+// an encrypted object holds ciphertext the steps would index as text; a held
+// object may not be changed.
 func (s *Service) refuseReanalyze(ctx context.Context, obj *storage.KnowledgeObject) error {
+	if obj.Pipeline == "" {
+		return fmt.Errorf("reanalyze: %w: object %q: never derived by a pipeline", upgrade.ErrCannotReanalyze, obj.ID)
+	}
 	if obj.Encrypted {
 		return fmt.Errorf("reanalyze: %w: object %q is encrypted", upgrade.ErrCannotReanalyze, obj.ID)
 	}
@@ -64,7 +68,7 @@ func (s *Service) refuseReanalyze(ctx context.Context, obj *storage.KnowledgeObj
 // of the pipeline about to run declares it produces it; any other field is
 // left exactly as stored. produced is that set (see producedFields). With
 // fetches, a fetch step will run and the content and sub types start empty.
-func reanalyzeDraft(obj *storage.KnowledgeObject, versionedName string, produced map[string]bool, fetches bool) *storage.KnowledgeObject {
+func reanalyzeDraft(obj *storage.KnowledgeObject, versionedName string, produced, ran map[string]bool, fetches bool) (*storage.KnowledgeObject, heldSet) {
 	d := *obj
 	if fetches {
 		// The fresh response decides how it is routed and cleaned, not what
@@ -94,7 +98,8 @@ func reanalyzeDraft(obj *storage.KnowledgeObject, versionedName string, produced
 	if produced["Tasks"] {
 		d.Tasks = nil
 	}
-	d.Graph = reanalyzeGraph(obj.Graph, produced)
+	var held heldSet
+	d.Graph, held = reanalyzeGraph(obj, produced, ran)
 	d.Tags = slices.Clone(obj.Tags)
 	if produced["Tags"] {
 		d.Tags = keptTags(obj.Tags)
@@ -104,46 +109,7 @@ func reanalyzeDraft(obj *storage.KnowledgeObject, versionedName string, produced
 		d.Mentions = keptMentions(obj)
 	}
 	d.Pipeline = versionedName
-	return &d
-}
-
-// reanalyzeGraph returns the graph the steps start from: a copy of g with
-// the nodes and edges steps rebuild dropped when a step produces the graph
-// (the Graph, Sections, Tags or Mentions field). Entity-mention nodes stay
-// unless a step produces Mentions: they hold the provenance of the
-// mentions that stay.
-//
-// Nodes carry no record of what created them, so every node of a step's
-// kind is dropped, whoever created it.
-func reanalyzeGraph(g *storage.ObjectGraph, produced map[string]bool) *storage.ObjectGraph {
-	if g == nil {
-		return nil
-	}
-	cp := &storage.ObjectGraph{Edges: slices.Clone(g.Edges)}
-	for _, n := range g.Nodes {
-		n.Metadata = storageutil.CloneMetadata(n.Metadata)
-		cp.Nodes = append(cp.Nodes, n)
-	}
-	if !produced["Graph"] && !produced["Sections"] && !produced["Tags"] && !produced["Mentions"] {
-		return cp
-	}
-	out := &storage.ObjectGraph{}
-	kept := map[string]bool{}
-	for _, n := range cp.Nodes {
-		if n.NodeType == storage.NodeTypeEntityMention && !produced["Mentions"] {
-			out.Nodes = append(out.Nodes, n)
-			kept[n.ID] = true
-		}
-	}
-	for _, e := range cp.Edges {
-		if kept[e.FromID] {
-			out.Edges = append(out.Edges, e)
-		}
-	}
-	if len(out.Nodes) == 0 {
-		return nil
-	}
-	return out
+	return &d, held
 }
 
 // keptTags are the tags a new run does not replace: those of a source no

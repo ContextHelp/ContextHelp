@@ -86,7 +86,7 @@ func (s *Service) ReanalyzeObjectWith(ctx context.Context, id string, opts Reana
 	// step of this pipeline produces are cleared.
 	produced := producedFields(pipe)
 	fetches := opts.AllowNetwork && slices.ContainsFunc(pipe.Steps, fetchesFromNetwork)
-	draft := reanalyzeDraft(obj, versionedName, produced, fetches)
+	draft, held := reanalyzeDraft(obj, versionedName, produced, stepNames(pipe), fetches)
 
 	if err := keepOriginal(draft, pipe, src, id); err != nil {
 		return "", 0, err
@@ -95,6 +95,7 @@ func (s *Service) ReanalyzeObjectWith(ctx context.Context, id string, opts Reana
 	if err != nil {
 		return "", 0, err
 	}
+	reattachHeldEdges(draft.Graph, held)
 
 	if err := s.finishReanalysis(ctx, obj, draft); err != nil {
 		return "", 0, fmt.Errorf("reanalyze: %q: %w", id, err)
@@ -178,15 +179,10 @@ func (s *Service) reanalyzeSource(ctx context.Context, id string, obj *storage.K
 // reanalyzePipeline picks the registry's current pipeline for obj's family
 // and the versioned name to stamp on the re-analysed object.
 func (s *Service) reanalyzePipeline(id string, obj *storage.KnowledgeObject, allowNetwork bool) (*pipeline.Pipeline, string, error) {
-	// Resolve the family from the stored stamp. Fallback path: if the stamp
-	// is malformed or empty, lean on the detector chain — the worker should
-	// still be able to upgrade an object whose previous stamp got corrupted.
+	// Resolve the family from the stored stamp (never empty: refuseReanalyze).
 	family := obj.Pipeline
 	if parsed, _, ok := pipeline.ParseVersionedName(obj.Pipeline); ok && parsed != "" {
 		family = parsed
-	}
-	if family == "" {
-		family = s.detectPipeline(obj.Source, obj.ContentType, obj.RawContent)
 	}
 	return s.runnablePipeline(fmt.Sprintf("object %q", id), family, allowNetwork)
 }

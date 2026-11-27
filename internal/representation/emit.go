@@ -192,7 +192,7 @@ func Emit(draft *storage.KnowledgeObject, spec Spec) (storage.GraphNode, error) 
 	}
 
 	nodeType := spec.Kind.NodeType()
-	ordinal := storage.NextOrdinal(g, nodeType)
+	ordinal := storage.FreeOrdinal(g, draft.ID, nodeType, 0)
 	n := storage.GraphNode{
 		ID:       storage.NewNodeID(draft.ID, nodeType, ordinal),
 		NodeType: nodeType,
@@ -213,12 +213,18 @@ func Emit(draft *storage.KnowledgeObject, spec Spec) (storage.GraphNode, error) 
 	return n, nil
 }
 
+// nextOrder is the lowest Order of nodeType no node of g holds: like the
+// ordinal of the ID, it does not move up because a node sits at a high Order.
 func nextOrder(g *storage.ObjectGraph, nodeType string) int {
-	next := 0
+	taken := map[int]bool{}
 	for _, n := range g.Nodes {
-		if n.NodeType == nodeType && n.Order+1 > next {
-			next = n.Order + 1
+		if n.NodeType == nodeType {
+			taken[n.Order] = true
 		}
+	}
+	next := 0
+	for taken[next] {
+		next++
 	}
 	return next
 }

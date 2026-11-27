@@ -20,7 +20,7 @@ func NewSectioner() *Sectioner {
 	return &Sectioner{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
 			Requires:  []string{"RawContent"},
-			Produces:  []string{"Sections"},
+			Produces:  []string{"Sections", "Graph"},
 			Resources: []string{pipeline.ResourceLLM},
 		}),
 	}
@@ -129,7 +129,7 @@ func (s *Sectioner) Run(ctx context.Context, draft *storage.KnowledgeObject) (*s
 	}
 	rootID := ensureRoot(draft, "root", draft.RawContent)
 	for i, sec := range sections {
-		secID := storage.NewNodeID(draft.ID, storage.NodeTypeSection, storage.NextOrdinal(draft.Graph, storage.NodeTypeSection))
+		secID := freeNodeID(draft.Graph, draft.ID, storage.NodeTypeSection, i)
 		draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
 			ID:       secID,
 			NodeType: storage.NodeTypeSection,

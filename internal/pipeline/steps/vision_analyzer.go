@@ -21,7 +21,7 @@ func NewVisionAnalyzer(opts ...func(*VisionAnalyzer)) *VisionAnalyzer {
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
 			Binary:       true,
 			Requires:     []string{"RawContent", "ContentType"},
-			Produces:     []string{"Sections", "Metadata"},
+			Produces:     []string{"Sections", "Metadata", "Graph"},
 			Resources:    []string{pipeline.ResourceVision},
 			Capabilities: []string{"vision"},
 		}),

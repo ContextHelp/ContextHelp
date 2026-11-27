@@ -93,7 +93,7 @@ func ensureRoot(draft *storage.KnowledgeObject, label, content string) string {
 			return n.ID
 		}
 	}
-	id := storage.NewNodeID(draft.ID, storage.NodeTypeSummary, storage.NextOrdinal(g, storage.NodeTypeSummary))
+	id := freeNodeID(g, draft.ID, storage.NodeTypeSummary, 0)
 	g.Nodes = append(g.Nodes, storage.GraphNode{ID: id, NodeType: storage.NodeTypeSummary, Label: label, Content: content})
 	return id
 }

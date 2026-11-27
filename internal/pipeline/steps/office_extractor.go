@@ -30,7 +30,7 @@ func NewOfficeExtractor(opts ...OfficeExtractorOption) *OfficeExtractor {
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
 			Binary:       true,
 			Requires:     []string{},
-			Produces:     []string{"RawContent", "Sections"},
+			Produces:     []string{"RawContent", "Sections", "Graph"},
 			Capabilities: []string{"document"},
 		}),
 		provider: providers.NewStubDocumentProvider(),

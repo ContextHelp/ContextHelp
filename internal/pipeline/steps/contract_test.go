@@ -26,7 +26,7 @@ func TestTextCleanerContract(t *testing.T) {
 	s := NewTextCleaner()
 	c := s.Contract()
 	assertRequires(t, "text_cleaner", c, []string{"RawContent"})
-	assertProduces(t, "text_cleaner", c, []string{"RawContent"})
+	assertProduces(t, "text_cleaner", c, []string{"RawContent", "Graph"})
 	assertCapabilities(t, "text_cleaner", c, nil)
 }
 
@@ -34,7 +34,7 @@ func TestSectionerContract(t *testing.T) {
 	s := NewSectioner()
 	c := s.Contract()
 	assertRequires(t, "sectioner", c, []string{"RawContent"})
-	assertProduces(t, "sectioner", c, []string{"Sections"})
+	assertProduces(t, "sectioner", c, []string{"Sections", "Graph"})
 	assertCapabilities(t, "sectioner", c, nil)
 }
 
@@ -42,7 +42,7 @@ func TestTaggerContract(t *testing.T) {
 	s := NewTagger()
 	c := s.Contract()
 	assertRequires(t, "tagger", c, []string{"RawContent"})
-	assertProduces(t, "tagger", c, []string{"Tags"})
+	assertProduces(t, "tagger", c, []string{"Tags", "Graph"})
 	assertCapabilities(t, "tagger", c, nil)
 }
 
@@ -66,7 +66,7 @@ func TestOCRExtractorContract(t *testing.T) {
 	s := NewOCRExtractor()
 	c := s.Contract()
 	assertRequires(t, "ocr_extractor", c, []string{"RawContent", "ContentType"})
-	assertProduces(t, "ocr_extractor", c, []string{"RawContent", "Sections", "Metadata"})
+	assertProduces(t, "ocr_extractor", c, []string{"RawContent", "Sections", "Metadata", "Graph"})
 	assertCapabilities(t, "ocr_extractor", c, []string{"ocr"})
 }
 
@@ -74,7 +74,7 @@ func TestVisionAnalyzerContract(t *testing.T) {
 	s := NewVisionAnalyzer()
 	c := s.Contract()
 	assertRequires(t, "vision_analyzer", c, []string{"RawContent", "ContentType"})
-	assertProduces(t, "vision_analyzer", c, []string{"Sections", "Metadata"})
+	assertProduces(t, "vision_analyzer", c, []string{"Sections", "Metadata", "Graph"})
 	assertCapabilities(t, "vision_analyzer", c, []string{"vision"})
 }
 
@@ -82,7 +82,7 @@ func TestAudioTranscriberContract(t *testing.T) {
 	s := NewAudioTranscriber()
 	c := s.Contract()
 	assertRequires(t, "audio_transcriber", c, []string{"Source", "ContentType"})
-	assertProduces(t, "audio_transcriber", c, []string{"RawContent", "Metadata"})
+	assertProduces(t, "audio_transcriber", c, []string{"RawContent", "Metadata", "Graph"})
 	assertCapabilities(t, "audio_transcriber", c, []string{"transcription"})
 }
 
@@ -98,7 +98,7 @@ func TestTimestampAlignerContract(t *testing.T) {
 	s := NewTimestampAligner()
 	c := s.Contract()
 	assertRequires(t, "timestamp_aligner", c, []string{"Metadata"})
-	assertProduces(t, "timestamp_aligner", c, []string{"Sections"})
+	assertProduces(t, "timestamp_aligner", c, []string{"Sections", "Graph"})
 	assertCapabilities(t, "timestamp_aligner", c, nil)
 }
 

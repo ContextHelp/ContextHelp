@@ -286,14 +286,32 @@ content and updates the same object.
   structured data and the ambient capture metadata. The type, subtype and
   content type are kept when the content did not change.
 - A step's own tags, sections, summaries and graph nodes are replaced by
-  the new run.
+  the new run. Each node and edge a step adds is stamped with the step's name
+  (`produced_by`). A reanalysis replaces only the nodes and edges stamped by
+  the steps it runs. It keeps the rest: imported, client and user nodes, the
+  stored original, and the nodes of a step no longer in the pipeline.
+  - A rebuilt node takes the lowest free ordinal of its type at or above the
+    step's own position, and a representation section takes the lowest free
+    `order`. So IDs and orders come out as before when no node the steps do
+    not own sits at an ordinal or `order` the steps use. When one does, the
+    later nodes of that type move up by one, and the result is the same on
+    every later run.
+  - An edge the steps do not own, pointing at a rebuilt node, is put back
+    when the node returns with the same ID, type and label. It is dropped
+    when the node moved. It is also dropped when any node of that type moved
+    and the node's label was carried by two nodes of that type, before the
+    run or after it.
+  - A graph stored before stamping (no `stamped` mark) goes through the
+    earlier rule once: step-kind nodes are dropped and rebuilt, and the run
+    marks the graph.
 - If an LLM or vision call fails, or its reply is unusable (empty, or not
   the JSON a step requires), the object fails and nothing is written. A
   well-formed reply with nothing in it is a valid result.
 - The content hash is recomputed. If it equals another object's hash in the
   same profile, both objects are kept: the re-analysed object stores no
   hash and records `metadata.duplicate_of`.
-- An object that is encrypted or held, or whose pipeline stages items,
+- An object that is encrypted or held, that no pipeline ever derived (an
+  import, a raw or inbox capture), or whose pipeline stages items,
   needs a fetch that is not run, or reads its source file, is refused with
   `upgrade.ErrCannotReanalyze`. See [storage](storage.md) for originals.
 - An object whose pipeline has an LLM or vision step that cannot run is

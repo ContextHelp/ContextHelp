@@ -37,7 +37,7 @@ func NewHeadingSplitter(opts ...HeadingSplitterOption) *HeadingSplitter {
 	s := &HeadingSplitter{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
 			Requires: []string{"RawContent"},
-			Produces: []string{"Sections"},
+			Produces: []string{"Sections", "Graph"},
 		}),
 		maxDepth: 2,
 	}
@@ -98,7 +98,7 @@ func (s *HeadingSplitter) Run(ctx context.Context, draft *storage.KnowledgeObjec
 	// Only append nodes for newly added sections (those added in this Run call).
 	for i := firstNew; i < len(draft.Sections); i++ {
 		sec := draft.Sections[i]
-		secID := storage.NewNodeID(draft.ID, storage.NodeTypeSection, storage.NextOrdinal(draft.Graph, storage.NodeTypeSection))
+		secID := freeNodeID(draft.Graph, draft.ID, storage.NodeTypeSection, i)
 		draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
 			ID:       secID,
 			NodeType: storage.NodeTypeSection,
