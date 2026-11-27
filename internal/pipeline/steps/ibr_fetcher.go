@@ -62,6 +62,11 @@ func NewIBRFetcher(client *browser.Client, opts ...IBRFetcherOption) *IBRFetcher
 
 func (s *IBRFetcher) Name() string { return "ibr_fetcher" }
 
+// UsesUnknownProviders: the ibr daemon extracts by intent and may call a
+// model of its own, with credentials the pipeline injects (see
+// pipeline.OpaqueStep).
+func (s *IBRFetcher) UsesUnknownProviders() {}
+
 func (s *IBRFetcher) Run(ctx context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
 	if s.client == nil {
 		return nil, fmt.Errorf("ibr_fetcher: browser not available (is browser.enabled=true in config?)")

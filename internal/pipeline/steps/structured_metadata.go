@@ -112,6 +112,10 @@ func NewStructuredMetadataExtractorWithSchema(
 
 func (s *StructuredMetadataExtractor) Name() string { return "structured_metadata" }
 
+func (s *StructuredMetadataExtractor) ProviderUses(context.Context) []pipeline.ProviderUse {
+	return llmUses(s.llm)
+}
+
 func (s *StructuredMetadataExtractor) Run(
 	ctx context.Context,
 	draft *storage.KnowledgeObject,

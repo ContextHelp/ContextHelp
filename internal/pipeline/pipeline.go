@@ -28,6 +28,9 @@ type Pipeline struct {
 	// BaselineSignature is BaselineSignature over the same steps: what
 	// objects derived before signatures were recorded are taken to carry.
 	BaselineSignature string
+	// Pruned lists the steps left out for an unmet capability when the
+	// pipeline was built (see PipelineLocality).
+	Pruned []PrunedStep
 }
 
 // SourceSelectorFunc routes by where content came from: URL patterns match a

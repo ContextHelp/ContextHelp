@@ -80,6 +80,8 @@ func trimToJSONObject(raw string) string {
 // Name returns the step identifier.
 func (g *GraphExtractor) Name() string { return "graph_extractor" }
 
+func (g *GraphExtractor) ProviderUses(context.Context) []pipeline.ProviderUse { return llmUses(g.llm) }
+
 // Run performs the single LLM extraction pass and writes nodes/edges into ko.Graph.
 // No-ops when: LLM is nil, or RawContent is empty.
 func (g *GraphExtractor) Run(ctx context.Context, ko *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {

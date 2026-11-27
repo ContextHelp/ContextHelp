@@ -39,6 +39,10 @@ func WithVisionProvider(p vision.Provider) func(*VisionAnalyzer) {
 
 func (s *VisionAnalyzer) Name() string { return "vision_analyzer" }
 
+func (s *VisionAnalyzer) ProviderUses(context.Context) []pipeline.ProviderUse {
+	return visionUses(s.provider)
+}
+
 func (s *VisionAnalyzer) Run(ctx context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
 	result, err := s.provider.Analyze(ctx, []byte(draft.RawContent), draft.ContentType)
 	if err != nil {

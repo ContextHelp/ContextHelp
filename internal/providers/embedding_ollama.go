@@ -94,6 +94,9 @@ func NewOllamaEmbeddingProvider(endpoint, model string, opts ...OllamaEmbeddingO
 
 func (p *OllamaEmbeddingProvider) Name() string { return "ollama-embed" }
 
+// Endpoint is the URL the provider calls.
+func (p *OllamaEmbeddingProvider) Endpoint() string { return p.endpoint }
+
 // Dimensions reports the configured vector dimension; 0 means unknown.
 func (p *OllamaEmbeddingProvider) Dimensions() int { return p.dimension }
 

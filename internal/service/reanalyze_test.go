@@ -52,7 +52,7 @@ func (d *reanalyzeDriver) Embeddings() storage.EmbeddingStore { return d.emb }
 func reanalyzeService(t *testing.T, driver storage.StorageDriver, models embeddings.ModelSource, store storage.EmbeddingStore) *Service {
 	t.Helper()
 	client, _ := providertest.OllamaClient(t, reanalyzeCassettes)
-	pipes, regErr := builtins.ConfiguredRegistryWithOpts(builtins.BuildOpts{
+	pipes := noGenerativeRegistry(t, builtins.BuildOpts{
 		Models: models,
 		Resolver: embeddings.NewProviderResolver(&embeddings.Resolver{
 			LookupEnv:  func(string) (string, bool) { return "", false },
@@ -60,9 +60,6 @@ func reanalyzeService(t *testing.T, driver storage.StorageDriver, models embeddi
 		}),
 		Embeddings: store,
 	})
-	if regErr != nil {
-		t.Fatal(regErr)
-	}
 	d := &reanalyzeDriver{StorageDriver: driver, emb: store}
 	return New(d, jobs.NewQueue(driver.Jobs()), pipes, search.NewEngine(driver), "", nil)
 }

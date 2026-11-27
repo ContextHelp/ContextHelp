@@ -71,16 +71,14 @@ func (s *Service) ReanalyzeObjectWith(ctx context.Context, id string, opts Reana
 		return "", 0, err
 	}
 
-	pipe, versionedName, err := s.reanalyzePipeline(id, obj)
-	if err != nil {
-		return "", 0, err
-	}
-
-	pipe, err = storedContentPipeline(pipe, id, opts.AllowNetwork)
+	pipe, versionedName, err := s.reanalyzePipeline(id, obj, opts.AllowNetwork)
 	if err != nil {
 		return "", 0, err
 	}
 	if err := refuseSourceReading(pipe, obj); err != nil {
+		return "", 0, err
+	}
+	if err := refuseMissingGenerative(ctx, pipe, id); err != nil {
 		return "", 0, err
 	}
 
@@ -179,7 +177,7 @@ func (s *Service) reanalyzeSource(ctx context.Context, id string, obj *storage.K
 
 // reanalyzePipeline picks the registry's current pipeline for obj's family
 // and the versioned name to stamp on the re-analysed object.
-func (s *Service) reanalyzePipeline(id string, obj *storage.KnowledgeObject) (*pipeline.Pipeline, string, error) {
+func (s *Service) reanalyzePipeline(id string, obj *storage.KnowledgeObject, allowNetwork bool) (*pipeline.Pipeline, string, error) {
 	// Resolve the family from the stored stamp. Fallback path: if the stamp
 	// is malformed or empty, lean on the detector chain — the worker should
 	// still be able to upgrade an object whose previous stamp got corrupted.
@@ -190,6 +188,14 @@ func (s *Service) reanalyzePipeline(id string, obj *storage.KnowledgeObject) (*p
 	if family == "" {
 		family = s.detectPipeline(obj.Source, obj.ContentType, obj.RawContent)
 	}
+	return s.runnablePipeline(fmt.Sprintf("object %q", id), family, allowNetwork)
+}
+
+// runnablePipeline is the pipeline a reanalysis of family runs: the
+// registry's current one, less the steps skipped on stored content (or
+// none, with allowNetwork). The classification of a reanalysis uses it
+// too, so the two cannot drift.
+func (s *Service) runnablePipeline(subject, family string, allowNetwork bool) (*pipeline.Pipeline, string, error) {
 
 	// Pick the registry's currently-installed version for this family.
 	// CurrentVersionForFamily returns the highest @vN registered. Fall
@@ -203,7 +209,7 @@ func (s *Service) reanalyzePipeline(id string, obj *storage.KnowledgeObject) (*p
 		// rather than re-detecting — the worker selector matched on
 		// `pipeline=<family>@v0` so the caller is asserting this family
 		// exists.
-		return nil, "", fmt.Errorf("reanalyze: no pipeline registered for family %q (object %q)", family, id)
+		return nil, "", fmt.Errorf("reanalyze: no pipeline registered for family %q (%s)", family, subject)
 	}
 	versionedName := pipeline.FormatVersionedName(family, curVer)
 
@@ -214,6 +220,10 @@ func (s *Service) reanalyzePipeline(id string, obj *storage.KnowledgeObject) (*p
 		if err != nil {
 			return nil, "", fmt.Errorf("reanalyze: lookup pipeline %q: %w", versionedName, err)
 		}
+	}
+	pipe, err = storedContentPipeline(pipe, subject, allowNetwork)
+	if err != nil {
+		return nil, "", err
 	}
 	return pipe, versionedName, nil
 }

@@ -52,6 +52,8 @@ func NewTaggerWithLLM(llm providers.LLMProvider) *Tagger {
 
 func (t *Tagger) Name() string { return "tagger" }
 
+func (t *Tagger) ProviderUses(context.Context) []pipeline.ProviderUse { return llmUses(t.llm) }
+
 // Run extracts heuristic + (optional) LLM tags from draft.RawContent and
 // merges them with any pre-existing draft.Tags entries that have
 // every source it does not own: user, github, and tags added by earlier

@@ -55,6 +55,9 @@ func (o *overriddenStep) Contract() StepContract { return o.overrideContract }
 
 func (o *overriddenStep) Name() string { return o.PipelineStep.Name() }
 
+// Unwrap returns the step this one wraps (see AsProviderStep).
+func (o *overriddenStep) Unwrap() PipelineStep { return o.PipelineStep }
+
 func (o *overriddenStep) Run(ctx context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
 	return o.PipelineStep.Run(ctx, draft)
 }

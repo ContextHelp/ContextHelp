@@ -40,6 +40,9 @@ func (p *OllamaLLMProvider) WithHTTPClient(c *http.Client) *OllamaLLMProvider {
 
 func (p *OllamaLLMProvider) Name() string { return backendOllama }
 
+// Endpoint is the URL the provider calls.
+func (p *OllamaLLMProvider) Endpoint() string { return p.endpoint }
+
 // Model is the model the provider calls; provenance on derived text records it.
 func (p *OllamaLLMProvider) Model() string { return p.model }
 

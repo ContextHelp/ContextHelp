@@ -296,6 +296,24 @@ content and updates the same object.
 - An object that is encrypted or held, or whose pipeline stages items,
   needs a fetch that is not run, or reads its source file, is refused with
   `upgrade.ErrCannotReanalyze`. See [storage](storage.md) for originals.
+- An object whose pipeline has an LLM or vision step that cannot run is
+  refused the same way, naming the resource and the step. That is a step
+  left out when the pipeline was built, a step with no provider, or a step
+  holding the `stub` backend. A step removed with `skip_steps` is not
+  refused.
+- `Service.ReanalysisLocality` classifies the steps a re-analysis of a
+  pipeline would run, without running them:
+
+  | Result | Meaning |
+  |---|---|
+  | `none` | No provider is called. |
+  | `local` | Every provider endpoint is a loopback or private address and no proxy is in the way. |
+  | `hosted` | A provider is hosted, or its endpoint is a hostname, a public address, empty, or reached through a proxy. |
+  | `unknown` | A step is not a built-in, or hands the work to another process (`ibr_fetcher`). |
+  | `unavailable` | An LLM or vision step cannot run, or the pipeline was left out at start. |
+
+  Only `none` and `local` are safe to run without asking. No DNS lookup is
+  made, so a hostname is always `hosted`, Docker and LAN names included.
 - The write emits `object.updated`, rewrites the mention edges and runs
   fan-out when it is enabled.
 

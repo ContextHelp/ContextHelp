@@ -14,6 +14,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/jobs"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
+	"github.com/ideacrafterslabs/ctxt/internal/providers/providertest"
 	"github.com/ideacrafterslabs/ctxt/internal/search"
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/sharing"
@@ -118,7 +119,10 @@ type binaryFixture struct {
 func newBinaryFixture(t *testing.T, drv storage.StorageDriver) *binaryFixture {
 	t.Helper()
 	q := jobs.NewQueue(drv.Jobs())
-	pipes := builtins.Registry()
+	pipes, err := builtins.ConfiguredRegistryWithOpts(builtins.BuildOpts{Factory: providertest.FakeLLMFactory(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
 	svc := service.New(drv, q, pipes, search.NewEngine(drv), "", nil, config.Config{})
 	cfg := config.JobsConfig{PollInterval: 50 * time.Millisecond, StaleTimeout: 30 * time.Minute, MaxRetries: 3, MaxHops: 5}
 	return &binaryFixture{t: t, drv: drv, svc: svc, pool: jobs.NewWorkerPool(q, pipes, drv, 1, nil, cfg)}
