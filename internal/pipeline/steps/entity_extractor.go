@@ -44,6 +44,8 @@ func NewEntityExtractorWithLLM(llm providers.LLMProvider) *EntityExtractor {
 
 func (e *EntityExtractor) Name() string { return "entity_extractor" }
 
+func (e *EntityExtractor) ProviderUses(context.Context) []pipeline.ProviderUse { return llmUses(e.llm) }
+
 func (e *EntityExtractor) Run(ctx context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
 	seen := make(map[string]bool)
 	var slugs []string

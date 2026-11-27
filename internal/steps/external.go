@@ -466,3 +466,7 @@ func MergeStepOutput(in *storage.KnowledgeObject, raw json.RawMessage) (*storage
 	}
 	return &out, nil
 }
+
+// UsesUnknownProviders marks the step as one that may call any provider
+// and reports none (see pipeline.OpaqueStep).
+func (s *ExternalStep) UsesUnknownProviders() {}

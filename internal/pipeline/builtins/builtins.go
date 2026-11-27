@@ -550,12 +550,14 @@ func buildPipelineSpecs(name string, d Def, specs []stepSpec, opts BuildOpts, ca
 	baseline := pipeline.BaselineSignatureOf(name, signedNames(specs), models...)
 
 	// Capability check: prune or reject steps with unsatisfied capabilities.
+	var prunedSteps []pipeline.PrunedStep
 	unsatisfied := pipeline.ValidateCapabilities(pipelineSteps, caps)
 	if len(unsatisfied) > 0 {
 		if strict {
 			return nil, fmt.Errorf("pipeline %q: steps at indices %v require unavailable capabilities", name, unsatisfied)
 		}
 		var fatal []string
+		var pruned []pipeline.PrunedStep
 		for _, idx := range unsatisfied {
 			step := pipelineSteps[idx]
 			missing := missingCapabilities(step, caps)
@@ -564,6 +566,7 @@ func buildPipelineSpecs(name string, d Def, specs []stepSpec, opts BuildOpts, ca
 				continue
 			}
 			log.Printf("builtins: pipeline %q: pruning step %q (missing capability)", name, step.Name())
+			pruned = append(pruned, prunedStep(step))
 		}
 		// A media step is never pruned: the raw bytes would be embedded
 		// as text. Optional enrichment (diarization), llm, browser and
@@ -572,6 +575,7 @@ func buildPipelineSpecs(name string, d Def, specs []stepSpec, opts BuildOpts, ca
 			return nil, fmt.Errorf("pipeline %q: %s: media steps are never pruned; fix providers.* config or install the tool", name, strings.Join(fatal, "; "))
 		}
 		pipelineSteps = pipeline.RemoveIndices(pipelineSteps, unsatisfied)
+		prunedSteps = pruned
 	}
 
 	// Apply per-step contract overrides.
@@ -594,6 +598,7 @@ func buildPipelineSpecs(name string, d Def, specs []stepSpec, opts BuildOpts, ca
 		Steps:             pipelineSteps,
 		Signature:         signature,
 		BaselineSignature: baseline,
+		Pruned:            prunedSteps,
 	}, nil
 }
 

@@ -225,7 +225,9 @@ reader paths; those get no original.
     batch files, `url.github.starred`);
   - needs the output of a fetch step that is not run (`url.github.repo`);
   - reads its source file by path instead of the stored bytes: the PDF and
-    office extractors, and the audio and video steps.
+    office extractors, and the audio and video steps;
+  - has an LLM or vision step that cannot run: left out when the pipeline
+    was built, holding no provider, or holding the `stub` backend.
 
   The upgrade run logs a refused object, counts it as skipped and goes on.
 - Re-analysis whose original blob is missing logs a warning and runs on the

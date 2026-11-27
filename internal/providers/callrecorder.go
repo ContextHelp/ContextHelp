@@ -72,6 +72,9 @@ func (r recordingLLM) Generate(ctx context.Context, prompt string) (string, erro
 // Model forwards the wrapped provider's model, which provenance records.
 func (r recordingLLM) Model() string { return modelOf(r.LLMProvider) }
 
+// Endpoint forwards the wrapped provider's endpoint (see EndpointOf).
+func (r recordingLLM) Endpoint() string { return EndpointOf(r.LLMProvider) }
+
 // recordVision is recordLLM for a vision provider.
 func recordVision(p vision.Provider) vision.Provider {
 	if _, ok := p.(*vision.StubProvider); ok {
@@ -89,6 +92,18 @@ func (r recordingVision) Analyze(ctx context.Context, img []byte, contentType st
 }
 
 func (r recordingVision) Model() string { return modelOf(r.Provider) }
+
+// Endpoint forwards the wrapped provider's endpoint (see EndpointOf).
+func (r recordingVision) Endpoint() string { return EndpointOf(r.Provider) }
+
+// EndpointOf is the URL a provider calls, when it has one to report: the
+// local backends do. "" for a hosted backend, which has a fixed API host.
+func EndpointOf(p any) string {
+	if e, ok := p.(interface{ Endpoint() string }); ok {
+		return e.Endpoint()
+	}
+	return ""
+}
 
 func modelOf(p any) string {
 	if m, ok := p.(interface{ Model() string }); ok {

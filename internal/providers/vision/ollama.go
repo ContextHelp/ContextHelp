@@ -31,6 +31,9 @@ func (p *OllamaProvider) WithHTTPClient(c *http.Client) *OllamaProvider {
 
 func (p *OllamaProvider) Name() string { return "ollama" }
 
+// Endpoint is the URL the provider calls.
+func (p *OllamaProvider) Endpoint() string { return p.endpoint }
+
 // Model is the model the provider calls; provenance on derived text records it.
 func (p *OllamaProvider) Model() string { return p.model }
 

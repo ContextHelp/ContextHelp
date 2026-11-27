@@ -35,6 +35,8 @@ func NewSectionerWithLLM(llm providers.LLMProvider) *Sectioner {
 
 func (s *Sectioner) Name() string { return "sectioner" }
 
+func (s *Sectioner) ProviderUses(context.Context) []pipeline.ProviderUse { return llmUses(s.llm) }
+
 func (s *Sectioner) Run(ctx context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
 	// A draft whose media steps emitted content representation nodes (any
 	// kind but summary) is already sectioned: the nodes are the text. Splitting RawContent again would

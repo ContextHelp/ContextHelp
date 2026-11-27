@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
@@ -115,11 +116,11 @@ func fetchesFromNetwork(step pipeline.PipelineStep) bool { return networkSteps[s
 // steps, or
 // ErrCannotReanalyze when a step left in needs what a skipped fetch
 // provides. With allow the pipeline is returned as it is.
-func storedContentPipeline(pipe *pipeline.Pipeline, id string, allow bool) (*pipeline.Pipeline, error) {
+func storedContentPipeline(pipe *pipeline.Pipeline, subject string, allow bool) (*pipeline.Pipeline, error) {
 	for _, st := range pipe.Steps {
 		if containerSteps[st.Name()] {
-			return nil, fmt.Errorf("reanalyze: %w: object %q: step %s stages items, not content",
-				upgrade.ErrCannotReanalyze, id, st.Name())
+			return nil, fmt.Errorf("reanalyze: %w: %s: step %s stages items, not content",
+				upgrade.ErrCannotReanalyze, subject, st.Name())
 		}
 	}
 	out := *pipe
@@ -141,8 +142,8 @@ func storedContentPipeline(pipe *pipeline.Pipeline, id string, allow bool) (*pip
 			continue
 		}
 		if skipped != "" && fetchDependentSteps[st.Name()] {
-			return nil, fmt.Errorf("reanalyze: %w: object %q: step %s needs the output of %s, which is not run on stored content",
-				upgrade.ErrCannotReanalyze, id, st.Name(), skipped)
+			return nil, fmt.Errorf("reanalyze: %w: %s: step %s needs the output of %s, which is not run on stored content",
+				upgrade.ErrCannotReanalyze, subject, st.Name(), skipped)
 		}
 		out.Steps = append(out.Steps, st)
 	}
@@ -159,4 +160,44 @@ func producedFields(pipe *pipeline.Pipeline) map[string]bool {
 		}
 	}
 	return out
+}
+
+// refuseMissingGenerative refuses obj when a step of pipe needs an LLM or
+// vision provider this build does not have: it was pruned for the missing
+// capability, or it holds no usable provider, or only the stub. Run
+// anyway, such a step produces heuristics or nothing, and the object
+// would lose the LLM-made summaries, tags and mentions it has. A pipeline
+// without a generative step is unaffected, and so is one whose user
+// skip_steps removed the step. The embedding step is not judged here.
+func refuseMissingGenerative(ctx context.Context, pipe *pipeline.Pipeline, id string) error {
+	refuse := func(resource, step, why string) error {
+		return fmt.Errorf("reanalyze: %w: object %q: %s provider %s for step %s",
+			upgrade.ErrCannotReanalyze, id, resource, why, step)
+	}
+	for _, p := range pipe.Pruned {
+		if res := p.Generative(); res != "" {
+			return refuse(res, p.Name, "not available")
+		}
+	}
+	for _, st := range pipe.Steps {
+		ps, ok := pipeline.AsProviderStep(st)
+		if !ok {
+			if res := pipeline.GenerativeResourceOf(st.Contract()); res != "" {
+				return refuse(res, st.Name(), "not available")
+			}
+			continue
+		}
+		for _, u := range ps.ProviderUses(ctx) {
+			if u.Resource == pipeline.ResourceEmbedding {
+				continue
+			}
+			switch {
+			case u.Stub:
+				return refuse(u.Resource, st.Name(), "is the stub backend")
+			case !u.Usable:
+				return refuse(u.Resource, st.Name(), "not available")
+			}
+		}
+	}
+	return nil
 }
