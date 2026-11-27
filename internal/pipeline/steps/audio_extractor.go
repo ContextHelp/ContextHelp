@@ -31,7 +31,7 @@ func NewAudioExtractor(opts ...AudioExtractorOption) *AudioExtractor {
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
 			Binary:       true,
 			Requires:     []string{},
-			Produces:     []string{},
+			Produces:     []string{"Metadata"},
 			Capabilities: []string{"video"},
 		}),
 		provider: providers.NewStubVideoProvider(),

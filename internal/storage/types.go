@@ -128,11 +128,12 @@ type GraphNode struct {
 // GraphEdge is a directed edge between two nodes within the same object graph.
 // Inter-object edges MUST go to the edges table (ADR-049); this is intra-object only.
 type GraphEdge struct {
-	ID       string        `json:"id"`
-	FromID   string        `json:"from_id"`
-	ToID     string        `json:"to_id"`
-	EdgeType GraphEdgeType `json:"edge_type"` // EdgeType* constant
-	Weight   float64       `json:"weight,omitempty"`
+	ID       string         `json:"id"`
+	FromID   string         `json:"from_id"`
+	ToID     string         `json:"to_id"`
+	EdgeType GraphEdgeType  `json:"edge_type"` // EdgeType* constant
+	Weight   float64        `json:"weight,omitempty"`
+	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
 // ObjectGraph holds typed nodes and edges for a single KnowledgeObject.
@@ -140,6 +141,10 @@ type GraphEdge struct {
 type ObjectGraph struct {
 	Nodes []GraphNode `json:"nodes,omitempty"`
 	Edges []GraphEdge `json:"edges,omitempty"`
+	// Stamped marks a graph built while pipeline runs stamped what steps
+	// add (ProducedByKey): in it, an unstamped node was not added by a step.
+	// A graph without it predates stamping.
+	Stamped bool `json:"stamped,omitempty"`
 }
 
 // FindNode returns the node with the given ID, or nil.

@@ -123,7 +123,7 @@ func (h *queryHandler) NodeAwareSearch(
 			Object:       koToProto(o),
 			DocumentView: docProjectionToProto(projection.ProjectDocument(o)),
 		}
-		if apiFilter != nil && apiFilter.ReturnNodeHits && o.Graph != nil {
+		if apiFilter != nil && apiFilter.ReturnNodeHits && hasGraphContent(o.Graph) {
 			r.NodeHits = buildNodeHits(o)
 		}
 		results = append(results, r)
@@ -158,7 +158,8 @@ func koToProto(o *storage.KnowledgeObject) *pb.KnowledgeObject {
 		CreatedAt:   safeTimestamp(o.CreatedAt),
 		UpdatedAt:   safeTimestamp(o.UpdatedAt),
 	}
-	if o.Graph != nil {
+	// A graph with no node and no edge (only the stamp mark) is no graph here.
+	if hasGraphContent(o.Graph) {
 		p.Graph = objectGraphToProto(o.Graph)
 	}
 	return p
@@ -242,4 +243,9 @@ func safeTimestamp(t time.Time) *timestamppb.Timestamp {
 		return nil
 	}
 	return timestamppb.New(t)
+}
+
+// hasGraphContent reports whether g holds a node or an edge.
+func hasGraphContent(g *storage.ObjectGraph) bool {
+	return g != nil && (len(g.Nodes) > 0 || len(g.Edges) > 0)
 }

@@ -37,7 +37,7 @@ func ProjectDocument(ko *storage.KnowledgeObject) storage.DocumentProjection {
 		if _, ok := representation.MetaOf(n); ok {
 			// Anchors and provenance let a viewer show the timestamp or
 			// page of a representation.
-			sec.Metadata = n.Metadata
+			sec.Metadata = storage.WithoutProducedBy(n.Metadata)
 		}
 		sections = append(sections, sec)
 	}

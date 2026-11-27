@@ -115,10 +115,10 @@ func graphSet(g *storage.ObjectGraph) []string {
 	}
 	var out []string
 	for _, n := range g.Nodes {
-		out = append(out, fmt.Sprintf("node %s %s %q %q", n.ID, n.NodeType, n.Label, n.Content))
+		out = append(out, fmt.Sprintf("node %s %s %q %q by %q", n.ID, n.NodeType, n.Label, n.Content, n.ProducedBy()))
 	}
 	for _, e := range g.Edges {
-		out = append(out, fmt.Sprintf("edge %s %s %s", e.FromID, e.EdgeType, e.ToID))
+		out = append(out, fmt.Sprintf("edge %s %s %s by %q", e.FromID, e.EdgeType, e.ToID, e.ProducedBy()))
 	}
 	slices.Sort(out)
 	return out

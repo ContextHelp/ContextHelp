@@ -124,33 +124,37 @@ func (g *GraphExtractor) Run(ctx context.Context, ko *storage.KnowledgeObject) (
 		rootID = "root"
 	}
 
-	ordinal := len(ko.Graph.Nodes)
+	// ordinals: the step's own running index per type, moved up past any
+	// node already holding the ID (storage.FreeOrdinal).
+	created := map[string]int{}
+	// Order runs across every type the step emits, from the number of nodes
+	// steps made before it (stamped): a foreign node does not move it.
+	order := 0
+	for _, n := range ko.Graph.Nodes {
+		if n.ProducedBy() != "" {
+			order++
+		}
+	}
 
 	// Helper to append a node + EdgeTypeContains from root.
 	addNode := func(nodeType, label, content string) {
-		nodeOrdinal := ordinal
-		if nodeType == storage.NodeTypeArtifact {
-			// Artifact ordinal 0 is the stored original's.
-			nodeOrdinal = storage.NextOrdinal(ko.Graph, nodeType)
-		}
+		nodeOrdinal := storage.FreeOrdinal(ko.Graph, rootID, nodeType, created[nodeType])
+		created[nodeType] = nodeOrdinal + 1
 		nodeID := storage.NewNodeID(rootID, nodeType, nodeOrdinal)
-		if ko.Graph.FindNode(nodeID) != nil {
-			return
-		}
 		ko.Graph.Nodes = append(ko.Graph.Nodes, storage.GraphNode{
 			ID:       nodeID,
 			NodeType: nodeType,
 			Label:    label,
 			Content:  content,
-			Order:    ordinal,
+			Order:    order,
 		})
+		order++
 		ko.Graph.Edges = append(ko.Graph.Edges, storage.GraphEdge{
 			ID:       fmt.Sprintf("%s->%s", rootID, nodeID),
 			FromID:   rootID,
 			ToID:     nodeID,
 			EdgeType: storage.EdgeTypeContains,
 		})
-		ordinal++
 	}
 
 	// Summary node.

@@ -20,7 +20,7 @@ func NewSceneDetector() *SceneDetector {
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
 			Binary:   true,
 			Requires: []string{},
-			Produces: []string{},
+			Produces: []string{"Metadata"},
 		}),
 	}
 }

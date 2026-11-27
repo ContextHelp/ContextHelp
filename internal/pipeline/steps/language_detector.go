@@ -50,7 +50,7 @@ func NewLanguageDetector() *LanguageDetector {
 	return &LanguageDetector{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
 			Requires: []string{},
-			Produces: []string{},
+			Produces: []string{"Metadata", "Graph"},
 		}),
 	}
 }
@@ -84,8 +84,8 @@ func (s *LanguageDetector) Run(ctx context.Context, draft *storage.KnowledgeObje
 		if draft.Graph == nil {
 			draft.Graph = &storage.ObjectGraph{}
 		}
-		nodeID := storage.NewNodeID(draft.ID, storage.NodeTypeTag, 0)
-		if draft.Graph.FindNode(nodeID) == nil {
+		if !ownNode(draft.Graph.Nodes, storage.NodeTypeTag, "lang:"+lang, languageDetectorName) {
+			nodeID := freeNodeID(draft.Graph, draft.ID, storage.NodeTypeTag, 0)
 			draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
 				ID:       nodeID,
 				NodeType: storage.NodeTypeTag,

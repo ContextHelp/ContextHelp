@@ -17,7 +17,7 @@ func NewTextCleaner() *TextCleaner {
 	return &TextCleaner{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
 			Requires: []string{"RawContent"},
-			Produces: []string{"RawContent"},
+			Produces: []string{"RawContent", "Graph"},
 		}),
 	}
 }
@@ -44,7 +44,7 @@ func (s *TextCleaner) Run(_ context.Context, draft *storage.KnowledgeObject) (*s
 		add := true
 		if n := draft.Graph.FindNode(id); n != nil {
 			if _, rep := representation.MetaOf(*n); rep {
-				id = storage.NewNodeID(draft.ID, storage.NodeTypeSummary, storage.NextOrdinal(draft.Graph, storage.NodeTypeSummary))
+				id = freeNodeID(draft.Graph, draft.ID, storage.NodeTypeSummary, 0)
 			} else {
 				add = false
 			}

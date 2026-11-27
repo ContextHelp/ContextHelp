@@ -293,7 +293,23 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 	if err != nil {
 		return fmt.Errorf("update object: %w", err)
 	}
-	graphJSON, err := marshalGraph(obj.Graph)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("update object: begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	if err := assertNotHeldTx(ctx, tx, obj.ID); err != nil {
+		return err
+	}
+
+	// The stored mark is read, under a row lock, in the transaction that
+	// writes the graph.
+	graph, err := s.graphWithStoredMark(ctx, tx, obj)
+	if err != nil {
+		return fmt.Errorf("update object graph: %w", err)
+	}
+	graphJSON, err := marshalGraph(graph)
 	if err != nil {
 		return fmt.Errorf("update object graph: %w", err)
 	}
@@ -307,16 +323,6 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 		return fmt.Errorf("update object: %w", err)
 	}
 	obj.FTSIndexed = w.ftsIndexed
-
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("update object: begin tx: %w", err)
-	}
-	defer tx.Rollback()
-
-	if err := assertNotHeldTx(ctx, tx, obj.ID); err != nil {
-		return err
-	}
 
 	result, err := tx.ExecContext(ctx, `UPDATE objects SET
 		type=$1, subtype=$2, raw_content=$3, content_type=$4, text_content=$5,
@@ -1540,4 +1546,23 @@ func createdConditionsPG(filter storage.ObjectFilter, idx *int) ([]string, []any
 		*idx++
 	}
 	return conds, args
+}
+
+// graphWithStoredMark is obj's graph as an update writes it: marked when
+// the stored graph is (storage.KeepStoredMark).
+func (s *ObjectStore) graphWithStoredMark(ctx context.Context, tx *sql.Tx, obj *storage.KnowledgeObject) (*storage.ObjectGraph, error) {
+	if obj.Graph == nil || obj.Graph.Stamped {
+		return obj.Graph, nil
+	}
+	var stored []byte
+	err := tx.QueryRowContext(ctx, `SELECT graph_json FROM objects WHERE id = $1 FOR UPDATE`, obj.ID).Scan(&stored)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("read stored graph: %w", err)
+	}
+	// With column encryption the column holds a box: open it first.
+	stored, err = openObjectJSONColumn(ctx, s.enc.KeyProvider, obj.ID, "graph_json", stored)
+	if err != nil {
+		return nil, err
+	}
+	return storage.KeepStoredMark(obj.Graph, storage.GraphJSONMarked(stored)), nil
 }

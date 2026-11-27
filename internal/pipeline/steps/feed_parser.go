@@ -21,7 +21,7 @@ func NewFeedParser() *FeedParser {
 	return &FeedParser{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
 			Requires: []string{"RawContent"},
-			Produces: []string{"Metadata", "Sections"},
+			Produces: []string{"Metadata", "Sections", "Graph"},
 		}),
 	}
 }
@@ -92,7 +92,7 @@ func (s *FeedParser) Run(_ context.Context, draft *storage.KnowledgeObject) (*st
 		guid, _ := item["guid"].(string)
 		published, _ := item["published"].(string)
 
-		secID := storage.NewNodeID(draft.ID, storage.NodeTypeSection, storage.NextOrdinal(draft.Graph, storage.NodeTypeSection))
+		secID := freeNodeID(draft.Graph, draft.ID, storage.NodeTypeSection, i)
 		draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
 			ID:       secID,
 			NodeType: storage.NodeTypeSection,

@@ -36,7 +36,7 @@ func NewDependencyEnricher() *DependencyEnricher {
 	return &DependencyEnricher{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
 			Requires: []string{"RawContent"},
-			Produces: []string{"Metadata"},
+			Produces: []string{"Metadata", "Graph"},
 		}),
 	}
 }
@@ -79,7 +79,7 @@ func (s *DependencyEnricher) Run(_ context.Context, draft *storage.KnowledgeObje
 		}
 		for i, dep := range deps {
 			// Artifact ordinal 0 is the stored original's.
-			nodeID := storage.NewNodeID(draft.ID, storage.NodeTypeArtifact, storage.NextOrdinal(draft.Graph, storage.NodeTypeArtifact))
+			nodeID := freeNodeID(draft.Graph, draft.ID, storage.NodeTypeArtifact, i)
 			draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
 				ID:       nodeID,
 				NodeType: storage.NodeTypeArtifact,

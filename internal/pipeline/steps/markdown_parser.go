@@ -44,7 +44,7 @@ func NewMarkdownParser() *MarkdownParser {
 	return &MarkdownParser{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
 			Requires: []string{"RawContent"},
-			Produces: []string{"Sections"},
+			Produces: []string{"Sections", "Graph", "Metadata"},
 		}),
 	}
 }
@@ -97,10 +97,10 @@ func (s *MarkdownParser) Run(ctx context.Context, draft *storage.KnowledgeObject
 	}
 	rootID := ensureRoot(draft, "root", draft.RawContent)
 	for i, sec := range draft.Sections {
-		secID := storage.NewNodeID(draft.ID, storage.NodeTypeSection, storage.NextOrdinal(draft.Graph, storage.NodeTypeSection))
 		if hasSectionNode(draft.Graph, sec, i) {
 			continue // already emitted by an earlier run of this step
 		}
+		secID := freeNodeID(draft.Graph, draft.ID, storage.NodeTypeSection, i)
 		draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
 			ID:       secID,
 			NodeType: storage.NodeTypeSection,

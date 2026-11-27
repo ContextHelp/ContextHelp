@@ -22,7 +22,7 @@ func NewFunctionExtractor() *FunctionExtractor {
 	return &FunctionExtractor{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
 			Requires: []string{"RawContent"},
-			Produces: []string{"Sections"},
+			Produces: []string{"Sections", "Metadata"},
 		}),
 	}
 }

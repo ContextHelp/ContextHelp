@@ -169,7 +169,9 @@ func graphFor(objectID string, g *storage.ObjectGraph) *storage.ObjectGraph {
 	if g == nil || len(g.Nodes) == 0 {
 		return nil
 	}
-	out := &storage.ObjectGraph{Nodes: make([]storage.GraphNode, len(g.Nodes)), Edges: g.Edges}
+	// Stamped: no step runs here, so its unstamped nodes are known not to be
+	// a step's, and a later reanalysis keeps them.
+	out := &storage.ObjectGraph{Nodes: make([]storage.GraphNode, len(g.Nodes)), Edges: g.Edges, Stamped: true}
 	for i, n := range g.Nodes {
 		if n.ID == "" {
 			n.ID = storage.NewNodeID(objectID, n.NodeType, n.Order)

@@ -18,7 +18,7 @@ func NewTimestampAligner() *TimestampAligner {
 	return &TimestampAligner{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
 			Requires: []string{"Metadata"},
-			Produces: []string{"Sections"},
+			Produces: []string{"Sections", "Graph"},
 		}),
 	}
 }

@@ -86,11 +86,7 @@ type Reprocessor struct {
 	LLM providers.LLMProvider
 }
 
-type enrichStep interface {
-	Run(ctx context.Context, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error)
-}
-
-func (r *Reprocessor) step(name string) (enrichStep, error) {
+func (r *Reprocessor) step(name string) (pipeline.PipelineStep, error) {
 	switch name {
 	case StepStructuredMetadata:
 		return steps.NewStructuredMetadataExtractorWithLLM(r.LLM), nil
@@ -126,9 +122,16 @@ func (r *Reprocessor) Handle(ctx context.Context, job *storage.Job) (string, err
 		// Every reprocess step reads text; binary has none to enrich.
 		return obj.ID, nil
 	}
-	out, err := s.Run(ctx, obj)
+	// A graph stored before stamping stays that way: marking it would make its
+	// unstamped step nodes foreign.
+	legacy := obj.Graph != nil && !obj.Graph.Stamped && len(obj.Graph.Nodes)+len(obj.Graph.Edges) > 0
+	// Through RunSteps, so the nodes the step adds are stamped like any run.
+	out, err := pipeline.RunSteps(ctx, &pipeline.Pipeline{PipelineName: p.Step, Steps: []pipeline.PipelineStep{s}}, obj)
 	if err != nil {
-		return "", fmt.Errorf("reprocess %s: step %s: %w", p.ObjectID, p.Step, err)
+		return "", fmt.Errorf("reprocess %s: %w", p.ObjectID, err)
+	}
+	if legacy {
+		out.Graph.Stamped = false
 	}
 	out.UpdatedAt = time.Now().UTC().Truncate(time.Second)
 	if err := r.Objects.UpdateObject(ctx, out); err != nil {

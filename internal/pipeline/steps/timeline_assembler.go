@@ -20,7 +20,7 @@ func NewTimelineAssembler() *TimelineAssembler {
 	return &TimelineAssembler{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
 			Requires: []string{},
-			Produces: []string{"Sections"},
+			Produces: []string{"Sections", "Metadata"},
 		}),
 	}
 }

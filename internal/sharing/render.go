@@ -253,12 +253,13 @@ func (r *renderer) filterGraph(g *storage.ObjectGraph, rewrite func(storage.Grap
 				n = rn
 			}
 		}
-		n.Metadata = maps.Clone(n.Metadata)
+		n.Metadata = storage.WithoutProducedBy(maps.Clone(n.Metadata))
 		out.Nodes = append(out.Nodes, n)
 		kept[n.ID] = true
 	}
 	for _, e := range g.Edges {
 		if kept[e.FromID] && kept[e.ToID] {
+			e.Metadata = storage.WithoutProducedBy(e.Metadata)
 			out.Edges = append(out.Edges, e)
 		}
 	}

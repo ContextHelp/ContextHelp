@@ -82,22 +82,72 @@ func TestParseNodeURI_MissingPrefix(t *testing.T) {
 	}
 }
 
-func TestNextOrdinalIsMaxPlusOneNeverACount(t *testing.T) {
-	g := &storage.ObjectGraph{Nodes: []storage.GraphNode{{ID: "o/section/5", NodeType: storage.NodeTypeSection}, {NodeType: storage.NodeTypeSection, Order: 7}}}
-	if got := storage.NextOrdinal(g, storage.NodeTypeSection); got != 8 {
-		t.Errorf("got %d want 8", got)
+func TestFreeOrdinal(t *testing.T) {
+	sec := func(ids ...string) *storage.ObjectGraph {
+		g := &storage.ObjectGraph{}
+		for _, id := range ids {
+			g.Nodes = append(g.Nodes, storage.GraphNode{ID: id, NodeType: storage.NodeTypeSection})
+		}
+		return g
 	}
-	if got := storage.NextOrdinal(nil, storage.NodeTypeSection); got != 0 {
-		t.Errorf("nil graph: %d", got)
+	cases := []struct {
+		name string
+		g    *storage.ObjectGraph
+		typ  string
+		from int
+		want int
+	}{
+		{"nil graph", nil, storage.NodeTypeSection, 0, 0},
+		{"empty graph", &storage.ObjectGraph{}, storage.NodeTypeSection, 3, 3},
+		{"lowest free is a gap, not max+1", sec("o/section/0", "o/section/2", "o/section/90"), storage.NodeTypeSection, 0, 1},
+		{"from skips held ordinals", sec("o/section/1", "o/section/2"), storage.NodeTypeSection, 1, 3},
+		{"from above the highest", sec("o/section/0"), storage.NodeTypeSection, 5, 5},
+		{"another type does not count", sec("o/section/0"), storage.NodeTypeTag, 0, 0},
+		{"artifact 0 is reserved", nil, storage.NodeTypeArtifact, 0, 1},
+		{"artifact skips the original and held", &storage.ObjectGraph{Nodes: []storage.GraphNode{{ID: "o/artifact/1", NodeType: storage.NodeTypeArtifact}}}, storage.NodeTypeArtifact, 0, 2},
+	}
+	for _, c := range cases {
+		if got := storage.FreeOrdinal(c.g, "o", c.typ, c.from); got != c.want {
+			t.Errorf("%s: got %d want %d", c.name, got, c.want)
+		}
 	}
 }
 
-func TestNextOrdinalReservesArtifactZero(t *testing.T) {
-	if got := storage.NextOrdinal(nil, storage.NodeTypeArtifact); got != 1 {
-		t.Errorf("empty graph: artifact ordinal %d, want 1 (0 is the original's)", got)
+func TestGraphJSONMarked(t *testing.T) {
+	for name, tc := range map[string]struct {
+		raw  string
+		want bool
+	}{
+		"marked":        {`{"stamped":true}`, true},
+		"marked, nodes": {`{"nodes":[{"id":"a","node_type":"tag","order":0}],"stamped":true}`, true},
+		"plain":         {`{"nodes":[]}`, false},
+		"false":         {`{"stamped":false}`, false},
+		"empty":         {``, false},
+		"malformed":     {`{"stamped":`, false},
+		"box":           {`{"v":"v1","ct":"AAAA"}`, false},
+	} {
+		if got := storage.GraphJSONMarked([]byte(tc.raw)); got != tc.want {
+			t.Errorf("%s: got %v want %v", name, got, tc.want)
+		}
 	}
-	g := &storage.ObjectGraph{Nodes: []storage.GraphNode{{ID: "o/artifact/0", NodeType: storage.NodeTypeArtifact}, {ID: "o/artifact/1", NodeType: storage.NodeTypeArtifact}}}
-	if got := storage.NextOrdinal(g, storage.NodeTypeArtifact); got != 2 {
-		t.Errorf("got %d want 2", got)
+}
+
+func TestKeepStoredMark(t *testing.T) {
+	plain := &storage.ObjectGraph{Nodes: []storage.GraphNode{{ID: "a"}}}
+	if got := storage.KeepStoredMark(plain, true); !got.Stamped || len(got.Nodes) != 1 {
+		t.Errorf("stored mark not kept: %+v", got)
+	}
+	if plain.Stamped {
+		t.Error("the caller's graph was changed")
+	}
+	if got := storage.KeepStoredMark(plain, false); got != plain || got.Stamped {
+		t.Errorf("an unmarked store marked the graph: %+v", got)
+	}
+	marked := &storage.ObjectGraph{Stamped: true}
+	if got := storage.KeepStoredMark(marked, false); got != marked || !got.Stamped {
+		t.Errorf("a client mark was lost: %+v", got)
+	}
+	if got := storage.KeepStoredMark(nil, true); got != nil {
+		t.Errorf("nil graph: %+v", got)
 	}
 }

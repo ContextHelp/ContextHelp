@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/mentions"
@@ -120,11 +121,12 @@ func (e *EntityExtractor) Run(ctx context.Context, draft *storage.KnowledgeObjec
 		if draft.Graph == nil {
 			draft.Graph = &storage.ObjectGraph{}
 		}
+		pre := slices.Clone(draft.Graph.Nodes)
 		for i, u := range draft.Mentions {
-			nodeID := storage.NewNodeID(draft.ID, storage.NodeTypeEntityMention, i)
-			if draft.Graph.FindNode(nodeID) != nil {
+			if ownNode(pre, storage.NodeTypeEntityMention, u.String(), "entity_extractor") {
 				continue
 			}
+			nodeID := freeNodeID(draft.Graph, draft.ID, storage.NodeTypeEntityMention, i)
 			field := storage.MentionSourceRawContent
 			if i < userMentions {
 				field = storage.MentionSourceMentions

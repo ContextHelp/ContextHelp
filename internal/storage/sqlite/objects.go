@@ -382,7 +382,22 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 	if err != nil {
 		return fmt.Errorf("update object: %w", err)
 	}
-	graphJSON, err := marshalGraph(obj.Graph)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("update object: begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	if err := assertNotHeldTx(ctx, tx, obj.ID); err != nil {
+		return err
+	}
+
+	// The stored mark is read in the transaction that writes the graph.
+	graph, err := graphWithStoredMark(ctx, tx, obj)
+	if err != nil {
+		return fmt.Errorf("update object graph: %w", err)
+	}
+	graphJSON, err := marshalGraph(graph)
 	if err != nil {
 		return fmt.Errorf("update object graph: %w", err)
 	}
@@ -394,16 +409,6 @@ func (s *ObjectStore) Update(ctx context.Context, obj *storage.KnowledgeObject) 
 
 	if projectedFTSBody != "" {
 		obj.FTSIndexed = true
-	}
-
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("update object: begin tx: %w", err)
-	}
-	defer tx.Rollback()
-
-	if err := assertNotHeldTx(ctx, tx, obj.ID); err != nil {
-		return err
 	}
 
 	// Drop the old FTS entries while the content row still holds the old
@@ -1659,4 +1664,18 @@ func stringArgs(ss []string) []any {
 		out[i] = s
 	}
 	return out
+}
+
+// graphWithStoredMark is obj's graph as an update writes it: marked when
+// the stored graph is (storage.KeepStoredMark).
+func graphWithStoredMark(ctx context.Context, tx *sql.Tx, obj *storage.KnowledgeObject) (*storage.ObjectGraph, error) {
+	if obj.Graph == nil || obj.Graph.Stamped {
+		return obj.Graph, nil
+	}
+	var stored sql.NullString
+	err := tx.QueryRowContext(ctx, `SELECT graph_json FROM objects WHERE id = ?`, obj.ID).Scan(&stored)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("read stored graph: %w", err)
+	}
+	return storage.KeepStoredMark(obj.Graph, storage.GraphJSONMarked([]byte(stored.String))), nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
@@ -23,7 +24,7 @@ func NewCommentExtractor() *CommentExtractor {
 	return &CommentExtractor{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
 			Requires: []string{"RawContent"},
-			Produces: []string{"Sections", "Graph"},
+			Produces: []string{"Sections", "Graph", "Metadata"},
 		}),
 	}
 }
@@ -75,12 +76,17 @@ func (s *CommentExtractor) Run(ctx context.Context, draft *storage.KnowledgeObje
 		if draft.Graph == nil {
 			draft.Graph = &storage.ObjectGraph{}
 		}
+		pre := slices.Clone(draft.Graph.Nodes)
 		for i, ann := range annotations {
-			nodeID := storage.NewNodeID(draft.ID, storage.NodeTypeTask, i)
+			label := fmt.Sprintf("%s: %s", ann["kind"], ann["text"])
+			if ownNode(pre, storage.NodeTypeTask, label, "comment_extractor") {
+				continue
+			}
+			nodeID := freeNodeID(draft.Graph, draft.ID, storage.NodeTypeTask, i)
 			draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
 				ID:       nodeID,
 				NodeType: storage.NodeTypeTask,
-				Label:    fmt.Sprintf("%s: %s", ann["kind"], ann["text"]),
+				Label:    label,
 				Order:    i,
 				Metadata: map[string]any{
 					"annotation": ann["kind"],

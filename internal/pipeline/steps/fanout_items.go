@@ -70,7 +70,7 @@ func stageItems(draft *storage.KnowledgeObject, items []fanOutItem) {
 			draft.Graph = &storage.ObjectGraph{}
 		}
 		// Artifact ordinal 0 is the stored original's; items take the next free one.
-		nodeOrdinal := storage.NextOrdinal(draft.Graph, storage.NodeTypeArtifact)
+		nodeOrdinal := storage.FreeOrdinal(draft.Graph, draft.ID, storage.NodeTypeArtifact, 0)
 		nodeID := storage.NewNodeID(draft.ID, storage.NodeTypeArtifact, nodeOrdinal)
 		draft.Graph.Nodes = append(draft.Graph.Nodes, storage.GraphNode{
 			ID:       nodeID,

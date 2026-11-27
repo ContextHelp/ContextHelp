@@ -114,3 +114,17 @@ func TestRunner_GraphObjectsDedup(t *testing.T) {
 		t.Errorf("second run stored %d objects, want 2", len(again))
 	}
 }
+
+// An imported graph is stored marked Stamped: its nodes are not a step's,
+// and a later reanalysis keeps them.
+func TestRunnerMarksImportedGraphStamped(t *testing.T) {
+	_, _, sarah, _ := graphRun(t)
+	if sarah.Graph == nil || !sarah.Graph.Stamped {
+		t.Fatalf("graph = %+v", sarah.Graph)
+	}
+	for _, n := range sarah.Graph.Nodes {
+		if n.ProducedBy() != "" {
+			t.Errorf("imported node %s carries a step stamp", n.ID)
+		}
+	}
+}
