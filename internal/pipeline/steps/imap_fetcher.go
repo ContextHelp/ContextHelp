@@ -58,8 +58,9 @@ func WithIMAPDialer(d func(network, addr string) (net.Conn, error)) IMAPFetcherO
 func NewIMAPFetcher(cfg IMAPConfig, opts ...IMAPFetcherOption) *IMAPFetcher {
 	f := &IMAPFetcher{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
-			Requires: []string{},
-			Produces: []string{"RawContent", "Metadata"},
+			Requires:  []string{},
+			Produces:  []string{"RawContent", "Metadata"},
+			Resources: []string{pipeline.ResourceNetwork},
 		}),
 		cfg: cfg,
 	}

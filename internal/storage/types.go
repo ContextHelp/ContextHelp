@@ -48,12 +48,16 @@ type KnowledgeObject struct {
 	// Encrypted marks objects that carry per-capture field or selective-span
 	// encryption (ctxt:enc:v1:... / «ctxt:enc:v1:...»). EncryptScope records
 	// the optional natural-language scope applied (empty = whole content).
-	Encrypted    bool      `json:"encrypted,omitempty"`
-	EncryptScope string    `json:"encrypt_scope,omitempty"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
-	FTSIndexed   bool      `json:"fts_indexed"`
-	ProfileID    string    `json:"profile_id,omitempty"` // owning profile; empty = global
+	Encrypted    bool   `json:"encrypted,omitempty"`
+	EncryptScope string `json:"encrypt_scope,omitempty"`
+	// DerivationSig records which pipeline and step versions derived the
+	// object (pipeline.Signature). Create writes it, Update never touches
+	// it; empty means unknown (API-created, federated), never stale.
+	DerivationSig string    `json:"-"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+	FTSIndexed    bool      `json:"fts_indexed"`
+	ProfileID     string    `json:"profile_id,omitempty"` // owning profile; empty = global
 	// SessionID groups objects captured in one work session (ADR-067): an
 	// opaque id the ambient daemon cuts client-side. Soft FK, no sessions
 	// row is required; empty for non-ambient captures. First capture wins

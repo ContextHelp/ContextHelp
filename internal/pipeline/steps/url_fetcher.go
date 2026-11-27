@@ -50,8 +50,9 @@ func WithURLClientBridge(b *ClientBridge) URLFetcherOption {
 func NewURLFetcher(opts ...URLFetcherOption) *URLFetcher {
 	f := &URLFetcher{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
-			Requires: []string{"Source"},
-			Produces: []string{"RawContent", "Metadata"},
+			Requires:  []string{"Source"},
+			Produces:  []string{"RawContent", "Metadata"},
+			Resources: []string{pipeline.ResourceNetwork},
 		}),
 		bridge: NewClientBridge(),
 	}

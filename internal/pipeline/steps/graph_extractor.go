@@ -50,6 +50,7 @@ func NewGraphExtractor() *GraphExtractor {
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
 			Requires:     []string{"RawContent"},
 			Produces:     []string{"Graph"},
+			Resources:    []string{pipeline.ResourceLLM},
 			Capabilities: []string{"llm"},
 		}),
 	}

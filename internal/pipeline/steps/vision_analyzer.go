@@ -22,6 +22,7 @@ func NewVisionAnalyzer(opts ...func(*VisionAnalyzer)) *VisionAnalyzer {
 			Binary:       true,
 			Requires:     []string{"RawContent", "ContentType"},
 			Produces:     []string{"Sections", "Metadata"},
+			Resources:    []string{pipeline.ResourceVision},
 			Capabilities: []string{"vision"},
 		}),
 		provider: vision.NewStubProvider(),

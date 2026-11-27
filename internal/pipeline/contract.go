@@ -12,6 +12,14 @@ type StepContract struct {
 	Requires     []string // KnowledgeObject fields the step reads
 	Produces     []string // KnowledgeObject fields the step writes
 	Capabilities []string // subsystem requirements: "ocr", "vision", "llm", etc.
+	// Version is the step's derivation version; 0 reads as 1. Bump it when
+	// the step's output for the same input changes, so objects derived by
+	// an older version can be found (see Signature).
+	Version int
+	// Resources names what the step consumes beyond its input: any of
+	// ResourceLLM, ResourceEmbedding, ResourceVision, ResourceNetwork.
+	// Unlike Capabilities, it never prunes a step.
+	Resources []string
 	// Binary marks a step that works on binary content (blobref.NeedsBlob):
 	// it reads the bytes (OCR, a file reader) or the source, and emits
 	// nothing but text. Every other step treats RawContent as text and
@@ -99,4 +107,21 @@ func Canonicalize(key string) string {
 		}
 	}
 	return key
+}
+
+// Resource values for StepContract.Resources.
+const (
+	ResourceLLM       = "llm"
+	ResourceEmbedding = "embedding"
+	ResourceVision    = "vision"
+	ResourceNetwork   = "network"
+)
+
+// StepVersion is the step's derivation version: Contract().Version, with
+// 0 read as 1.
+func StepVersion(step PipelineStep) int {
+	if v := step.Contract().Version; v > 0 {
+		return v
+	}
+	return 1
 }

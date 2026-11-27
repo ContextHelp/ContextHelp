@@ -39,6 +39,8 @@ func ApplyOverride(step PipelineStep, o StepOverride) PipelineStep {
 			Requires:     requires,
 			Produces:     produces,
 			Capabilities: base.Capabilities,
+			Version:      base.Version,
+			Resources:    base.Resources,
 			Binary:       base.Binary,
 		},
 	}

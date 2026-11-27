@@ -43,8 +43,9 @@ func NewDropboxFetcher(opts ...DropboxFetcherOption) *DropboxFetcher {
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
 			// Source carries the folder path (or is empty for root); Metadata is
 			// initialised by Run if nil, so we only depend on the guaranteed seed.
-			Requires: []string{"Source"},
-			Produces: []string{"Metadata"},
+			Requires:  []string{"Source"},
+			Produces:  []string{"Metadata"},
+			Resources: []string{pipeline.ResourceNetwork},
 		}),
 	}
 	for _, opt := range opts {

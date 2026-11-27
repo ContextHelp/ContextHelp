@@ -371,6 +371,8 @@ var migrations = []migration{
 	{Version: 67, fn: migrate067ObjectExpiry},
 	// Migration 068: per-capture & per-watch encryption metadata columns.
 	{Version: 68, fn: migrate068CaptureEncryption},
+	// Migration 069: objects.derivation_sig (derivation signature).
+	{Version: 69, fn: migrate069DerivationSig},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,

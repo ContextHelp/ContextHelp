@@ -406,6 +406,16 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 	handleEmbeddingsMigrate(pool, storage.System(driver), upgradeMgr, svc.Bus)
 	handleReproject(pool, storage.System(driver), upgradeMgr, svc.Bus, cfg.Storage.Blob.Threshold)
+
+	// 10.1 Derivation signatures: stamp the baseline on pre-existing rows
+	// once (one flag read on later starts). Nothing re-derives from it yet.
+	if ds, ok := storage.System(driver).Objects().(storage.DerivationStore); ok && sigDB != nil {
+		if n, err := stampDerivationBaseline(context.Background(), sigDB, sigDialect, ds, pipes); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: derivation baseline: %v\n", err)
+		} else if n > 0 {
+			fmt.Printf("Derivation baseline: stamped %d object(s)\n", n)
+		}
+	}
 	handleReprocess(pool, st)
 
 	// 10a. Wire fan-out enrichment (bidirectional edges + audit log).

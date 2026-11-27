@@ -16,6 +16,9 @@ type registry struct {
 	// unavailable maps a built-in pipeline that was left unregistered to
 	// why (the missing roles and how to install them).
 	unavailable map[string]string
+	// baselines maps every pipeline definition, registered or left out, to
+	// its baseline signature.
+	baselines map[string]string
 }
 
 // NewRegistry creates an empty pipeline registry.
@@ -36,6 +39,7 @@ func (r *registry) Register(name string, p *Pipeline) error {
 		return fmt.Errorf("pipeline %q already registered", name)
 	}
 	r.pipelines[name] = p
+	r.noteBaseline(name, p)
 	return nil
 }
 
@@ -75,6 +79,7 @@ func UnavailableReason(r Registry, name string) (string, bool) {
 
 func (r *registry) Upsert(name string, p *Pipeline) {
 	r.pipelines[name] = p
+	r.noteBaseline(name, p)
 }
 
 func (r *registry) Get(name string) (*Pipeline, error) {
@@ -203,4 +208,52 @@ func defaultContentSelector(content string) string {
 		return TextShort
 	}
 	return TextLong
+}
+
+func (r *registry) noteBaseline(name string, p *Pipeline) {
+	if p != nil && p.BaselineSignature != "" {
+		r.SetBaseline(name, p.BaselineSignature)
+	}
+}
+
+// SetBaseline records the baseline signature of pipeline name.
+func (r *registry) SetBaseline(name, sig string) {
+	if r.baselines == nil {
+		r.baselines = make(map[string]string)
+	}
+	r.baselines[name] = sig
+}
+
+// Baselines returns the baseline signature of every pipeline definition.
+func (r *registry) Baselines() map[string]string {
+	out := make(map[string]string, len(r.baselines))
+	for k, v := range r.baselines {
+		out[k] = v
+	}
+	return out
+}
+
+// MarkBaseline records on r the baseline signature of a pipeline that is
+// not registered (see MarkUnavailable). It is a no-op for registries that
+// do not track this.
+func MarkBaseline(r Registry, name, sig string) {
+	if m, ok := r.(interface{ SetBaseline(name, sig string) }); ok {
+		m.SetBaseline(name, sig)
+	}
+}
+
+// Baselines returns the baseline signature of every pipeline r knows,
+// registered or left out for a missing provider; for a registry that does
+// not track unavailable ones, the registered pipelines' own.
+func Baselines(r Registry) map[string]string {
+	if b, ok := r.(interface{ Baselines() map[string]string }); ok {
+		return b.Baselines()
+	}
+	out := map[string]string{}
+	for _, name := range r.List() {
+		if p, err := r.Get(name); err == nil && p.BaselineSignature != "" {
+			out[name] = p.BaselineSignature
+		}
+	}
+	return out
 }

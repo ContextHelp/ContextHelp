@@ -51,8 +51,9 @@ func WithMaskedVariant(on bool) EmbeddingOption {
 func NewEmbeddingGenerator(models embeddings.ModelSource, resolver embeddings.ProviderResolver, opts ...EmbeddingOption) *EmbeddingGenerator {
 	s := &EmbeddingGenerator{
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
-			Requires: []string{"RawContent"},
-			Produces: []string{"Vectors"},
+			Requires:  []string{"RawContent"},
+			Produces:  []string{"Vectors"},
+			Resources: []string{pipeline.ResourceEmbedding},
 		}),
 		models:   models,
 		resolver: resolver,

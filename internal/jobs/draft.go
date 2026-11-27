@@ -124,6 +124,8 @@ func runDraft(ctx context.Context, reg pipeline.Registry, blobs storage.BlobStor
 		}
 	}
 
+	// The first pipeline names the object (draft.Pipeline); hops are not part of its signature.
+	draft.DerivationSig = pipe.Signature
 	storageutil.ApplyAmbient(draft, job.UserAmbient)
 	draft.ContentHash = storageutil.DraftContentHash(pipeline.ContentBytes(draft), draft.Source, draft.Metadata)
 	return draft, nil

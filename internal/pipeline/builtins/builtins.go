@@ -391,6 +391,9 @@ func githubStep(name string, opts BuildOpts) (pipeline.PipelineStep, bool) {
 type stepSpec struct {
 	name   string
 	insert *config.StepInsert
+	// injected marks a step a policy injection added (dedup, class rules):
+	// it runs, but is not part of the pipeline's signature.
+	injected bool
 }
 
 func specsOf(names []string) []stepSpec {
@@ -399,6 +402,111 @@ func specsOf(names []string) []stepSpec {
 		out[i] = stepSpec{name: n}
 	}
 	return out
+}
+
+// definitionSpecs is the one place a pipeline definition becomes its step
+// list, for a pipeline that can be built and for one left out for a
+// missing provider alike: the definition's steps with the policy
+// injections (dedup, class rules; marked injected, since policy toggles
+// change what runs, not which derivation a pipeline is), then the user's
+// structural overrides (skip_steps, insert_steps). An override that does
+// not apply is an error.
+func definitionSpecs(name string, d Def, dups config.DuplicatesConfig, access string, o config.PipelineOverride, hasOverride bool) ([]stepSpec, error) {
+	specs := specsOf(InjectClassRulesStep(InjectDedupStep(d.Steps, dups), access))
+	for i := range specs {
+		specs[i].injected = !slices.Contains(d.Steps, specs[i].name)
+	}
+	if hasOverride {
+		var problems []config.ValidationError
+		specs, problems = applyStructuralOverrides(name, specs, o, nil)
+		if len(problems) > 0 {
+			return nil, errors.New("invalid pipelines config: " + problems[0].Error())
+		}
+	}
+	return specs, nil
+}
+
+// signedNames lists the steps a pipeline's signature covers: its own,
+// without policy injections.
+func signedNames(specs []stepSpec) []string {
+	var names []string
+	for _, s := range specs {
+		if !s.injected {
+			names = append(names, s.name)
+		}
+	}
+	return names
+}
+
+// generativeResources are the resources whose model is part of a
+// signature, in signing order. Embedding is not among them: an embedding
+// model change is handled by the embedding registry (per-model vectors,
+// signatures and the migration job).
+var generativeResources = []string{pipeline.ResourceLLM, pipeline.ResourceVision}
+
+// modelEntries returns the "resource=backend/model" signature entries of
+// a pipeline: one per generative resource a signed step declares, from
+// the configured providers (cfg, with the pipeline's provider overrides
+// applied). The strings are signed literally: "auto" and an empty model
+// stay as written, and nothing is probed, so a provider being down or
+// installed later never changes a signature.
+func modelEntries(specs []stepSpec, cfg config.ProvidersConfig) []string {
+	declared := map[string]bool{}
+	for _, name := range signedNames(specs) {
+		step, ok := zeroStep(name)
+		if !ok {
+			continue
+		}
+		for _, r := range step.Contract().Resources {
+			declared[r] = true
+		}
+	}
+	var out []string
+	for _, r := range generativeResources {
+		if !declared[r] {
+			continue
+		}
+		bc := cfg.LLM
+		if r == pipeline.ResourceVision {
+			bc = cfg.Vision
+		}
+		out = append(out, r+"="+bc.Backend+"/"+bc.Model)
+	}
+	return out
+}
+
+// zeroStep builds the built-in step name with no dependencies, to read
+// its contract. Installed steps are not built-ins and declare nothing.
+func zeroStep(name string) (pipeline.PipelineStep, bool) {
+	if c, ok := embeddingStepConstructors[name]; ok {
+		return c(BuildOpts{}), true
+	}
+	if c, ok := providerStepConstructors[name]; ok {
+		return c(&providers.Resolved{}), true
+	}
+	if c, ok := stepConstructors[name]; ok {
+		return c(), true
+	}
+	if c, ok := fetchStepConstructors[name]; ok {
+		return c(safefetch.Default()), true
+	}
+	if c, ok := githubStepConstructors[name]; ok {
+		return c(nil), true
+	}
+	if c, ok := browserStepConstructors[name]; ok {
+		return c(nil, safefetch.Default()), true
+	}
+	if c, ok := blobStepConstructors[name]; ok {
+		return c(nil, 0), true
+	}
+	return nil, false
+}
+
+// unavailableBaseline is the baseline signature of a pipeline whose
+// providers are missing: over the same steps and models a built pipeline
+// signs, which it cannot build.
+func unavailableBaseline(name string, specs []stepSpec, cfg config.ProvidersConfig) string {
+	return pipeline.BaselineSignatureOf(name, signedNames(specs), modelEntries(specs, cfg)...)
 }
 
 // buildPipeline constructs a Pipeline from a Def, optionally injecting providers.
@@ -412,6 +520,7 @@ func buildPipeline(name string, d Def, opts BuildOpts, strict bool) (*pipeline.P
 // one through opts.External.
 func buildPipelineSpecs(name string, d Def, specs []stepSpec, opts BuildOpts, caps pipeline.CapabilitySet, strict bool) (*pipeline.Pipeline, error) {
 	pipelineSteps := make([]pipeline.PipelineStep, 0, len(specs))
+	var signed []pipeline.StepRef // the pipeline's own steps, as the definition names them, without policy injections
 	for _, spec := range specs {
 		var s pipeline.PipelineStep
 		var err error
@@ -428,7 +537,17 @@ func buildPipelineSpecs(name string, d Def, specs []stepSpec, opts BuildOpts, ca
 			return nil, fmt.Errorf("pipeline %q: %w", name, err)
 		}
 		pipelineSteps = append(pipelineSteps, s)
+		if !spec.injected {
+			signed = append(signed, pipeline.StepRef{Name: spec.name, Version: pipeline.StepVersion(s)})
+		}
 	}
+
+	// Sign the configured steps (user overrides applied, policy injections
+	// left out) before pruning: a provider that is down at
+	// boot must not change the signature.
+	models := modelEntries(specs, opts.Factory.Config())
+	signature := pipeline.SignatureOf(name, signed, models...)
+	baseline := pipeline.BaselineSignatureOf(name, signedNames(specs), models...)
 
 	// Capability check: prune or reject steps with unsatisfied capabilities.
 	unsatisfied := pipeline.ValidateCapabilities(pipelineSteps, caps)
@@ -470,9 +589,11 @@ func buildPipelineSpecs(name string, d Def, specs []stepSpec, opts BuildOpts, ca
 	}
 
 	return &pipeline.Pipeline{
-		PipelineName: name,
-		Description:  d.Description,
-		Steps:        pipelineSteps,
+		PipelineName:      name,
+		Description:       d.Description,
+		Steps:             pipelineSteps,
+		Signature:         signature,
+		BaselineSignature: baseline,
 	}, nil
 }
 
@@ -671,21 +792,19 @@ func ConfiguredRegistryWithPipelineOverrides(
 			}
 			log.Printf("builtins: skipping pipeline %q (required provider(s) %v not available)", name, missingRoles(d, caps))
 			pipeline.MarkUnavailable(r, name, unavailableReason(d, caps))
+			specs, err := definitionSpecs(name, d, base.Duplicates, base.Access, override, hasOverride)
+			if err != nil {
+				return nil, err
+			}
+			pipeline.MarkBaseline(r, name, unavailableBaseline(name, specs, opts.Factory.Config()))
 			continue
 		}
 
-		d.Steps = InjectClassRulesStep(InjectDedupStep(d.Steps, base.Duplicates), base.Access)
-		specs := specsOf(d.Steps)
-		if hasOverride {
-			// Structural overrides: skip_steps, then insert_steps.
-			var problems []config.ValidationError
-			specs, problems = applyStructuralOverrides(name, specs, override, nil)
-			if len(problems) > 0 {
-				return nil, errors.New("invalid pipelines config: " + problems[0].Error())
-			}
+		specs, err := definitionSpecs(name, d, base.Duplicates, base.Access, override, hasOverride)
+		if err != nil {
+			return nil, err
 		}
 		stepCaps := caps
-
 		p, err := buildPipelineSpecs(name, d, specs, opts, stepCaps, false)
 		if err != nil {
 			return nil, err
@@ -959,11 +1078,19 @@ func buildRegistry(opts BuildOpts, strict bool) (pipeline.Registry, error) {
 		if !defProvidersSatisfied(d, caps) {
 			log.Printf("builtins: skipping pipeline %q (required provider(s) %v not available)", name, missingRoles(d, caps))
 			pipeline.MarkUnavailable(r, name, unavailableReason(d, caps))
+			specs, err := definitionSpecs(name, d, opts.Duplicates, opts.Access, config.PipelineOverride{}, false)
+			if err != nil {
+				return nil, err
+			}
+			pipeline.MarkBaseline(r, name, unavailableBaseline(name, specs, opts.Factory.Config()))
 			continue
 		}
-		d.Steps = InjectClassRulesStep(InjectDedupStep(d.Steps, opts.Duplicates), opts.Access)
+		specs, err := definitionSpecs(name, d, opts.Duplicates, opts.Access, config.PipelineOverride{}, false)
+		if err != nil {
+			return nil, err
+		}
 
-		p, err := buildPipelineSpecs(name, d, specsOf(d.Steps), opts, caps, strict)
+		p, err := buildPipelineSpecs(name, d, specs, opts, caps, strict)
 		if err != nil {
 			return nil, err
 		}

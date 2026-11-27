@@ -616,6 +616,29 @@ var pgMigrations = []pgMigration{
 		`ALTER TABLE watches ADD COLUMN IF NOT EXISTS encrypt BOOLEAN NOT NULL DEFAULT FALSE`,
 		`ALTER TABLE watches ADD COLUMN IF NOT EXISTS encrypt_scope TEXT NOT NULL DEFAULT ''`,
 	}},
+	// Migration 50 (mirrors SQLite 069): objects.derivation_sig.
+	{Version: 50, Name: "objects.derivation_sig", Statements: []string{
+		`ALTER TABLE objects ADD COLUMN IF NOT EXISTS derivation_sig TEXT NOT NULL DEFAULT ''`,
+		`CREATE INDEX IF NOT EXISTS idx_objects_derivation_sig ON objects(derivation_sig)`,
+		// An UPDATE that changes the signature keeps change_seq: the
+		// signature never goes on the wire, so stamping it must not
+		// re-push the object to federation targets. The inner IF keeps
+		// OLD out of the INSERT path. The signature must only ever be written
+		// alone: an UPDATE changing it together with another column would
+		// not be pushed either.
+		`CREATE OR REPLACE FUNCTION objects_stamp_change_seq() RETURNS trigger
+		 LANGUAGE plpgsql AS $$
+		 BEGIN
+			IF TG_OP = 'UPDATE' THEN
+				IF NEW.derivation_sig IS DISTINCT FROM OLD.derivation_sig THEN
+					RETURN NEW;
+				END IF;
+			END IF;
+			UPDATE object_change_counter SET seq = seq + 1 WHERE id = 1 RETURNING seq INTO NEW.change_seq;
+			RETURN NEW;
+		 END
+		 $$`,
+	}},
 }
 
 // sharingRegistryStatements create the sharing registry and add the
