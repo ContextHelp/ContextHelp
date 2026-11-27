@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/providers/vision"
 )
@@ -69,6 +71,11 @@ func (p *OllamaLLMProvider) Generate(ctx context.Context, prompt string) (string
 		return "", fmt.Errorf("ollama generate: %w", err)
 	}
 	defer resp.Body.Close()
+	// A non-2xx answer is a failed call, not a blank reply: a 503, a 401 or
+	// a proxy's page decodes to an empty Response with no error field.
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return "", fmt.Errorf("ollama generate: HTTP %d: %s", resp.StatusCode, bodyExcerpt(resp.Body))
+	}
 	var result struct {
 		Response string `json:"response"`
 		Error    string `json:"error"`
@@ -80,4 +87,15 @@ func (p *OllamaLLMProvider) Generate(ctx context.Context, prompt string) (string
 		return "", fmt.Errorf("ollama error: %s", result.Error)
 	}
 	return result.Response, nil
+}
+
+// maxExcerpt bounds how much of an error body is kept in an error message.
+const maxExcerpt = 200
+
+// bodyExcerpt is the start of an error body on one line, at most
+// maxExcerpt bytes: enough to tell "model not found" from a proxy page,
+// not enough to echo content.
+func bodyExcerpt(r io.Reader) string {
+	b, _ := io.ReadAll(io.LimitReader(r, maxExcerpt))
+	return strings.Join(strings.Fields(strings.ToValidUTF8(string(b), "")), " ")
 }
