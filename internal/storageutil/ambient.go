@@ -17,8 +17,8 @@ const (
 )
 
 // ambientMetadataKeys are the object metadata keys that hold the ambient
-// envelope: kept through a reanalysis, withheld from sharing and
-// federation projections.
+// envelope: protected through a reanalysis (protectedMetadataKeys),
+// withheld from sharing and federation projections.
 var ambientMetadataKeys = []string{MetadataAmbientSourceKey, MetadataFingerprintKey, MetadataClientKey}
 
 // ApplyAmbient lands the ambient-capture context a on obj:
@@ -53,23 +53,6 @@ func ApplyAmbient(obj *storage.KnowledgeObject, a *storage.AmbientContext) {
 	}
 	if len(obj.Metadata) == 0 {
 		obj.Metadata = nil
-	}
-}
-
-// CarryAmbient copies the ambient envelope of from (session id and the
-// ambient metadata keys) onto to, for a rewrite of the same object that
-// rebuilds its metadata, such as a reanalysis.
-func CarryAmbient(to, from *storage.KnowledgeObject) {
-	if from.SessionID != "" {
-		to.SessionID = from.SessionID
-	}
-	for _, k := range ambientMetadataKeys {
-		if v, ok := from.Metadata[k]; ok {
-			if to.Metadata == nil {
-				to.Metadata = map[string]any{}
-			}
-			to.Metadata[k] = v
-		}
 	}
 }
 

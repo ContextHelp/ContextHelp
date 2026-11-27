@@ -89,6 +89,9 @@ func (e *EntityExtractor) Run(ctx context.Context, draft *storage.KnowledgeObjec
 			"person, project, product, org, concept. Return only a comma-separated list, no explanation.\n\n" +
 			"Content:\n" + content
 		if resp, err := e.llm.Generate(ctx, prompt); err == nil {
+			if strings.TrimSpace(resp) == "" {
+				providers.ReportUnusableReply(ctx, "entity_extractor", "empty entity list")
+			}
 			for _, raw := range strings.Split(resp, ",") {
 				token := strings.TrimSpace(raw)
 				token = strings.TrimPrefix(token, "@")

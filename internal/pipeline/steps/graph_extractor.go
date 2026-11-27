@@ -108,6 +108,7 @@ func (g *GraphExtractor) Run(ctx context.Context, ko *storage.KnowledgeObject) (
 		// LLMs do not reliably emit valid JSON; an unparseable response is
 		// an expected outcome, not a pipeline fault. Same degradation as
 		// an outright generation failure.
+		providers.ReportUnusableReply(ctx, "graph_extractor", "not JSON")
 		return ko, nil //nolint:nilerr // optional enrichment; unparseable LLM output must not fail ingestion
 	}
 

@@ -136,7 +136,12 @@ Flags:
   --all                        opt in to a full-corpus re-ingest (not yet implemented)
   --i-understand-the-cost SHA  required with --all; SHA must match the release-notes value
 
-The selective form requires either --filter or --where. --all is reserved
+The selective form requires either --filter or --where. A refused object is
+skipped and a failed object is recorded; the run goes on. It prints how many
+objects were processed, failed and skipped (JSON: selector, processed,
+failed, skipped) and exits non-zero when any object failed. A run that stops
+early (cancelled, over budget) prints the counts it reached; in JSON the
+document has stopped=true and the error. --all is reserved
 for a future reingest_all worker (ADR-070 §1) and currently refuses with
 a pointer to the relevant ADR section.`,
 	RunE: runUpgradeRun,
@@ -545,6 +550,15 @@ func upgradeServiceDB(svc *service.Service) (*sql.DB, error) {
 //     the banner middleware and `ctxt upgrade status` see live progress
 //     across processes.
 //  4. Worker.Run blocks until done, ctx-cancelled, or budget exceeded.
+//
+// upgradeReanalyzer is what `upgrade run` re-analyzes objects with: the
+// service. Tests substitute a wrapper.
+var upgradeReanalyzer = func(svc *service.Service) interface {
+	ReanalyzeObject(ctx context.Context, id string) (string, float64, error)
+} {
+	return svc
+}
+
 func runUpgradeRun(cmd *cobra.Command, _ []string) error {
 	all, _ := cmd.Flags().GetBool("all")
 	consent, _ := cmd.Flags().GetString("i-understand-the-cost")
@@ -607,7 +621,7 @@ func runUpgradeRun(cmd *cobra.Command, _ []string) error {
 	}
 	mgr := upgrade.NewManager(shadowPath)
 
-	worker := upgrade.NewWorker(db, svc, mgr, svc.Bus)
+	worker := upgrade.NewWorker(db, upgradeReanalyzer(svc), mgr, svc.Bus)
 
 	ctx := cmd.Context()
 	if ctx == nil {
@@ -635,21 +649,49 @@ func runUpgradeRun(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 
-	if err := worker.Run(ctx, sel, upgrade.WorkerOpts{
+	runErr := worker.Run(ctx, sel, upgrade.WorkerOpts{
 		RateLimit: rateLimit,
 		BudgetUSD: budget,
-	}); err != nil {
-		return fmt.Errorf("upgrade run: %w", err)
+	})
+	sum, ran := worker.LastRun()
+	if runErr != nil {
+		if !ran {
+			return fmt.Errorf("upgrade run: %w", runErr)
+		}
+		// An interrupted or over-budget run reports what it reached.
+		if isJSONOutput() {
+			if err := outputJSON(out, map[string]any{
+				"selector":  sel.Raw(),
+				"stopped":   true,
+				"error":     runErr.Error(),
+				"processed": sum.Processed,
+				"failed":    sum.Failed,
+				"skipped":   sum.Skipped,
+			}); err != nil {
+				return err
+			}
+		} else {
+			fmt.Fprintf(out, "Re-ingest stopped for selector %q: %d processed, %d failed, %d skipped.\n",
+				sel.Raw(), sum.Processed, sum.Failed, sum.Skipped)
+		}
+		return fmt.Errorf("upgrade run: %w", runErr)
 	}
-
-	count, _ := sel.CountMatching(ctx, db)
 	if isJSONOutput() {
-		return outputJSON(out, map[string]any{
+		if err := outputJSON(out, map[string]any{
 			"selector":  sel.Raw(),
-			"completed": count,
-		})
+			"processed": sum.Processed,
+			"failed":    sum.Failed,
+			"skipped":   sum.Skipped,
+		}); err != nil {
+			return err
+		}
+	} else {
+		fmt.Fprintf(out, "Re-ingest complete for selector %q: %d processed, %d failed, %d skipped.\n",
+			sel.Raw(), sum.Processed, sum.Failed, sum.Skipped)
 	}
-	fmt.Fprintf(out, "Re-ingest complete: %d objects processed for selector %q.\n", count, sel.Raw())
+	if sum.Failed > 0 {
+		return fmt.Errorf("upgrade run: %d objects failed (left as stored)", sum.Failed)
+	}
 	return nil
 }
 

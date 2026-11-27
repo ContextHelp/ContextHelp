@@ -149,6 +149,7 @@ func (s *StructuredMetadataExtractor) Run(
 	if err != nil {
 		// Unparseable LLM output is an expected outcome, not a fault; marked
 		// pending for retry on the same terms as a generation failure.
+		providers.ReportUnusableReply(ctx, "structured_metadata", "not the expected JSON")
 		draft.Metadata["metadata_status"] = enrichPending
 		return draft, nil //nolint:nilerr // optional enrichment; recorded as metadata_status=pending for retry
 	}

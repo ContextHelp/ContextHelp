@@ -107,6 +107,9 @@ func (s *Sectioner) Run(ctx context.Context, draft *storage.KnowledgeObject) (*s
 					sections[i].Metadata = make(map[string]any)
 				}
 				sections[i].Metadata["summary"] = strings.TrimSpace(summary)
+				if strings.TrimSpace(summary) == "" {
+					providers.ReportUnusableReply(ctx, "sectioner", "empty summary")
+				}
 			}
 			// On failure, leave Summary empty and continue.
 		}

@@ -181,9 +181,9 @@ func TestWorker_DryRunSkipsReanalyze(t *testing.T) {
 	}
 }
 
-// TestWorker_ReanalyzeErrorMovesToFailed: a single ReanalyzeObject error
-// aborts the run and parks the manager in failed.
-func TestWorker_ReanalyzeErrorMovesToFailed(t *testing.T) {
+// TestWorker_ReanalyzeErrorDoesNotEndTheRun: a single ReanalyzeObject
+// error is recorded against its object; the run goes on and completes.
+func TestWorker_ReanalyzeErrorDoesNotEndTheRun(t *testing.T) {
 	db := fixtureDB(t)
 	sel, err := ParseSelector("pipeline=text.short@v0")
 	if err != nil {
@@ -197,12 +197,14 @@ func TestWorker_ReanalyzeErrorMovesToFailed(t *testing.T) {
 	}
 	w := NewWorker(db, fake, mgr, nil)
 
-	err = w.Run(context.Background(), sel, WorkerOpts{})
-	if err == nil {
-		t.Fatal("expected propagated error")
+	if err := w.Run(context.Background(), sel, WorkerOpts{}); err != nil {
+		t.Fatalf("Run: %v", err)
 	}
-	if got := mgr.Snapshot().State; got != StateFailed {
-		t.Errorf("state = %q, want failed", got)
+	if got := mgr.Snapshot().State; got != StateIdle {
+		t.Errorf("state = %q, want idle (completed)", got)
+	}
+	if fake.CallCount() < 2 {
+		t.Errorf("run stopped at the failing object: %d calls", fake.CallCount())
 	}
 }
 
@@ -252,12 +254,15 @@ func TestWorker_SkipsObjectsThatCannotBeReanalyzed(t *testing.T) {
 	}
 }
 
-// Any other error still ends the run.
-func TestWorker_OtherErrorsStillEndTheRun(t *testing.T) {
+// Any other per-object error is recorded and the run goes on.
+func TestWorker_OtherErrorsDoNotEndTheRun(t *testing.T) {
 	db := fixtureDB(t)
 	sel, _ := ParseSelector("pipeline=text.short@v0")
 	fake := &fakeReanalyzer{errs: []error{errors.New("boom")}}
-	if err := NewWorker(db, fake, NewManager(""), nil).Run(context.Background(), sel, WorkerOpts{}); err == nil {
-		t.Fatal("want error")
+	if err := NewWorker(db, fake, NewManager(""), nil).Run(context.Background(), sel, WorkerOpts{}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if fake.CallCount() < 2 {
+		t.Errorf("run stopped after the failing object: %d calls", fake.CallCount())
 	}
 }

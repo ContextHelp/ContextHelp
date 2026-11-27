@@ -59,15 +59,10 @@ func TestApplyAmbientEmptyIsNoop(t *testing.T) {
 	}
 }
 
-func TestCarryAndStripAmbient(t *testing.T) {
-	from := &storage.KnowledgeObject{SessionID: "s", Metadata: map[string]any{
+func TestStripAmbient(t *testing.T) {
+	from := &storage.KnowledgeObject{Metadata: map[string]any{
 		"ambient_source": "a", "fingerprint": "f", "client": map[string]any{"k": 1}, "title": "t",
 	}}
-	to := &storage.KnowledgeObject{}
-	CarryAmbient(to, from)
-	if to.SessionID != "s" || len(to.Metadata) != 3 || to.Metadata["title"] != nil {
-		t.Errorf("carried %+v", to)
-	}
 	got := WithoutAmbient(from.Metadata)
 	if !reflect.DeepEqual(got, map[string]any{"title": "t"}) {
 		t.Errorf("stripped %v", got)

@@ -400,8 +400,11 @@ func (f *Factory) Transcription() TranscriptionProvider {
 	}
 }
 
-// Vision returns the best available vision.Provider.
-func (f *Factory) Vision() vision.Provider {
+// Vision returns the best available vision.Provider. A failed call is
+// reported to the context's CallRecorder (see WithCallRecorder).
+func (f *Factory) Vision() vision.Provider { return recordVision(f.visionBackend()) }
+
+func (f *Factory) visionBackend() vision.Provider {
 	switch f.cfg.Vision.Backend {
 	case backendOllama:
 		return f.newOllamaVision()
@@ -446,8 +449,11 @@ func (f *Factory) Diarization() DiarizationProvider {
 	}
 }
 
-// LLM returns the best available LLMProvider.
-func (f *Factory) LLM() LLMProvider {
+// LLM returns the best available LLMProvider. A failed call is reported
+// to the context's CallRecorder (see WithCallRecorder).
+func (f *Factory) LLM() LLMProvider { return recordLLM(f.llmBackend()) }
+
+func (f *Factory) llmBackend() LLMProvider {
 	switch f.cfg.LLM.Backend {
 	case backendOpenAI:
 		return f.openAILLM(f.apiKey(keyOpenAI))

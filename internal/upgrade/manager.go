@@ -99,6 +99,7 @@ type Status struct {
 type Manager struct {
 	mu         sync.Mutex
 	status     Status
+	last       RunSummary
 	shadowPath string
 	now        func() time.Time // injectable for tests
 }
@@ -215,6 +216,27 @@ func (m *Manager) Complete() error {
 
 	m.status = Status{State: StateIdle}
 	return m.removeShadowLocked()
+}
+
+// CompleteRun is Complete that also keeps the run's summary, readable by
+// LastRun after the status has gone back to idle. The summary is in
+// memory only: it is not part of Status, whose shape is a contract.
+func (m *Manager) CompleteRun(sum RunSummary) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.status.State != StateInProgress {
+		return ErrNotRunning
+	}
+	m.status = Status{State: StateIdle}
+	m.last = sum
+	return m.removeShadowLocked()
+}
+
+// LastRun is the summary of the most recent run CompleteRun recorded.
+func (m *Manager) LastRun() RunSummary {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.last
 }
 
 // Fail moves the state machine to failed, retaining the bucket / progress

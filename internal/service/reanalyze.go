@@ -15,20 +15,22 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
+	"github.com/ideacrafterslabs/ctxt/internal/projection"
+	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blob"
 	"github.com/ideacrafterslabs/ctxt/internal/storage/blobref"
-	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
 	"github.com/ideacrafterslabs/ctxt/internal/upgrade"
 )
 
 // ReanalyzeObject re-runs the registry's currently-installed pipeline for
 // the object's family against the stored RawContent, then atomically
-// replaces the object's projection (Summaries, Sections, Tags, Mentions,
-// Decisions, Tasks, Metadata, Graph) and bumps the `Pipeline` stamp to the
+// replaces the object's derived projection (Summaries, Sections, auto Tags and Mentions,
+// Decisions, Tasks, Graph, step metadata) and bumps the `Pipeline` stamp to the
 // new versioned name.
 //
 // Returns:
@@ -43,8 +45,17 @@ import (
 // Errors:
 //   - the object does not exist or has empty RawContent (cannot re-run);
 //   - the registry has no pipeline that resolves to the object's family;
-//   - the pipeline run itself fails.
+//   - the pipeline run itself fails;
+//   - the object is encrypted or held (upgrade.ErrCannotReanalyze): nothing is written.
 func (s *Service) ReanalyzeObject(ctx context.Context, id string) (newPipelineVersion string, llmCostUSD float64, err error) {
+	return s.ReanalyzeObjectWith(ctx, id, ReanalyzeOptions{})
+}
+
+// ReanalyzeObjectWith is ReanalyzeObject with options. By default the
+// steps that fetch from the network are not run: the object is re-derived
+// from its stored content. A pipeline that cannot run without a fetch is
+// refused with upgrade.ErrCannotReanalyze before anything is written.
+func (s *Service) ReanalyzeObjectWith(ctx context.Context, id string, opts ReanalyzeOptions) (newPipelineVersion string, llmCostUSD float64, err error) {
 	obj, err := s.Store(ctx).Objects().Get(ctx, id)
 	if err != nil {
 		return "", 0, fmt.Errorf("reanalyze: load %q: %w", id, err)
@@ -52,85 +63,49 @@ func (s *Service) ReanalyzeObject(ctx context.Context, id string) (newPipelineVe
 	if obj == nil {
 		return "", 0, fmt.Errorf("reanalyze: object %q not found", id)
 	}
+	if err := s.refuseReanalyze(ctx, obj); err != nil {
+		return "", 0, err
+	}
 	src, err := s.reanalyzeSource(ctx, id, obj)
 	if err != nil {
 		return "", 0, err
 	}
-	orig, hasOrig, originalContent, haveOriginal := src.orig, src.hasOrig, src.content, src.haveOriginal
 
 	pipe, versionedName, err := s.reanalyzePipeline(id, obj)
 	if err != nil {
 		return "", 0, err
 	}
 
-	// Build a draft from the existing object: keep the ID + RawContent, drop
-	// the projection so steps that merge will produce fresh output. Identity
-	// fields (Source, SourceKey, ProfileID, ContentHash, CreatedAt) are
-	// preserved so post-step persistence updates the SAME row, not a new one.
-	draft := &storage.KnowledgeObject{
-		ID:                 obj.ID,
-		Type:               obj.Type,
-		Subtype:            obj.Subtype,
-		RawContent:         obj.RawContent,
-		ContentType:        obj.ContentType,
-		Source:             obj.Source,
-		SourceKey:          obj.SourceKey,
-		ContentHash:        obj.ContentHash,
-		ProfileID:          obj.ProfileID,
-		Status:             obj.Status,
-		ReinforcementCount: obj.ReinforcementCount,
-		LastReinforcedAt:   obj.LastReinforcedAt,
-		CreatedAt:          obj.CreatedAt,
-		Pipeline:           versionedName,
-	}
-
-	// The original stays recorded on the object, whether or not its
-	// bytes could be read: without it the update would free the blob.
-	if hasOrig {
-		if haveOriginal {
-			draft.RawContent = originalContent
-		}
-		if err := blob.AttachOriginal(draft, orig, originalContent); err != nil {
-			return "", 0, fmt.Errorf("reanalyze: %w", err)
-		}
-	}
-
-	// The original is gone and the stored text stands in for it: a step
-	// that reads the media would run on text. Skip the object instead.
-	if hasOrig && !haveOriginal {
-		for _, step := range pipe.Steps {
-			if pipeline.ReadsMediaBytes(step) {
-				return "", 0, fmt.Errorf("reanalyze: %w: original of %q is lost and step %s reads the media",
-					upgrade.ErrCannotReanalyze, id, step.Name())
-			}
-		}
-	}
-
-	draft, err = pipeline.RunSteps(ctx, pipe, draft)
+	pipe, err = storedContentPipeline(pipe, id, opts.AllowNetwork)
 	if err != nil {
-		return "", 0, fmt.Errorf("reanalyze: %w", err)
+		return "", 0, err
+	}
+	if err := refuseSourceReading(pipe, obj); err != nil {
+		return "", 0, err
 	}
 
-	// The ambient envelope (session id, ambient_source, fingerprint,
-	// metadata.client) is capture-side data no step regenerates: carry it.
-	storageutil.CarryAmbient(draft, obj)
+	// The draft is a full copy of the stored object; only the fields a
+	// step of this pipeline produces are cleared.
+	produced := producedFields(pipe)
+	fetches := opts.AllowNetwork && slices.ContainsFunc(pipe.Steps, fetchesFromNetwork)
+	draft := reanalyzeDraft(obj, versionedName, produced, fetches)
 
-	// Stamp the version + updated time and persist atomically. Update writes
-	// every projection column so the new pipeline output overwrites the old.
+	if err := keepOriginal(draft, pipe, src, id); err != nil {
+		return "", 0, err
+	}
+	draft, err = runReanalysisSteps(ctx, id, pipe, draft)
+	if err != nil {
+		return "", 0, err
+	}
+
+	if err := s.finishReanalysis(ctx, obj, draft); err != nil {
+		return "", 0, fmt.Errorf("reanalyze: %q: %w", id, err)
+	}
 	draft.Pipeline = versionedName
 	draft.UpdatedAt = time.Now().UTC()
-	// Content above the threshold is stored externalized, whether or
-	// not the pipeline has an externalize_content step.
-	row, err := s.storable(ctx, draft)
-	if err != nil {
+	if err := s.persistReanalysis(ctx, draft); err != nil {
 		return "", 0, fmt.Errorf("reanalyze: persist %q: %w", id, err)
 	}
-	// The blob of content the pipeline replaced goes with it.
-	orphans, err := blob.UpdateObject(ctx, s.Store(ctx), row)
-	if err != nil {
-		return "", 0, fmt.Errorf("reanalyze: persist %q: %w", id, err)
-	}
-	logOrphans("reanalyze", id, orphans)
 	// Replace the object's vectors for every model the embedding step
 	// produced; other models' rows stay. Vectors are additive: a failed
 	// write is logged, never fails the re-analysis.
@@ -241,4 +216,56 @@ func (s *Service) reanalyzePipeline(id string, obj *storage.KnowledgeObject) (*p
 		}
 	}
 	return pipe, versionedName, nil
+}
+
+// keepOriginal records the object's original on the draft, whether or not
+// its bytes could be read: without it the update would free the blob. When
+// the original is gone and the stored text stands in for it, a step that
+// reads the media would run on text: the object is skipped instead.
+func keepOriginal(draft *storage.KnowledgeObject, pipe *pipeline.Pipeline, src reanalyzeSource, id string) error {
+	if !src.hasOrig {
+		return nil
+	}
+	if src.haveOriginal {
+		draft.RawContent = src.content
+	}
+	if err := blob.AttachOriginal(draft, src.orig, src.content); err != nil {
+		return fmt.Errorf("reanalyze: %w", err)
+	}
+	if src.haveOriginal {
+		return nil
+	}
+	for _, step := range pipe.Steps {
+		if pipeline.ReadsMediaBytes(step) {
+			return fmt.Errorf("reanalyze: %w: original of %q is lost and step %s reads the media",
+				upgrade.ErrCannotReanalyze, id, step.Name())
+		}
+	}
+	return nil
+}
+
+// runReanalysisSteps runs the steps over draft. Steps swallow a provider
+// outage or an unusable reply and produce nothing; the call recorder tells
+// that apart from content with nothing to enrich, and the run then fails
+// before anything is written. The text then follows the final content.
+func runReanalysisSteps(ctx context.Context, id string, pipe *pipeline.Pipeline, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
+	runCtx, calls := providers.WithCallRecorder(ctx)
+	preContent, preText := pipeline.ContentBytes(draft), draft.TextContent
+	draft, err := pipeline.RunSteps(runCtx, pipe, draft)
+	if err != nil {
+		return nil, fmt.Errorf("reanalyze: %w", err)
+	}
+	if err := calls.Err(); err != nil {
+		return nil, fmt.Errorf("reanalyze: %q: provider call failed, nothing written: %w", id, err)
+	}
+	// Text derived before a step changed the content is not the new
+	// content's. Then the text follows the final content as storage defaults
+	// it at ingest (projection.BodyText): the step's text, else the content.
+	if pipeline.ContentBytes(draft) != preContent && draft.TextContent == preText {
+		draft.TextContent = ""
+	}
+	if !blobref.NeedsBlob(pipeline.ContentBytes(draft)) {
+		draft.TextContent = projection.BodyText(draft)
+	}
+	return draft, nil
 }
