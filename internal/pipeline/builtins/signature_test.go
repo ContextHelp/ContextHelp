@@ -1,7 +1,9 @@
 package builtins
 
 import (
+	"maps"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/ideacrafterslabs/ctxt/internal/config"
@@ -38,16 +40,112 @@ func TestSignature_UnchangedByCapabilityPruning(t *testing.T) {
 	}
 }
 
-// Every step starts at version 1, so no object is stale until a step is bumped.
-func TestSignature_BuiltinStepsAtVersionOne(t *testing.T) {
-	reg := Registry()
-	for _, name := range reg.List() {
-		p, err := reg.Get(name)
-		if err != nil {
+// bumpedSteps pins the step versions above 1. Raising a version changes the
+// signature of every pipeline that runs the step, so the stored objects of
+// those pipelines are re-derived: it needs a row in the release notes
+// (docs/release-notes/template.md, bucket reingest_selective) and a change of
+// this table in the same commit. A step whose output did not change must not
+// be bumped.
+var bumpedSteps = map[string]int{
+	"github_repo_mapper": 2,
+	"html_cleaner":       2,
+}
+
+func TestSignature_StepVersionsArePinned(t *testing.T) {
+	names := slices.Sorted(maps.Keys(builtinStepNames()))
+	for _, name := range names {
+		step, ok := zeroStep(name)
+		if !ok {
+			t.Errorf("step %q has a constructor but zeroStep cannot build it", name)
 			continue
 		}
-		if p.Signature != p.BaselineSignature {
-			t.Errorf("pipeline %q: signature %q differs from baseline %q with every step at version 1", name, p.Signature, p.BaselineSignature)
+		want := 1
+		if v, ok := bumpedSteps[name]; ok {
+			want = v
+		}
+		if got := pipeline.StepVersion(step); got != want {
+			t.Errorf("step %q is at version %d, pinned at %d: a version change needs a release-notes row (Operator-Impact: reingest_selective) and an update of bumpedSteps", name, got, want)
+		}
+	}
+	for name := range bumpedSteps {
+		if _, ok := zeroStep(name); !ok {
+			t.Errorf("bumpedSteps names %q, which is not a built-in step", name)
+		}
+	}
+}
+
+// A pipeline that runs a bumped step is signed differently from its
+// baseline; every other pipeline carries its baseline. A pipeline left out
+// for a missing provider has no signature of its own: it is checked through
+// its baseline and the versions of the steps its definition lists.
+func TestSignature_BumpedStepsMoveOnlyTheirPipelines(t *testing.T) {
+	reg := Registry()
+	baselines := pipeline.Baselines(reg)
+	moved := map[string]bool{}
+	var unbuilt []string
+	for name, d := range Defs() {
+		want := false
+		for _, s := range d.Steps {
+			if _, ok := bumpedSteps[s]; ok {
+				want = true
+			}
+		}
+		p, err := reg.Get(name)
+		if err != nil {
+			reason, ok := pipeline.UnavailableReason(reg, name)
+			if !ok {
+				t.Errorf("pipeline %q: not registered and not marked unavailable: %v", name, err)
+				continue
+			}
+			if !strings.HasPrefix(reason, "needs ") {
+				t.Errorf("pipeline %q: unavailable for %q, want a missing provider", name, reason)
+			}
+			unbuilt = append(unbuilt, name)
+			if baselines[name] == "" {
+				t.Errorf("pipeline %q: no baseline recorded", name)
+			}
+			// The definition's steps, at their shipped versions, against
+			// the version-1 baseline.
+			refs := make([]pipeline.StepRef, 0, len(d.Steps))
+			for _, sn := range d.Steps {
+				step, ok := zeroStep(sn)
+				if !ok {
+					t.Errorf("pipeline %q: step %q is not built in", name, sn)
+					continue
+				}
+				refs = append(refs, pipeline.StepRef{Name: sn, Version: pipeline.StepVersion(step)})
+			}
+			differs := false
+			for _, r := range refs {
+				if r.Version != 1 {
+					differs = true
+				}
+			}
+			if differs != want {
+				t.Errorf("pipeline %q (unbuilt): shipped step versions differ from the baseline = %v, want %v", name, differs, want)
+			}
+			if differs {
+				moved[name] = true
+			}
+			continue
+		}
+		differs := p.Signature != p.BaselineSignature
+		if differs != want {
+			t.Errorf("pipeline %q: signature differs from baseline = %v, want %v", name, differs, want)
+		}
+		if differs {
+			moved[name] = true
+		}
+	}
+	slices.Sort(unbuilt)
+	// Pipelines that need a provider the bare registry has none of.
+	wantUnbuilt := []string{"audio.transcribe", "image.analysis", "image.ocr", "url.authenticated", "url.interactive", "video.audio_only", "video.full"}
+	if !slices.Equal(unbuilt, wantUnbuilt) {
+		t.Errorf("pipelines left out for a missing provider: %v, want %v", unbuilt, wantUnbuilt)
+	}
+	for _, name := range []string{"url.github.repo", "url.generic", "url.authenticated", "url.interactive"} {
+		if !moved[name] {
+			t.Errorf("pipeline %q is expected to be re-derived", name)
 		}
 	}
 }
