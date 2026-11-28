@@ -505,8 +505,9 @@ func zeroStep(name string) (pipeline.PipelineStep, bool) {
 // unavailableBaseline is the baseline signature of a pipeline whose
 // providers are missing: over the same steps and models a built pipeline
 // signs, which it cannot build.
-func unavailableBaseline(name string, specs []stepSpec, cfg config.ProvidersConfig) string {
-	return pipeline.BaselineSignatureOf(name, signedNames(specs), modelEntries(specs, cfg)...)
+func unavailableBaseline(name string, specs []stepSpec, cfg config.ProvidersConfig) (string, []string) {
+	entries := pipeline.BaselineEntriesOf(signedNames(specs), modelEntries(specs, cfg)...)
+	return pipeline.BaselineSignatureOf(name, signedNames(specs), modelEntries(specs, cfg)...), entries
 }
 
 // buildPipeline constructs a Pipeline from a Def, optionally injecting providers.
@@ -521,6 +522,7 @@ func buildPipeline(name string, d Def, opts BuildOpts, strict bool) (*pipeline.P
 func buildPipelineSpecs(name string, d Def, specs []stepSpec, opts BuildOpts, caps pipeline.CapabilitySet, strict bool) (*pipeline.Pipeline, error) {
 	pipelineSteps := make([]pipeline.PipelineStep, 0, len(specs))
 	var signed []pipeline.StepRef // the pipeline's own steps, as the definition names them, without policy injections
+	aliases := map[string]string{}
 	for _, spec := range specs {
 		var s pipeline.PipelineStep
 		var err error
@@ -539,6 +541,9 @@ func buildPipelineSpecs(name string, d Def, specs []stepSpec, opts BuildOpts, ca
 		pipelineSteps = append(pipelineSteps, s)
 		if !spec.injected {
 			signed = append(signed, pipeline.StepRef{Name: spec.name, Version: pipeline.StepVersion(s)})
+			if s.Name() != spec.name {
+				aliases[spec.name] = s.Name()
+			}
 		}
 	}
 
@@ -598,6 +603,9 @@ func buildPipelineSpecs(name string, d Def, specs []stepSpec, opts BuildOpts, ca
 		Steps:             pipelineSteps,
 		Signature:         signature,
 		BaselineSignature: baseline,
+		Entries:           pipeline.EntriesOf(signed, models...),
+		BaselineEntries:   pipeline.BaselineEntriesOf(signedNames(specs), models...),
+		StepAliases:       aliases,
 		Pruned:            prunedSteps,
 	}, nil
 }
@@ -801,7 +809,8 @@ func ConfiguredRegistryWithPipelineOverrides(
 			if err != nil {
 				return nil, err
 			}
-			pipeline.MarkBaseline(r, name, unavailableBaseline(name, specs, opts.Factory.Config()))
+			sig, entries := unavailableBaseline(name, specs, opts.Factory.Config())
+			pipeline.MarkBaseline(r, name, sig, entries)
 			continue
 		}
 
@@ -1087,7 +1096,8 @@ func buildRegistry(opts BuildOpts, strict bool) (pipeline.Registry, error) {
 			if err != nil {
 				return nil, err
 			}
-			pipeline.MarkBaseline(r, name, unavailableBaseline(name, specs, opts.Factory.Config()))
+			sig, entries := unavailableBaseline(name, specs, opts.Factory.Config())
+			pipeline.MarkBaseline(r, name, sig, entries)
 			continue
 		}
 		specs, err := definitionSpecs(name, d, opts.Duplicates, opts.Access, config.PipelineOverride{}, false)

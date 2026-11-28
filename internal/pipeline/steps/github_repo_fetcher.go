@@ -2,11 +2,13 @@ package steps
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
 	"github.com/ideacrafterslabs/ctxt/internal/github"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
+	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
 
@@ -76,7 +78,10 @@ func (s *GitHubRepoFetcher) Run(ctx context.Context, draft *storage.KnowledgeObj
 	snap, err := s.client.FetchRepo(ctx, owner, name, opts...)
 	if err != nil {
 		slog.Debug("github_repo_fetcher: fetch failed", "repo", owner+"/"+name, "err", err)
-		wrapped := fmt.Errorf("github_repo_fetcher: %s/%s: %w", owner, name, err)
+		wrapped := error(&pipeline.FetchError{
+			Host: s.client.Host(), Status: githubStatus(err), RateLimited: errors.Is(err, github.ErrRateLimited),
+			Err: fmt.Errorf("github_repo_fetcher: %s/%s: %w", owner, name, err),
+		})
 		if github.IsPermanent(err) {
 			return nil, pipeline.Permanent(wrapped)
 		}
@@ -87,5 +92,20 @@ func (s *GitHubRepoFetcher) Run(ctx context.Context, draft *storage.KnowledgeObj
 		draft.Metadata = make(map[string]any)
 	}
 	draft.Metadata[MetaGitHubSnapshot] = snap
+	providers.ReportFetched(ctx, s.client.Host())
 	return draft, nil
+}
+
+// githubStatus is the HTTP status of a failed API call, 0 when the API did
+// not answer.
+func githubStatus(err error) int {
+	var api *github.APIError
+	if errors.As(err, &api) {
+		return api.Status
+	}
+	var limited *github.RateLimitError
+	if errors.As(err, &limited) {
+		return limited.Status
+	}
+	return 0
 }

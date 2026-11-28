@@ -2,6 +2,7 @@ package steps
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -227,5 +228,72 @@ func TestURLFetcher_DomainCredential(t *testing.T) {
 	}
 	if gotAuth != "Bearer secret-tok" {
 		t.Errorf("Authorization: got %q, want %q", gotAuth, "Bearer secret-tok")
+	}
+}
+
+// A connection that breaks mid-answer is no answer: a FetchError with the
+// host and no status, so it is judged like any other failure to connect. A
+// rate limit says so.
+func TestURLFetcher_FailuresCarryTheHostAndWhatTheyAre(t *testing.T) {
+	broken := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Length", "100")
+		_, _ = w.Write([]byte("partial"))
+		if h, ok := w.(http.Hijacker); ok {
+			conn, _, _ := h.Hijack()
+			_ = conn.Close()
+		}
+	}))
+	defer broken.Close()
+	_, err := NewURLFetcher(WithURLHTTPClient(broken.Client())).Run(context.Background(), &storage.KnowledgeObject{Source: broken.URL})
+	var fe *pipeline.FetchError
+	if !errors.As(err, &fe) || fe.Host != pipeline.FetchHost(broken.URL) || fe.Status != 0 {
+		t.Fatalf("read error = %v, FetchError %+v", err, fe)
+	}
+
+	limited := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", "30")
+		http.Error(w, "slow down", http.StatusServiceUnavailable)
+	}))
+	defer limited.Close()
+	_, err = NewURLFetcher(WithURLHTTPClient(limited.Client())).Run(context.Background(), &storage.KnowledgeObject{Source: limited.URL})
+	if !errors.As(err, &fe) || fe.Status != 503 || !fe.RateLimited {
+		t.Fatalf("a Retry-After answer must be rate limited: %v, %+v", err, fe)
+	}
+	plain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "boom", 500) }))
+	defer plain.Close()
+	_, err = NewURLFetcher(WithURLHTTPClient(plain.Client())).Run(context.Background(), &storage.KnowledgeObject{Source: plain.URL})
+	if !errors.As(err, &fe) || fe.RateLimited {
+		t.Fatalf("a plain 500 is not a rate limit: %+v", fe)
+	}
+}
+
+// A status is a rate limit when the host says so: a 429, or any status with
+// a Retry-After header. A 503 without the header is only a server error.
+func TestURLFetcher_RateLimitIsWhatTheHostSays(t *testing.T) {
+	cases := []struct {
+		name       string
+		status     int
+		retryAfter string
+		limited    bool
+	}{
+		{"503 with Retry-After", http.StatusServiceUnavailable, "30", true},
+		{"503 without it", http.StatusServiceUnavailable, "", false},
+		{"429 without it", http.StatusTooManyRequests, "", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				if tc.retryAfter != "" {
+					w.Header().Set("Retry-After", tc.retryAfter)
+				}
+				http.Error(w, "no", tc.status)
+			}))
+			defer srv.Close()
+			_, err := NewURLFetcher(WithURLHTTPClient(srv.Client())).Run(context.Background(), &storage.KnowledgeObject{Source: srv.URL})
+			var fe *pipeline.FetchError
+			if !errors.As(err, &fe) || fe.Status != tc.status || fe.RateLimited != tc.limited {
+				t.Fatalf("err = %v, FetchError %+v, want rate limited %v", err, fe, tc.limited)
+			}
+		})
 	}
 }

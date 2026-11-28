@@ -113,3 +113,39 @@ evaluators:
               type: string
             last_error:
               type: string
+            deferred:
+              type: array
+              items:
+                type: object
+                required: [pipeline, objects, reason]
+                properties:
+                  pipeline:
+                    type: string
+                  objects:
+                    type: integer
+                    minimum: 0
+                  reason:
+                    type: string
+            skipped:
+              # objects the latest automatic re-derive left as stored, by reason
+              type: object
+              additionalProperties:
+                type: integer
+                minimum: 0
+            stopped:
+              # groups the latest automatic re-derive stopped on the way (five tries in a row)
+              type: array
+              items:
+                type: object
+                required: [pipeline, kind, cause]
+                properties:
+                  pipeline:
+                    type: string
+                  kind:
+                    type: string
+                  cause:
+                    type: string
+                  groups:
+                    # how many groups of the pipeline stopped, when more than one
+                    type: integer
+                    minimum: 1

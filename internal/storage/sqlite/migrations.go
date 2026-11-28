@@ -373,6 +373,9 @@ var migrations = []migration{
 	{Version: 68, fn: migrate068CaptureEncryption},
 	// Migration 069: objects.derivation_sig (derivation signature).
 	{Version: 69, fn: migrate069DerivationSig},
+	// Migration 070: derivation_signatures (entries behind each
+	// signature) and rederive_skips (objects the re-derive job skipped).
+	{Version: 70, fn: migrate070Rederive},
 }
 
 // migrate013EntityThinSync adds content_status, version_hash, registry_url to entities,

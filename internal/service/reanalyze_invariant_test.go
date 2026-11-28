@@ -45,6 +45,9 @@ var invTable = map[string]invOutcome{
 	"url.github.profile": {invUnchanged, ""},
 	"url.github.release": {invUnchanged, ""},
 	"url.repo":           {invUnchanged, ""},
+	// dependency_enricher no longer makes it a container: without the
+	// fetch it runs on the stored text like url.generic.
+	"url.github.starred": {invUnchanged, ""},
 
 	"batch.csv":                {invRefused, "stages items"},
 	"batch.jsonl":              {invRefused, "stages items"},
@@ -59,13 +62,14 @@ var invTable = map[string]invOutcome{
 	"import.linkedin.posts":    {invRefused, "stages items"},
 	"import.slack":             {invRefused, "stages items"},
 	"import.twitter":           {invRefused, "stages items"},
-	"url.github.starred":       {invRefused, "stages items"},
-	"url.github.repo":          {invRefused, "needs the fetched repository snapshot"},
-	"doc.pdf":                  {invRefused, "extractor reads the source file"},
-	"doc.office":               {invRefused, "extractor reads the source file"},
-	"audio.transcribe":         {invRefused, "transcriber reads the source file"},
-	"video.audio_only":         {invRefused, "audio extractor reads the source file"},
-	"video.full":               {invRefused, "audio extractor and frame sampler read the source file"},
+	// Refused on stored content only: github_repo_mapper needs the fetch.
+	// It runs with AllowNetwork (see TestReanalyzeRepo_*).
+	"url.github.repo":  {invRefused, "needs the fetched repository snapshot"},
+	"doc.pdf":          {invRefused, "extractor reads the source file"},
+	"doc.office":       {invRefused, "extractor reads the source file"},
+	"audio.transcribe": {invRefused, "transcriber reads the source file"},
+	"video.audio_only": {invRefused, "audio extractor reads the source file"},
+	"video.full":       {invRefused, "audio extractor and frame sampler read the source file"},
 
 	"image.analysis":    {invUncovered, "needs a vision provider with a model; its steps read the stored original like image.ocr (probed there)"},
 	"url.authenticated": {invUncovered, "needs a browser client; after the skipped ibr_fetcher it runs the url.* chain"},
@@ -124,12 +128,24 @@ func TestReanalyzeInvariant_Unchanged(t *testing.T) {
 			id := invIngest(t, e, name, fx(t, e))
 			before := e.get(t, id)
 			hits, llmCalls := e.hits.Load(), e.llm.calls
+			_, jobsBefore, err := e.driver.Jobs().List(ownerCtx(), storage.JobFilter{Limit: 1})
+			require.NoError(t, err)
+			if name == "url.github.starred" {
+				// The enricher has something to record, so the comparison
+				// below is not vacuous.
+				require.EqualValues(t, 3, before.Metadata["deps_enqueued"], "%v", before.Metadata)
+			}
 
-			_, _, err := e.svc.ReanalyzeObject(ownerCtx(), id)
+			_, _, err = e.svc.ReanalyzeObject(ownerCtx(), id)
 			require.NoError(t, err, "a pipeline classified unchanged must re-derive")
 			invAssertUnchanged(t, before, e.get(t, id))
+			_, jobsAfter, err := e.driver.Jobs().List(ownerCtx(), storage.JobFilter{Limit: 1})
+			require.NoError(t, err)
+			assert.Equal(t, jobsBefore, jobsAfter, "a reanalysis enqueued a job")
 			assert.Equal(t, hits, e.hits.Load(), "a reanalysis made a network request")
-			if invHasLLMStep(name) {
+			// The starred fixture is a bare manifest (what the enricher acts
+			// on): it has no prose for the language model to be asked about.
+			if invHasLLMStep(name) && name != "url.github.starred" {
 				assert.Greater(t, e.llm.calls, llmCalls, "the LLM was never called: the comparison is vacuous")
 			}
 		})

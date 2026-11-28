@@ -101,13 +101,24 @@ type UpgradeSnapshot struct {
 	EtaSeconds int     `json:"eta_seconds,omitempty"`
 	StartedAt  string  `json:"started_at,omitempty"` // RFC3339; empty when zero.
 	LastError  string  `json:"last_error,omitempty"`
+	// Deferred lists the pipelines an automatic re-derive left alone.
+	Deferred []upgrade.Deferred `json:"deferred,omitempty"`
+	// Skipped counts, by reason, what the latest re-derive left as stored.
+	Skipped map[string]int `json:"skipped,omitempty"`
+	// Stopped lists the groups the latest re-derive stopped on the way.
+	Stopped []upgrade.Stopped `json:"stopped,omitempty"`
 }
 
 // NewUpgradeSnapshot maps an upgrade.Manager status to the /healthz
 // envelope; nil when idle (the envelope then omits the field).
 func NewUpgradeSnapshot(st upgrade.Status) *UpgradeSnapshot {
 	if st.State == upgrade.StateIdle || st.State == "" {
-		return nil
+		// Idle is not reported, unless a re-derive left something to
+		// show: the health stays what it is, only the envelope appears.
+		if len(st.Deferred) == 0 && len(st.Skipped) == 0 && len(st.Stopped) == 0 {
+			return nil
+		}
+		return &UpgradeSnapshot{State: string(upgrade.StateIdle), Deferred: st.Deferred, Skipped: st.Skipped, Stopped: st.Stopped}
 	}
 	out := &UpgradeSnapshot{
 		State:      string(st.State),
@@ -119,6 +130,9 @@ func NewUpgradeSnapshot(st upgrade.Status) *UpgradeSnapshot {
 		Failed:     st.Failed,
 		EtaSeconds: st.EtaSeconds,
 		LastError:  st.LastError,
+		Deferred:   st.Deferred,
+		Skipped:    st.Skipped,
+		Stopped:    st.Stopped,
 	}
 	if !st.StartedAt.IsZero() {
 		out.StartedAt = st.StartedAt.UTC().Format(time.RFC3339)

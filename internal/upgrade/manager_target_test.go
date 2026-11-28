@@ -3,6 +3,7 @@ package upgrade
 import (
 	"errors"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -20,7 +21,7 @@ func TestManager_TargetAndFailedCount(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := Status{State: StateInProgress, Bucket: BucketEmbeddingsMigrate, Target: "nomic@1", Done: 3, Total: 4, Failed: 1, Progress: 0.75}
-	if got := counts(m.Snapshot()); got != want {
+	if got := counts(m.Snapshot()); !reflect.DeepEqual(got, want) {
 		t.Fatalf("snapshot = %+v, want %+v", got, want)
 	}
 	if disk := readShadowFile(t, shadow); disk.Target != "nomic@1" || disk.Failed != 1 {
@@ -32,7 +33,7 @@ func TestManager_TargetAndFailedCount(t *testing.T) {
 		t.Fatal(err)
 	}
 	want.State, want.LastError = StateFailed, "1 object not embedded"
-	if got := counts(m.Snapshot()); got != want {
+	if got := counts(m.Snapshot()); !reflect.DeepEqual(got, want) {
 		t.Errorf("after Fail = %+v, want %+v", got, want)
 	}
 

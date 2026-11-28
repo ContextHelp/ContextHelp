@@ -69,3 +69,10 @@ func TestConformance_DerivationStore(t *testing.T) {
 	drv, _ := freshIntegrationDriver(t)
 	storagetest.DerivationStoreConformance(t, drv, storagetest.ProjectionDB{DB: drv.DB(), Dialect: indexsig.DialectPostgres})
 }
+
+// TestConformance_RederiveStore runs the cross-driver re-derive store
+// contract against a fresh Postgres database.
+func TestConformance_RederiveStore(t *testing.T) {
+	drv, _ := freshIntegrationDriver(t)
+	storagetest.RederiveStoreConformance(t, drv, storagetest.ProjectionDB{DB: drv.DB(), Dialect: indexsig.DialectPostgres})
+}

@@ -2,8 +2,11 @@ package steps
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings/embeddingtest"
@@ -103,5 +106,83 @@ func TestEmbeddingGenerator_MaskedVariantOff(t *testing.T) {
 	}
 	if n := len(got.Vectors); n != 1 || got.Vectors[0].Variant != "" {
 		t.Fatalf("vectors = %q", variants(got.Vectors))
+	}
+}
+
+// failResolver cannot build any model's provider.
+type failResolver struct{ embeddings.ProviderResolver }
+
+func (failResolver) ForModel(context.Context, registry.Model) (providers.EmbeddingProvider, error) {
+	return nil, fmt.Errorf("no such backend")
+}
+
+// secondCallFails embeds the first text and fails the next ones: the raw
+// vector works, the masked one does not.
+type secondCallFails struct{ n int }
+
+func (p *secondCallFails) Embed(_ context.Context, text string) ([]float32, error) {
+	p.n++
+	if p.n > 1 {
+		return nil, fmt.Errorf("model gone away")
+	}
+	return []float32{float32(len(text)), 1}, nil
+}
+func (p *secondCallFails) Dimensions() int { return 2 }
+func (p *secondCallFails) Name() string    { return "flaky" }
+
+// A model whose provider cannot be built is unusable, not a failed call:
+// it is skipped at reanalysis as at ingest, and reports nothing. A failed
+// masked vector falls back to the raw one, as at ingest.
+func TestEmbeddingGenerator_OnlyAFailedCallOfABuiltProviderIsReported(t *testing.T) {
+	ctx, calls := providers.WithCallRecorder(context.Background())
+	step := NewEmbeddingGenerator(maskedModels(), failResolver{}, WithMaskedVariant(true))
+	got, err := step.Run(ctx, classedDraft())
+	if err != nil || len(got.Vectors) != 0 || calls.Err() != nil {
+		t.Fatalf("unbuildable model: vectors %d, err %v, recorder %v", len(got.Vectors), err, calls.Err())
+	}
+
+	ctx, calls = providers.WithCallRecorder(context.Background())
+	step = NewEmbeddingGenerator(maskedModels(), fixedResolver{p: &secondCallFails{}}, WithMaskedVariant(true))
+	got, err = step.Run(ctx, classedDraft())
+	if err != nil || len(got.Vectors) != 1 || got.Vectors[0].EffectiveVariant() == storage.EmbeddingVariantMasked || calls.Err() != nil {
+		t.Fatalf("failed masked vector: vectors %s, err %v, recorder %v", variants(got.Vectors), err, calls.Err())
+	}
+}
+
+// brokenModels cannot say which models to populate.
+type brokenModels struct{ embeddingtest.Models }
+
+func (brokenModels) Populating(context.Context, time.Time) ([]registry.Model, error) {
+	return nil, fmt.Errorf("registry unreadable")
+}
+
+// A registry that cannot be read is a failed embedding at reanalysis (the
+// object fails, nothing is written); at ingest, with no recorder, the step
+// still returns no vectors and no error.
+func TestEmbeddingGenerator_UnreadableRegistryIsReportedAtReanalysisOnly(t *testing.T) {
+	step := NewEmbeddingGenerator(brokenModels{}, fixedResolver{p: &textProvider{}})
+	ctx, calls := providers.WithCallRecorder(context.Background())
+	got, err := step.Run(ctx, classedDraft())
+	var ce *providers.CallError
+	if err != nil || len(got.Vectors) != 0 || !errors.As(calls.Err(), &ce) || !strings.HasPrefix(ce.Provider, "embedding") {
+		t.Fatalf("with a recorder: vectors %d, err %v, recorder %v", len(got.Vectors), err, calls.Err())
+	}
+	got, err = step.Run(context.Background(), classedDraft())
+	if err != nil || len(got.Vectors) != 0 {
+		t.Fatalf("without a recorder: vectors %d, err %v", len(got.Vectors), err)
+	}
+}
+
+// A completed embed call is noted on the recorder; an object with nothing to
+// embed makes no call, so it notes none.
+func TestEmbeddingGenerator_NotesCompletedCalls(t *testing.T) {
+	step := NewEmbeddingGenerator(maskedModels(), fixedResolver{p: &textProvider{}})
+	ctx, calls := providers.WithCallRecorder(context.Background())
+	if _, err := step.Run(ctx, classedDraft()); err != nil || calls.Calls()["embedding"] != 1 {
+		t.Fatalf("with text: calls %v, err %v", calls.Calls(), err)
+	}
+	ctx, calls = providers.WithCallRecorder(context.Background())
+	if _, err := step.Run(ctx, &storage.KnowledgeObject{ID: "e", Type: "note"}); err != nil || calls.Calls()["embedding"] != 0 {
+		t.Fatalf("empty text: calls %v, err %v", calls.Calls(), err)
 	}
 }

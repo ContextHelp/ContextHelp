@@ -1,6 +1,7 @@
 package upgrade
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -85,7 +86,7 @@ func TestDecodeHeaderRoundTrip(t *testing.T) {
 		if want.Total > 0 {
 			want.Progress = float64(want.Done) / float64(want.Total)
 		}
-		if got != want {
+		if !reflect.DeepEqual(got, want) {
 			t.Errorf("round trip:\n got %+v\nwant %+v", got, want)
 		}
 	}

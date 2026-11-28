@@ -62,3 +62,10 @@ func TestConformance_DerivationStore(t *testing.T) {
 	d := newTestDriver(t)
 	storagetest.DerivationStoreConformance(t, d, storagetest.ProjectionDB{DB: d.db, Dialect: indexsig.DialectSQLite})
 }
+
+// TestConformance_RederiveStore runs the cross-driver re-derive store
+// contract against a fresh SQLite database.
+func TestConformance_RederiveStore(t *testing.T) {
+	d := newTestDriver(t)
+	storagetest.RederiveStoreConformance(t, d, storagetest.ProjectionDB{DB: d.db, Dialect: indexsig.DialectSQLite})
+}

@@ -135,6 +135,22 @@ Optional but useful for:
 - step debug output
 - feed parsing diagnostics
 
+### Derivation Signatures, Attempts and Re-derive Skips
+
+`objects.derivation_sig` holds the signature of the pipeline and step versions
+that derived an object. Three tables support the automatic re-derive
+(see [jobs and ingestion](jobs-and-ingestion.md#automatic-re-derive)):
+
+| Table | Holds |
+|---|---|
+| `derivation_signatures` | `sig` (key), `pipeline`, `entries` (the ordered step and model entries the signature hashes), `recorded_at`. Written at start. |
+| `rederive_attempts` | `object_id`, `target_sig` (key together), `tries` (order the rows: fewest first), `strikes` (count towards a skip), `at`. Forgotten when the object succeeds or is skipped; deleted with the object. |
+| `rederive_skips` | `object_id`, `target_sig` (key together), `reason`, `detail`, `at`. One row for an object the job left as stored, for that target signature. Deleted with the object. |
+
+Attempt and skip rows of a target that no definition can produce (a current
+or baseline signature of a registered pipeline, or a signature of a pipeline
+that cannot be built at this start) are deleted at start.
+
 ---
 
 ## Entity–Bookmark Backlink Index
@@ -224,8 +240,9 @@ reader paths; those get no original.
   `pipeline`: an adapter import, a raw or inbox capture), and for a pipeline
   that:
   - stages or enqueues items (feed, mailbox, folder and import pipelines,
-    batch files, `url.github.starred`);
-  - needs the output of a fetch step that is not run (`url.github.repo`);
+    batch files);
+  - needs the output of a fetch step that is not run (`url.github.repo`:
+    it re-derives only when the fetch is allowed);
   - reads its source file by path instead of the stored bytes: the PDF and
     office extractors, and the audio and video steps;
   - has an LLM or vision step that cannot run: left out when the pipeline

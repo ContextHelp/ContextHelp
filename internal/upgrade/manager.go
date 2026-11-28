@@ -27,6 +27,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"sync"
@@ -87,6 +88,36 @@ type Status struct {
 	EtaSeconds int       `json:"eta_seconds,omitempty"`
 	StartedAt  time.Time `json:"started_at,omitempty"`
 	LastError  string    `json:"last_error,omitempty"`
+	// Deferred lists the pipelines whose objects an automatic run left
+	// alone because their work would not stay on this machine. Skipped
+	// counts, by reason, the objects the latest automatic run left as
+	// stored. Both outlive the run, so an idle daemon still shows them.
+	Deferred []Deferred     `json:"deferred,omitempty"`
+	Skipped  map[string]int `json:"skipped,omitempty"`
+	// Stopped lists the groups the latest automatic run stopped on the way
+	// (five tries in a row): the rest of the run went on, their remaining
+	// objects wait for a later start.
+	Stopped []Stopped `json:"stopped,omitempty"`
+}
+
+// Stopped is one pipeline group an automatic re-derive stopped: what kept
+// failing (llm, vision, embedding, fetch, refresh rejected, unknown) and the
+// last cause, with no content or credentials.
+type Stopped struct {
+	Pipeline string `json:"pipeline"`
+	Kind     string `json:"kind"`
+	Cause    string `json:"cause"`
+	// Groups is how many groups of the pipeline stopped, when more than one;
+	// Kind and Cause are the first's.
+	Groups int `json:"groups,omitempty"`
+}
+
+// Deferred is one pipeline an automatic re-derive did not process: its
+// Objects stay as stored, for Reason.
+type Deferred struct {
+	Pipeline string `json:"pipeline"`
+	Objects  int    `json:"objects"`
+	Reason   string `json:"reason"`
 }
 
 // Manager owns the upgrade-state machine for a single dpkms process.
@@ -102,6 +133,12 @@ type Manager struct {
 	last       RunSummary
 	shadowPath string
 	now        func() time.Time // injectable for tests
+	// deferred and skipped are what the latest automatic re-derive left
+	// alone: they outlive its run and are shown in the snapshot (and the
+	// shadow file) of an idle daemon or of a re-derive, never of another run.
+	deferred []Deferred
+	skipped  map[string]int
+	stopped  []Stopped
 }
 
 // ErrNotRunning is returned by Tick / Complete / Fail when the manager is
@@ -203,6 +240,47 @@ func (m *Manager) tickLocked(done int) error {
 	return m.persistLocked()
 }
 
+// SetDeferred records the pipelines an automatic run leaves alone, for the
+// status to show: while it runs, and after it, idle or not. A run that
+// defers everything starts nothing, so the list must not need a run. An
+// empty list clears it.
+func (m *Manager) SetDeferred(d []Deferred) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.deferred = append([]Deferred(nil), d...)
+	return m.persistIfRunningLocked()
+}
+
+// SetStopped records the groups the latest automatic run stopped, like
+// SetDeferred: in any state, an empty list clears it.
+func (m *Manager) SetStopped(st []Stopped) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.stopped = append([]Stopped(nil), st...)
+	return m.persistIfRunningLocked()
+}
+
+// SetSkipped records, by reason, the objects the latest automatic run left
+// as stored. Like SetDeferred it holds in any state; an empty map clears it.
+func (m *Manager) SetSkipped(c map[string]int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.skipped = nil
+	if len(c) > 0 {
+		m.skipped = maps.Clone(c)
+	}
+	return m.persistIfRunningLocked()
+}
+
+// persistIfRunningLocked writes the shadow file only while a run is in
+// progress or failed: idle has no shadow.
+func (m *Manager) persistIfRunningLocked() error {
+	if m.status.State == StateIdle || m.status.State == "" {
+		return nil
+	}
+	return m.persistLocked()
+}
+
 // Complete moves the state machine to idle and removes the shadow file
 // (idle implies "nothing to display"). Returns ErrNotRunning if no run is
 // in progress.
@@ -214,8 +292,23 @@ func (m *Manager) Complete() error {
 		return ErrNotRunning
 	}
 
-	m.status = Status{State: StateIdle}
+	m.status = m.idleLocked()
 	return m.removeShadowLocked()
+}
+
+// idleLocked is the idle status.
+func (m *Manager) idleLocked() Status { return Status{State: StateIdle} }
+
+// withRederiveLocked adds what the automatic re-derive left to a status:
+// when idle, or while a re-derive (bucket reingest_selective) runs. Another
+// run's status, a re-projection's say, never carries it.
+func (m *Manager) withRederiveLocked(st Status) Status {
+	if st.State == StateIdle || st.State == "" || st.Bucket == BucketReingestSelective {
+		st.Deferred = append([]Deferred(nil), m.deferred...)
+		st.Skipped = maps.Clone(m.skipped)
+		st.Stopped = append([]Stopped(nil), m.stopped...)
+	}
+	return st
 }
 
 // CompleteRun is Complete that also keeps the run's summary, readable by
@@ -227,7 +320,7 @@ func (m *Manager) CompleteRun(sum RunSummary) error {
 	if m.status.State != StateInProgress {
 		return ErrNotRunning
 	}
-	m.status = Status{State: StateIdle}
+	m.status = m.idleLocked()
 	m.last = sum
 	return m.removeShadowLocked()
 }
@@ -264,7 +357,7 @@ func (m *Manager) Fail(err error) error {
 func (m *Manager) Snapshot() Status {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.status
+	return m.withRederiveLocked(m.status)
 }
 
 // computeETA estimates remaining seconds via linear extrapolation. Returns
@@ -293,7 +386,7 @@ func (m *Manager) persistLocked() error {
 	if m.shadowPath == "" {
 		return nil
 	}
-	data, err := json.MarshalIndent(m.status, "", "  ")
+	data, err := json.MarshalIndent(m.withRederiveLocked(m.status), "", "  ")
 	if err != nil {
 		return fmt.Errorf("upgrade: marshal shadow: %w", err)
 	}

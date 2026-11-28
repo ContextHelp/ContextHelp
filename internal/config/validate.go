@@ -78,6 +78,9 @@ func Validate(c *Config) []ValidationError {
 		errs = append(errs, ValidationError{Field: "jobs.poll_interval", Message: fmt.Sprintf("must be ≥50ms, got %s", c.Jobs.PollInterval)})
 	}
 	errs = append(errs, c.Jobs.ValidateExecutor()...)
+	if c.Upgrade.Rederive.Pause < 0 {
+		errs = append(errs, ValidationError{Field: "upgrade.rederive.pause", Message: fmt.Sprintf("must not be negative, got %s", c.Upgrade.Rederive.Pause)})
+	}
 
 	if c.Profile.Default != "" {
 		if _, ok := c.Profile.Profiles[c.Profile.Default]; !ok {

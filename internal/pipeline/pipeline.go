@@ -28,6 +28,15 @@ type Pipeline struct {
 	// BaselineSignature is BaselineSignature over the same steps: what
 	// objects derived before signatures were recorded are taken to carry.
 	BaselineSignature string
+	// Entries and BaselineEntries are the ordered lists Signature and
+	// BaselineSignature hash, so a later start can tell which step or
+	// model changed.
+	Entries         []string
+	BaselineEntries []string
+	// StepAliases maps a signed entry's step name to the name the built
+	// step reports, for the steps where the two differ (a definition
+	// names "textcleaner", the step is "text_cleaner").
+	StepAliases map[string]string
 	// Pruned lists the steps left out for an unmet capability when the
 	// pipeline was built (see PipelineLocality).
 	Pruned []PrunedStep

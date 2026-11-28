@@ -56,12 +56,9 @@ func (s *Service) ReanalyzeObject(ctx context.Context, id string) (newPipelineVe
 // from its stored content. A pipeline that cannot run without a fetch is
 // refused with upgrade.ErrCannotReanalyze before anything is written.
 func (s *Service) ReanalyzeObjectWith(ctx context.Context, id string, opts ReanalyzeOptions) (newPipelineVersion string, llmCostUSD float64, err error) {
-	obj, err := s.Store(ctx).Objects().Get(ctx, id)
+	obj, err := s.loadForReanalysis(ctx, id)
 	if err != nil {
-		return "", 0, fmt.Errorf("reanalyze: load %q: %w", id, err)
-	}
-	if obj == nil {
-		return "", 0, fmt.Errorf("reanalyze: object %q not found", id)
+		return "", 0, err
 	}
 	if err := s.refuseReanalyze(ctx, obj); err != nil {
 		return "", 0, err
@@ -70,7 +67,6 @@ func (s *Service) ReanalyzeObjectWith(ctx context.Context, id string, opts Reana
 	if err != nil {
 		return "", 0, err
 	}
-
 	pipe, versionedName, err := s.reanalyzePipeline(id, obj, opts.AllowNetwork)
 	if err != nil {
 		return "", 0, err
@@ -91,19 +87,60 @@ func (s *Service) ReanalyzeObjectWith(ctx context.Context, id string, opts Reana
 	if err := keepOriginal(draft, pipe, src, id); err != nil {
 		return "", 0, err
 	}
-	draft, err = runReanalysisSteps(ctx, id, pipe, draft)
+	// Last before the steps, so everything that refuses an object on its own
+	// terms comes first: a refused object is recorded as refused.
+	if opts.Before != nil {
+		if err := opts.Before(obj); err != nil {
+			return "", 0, fmt.Errorf("reanalyze: %q: %w", id, err)
+		}
+	}
+	var done reanalysisDone
+	draft, done, err = runReanalysisSteps(ctx, id, pipe, draft)
 	if err != nil {
 		return "", 0, err
 	}
 	reattachHeldEdges(draft.Graph, held)
+	if opts.Accept != nil {
+		if err := opts.Accept(obj, draft); err != nil {
+			return "", 0, fmt.Errorf("reanalyze: %q: %w: %w", id, upgrade.ErrRefreshRejected, err)
+		}
+	}
+	if err := s.completeReanalysis(ctx, id, obj, draft, versionedName, opts, done); err != nil {
+		return "", 0, err
+	}
 
+	// LLM cost: re-ingests are projection-only so always 0.0. The
+	// non-zero return path is reserved for a follow-up that wires the
+	// per-step cost meter through the pipeline.Run call.
+	return versionedName, 0.0, nil
+}
+
+// loadForReanalysis loads the object to reanalyse. One that does not exist
+// is upgrade.ErrObjectGone: the lookup is the only place that says so.
+func (s *Service) loadForReanalysis(ctx context.Context, id string) (*storage.KnowledgeObject, error) {
+	obj, err := s.Store(ctx).Objects().Get(ctx, id)
+	if errors.Is(err, storage.ErrNotFound) {
+		return nil, fmt.Errorf("reanalyze: load %q: %w: %w", id, upgrade.ErrObjectGone, err)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("reanalyze: load %q: %w", id, err)
+	}
+	if obj == nil {
+		return nil, fmt.Errorf("reanalyze: object %q: %w: %w", id, upgrade.ErrObjectGone, storage.ErrNotFound)
+	}
+	return obj, nil
+}
+
+// completeReanalysis writes what the steps produced: the object, the
+// vectors, and the callbacks that tell the caller what the run made.
+func (s *Service) completeReanalysis(ctx context.Context, id string, obj, draft *storage.KnowledgeObject, versionedName string, opts ReanalyzeOptions, done reanalysisDone) error {
 	if err := s.finishReanalysis(ctx, obj, draft); err != nil {
-		return "", 0, fmt.Errorf("reanalyze: %q: %w", id, err)
+		return fmt.Errorf("reanalyze: %q: %w", id, err)
 	}
 	draft.Pipeline = versionedName
 	draft.UpdatedAt = time.Now().UTC()
 	if err := s.persistReanalysis(ctx, draft); err != nil {
-		return "", 0, fmt.Errorf("reanalyze: persist %q: %w", id, err)
+		return fmt.Errorf("reanalyze: persist %q: %w", id, err)
 	}
 	// Replace the object's vectors for every model the embedding step
 	// produced; other models' rows stay. Vectors are additive: a failed
@@ -113,11 +150,13 @@ func (s *Service) ReanalyzeObjectWith(ctx context.Context, id string, opts Reana
 			slog.Warn("reanalyze: embeddings not stored", "object", id, "err", err)
 		}
 	}
-
-	// LLM cost: re-ingests are projection-only so always 0.0. The
-	// non-zero return path is reserved for a follow-up that wires the
-	// per-step cost meter through the pipeline.Run call.
-	return versionedName, 0.0, nil
+	if opts.Calls != nil {
+		opts.Calls(done.calls)
+	}
+	if opts.Fetched != nil {
+		opts.Fetched(done.fetched)
+	}
+	return nil
 }
 
 // reanalyzeSource is what a re-analysis reads before it runs: the object's
@@ -254,15 +293,15 @@ func keepOriginal(draft *storage.KnowledgeObject, pipe *pipeline.Pipeline, src r
 // outage or an unusable reply and produce nothing; the call recorder tells
 // that apart from content with nothing to enrich, and the run then fails
 // before anything is written. The text then follows the final content.
-func runReanalysisSteps(ctx context.Context, id string, pipe *pipeline.Pipeline, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, error) {
+func runReanalysisSteps(ctx context.Context, id string, pipe *pipeline.Pipeline, draft *storage.KnowledgeObject) (*storage.KnowledgeObject, reanalysisDone, error) {
 	runCtx, calls := providers.WithCallRecorder(ctx)
 	preContent, preText := pipeline.ContentBytes(draft), draft.TextContent
 	draft, err := pipeline.RunSteps(runCtx, pipe, draft)
 	if err != nil {
-		return nil, fmt.Errorf("reanalyze: %w", err)
+		return nil, reanalysisDone{}, fmt.Errorf("reanalyze: %w", err)
 	}
 	if err := calls.Err(); err != nil {
-		return nil, fmt.Errorf("reanalyze: %q: provider call failed, nothing written: %w", id, err)
+		return nil, reanalysisDone{}, fmt.Errorf("reanalyze: %q: %w, nothing written: %w", id, upgrade.ErrProviderFailed, err)
 	}
 	// Text derived before a step changed the content is not the new
 	// content's. Then the text follows the final content as storage defaults
@@ -273,5 +312,12 @@ func runReanalysisSteps(ctx context.Context, id string, pipe *pipeline.Pipeline,
 	if !blobref.NeedsBlob(pipeline.ContentBytes(draft)) {
 		draft.TextContent = projection.BodyText(draft)
 	}
-	return draft, nil
+	return draft, reanalysisDone{calls: calls.Calls(), fetched: calls.Fetched()}, nil
+}
+
+// reanalysisDone is what a successful run of the steps made: the provider
+// calls it completed, by kind, and the hosts it fetched from.
+type reanalysisDone struct {
+	calls   map[string]int
+	fetched []string
 }

@@ -17,6 +17,26 @@ type ReanalyzeOptions struct {
 	// reanalysis must not replace a stored snapshot with whatever the
 	// source serves now.
 	AllowNetwork bool
+	// Accept, when set, is called after the steps ran and before anything
+	// is written, with the stored object and the candidate that would
+	// replace it. An error keeps the stored object: nothing is written and
+	// the reanalysis fails with upgrade.ErrRefreshRejected wrapping it. It
+	// guards a refresh against a source that now serves something else.
+	Accept func(before, after *storage.KnowledgeObject) error
+	// Before, when set, is called with the stored object after it is loaded
+	// and before any step runs, so before any request. An error ends the
+	// reanalysis there, wrapped, and nothing is written.
+	Before func(stored *storage.KnowledgeObject) error
+	// Calls, when set, is called once after a reanalysis that succeeded,
+	// with the number of provider calls of each kind (llm, vision,
+	// embedding) it completed. A caller that must know a provider works
+	// reads it there: only a call that was made proves anything.
+	Calls func(completed map[string]int)
+	// Fetched, when set, is called once after a reanalysis that succeeded,
+	// with the hosts its fetches completed against (and the refresh guard
+	// accepted): a source that answered. A caller that must tell a source
+	// that is gone from a network that reaches nothing reads it there.
+	Fetched func(hosts []string)
 }
 
 // networkSteps are the steps that fetch their content from outside the
@@ -29,6 +49,10 @@ var networkSteps = map[string]bool{
 	"dropbox_fetcher":     true,
 	"github_repo_fetcher": true,
 }
+
+// IsNetworkStep reports whether the named step fetches its content from
+// outside the store.
+func IsNetworkStep(name string) bool { return networkSteps[name] }
 
 // freshSourceSteps only make sense on content just acquired from its
 // source (markup still to be cleaned, a response still to be routed by its
@@ -43,13 +67,18 @@ var freshSourceSteps = map[string]bool{
 // mailbox, an export, a folder). A pipeline holding one produces no
 // content of its own: it cannot be re-derived from stored content, and
 // running it again would enqueue the items again.
+//
+// dependency_enricher is not one: the object it runs on has content of its
+// own (a repository, a page). It only records the dependencies it finds as
+// artifact nodes and in the pending list under metadata items_to_enqueue,
+// which a reanalysis rewrites as ingest wrote it. Nothing is enqueued: the
+// ingest worker alone consumes that list, from a fresh draft.
 var containerSteps = map[string]bool{
-	"item_enqueuer":       true,
-	"batch_enqueuer":      true,
-	"email_enqueuer":      true,
-	"dropbox_enqueuer":    true,
-	"item_deduplicator":   true,
-	"dependency_enricher": true,
+	"item_enqueuer":     true,
+	"batch_enqueuer":    true,
+	"email_enqueuer":    true,
+	"dropbox_enqueuer":  true,
+	"item_deduplicator": true,
 }
 
 // sourceReadingSteps read the file at the object's source path (or the

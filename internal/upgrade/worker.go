@@ -52,6 +52,21 @@ var ErrBudgetExceeded = errors.New("upgrade run: LLM budget exceeded")
 // logs it, skips the object and goes on; it does not end the run.
 var ErrCannotReanalyze = errors.New("object cannot be re-analyzed")
 
+// ErrRefreshRejected marks a re-fetch whose result is not the stored page
+// any more (a login wall, a soft 404, a moved domain, an emptied page):
+// the guard refused it and nothing was written.
+var ErrRefreshRejected = errors.New("refreshed content rejected")
+
+// ErrProviderFailed marks a re-analysis that failed because a provider
+// call failed (an outage, an unusable reply), not because of the object.
+// Nothing was written.
+var ErrProviderFailed = errors.New("provider call failed")
+
+// ErrObjectGone marks a reanalysis of an object that does not exist (it was
+// deleted since it was listed). It is for that lookup only: another
+// not-found inside a reanalysis (a hidden blob, a missing edge) is not it.
+var ErrObjectGone = errors.New("object does not exist")
+
 // ErrAlreadyInProgress signals that another upgrade run is already in
 // flight on this Manager — the worker refuses to start a second one.
 var ErrAlreadyInProgress = errors.New("upgrade run: another upgrade is already in progress")

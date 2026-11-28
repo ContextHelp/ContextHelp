@@ -98,6 +98,10 @@ type Config struct {
 	// Resurfacing controls the background resurfacing queue.
 	Resurfacing ResurfacingConfig `mapstructure:"resurfacing" yaml:"resurfacing"`
 
+	// Upgrade controls the background jobs that bring stored objects up
+	// to date after a pipeline or model change.
+	Upgrade UpgradeConfig `mapstructure:"upgrade" yaml:"upgrade"`
+
 	// Security configures security alerting hooks.
 	Security SecurityConfig `mapstructure:"security" yaml:"security"`
 
@@ -435,6 +439,22 @@ type SecuritySMTPConfig struct {
 	Port int    `mapstructure:"port" yaml:"port"`
 	From string `mapstructure:"from" yaml:"from"`
 	To   string `mapstructure:"to" yaml:"to"`
+}
+
+// UpgradeConfig controls the daemon's automatic upgrade jobs.
+type UpgradeConfig struct {
+	Rederive RederiveConfig `mapstructure:"rederive" yaml:"rederive"`
+}
+
+// RederiveConfig controls the automatic re-derive job: at start it
+// re-runs the pipeline of objects whose derivation signature is no longer
+// current, when the work stays on this machine.
+type RederiveConfig struct {
+	// Enabled turns the job on. Default: true.
+	Enabled bool `mapstructure:"enabled" yaml:"enabled"`
+	// Pause is the wait between two objects, so a run leaves the
+	// machine and the model server to the operator. Default: 2s.
+	Pause time.Duration `mapstructure:"pause" yaml:"pause"`
 }
 
 // ResurfacingConfig controls the background resurfacing queue process.
@@ -1786,6 +1806,10 @@ func setDefaults(v *viper.Viper) {
 
 	// Registries global — require_signatures is off by default (permissive).
 	v.SetDefault("registries_global.require_signatures", false)
+
+	// Upgrade defaults
+	v.SetDefault("upgrade.rederive.enabled", true)
+	v.SetDefault("upgrade.rederive.pause", 2*time.Second)
 
 	// Resurfacing defaults
 	v.SetDefault("resurfacing.enabled", true)

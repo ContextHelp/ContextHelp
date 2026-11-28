@@ -17,6 +17,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/service"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/storageutil"
+	"github.com/ideacrafterslabs/ctxt/internal/upgrade"
 )
 
 // TestHealthzReturns200WhenHealthy verifies the happy path returns 200
@@ -266,4 +267,35 @@ func TestHealthzRedactedForAnonymousOnPublic(t *testing.T) {
 	require.NoError(t, err)
 	lbResp.Body.Close()
 	assert.Equal(t, http.StatusOK, lbResp.StatusCode)
+}
+
+// A re-derive that deferred or skipped something leaves it on the idle
+// envelope, and an idle daemon stays healthy: only in_progress flips health.
+func TestHealthzIdleEnvelopeCarriesDeferredWithoutUpgradingHealth(t *testing.T) {
+	driver := storageutil.NewTestDriver(t)
+	svc := service.New(driver, jobs.NewQueue(driver.Jobs()), builtins.Registry(), search.NewEngine(driver), "", nil)
+	snap := NewUpgradeSnapshot(upgrade.Status{
+		State:    upgrade.StateIdle,
+		Deferred: []upgrade.Deferred{{Pipeline: "url.generic", Objects: 3, Reason: "hosted"}},
+		Skipped:  map[string]int{"refused": 2},
+		Stopped:  []upgrade.Stopped{{Pipeline: "url.generic", Kind: "fetch", Cause: "timeout"}},
+	})
+	require.NotNil(t, snap)
+	require.Len(t, snap.Stopped, 1)
+	require.NotNil(t, NewUpgradeSnapshot(upgrade.Status{State: upgrade.StateIdle, Stopped: snap.Stopped}), "stopped groups alone are shown")
+	probes := HealthzProbes{Started: time.Now(), Upgrade: func(context.Context) *UpgradeSnapshot { return snap }}
+	ts := httptest.NewServer(NewRouterWithProbes(svc, false, nil, probes))
+	defer ts.Close()
+	resp, err := http.Get(ts.URL + "/healthz")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	var env HealthzEnvelope
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&env))
+	assert.NotEqual(t, HealthUpgrading, env.Health)
+	require.NotNil(t, env.Upgrade)
+	assert.Equal(t, "idle", env.Upgrade.State)
+	require.Len(t, env.Upgrade.Deferred, 1)
+	assert.Equal(t, 3, env.Upgrade.Deferred[0].Objects)
+	assert.Equal(t, 2, env.Upgrade.Skipped["refused"])
+	assert.Nil(t, NewUpgradeSnapshot(upgrade.Status{State: upgrade.StateIdle}), "an idle status with nothing to show stays absent")
 }
