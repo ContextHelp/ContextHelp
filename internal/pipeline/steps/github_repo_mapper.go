@@ -47,6 +47,8 @@ func NewGitHubRepoMapper() *GitHubRepoMapper {
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
 			Requires: []string{"Metadata"},
 			Produces: []string{"Type", "Subtype", "RawContent", "ContentType", "Source", "Metadata", "Tags"},
+			// 2: stores a distilled README.
+			Version: 2,
 		}),
 	}
 }

@@ -32,6 +32,11 @@ func NewHTMLCleaner() *HTMLCleaner {
 		BaseContract: pipeline.NewBaseContract(pipeline.StepContract{
 			Requires: []string{"RawContent"},
 			Produces: []string{"RawContent", "Metadata"},
+			// 2: parses the page and keeps its main text; cookie and
+			// navigation text outside the main content is dropped when the
+			// page marks its main content (main, article). The title goes
+			// to metadata.
+			Version: 2,
 		}),
 	}
 }
