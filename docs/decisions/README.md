@@ -475,7 +475,7 @@ Specialized ambient source for video calls (Zoom, Meet, Teams, FaceTime, Discord
 
 **Diagrams:** [`docs/diagrams/ambient/069-recording-state.mmd`](../diagrams/ambient/069-recording-state.mmd), [`069-multi-platform.mmd`](../diagrams/ambient/069-multi-platform.mmd), [`069-recording-sequence.mmd`](../diagrams/ambient/069-recording-sequence.mmd).
 
-### **ADR-070 – Pipeline & Index Versioning, Upgrade Taxonomy, and Operator Consent (Accepted)**
+### **ADR-070 – Pipeline & Index Versioning, Upgrade Taxonomy, and Operator Consent (Accepted, amended by ADR-086)**
 Three-bucket upgrade taxonomy (`reindex_auto`, `reingest_selective`, `reingest_all`) classifies every change that affects stored knowledge, the index, or pipeline contract. Per-object `pipeline_version` (`name@vN`) lets old objects keep their contract while new ingests adopt the corrected behavior. Per-table index signatures (tokenizer-, projection-, embedding-format-hashes in `index_signatures`) drive automatic bucket-1 rebuilds on startup signature mismatch. Release-notes contract at `docs/release-notes/<date>.md` + `Operator-Impact:` commit trailer + CI gate (`.github/workflows/release-notes-check.yml`) enforce the taxonomy at PR-time. Operator-facing CLI: `ctxt upgrade {plan,run,status,status --watch}` with banner injection in every CLI command during in-flight upgrades; `/healthz` upgrade envelope; `staleness_warning` field on search responses. Test substrate: `hop.top/xrr` cassettes (already in use) for upgrade-time external calls; `hop.top/eva` contracts for operator-facing JSON shapes (new adoption); `hop.top/ben` recall benchmarks gating `reingest_selective` PRs (new adoption). Strict-minimum design discipline: bucket 2 quarterly, bucket 3 annually.
 
 ### **ADR-071 – Embedding Index Versioning and Dual-Write Migration (Accepted)**
@@ -569,6 +569,12 @@ Supersedes ADR-019's unimplemented selective-encryption and blind-index storage 
 - **SQLite:** Whole-database page encryption (driver empirically gated on FTS5 + `vec0` + cross-compile + zero-plaintext WAL/SHM byte scans) so local full-text and vector search remain intact inside the unlocked envelope.
 - **Non-DB disk surfaces:** `KeyProvider`-backed AEAD envelope encryption for `BlobStore` (local + S3), pre-migration snapshots, ambient event spool, and mandatory encrypted backup archives.
 - **PostgreSQL:** Configurable orthogonal controls (`require_tde`, `column_encryption: off | sensitive | all`, `fts_on_encrypted: omit | require_tde`) supporting TDE-only, envelope-only, or both with zero silent plaintext `tsvector` leakage.
+
+### **ADR-086 – The Daemon Re-derives `reingest_selective` Changes by Itself (Accepted)**
+Amends ADR-070 §1. At start the daemon re-derives stale objects of pipelines that call no model, or only local ones: on stored content when the changed step runs on stored content, by a guarded re-fetch when it is fetch-side.
+- **Limits.** Never retries blindly (skips, tries and strikes, five in a row stop a group). Hosted, unknown or unavailable providers are deferred and shown by `ctxt upgrade status`. `reingest_all` is unchanged.
+- **Rule for authors.** A step version is bumped only when its output for the same input changes, with a release-notes row.
+- **Hold back.** `upgrade.rederive.enabled: false`.
 
 ---
 
