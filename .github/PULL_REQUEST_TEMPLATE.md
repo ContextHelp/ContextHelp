@@ -16,7 +16,7 @@ pipeline contract must declare its operator impact. The CI check at
 
 - [ ] **`none`** — config-only, doc-only, internal refactor, or test-only change. No effect on stored content, index, or pipeline behavior.
 - [ ] **`reindex_auto`** — index rebuild needed (tokenizer / FTS schema / projection format). Daemon detects via signature mismatch and runs automatically. **No operator action.**
-- [ ] **`reingest_selective`** — pipeline behavior changed for a subset of stored objects. Operator runs `ctxt upgrade run` (with optional `--dry-run`, `--filter`, `--rate-limit`). **Justification block required below.**
+- [ ] **`reingest_selective`** — pipeline behavior changed for a subset of stored objects. The daemon re-derives it at start for pipelines that call no model, or only local ones. A deferred group keeps its text; `ctxt upgrade run` (with optional `--dry-run`, `--filter`, `--rate-limit`) re-derives from stored content only. **Justification block required below.**
 - [ ] **`reingest_all`** — full-corpus re-ingest. Operator must echo a SHA256 consent token via `ctxt upgrade run --all --i-understand-the-cost <sha>`. **Justification block required below.**
 
 ### Required for `reingest_selective` and `reingest_all`

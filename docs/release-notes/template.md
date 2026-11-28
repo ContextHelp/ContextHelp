@@ -10,7 +10,7 @@
 
 **Buckets**:
 - `reindex_auto` — index rebuild needed; daemon detects via signature mismatch and runs automatically. **No operator action.**
-- `reingest_selective` — pipeline behavior changed for a subset of objects. **Operator runs `ctxt upgrade run`** (with optional `--dry-run`, `--filter`, `--rate-limit`).
+- `reingest_selective` — pipeline behavior changed for a subset of objects. **The daemon re-derives it by itself at start** for pipelines that call no model, or only local ones (ADR-086). Hosted, unknown or unavailable providers defer the group, and its objects keep their text. `ctxt upgrade run` (with optional `--dry-run`, `--filter`, `--rate-limit`) re-derives from stored content only, cannot apply a change that needs a fetch, and leaves those objects stale.
 - `reingest_all` — full-corpus re-ingest. **Daemon refuses** without explicit `ctxt upgrade run --all --i-understand-the-cost <sha>` confirmation.
 - `none` — no operator-visible impact (config-only, doc-only, internal refactor).
 
@@ -34,13 +34,16 @@ For each `reindex_auto` change, list:
 For each `reingest_selective` change, list:
 
 - **What changed** — which pipeline / step / projection / decoration logic?
-- **Selector predicate** — machine-readable WHERE clause or pipeline-name filter (consumed by `ctxt upgrade plan`).
-- **Versioned pipeline?** — yes/no. Did this gate behind `<pipeline>@vN`, or replace the pipeline contract in place?
-- **Estimated wall-clock** — typical / worst-case for affected subset.
-- **Estimated LLM cost** — typical / worst-case (or "none" for projection-only changes).
+- **What changed in stored output** — and which objects are affected (pipeline names, or a selector predicate consumed by `ctxt upgrade plan`).
+- **Step version** — which step version was bumped (`step@vN` → `step@vN+1`). Bump only when the step's output for the same input changed.
+- **What the daemon does by itself** — stored content or a guarded re-fetch; pause between objects (`upgrade.rederive.pause`, default `2s`).
+- **What it does not do** — pipelines with a hosted, unknown or unavailable provider are deferred (`ctxt upgrade status`); pages that are gone, changed or redirect elsewhere stay as captured and are listed as skips.
+- **Cost** — the formula, not a guess: per object, the pause, plus the fetch or fetches if the change is fetch-side (a repository takes two API calls, more on a retry), plus the time of the local models the pipeline's LLM steps call; wall-clock about `N × (pause + fetch + model time)` for `N` stale objects.
+- **Hold back** — `upgrade.rederive.enabled: false`, set before the first start of the version.
+- **Operator action** — usually none. Say what a deferred group needs, if anything.
 
 > *Example:*
-> *`text.short` pipeline now runs `markdown_parser` for documents with bullet-list bodies. Selector: `pipeline = 'text.short@v1' AND raw_content LIKE '%- %'`. Versioned: yes (`@v1` → `@v2`). Wall-clock: ~3s/object × ~50 objects = ~2.5min. LLM cost: $0 (projection-only).*
+> *`text.short` pipeline now runs `markdown_parser` for documents with bullet-list bodies. Affected: `text.short`. Step version: `markdown_parser@1` → `@2`. The daemon re-derives on stored content at the next start (no model, or a local one). Cost: ~3s/object + 2s pause, × ~50 objects = ~4min; model calls of the local model only.*
 
 ### `reingest_all` changes
 
@@ -79,7 +82,7 @@ If this release contains any `reingest_selective` or `reingest_all` change, incl
 1. **Before upgrading** — back up: `ctxt backup create --to <path>`.
 2. **Pull / install** — `<command>`.
 3. **Plan** — `ctxt upgrade plan` shows what will be re-ingested.
-4. **Run** — `ctxt upgrade run [--dry-run]`.
+4. **Run** — the daemon starts the re-derive by itself for local pipelines. `ctxt upgrade status` shows what it defers; those objects keep their text.
 5. **Verify** — `ctxt upgrade status --watch` until done.
 6. **Roll back if needed** — `ctxt backup restore --from <path>` (operator decides; rollback is not automatic).
 
@@ -89,7 +92,7 @@ If this release contains any `reingest_selective` or `reingest_all` change, incl
 
 Each PR that lands a change with operator impact:
 
-1. Adds a row to the table at the top.
+1. Adds a row to the table at the top. A step-version bump (`StepContract.Version`) is a `reingest_selective` change: the row says which pipelines are affected and what the daemon does.
 2. Fills in the per-bucket section that applies.
 3. Adds a `Operator-Impact:` trailer to the commit message:
    ```

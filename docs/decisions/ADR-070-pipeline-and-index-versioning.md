@@ -5,6 +5,7 @@
 > **Author:** jadb
 > **Applies to:** dpkms, ctxt CLI, storage layer, pipeline registry
 > **Supersedes:** None
+> **Amended by:** ADR-086 (the daemon re-derives `reingest_selective` changes by itself for pipelines that call no model, or only local ones)
 > **References:** ADR-004 (step-based pipeline), ADR-007 (transactional outbox), ADR-013 (knowledge graph), ADR-061 (search quality tiers), ADR-064 (federation), commit `232cd8f` (search-recall fix that prompted this ADR), commit `493e469` (config regression that compounded the upgrade pain)
 
 ---
