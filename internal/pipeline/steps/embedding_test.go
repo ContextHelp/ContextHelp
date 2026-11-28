@@ -3,6 +3,7 @@ package steps
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 	"sync"
@@ -12,6 +13,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings/embeddingtest"
 	"github.com/ideacrafterslabs/ctxt/internal/embeddings/registry"
 	"github.com/ideacrafterslabs/ctxt/internal/projection"
+	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/providers/providertest"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
@@ -338,5 +340,38 @@ func TestEmbeddingGenerator_EmbedsGraphProjectionText(t *testing.T) {
 	}
 	if len(got.Vectors) != 1 || got.Vectors[0].Text != "graph embedding source text" {
 		t.Fatalf("vectors = %+v, want one vector of the graph text", got.Vectors)
+	}
+}
+
+// A re-analysis installs a call recorder: a model that produced no vector
+// is a provider failure there, so the object fails and nothing is written
+// while its stored vectors still describe the old text. Ingest has no
+// recorder: the step then behaves as it always did.
+func TestEmbeddingGenerator_FailureIsReportedToTheCallRecorder(t *testing.T) {
+	resolver, _ := ollamaResolver(t)
+	failing := notPulled(false)
+	step := NewEmbeddingGenerator(embeddingtest.Models{snowflake("snowflake-arctic-embed2@default", true), failing}, resolver)
+
+	ctx, calls := providers.WithCallRecorder(context.Background())
+	got, err := step.Run(ctx, quokkaDraft())
+	if err != nil || len(got.Vectors) != 1 {
+		t.Fatalf("the step itself still succeeds: vectors %d, err %v", len(got.Vectors), err)
+	}
+	var ce *providers.CallError
+	if err := calls.Err(); !errors.As(err, &ce) || !strings.HasPrefix(ce.Provider, "embedding "+failing.ModelID) {
+		t.Fatalf("recorder = %v, want an embedding failure naming %s", err, failing.ModelID)
+	}
+
+	// With no recorder: same vectors, nothing reported anywhere.
+	plain, err := step.Run(context.Background(), quokkaDraft())
+	if err != nil || len(plain.Vectors) != 1 || plain.Vectors[0].ModelID != got.Vectors[0].ModelID {
+		t.Fatalf("without a recorder: %+v, %v", plain.Vectors, err)
+	}
+
+	// A healthy model reports nothing.
+	ok := NewEmbeddingGenerator(embeddingtest.Models{snowflake("snowflake-arctic-embed2@default", true)}, resolver)
+	ctx2, calls2 := providers.WithCallRecorder(context.Background())
+	if _, err := ok.Run(ctx2, quokkaDraft()); err != nil || calls2.Err() != nil {
+		t.Fatalf("healthy model: err %v, recorder %v", err, calls2.Err())
 	}
 }

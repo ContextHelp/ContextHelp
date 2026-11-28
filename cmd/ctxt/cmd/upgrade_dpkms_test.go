@@ -346,3 +346,71 @@ func TestUpgradeRunFilterRejectsBareName(t *testing.T) {
 		t.Errorf("error should mention @vN; got: %v", err)
 	}
 }
+
+// An idle daemon that deferred or skipped something in a re-derive says so:
+// the deferred pipelines with their reason, and the skips by reason.
+func TestUpgradeStatusIdleShowsDeferredAndSkipped(t *testing.T) {
+	srv := fakeUpgradeHealthzServer(t, &upgradeEnvelope{
+		State:    "idle",
+		Deferred: []upgradeDeferred{{Pipeline: "url.generic", Objects: 12, Reason: "hosted: tagger (llm, openai)"}},
+		Skipped:  map[string]int{"refused": 2, "fetch_failed": 1},
+		Stopped:  []upgradeStopped{{Pipeline: "url.github.repo", Kind: "fetch", Cause: "HTTP 401"}},
+	})
+	defer srv.Close()
+	withFormat(t, "")
+	cmd := upgradeStatusCmd
+	cmd.SetContext(context.Background())
+	// --server is a persistent flag of the root: it is merged into the
+	// subcommand's flag set when cobra parses or asks for inherited flags.
+	// Other tests in the package happen to trigger that; this one must not
+	// depend on them, so it can run alone.
+	_ = cmd.InheritedFlags()
+	require.NoError(t, cmd.Flags().Set("server", srv.URL))
+	t.Cleanup(func() { _ = cmd.Flags().Set("server", "") })
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	t.Cleanup(func() { cmd.SetOut(nil) })
+
+	require.NoError(t, runUpgradeStatus(cmd, nil))
+	out := buf.String()
+	for _, frag := range []string{
+		"Upgrade state: idle",
+		"url.generic: 12 objects: hosted: tagger (llm, openai)",
+		"fetch_failed: 1",
+		"refused: 2",
+		"url.github.repo: fetch: HTTP 401",
+	} {
+		assert.Contains(t, out, frag)
+	}
+	assert.Less(t, strings.Index(out, "fetch_failed"), strings.Index(out, "refused"), "reasons print in a stable order")
+
+	// JSON passes the envelope through.
+	withFormat(t, "json")
+	buf.Reset()
+	require.NoError(t, runUpgradeStatus(cmd, nil))
+	var got upgradeEnvelope
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
+	require.Len(t, got.Deferred, 1)
+	assert.Equal(t, 2, got.Skipped["refused"])
+}
+
+// A pipeline with several stopped groups is one line with the count.
+func TestUpgradeStatusShowsSeveralStoppedGroupsOfAPipelineOnOneLine(t *testing.T) {
+	srv := fakeUpgradeHealthzServer(t, &upgradeEnvelope{
+		State:   "idle",
+		Stopped: []upgradeStopped{{Pipeline: "url.generic", Kind: "fetch", Cause: "dial tcp: i/o timeout", Groups: 2}},
+	})
+	defer srv.Close()
+	withFormat(t, "")
+	cmd := upgradeStatusCmd
+	cmd.SetContext(context.Background())
+	_ = cmd.InheritedFlags() // --server is a persistent root flag; see the test above
+	require.NoError(t, cmd.Flags().Set("server", srv.URL))
+	t.Cleanup(func() { _ = cmd.Flags().Set("server", "") })
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	t.Cleanup(func() { cmd.SetOut(nil) })
+
+	require.NoError(t, runUpgradeStatus(cmd, nil))
+	assert.Contains(t, buf.String(), "    url.generic (2 groups): fetch: dial tcp: i/o timeout\n")
+}

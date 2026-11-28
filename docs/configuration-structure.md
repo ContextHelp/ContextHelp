@@ -45,7 +45,7 @@ Put each setting where the binary that acts on it reads it:
 
 - **`dpkms.yaml`**: what `dpkms serve` runs with: listener ports,
   `server.workers`, `server.access`, `server.auth`, `jobs`, `storage`,
-  `secrets`, `browser`, `steps`.
+  `secrets`, `browser`, `steps`, `upgrade`.
 - **`ctxt.yaml`**: what the client needs: which instance to talk to
   (`server.urls`, `server.token`), `profile`, `capture`,
   `watch`, `search` (sent with each `ctxt find` query), `resurfacing`,
@@ -228,6 +228,7 @@ registry/<name>` (value on stdin); see
 | `browser` | Built-in IBR browser automation daemon |
 | `fanout` | Post-ingest fan-out enrichment |
 | `resurfacing` | Background resurfacing queue |
+| `upgrade` | `rederive.enabled`, `rederive.pause`: the automatic re-derive job (dpkms); off, it writes nothing, not even skip records |
 | `federations` | Remote dPKMS peers to sync with |
 | `federation` | Receive-side federation limits (`max_request_bytes`); inbound pushes authenticate with a peer principal's API key |
 | `security` | Security alert thresholds and delivery (`alerts`) |

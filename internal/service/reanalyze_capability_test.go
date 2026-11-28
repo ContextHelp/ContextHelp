@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"testing"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/builtins"
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline/steps"
 	"github.com/ideacrafterslabs/ctxt/internal/providers"
+	"github.com/ideacrafterslabs/ctxt/internal/storage"
 	"github.com/ideacrafterslabs/ctxt/internal/upgrade"
 )
 
@@ -115,6 +117,32 @@ func TestReanalyzeCapability_RefusedWithoutLLM(t *testing.T) {
 		require.ErrorIs(t, err, upgrade.ErrCannotReanalyze)
 		assert.Equal(t, before, e.get(t, id))
 	})
+}
+
+// The Before hook (a caller's precheck of the stored object) runs after
+// everything that refuses an object on its own terms, so an object those
+// refuse is reported as refused, not as the precheck's error.
+func TestReanalyzeCapability_BeforeRunsAfterTheRefusals(t *testing.T) {
+	errPrecheck := errors.New("stored page too short")
+	calls := 0
+	opts := ReanalyzeOptions{Before: func(*storage.KnowledgeObject) error {
+		calls++
+		return errPrecheck
+	}}
+	e := newRealEnv(t)
+	id := enrichedObject(t, e)
+	e.useText(t, e.textLongWith(t, "sectioner", steps.NewSectioner())) // generative step without a provider
+	_, _, err := e.svc.ReanalyzeObjectWith(ownerCtx(), id, opts)
+	require.ErrorIs(t, err, upgrade.ErrCannotReanalyze)
+	require.NotErrorIs(t, err, errPrecheck)
+	require.Zero(t, calls, "the precheck ran before the refusal")
+
+	// An object nothing refuses reaches the precheck, and its error stands.
+	e = newRealEnv(t)
+	id = enrichedObject(t, e)
+	_, _, err = e.svc.ReanalyzeObjectWith(ownerCtx(), id, opts)
+	require.ErrorIs(t, err, errPrecheck)
+	require.Equal(t, 1, calls)
 }
 
 // With a working LLM the same object is processed.

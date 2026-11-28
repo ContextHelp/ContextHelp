@@ -1,0 +1,21 @@
+{
+  "state": "idle",
+  "deferred": [
+    {
+      "pipeline": "url.generic",
+      "objects": 12,
+      "reason": "hosted: tagger (llm, openai)"
+    }
+  ],
+  "skipped": {
+    "fetch_failed": 2,
+    "refresh_rejected": 1
+  },
+  "stopped": [
+    {
+      "pipeline": "url.github.repo",
+      "kind": "fetch",
+      "cause": "github_repo_fetcher: HTTP 401"
+    }
+  ]
+}

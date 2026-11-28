@@ -72,6 +72,7 @@ var invFixtures = map[string]func(t *testing.T, e *realEnv) invFixture{
 	"url.github.profile": invPageFixture,
 	"url.github.release": invPageFixture,
 	"url.repo":           invPageFixture,
+	"url.github.starred": invManifestPageFixture,
 }
 
 func invTextFixture(*testing.T, *realEnv) invFixture {
@@ -80,6 +81,14 @@ func invTextFixture(*testing.T, *realEnv) invFixture {
 
 func invPageFixture(_ *testing.T, e *realEnv) invFixture {
 	e.page.Store(invPage)
+	return invFixture{source: e.srv.URL + "/page"}
+}
+
+// invManifestPageFixture serves a page whose text is a pip manifest, so
+// dependency_enricher has dependencies to record: the artifact nodes and
+// the pending list a reanalysis must rewrite as ingest wrote them.
+func invManifestPageFixture(_ *testing.T, e *realEnv) invFixture {
+	e.page.Store("<html><body><pre>requests>=2.0.0\nflask==3.0.0\nclick>=8.0.0\n</pre></body></html>")
 	return invFixture{source: e.srv.URL + "/page"}
 }
 

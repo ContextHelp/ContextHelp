@@ -50,3 +50,24 @@ func TestWriteBackRoundtrip(t *testing.T) {
 	assert.Equal(t, original.Jobs.PollInterval, loaded.Jobs.PollInterval)
 	assert.Equal(t, original.Jobs.MaxRetries, loaded.Jobs.MaxRetries)
 }
+
+func TestRederiveDefaultsAndValidation(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(cfgPath, []byte(""), 0644))
+	cfg, err := Load("ctxt", cfgPath)
+	require.NoError(t, err)
+	assert.True(t, cfg.Upgrade.Rederive.Enabled)
+	assert.Equal(t, 2*time.Second, cfg.Upgrade.Rederive.Pause)
+	assert.Empty(t, Validate(cfg))
+
+	cfg.Upgrade.Rederive.Pause = -time.Second
+	errs := Validate(cfg)
+	require.Len(t, errs, 1)
+	assert.Equal(t, "upgrade.rederive.pause", errs[0].Field)
+
+	require.NoError(t, os.WriteFile(cfgPath, []byte("upgrade:\n  rederive:\n    enabled: false\n    pause: 500ms\n"), 0644))
+	cfg, err = Load("ctxt", cfgPath)
+	require.NoError(t, err)
+	assert.False(t, cfg.Upgrade.Rederive.Enabled)
+	assert.Equal(t, 500*time.Millisecond, cfg.Upgrade.Rederive.Pause)
+}

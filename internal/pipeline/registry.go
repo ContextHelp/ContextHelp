@@ -19,6 +19,9 @@ type registry struct {
 	// baselines maps every pipeline definition, registered or left out, to
 	// its baseline signature.
 	baselines map[string]string
+	// baselineEntries are the entries of each baseline, for a pipeline
+	// left out for a missing provider (a registered one carries its own).
+	baselineEntries map[string][]string
 }
 
 // NewRegistry creates an empty pipeline registry.
@@ -212,16 +215,28 @@ func defaultContentSelector(content string) string {
 
 func (r *registry) noteBaseline(name string, p *Pipeline) {
 	if p != nil && p.BaselineSignature != "" {
-		r.SetBaseline(name, p.BaselineSignature)
+		r.SetBaseline(name, p.BaselineSignature, p.BaselineEntries)
 	}
 }
 
-// SetBaseline records the baseline signature of pipeline name.
-func (r *registry) SetBaseline(name, sig string) {
+// SetBaseline records the baseline signature of pipeline name and the
+// entries it hashes.
+func (r *registry) SetBaseline(name, sig string, entries []string) {
 	if r.baselines == nil {
 		r.baselines = make(map[string]string)
+		r.baselineEntries = make(map[string][]string)
 	}
 	r.baselines[name] = sig
+	r.baselineEntries[name] = entries
+}
+
+// BaselineEntries returns the entries of every recorded baseline.
+func (r *registry) BaselineEntries() map[string][]string {
+	out := make(map[string][]string, len(r.baselineEntries))
+	for k, v := range r.baselineEntries {
+		out[k] = v
+	}
+	return out
 }
 
 // Baselines returns the baseline signature of every pipeline definition.
@@ -236,9 +251,11 @@ func (r *registry) Baselines() map[string]string {
 // MarkBaseline records on r the baseline signature of a pipeline that is
 // not registered (see MarkUnavailable). It is a no-op for registries that
 // do not track this.
-func MarkBaseline(r Registry, name, sig string) {
-	if m, ok := r.(interface{ SetBaseline(name, sig string) }); ok {
-		m.SetBaseline(name, sig)
+func MarkBaseline(r Registry, name, sig string, entries []string) {
+	if m, ok := r.(interface {
+		SetBaseline(name, sig string, entries []string)
+	}); ok {
+		m.SetBaseline(name, sig, entries)
 	}
 }
 

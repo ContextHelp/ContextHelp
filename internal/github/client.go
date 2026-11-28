@@ -46,6 +46,20 @@ type Client struct {
 	cache *etagCache
 }
 
+// Host is the host (with its port) the client's requests go to, lower case:
+// where a fetch is addressed, for a caller that must tell "this API is
+// unreachable or rejects us" from "this repository is gone".
+func (c *Client) Host() string {
+	if c == nil {
+		return ""
+	}
+	u, err := url.Parse(c.baseURL)
+	if err != nil {
+		return ""
+	}
+	return strings.ToLower(u.Host)
+}
+
 // Option configures a Client.
 type Option func(*Client)
 

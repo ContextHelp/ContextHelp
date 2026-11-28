@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
@@ -120,10 +122,13 @@ func (s *DependencyEnricher) extractDeps(draft *storage.KnowledgeObject) ([]depE
 	return inferFromRawContent(draft.RawContent)
 }
 
-// parseDepFiles iterates over filename→content entries and dispatches to per-format parsers.
+// parseDepFiles iterates over filename→content entries, in name order so
+// that the dependency list, and the node ordinals built from it, are the
+// same on every run, and dispatches to per-format parsers.
 func parseDepFiles(files map[string]any) ([]depEntry, error) {
 	var deps []depEntry
-	for name, v := range files {
+	for _, name := range slices.Sorted(maps.Keys(files)) {
+		v := files[name]
 		content, ok := v.(string)
 		if !ok {
 			continue

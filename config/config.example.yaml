@@ -427,6 +427,13 @@
 #  min_score: 0.4
 #  run_interval: 1h
 
+# dpkms: automatic re-derive of objects whose pipeline or model changed.
+# Runs at start, only for pipelines whose work stays on this machine.
+#upgrade:
+#  rederive:
+#    enabled: true
+#    pause: 2s       # wait between objects
+
 # Embedding-model lifecycle guards (ctxt embeddings set-default | purge).
 #embeddings:
 #  min_coverage: 0.99

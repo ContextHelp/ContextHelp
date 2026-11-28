@@ -98,6 +98,9 @@ func (s *EmbeddingGenerator) Run(ctx context.Context, draft *storage.KnowledgeOb
 	models, err := s.models.Populating(ctx, time.Now())
 	if err != nil {
 		slog.Warn("embedding: read populating models; no vectors produced", "err", err)
+		// At reanalysis this is a failed embedding: the object must not be
+		// stamped current with the vectors of the old text.
+		providers.ReportCallFailure(ctx, "embedding registry", err)
 		return draft, nil
 	}
 
@@ -108,20 +111,27 @@ func (s *EmbeddingGenerator) Run(ctx context.Context, draft *storage.KnowledgeOb
 		}
 		p, err := s.resolver.ForModel(ctx, m)
 		if err != nil {
+			// A model whose provider cannot be built is unusable, as locality
+			// reports it: it is skipped, at reanalysis as at ingest. Only a
+			// failed call of a provider that was built is a provider failure.
 			slog.Warn("embedding: model produced no vector; skipping it", "model_id", m.ModelID, "err", fmt.Errorf("resolve provider: %w", err))
 			continue
 		}
 		vec, err := embedWith(ctx, p, m, text)
 		if err != nil {
 			slog.Warn("embedding: model produced no vector; skipping it", "model_id", m.ModelID, "err", err)
+			providers.ReportCallFailure(ctx, "embedding "+m.ModelID, err)
 			continue
 		}
+		providers.ReportCallSuccess(ctx, "embedding")
 		draft.Vectors = append(draft.Vectors, storage.ObjectVector{ModelID: m.ModelID, ChunkIdx: 0, Vector: vec, Text: text})
 		if masked == "" {
 			continue
 		}
 		mvec, err := embedWith(ctx, p, m, masked)
 		if err != nil {
+			// As at ingest: the raw vector stands, restricted search falls
+			// back to it. The object does not fail for the masked one.
 			slog.Warn("embedding: model produced no masked vector; restricted search falls back to the raw one", "model_id", m.ModelID, "err", err)
 			continue
 		}

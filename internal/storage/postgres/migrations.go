@@ -639,6 +639,33 @@ var pgMigrations = []pgMigration{
 		 END
 		 $$`,
 	}},
+	// Migration 51 (mirrors SQLite 070): derivation_signatures and
+	// rederive_attempts and rederive_skips for the automatic re-derive job.
+	{Version: 51, Name: "re-derive signatures, attempts and skips", Statements: []string{
+		`CREATE TABLE IF NOT EXISTS derivation_signatures (
+			sig         TEXT PRIMARY KEY,
+			pipeline    TEXT NOT NULL,
+			entries     JSONB NOT NULL,
+			recorded_at TIMESTAMPTZ NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS rederive_attempts (
+			object_id  TEXT NOT NULL REFERENCES objects(id) ON DELETE CASCADE,
+			target_sig TEXT NOT NULL,
+			tries      INTEGER NOT NULL DEFAULT 0,
+			strikes    INTEGER NOT NULL DEFAULT 0,
+			at         TIMESTAMPTZ NOT NULL,
+			PRIMARY KEY (object_id, target_sig)
+		)`,
+		`CREATE TABLE IF NOT EXISTS rederive_skips (
+			object_id  TEXT NOT NULL REFERENCES objects(id) ON DELETE CASCADE,
+			target_sig TEXT NOT NULL,
+			reason     TEXT NOT NULL,
+			detail     TEXT NOT NULL DEFAULT '',
+			at         TIMESTAMPTZ NOT NULL,
+			PRIMARY KEY (object_id, target_sig)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_rederive_skips_target ON rederive_skips(target_sig)`,
+	}},
 }
 
 // sharingRegistryStatements create the sharing registry and add the

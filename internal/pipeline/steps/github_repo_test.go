@@ -233,3 +233,37 @@ func TestTaggerKeepsGitHubTags(t *testing.T) {
 		t.Errorf("tags = %+v, want lang:go from github kept", out.Tags)
 	}
 }
+
+// The fetch failure says whether the host asked to slow down: GitHub's
+// primary limit (a 403 with no requests remaining) and a 429 do; a plain 403
+// and a 404 do not.
+func TestGitHubRepoFetcher_FailuresSayWhetherTheyAreRateLimits(t *testing.T) {
+	cases := []struct {
+		name    string
+		status  int
+		headers map[string]string
+		limited bool
+	}{
+		{"primary limit", http.StatusForbidden, map[string]string{"X-RateLimit-Remaining": "0"}, true},
+		{"429", http.StatusTooManyRequests, nil, true},
+		{"plain 403", http.StatusForbidden, nil, false},
+		{"404", http.StatusNotFound, nil, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				for k, v := range tc.headers {
+					w.Header().Set(k, v)
+				}
+				http.Error(w, `{"message":"no"}`, tc.status)
+			}))
+			defer srv.Close()
+			c := github.NewClient(github.WithBaseURL(srv.URL), github.WithMaxWait(0), github.WithMaxRetries(0))
+			_, err := NewGitHubRepoFetcher(c).Run(context.Background(), &storage.KnowledgeObject{Source: "https://github.com/octocat/Hello-World"})
+			var fe *pipeline.FetchError
+			if !errors.As(err, &fe) || fe.Status != tc.status || fe.RateLimited != tc.limited {
+				t.Fatalf("err = %v, FetchError %+v, want status %d rate limited %v", err, fe, tc.status, tc.limited)
+			}
+		})
+	}
+}

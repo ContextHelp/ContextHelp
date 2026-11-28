@@ -304,9 +304,20 @@ content and updates the same object.
   - A graph stored before stamping (no `stamped` mark) goes through the
     earlier rule once: step-kind nodes are dropped and rebuilt, and the run
     marks the graph.
-- If an LLM or vision call fails, or its reply is unusable (empty, or not
-  the JSON a step requires), the object fails and nothing is written. A
-  well-formed reply with nothing in it is a valid result.
+- If an LLM or vision call fails, an embedding call of a model that was
+  built fails, or a reply is unusable (empty, or not the JSON a step
+  requires), the object fails and nothing is written. This is the same for
+  `ctxt upgrade run` and the automatic re-derive. A well-formed reply with
+  nothing in it is a valid result. An embedding model whose provider cannot
+  be built is skipped, as at ingest, and a failed masked vector falls back
+  to the raw one.
+- `dependency_enricher` runs in a re-analysis. It rewrites the dependency
+  artifact nodes and `metadata.items_to_enqueue` / `deps_enqueued` from the
+  text, as ingest wrote them. Nothing is enqueued: only the ingest worker
+  consumes that list. `url.github.repo` (needs the fetch) re-derives only with
+  the fetch allowed, which is what the automatic re-derive does; the stored
+  README is replaced by the mapper's distilled one. `url.github.starred`
+  re-derives from stored content.
 - The content hash is recomputed. If it equals another object's hash in the
   same profile, both objects are kept: the re-analysed object stores no
   hash and records `metadata.duplicate_of`.
@@ -334,6 +345,157 @@ content and updates the same object.
   made, so a hostname is always `hosted`, Docker and LAN names included.
 - The write emits `object.updated`, rewrites the mention edges and runs
   fan-out when it is enabled.
+
+### Automatic re-derive
+
+Each object carries the derivation signature of the pipeline that derived it
+(step versions and the configured LLM and vision models). When a step version
+or a model changes, the stored objects are stale. At start, dpkms re-derives
+them in the background, as a task job of type `derivation:rederive`.
+
+At start dpkms records the entries behind each signature it can produce.
+Stale objects are grouped by stored pipeline and signature with one query,
+and each group is decided once, comparing the entries of its stored signature
+with the current ones:
+
+| Case | What happens |
+|---|---|
+| Every added or re-versioned step runs on stored content, or only a model or the order changed | Re-derived from stored content. The source is not asked. |
+| An added or re-versioned step only runs when fetching (a fetch step, a cleaner of fresh content) | Re-derived by fetching again, with the refresh guard. |
+| The pipeline only lost steps (`skip_steps`) | Stamped current. Nothing runs, no LLM call, no fetch. |
+| The pipeline is not registered, or its stored signature has no recorded entries | Deferred. |
+| An added or re-versioned step runs in neither mode (pruned, left out) | Deferred, naming the step. |
+| The work would use a hosted, unknown or unavailable provider (see `ReanalysisLocality`) | Deferred. |
+
+A job is enqueued only when some group is not deferred. Deferred groups are
+not touched and write no record. They are logged once per pipeline with the
+reason, listed in the end-of-run summary, and shown by `ctxt upgrade status`
+(pipeline, objects, reason) from the `/healthz` upgrade envelope, also when
+nothing runs and the daemon is idle. The skips of the latest run are shown
+there by reason. A group becomes eligible by itself when the registry, the
+recorded entries or the configuration change.
+
+- Objects received by federation are not re-derived here: they arrive without
+  a signature, and an object without one is never stale. The exception is a
+  replica stored before the instance first recorded signatures: it was signed
+  like a local row and counts as local.
+- Refresh guard, applied when fetching again. A page fetch keeps the stored
+  object unless the new text is the same content with less noise; the host
+  check applies to page fetches only. A repository fetch (GitHub) names the
+  repository itself, so READMEs may be rewritten.
+
+  | Fetch | Accepted when |
+  |---|---|
+  | Page | The new text is not empty; at least 60% of its word 3-grams were in the stored text; at least 25% of the stored text's 3-grams are still there; the fetch ended on the host the stored text came from (its recorded final URL, else its source; case and a leading `www.` ignored). A stored text with under 20 3-grams cannot be compared, so it is not refreshed at all: it is a skip at once, before any request (`refresh_rejected`, "stored text too short to compare with a refresh; left as captured"). |
+  | GitHub repository | The new text is not empty and not under 10% of a stored text of 500 bytes or more. |
+
+  Text without spaces (Chinese, Japanese, Thai, Lao, Khmer, Myanmar) is
+  compared by character. Only the first 20000 words are compared, so a huge
+  page costs the same; a page much longer than the stored one is refused
+  all the same. A page whose content changed since it was captured is left
+  as captured; after three strikes it is a skip, `refresh_rejected`.
+- Success stamps the signature of the pipeline the plan ran. Only a local
+  determination is a skip at once: `refused` (the object or its pipeline
+  cannot be re-derived: encrypted, held, a lost original), or a stored page
+  too short to compare with a refresh (decided from the stored object alone,
+  no request; `refresh_rejected`). A skipped object
+  is not tried again until the pipeline's signature changes. The stored
+  detail is the error text, shortened, with every URL reduced to scheme and
+  host and token, password and bearer values removed.
+- Nothing that comes from the network is a skip at once. Every such outcome
+  is a try: no skip, the object stays stale, and a `rederive_attempts` row
+  (tries and strikes, per object and target) is written; objects with fewer
+  tries go first, so objects that keep failing never hold back the rest. A
+  try also counts as a strike at the end of the run, but only on evidence
+  from the same run that it is about this object:
+
+  | Outcome | Strike only when, in the same run |
+  |---|---|
+  | The source says 404 or 410 | some refresh was fetched and accepted, from any host |
+  | The guard rejects a refresh | some refresh was fetched and accepted |
+  | A rate limit (429, a `Retry-After` answer, a GitHub rate limit) | never: it is about the host, not the object |
+  | Any other status (401, 403, 5xx) | a fetch to the same host succeeded and was accepted |
+  | No answer: DNS, TLS, connection, timeout, blocked destination | a fetch to the same host succeeded and was accepted |
+  | A provider call failed, or its reply was unusable | an object was re-derived and its reanalysis made a call of that provider kind (LLM, vision, embedding) |
+  | An error of no known kind | any object was re-derived |
+
+  In a group that fetches, every row above also needs one more thing: a
+  refresh was fetched and accepted in the same run, from any host. Without
+  it nothing counts against the object, whatever else succeeded.
+
+  The failure after 3 strikes is the skip (`fetch_failed`, `refresh_rejected`,
+  `provider_failed`, `unusable_reply` or `failed`), with "after 3 strikes".
+  "Same host" is the host (with its port) the failing fetch was addressed to:
+  the source URL's for a page, the API's for GitHub. A refresh the guard
+  rejects counts as a failure of the fetch, not of the page, until another
+  refresh is accepted.
+- Proof is per call: a success counts for a provider kind only if its
+  reanalysis actually made a call of that kind (an object too short for the
+  model, or with nothing to embed, proves nothing). A registry of embedding
+  models that cannot be read is never an object's fault and never strikes.
+  The trade-off: in a group that does not fetch, a failure of no known
+  kind counts as a strike whenever anything else succeeded in the run, so a
+  recurring storage error on one object ends in a skip.
+- A provider that answered and whose reply no step could use is a try like
+  the rest. Until the run has shown the provider working, such replies count
+  in the streak below, so a model that answers nothing to everyone stops the
+  group; after that they do not. In a group that fetches, "shown working"
+  also takes a refresh fetched and accepted in the same run, as a strike
+  does. A failed call beside an unusable reply is a
+  failed call. The Ollama client treats a non-2xx answer as a failed call,
+  not a blank reply.
+- Five tries in a row stop the group, not the run: the run goes on with the
+  next group (groups run in order of pipeline name), and a success in the
+  group resets the count. The stopped group's remaining objects stay stale
+  for the next start, fewest tries first. A run can therefore complete with
+  fewer objects done than its total. The run ends normally, and the
+  status is `failed` only when the run itself broke (a panic, storage
+  unusable). Each stopped group is reported with its kind (llm, vision,
+  embedding, fetch, refresh rejected, unknown) and the last cause in
+  `ctxt upgrade status`, the `/healthz` upgrade envelope (`stopped`), the
+  end-of-run log line and the completed event: one entry per pipeline, with
+  the first group's cause and a count when more than one group stopped. The
+  list of the previous run is cleared when a new run starts.
+- Starting on another network. A start on a network that cannot reach a
+  source (off the VPN, a captive portal that answers every address with a
+  login page, an expired token, a dead resolver) costs tries, never a skip:
+  nothing is proved about any object there. (A stored page too short to
+  compare is skipped on any network: that is decided from the stored object,
+  without a request.) In a group that fetches, no
+  failure counts against an object unless a refresh was fetched and
+  accepted in the same run, on top of the evidence in the table above. A
+  portal page never counts as an accepted fetch: a stored page too short to
+  compare is left as captured without a request, and a longer one is only
+  replaced by a page that is the same content. Rate limits never count
+  against an object, whatever else the host served. The next start on a
+  working network takes up the same objects, fewest tries first. Only when
+  some other object on the same host (or, for a source that is gone, on any
+  host) is fetched and accepted in the same run does a failure start to
+  count against its object.
+- An object deleted since it was listed is dropped and counted as `gone`:
+  no try, no strike, no skip. Only the object lookup says so; another
+  not-found inside a reanalysis is an error like any other.
+- Skip reasons: `refused`, `refresh_rejected`, `fetch_failed`,
+  `provider_failed`, `unusable_reply`, `failed`. Tries, strikes and skips
+  whose target no definition can produce are deleted at start (the current
+  and baseline signatures of every pipeline are kept, and so are the targets
+  of pipelines that cannot be built at this start, a provider being late);
+  a signature that comes back later starts clean.
+- Discarded objects are not re-derived or stamped. Objects with status
+  `active`, `inbox` and `raw` are.
+- The run waits `upgrade.rederive.pause` between two objects (default `2s`).
+  It stops promptly on shutdown, leaves the status idle, and resumes at the
+  next start from what the store holds. It shares the upgrade status with
+  the re-projection: if that is busy, the job waits for it, in the worker
+  (the queue has no delayed requeue). While it runs, `/healthz` reports
+  `upgrading`.
+- At the end one log line gives processed, stamped, skipped by reason,
+  failed, retried (tries), gone and deferred by pipeline. The same summary is published on
+  `dpkms.upgrade.rederive.completed` (`.interrupted` when the run stops
+  early).
+- Turn it off with `upgrade.rederive.enabled: false`. Nothing is scheduled or
+  written then, and a job already pending does nothing. Stale objects stay as
+  stored, and start logs one line with how many there are.
 
 ### Pipelines May Enqueue Jobs
 

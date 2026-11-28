@@ -406,15 +406,21 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 	handleEmbeddingsMigrate(pool, storage.System(driver), upgradeMgr, svc.Bus)
 	handleReproject(pool, storage.System(driver), upgradeMgr, svc.Bus, cfg.Storage.Blob.Threshold)
+	rederiveJob, rederiveOK := newRederiveJob(driver, svc, pipes, upgradeMgr, svc.Bus, cfg.Upgrade.Rederive)
+	if rederiveOK {
+		handleRederive(pool, rederiveJob)
+	}
 
 	// 10.1 Derivation signatures: stamp the baseline on pre-existing rows
-	// once (one flag read on later starts). Nothing re-derives from it yet.
+	// once (one flag read on later starts), then record the entries behind
+	// every signature the registry can produce, for the re-derive job.
 	if ds, ok := storage.System(driver).Objects().(storage.DerivationStore); ok && sigDB != nil {
 		if n, err := stampDerivationBaseline(context.Background(), sigDB, sigDialect, ds, pipes); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: derivation baseline: %v\n", err)
 		} else if n > 0 {
 			fmt.Printf("Derivation baseline: stamped %d object(s)\n", n)
 		}
+		recordDerivationSignatures(context.Background(), driver, pipes)
 	}
 	handleReprocess(pool, st)
 
@@ -492,6 +498,12 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// 10e. ADR-070 reindex_auto: a stale FTS signature schedules the
 	// re-projection of stored objects (resumes a pending run instead).
 	scheduleReproject(context.Background(), os.Stdout, queue, ftsVerify, svc.Bus)
+
+	// 10f. Objects whose derivation signature is stale (a step version or
+	// a model changed) are re-derived in the background, local work only.
+	if rederiveOK {
+		scheduleRederive(context.Background(), os.Stdout, queue, rederiveJob)
+	}
 
 	// Drain timeout: how long components get to stop after a signal or
 	// a component failure before serve exits regardless.

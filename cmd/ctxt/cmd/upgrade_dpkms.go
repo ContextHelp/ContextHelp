@@ -65,6 +65,28 @@ type upgradeEnvelope struct {
 	EtaSeconds int     `json:"eta_seconds,omitempty"`
 	StartedAt  string  `json:"started_at,omitempty"`
 	LastError  string  `json:"last_error,omitempty"`
+	// Deferred and Skipped are what the automatic re-derive left as
+	// stored: pipelines whose work would not stay on this machine, and
+	// counts by reason of the latest run's skips.
+	Deferred []upgradeDeferred `json:"deferred,omitempty"`
+	Skipped  map[string]int    `json:"skipped,omitempty"`
+	// Stopped are the groups the latest re-derive stopped on the way.
+	Stopped []upgradeStopped `json:"stopped,omitempty"`
+}
+
+// upgradeStopped is one pipeline group a re-derive stopped, and why.
+type upgradeStopped struct {
+	Pipeline string `json:"pipeline"`
+	Kind     string `json:"kind"`
+	Cause    string `json:"cause"`
+	Groups   int    `json:"groups,omitempty"`
+}
+
+// upgradeDeferred is one pipeline an automatic re-derive did not process.
+type upgradeDeferred struct {
+	Pipeline string `json:"pipeline"`
+	Objects  int    `json:"objects"`
+	Reason   string `json:"reason"`
 }
 
 // upgradeHealthzPayload matches just the fields ctxt upgrade reads from
@@ -275,6 +297,9 @@ func upgradeStatusOnce(cmd *cobra.Command, client *dpkmsclient.Client) error {
 func renderUpgradeStatus(w io.Writer, up *upgradeEnvelope) {
 	if up == nil || up.State == string(upgrade.StateIdle) || up.State == "" {
 		fmt.Fprintln(w, "Upgrade state: idle")
+		if up != nil {
+			renderRederiveLeftovers(w, up)
+		}
 		return
 	}
 	fmt.Fprintf(w, "Upgrade state: %s\n", up.State)
@@ -300,6 +325,40 @@ func renderUpgradeStatus(w io.Writer, up *upgradeEnvelope) {
 	}
 	if up.State == string(upgrade.StateFailed) && up.LastError != "" {
 		fmt.Fprintf(w, "  Last error: %s\n", up.LastError)
+	}
+	renderRederiveLeftovers(w, up)
+}
+
+// renderRederiveLeftovers prints what the automatic re-derive left as
+// stored: the deferred pipelines (with the reason) and the latest run's
+// skips by reason, in a stable order.
+func renderRederiveLeftovers(w io.Writer, up *upgradeEnvelope) {
+	if len(up.Deferred) > 0 {
+		fmt.Fprintln(w, "  Deferred (work would not stay on this machine):")
+		for _, d := range up.Deferred {
+			fmt.Fprintf(w, "    %s: %d objects: %s\n", d.Pipeline, d.Objects, d.Reason)
+		}
+	}
+	if len(up.Stopped) > 0 {
+		fmt.Fprintln(w, "  Stopped (five tries in a row; the rest waits for a later start):")
+		for _, st := range up.Stopped {
+			groups := ""
+			if st.Groups > 1 {
+				groups = fmt.Sprintf(" (%d groups)", st.Groups)
+			}
+			fmt.Fprintf(w, "    %s%s: %s: %s\n", st.Pipeline, groups, st.Kind, st.Cause)
+		}
+	}
+	if len(up.Skipped) > 0 {
+		reasons := make([]string, 0, len(up.Skipped))
+		for r := range up.Skipped {
+			reasons = append(reasons, r)
+		}
+		sort.Strings(reasons)
+		fmt.Fprintln(w, "  Skipped by the latest run:")
+		for _, r := range reasons {
+			fmt.Fprintf(w, "    %s: %d\n", r, up.Skipped[r])
+		}
 	}
 }
 

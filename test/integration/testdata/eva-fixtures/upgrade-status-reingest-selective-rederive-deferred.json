@@ -1,0 +1,18 @@
+{
+  "state": "in_progress",
+  "bucket": "reingest_selective",
+  "target": "rederive@2de889f89a83",
+  "progress": 0.5,
+  "done": 4,
+  "total": 8,
+  "failed": 1,
+  "eta_seconds": 20,
+  "started_at": "2026-11-27T14:23:11Z",
+  "deferred": [
+    {
+      "pipeline": "url.generic",
+      "objects": 12,
+      "reason": "hosted: tagger (llm, openai)"
+    }
+  ]
+}

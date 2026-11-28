@@ -1,6 +1,7 @@
 package http
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -20,7 +21,7 @@ func TestNewUpgradeSnapshot(t *testing.T) {
 		State: "in_progress", Bucket: "embeddings_migrate", Target: "m@1",
 		Progress: 0.5, Done: 2, Total: 4, Failed: 1, EtaSeconds: 3, StartedAt: "2026-09-26T11:00:00Z",
 	}
-	if got == nil || *got != want {
+	if got == nil || !reflect.DeepEqual(*got, want) {
 		t.Errorf("snapshot = %+v, want %+v", got, want)
 	}
 }

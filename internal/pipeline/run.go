@@ -3,7 +3,6 @@ package pipeline
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
@@ -41,7 +40,7 @@ func RunSteps(ctx context.Context, pipe *Pipeline, draft *storage.KnowledgeObjec
 				slog.Debug("pipeline: step delegated, skipping", "step", step.Name())
 				continue
 			}
-			return nil, fmt.Errorf("step %s: %w", step.Name(), err)
+			return nil, &StepError{Step: step.Name(), Err: err}
 		}
 		draft, cur = out, out
 	}

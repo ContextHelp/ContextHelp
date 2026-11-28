@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/ideacrafterslabs/ctxt/internal/pipeline"
+	"github.com/ideacrafterslabs/ctxt/internal/providers"
 	"github.com/ideacrafterslabs/ctxt/internal/safefetch"
 	"github.com/ideacrafterslabs/ctxt/internal/storage"
 )
@@ -104,7 +105,7 @@ func (s *URLFetcher) Run(ctx context.Context, draft *storage.KnowledgeObject) (*
 	resp, err := s.bridge.Do(req)
 	if err != nil {
 		log.Printf("url_fetcher: fetch error: %v", err)
-		wrapped := fmt.Errorf("url_fetcher: fetch %s: %w", rawURL, err)
+		wrapped := error(&pipeline.FetchError{Host: pipeline.FetchHost(rawURL), Err: fmt.Errorf("url_fetcher: fetch %s: %w", rawURL, err)})
 		if isPermanentNetError(err) {
 			return nil, pipeline.Permanent(wrapped)
 		}
@@ -114,7 +115,11 @@ func (s *URLFetcher) Run(ctx context.Context, draft *storage.KnowledgeObject) (*
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		log.Printf("url_fetcher: unexpected status %d", resp.StatusCode)
-		err := fmt.Errorf("url_fetcher: unexpected status %d for %s", resp.StatusCode, rawURL)
+		err := error(&pipeline.FetchError{
+			Host: pipeline.FetchHost(rawURL), Status: resp.StatusCode,
+			RateLimited: resp.StatusCode == http.StatusTooManyRequests || resp.Header.Get("Retry-After") != "",
+			Err:         fmt.Errorf("url_fetcher: unexpected status %d for %s", resp.StatusCode, rawURL),
+		})
 		if resp.StatusCode >= 400 && resp.StatusCode < 500 &&
 			resp.StatusCode != http.StatusRequestTimeout &&
 			resp.StatusCode != http.StatusTooManyRequests {
@@ -126,13 +131,18 @@ func (s *URLFetcher) Run(ctx context.Context, draft *storage.KnowledgeObject) (*
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("url_fetcher: read body: %w", err)
+		// The connection broke mid-answer: no answer, as far as the host goes.
+		return nil, &pipeline.FetchError{Host: pipeline.FetchHost(rawURL), Err: fmt.Errorf("url_fetcher: read body: %w", err)}
 	}
 
 	log.Printf("url_fetcher: fetched %d bytes", len(body))
 
 	draft.RawContent = string(body)
 	draft.Metadata["final_url"] = resp.Request.URL.String()
+	// Where the fetch was addressed worked: a reanalysis that succeeds
+	// reports it, so a failure on the same host can be told from a network
+	// that reaches nothing.
+	providers.ReportFetched(ctx, pipeline.FetchHost(rawURL))
 	draft.Metadata["content_type"] = resp.Header.Get("Content-Type")
 
 	return draft, nil
